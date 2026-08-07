@@ -8,8 +8,10 @@ package com.vayunmathur.library.network
  * - FIRST_PARTY: ~6 roots for api.vayunmathur.com, data.vayunmathur.com, findfamily.cc
  *   Cloudflare Universal SSL: ISRG X1/X2 + GTS R1-R4 (SSL.com optional, add if observed).
  * - STANDARD: FIRST_PARTY + DigiCert G2/G3, Baltimore CyberTrust, Amazon Root CA 1-4,
- *   Sectigo AAA, USERTrust RSA — covers F-Droid (ISRG), GitHub (DigiCert), Play/Aurora
- *   (Google GTS), DuckDuckGo (DigiCert), open-meteo (ISRG).
+ *   Sectigo AAA, USERTrust RSA, GoDaddy Root G2 — covers F-Droid (ISRG), GitHub
+ *   (DigiCert), Play/Aurora (Google GTS), DuckDuckGo (DigiCert), open-meteo (ISRG),
+ *   and the Cover Art Archive redirect chain (coverartarchive.org -> archive.org /
+ *   ia*.us.archive.org, served on GoDaddy certs).
  * - EXTENDED: STANDARD + Microsoft RSA 2017, Apple Root G2/G3, Apple IST CA 2 G1 — for
  *   everysync (Google + Apple CalDAV) and messages non-Signal (Googleapis GTS + FB/DigiCert).
  * - SYSTEM: platform default; email/web/vpn dynamic hosts.
@@ -41,6 +43,9 @@ enum class TrustBundle {
             // aaa-cert (AAA Certificate Services) is retired from Mozilla bundle;
             // sectigo chain covered by usertrust-rsa. Kept optional via BundledTrust w/ warning if present.
             "ca/usertrust-rsa.der",
+            // archive.org and ia*.us.archive.org (Cover Art Archive redirect targets)
+            // serve GoDaddy-issued certs, so their root is required to fetch/embed cover art.
+            "ca/godaddy-root-g2.der",
         )
         EXTENDED -> STANDARD.assetPaths() + listOf(
             "ca/microsoft-rsa-2017.der",
