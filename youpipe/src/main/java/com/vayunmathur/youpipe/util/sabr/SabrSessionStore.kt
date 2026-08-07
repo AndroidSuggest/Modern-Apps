@@ -110,12 +110,20 @@ object SabrSessionStore {
      *                          bootstrap cache key lines up
      */
     @JvmStatic
-    fun prewarm(context: Context, videoId: String, selectedVideoItag: Int) {
+    fun prewarm(
+        context: Context,
+        videoId: String,
+        selectedVideoItag: Int,
+        selectedAudioItag: Int = 0,
+        selectedAudioTrackId: String? = null,
+    ) {
         val info = EXTRACTOR_INFO[videoId]
         if (info == null || !isUsableExtractorInfo(info, videoId)) {
             return
         }
-        val audioFormat = pickAudioFormat(info, PREFERRED_AUDIO[videoId])
+        val audioFormat = pickAudioFormat(
+            info, selectedAudioTrackId ?: PREFERRED_AUDIO[videoId], selectedAudioItag
+        )
         val videoFormat = pickVideoFormat(info, selectedVideoItag)
         if (audioFormat == null || videoFormat == null) {
             return
@@ -124,6 +132,52 @@ object SabrSessionStore {
         val localization = Localization("en", "US")
         startTokenWarmup(appContext, info, audioFormat, videoFormat)
         startBootstrap(appContext, info, audioFormat, videoFormat, localization)
+    }
+
+    /**
+     * Blocking, worker-thread-only counterpart to [prewarm]: fully completes the SABR bootstrap
+     * for the exact audio+video formats playback will select and leaves the result in
+     * [BOOTSTRAP_CACHE] WITHOUT consuming its prepared session. Call this off the main thread
+     * before `setMediaItem` so the [MediaSource.Factory][createSourceSpec] — which media3 runs on
+     * the main thread — hits the cache instead of blocking on the network (the bug that froze the
+     * UI on a SABR quality switch). The audio itag/trackId must match what playback passes so the
+     * [bootstrapKey] lines up. Safe to call repeatedly: a warmed key is served from cache.
+     *
+     * Never call on the main thread — it awaits network I/O.
+     */
+    @JvmStatic
+    fun warmBootstrap(
+        context: Context,
+        videoId: String,
+        selectedVideoItag: Int,
+        selectedAudioItag: Int,
+        selectedAudioTrackId: String?,
+    ) {
+        val info = EXTRACTOR_INFO[videoId]
+        if (info == null || !isUsableExtractorInfo(info, videoId)) {
+            return
+        }
+        val audioFormat = pickAudioFormat(
+            info, selectedAudioTrackId ?: PREFERRED_AUDIO[videoId], selectedAudioItag
+        )
+        val videoFormat = pickVideoFormat(info, selectedVideoItag)
+        if (audioFormat == null || videoFormat == null) {
+            return
+        }
+        val appContext = context.applicationContext
+        val localization = Localization("en", "US")
+        try {
+            startTokenWarmup(appContext, info, audioFormat, videoFormat)
+            val key = bootstrapKey(info, audioFormat, videoFormat)
+            val future = startBootstrap(appContext, info, audioFormat, videoFormat, localization)
+            // Populates BOOTSTRAP_CACHE for [key]; does not take the prepared session, so the
+            // later main-thread createSourceSpec still gets the fast session handoff.
+            awaitBootstrap(key, future, videoId)
+        } catch (e: Exception) {
+            // Warm is best-effort: on failure playback falls back to the (pre-existing) blocking
+            // path rather than crashing. Nothing to publish here.
+            Log.w(TAG, "warmBootstrap failed video=$videoId", e)
+        }
     }
 
     internal class SessionKey(
