@@ -10,21 +10,30 @@ body:
       description: Which app is experiencing the issue?
       options:
         - alchemist
+        - appstore
         - astronomy
+        - calculator
         - calendar
         - camera
         - chess
         - clock
+        - code
         - contacts
         - education
         - email
         - everysync
         - files
         - findfamily
+        - fooddelivery
         - health
+        - hub
+        - keyboard
+        - logicgate
         - maps
+        - measure
         - messages
         - music
+        - musicbrainz
         - notes
         - office
         - openassistant
@@ -33,10 +42,15 @@ body:
         - photos
         - pipes
         - solitaire
+        - speech
         - things
+        - translate
         - travel
         - unblockjam
+        - vpn
+        - voxels
         - weather
+        - web
         - wordmaker
         - youpipe
     validations:
