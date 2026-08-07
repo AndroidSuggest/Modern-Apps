@@ -1,22 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="see_details"></string>
-    <string name="recipes"></string>
-    <string name="id"></string>
-    <string name="discovered_counter"></string>
-    <string name="cd_final_item"></string>
-    <string name="item_discovered"></string>
-    <string name="collection"></string>
-    <string name="used_in"></string>
-    <plurals name="items_discovered">
-    </plurals>
-    <string name="alchemy_icon_content_description"></string>
-    <string name="hide_maxed_elements"></string>
-    <string name="item_details"></string>
-    <plurals name="locked_recipes">
-    </plurals>
-    <string name="app_name"></string>
-    <string name="locked_description"></string>
-    <string name="counter"></string>
-    <string name="cd_delete"></string>
-</resources>
+    </resources>

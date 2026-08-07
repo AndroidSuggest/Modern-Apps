@@ -14,10 +14,4 @@
     <plurals name="locked_recipes">
         <item quantity="other">+ %1$d recettes verrouillées.</item>
     </plurals>
-    <string name="id"></string>
-    <string name="cd_final_item"></string>
-    <string name="item_discovered"></string>
-    <plurals name="items_discovered">
-    </plurals>
-    <string name="cd_delete"></string>
 </resources>
