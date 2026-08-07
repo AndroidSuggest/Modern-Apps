@@ -18,4 +18,17 @@
     <string name="icloud_app_password_steps">iCloud nécessite un mot de passe pour application, et non le mot de passe de votre identifiant Apple :\n\n1. Connectez-vous sur account.apple.com\n2. Ouvrez Connexion et sécurité → Mots de passe pour application\n3. Créez-en un et nommez-le « Synchronisation»\n4. Saisissez ci-dessous l’adresse e-mail de votre identifiant Apple ainsi que ce mot de passe</string>
     <string name="icloud_create_password">Créer un mot de passe pour application</string>
     <string name="last_synced">Dernière synchronisation : <xliff:g id="date" example="Aujourd’hui à 10 h 30">%1$s</xliff:g></string>
+    <string name="provider_via_health_connect">via Health Connect</string>
+    <string name="never_synced">Jamais synchronisé</string>
+    <string name="need_permissions">Synchronisation doit accéder à vos contacts et à vos calendriers pour synchroniser vos comptes.</string>
+    <string name="sync_calendar">Synchroniser les calendriers</string>
+    <string name="sync_health">Synchroniser les données de santé</string>
+    <string name="no_accounts">Aucun compte pour le moment. Appuyez sur + pour en ajouter un.</string>
+    <string name="settings_title">Paramètres</string>
+    <string name="sync_contacts">Synchroniser les contacts</string>
+    <string name="remove_account">Supprimer le compte</string>
+    <string name="wifi_only">Synchroniser uniquement via Wi-Fi</string>
+    <string name="syncing">Synchronisation…</string>
+    <string name="sync_now">Synchroniser maintenant</string>
+    <string name="login">Se connecter</string>
 </resources>
