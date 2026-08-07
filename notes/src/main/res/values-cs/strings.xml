@@ -9,5 +9,4 @@
     <string name="external_save_failed">Nepodařilo se uložit (soubor může být pouze pro čtení)</string>
     <string name="external_read_failed">Nepodařilo se otevřít soubor</string>
     <string name="note">poznámka</string>
-    <string name="share_note"></string>
 </resources>

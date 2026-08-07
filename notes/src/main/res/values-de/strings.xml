@@ -2,12 +2,4 @@
 <resources>
     <string name="app_name">Notizen</string>
     <string name="title">Titel</string>
-    <string name="add_image"></string>
-    <string name="external_save_failed"></string>
-    <string name="drawing"></string>
-    <string name="add_drawing"></string>
-    <string name="external_saved"></string>
-    <string name="external_read_failed"></string>
-    <string name="share_note"></string>
-    <string name="note"></string>
 </resources>
