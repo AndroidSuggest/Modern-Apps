@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="channel_info">%1$s abonnés</string>
+    <string name="channel_info">&lt;xliff:g id=\"count\" example=\"1,2 M\"&gt;%1$s&lt;/xliff:g&gt; abonnés</string>
     <string name="action_unpin">Désépingler</string>
-    <string name="video_stat_format">%1$s vues | %2$s</string>
+    <string name="video_stat_format">&lt;xliff:g id=\"views\" example=\"1M\"&gt;%1$s&lt;/xliff:g&gt; vues | &lt;xliff:g id=\"time\" example=\"3 days ago\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="label_description">Description</string>
-    <string name="video_load_error">Erreur de chargement de la vidéo – YouTube a peut-être bloqué l\'accès au visionnage anonyme depuis cette adresse IP</string>
+    <string name="video_load_error">Erreur de chargement de la vidéo – YouTube a peut-être bloqué le visionnage anonyme depuis cette adresse IP</string>
     <string name="action_create">Créer</string>
     <string name="action_not_interested">Ça ne m\'intéresse pas</string>
     <string name="label_all_subscriptions">Tous les abonnements</string>
     <string name="label_backup_restore">Sauvegarde et restauration</string>
     <string name="label_dial_discovery">Familier ↔ Découverte</string>
-    <string name="subscribers_count">%1$s abonnés</string>
-    <string name="recommendation_reason">Raison : %1$s</string>
+    <string name="subscribers_count">&lt;xliff:g id=\"count\" example=\"12K\"&gt;%1$s&lt;/xliff:g&gt; abonnés</string>
+    <string name="recommendation_reason">Raison : &lt;xliff:g id=\"reason\" example=\"watched similar\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="label_system_default">Paramètres par défaut du système</string>
     <string name="action_block_channel">Bloquer la chaîne</string>
-    <string name="time_ago_minutes">Il y a %1$d minutes</string>
-    <string name="count_m_format">%1$sM</string>
+    <string name="time_ago_minutes">Il y a &lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; minutes</string>
+    <string name="count_m_format">&lt;xliff:g id=\"number\" example=\"1,2\"&gt;%1$s&lt;/xliff:g&gt; M</string>
     <string name="label_import_youtube">Importation depuis YouTube (Takeout)</string>
     <string name="label_dearrow">Activer DeArrow</string>
     <string name="label_recommendations">Recommandations</string>
@@ -24,8 +24,8 @@
     <string name="label_comments">Commentaires</string>
     <string name="label_select_subscriptions">Sélectionnez les abonnements :</string>
     <string name="label_sponsorblock">Catégories de SponsorBlock</string>
-    <string name="count_b_format">%1$sB</string>
-    <string name="time_ago_days">Il y a %1$d jours</string>
+    <string name="count_b_format">&lt;xliff:g id=\"number\" example=\"3,4\"&gt;%1$s&lt;/xliff:g&gt; Md</string>
+    <string name="time_ago_days">Il y a &lt;xliff:g id=\"days\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; jours</string>
     <string name="label_pinned">Épinglé</string>
     <string name="label_blocked_channels">Chaînes bloquées</string>
     <string name="label_manage_interests">Gérer les centres d\'intérêt</string>
@@ -34,7 +34,7 @@
     <string name="label_muted_keywords">Mots-clés masqués</string>
     <string name="label_dearrow_description">Remplacer les titres et les vignettes « clickbait » par des alternatives proposées par la communauté</string>
     <string name="label_groups">Groupes :</string>
-    <string name="count_k_format">%1$sK</string>
+    <string name="count_k_format">&lt;xliff:g id=\"number\" example=\"12,3\"&gt;%1$s&lt;/xliff:g&gt; k</string>
     <string name="label_max_duration">Durée maximale (secondes)</string>
     <string name="label_youtube_language">Langue du contenu</string>
     <string name="action_unblock">Débloquer</string>
@@ -42,7 +42,7 @@
     <string name="label_min_duration">Durée minimale (secondes)</string>
     <string name="time_ago_just_now">À l\'instant</string>
     <string name="label_source_related">En lien avec votre historique</string>
-    <string name="time_ago_years">Il y a %1$d ans</string>
+    <string name="time_ago_years">Il y a &lt;xliff:g id=\"years\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; ans</string>
     <string name="label_rec_content_filters">Filtres de contenu</string>
     <string name="label_category_name">Nom de la catégorie</string>
     <string name="preset_balanced">Équilibré</string>
@@ -53,13 +53,13 @@
     <string name="title_subscriptions">Abonnements</string>
     <string name="label_search">Rechercher</string>
     <string name="action_subscribe">S\'abonner</string>
-    <string name="time_ago_months">Il y a %1$d mois</string>
+    <string name="time_ago_months">Il y a &lt;xliff:g id=\"months\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; mois</string>
     <string name="action_pin_channel">Épingler la chaîne</string>
     <string name="label_rec_sources">Sources</string>
     <string name="label_source_trending">Tendances</string>
     <string name="label_your_channels">Vos chaînes</string>
     <string name="label_no_blocked_channels">Aucune chaîne bloquée</string>
-    <string name="video_quality_fps_codec">%1$s (%2$dfps) %3$s</string>
+    <string name="video_quality_fps_codec">&lt;xliff:g id=\"quality\" example=\"1080p\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"fps\" example=\"60\"&gt;%2$d&lt;/xliff:g&gt; i/s) &lt;xliff:g id=\"codec\" example=\"avc\"&gt;%3$s&lt;/xliff:g&gt;</string>
     <string name="preset_deep_dives">Analyses approfondies</string>
     <string name="action_remove">Retirer</string>
     <string name="label_source_subscription">Vos abonnements</string>
@@ -75,11 +75,11 @@
     <string name="label_source_top_channel">Chaînes les plus populaires</string>
     <string name="title_settings">Paramètres</string>
     <string name="action_unmute">Réactiver le son</string>
-    <string name="video_info_format">%1$s | %2$s vues | %3$s</string>
+    <string name="video_info_format">&lt;xliff:g id=\"channel\" example=\"Linus Tech Tips\"&gt;%1$s&lt;/xliff:g&gt; | &lt;xliff:g id=\"views\" example=\"1,2 M\"&gt;%2$s&lt;/xliff:g&gt; vues | &lt;xliff:g id=\"time\" example=\"Il y a 2 jours\"&gt;%3$s&lt;/xliff:g&gt;</string>
     <string name="app_name">YouPipe</string>
     <string name="label_youtube_content">Contenu YouTube</string>
     <string name="label_no_muted_keywords">Aucun mot-clé masqué</string>
-    <string name="time_ago_hours">Il y a %1$d heures</string>
+    <string name="time_ago_hours">Il y a &lt;xliff:g id=\"hours\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; heures</string>
     <string name="action_update">Mettre à jour</string>
     <string name="label_hide_shorts">Masquer les Shorts</string>
     <string name="action_more_like_this">Autres articles similaires</string>
@@ -94,10 +94,14 @@
     <string name="clear_history">Effacer l’historique</string>
     <string name="off">Désactivé</string>
     <string name="selected_count">%1$s sélectionné(s)</string>
-    <string name="selected_1">%1$s sélectionné(s)</string>
+    <string name="selected_1">Sélection : &lt;xliff:g id=\"count\" example=\"2\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="download">Télécharger</string>
     <string name="language">Langue</string>
     <string name="chapter">Chapitre</string>
     <string name="are_you_sure_you_want_to_clear_all_watch">Voulez-vous vraiment effacer tout l’historique des vidéos regardées ?</string>
     <string name="resolution">Résolution</string>
+    <string name="page_home">Accueil</string>
+    <string name="label_default_page">Ouvrir sur</string>
+    <string name="label_general">Général</string>
+    <string name="page_downloads">Téléchargements</string>
 </resources>
