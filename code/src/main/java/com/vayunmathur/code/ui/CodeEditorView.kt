@@ -74,7 +74,8 @@ import com.vayunmathur.library.ui.MaterialTheme
  *
  * Phase-8 additions: real line-hiding folds with gutter arrows, multi-cursor (Ctrl-D / Alt-tap),
  * indent guides, whitespace rendering, a minimap, and editor keyboard shortcuts. Find/replace,
- * autocomplete and soft-wrap are now wired; the remaining v1 caveat is the soft-keyboard IME.
+ * autocomplete, soft-wrap and the system-keyboard IME (via [codeEditorInput]) are all wired; the
+ * hardware-key path ([handleEditorKey]) remains for keys the IME does not deliver.
  */
 @Composable
 fun CodeEditorView(
@@ -131,6 +132,8 @@ fun CodeEditorView(
     // Folding state lives on the tab (persisted per file); multi-cursor is view-local.
     val foldedHeaders = tab.foldedHeaders
     var extraCarets by remember(tab.name) { mutableStateOf(listOf<Int>()) }
+    // In-progress IME composition region (reported by the system keyboard), drawn underlined.
+    var composing by remember(tab.name) { mutableStateOf<TextRange?>(null) }
 
     val foldByHeader = remember(text) { computeFoldRegions(text).associateBy { it.startLine } }
     val hiddenLines = remember(text, foldedHeaders) {
@@ -308,6 +311,12 @@ fun CodeEditorView(
                 .focusRequester(focusRequester)
                 .focusable()
                 .onFocusChanged { if (it.isFocused) actions.focusPane(secondaryPane) }
+                .codeEditorInput(
+                    enabled = true,
+                    value = value,
+                    onValueChange = emit,
+                    onComposingChange = { composing = it },
+                )
                 .onPreviewKeyEvent { event ->
                     handleEditorKey(
                         event = event,
@@ -422,6 +431,18 @@ fun CodeEditorView(
                     val cx = gutterWidth + (caret - lineStart) * charWidth - scrollX
                     drawRect(caretColor, topLeft = Offset(cx, y), size = Size(2f, lineHeight))
                 }
+                composing?.let { c ->
+                    val cs = c.min
+                    val ce = c.max
+                    if (ce > lineStart && cs < lineStart + lineLen) {
+                        val a = (cs - lineStart).coerceIn(0, lineLen)
+                        val b = (ce - lineStart).coerceIn(0, lineLen)
+                        if (b > a) {
+                            val ux = gutterWidth + a * charWidth - scrollX
+                            drawRect(caretColor, topLeft = Offset(ux, y + lineHeight - 2f), size = Size((b - a) * charWidth, 2f))
+                        }
+                    }
+                }
                 for (extra in extraCarets) {
                     if (extra in lineStart..(lineStart + lineLen)) {
                         val cx = gutterWidth + (extra - lineStart) * charWidth - scrollX
@@ -485,6 +506,16 @@ fun CodeEditorView(
                         if (caret in lineStart..(lineStart + lineLen)) {
                             val rect = layout.getCursorRect((caret - lineStart).coerceIn(0, lineLen))
                             drawRect(caretColor, topLeft = Offset(gutterWidth + rect.left, lineTop + rect.top), size = Size(2f, rect.height))
+                        }
+                        composing?.let { c ->
+                            if (c.max > lineStart && c.min < lineStart + lineLen) {
+                                val a = (c.min - lineStart).coerceIn(0, lineLen)
+                                val b = (c.max - lineStart).coerceIn(0, lineLen)
+                                if (b > a) {
+                                    val path = layout.getPathForRange(a, b).apply { translate(Offset(gutterWidth, lineTop)) }
+                                    drawPath(path, caretColor.copy(alpha = 0.25f))
+                                }
+                            }
                         }
                         for (extra in extraCarets) {
                             if (extra in lineStart..(lineStart + lineLen)) {
