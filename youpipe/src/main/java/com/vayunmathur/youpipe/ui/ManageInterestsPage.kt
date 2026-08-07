@@ -3,13 +3,12 @@ package com.vayunmathur.youpipe.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
-import com.vayunmathur.library.ui.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,7 +23,7 @@ import com.vayunmathur.youpipe.util.decodeHtml
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecommendationSettingsPage(
+fun ManageInterestsPage(
     backStack: NavBackStack<Route>,
     ypvm: YouPipeViewModel,
 ) {
@@ -48,8 +47,9 @@ fun RecommendationSettingsPage(
     val blockedChannels = channelPrefs.filter { it.blocked }.map { it.channelKey }
     val mutedKeywords = keywordPrefs.filter { it.muted }.map { it.keyword }
 
-    Scaffold(
-        topBar = { TopAppBar({ Text(stringResource(R.string.title_manage_interests)) }) }
+    AppScaffold(
+        title = stringResource(R.string.title_manage_interests),
+        backStack = backStack,
     ) { paddingValues ->
         LazyColumn(Modifier.padding(paddingValues)) {
             item { SectionHeader(stringResource(R.string.label_your_channels)) }

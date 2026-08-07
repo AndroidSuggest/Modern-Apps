@@ -44,7 +44,11 @@ import com.vayunmathur.youpipe.util.YouPipeViewModel
 import com.vayunmathur.youpipe.util.YouPipeViewModelFactory
 import com.vayunmathur.youpipe.ui.SearchPage
 import com.vayunmathur.youpipe.ui.SettingsPage
-import com.vayunmathur.youpipe.ui.RecommendationSettingsPage
+import com.vayunmathur.youpipe.ui.GeneralSettingsPage
+import com.vayunmathur.youpipe.ui.SponsorBlockSettingsPage
+import com.vayunmathur.youpipe.ui.RecommendationsSettingsPage
+import com.vayunmathur.youpipe.ui.DataSettingsPage
+import com.vayunmathur.youpipe.ui.ManageInterestsPage
 import com.vayunmathur.youpipe.ui.SubscriptionVideosPage
 import com.vayunmathur.youpipe.ui.SubscriptionsPage
 import com.vayunmathur.youpipe.ui.VideoPage
@@ -250,7 +254,19 @@ sealed interface Route: NavKey {
     data object Settings: Route
 
     @Serializable
-    data object RecommendationSettings: Route
+    data object SettingsGeneral: Route
+
+    @Serializable
+    data object SettingsSponsorBlock: Route
+
+    @Serializable
+    data object SettingsRecommendations: Route
+
+    @Serializable
+    data object SettingsData: Route
+
+    @Serializable
+    data object ManageInterests: Route
 }
 
 @Composable
@@ -301,8 +317,20 @@ fun Navigation(initialBackStack: List<Route>, ypvm: YouPipeViewModel) {
         entry<Route.Settings> {
             SettingsPage(backStack, ypvm)
         }
-        entry<Route.RecommendationSettings> {
-            RecommendationSettingsPage(backStack, ypvm)
+        entry<Route.SettingsGeneral> {
+            GeneralSettingsPage(backStack, ypvm)
+        }
+        entry<Route.SettingsSponsorBlock> {
+            SponsorBlockSettingsPage(backStack, ypvm)
+        }
+        entry<Route.SettingsRecommendations> {
+            RecommendationsSettingsPage(backStack, ypvm)
+        }
+        entry<Route.SettingsData> {
+            DataSettingsPage(backStack, ypvm)
+        }
+        entry<Route.ManageInterests> {
+            ManageInterestsPage(backStack, ypvm)
         }
     }
 }
