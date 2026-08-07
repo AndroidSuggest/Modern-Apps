@@ -74,12 +74,15 @@ class MetadataPreviews {
     private val nowPlaying = NowPlayingUiState(
         title = "Midnight Drive",
         artist = "The Neon Owls",
+        album = "After Hours",
         artworkUri = "content://media/external/audio/albumart/100".toUri(),
         isPlaying = true,
         positionMs = 96_000,
         durationMs = 254_000,
         shuffle = true,
         repeatMode = Player.REPEAT_MODE_ALL,
+        artistId = 10,
+        albumId = 100,
         sourceId = "all_songs",
         sourceName = "All Songs",
     )
@@ -143,7 +146,9 @@ class MetadataPreviews {
                     albumId = 100,
                     name = "After Hours",
                     artUri = "content://media/external/audio/albumart/100".toUri(),
-                    info = "The Neon Owls\n2024 • 8 songs • 29:10",
+                    artistName = "The Neon Owls",
+                    artistId = 10,
+                    info = "2024 • 8 songs • 29:10",
                     tracks = listOf(
                         song(1, "Midnight Drive", "The Neon Owls", 10, "After Hours", 100, 254_000, 1),
                         song(2, "Golden Hour", "The Neon Owls", 10, "After Hours", 100, 211_000, 2),

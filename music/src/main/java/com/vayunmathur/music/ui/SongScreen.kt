@@ -141,11 +141,36 @@ fun NowPlayingScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    val artistId = state.artistId
                     Text(
                         state.artist,
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (artistId != null) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = if (artistId != null) {
+                            Modifier.clickable { backStack.add(Route.ArtistDetail(artistId)) }
+                        } else {
+                            Modifier
+                        },
                     )
+                    val albumId = state.albumId
+                    if (state.album.isNotEmpty()) {
+                        Text(
+                            state.album,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (albumId != null) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = if (albumId != null) {
+                                Modifier.clickable { backStack.add(Route.AlbumDetail(albumId)) }
+                            } else {
+                                Modifier
+                            },
+                        )
+                    }
                 }
                 IconButton(onClick = {}) {
                     IconMoreVert(tint = MaterialTheme.colorScheme.onSurfaceVariant)

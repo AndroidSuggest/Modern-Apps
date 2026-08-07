@@ -25,7 +25,11 @@ data class AlbumDetailUiState(
     val albumId: Long = 0,
     val name: String = "",
     val artUri: Uri? = null,
-    /** Pre-formatted "artist / year • n songs • duration" line (see `album_info_format`). */
+    /** Artist name(s) for the album, shown under the title. */
+    val artistName: String = "",
+    /** The artist to open when the name is tapped, or null when there isn't a single one. */
+    val artistId: Long? = null,
+    /** Pre-formatted "year • n songs • duration" line (see `album_info_format`). */
     val info: String = "",
     val tracks: List<Music> = emptyList(),
     val playingSongId: Long? = null,
@@ -38,12 +42,18 @@ data class AlbumDetailUiState(
 data class NowPlayingUiState(
     val title: String = "",
     val artist: String = "",
+    /** Album name of the loaded track, empty when unknown. */
+    val album: String = "",
     val artworkUri: Uri? = null,
     val isPlaying: Boolean = false,
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val shuffle: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
+    /** The artist to open when the name is tapped, or null when the track isn't in the library. */
+    val artistId: Long? = null,
+    /** The album to open when tapped, or null when the track isn't in the library. */
+    val albumId: Long? = null,
     /** Queue origin, as stored on the queue — see [PlaybackSource.parse]. */
     val sourceId: String? = null,
     /** Human-readable name of the queue origin, for the "Go to …" shortcut. */

@@ -53,18 +53,25 @@ fun AlbumDetailScreen(backStack: NavBackStack<Route>, musicViewModel: MusicViewM
         if (extractedYear > 0) extractedYear.toString() else "Unknown Year"
     }
 
+    val artistIds by musicViewModel.matchedArtistsForAlbum(albumId)
+
     AlbumDetailContent(
         state = AlbumDetailUiState(
             albumId = albumId,
             name = album.name,
             artUri = album.uri.toUri(),
+            artistName = album.artistString(musicViewModel),
+            // Only a single-artist album has an unambiguous page to open.
+            artistId = artistIds.singleOrNull(),
+            // Artist is rendered separately (as a tappable link), so it's passed empty here
+            // and the format's leading artist line is trimmed off.
             info = stringResource(
                 R.string.album_info_format,
-                album.artistString(musicViewModel),
+                "",
                 albumYear,
                 musicInAlbum.size,
                 formatDuration(totalDurationMs),
-            ),
+            ).trimStart(),
             tracks = musicInAlbum,
             playingSongId = musicViewModel.playingSongIdFrom("album_$albumId"),
         ),
@@ -115,7 +122,22 @@ fun AlbumDetailContent(
                     ListItem({
                         Text(state.name, style = MaterialTheme.typography.titleLarge)
                     }, Modifier, {Text(stringResource(R.string.label_album))}, {
-                        Text(state.info)
+                        Column {
+                            if (state.artistName.isNotEmpty()) {
+                                val artistId = state.artistId
+                                Text(
+                                    state.artistName,
+                                    color = if (artistId != null) MaterialTheme.colorScheme.primary
+                                    else Color.Unspecified,
+                                    modifier = if (artistId != null) {
+                                        Modifier.clickable { backStack.add(Route.ArtistDetail(artistId)) }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                            }
+                            Text(state.info)
+                        }
                     })
                 }
             }

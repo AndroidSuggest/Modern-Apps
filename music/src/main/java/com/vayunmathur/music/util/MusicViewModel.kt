@@ -129,7 +129,8 @@ class MusicViewModel(
         // The loaded file's lyrics, read off the main thread and re-read only when the track
         // changes. Looked up by the queue's media id, since that is the local track's row id.
         val songs by music.collectAsState()
-        val songUri = item?.mediaId?.let { id -> songs.firstOrNull { it.id.toString() == id }?.uri }
+        val song = item?.mediaId?.let { id -> songs.firstOrNull { it.id.toString() == id } }
+        val songUri = song?.uri
         val application = getApplication<Application>()
         val lyrics by produceState("", songUri) {
             value = songUri?.let { uri ->
@@ -140,12 +141,15 @@ class MusicViewModel(
         return NowPlayingUiState(
             title = metadata.title?.toString() ?: unknownTitle,
             artist = metadata.artist?.toString() ?: unknownArtist,
+            album = song?.album ?: metadata.albumTitle?.toString() ?: "",
             artworkUri = metadata.artworkUri,
             isPlaying = playing,
             positionMs = position,
             durationMs = total,
             shuffle = shuffle,
             repeatMode = repeat,
+            artistId = song?.artistId,
+            albumId = song?.albumId,
             sourceId = sourceId,
             sourceName = sourceName,
             lyrics = lyrics,
