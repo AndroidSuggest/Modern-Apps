@@ -81,7 +81,7 @@ fun ReleaseScreen(
             ) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                        CoverArtImage(state.coverUrl, size = 160)
+                        CoverArtImage(state.coverUrl, size = 160, fallbackUrl = state.fallbackCoverUrl)
                         Text(state.artist, style = MaterialTheme.typography.titleMedium)
                         SecondaryText(state.subtitle)
                         Text(

@@ -61,16 +61,56 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
             } else {
                 null
             }
+            android.util.Log.i(
+                "MBDownload",
+                "tagging '${request.title}': needsRemux=${audio.needsRemux} suffix=${audio.suffix} " +
+                    "bitrate=${audio.bitrate} raw=${raw.size} cover=${cover?.size ?: 0} " +
+                    "lyrics=${lyrics?.length ?: 0}",
+            )
 
-            val tagged = if (audio.suffix == "m4a") {
-                Mp4Tagger.tag(raw, request.toMp4Tags(cover, lyrics)) ?: raw
-            } else {
-                // Only MP4 can be annotated here, so anything else is stored as fetched.
-                // It still gets found by the library scan, just on filename and path.
-                raw
+            val tagged: ByteArray
+            val suffix: String
+            val mimeType: String
+            when {
+                audio.needsRemux -> {
+                    val ogg = OpusRemuxer.remux(applicationContext, raw)
+                    if (ogg != null) {
+                        val startsOggS = ogg.size >= 4 &&
+                            String(ogg, 0, 4, Charsets.ISO_8859_1) == "OggS"
+                        val out = OggOpusTagger.tag(ogg, request.toVorbisTags(cover, lyrics))
+                        android.util.Log.i(
+                            "MBDownload",
+                            "opus tag: oggStartsOggS=$startsOggS ogg=${ogg.size} " +
+                                "taggedNull=${out == null} tagged=${out?.size ?: 0}",
+                        )
+                        tagged = out ?: ogg
+                        suffix = "opus"
+                        mimeType = "audio/ogg"
+                    } else {
+                        // Remuxing a valid Opus stream should not fail, but if the platform
+                        // muxer refuses it the download is kept as the WebM it arrived as
+                        // rather than lost. It carries no tags, but the scan finds it by name.
+                        tagged = raw
+                        suffix = "webm"
+                        mimeType = "audio/webm"
+                    }
+                }
+                audio.suffix == "m4a" -> {
+                    tagged = Mp4Tagger.tag(raw, request.toMp4Tags(cover, lyrics)) ?: raw
+                    suffix = "m4a"
+                    mimeType = "audio/mp4"
+                }
+                else -> {
+                    // Only MP4 and Ogg/Opus can be annotated here, so anything else is stored
+                    // as fetched. It still gets found by the library scan, just on name and path.
+                    tagged = raw
+                    suffix = audio.suffix
+                    mimeType = audio.mimeType
+                }
             }
+            android.util.Log.i("MBDownload", "writing '${request.title}' as .$suffix ($mimeType)")
 
-            val written = writeToLibrary(treeUri, request, audio.suffix, tagged)
+            val written = writeToLibrary(treeUri, request, suffix, mimeType, tagged)
                 ?: return@withContext fail(key, "Could not write to music folder")
 
             recordInIndex(written, request, tagged.size)
@@ -124,6 +164,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
         treeUri: String,
         request: DownloadRequest,
         suffix: String,
+        mimeType: String,
         bytes: ByteArray,
     ): android.net.Uri? {
         val tree = treeUri.toUri()
@@ -138,7 +179,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) :
             tree,
             parent,
             fileName,
-            if (suffix == "m4a") "audio/mp4" else "audio/*",
+            mimeType,
         ) ?: return null
         applicationContext.contentResolver.openOutputStream(target, "wt").use { out ->
             if (out == null) return null
@@ -201,13 +242,34 @@ private fun DownloadRequest.toMp4Tags(cover: ByteArray?, lyrics: String?) = Mp4T
     trackTotal = trackTotal,
     discNumber = discNumber,
     coverArt = cover,
-    coverIsPng = cover != null && cover.size > 8 && cover[1] == 'P'.code.toByte(),
+    coverIsPng = cover.isPng(),
     freeform = buildMap {
         recordingId?.let { put("MusicBrainz Track Id", it) }
         releaseId?.let { put("MusicBrainz Album Id", it) }
         releaseTrackId?.let { put("MusicBrainz Release Track Id", it) }
     },
 )
+
+private fun DownloadRequest.toVorbisTags(cover: ByteArray?, lyrics: String?) = VorbisTags(
+    title = title,
+    artist = artist,
+    album = album,
+    albumArtist = albumArtist,
+    date = date,
+    trackNumber = trackNumber,
+    trackTotal = trackTotal,
+    discNumber = discNumber,
+    lyrics = lyrics,
+    recordingId = recordingId,
+    releaseId = releaseId,
+    releaseTrackId = releaseTrackId,
+    coverArt = cover,
+    coverIsPng = cover.isPng(),
+)
+
+/** PNG files start with an 8-byte signature whose second byte is `P`. */
+private fun ByteArray?.isPng(): Boolean =
+    this != null && size > 8 && this[1] == 'P'.code.toByte()
 
 /**
  * Holds the last few covers fetched from the Cover Art Archive.

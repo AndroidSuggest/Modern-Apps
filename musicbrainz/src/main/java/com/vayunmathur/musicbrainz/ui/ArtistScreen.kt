@@ -157,7 +157,7 @@ fun ReleaseGroupScreen(
                             .fillMaxWidth()
                             .clickable { backStack.add(Route.Release(release.id)) },
                         supportingContent = { SecondaryText(release.subtitle) },
-                        leadingContent = { CoverArtImage(release.coverUrl) },
+                        leadingContent = { CoverArtImage(release.coverUrl, fallbackUrl = release.fallbackCoverUrl) },
                         trailingContent = if (release.onDevice) {
                             { IconCheckCircle(tint = MaterialTheme.colorScheme.primary) }
                         } else {

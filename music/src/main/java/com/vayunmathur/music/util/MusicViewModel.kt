@@ -6,8 +6,10 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * ViewModel for the Music app.
@@ -122,6 +125,18 @@ class MusicViewModel(
         val unknownArtist = stringResource(R.string.unknown_artist)
 
         val metadata = item?.mediaMetadata ?: return null
+
+        // The loaded file's lyrics, read off the main thread and re-read only when the track
+        // changes. Looked up by the queue's media id, since that is the local track's row id.
+        val songs by music.collectAsState()
+        val songUri = item?.mediaId?.let { id -> songs.firstOrNull { it.id.toString() == id }?.uri }
+        val application = getApplication<Application>()
+        val lyrics by produceState("", songUri) {
+            value = songUri?.let { uri ->
+                withContext(Dispatchers.IO) { EmbeddedLyrics.read(application, uri.toUri()) }
+            }.orEmpty()
+        }
+
         return NowPlayingUiState(
             title = metadata.title?.toString() ?: unknownTitle,
             artist = metadata.artist?.toString() ?: unknownArtist,
@@ -133,6 +148,7 @@ class MusicViewModel(
             repeatMode = repeat,
             sourceId = sourceId,
             sourceName = sourceName,
+            lyrics = lyrics,
         )
     }
 

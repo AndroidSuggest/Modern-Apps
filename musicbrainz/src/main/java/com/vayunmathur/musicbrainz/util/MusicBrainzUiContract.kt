@@ -33,6 +33,8 @@ data class ReleaseRow(
     val title: String,
     val subtitle: String? = null,
     val coverUrl: String? = null,
+    /** Release-group cover, shown when the release has no artwork of its own. */
+    val fallbackCoverUrl: String? = null,
     val onDevice: Boolean = false,
 )
 
@@ -96,6 +98,8 @@ data class ReleaseUiState(
     val artist: String = "",
     val subtitle: String? = null,
     val coverUrl: String? = null,
+    /** Release-group cover, shown when the release has no artwork of its own. */
+    val fallbackCoverUrl: String? = null,
     val tracks: List<TrackRow> = emptyList(),
 ) {
     val ownedCount: Int get() = tracks.count { it.onDevice }

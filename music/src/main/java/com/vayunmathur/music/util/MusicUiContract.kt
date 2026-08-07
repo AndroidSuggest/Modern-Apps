@@ -48,6 +48,8 @@ data class NowPlayingUiState(
     val sourceId: String? = null,
     /** Human-readable name of the queue origin, for the "Go to …" shortcut. */
     val sourceName: String? = null,
+    /** Raw embedded lyrics (LRC or plain), empty when the file carries none. */
+    val lyrics: String = "",
 )
 
 /**

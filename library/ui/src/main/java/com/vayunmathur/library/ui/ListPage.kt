@@ -117,7 +117,6 @@ inline fun <reified T : DatabaseItem, Route : NavKey, reified EditPage : Route> 
                             backStack.add(viewPage(item.id))
                         }
                     },
-                    overlineContent = {},
                     supportingContent = { supportingContent(item) },
                     leadingContent = { leadingContent(item) },
                     trailingContent = {

@@ -39,7 +39,11 @@ object TagReader {
 
     private const val MAX_MOOV_BYTES = 16 * 1024 * 1024
     private const val MAX_ID3_BYTES = 4 * 1024 * 1024
-    private const val OGG_SCAN_BYTES = 128 * 1024
+
+    // Large enough to hold an Opus comment header that embeds cover art: the app writes the
+    // front cover into the `OpusTags` packet, and the identifying tags parsed here sit in
+    // that same packet, so the whole of it has to be scanned to read them back.
+    private const val OGG_SCAN_BYTES = 1024 * 1024
 
     private val AUDIO_EXTENSIONS = setOf(
         "mp3", "m4a", "m4b", "mp4", "aac", "flac", "ogg", "oga", "opus", "wav", "wma",

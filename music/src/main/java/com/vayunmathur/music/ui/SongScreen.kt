@@ -55,9 +55,9 @@ fun NowPlayingScreen(
 ) {
     // UI States
     var showLyrics by remember { mutableStateOf(false) }
-    // Embedded lyrics removed: jaudiotagger dep eliminated (supply-chain mitigation).
-    // Lyrics overlay now shows "no lyrics" gracefully.
-    val rawLyrics by remember { mutableStateOf("") }
+    // Lyrics are read from the playing file's embedded tags (see EmbeddedLyrics); when a
+    // track carries none this is empty and the overlay shows "no lyrics" gracefully.
+    val rawLyrics = state.lyrics
 
     val parsedLyrics = remember(rawLyrics) { parseLyrics(rawLyrics) }
     val currentLyricIndex = remember(parsedLyrics, state.positionMs) {
