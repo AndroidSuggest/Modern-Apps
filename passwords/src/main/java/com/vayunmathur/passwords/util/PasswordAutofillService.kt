@@ -79,13 +79,14 @@ class PasswordAutofillService : AutofillService() {
 
                 for ((index, pass) in matches.withIndex()) {
                     val datasetBuilder = Dataset.Builder()
-                    val label = pass.name.ifBlank { pass.userId }
+                    val identity = pass.username.ifBlank { pass.email }
+                    val label = pass.name.ifBlank { identity }
                     val inlineSpec = inlineSpecs?.getOrNull(index)
                     val presentation = createPresentations(label, inlineSpec)
 
                     if (usernameId != null) {
                         val field = Field.Builder()
-                            .setValue(AutofillValue.forText(pass.userId))
+                            .setValue(AutofillValue.forText(identity))
                             .setPresentations(presentation)
                             .build()
                         datasetBuilder.setField(usernameId, field)
@@ -115,14 +116,16 @@ class PasswordAutofillService : AutofillService() {
 
         if (!username.isNullOrBlank() && !password.isNullOrBlank()) {
             runBlocking {
-                val existing = passwordDao.getAll().firstOrNull { it.userId == username }
+                val existing = passwordDao.getAll().firstOrNull { it.username == username || it.email == username }
                 if (existing != null) {
                     passwordDao.upsert(existing.copy(password = password))
                 } else {
+                    val looksLikeEmail = username.contains("@")
                     passwordDao.upsert(
                         Password(
                             name = "Saved Login",
-                            userId = username,
+                            username = if (looksLikeEmail) "" else username,
+                            email = if (looksLikeEmail) username else "",
                             password = password,
                             totpSecret = null,
                             websites = listOfNotNull(parser.webDomain)

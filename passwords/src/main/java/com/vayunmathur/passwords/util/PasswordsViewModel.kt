@@ -305,7 +305,7 @@ class PasswordsViewModel(
                 passwordDao.upsert(
                     Password(
                         name = name,
-                        userId = username,
+                        username = username,
                         password = password,
                         totpSecret = totp,
                         websites = websites,

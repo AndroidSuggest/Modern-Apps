@@ -80,7 +80,7 @@ fun MenuScreen(
         }
     }, {
         when (it) {
-            is CredentialItem.PasswordItem -> Text(it.password.userId)
+            is CredentialItem.PasswordItem -> Text(it.password.username.ifBlank { it.password.email })
             is CredentialItem.PasskeyItem -> Text(it.passkey.userName)
         }
     }, {
@@ -112,7 +112,7 @@ fun MenuScreen(
         }
     }, searchEnabled = true, searchString = {
         when (it) {
-            is CredentialItem.PasswordItem -> "${it.password.name} ${it.password.userId} ${it.password.websites.joinToString(" ")}"
+            is CredentialItem.PasswordItem -> "${it.password.name} ${it.password.username} ${it.password.email} ${it.password.websites.joinToString(" ")}"
             is CredentialItem.PasskeyItem -> "${it.passkey.rpName} ${it.passkey.rpId} ${it.passkey.userName}"
         }
     })

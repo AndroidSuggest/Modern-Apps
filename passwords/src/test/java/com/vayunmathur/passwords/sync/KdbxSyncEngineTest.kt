@@ -199,11 +199,11 @@ class KdbxSyncEngineTest {
 private fun password(
     id: Long,
     name: String,
-    userId: String,
+    username: String,
     password: String,
     syncId: String = "sync-$id",
     updatedAt: Long = 0,
-) = Password(id = id, name = name, userId = userId, password = password, syncId = syncId, updatedAt = updatedAt)
+) = Password(id = id, name = name, username = username, password = password, syncId = syncId, updatedAt = updatedAt)
 
 private fun fields(pw: Password) = EntryMapper.toFields(pw)
 

@@ -30,7 +30,7 @@ private const val NOW = 1_700_000_000_000L
 private val SampleMail = Password(
     id = 1,
     name = "Example Mail",
-    userId = "sample.user@example.com",
+    email = "sample.user@example.com",
     password = "sample-passphrase",
     totpSecret = "JBSWY3DPEHPK3PXP",
     websites = listOf("mail.example.com", "login.example.com"),
@@ -39,16 +39,18 @@ private val SampleMail = Password(
 private val SampleBank = Password(
     id = 2,
     name = "Sample Bank",
-    userId = "sample.user@example.com",
+    username = "sampleuser",
+    email = "sample.user@example.com",
     password = "another-sample-value",
     totpSecret = "KRSXG5CTMVRXEZLU",
+    note = "Recovery codes: 1234-5678, 9012-3456",
     websites = listOf("bank.example.com"),
 )
 
 private val SampleShop = Password(
     id = 3,
     name = "Demo Shop",
-    userId = "demo@example.org",
+    email = "demo@example.org",
     password = "demo-only-value",
     websites = listOf("shop.example.org"),
 )
@@ -56,7 +58,7 @@ private val SampleShop = Password(
 private val SampleRouter = Password(
     id = 4,
     name = "Sample Router",
-    userId = "admin",
+    username = "admin",
     password = "not-a-real-password",
 )
 

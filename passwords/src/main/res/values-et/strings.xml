@@ -2,7 +2,8 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Salasõnad</string>
     <string name="label_name">Nimi</string>
-    <string name="label_user_id_email">Kasutajatunnus / e-posti aadress</string>
+    <string name="label_username">Kasutajanimi</string>
+    <string name="label_email">E-posti aadress</string>
     <string name="label_password">Salasõna</string>
     <string name="label_totp_secret">TOTP saladus</string>
     <string name="label_add_website">Lisa veebisait</string>

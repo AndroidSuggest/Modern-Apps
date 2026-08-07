@@ -16,7 +16,7 @@ class EntryMapperTest {
         val pw = Password(
             id = 7,
             name = "GitHub",
-            userId = "octocat",
+            username = "octocat",
             password = "s3cr3t!",
             totpSecret = "JBSWY3DPEHPK3PXP",
             websites = listOf("https://github.com", "https://gist.github.com"),
@@ -31,7 +31,7 @@ class EntryMapperTest {
     }
 
     @Test fun passwordWithoutWebsitesOrTotpRoundTrips() {
-        val pw = Password(name = "Bare", userId = "u", password = "p", syncId = "s", updatedAt = 5)
+        val pw = Password(name = "Bare", username = "u", password = "p", syncId = "s", updatedAt = 5)
         assertEquals(pw, EntryMapper.toPassword(EntryMapper.toFields(pw)))
     }
 
@@ -72,7 +72,7 @@ class EntryMapperTest {
     }
 
     @Test fun contentHashIgnoresIdentityAndTimestamp() {
-        val pw = Password(name = "A", userId = "u", password = "p", syncId = "one", updatedAt = 1)
+        val pw = Password(name = "A", username = "u", password = "p", syncId = "one", updatedAt = 1)
         val moved = pw.copy(syncId = "two", updatedAt = 999, id = 42)
 
         assertEquals(

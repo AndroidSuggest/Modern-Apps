@@ -4,8 +4,12 @@
 
     <!-- Field label. Noun. Display name of the saved credential -->
     <string name="label_name">Name</string>
-    <!-- Field label. Noun. Username or email associated with credential -->
-    <string name="label_user_id_email">User ID / Email</string>
+    <!-- Field label. Noun. Username associated with credential. May be empty. -->
+    <string name="label_username">Username</string>
+    <!-- Field label. Noun. Email associated with credential. May be empty. -->
+    <string name="label_email">Email</string>
+    <!-- Field label. Noun. Free-form note for recovery codes, seed phrases, etc. -->
+    <string name="label_note">Note</string>
     <!-- Field label. Noun. The secret password itself -->
     <string name="label_password">Password</string>
     <!-- Field label. Noun. TOTP = Time-based One-Time Password. Keep acronym, input is base32 secret -->
@@ -35,7 +39,9 @@
     <string name="websites_none">(none)</string>
     <!-- List fallback when password entry has no name. Parentheses -->
     <string name="no_name">(no name)</string>
-    <!-- Detail header fallback when userId is blank. Parentheses -->
+    <!-- Section header for the free-form note block on the detail screen. Noun -->
+    <string name="section_note">Note</string>
+    <!-- Detail header fallback when username and email are blank. Parentheses -->
     <string name="no_user">(no user)</string>
 
     <!-- TopAppBar fallback title for passkey detail when RP name blank. Noun -->
@@ -82,7 +88,7 @@
     <string name="cable_starting">Starting cross-device sign-in</string>
     <string name="cable_prompt_title">Sign in on your other device?</string>
     <string name="cable_prompt_subtitle">Verify to approve this passkey sign-in</string>
-    <string name="name_and_user_id_required">Name and User ID cannot be empty</string>
+    <string name="name_required">Name cannot be empty</string>
 
     <!-- Section header for the two-way KeePass file sync settings. KDBX = KeePass database file extension, keep as-is -->
     <string name="sync_section">KDBX Sync</string>

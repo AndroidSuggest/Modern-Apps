@@ -2,7 +2,8 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">密码</string>
     <string name="label_name">名称</string>
-    <string name="label_user_id_email">用户 ID / 邮箱</string>
+    <string name="label_username">用户名</string>
+    <string name="label_email">邮箱</string>
     <string name="label_password">密码</string>
     <string name="label_totp_secret">TOTP 密钥</string>
     <string name="label_add_website">添加网站</string>
@@ -41,5 +42,5 @@
     <string name="cable_starting">正在启动跨设备登录</string>
     <string name="cable_prompt_title">在您的其他设备上登录？</string>
     <string name="cable_prompt_subtitle">验证以批准此通行密钥登录</string>
-    <string name="name_and_user_id_required">名称和用户 ID 不能为空</string>
+    <string name="name_required">名称不能为空</string>
 </resources>

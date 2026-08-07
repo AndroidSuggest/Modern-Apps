@@ -63,7 +63,7 @@ abstract class PasskeyDao {
 
 @Database(
     entities = [Password::class, Passkey::class, SyncSnapshot::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -110,6 +110,36 @@ abstract class PasswordDatabase : RoomDatabase() {
                         PRIMARY KEY(`syncId`)
                     )"""
                 )
+            },
+            // Split the single `userId` field into separate `username` and `email`, and add a
+            // free-form `note`. SQLite can't rename/reorder columns in place, so recreate the
+            // table; existing identities carry over as the username.
+            Migration(3, 4) {
+                it.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `Password_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `username` TEXT NOT NULL,
+                        `email` TEXT NOT NULL,
+                        `password` TEXT NOT NULL,
+                        `note` TEXT NOT NULL,
+                        `totpSecret` TEXT,
+                        `websites` TEXT NOT NULL,
+                        `syncId` TEXT NOT NULL,
+                        `updatedAt` INTEGER NOT NULL
+                    )"""
+                )
+                it.execSQL(
+                    """INSERT INTO `Password_new` (
+                        `id`, `name`, `username`, `email`, `password`, `note`,
+                        `totpSecret`, `websites`, `syncId`, `updatedAt`
+                    )
+                    SELECT `id`, `name`, `userId`, '', `password`, '',
+                        `totpSecret`, `websites`, `syncId`, `updatedAt`
+                    FROM `Password`"""
+                )
+                it.execSQL("DROP TABLE `Password`")
+                it.execSQL("ALTER TABLE `Password_new` RENAME TO `Password`")
             },
         )
     }

@@ -9,8 +9,10 @@ import kotlinx.serialization.Serializable
 data class Password(
     @PrimaryKey(autoGenerate = true) override val id: Long = 0,
     val name: String = "",
-    val userId: String = "",
+    val username: String = "",
+    val email: String = "",
     val password: String = "",
+    val note: String = "",
     val totpSecret: String? = null,
     val websites: List<String> = emptyList(),
     val syncId: String = newSyncId(),

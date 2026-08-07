@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.passwords.R
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.ui.IconClose
@@ -88,7 +89,7 @@ fun PasswordEditScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val nameAndUserIdRequired = stringResource(R.string.name_and_user_id_required)
+    val nameRequired = stringResource(R.string.name_required)
     val focusManager = LocalFocusManager.current
 
     fun addWebsiteFromInput() {
@@ -114,8 +115,8 @@ fun PasswordEditScreen(
         floatingActionButton = {
             FloatingActionButton(onClick = {
                 val d = draft ?: return@FloatingActionButton
-                if (d.name.isBlank() || d.userId.isBlank()) {
-                    scope.launch { snackbarHostState.showSnackbar(nameAndUserIdRequired) }
+                if (d.name.isBlank()) {
+                    scope.launch { snackbarHostState.showSnackbar(nameRequired) }
                     return@FloatingActionButton
                 }
                 // Normalize empty TOTP to null before saving.
@@ -142,10 +143,17 @@ fun PasswordEditScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
-                        value = current.userId,
-                        onValueChange = { v -> actions.updateDraft { it.copy(userId = v) } },
-                        label = { Text(stringResource(R.string.label_user_id_email)) },
+                        value = current.username,
+                        onValueChange = { v -> actions.updateDraft { it.copy(username = v) } },
+                        label = { Text(stringResource(R.string.label_username)) },
                         modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = current.email,
+                        onValueChange = { v -> actions.updateDraft { it.copy(email = v) } },
+                        label = { Text(stringResource(R.string.label_email)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     )
                 }
             }
@@ -169,6 +177,19 @@ fun PasswordEditScreen(
                         label = { Text(stringResource(R.string.label_totp_secret)) },
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions.Default,
+                    )
+                }
+            }
+
+            Card(shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = current.note,
+                        onValueChange = { v -> actions.updateDraft { it.copy(note = v) } },
+                        label = { Text(stringResource(R.string.label_note)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = false,
+                        minLines = 3,
                     )
                 }
             }

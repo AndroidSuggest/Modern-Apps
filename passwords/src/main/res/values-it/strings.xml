@@ -2,7 +2,8 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Password</string>
     <string name="label_name">Nome</string>
-    <string name="label_user_id_email">ID utente / Email</string>
+    <string name="label_username">Nome utente</string>
+    <string name="label_email">Email</string>
     <string name="label_password">Password</string>
     <string name="label_totp_secret">Chiave segreta TOTP</string>
     <string name="label_add_website">Aggiungi sito web</string>
@@ -41,5 +42,5 @@
     <string name="cable_starting">Avvio accesso tra dispositivi</string>
     <string name="cable_prompt_title">Vuoi accedere sull\'altro dispositivo?</string>
     <string name="cable_prompt_subtitle">Verifica per approvare questo accesso con passkey</string>
-    <string name="name_and_user_id_required">Il nome e l\'ID utente non possono essere vuoti</string>
+    <string name="name_required">Il nome non può essere vuoto</string>
 </resources>

@@ -156,7 +156,33 @@ fun PasswordScreen(
                     Column(Modifier.weight(1f)) {
                         Text(password.name.ifBlank { stringResource(R.string.no_name) }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(4.dp))
-                        Text(password.userId.ifBlank { stringResource(R.string.no_user) }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val subtitle = password.username.ifBlank { password.email }
+                        Text(subtitle.ifBlank { stringResource(R.string.no_user) }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            // Login info: username / email
+            if (password.username.isNotBlank() || password.email.isNotBlank()) {
+                Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        if (password.username.isNotBlank()) {
+                            CopyableRow(
+                                label = stringResource(R.string.label_username),
+                                value = password.username,
+                                onCopy = { actions.copyToClipboard("username", password.username) },
+                            )
+                        }
+                        if (password.username.isNotBlank() && password.email.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        if (password.email.isNotBlank()) {
+                            CopyableRow(
+                                label = stringResource(R.string.label_email),
+                                value = password.email,
+                                onCopy = { actions.copyToClipboard("email", password.email) },
+                            )
+                        }
                     }
                 }
             }
@@ -230,6 +256,22 @@ fun PasswordScreen(
                 }
             }
 
+            // Note
+            if (password.note.isNotBlank()) {
+                Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.section_note), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { actions.copyToClipboard("note", password.note) }) {
+                                IconCopy()
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(password.note, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+
             // Websites
             Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
@@ -254,6 +296,19 @@ fun PasswordScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CopyableRow(label: String, value: String, onCopy: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        IconButton(onClick = onCopy) {
+            IconCopy()
         }
     }
 }

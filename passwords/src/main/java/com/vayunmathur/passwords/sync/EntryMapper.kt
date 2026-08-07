@@ -27,7 +27,7 @@ object EntryMapper {
      * wrote the vault (Notes, Tags, ...) and are carried through untouched on push.
      */
     val OWNED_KEYS = setOf(
-        "Title", "UserName", "Password", "URL", "Websites", "otp", "TOTP Seed",
+        "Title", "UserName", "Email", "Password", "Notes", "URL", "Websites", "otp", "TOTP Seed",
         FIELD_TYPE, FIELD_SYNC_ID, FIELD_MODIFIED,
         FIELD_SIGN_COUNT, FIELD_CREATED, FIELD_LAST_USED,
         "KPEX_PASSKEY_USERNAME", "KPEX_PASSKEY_PRIVATE_KEY_PEM", "KPEX_PASSKEY_CREDENTIAL_ID",
@@ -39,8 +39,10 @@ object EntryMapper {
 
     fun toFields(pw: Password): Map<String, String> = buildMap {
         put("Title", pw.name)
-        put("UserName", pw.userId)
+        put("UserName", pw.username)
+        put("Email", pw.email)
         put("Password", pw.password)
+        put("Notes", pw.note)
         if (pw.websites.isNotEmpty()) {
             put("URL", pw.websites.first())
             if (pw.websites.size > 1) put("Websites", pw.websites.joinToString("\n"))
@@ -66,8 +68,10 @@ object EntryMapper {
 
         return Password(
             name = entry["Title"].orEmpty(),
-            userId = entry["UserName"].orEmpty(),
+            username = entry["UserName"].orEmpty(),
+            email = entry["Email"].orEmpty(),
             password = entry["Password"].orEmpty(),
+            note = entry["Notes"].orEmpty(),
             websites = websites,
             totpSecret = totpSecret,
             syncId = entry[FIELD_SYNC_ID]?.takeIf { it.isNotBlank() } ?: newSyncId(),
@@ -128,7 +132,7 @@ object EntryMapper {
     }
 
     /** Match key used to adopt pre-existing vault entries on the very first sync. */
-    fun contentKey(pw: Password): String = "pw\u0000${pw.name}\u0000${pw.userId}"
+    fun contentKey(pw: Password): String = "pw\u0000${pw.name}\u0000${pw.username}"
 
     fun contentKey(pk: Passkey): String = "pk\u0000${pk.rpId}\u0000${pk.credentialId}"
 }
