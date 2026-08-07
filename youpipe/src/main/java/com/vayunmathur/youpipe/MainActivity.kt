@@ -25,7 +25,7 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.IconHistory
 import com.vayunmathur.library.ui.IconHome
-import com.vayunmathur.library.ui.IconList
+import com.vayunmathur.library.ui.IconSave
 import com.vayunmathur.library.ui.IconSubscriptions
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.util.BottomBarItem
@@ -38,6 +38,8 @@ import com.vayunmathur.youpipe.data.SubscriptionDatabase
 import com.vayunmathur.youpipe.ui.ChannelPage
 import com.vayunmathur.youpipe.ui.DownloadedVideosPage
 import com.vayunmathur.youpipe.ui.HistoryPage
+import com.vayunmathur.youpipe.ui.PlaylistDetailPage
+import com.vayunmathur.youpipe.ui.SavedPage
 import com.vayunmathur.youpipe.util.PlaybackService
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 import com.vayunmathur.youpipe.util.YouPipeViewModelFactory
@@ -48,6 +50,8 @@ import com.vayunmathur.youpipe.ui.SubscriptionVideosPage
 import com.vayunmathur.youpipe.ui.SubscriptionsPage
 import com.vayunmathur.youpipe.ui.VideoPage
 import com.vayunmathur.youpipe.ui.dialogs.CreateSubscriptionCategory
+import com.vayunmathur.youpipe.ui.dialogs.CreatePlaylist
+import com.vayunmathur.youpipe.ui.dialogs.AddToPlaylist
 import kotlinx.serialization.Serializable
 import com.vayunmathur.youpipe.util.videoURLtoID
 
@@ -93,6 +97,8 @@ class MainActivity : ComponentActivity() {
             db.recommendationPreferencesDao(),
             db.channelPreferenceDao(),
             db.keywordPreferenceDao(),
+            db.playlistDao(),
+            db.playlistItemDao(),
         )
     }
 
@@ -153,6 +159,7 @@ const val DEFAULT_PAGE_SUBSCRIPTIONS = "subscriptions"
 const val DEFAULT_PAGE_ALL_SUBSCRIPTIONS = "all_subscriptions"
 const val DEFAULT_PAGE_HISTORY = "history"
 const val DEFAULT_PAGE_DOWNLOADS = "downloads"
+const val DEFAULT_PAGE_SAVED = "saved"
 const val DEFAULT_PAGE_SETTINGS = "settings"
 
 /**
@@ -165,7 +172,7 @@ val DEFAULT_PAGE_OPTIONS: List<Pair<String, Int>> = listOf(
     DEFAULT_PAGE_SUBSCRIPTIONS to R.string.title_subscriptions,
     DEFAULT_PAGE_ALL_SUBSCRIPTIONS to R.string.label_all_subscriptions,
     DEFAULT_PAGE_HISTORY to R.string.title_history,
-    DEFAULT_PAGE_DOWNLOADS to R.string.page_downloads,
+    DEFAULT_PAGE_SAVED to R.string.page_saved,
     DEFAULT_PAGE_SETTINGS to R.string.title_settings,
 )
 
@@ -177,7 +184,8 @@ fun defaultBackStack(key: String?): List<Route> = when (key) {
     DEFAULT_PAGE_ALL_SUBSCRIPTIONS ->
         listOf(Route.SubscriptionsPage, Route.SubscriptionVideosPage(null))
     DEFAULT_PAGE_HISTORY -> listOf(Route.History)
-    DEFAULT_PAGE_DOWNLOADS -> listOf(Route.Downloads)
+    // Both the legacy "downloads" key and the new "saved" key open the Saved hub.
+    DEFAULT_PAGE_DOWNLOADS, DEFAULT_PAGE_SAVED -> listOf(Route.Saved)
     DEFAULT_PAGE_SETTINGS -> listOf(Route.Settings)
     else -> listOf(Route.SearchPage) // home / unset / unknown
 }
@@ -207,6 +215,18 @@ sealed interface Route: NavKey {
 
     @Serializable
     data object Downloads: Route
+
+    @Serializable
+    data object Saved: Route
+
+    @Serializable
+    data class PlaylistDetail(val playlistId: Long): Route
+
+    @Serializable
+    data object CreatePlaylist: Route
+
+    @Serializable
+    data class AddToPlaylist(val videoID: Long): Route
 
     @Serializable
     data object Settings: Route
@@ -245,6 +265,18 @@ fun Navigation(initialBackStack: List<Route>, ypvm: YouPipeViewModel) {
         entry<Route.Downloads> {
             DownloadedVideosPage(backStack, ypvm)
         }
+        entry<Route.Saved> {
+            SavedPage(backStack, ypvm)
+        }
+        entry<Route.PlaylistDetail> {
+            PlaylistDetailPage(backStack, ypvm, it.playlistId)
+        }
+        entry<Route.CreatePlaylist>(metadata = DialogPage()) {
+            CreatePlaylist(backStack, ypvm)
+        }
+        entry<Route.AddToPlaylist>(metadata = DialogPage()) {
+            AddToPlaylist(backStack, ypvm, it.videoID)
+        }
         entry<Route.Settings> {
             SettingsPage(backStack, ypvm)
         }
@@ -258,6 +290,6 @@ val MAIN_BOTTOM_BAR_ITEMS = listOf(
     BottomBarItem("Home", Route.SearchPage) { IconHome() },
     BottomBarItem("Subscriptions", Route.SubscriptionsPage) { IconSubscriptions() },
     BottomBarItem("History", Route.History) { IconHistory() },
-    BottomBarItem("Downloads", Route.Downloads) { IconList() },
+    BottomBarItem("Saved", Route.Saved) { IconSave() },
     BottomBarItem("Settings", Route.Settings) { IconSettings() }
 )

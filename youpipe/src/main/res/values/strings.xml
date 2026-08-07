@@ -103,6 +103,31 @@
     <string name="page_home">Home</string>
     <!-- Default-page option: the downloads list. Noun plural -->
     <string name="page_downloads">Downloads</string>
+    <!-- Default-page option and tab label: the Saved library (playlists hub). Noun -->
+    <string name="page_saved">Saved</string>
+
+    <!-- TopAppBar title for the Saved playlists hub. Noun -->
+    <string name="title_saved">Saved</string>
+    <!-- TopAppBar title for the downloads detail page and the Saved row for it. Noun plural -->
+    <string name="title_downloads">Downloads</string>
+    <!-- Name of the mandatory, non-deletable Watch later playlist. Noun phrase -->
+    <string name="playlist_watch_later">Watch later</string>
+    <!-- Dialog title: create a new playlist. Verb phrase Title Case -->
+    <string name="title_create_playlist">Create playlist</string>
+    <!-- Field label: playlist name input. Noun phrase -->
+    <string name="label_playlist_name">Playlist name</string>
+    <!-- Button: create playlist. Verb phrase -->
+    <string name="action_create_playlist">Create</string>
+    <!-- Dialog title: add current video to playlists. Verb phrase -->
+    <string name="add_to_playlist">Add to playlist</string>
+    <!-- Inline field label/hint: create a new playlist. Noun phrase -->
+    <string name="new_playlist">New playlist</string>
+    <!-- Action: delete this playlist. Verb phrase -->
+    <string name="action_delete_playlist">Delete playlist</string>
+    <!-- Empty state when a playlist has no videos yet -->
+    <string name="playlist_empty">No videos in this playlist yet</string>
+    <!-- Supporting line under a playlist row: video count. %1$d = number of videos -->
+    <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> videos</string>
 
     <!-- TopAppBar title for watch history. Noun -->
     <string name="title_history">History</string>

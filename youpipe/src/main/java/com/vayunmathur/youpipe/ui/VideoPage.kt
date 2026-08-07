@@ -32,6 +32,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.ExposedDropdownMenuBox
 import com.vayunmathur.library.ui.ExposedDropdownMenuDefaults
 import com.vayunmathur.library.ui.IconDownload
+import com.vayunmathur.library.ui.IconSave
 import com.vayunmathur.library.ui.IconThumbDown
 import com.vayunmathur.library.ui.IconThumbUp
 import com.vayunmathur.library.ui.IconClose
@@ -273,6 +274,10 @@ fun VideoPage(
             override fun deleteDownload() {
                 downloadedVideo?.let { ypvm.deleteDownloadedVideo(it) }
             }
+
+            override fun addToPlaylist() {
+                backStack.add(Route.AddToPlaylist(videoID))
+            }
         },
         fullscreen = isFullscreen,
     ) {
@@ -480,6 +485,9 @@ fun VideoDetails(
             }
         }, trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { actions.addToPlaylist() }) {
+                    IconSave()
+                }
                 val downloadProgress = state.downloadProgress
                 if (downloadProgress != null) {
                     CircularProgressIndicator(

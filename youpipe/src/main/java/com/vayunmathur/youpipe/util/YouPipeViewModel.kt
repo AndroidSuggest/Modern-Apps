@@ -22,6 +22,10 @@ import com.vayunmathur.youpipe.data.HistoryVideo
 import com.vayunmathur.youpipe.data.HistoryVideoDao
 import com.vayunmathur.youpipe.data.KeywordPreference
 import com.vayunmathur.youpipe.data.KeywordPreferenceDao
+import com.vayunmathur.youpipe.data.Playlist
+import com.vayunmathur.youpipe.data.PlaylistDao
+import com.vayunmathur.youpipe.data.PlaylistItem
+import com.vayunmathur.youpipe.data.PlaylistItemDao
 import com.vayunmathur.youpipe.data.RecommendationImpressionDao
 import com.vayunmathur.youpipe.data.RecommendationPreferences
 import com.vayunmathur.youpipe.data.RecommendationPreferencesDao
@@ -109,6 +113,8 @@ class YouPipeViewModel(
     private val recommendationPreferencesDao: RecommendationPreferencesDao,
     private val channelPreferenceDao: ChannelPreferenceDao,
     private val keywordPreferenceDao: KeywordPreferenceDao,
+    private val playlistDao: PlaylistDao,
+    private val playlistItemDao: PlaylistItemDao,
 ) : AndroidViewModel(application) {
 
     // ===================== Data StateFlows =====================
@@ -126,6 +132,15 @@ class YouPipeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val downloadedVideos: StateFlow<List<DownloadedVideo>> = downloadedVideoDao.getAllFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** All playlists sorted by their persisted [Playlist.position]. */
+    val playlists: StateFlow<List<Playlist>> = playlistDao.getAllFlow()
+        .map { list -> list.sortedBy { it.position } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Every playlist membership row, for computing membership checks and per-playlist counts. */
+    val allPlaylistItems: StateFlow<List<PlaylistItem>> = playlistItemDao.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // ===================== Derived, ready-to-render state =====================
@@ -181,6 +196,12 @@ class YouPipeViewModel(
     fun historyById(id: Long): Flow<HistoryVideo?> = historyVideoDao.getByIdFlow(id)
     fun downloadedById(id: Long): Flow<DownloadedVideo?> = downloadedVideoDao.getByIdFlow(id)
 
+    fun playlistById(id: Long): Flow<Playlist?> = playlistDao.getByIdFlow(id)
+
+    /** The items of [playlistId], sorted by their persisted [PlaylistItem.position]. */
+    fun playlistItemsFor(playlistId: Long): Flow<List<PlaylistItem>> =
+        playlistItemDao.getForPlaylistFlow(playlistId).map { list -> list.sortedBy { it.position } }
+
     // ===================== Mutations =====================
 
     fun upsertSubscription(item: Subscription) {
@@ -205,6 +226,66 @@ class YouPipeViewModel(
 
     fun deleteDownloadedVideo(item: DownloadedVideo) {
         viewModelScope.launch(Dispatchers.IO) { downloadedVideoDao.delete(item) }
+    }
+
+    // ===================== Playlists =====================
+
+    fun createPlaylist(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val maxPosition = playlistDao.getAll().maxOfOrNull { it.position } ?: 0.0
+            playlistDao.upsert(Playlist(name = name, position = maxPosition + 1))
+        }
+    }
+
+    /** Deletes a user playlist. Mandatory playlists (Watch later) can never be removed. */
+    fun deletePlaylist(playlist: Playlist) {
+        if (playlist.mandatory) return
+        viewModelScope.launch(Dispatchers.IO) { playlistDao.delete(playlist) }
+    }
+
+    fun reorderPlaylists(list: List<Playlist>) {
+        viewModelScope.launch(Dispatchers.IO) { playlistDao.upsertAll(list) }
+    }
+
+    /** Adds [video] to [playlistId], deduped by videoID; a no-op if already present. */
+    fun addVideoToPlaylist(playlistId: Long, video: VideoInfo) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val existing = playlistItemDao.getForPlaylist(playlistId)
+            if (existing.any { it.videoItem.videoID == video.videoID }) return@launch
+            val maxPosition = existing.maxOfOrNull { it.position } ?: 0.0
+            playlistItemDao.upsert(
+                PlaylistItem(
+                    playlistId = playlistId,
+                    videoItem = video,
+                    position = maxPosition + 1,
+                    timestamp = Clock.System.now(),
+                )
+            )
+        }
+    }
+
+    fun removeFromPlaylist(item: PlaylistItem) {
+        viewModelScope.launch(Dispatchers.IO) { playlistItemDao.delete(item) }
+    }
+
+    /** Creates a playlist and immediately adds [video] to it (the dialog's "New playlist" option). */
+    fun createPlaylistAndAddVideo(name: String, video: VideoInfo) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val maxPosition = playlistDao.getAll().maxOfOrNull { it.position } ?: 0.0
+            val id = playlistDao.upsert(Playlist(name = name, position = maxPosition + 1))
+            playlistItemDao.upsert(
+                PlaylistItem(
+                    playlistId = id,
+                    videoItem = video,
+                    position = 1.0,
+                    timestamp = Clock.System.now(),
+                )
+            )
+        }
+    }
+
+    fun reorderPlaylistItems(list: List<PlaylistItem>) {
+        viewModelScope.launch(Dispatchers.IO) { playlistItemDao.upsertAll(list) }
     }
 
     suspend fun replaceCategory(originalCategoryName: String?, categoryName: String, ids: List<Long>) {
@@ -1194,6 +1275,12 @@ class YouPipeViewModel(
             cachedRelatedVideoDao.deleteOlderThan(cutoff)
             recommendationImpressionDao.deleteOlderThan(cutoff)
         }
+        // Seed the mandatory "Watch later" playlist once (covers fresh installs and upgrades).
+        viewModelScope.launch(Dispatchers.IO) {
+            if (playlistDao.getAll().none { it.mandatory }) {
+                playlistDao.upsert(Playlist(name = "Watch later", position = 0.0, mandatory = true))
+            }
+        }
     }
 
     companion object {
@@ -1329,6 +1416,8 @@ class YouPipeViewModelFactory(
     private val recommendationPreferencesDao: RecommendationPreferencesDao,
     private val channelPreferenceDao: ChannelPreferenceDao,
     private val keywordPreferenceDao: KeywordPreferenceDao,
+    private val playlistDao: PlaylistDao,
+    private val playlistItemDao: PlaylistItemDao,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1347,6 +1436,8 @@ class YouPipeViewModelFactory(
             recommendationPreferencesDao,
             channelPreferenceDao,
             keywordPreferenceDao,
+            playlistDao,
+            playlistItemDao,
         ) as T
     }
 }

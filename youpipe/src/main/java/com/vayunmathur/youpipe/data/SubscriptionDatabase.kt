@@ -96,6 +96,34 @@ val MIGRATION_3_4 = Migration(3, 4) {
     """.trimIndent())
 }
 
+val MIGRATION_4_5 = Migration(4, 5) {
+    it.execSQL("""
+        CREATE TABLE IF NOT EXISTS `Playlist` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `name` TEXT NOT NULL,
+            `position` REAL NOT NULL,
+            `mandatory` INTEGER NOT NULL
+        )
+    """.trimIndent())
+    it.execSQL("""
+        CREATE TABLE IF NOT EXISTS `PlaylistItem` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `playlistId` INTEGER NOT NULL,
+            `name` TEXT NOT NULL,
+            `videoID` INTEGER NOT NULL,
+            `duration` INTEGER NOT NULL,
+            `views` INTEGER NOT NULL,
+            `uploadDate` INTEGER NOT NULL,
+            `thumbnailURL` TEXT NOT NULL,
+            `author` TEXT NOT NULL,
+            `position` REAL NOT NULL,
+            `timestamp` INTEGER NOT NULL,
+            FOREIGN KEY(`playlistId`) REFERENCES `Playlist`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+    """.trimIndent())
+    it.execSQL("CREATE INDEX IF NOT EXISTS `index_PlaylistItem_playlistId` ON `PlaylistItem` (`playlistId`)")
+}
+
 @Dao
 interface HistoryVideoDao {
     @Query("SELECT * FROM HistoryVideo")
@@ -163,7 +191,7 @@ interface SubscriptionVideoDao {
 }
 
 @TypeConverters(DefaultConverters::class)
-@Database(entities = [Subscription::class, SubscriptionVideo::class, HistoryVideo::class, SubscriptionCategory::class, DownloadedVideo::class, CachedRelatedVideo::class, RecommendationImpression::class, RecommendationPreferences::class, ChannelPreference::class, KeywordPreference::class], version = 4, exportSchema = false)
+@Database(entities = [Subscription::class, SubscriptionVideo::class, HistoryVideo::class, SubscriptionCategory::class, DownloadedVideo::class, CachedRelatedVideo::class, RecommendationImpression::class, RecommendationPreferences::class, ChannelPreference::class, KeywordPreference::class, Playlist::class, PlaylistItem::class], version = 5, exportSchema = false)
 abstract class SubscriptionDatabase : RoomDatabase() {
     abstract fun subscriptionDao(): SubscriptionDao
     abstract fun subscriptionVideoDao(): SubscriptionVideoDao
@@ -175,8 +203,10 @@ abstract class SubscriptionDatabase : RoomDatabase() {
     abstract fun recommendationPreferencesDao(): RecommendationPreferencesDao
     abstract fun channelPreferenceDao(): ChannelPreferenceDao
     abstract fun keywordPreferenceDao(): KeywordPreferenceDao
+    abstract fun playlistDao(): PlaylistDao
+    abstract fun playlistItemDao(): PlaylistItemDao
 
     companion object : com.vayunmathur.library.util.DatabaseMigrations {
-        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
     }
 }

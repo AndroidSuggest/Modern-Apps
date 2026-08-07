@@ -17,6 +17,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDelete
+import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
@@ -64,6 +65,13 @@ fun DownloadedVideosPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPi
                     if (isSelectionMode) {
                         val totalSelected = selectedIds.size + selectedActiveIds.size
                         Text(stringResource(R.string.selected_1, totalSelected))
+                    } else {
+                        Text(stringResource(R.string.title_downloads))
+                    }
+                },
+                navigationIcon = {
+                    if (!isSelectionMode) {
+                        IconNavigation(backStack)
                     }
                 },
                 actions = {
@@ -86,7 +94,7 @@ fun DownloadedVideosPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPi
         },
         bottomBar = { 
             if (!isSelectionMode) {
-                BottomNavBar(backStack, MAIN_BOTTOM_BAR_ITEMS, Route.Downloads) 
+                BottomNavBar(backStack, MAIN_BOTTOM_BAR_ITEMS, Route.Saved) 
             }
         }
     ) { paddingValues ->

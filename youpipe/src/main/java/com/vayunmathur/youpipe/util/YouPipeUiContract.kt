@@ -142,6 +142,7 @@ interface VideoDetailActions {
     fun download(videoUrl: String, audioUrl: String?) {}
     fun cancelDownload() {}
     fun deleteDownload() {}
+    fun addToPlaylist() {}
 
     companion object {
         val Noop: VideoDetailActions = object : VideoDetailActions {}
