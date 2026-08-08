@@ -71,4 +71,5 @@
     <string name="engine">Renderdusmootor: %1$s</string>
     <string name="wants_to_know_your_location">%1$s soovib teada sinu asukohta.</string>
     <string name="share_link">Jaga linki</string>
+    <string name="clear_browsing_data_2">Kas kustutad veebisirvimise andmed?</string>
 </resources>
