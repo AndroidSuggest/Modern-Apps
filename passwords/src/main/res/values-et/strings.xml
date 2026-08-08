@@ -32,4 +32,36 @@
     <string name="title_settings">Seadistused</string>
     <string name="passkey_credential_id">Tuvastuskirje tunnus (ID)</string>
     <string name="passkey_created">Loodud</string>
+    <string name="label_note">Märge</string>
+    <string name="section_note">Märge</string>
+    <string name="import_source_bitwarden">Bitwarden</string>
+    <string name="import_source_chrome">Google Chrome</string>
+    <string name="import_source_firefox">Firefox</string>
+    <string name="import_source_lastpass">LastPass</string>
+    <string name="import_source_dashlane">Dashlane</string>
+    <string name="sync_enable">Sünkrooni KDBX-failiga</string>
+    <string name="sync_section">Sünkroonimine KDBX-failiga</string>
+    <string name="sync_enable_description">See tagab, et see salasõnahoidla ja KeePassi standardit järgiv fail on sünkroonitud omavahel peale iga muudatust 15 minuti jooksul.</string>
+    <string name="sync_file">KDBX-fail</string>
+    <string name="sync_file_none">(mitte midagi pole valitud)</string>
+    <string name="sync_choose_file">Vali olemasolev fail</string>
+    <string name="sync_create_file">Tee uus fail</string>
+    <string name="sync_vault_password">Salasõnahoidla salasõna</string>
+    <string name="sync_vault_password_set">Salvestatud</string>
+    <string name="sync_vault_password_unset">(määratlemata)</string>
+    <string name="sync_save">Salvesta</string>
+    <string name="sync_cancel">Katkesta</string>
+    <string name="sync_last">Viimane sünkroonimine</string>
+    <string name="sync_never">Mitte kunagi</string>
+    <string name="sync_now">Sünkrooni kohe</string>
+    <string name="sync_error_file_missing">Selle KDBX-faili avamine ei õnnestu. Mitte midagi ei muudetud kohalikus seadmes.</string>
+    <string name="sync_error_wrong_password">Vale salasõnahoidla salasõna. Mitte midagi ei muudetud kohalikus seadmes.</string>
+    <string name="sync_error_verify_failed">Mestitud salasõnahoidla õigsuse kontrollimine ei õnnestunud, seega fail jäi salvestamata.</string>
+    <string name="sync_error_generic">Sünkroonimine ei õnnestunud: <xliff:g id="reason" example="Andmekandjal pole vaba ruumi">%1$s</xliff:g></string>
+    <string name="cable_channel_name">Seadmetevaheline sisselogimine</string>
+    <string name="cable_starting">Käivitan seadmetevahelise sisselogimise</string>
+    <string name="cable_prompt_title">Kas logid sisse oma muus seadmes?</string>
+    <string name="cable_prompt_subtitle">Verifitseeri kinnitamaks pääsuvõtmepõhist sisselogimist</string>
+    <string name="name_required">Nimi ei saa jääda tühjaks</string>
+    <string name="import_csv_warning">CSV-faili importimisel sellesse rakendusse liiguvad kasutajatunnused ja salasõnad tavatekstina. Palun kindlasti kustuta ekspordifail pärast importimist.</string>
 </resources>
