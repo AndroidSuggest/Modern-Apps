@@ -9,8 +9,18 @@ mod ishi_tests {
         let path = match std::env::var("ISHI_PDF") {
             Ok(p) => PathBuf::from(p),
             Err(_) => {
-                let home = std::env::var("HOME").unwrap();
-                PathBuf::from(home).join("Downloads/Ishihara_Tests.pdf")
+                // Optional local fixture: skip when no home dir is set (e.g. HOME
+                // is not defined on Windows hosts) rather than panicking.
+                let home = std::env::var("HOME")
+                    .or_else(|_| std::env::var("USERPROFILE"))
+                    .ok();
+                match home {
+                    Some(h) => PathBuf::from(h).join("Downloads/Ishihara_Tests.pdf"),
+                    None => {
+                        println!("ISHI_PDF unset and no home dir; skipping");
+                        return;
+                    }
+                }
             }
         };
         if !path.exists() {

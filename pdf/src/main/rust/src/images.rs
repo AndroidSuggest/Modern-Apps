@@ -549,7 +549,65 @@ fn stencilize(rgba: &mut [u8], fill_argb: u32, invert: bool) {
     }
 }
 
+/// Area-average downscale of an RGBA8888 buffer so its longer side is at most
+/// `max_dim`, preserving aspect. Returns `None` when no downscale is needed.
+fn downscale_rgba(data: &[u8], w: u32, h: u32, max_dim: u32) -> Option<(u32, u32, Vec<u8>)> {
+    if w == 0 || h == 0 || (w <= max_dim && h <= max_dim) {
+        return None;
+    }
+    if data.len() < (w as usize) * (h as usize) * 4 {
+        return None; // malformed buffer; leave as-is
+    }
+    let scale = max_dim as f64 / w.max(h) as f64;
+    let nw = ((w as f64 * scale).round() as u32).clamp(1, w);
+    let nh = ((h as f64 * scale).round() as u32).clamp(1, h);
+    let mut out = vec![0u8; (nw as usize) * (nh as usize) * 4];
+    for oy in 0..nh {
+        let sy0 = ((oy as u64) * (h as u64) / (nh as u64)) as u32;
+        let sy1 = ((((oy + 1) as u64) * (h as u64) / (nh as u64)) as u32).clamp(sy0 + 1, h);
+        for ox in 0..nw {
+            let sx0 = ((ox as u64) * (w as u64) / (nw as u64)) as u32;
+            let sx1 = ((((ox + 1) as u64) * (w as u64) / (nw as u64)) as u32).clamp(sx0 + 1, w);
+            let (mut r, mut g, mut b, mut a, mut cnt) = (0u64, 0u64, 0u64, 0u64, 0u64);
+            for sy in sy0..sy1 {
+                let row = (sy as usize) * (w as usize) * 4;
+                for sx in sx0..sx1 {
+                    let i = row + (sx as usize) * 4;
+                    r += data[i] as u64;
+                    g += data[i + 1] as u64;
+                    b += data[i + 2] as u64;
+                    a += data[i + 3] as u64;
+                    cnt += 1;
+                }
+            }
+            let o = ((oy as usize) * (nw as usize) + ox as usize) * 4;
+            if cnt > 0 {
+                out[o] = (r / cnt) as u8;
+                out[o + 1] = (g / cnt) as u8;
+                out[o + 2] = (b / cnt) as u8;
+                out[o + 3] = (a / cnt) as u8;
+            }
+        }
+    }
+    Some((nw, nh, out))
+}
+
+/// Decode an image XObject to [`ImageData`], downscaling oversized decoded
+/// rasters (format 0) so a single image cannot blow the device bitmap budget.
+/// JPEG passthrough (format 1) is left untouched; Kotlin subsamples it on decode.
 pub(crate) fn extract_image(doc: &Document, stream: &lopdf::Stream, fill_argb: u32, cs_resources: &HashMap<Vec<u8>, ObjectId>) -> Option<ImageData> {
+    let mut img = extract_image_inner(doc, stream, fill_argb, cs_resources)?;
+    if img.format == 0 {
+        if let Some((nw, nh, ndata)) = downscale_rgba(&img.data, img.w, img.h, IMAGE_DOWNSCALE_MAX_DIM) {
+            img.w = nw;
+            img.h = nh;
+            img.data = ndata;
+        }
+    }
+    Some(img)
+}
+
+fn extract_image_inner(doc: &Document, stream: &lopdf::Stream, fill_argb: u32, cs_resources: &HashMap<Vec<u8>, ObjectId>) -> Option<ImageData> {
     let dict = &stream.dict;
     let w = dict.get(b"Width").ok().and_then(num)? as u32;
     let h = dict.get(b"Height").ok().and_then(num)? as u32;

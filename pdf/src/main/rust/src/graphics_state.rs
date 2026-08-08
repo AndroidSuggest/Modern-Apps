@@ -143,11 +143,16 @@ impl Default for GraphicsState {
 pub(crate) const BEZIER_STEPS: usize = 16;
 pub(crate) const MAX_CLIP_DEPTH: usize = 64;
 pub(crate) const MAX_GRAPHICS_STACK: usize = 128;
-pub(crate) const MAX_PRIMITIVES: usize = 50000;
+pub(crate) const MAX_PRIMITIVES: usize = 300000;
 pub(crate) const MAX_ANNOTATIONS: usize = 10000;
 pub(crate) const MAX_IMAGE_DIM: u32 = 20000;
 pub(crate) const MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
 pub(crate) const MAX_IMAGE_PIXELS: usize = 16 * 1024 * 1024; // ~16 MP cap
+/// Decoded raster images are downscaled (preserving aspect) so their longer side
+/// does not exceed this, capping per-image RGBA memory on device. 2048px is well
+/// above a full page's on-screen pixel width, so quality is preserved while a
+/// large source (e.g. 2480×3452 ≈ 33 MB) drops to ≈ 12 MB.
+pub(crate) const IMAGE_DOWNSCALE_MAX_DIM: u32 = 2048;
 pub(crate) const MAX_SHADING_PATCHES: usize = 1000;
 pub(crate) const MAX_TYPE3_GLYPHS: usize = 500;
 pub(crate) const MAX_TYPE3_PRIMS_PER_GLYPH: usize = 1000;

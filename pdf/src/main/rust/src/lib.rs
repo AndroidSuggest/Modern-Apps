@@ -80,3 +80,5 @@ mod jni_bindings;
 mod tests;
 #[cfg(test)]
 mod debug_ishi_test;
+#[cfg(test)]
+mod issue321_tests;

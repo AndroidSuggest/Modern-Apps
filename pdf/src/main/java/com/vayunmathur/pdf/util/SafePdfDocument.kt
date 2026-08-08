@@ -43,8 +43,14 @@ class SafePdfDocument private constructor(
     /** Decode page [index] (0-based), or `null` if the native render fails. */
     suspend fun renderPage(index: Int): SafePdfPage? = withContext(Dispatchers.IO) {
         synchronized(cache) { cache[index] }?.let { return@withContext it }
-        val bytes = PdfNative.renderPage(handle, index) ?: return@withContext null
-        val page = SafePdfParser.parse(bytes)
+        // A single unrenderable page must not take down the viewer: the native
+        // side throws a RuntimeException on an uncaught panic (see the
+        // catch_unwind boundary in jni_bindings.rs), and a corrupt wire buffer
+        // could throw during parse. Degrade either to a skipped (null) page.
+        val bytes = runCatching { PdfNative.renderPage(handle, index) }.getOrNull()
+            ?: return@withContext null
+        val page = runCatching { SafePdfParser.parse(bytes) }.getOrNull()
+            ?: return@withContext null
         synchronized(cache) {
             // Budget-based eviction in addition to count-based
             var pixels = page.primitives.sumOf { prim ->

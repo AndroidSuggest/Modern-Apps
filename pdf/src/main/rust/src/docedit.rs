@@ -319,7 +319,13 @@ pub(crate) fn extract_page(handle: i64, index: i32) -> Option<Vec<u8>> {
 /// Serialize page `index` (0-based) of the document behind `handle` into the
 /// wire buffer, or `None` on any error.
 pub(crate) fn render_page(handle: i64, index: i32) -> Option<Vec<u8>> {
-    let reg = registry().lock().unwrap();
+    // Poison-tolerant lock: if a prior page's interpretation panicked while this
+    // lock was held, recover the guard instead of cascading a panic to every
+    // subsequent page (the "crashes halfway" failure mode). Matches the recovery
+    // policy documented in registry.rs.
+    let reg = registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let doc = reg.get(&handle)?;
     let pages = doc.get_pages();
     let page_id = *pages.get(&((index as u32) + 1))?;
