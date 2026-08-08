@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Погода</string>
-    <string name="weather_widget_description">Текущее время, дата и погода с первого взгляда — нажмите, чтобы посмотреть прогноз</string>
+    <string name="weather_widget_description">Текущее время, дата и погода — нажмите, чтобы посмотреть прогноз</string>
     <string name="weather_title">Погода</string>
     <string name="no_locations_yet">Пока нет локаций</string>
     <string name="add_a_city_or_use_your_current_location">Добавьте город или укажите ваше текущее местоположение, чтобы посмотреть прогноз погоды.</string>
     <string name="add_location">Добавить местоположение</string>
     <string name="use_current_location">Использовать текущее местоположение</string>
     <string name="locating">Поиск местоположения…</string>
-    <string name="detect_your_device_s_current_location_au">Автоматически определяйте местоположение устройства и добавляйте его в свой список.</string>
+    <string name="detect_your_device_s_current_location_au">Автоматически определяйте местоположение устройства и добавляйте его в свой список</string>
     <string name="current_location">Моё местоположение</string>
     <string name="locations">Локации</string>
     <string name="search_location">Поиск местоположения</string>
@@ -59,13 +59,13 @@
     <string name="today">Сегодня</string>
     <string name="today_short">Сгд</string>
     <string name="tomorrow_short">Зав</string>
-    <string name="level_low">Низк.</string>
-    <string name="level_medium">Средн.</string>
-    <string name="level_moderate">Умерен.</string>
-    <string name="level_high">Высок.</string>
-    <string name="level_very_high">Очень высок.</string>
-    <string name="level_extreme">Экстрем.</string>
-    <string name="level_severe">Опасн.</string>
+    <string name="level_low">Низко</string>
+    <string name="level_medium">Средне</string>
+    <string name="level_moderate">Умереннo</string>
+    <string name="level_high">Высоко</string>
+    <string name="level_very_high">Очень высоко</string>
+    <string name="level_extreme">Экстремально</string>
+    <string name="level_severe">Сильно</string>
     <string name="cloud_clear">Ясно</string>
     <string name="cloud_mostly_clear">Малооблачно</string>
     <string name="cloud_partly_cloudy">Переменная облачность</string>
@@ -89,7 +89,7 @@
     <string name="summary_slight_chance_rain">Маловероятен дождь.</string>
     <string name="summary_winds_noticeable">Сегодня будет ветрено.</string>
     <string name="weather_no_data">—</string>
-    <string name="weather_blob_widget_description">Виджет в форме капли с температурой и иконкой погоды.</string>
+    <string name="weather_blob_widget_description">Виджет в форме капли с температурой и иконкой погоды</string>
     <string name="max_min">Max <xliff:g id="max" example="28°C">%1$s</xliff:g> Min <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
     <string name="feels_like">Ощущается <xliff:g id="temp" example="26°C">%1$s</xliff:g></string>
     <string name="from_gusts">Направление <xliff:g id="direction" example="NW">%1$s</xliff:g> · Порывы <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
