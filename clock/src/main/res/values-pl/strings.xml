@@ -36,7 +36,7 @@
     <string name="grant_notifications_permission">Zezwól na dostęp do powiadomień</string>
     <string name="set_an_alarm">Ustaw alarm</string>
     <string name="analog_clock_widget_label">Zegar analogowy</string>
-    <string name="analog_clock_widget_description">Zegar analogowy Material You — dotknij, aby otworzyć zegar</string>
+    <string name="analog_clock_widget_description">Zegar analogowy Material You - dotknij, aby otworzyć zegar</string>
     <string name="channel_stopwatch_name">Stoper</string>
     <string name="channel_stopwatch_description">Sterowanie stoperem</string>
     <string name="action_pause">Pauza</string>
