@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="next_level">Järgmine tase</string>
+    <string name="keep_editing">Jätka muutmist</string>
+    <string name="back_to_map">Tagasi kaardi juurde</string>
 </resources>
