@@ -1,3 +1,107 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    </resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Погода</string>
+    <string name="weather_widget_description">Текущее время, дата и погода с первого взгляда — нажмите, чтобы посмотреть прогноз</string>
+    <string name="weather_title">Погода</string>
+    <string name="no_locations_yet">Пока нет локаций</string>
+    <string name="add_a_city_or_use_your_current_location">Добавьте город или укажите ваше текущее местоположение, чтобы посмотреть прогноз погоды.</string>
+    <string name="add_location">Добавить местоположение</string>
+    <string name="use_current_location">Использовать текущее местоположение</string>
+    <string name="locating">Поиск местоположения…</string>
+    <string name="detect_your_device_s_current_location_au">Автоматически определяйте местоположение устройства и добавляйте его в свой список.</string>
+    <string name="current_location">Моё местоположение</string>
+    <string name="locations">Локации</string>
+    <string name="search_location">Поиск местоположения</string>
+    <string name="city_name_hint">Название города</string>
+    <string name="no_matches">Совпадений нет</string>
+    <string name="confirm_delete">Подтвердите удаление</string>
+    <string name="couldn_t_determine_location">Не удалось определить местоположение</string>
+    <string name="location_permission_denied">Разрешение на определение местоположения отклонено</string>
+    <string name="dew_point">Точка росы</string>
+    <string name="not_enough_data_to_plot">Недостаточно данных для построения графика.</string>
+    <string name="map_time">Время</string>
+    <string name="condition_clear">Ясно</string>
+    <string name="condition_mostly_clear">Малооблачно</string>
+    <string name="condition_partly_cloudy">Переменная облачность</string>
+    <string name="condition_cloudy">Облачно</string>
+    <string name="condition_fog">Туман</string>
+    <string name="condition_drizzle">Моросящий дождь</string>
+    <string name="condition_rain">Дождь</string>
+    <string name="condition_snow">Снег</string>
+    <string name="condition_thunderstorm">Гроза</string>
+    <string name="condition_unknown">Нет данных</string>
+    <string name="metric_temperature">Температура</string>
+    <string name="metric_feels_like">Ощущается</string>
+    <string name="metric_humidity">Влажность</string>
+    <string name="metric_precipitation">Осадки</string>
+    <string name="metric_wind_speed">Скорость ветра</string>
+    <string name="metric_wind_gusts">Порывы</string>
+    <string name="metric_pressure">Давление</string>
+    <string name="metric_visibility">Видимость</string>
+    <string name="metric_cloud_cover">Облачный покров</string>
+    <string name="metric_uv_index">Индекс UV</string>
+    <string name="block_sun">Cолнце</string>
+    <string name="block_pollen">Аллергены</string>
+    <string name="block_wind">Ветер</string>
+    <string name="block_air_quality">Воздух</string>
+    <string name="block_moon">Луна</string>
+    <string name="moon_phase_new">Новолуние</string>
+    <string name="moon_phase_waxing_crescent">Молодая Луна</string>
+    <string name="moon_phase_first_quarter">Первая четверть</string>
+    <string name="moon_phase_waxing_gibbous">Растущая Луна</string>
+    <string name="moon_phase_full">Полнолуние</string>
+    <string name="moon_phase_waning_gibbous">Убывающая Луна</string>
+    <string name="moon_phase_last_quarter">Последняя четверть</string>
+    <string name="moon_phase_waning_crescent">Убывающий серп</string>
+    <string name="hourly_forecast">По часам</string>
+    <string name="daily_forecast">Дневной прогноз</string>
+    <string name="now">Сейчас</string>
+    <string name="today">Сегодня</string>
+    <string name="today_short">Сгд</string>
+    <string name="tomorrow_short">Зав</string>
+    <string name="level_low">Низк.</string>
+    <string name="level_medium">Средн.</string>
+    <string name="level_moderate">Умерен.</string>
+    <string name="level_high">Высок.</string>
+    <string name="level_very_high">Очень высок.</string>
+    <string name="level_extreme">Экстрем.</string>
+    <string name="level_severe">Опасн.</string>
+    <string name="cloud_clear">Ясно</string>
+    <string name="cloud_mostly_clear">Малооблачно</string>
+    <string name="cloud_partly_cloudy">Переменная облачность</string>
+    <string name="cloud_mostly_cloudy">Облачно с прояснениями</string>
+    <string name="cloud_overcast">Пасмурно</string>
+    <string name="aqi_good">Чисто</string>
+    <string name="aqi_moderate">Приемлимо</string>
+    <string name="aqi_unhealthy_sensitive">Вредно (чувств.)</string>
+    <string name="aqi_unhealthy">Вредно</string>
+    <string name="aqi_very_unhealthy">Очень вредно</string>
+    <string name="aqi_hazardous">Опасно</string>
+    <string name="precip_raining_now">Идет дождь</string>
+    <string name="precip_no_rain_next_2h">Без осадков (2 ч)</string>
+    <string name="precip_rain_starting_now">Начинается дождь</string>
+    <string name="no_data_yet">Пока нет данных</string>
+    <string name="just_now">сейчас</string>
+    <string name="summary_title">Обзор</string>
+    <string name="summary_mixed_conditions">переменная погода</string>
+    <string name="summary_rain_likely">Ожидается дождь — возьмите зонт.</string>
+    <string name="summary_showers_possible">Позже возможен ливень.</string>
+    <string name="summary_slight_chance_rain">Маловероятен дождь.</string>
+    <string name="summary_winds_noticeable">Сегодня будет ветрено.</string>
+    <string name="weather_no_data">—</string>
+    <string name="weather_blob_widget_description">Виджет в форме капли с температурой и иконкой погоды.</string>
+    <string name="max_min">Max <xliff:g id="max" example="28°C">%1$s</xliff:g> Min <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
+    <string name="feels_like">Ощущается <xliff:g id="temp" example="26°C">%1$s</xliff:g></string>
+    <string name="from_gusts">Направление <xliff:g id="direction" example="NW">%1$s</xliff:g> · Порывы <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
+    <string name="map_attribution">© OpenStreetMap · © CARTO</string>
+    <string name="level_none">Нет</string>
+    <string name="precip_rain_in_min">Дождь через ~<xliff:g id="minutes" example="15">%1$d</xliff:g> минут</string>
+    <string name="last_updated">Обновлено <xliff:g id="time_ago" example="2h ago">%1$s</xliff:g></string>
+    <string name="minutes_ago"><xliff:g id="minutes" example="5">%1$d</xliff:g>минут назад</string>
+    <string name="hours_ago"><xliff:g id="hours" example="2">%1$d</xliff:g>часов назад</string>
+    <string name="days_ago"><xliff:g id="days" example="3">%1$d</xliff:g>дней назад</string>
+    <string name="duration_h_m"><xliff:g id="hours" example="11">%1$d</xliff:g>ч <xliff:g id="minutes" example="30">%2$d</xliff:g>м</string>
+    <string name="summary_expect_conditions">Ожидается <xliff:g id="conditions" example="light rain">%1$s</xliff:g> в течение дня.</string>
+    <string name="summary_high_low">Выс <xliff:g id="high" example="24°C">%1$s</xliff:g>, низ <xliff:g id="low" example="12°C">%2$s</xliff:g>.</string>
+    <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
+</resources>
