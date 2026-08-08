@@ -45,7 +45,7 @@
     <string name="new_name">Uus nimi</string>
     <string name="create_a_calendar">Loo kalender</string>
     <string name="choose_timezone">Vali ajavöönd</string>
-    <string name="delete_calendar_name_confirm">Kas oled kindel, et soovid „%1$s“ kalendri kustutada? Järgnevaga kaovad kõik antud kalendris leiduvad sündmused.</string>
+    <string name="delete_calendar_name_confirm">Kas oled kindel, et soovid <xliff:g id="calendar_name" example="Töö">„%1$s“</xliff:g> kalendri kustutada? Järgnevaga kaovad kõik antud kalendris leiduvad sündmused.</string>
     <string name="open_location_in_navigation">Ava asukoht</string>
     <string name="delete_this_event">Kustuta see sündmus</string>
     <string name="delete_all_events">Kustuta kõik sündmused</string>
@@ -55,11 +55,11 @@
     <string name="calendar_widget_description">Tulevased sündmused ühe vaatena - klõpsa ja ava Kalender</string>
     <string name="on_label">Aeg</string>
     <string name="month_option_day_of_month">Kuu <xliff:g id="day" example="15">%1$d</xliff:g>-ndal päeval</string>
-    <string name="month_option_nth_weekday">%1$s %2$s</string>
+    <string name="month_option_nth_weekday"><xliff:g id="ordinal" example="second">%1$s</xliff:g>-l <xliff:g id="weekday" example="Esmaspäeval">%2$s</xliff:g></string>
     <string name="year_option_month_day">Korduvus: <xliff:g id="day" example="15">%2$d</xliff:g>. <xliff:g id="month" example="Märts">%1$s</xliff:g></string>
     <string name="month_option_last_weekday">Korduvus: viimane <xliff:g id="weekday" example="Reede">%1$s</xliff:g></string>
-    <string name="year_option_day_of_year">Aasta %1$d-l päeval</string>
-    <string name="year_option_week">Aasta %1$d-l nädalal, %2$s</string>
+    <string name="year_option_day_of_year">Aasta <xliff:g id="day_of_year" example="100">%1$d</xliff:g>-l päeval</string>
+    <string name="year_option_week">Aasta <xliff:g id="week_num" example="12">%1$d</xliff:g>-l nädalal <xliff:g id="weekday" example="Esmaspäev">%2$s</xliff:g></string>
     <string name="import_ics_file">Impordi ics-fail</string>
     <string name="import_events">Impordi sündmusi</string>
     <string name="import_to_existing_calendar">Impordi olemasolevasse kalendrisse</string>
@@ -110,10 +110,10 @@
     <string name="rrule_yearly">Iga aasta</string>
     <string name="layout_day">Päev</string>
     <string name="layout_full_week">Täisnädal</string>
-    <string name="rrule_until_suffix">, kuni %1$s</string>
+    <string name="rrule_until_suffix">, kuni <xliff:g id="date" example="Dec 31, 2025">%1$s</xliff:g></string>
     <string name="reminder_at_time_of_event">Sündmuse alguses</string>
     <string name="layout_short_work_week">Nd5</string>
-    <string name="rrule_on_days">%1$s, %2$s</string>
+    <string name="rrule_on_days"><xliff:g id="frequency" example="Weekly">%1$s</xliff:g> on <xliff:g id="days" example="Esmasp, Kolmap">%2$s</xliff:g></string>
     <string name="layout_short_work_week_summary">Nd5Kv</string>
     <string name="layout_month">Kuu</string>
     <string name="rrule_daily">Iga päev</string>
@@ -132,4 +132,14 @@
     </plurals>
     <string name="layout_short_day">Pv</string>
     <string name="holiday_calendars">Pühade kalendrid</string>
+    <string name="layout_work_week_compact">Kompaktne töönädal</string>
+    <string name="layout_full_week_compact">Kompaktne täisnädal</string>
+    <string name="layout_short_work_week_compact">Nd5K</string>
+    <string name="layout_short_full_week_compact">Nd7K</string>
+    <string name="widget_preview_event_1_title">Tiimi igapäevane koosolek</string>
+    <string name="widget_preview_event_1_time">09:00–09:30</string>
+    <string name="widget_preview_event_2_title">Lõuna Matiga</string>
+    <string name="widget_preview_event_2_time">12:30-13:30</string>
+    <string name="widget_preview_event_3_title">Projekti läbivaatamine</string>
+    <string name="widget_preview_event_3_time">15:00-16:00</string>
 </resources>
