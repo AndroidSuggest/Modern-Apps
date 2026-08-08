@@ -17,9 +17,12 @@ import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
 import android.view.inputmethod.InputMethodSubtype.InputMethodSubtypeBuilder
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.inputmethod.EditorInfoCompat
 import androidx.core.view.inputmethod.InputConnectionCompat
 import androidx.core.view.inputmethod.InputContentInfoCompat
@@ -281,6 +284,17 @@ class KeyboardService : InputMethodService(),
                 insets
             }
             setContent {
+                // The framework draws the "hide keyboard" chevron in the navigation bar of the IME
+                // window, not inside our Compose tree. Its icon color is the nav-bar icon appearance,
+                // which defaults to light (white) icons. In a light theme that renders nearly invisible,
+                // so track the theme: light theme -> dark nav-bar icons, dark theme -> light icons.
+                val isDark = isSystemInDarkTheme()
+                LaunchedEffect(isDark) {
+                    window?.window?.let { imeWindow ->
+                        WindowInsetsControllerCompat(imeWindow, imeWindow.decorView)
+                            .isAppearanceLightNavigationBars = !isDark
+                    }
+                }
                 DynamicTheme {
                     KeyboardScreen(kbState, this@KeyboardService)
                 }
