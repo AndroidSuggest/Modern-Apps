@@ -118,4 +118,9 @@
     <string name="adding_to_watch_later">Ajout à « À regarder plus tard »…</string>
     <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> vidéos</string>
     <string name="label_history">Historique</string>
+    <string name="settings_general_content">Général et contenu</string>
+    <string name="settings_sponsorblock">SponsorBlock</string>
+    <string name="settings_data">Données et sauvegarde</string>
+    <string name="settings_sponsorblock_summary">%1$d sur %2$d bloqués</string>
+    <string name="preset_custom">Personnalisé</string>
 </resources>
