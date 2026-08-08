@@ -261,6 +261,22 @@ mod issue321 {
                 argb, (argb >> 24) & 0xFF, (argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, n
             );
         }
+        // Dump the first text runs with their page-space origins so content
+        // orientation can be checked against a reference render (rotation bugs).
+        println!("  page {:.0}x{:.0} (display)", pd.width, pd.height);
+        let mut tno = 0;
+        for p in &pd.prims {
+            if let Prim::Text { x, y, text, .. } = p {
+                if text.trim().is_empty() {
+                    continue;
+                }
+                println!("   text @({:.0},{:.0}) {:?}", x, y, text);
+                tno += 1;
+                if tno >= 12 {
+                    break;
+                }
+            }
+        }
         // Sample decoded image pixels (RGBA format 0) at a 3×3 grid so colors can
         // be diffed against a reference renderer.
         let mut img_no = 0;
@@ -294,8 +310,6 @@ mod issue321 {
     }
 
     /// Drive every fixture and print a per-PDF / per-page report. This test never
-    /// fails on rendering defects itself (it is a diagnostic harness); it only
-    /// fails if the harness cannot run. Skips cleanly when fixtures are absent.
     /// fails on rendering defects itself (it is a diagnostic harness); it only
     /// fails if the harness cannot run. Skips cleanly when fixtures are absent.
     #[test]

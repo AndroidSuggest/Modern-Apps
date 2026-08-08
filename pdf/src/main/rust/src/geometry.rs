@@ -119,13 +119,14 @@ pub(crate) fn page_rotation(doc: &Document, page_id: ObjectId) -> i64 {
 /// Matrix mapping raw page space (visible rect origin, before rotation) into
 /// displayed space: origin bottom-left, with dimensions swapped for 90/270.
 /// Visible rect is CropBox clipped to MediaBox, scaled by UserUnit.
-/// Formula: normalize vb to [minx,miny,maxx,maxy], w=abs(x1-x0), h=abs(y1-y0),
-/// t = translate(-minx,-miny) moves CropBox origin to 0, then r rotates and
-/// translates to keep content in positive quadrant:
-///   90°: [0,1,-1,0,h,0] maps (0,0)->(h,0), (w,0)->(h,w), (0,h)->(0,0)
-///   180°: [-1,0,0,-1,w,h]
-///   270°: [0,-1,1,0,0,w] maps (0,0)->(0,w)
-/// Verified for vb=[100,100,712,792], w=612,h=692.
+///
+/// `/Rotate` is clockwise (ISO 32000 §7.7.3.3). With page width `w`, height `h`
+/// and device y-up, the spec-correct page→display maps are:
+///   90°  (x,y) -> (y,     w - x)  => [0,-1, 1,0, 0, w]
+///   180° (x,y) -> (w - x, h - y)  => [-1,0, 0,-1, w, h]
+///   270° (x,y) -> (h - y, x)      => [0, 1,-1,0, h, 0]
+/// (The 90° and 270° arms were previously swapped, rotating such pages 180°
+/// off — content upside-down and mirrored; see issue #321 pagerotationexample.)
 pub(crate) fn page_base_matrix(doc: &Document, page_id: ObjectId) -> Mat {
     let vb = page_visible_box(doc, page_id);
     // Normalize to min/max to handle inverted boxes.
@@ -135,9 +136,9 @@ pub(crate) fn page_base_matrix(doc: &Document, page_id: ObjectId) -> Mat {
     let h = (vb[3] - vb[1]).abs();
     let t = translate(-minx, -miny);
     let r: Mat = match page_rotation(doc, page_id) {
-        90 => [0.0, 1.0, -1.0, 0.0, h, 0.0],
+        90 => [0.0, -1.0, 1.0, 0.0, 0.0, w],
         180 => [-1.0, 0.0, 0.0, -1.0, w, h],
-        270 => [0.0, -1.0, 1.0, 0.0, 0.0, w],
+        270 => [0.0, 1.0, -1.0, 0.0, h, 0.0],
         _ => IDENTITY,
     };
     mat_mul(&t, &r)
