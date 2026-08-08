@@ -94,4 +94,14 @@
     <string name="weather_no_data">-</string>
     <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
     <string name="condition_mostly_clear">Enamuses pilvitu</string>
+    <string name="block_moon">Kuu</string>
+    <string name="moon_phase_new">Kuu loomine</string>
+    <string name="moon_phase_waxing_crescent">Noorkuu</string>
+    <string name="moon_phase_first_quarter">Poolkuu - esimene veerand</string>
+    <string name="moon_phase_waxing_gibbous">Kasvav kuu</string>
+    <string name="moon_phase_full">Täiskuu</string>
+    <string name="moon_phase_waning_gibbous">Kahanev kuu</string>
+    <string name="moon_phase_last_quarter">Poolkuu - viimane veerand</string>
+    <string name="moon_phase_waning_crescent">Vanakuu</string>
+    <string name="weather_blob_widget_description">Ilmateade loomulikus vormis - suur ikooniga temperatuurinäit tumedal sinakasrohelisel taustal</string>
 </resources>
