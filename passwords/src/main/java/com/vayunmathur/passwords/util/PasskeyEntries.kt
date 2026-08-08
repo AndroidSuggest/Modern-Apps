@@ -68,7 +68,7 @@ suspend fun buildGetCredentialResponse(
                     responseBuilder.addCredentialEntry(
                         PasswordCredentialEntry.Builder(
                             context,
-                            pass.userId,
+                            pass.username,
                             pendingIntent,
                             option,
                         ).setDisplayName(pass.name.ifBlank { null })

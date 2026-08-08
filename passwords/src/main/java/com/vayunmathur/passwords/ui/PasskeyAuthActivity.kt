@@ -321,7 +321,7 @@ class PasskeyAuthActivity : FragmentActivity() {
             setResult(RESULT_CANCELED)
             return
         }
-        val credentialResponse = androidx.credentials.PasswordCredential(password.userId, password.password)
+        val credentialResponse = androidx.credentials.PasswordCredential(password.username, password.password)
         val result = Intent()
         PendingIntentHandler.setGetCredentialResponse(
             result,
