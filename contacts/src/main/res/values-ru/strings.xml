@@ -1,3 +1,107 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    </resources>
+    <string name="app_name">Контакты</string>
+    <string name="contact_not_found">Контакт не найден</string>
+    <string name="name_nickname_format"><xliff:g id="name" example="John Doe">%1$s</xliff:g> (<xliff:g id="nickname" example="Johnny">%2$s</xliff:g>)</string>
+    <string name="contact_photo_description"><xliff:g id="contact_name" example="John Doe">%1$s</xliff:g> фото</string>
+    <string name="share_contact">Поделиться</string>
+    <string name="about_name">О <xliff:g id="first_name" example="John">%1$s</xliff:g></string>
+    <string name="birthday">День рождения</string>
+    <string name="note">Заметка</string>
+    <string name="favorites">Избранное</string>
+    <string name="export_contacts">Экспортировать все</string>
+    <string name="on_device">На устройстве</string>
+    <string name="add_contact">Добавить контакт</string>
+    <string name="edit_contact">Правка</string>
+    <string name="first_name">Имя</string>
+    <string name="middle_name">Отчество</string>
+    <string name="last_name">Фамилия</string>
+    <string name="nickname">Ник</string>
+    <string name="company">Компания</string>
+    <string name="account">Аккаунт</string>
+    <string name="account_display_format"><xliff:g id="account_name" example="Personal">%1$s</xliff:g> (<xliff:g id="account_type" example="com.google">%2$s</xliff:g>)</string>
+    <string name="add_phone">Добавить номер</string>
+    <string name="remove_phone">Удалить номер</string>
+    <string name="add_email">Добавить email</string>
+    <string name="remove_email">Удалить email</string>
+    <string name="add_address">Добавить адрес</string>
+    <string name="remove_address">Удалить адрес</string>
+    <string name="add_date">Добавить дату</string>
+    <string name="dates">Даты</string>
+    <string name="phone">Телефон</string>
+    <string name="email">Email</string>
+    <string name="addresses">Адреса</string>
+    <string name="contact_photo">Фото</string>
+    <string name="add_picture">Добавить фото</string>
+    <string name="change_picture">Изменить</string>
+    <string name="remove_picture">Удалить</string>
+    <string name="visible_accounts">Отображаемые Аккаунты</string>
+    <string name="add_contacts_account">Добавить Аккаунт</string>
+    <string name="enter_account_name">Введите имя для нового локального аккаунта:</string>
+    <string name="account_name">Имя Аккаунта</string>
+    <string name="delete_contact_title">Удалить контакт</string>
+    <string name="delete_contact_confirm">Вы уверены, что хотите удалить этот контакт? Это действие необратимо.</string>
+    <string name="delete_contact_name_confirm">Вы уверены, что хотите удалить \"<xliff:g id="contact_name" example="John Doe">%1$s</xliff:g>\"? Это действие необратимо.</string>
+    <string name="grant_contacts_permission">Пожалуйста, предоставьте разрешение на доступ к контактам</string>
+    <string name="select_contact_hint">Выберите контакт, чтобы просмотреть подробную информацию</string>
+    <string name="import_contacts">Импортировать Контакты</string>
+    <string name="action_call">Позвонить</string>
+    <string name="action_message">Сообщение</string>
+    <string name="action_video">Видео</string>
+    <string name="calendar_sync">Синхронизация Календаря</string>
+    <string name="sync_contacts_calendar">Показывать дни рождения в календаре</string>
+    <string name="contacts_calendar_name">Контакты</string>
+    <string name="anniversary">Памятные даты</string>
+    <string name="backup_and_export">Резервное копирование и Экспорт</string>
+    <string name="grant_calendar_permissions">Предоставить права доступа к календарю</string>
+    <string name="delete_selected_contacts_title">Удалить выбранные контакты</string>
+    <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> выбрано</string>
+    <string name="display">Дисплей</string>
+    <string name="show_account_labels">Показывать аккаунты</string>
+    <string name="search_contacts">Поиск контактов</string>
+    <string name="include_year">Вкл. год</string>
+    <string name="system_default">По умолчанию</string>
+    <string name="signal">Signal</string>
+    <string name="whatsapp">WhatsApp</string>
+    <string name="telegram">Telegram</string>
+    <string name="google_meet">Google Meet</string>
+    <string name="contacts">Контакты</string>
+    <string name="groups">Группы</string>
+    <string name="select_group_hint">Выбор группы для просмотра</string>
+    <string name="add_to_group">Добавить в Группу</string>
+    <string name="add_group">Добавить Группу</string>
+    <string name="enter_group_name">Введите имя группы</string>
+    <string name="delete_group_title">Удалить группу</string>
+    <string name="delete_group_confirm">Вы уверены, что хотите удалить эту группу? Контакты не будут удалены.</string>
+    <string name="no_groups_found">Группы не найдены. Создайте группу на вкладке «Группы».</string>
+    <string name="import_vcf_file">Импорт файла .vcf</string>
+    <string name="import_to_existing_account">Импорт в существующий аккаунт</string>
+    <string name="create_new_account_option">Создать новый аккаунт</string>
+    <string name="no_contacts_found">Контакты не найдены</string>
+    <string name="select_account">Выберите аккаунт</string>
+    <string name="no_name">(Без имени)</string>
+    <string name="add_number_to_contact">Добавить номер телефона</string>
+    <string name="create_new_contact">Новый контакт</string>
+    <string name="crop_photo">Обрезать Фото</string>
+    <string name="import_contacts_from_vcf_files">Импорт контактов из файлов .vcf</string>
+    <string name="custom_label">Кастомный лейбл</string>
+    <string name="enter_custom_label">Введите название лейбла</string>
+    <plurals name="delete_selected_contacts_confirm">
+        <item quantity="one">Вы уверены, что хотите удалить <xliff:g id="count" example="5">%1$d</xliff:g> выбранные контакты? Контакты удалятся навсегда.</item>
+        <item quantity="few">Вы уверены, что хотите удалить <xliff:g id="count" example="5">%1$d</xliff:g> выбранные контакты? Контакты удалятся навсегда.</item>
+        <item quantity="many">Вы уверены, что хотите удалить <xliff:g id="count" example="5">%1$d</xliff:g> выбранные контакты? Контакты удалятся навсегда.</item>
+        <item quantity="other">Вы уверены, что хотите удалить <xliff:g id="count" example="5">%1$d</xliff:g> выбранные контакты? Контакты удалятся навсегда.</item>
+    </plurals>
+    <plurals name="import_summary_contacts">
+        <item quantity="one"><xliff:g id="count" example="10">%1$d</xliff:g> контакт готов к импорту</item>
+        <item quantity="few"><xliff:g id="count" example="10">%1$d</xliff:g> контакта готовы к импорту</item>
+        <item quantity="many"><xliff:g id="count" example="10">%1$d</xliff:g> контактов готовы к импорту</item>
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> контактов готовы к импорту</item>
+    </plurals>
+    <plurals name="contacts_count">
+        <item quantity="one"><xliff:g id="count" example="42">%1$d</xliff:g> контакт</item>
+        <item quantity="few"><xliff:g id="count" example="42">%1$d</xliff:g> контакта</item>
+        <item quantity="many"><xliff:g id="count" example="42">%1$d</xliff:g> контактов</item>
+        <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> контактов</item>
+    </plurals>
+</resources>
