@@ -1,3 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="first_name">Имя</string>
+    <string name="last_name">Фамилия</string>
+    <string name="email">Email</string>
+    <string name="addresses">Адреса</string>
+</resources>
