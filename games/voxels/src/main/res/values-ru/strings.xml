@@ -1,3 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="copy">Копировать</string>
+    <string name="share_link">Поделиться ссылкой</string>
+    <string name="requests_header">Запросы</string>
+    <string name="approve">Разрешить</string>
+    <string name="deny">Запретить</string>
+    <string name="request_wants_to_join">%1$s хочет присоединиться к «%2$s»</string>
+    <string name="stop">Стоп</string>
+    <string name="shared_with_you">Поделились с вами</string>
+</resources>
