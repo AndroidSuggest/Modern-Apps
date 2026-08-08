@@ -74,7 +74,6 @@ Though some apps may have exceptions, generally a 64-bit device running at least
 
 | **Games Hub** | [Homepage](https://ma.vayunmathur.com/apps/games-hub) | [MA Repo](https://ma.vayunmathur.com/fdroid) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Games%20Hub&packageName=com.vayunmathur.games.hub&apk=hub-release.apk) |
 | :--- | :---: | :---: | :---: |
-| **Alchemist** | [Homepage](https://ma.vayunmathur.com/apps/games-alchemist) | [MA Repo](https://ma.vayunmathur.com/fdroid) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Alchemist&packageName=com.vayunmathur.games.alchemist&apk=alchemist-release.apk) |
 | **Chess** | [Homepage](https://ma.vayunmathur.com/apps/games-chess) | [MA Repo](https://ma.vayunmathur.com/fdroid) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Chess&packageName=com.vayunmathur.games.chess&apk=chess-release.apk) |
 | **Logic Gate** | [Homepage](https://ma.vayunmathur.com/apps/games-logicgate) | In Progress | In Progress |
 | **Pipes** | [Homepage](https://ma.vayunmathur.com/apps/games-pipes) | [MA Repo](https://ma.vayunmathur.com/fdroid) | [![Obtainium](https://img.shields.io/badge/Obtainium-Download-purple?style=flat-square)](https://api.vayunmathur.com/obtainium-link?name=Pipes&packageName=com.vayunmathur.games.pipes&apk=pipes-release.apk) |
