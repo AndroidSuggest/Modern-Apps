@@ -1,7 +1,11 @@
 package com.vayunmathur.weather.ui
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
 import android.content.res.Resources
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -30,6 +34,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconDragHandle
+import com.vayunmathur.library.ui.IconRuler
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.ListItem
@@ -255,6 +260,12 @@ fun LocationsScreen(
                         IconBack(tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
+                actions = {
+                    val context = LocalContext.current
+                    IconButton(onClick = { openRegionalUnitsSettings(context) }) {
+                        IconRuler(tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                },
             )
         },
         bottomBar = {
@@ -364,6 +375,30 @@ fun LocationsScreen(
                     modifier = Modifier.padding(start = 16.dp),
                 ) { Text(stringResource(R.string.confirm_delete)) }
             }
+        }
+    }
+}
+
+/**
+ * Opens the OS regional-units settings so the user can pick temperature/wind/etc. units.
+ * The app itself stores no units config; it reads the system regional preferences (see
+ * [com.vayunmathur.weather.util.rememberTempUnit]). Falls back to the general locale settings
+ * on devices without a dedicated regional-preferences screen (pre-Android 14).
+ */
+private fun openRegionalUnitsSettings(context: Context) {
+    // Value of Settings.ACTION_REGIONAL_PREFERENCES_SETTINGS (API 34); used as a literal so the
+    // deep link still compiles/works when built against lower compile SDKs.
+    val actions = listOf(
+        "android.settings.REGIONAL_PREFERENCES_SETTINGS",
+        Settings.ACTION_LOCALE_SETTINGS,
+        Settings.ACTION_SETTINGS,
+    )
+    for (action in actions) {
+        try {
+            context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        } catch (_: ActivityNotFoundException) {
+            // Try the next, broader settings target.
         }
     }
 }
