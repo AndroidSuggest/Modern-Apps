@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> выбрано</string>
+    <string name="all">Все</string>
+    <string name="right">Справа</string>
+    <string name="justify">Обосновать</string>
+    <string name="heading_2">Раздел 2</string>
+    <string name="heading_3">Раздел 3</string>
+    <string name="clear_formatting">Очистить формат</string>
+    <string name="heading_1">Раздел 1</string>
+    <string name="normal">Нормальный</string>
+    <string name="left">Слева</string>
+    <string name="center">Центр</string>
+    <string name="hide">Скрыть</string>
 </resources>
