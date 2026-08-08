@@ -1,3 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="discard">Отказаться</string>
+    <string name="auto_save">Автосохранение</string>
+    <string name="all">Все</string>
+    <string name="apply">Применить</string>
+    <string name="name">Название</string>
+    <string name="line">Линия</string>
+</resources>
