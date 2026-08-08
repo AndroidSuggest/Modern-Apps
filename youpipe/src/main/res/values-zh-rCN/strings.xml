@@ -104,4 +104,18 @@
     <string name="label_default_page">打开</string>
     <string name="page_home">首页</string>
     <string name="page_downloads">下载</string>
+    <string name="page_saved">已保存</string>
+    <string name="title_saved">已保存</string>
+    <string name="title_downloads">下载</string>
+    <string name="playlist_watch_later">稍后观看</string>
+    <string name="title_create_playlist">创建播放列表</string>
+    <string name="label_playlist_name">播放列表名称</string>
+    <string name="action_create_playlist">创建</string>
+    <string name="add_to_playlist">添加到播放列表</string>
+    <string name="new_playlist">新播放列表</string>
+    <string name="action_delete_playlist">删除播放列表</string>
+    <string name="playlist_empty">此播放列表中尚无视频</string>
+    <string name="adding_to_watch_later">正在添加到稍后观看…</string>
+    <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> 个视频</string>
+    <string name="label_history">历史记录</string>
 </resources>
