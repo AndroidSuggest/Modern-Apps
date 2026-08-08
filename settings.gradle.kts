@@ -103,3 +103,6 @@ if (file("personal/amazon").exists()) {
 if (file("personal/kaiser").exists()) {
     include(":personal:kaiser")
 }
+if (file("personal/headphones").exists()) {
+    include(":personal:headphones")
+}

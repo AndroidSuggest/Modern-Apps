@@ -41,6 +41,9 @@ zone_*.pmtiles
 
 # Network capture artifacts
 reverse-engineering/
+# APK decompilation / protocol analysis workspace (contains third-party decompiled
+# code and pulled APKs; kept local only, not committed)
+analysis/
 **/rust/target/
 tmp/
 target/
