@@ -139,4 +139,5 @@
     <string name="wallpaper_scrollable_desc">Keritavad taustapildid on laiemad ja liiguvad, kui viipad ekraanivaadete vahel</string>
     <string name="editor_desc_crop">Kadreeri, sirgenda ja pööra fotot.</string>
     <string name="tool_photo_filter">Fotofilter</string>
+    <string name="gif_badge">GIF-fail</string>
 </resources>
