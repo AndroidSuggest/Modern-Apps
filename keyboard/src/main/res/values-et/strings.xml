@@ -9,4 +9,12 @@
     <string name="theme">Kujundus</string>
     <string name="follows_the_system_light_dark_theme_and">Järgib süsteemi heledat/tumedast kujundust ja Material You kujunduskeele värve</string>
     <string name="try_the_keyboard_here">Proovi klahvistikku siin</string>
+    <string name="keyboard_languages">Klahvistiku keeled</string>
+    <string name="available_for_english_layouts_only">Saadaval vaid inglise klahvistikupaigutusega</string>
+    <string name="search_emoji">Otsi emojit</string>
+    <string name="emoji_you_use_show_up_here">Sinu kasutatavad emojid saavad olema nähtavad siin</string>
+    <string name="image">Pilt</string>
+    <string name="clear_clipboard">Eemalda kõik</string>
+    <string name="clear_clipboard_history">Kustuta lõikelaua ajalugu</string>
+    <string name="copied_text_shows_up_here">Kopeeritud tekstid ja pildid saavad olema nähtavad siin</string>
 </resources>
