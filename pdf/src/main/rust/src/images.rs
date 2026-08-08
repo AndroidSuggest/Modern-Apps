@@ -1097,6 +1097,31 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
         None
     };
 
+    // Precompute a 256-entry color LUT over the normalized parameter t∈[0,1].
+    // Axial/radial color depends only on t, so evaluating the PDF function and
+    // colorspace conversion once per LUT slot instead of once per pixel turns an
+    // O(size²) per-pixel function-eval into O(256) — the dominant cost on
+    // gradient-heavy pages (e.g. issue #321 missinggraphic: 131 shadings).
+    let cs_for_lut = color_space_obj.as_ref().unwrap_or(&CsKind::DeviceRGB);
+    let mut color_lut: [Option<u32>; 256] = [None; 256];
+    let mut lut_fallback: [Option<[u8; 4]>; 256] = [None; 256];
+    for (i, slot) in color_lut.iter_mut().enumerate() {
+        let t = i as f64 / 255.0;
+        if let Some(comps) = eval_func(t) {
+            if let Some(argb) = eval_cs_to_rgb(doc, cs_for_lut, &comps, cs_resources) {
+                *slot = Some(argb);
+            } else {
+                let v = (comps.first().copied().unwrap_or(0.0) * 255.0) as u8;
+                lut_fallback[i] = Some([v, v, v, 255]);
+            }
+        }
+    }
+    // Background color for out-of-range pixels, computed once.
+    let bg_argb = bg.as_ref().and_then(|bgc| {
+        let cs = color_space_obj.as_ref().unwrap_or(&CsKind::DeviceRGB);
+        eval_cs_to_rgb(doc, cs, bgc, cs_resources)
+    });
+
     for y in 0..h as usize {
         for x in 0..w as usize {
             // map pixel to shading BBox space
@@ -1133,64 +1158,54 @@ pub(crate) fn rasterize_shading(doc: &Document, shading_obj: &Object, base_ctm: 
                 continue;
             }
 
-            // Extend handling
-            let t_clamped = if t<0.0 {
-                if extend.first().copied().unwrap_or(false) { 0.0 } else {
-                    // background outside
-                    // pixel stays background/transparent
-                    let idx = (y*w as usize + x)*4;
-                    // If bg defined, use it else transparent
-                    if let Some(ref bgc) = bg {
-                        let cs = color_space_obj.as_ref().unwrap_or(&CsKind::DeviceRGB);
-                        if let Some(argb) = eval_cs_to_rgb(doc, cs, bgc, cs_resources) {
-                            rgba[idx]= ((argb>>16)&0xFF) as u8;
-                            rgba[idx+1]= ((argb>>8)&0xFF) as u8;
-                            rgba[idx+2]= (argb &0xFF) as u8;
-                            rgba[idx+3]=255;
-                        }
-                    }
-                    continue;
-                }
-            } else if t>1.0 {
-                if extend.get(1).copied().unwrap_or(false) { 1.0 } else {
-                    let idx = (y*w as usize + x)*4;
-                    if let Some(ref bgc) = bg {
-                        let cs = color_space_obj.as_ref().unwrap_or(&CsKind::DeviceRGB);
-                        if let Some(argb) = eval_cs_to_rgb(doc, cs, bgc, cs_resources) {
-                            rgba[idx]= ((argb>>16)&0xFF) as u8;
-                            rgba[idx+1]= ((argb>>8)&0xFF) as u8;
-                            rgba[idx+2]= (argb &0xFF) as u8;
-                            rgba[idx+3]=255;
-                        }
-                    }
-                    continue;
-                }
-            } else { t };
-
-            let idx = (y*w as usize + x)*4;
-            if let Some(comps) = eval_func(t_clamped) {
-                let cs = color_space_obj.as_ref().unwrap_or(&CsKind::DeviceRGB);
-                if let Some(argb) = eval_cs_to_rgb(doc, cs, &comps, cs_resources) {
-                    rgba[idx]= ((argb>>16)&0xFF) as u8;
-                    rgba[idx+1]= ((argb>>8)&0xFF) as u8;
-                    rgba[idx+2]= (argb &0xFF) as u8;
-                    rgba[idx+3]=255;
+            // Extend handling. Out-of-range pixels use the precomputed
+            // background color (or stay transparent when none is defined).
+            let idx = (y * w as usize + x) * 4;
+            let t_clamped = if t < 0.0 {
+                if extend.first().copied().unwrap_or(false) {
+                    0.0
                 } else {
-                    // fallback gray for comps
-                    let v = (comps.first().copied().unwrap_or(0.0)*255.0) as u8;
-                    rgba[idx]=v; rgba[idx+1]=v; rgba[idx+2]=v; rgba[idx+3]=255;
+                    if let Some(argb) = bg_argb {
+                        rgba[idx] = ((argb >> 16) & 0xFF) as u8;
+                        rgba[idx + 1] = ((argb >> 8) & 0xFF) as u8;
+                        rgba[idx + 2] = (argb & 0xFF) as u8;
+                        rgba[idx + 3] = 255;
+                    }
+                    continue;
+                }
+            } else if t > 1.0 {
+                if extend.get(1).copied().unwrap_or(false) {
+                    1.0
+                } else {
+                    if let Some(argb) = bg_argb {
+                        rgba[idx] = ((argb >> 16) & 0xFF) as u8;
+                        rgba[idx + 1] = ((argb >> 8) & 0xFF) as u8;
+                        rgba[idx + 2] = (argb & 0xFF) as u8;
+                        rgba[idx + 3] = 255;
+                    }
+                    continue;
                 }
             } else {
-                // No function - use background or transparent
-                if let Some(ref bgc) = bg {
-                    let cs = color_space_obj.as_ref().unwrap_or(&CsKind::DeviceRGB);
-                    if let Some(argb) = eval_cs_to_rgb(doc, cs, bgc, cs_resources) {
-                        rgba[idx]= ((argb>>16)&0xFF) as u8;
-                        rgba[idx+1]= ((argb>>8)&0xFF) as u8;
-                        rgba[idx+2]= (argb &0xFF) as u8;
-                        rgba[idx+3]=255;
-                    }
-                }
+                t
+            };
+
+            // Look up the gradient color from the precomputed LUT.
+            let li = ((t_clamped.clamp(0.0, 1.0) * 255.0).round() as usize).min(255);
+            if let Some(argb) = color_lut[li] {
+                rgba[idx] = ((argb >> 16) & 0xFF) as u8;
+                rgba[idx + 1] = ((argb >> 8) & 0xFF) as u8;
+                rgba[idx + 2] = (argb & 0xFF) as u8;
+                rgba[idx + 3] = 255;
+            } else if let Some(px) = lut_fallback[li] {
+                rgba[idx] = px[0];
+                rgba[idx + 1] = px[1];
+                rgba[idx + 2] = px[2];
+                rgba[idx + 3] = px[3];
+            } else if let Some(argb) = bg_argb {
+                rgba[idx] = ((argb >> 16) & 0xFF) as u8;
+                rgba[idx + 1] = ((argb >> 8) & 0xFF) as u8;
+                rgba[idx + 2] = (argb & 0xFF) as u8;
+                rgba[idx + 3] = 255;
             }
         }
     }
