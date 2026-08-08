@@ -18,7 +18,7 @@
     <string name="last_name">Фамилия</string>
     <string name="nickname">Ник</string>
     <string name="company">Компания</string>
-    <string name="account">Аккаунт</string>
+    <string name="account">Учетная запись</string>
     <string name="account_display_format"><xliff:g id="account_name" example="Personal">%1$s</xliff:g> (<xliff:g id="account_type" example="com.google">%2$s</xliff:g>)</string>
     <string name="add_phone">Добавить номер</string>
     <string name="remove_phone">Удалить номер</string>
@@ -78,7 +78,7 @@
     <string name="import_to_existing_account">Импорт в существующий аккаунт</string>
     <string name="create_new_account_option">Создать новый аккаунт</string>
     <string name="no_contacts_found">Контакты не найдены</string>
-    <string name="select_account">Выберите аккаунт</string>
+    <string name="select_account">Выберите учетную запись</string>
     <string name="no_name">(Без имени)</string>
     <string name="add_number_to_contact">Добавить номер телефона</string>
     <string name="create_new_contact">Новый контакт</string>
@@ -87,7 +87,7 @@
     <string name="custom_label">Кастомный лейбл</string>
     <string name="enter_custom_label">Введите название лейбла</string>
     <plurals name="delete_selected_contacts_confirm">
-        <item quantity="one">Вы уверены, что хотите удалить <xliff:g id="count" example="5">%1$d</xliff:g> выбранные контакты? Контакты удалятся навсегда.</item>
+        <item quantity="one">Вы уверены, что хотите удалить <xliff:g id="count" example="5">%1$d</xliff:g> выбранное? Контакты удалятся навсегда.</item>
         <item quantity="few">Вы уверены, что хотите удалить <xliff:g id="count" example="5">%1$d</xliff:g> выбранные контакты? Контакты удалятся навсегда.</item>
         <item quantity="many">Вы уверены, что хотите удалить <xliff:g id="count" example="5">%1$d</xliff:g> выбранные контакты? Контакты удалятся навсегда.</item>
         <item quantity="other">Вы уверены, что хотите удалить <xliff:g id="count" example="5">%1$d</xliff:g> выбранные контакты? Контакты удалятся навсегда.</item>
