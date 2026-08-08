@@ -99,4 +99,6 @@
     <string name="no_name">(Sans nom)</string>
     <string name="crop_photo">Recadrer la photo</string>
     <string name="import_contacts_from_vcf_files">Importer des contacts depuis des fichiers .vcf</string>
+    <string name="custom_label">Libellé personnalisé</string>
+    <string name="enter_custom_label">Saisir un libellé personnalisé</string>
 </resources>
