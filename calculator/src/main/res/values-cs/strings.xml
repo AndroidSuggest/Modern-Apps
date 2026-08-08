@@ -1,3 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Kalkulačka</string>
+    <string name="history">Historie</string>
+    <string name="no_calculations_yet">Prozatím neprovedeny žádné výpočty.</string>
+    <string name="add_function">Přidat funkci</string>
+    <string name="toggle_curve_visibility">Zobrazit nebo skrýt tuto křivku</string>
+    <string name="feature_root">kořen</string>
+    <string name="feature_y_intercept">průsečík s osou y</string>
+    <string name="feature_minimum">minimum</string>
+    <string name="feature_maximum">maximum</string>
+    <string name="feature_intersection">průsečík</string>
+</resources>
