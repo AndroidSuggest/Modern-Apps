@@ -8,7 +8,7 @@
     <string name="add_location">Dodaj lokalizację</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
     <string name="map_time">Czas</string>
-    <string name="weather_widget_description">Aktualny czas, data i pogoda na pierwszy rzut oka — dotknij, aby zobaczyć prognozę</string>
+    <string name="weather_widget_description">Aktualny czas, data i pogoda na pierwszy rzut oka - dotknij, aby zobaczyć prognozę</string>
     <string name="no_locations_yet">Nie dodano jeszcze lokalizacji</string>
     <string name="add_a_city_or_use_your_current_location">Dodaj miasto lub użyj swojej bieżącej lokalizacji, aby zobaczyć prognozę pogody.</string>
     <string name="use_current_location">Użyj bieżącej lokalizacji</string>
@@ -94,4 +94,14 @@
     <string name="weather_no_data">—</string>
     <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
     <string name="condition_mostly_clear">Przeważnie bezchmurnie</string>
+    <string name="block_moon">Księżyc</string>
+    <string name="moon_phase_new">Nów</string>
+    <string name="moon_phase_waxing_crescent">Sierp przybywający</string>
+    <string name="moon_phase_first_quarter">Pierwsza kwadra</string>
+    <string name="moon_phase_waxing_gibbous">Księżyc przyrastający</string>
+    <string name="moon_phase_full">Pełnia</string>
+    <string name="moon_phase_waning_gibbous">Księżyc ubywający</string>
+    <string name="moon_phase_last_quarter">Ostatnia kwadra</string>
+    <string name="moon_phase_waning_crescent">Sierp ubywający</string>
+    <string name="weather_blob_widget_description">Wyświetla aktualną pogodę w nowoczesnym, obłym kształcie z dużą temperaturą i ikoną na ciemnoturkusowym tle</string>
 </resources>
