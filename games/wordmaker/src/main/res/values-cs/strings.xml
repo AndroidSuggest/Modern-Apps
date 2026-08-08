@@ -25,4 +25,8 @@
     <string name="cd_shuffle">Zamíchat</string>
     <string name="cd_submit">Odeslat</string>
     <string name="cd_backspace">Backspace</string>
+    <string name="mode_daily">Denní</string>
+    <string name="daily_challenge">Denní výzva</string>
+    <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> denní řada</string>
+    <string name="daily_come_back_tomorrow">Vyřešeno! Vraťte se zítra.</string>
 </resources>
