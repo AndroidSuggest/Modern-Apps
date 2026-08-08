@@ -1,3 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="share_link">Поделиться ссылкой</string>
+    <string name="all">Все</string>
+    <string name="bookmarks">Закладки</string>
+    <string name="general">Общее</string>
+</resources>
