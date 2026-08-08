@@ -96,4 +96,6 @@
     <string name="create_new_contact">Lisa uus kontakt</string>
     <string name="crop_photo">Kadreeri fotot</string>
     <string name="import_contacts_from_vcf_files">Impordi kontaktid .vcf failist</string>
+    <string name="custom_label">Sinu lisatud silt</string>
+    <string name="enter_custom_label">Sisesta sinu soovitud silt</string>
 </resources>
