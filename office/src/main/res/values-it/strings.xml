@@ -9,4 +9,6 @@
     <string name="justify">Giustifica</string>
     <string name="heading_3">Intestazione 3</string>
     <string name="hide">Nascondi</string>
+    <string name="clear_formatting">Cancella formattazione</string>
+    <string name="copy">Copia</string>
 </resources>
