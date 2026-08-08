@@ -89,10 +89,10 @@
     <string name="share_your_location">Jaga oma asukohta selle isikuga</string>
     <string name="permission_upgrade_dialog_dismiss">Mitte praegu</string>
     <string name="permission_upgrade_dialog_confirm">Luba täpse asukoha kasutamist</string>
-    <string name="permission_upgrade_dialog_message">FindFamily vajab sinu asukoha näitamiseks täpse asukoha tuvastamist. Palun luba seadistustes vastavad õigused.</string>
+    <string name="permission_upgrade_dialog_message">Pere asukoha rakendus (FindFamily) vajab sinu asukoha näitamiseks täpse asukoha tuvastamist. Palun luba seadistustes vastavad õigused.</string>
     <string name="permission_upgrade_dialog_title">Täpse asukoha tuvastamine on vajalik</string>
     <string name="permission_reopen_upgrade_prompt">Muud asukohatuvastuse tüüpi</string>
-    <string name="permission_approximate_only_explanation">FindFamily toimib vaid siis, kui kasutusel on täpse asukoha tuvastamine. Jätkamiseks palun luba seadistustes vastavad õigused.</string>
+    <string name="permission_approximate_only_explanation">Pere asukoha rakendus (FindFamily) toimib vaid siis, kui kasutusel on täpse asukoha tuvastamine. Jätkamiseks palun luba seadistustes vastavad õigused.</string>
     <string name="history_title">Ajalugu: <xliff:g id="person_name" example="Kadri">%1$s</xliff:g></string>
     <string name="history_step_minus_5m">-5 min</string>
     <string name="history_step_minus_1m">-1 min</string>
@@ -113,4 +113,6 @@
     <string name="unknown">Pole teada</string>
     <string name="couldn_t_compute_yet_s_key_isn_t_availab">Arvutamine veel ei õnnestunud: kasutaja „<xliff:g id="person_name" example="Bob">%1$s</xliff:g>“ võti pole saadaval. Palun kontrolli, et teil mõlemal ühendus toimib ja proovi siis uuesti.</string>
     <string name="compare_this_code_with_on_their_device_i">Võrdle sead koodi kasutajaga „<xliff:g id="person_name" example="Mati">%1$s</xliff:g>“ tema seadmes kuvatavaga. Kui numbrid on mõlemas seadmes samad, siis on ühendus läbivalt krüptitud ja verifitseeritud ning mitte keegi ei saa seda vahepealt jälgida.</string>
+    <string name="share_invite_link">Jaga kutselinki</string>
+    <string name="share_invite_link_chooser">Jaga Pere asukoha rakenduse kutset</string>
 </resources>
