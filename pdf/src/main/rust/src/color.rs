@@ -296,10 +296,17 @@ pub(crate) fn read_gamma_rgb(dict: &lopdf::Dictionary) -> Option<[f64;3]> {
 pub(crate) fn read_matrix_cal(dict: &lopdf::Dictionary) -> Option<[[f64;3];3]> {
     let arr = dict.get(b"Matrix").ok().and_then(|o| o.as_array().ok())?;
     if arr.len()>=9 {
+        // PDF stores the CalRGB Matrix column-major as
+        // [XA YA ZA  XB YB ZB  XC YC ZC], defining
+        //   X = XA·A + XB·B + XC·C, Y = YA·A + …, Z = ZA·A + …
+        // eval_cs_to_rgb multiplies rows against (A,B,C), so store it as rows
+        // [[XA XB XC],[YA YB YC],[ZA ZB ZC]] (i.e. transposed from the array
+        // order). Storing it in raw array order transposes the transform and
+        // turns e.g. CalRGB white into cyan (issue #321 colorrenderexample).
         Some([
-            [num(&arr[0])?, num(&arr[1])?, num(&arr[2])?],
-            [num(&arr[3])?, num(&arr[4])?, num(&arr[5])?],
-            [num(&arr[6])?, num(&arr[7])?, num(&arr[8])?],
+            [num(&arr[0])?, num(&arr[3])?, num(&arr[6])?],
+            [num(&arr[1])?, num(&arr[4])?, num(&arr[7])?],
+            [num(&arr[2])?, num(&arr[5])?, num(&arr[8])?],
         ])
     } else { None }
 }

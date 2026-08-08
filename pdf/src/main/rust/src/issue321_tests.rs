@@ -225,7 +225,77 @@ mod issue321 {
         report
     }
 
+    /// Debug helper: print the most frequent fill colors (ARGB) a fixture page
+    /// emits, to compare against a reference render when chasing color bugs.
+    /// Ignored by default; run with:
+    ///   cargo test -p pdf_render issue321_fill_colors -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn issue321_fill_colors() {
+        let dir = match fixtures_dir() {
+            Some(d) => d,
+            None => return,
+        };
+        let name = std::env::var("FILL_PDF").unwrap_or_else(|_| "colorrenderexample".to_string());
+        let page_idx: usize = std::env::var("FILL_PAGE").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
+        let path = dir.join(format!("{}.pdf", name));
+        let bytes = std::fs::read(&path).expect("read fixture");
+        let doc = load_document_lenient(&bytes).expect("load");
+        let pages = doc.get_pages();
+        let (_, page_id) = pages.iter().nth(page_idx).expect("page");
+        let pd = interpret_page(&doc, *page_id).expect("interpret");
+        let mut counts: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+        for p in &pd.prims {
+            match p {
+                Prim::Fill { argb, .. } => *counts.entry(*argb).or_default() += 1,
+                Prim::Text { argb, outline: false, .. } => *counts.entry(*argb).or_default() += 1,
+                _ => {}
+            }
+        }
+        let mut v: Vec<(u32, usize)> = counts.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1));
+        println!("=== {} p{} top fill/text colors (ARGB) ===", name, page_idx);
+        for (argb, n) in v.iter().take(25) {
+            println!(
+                "  #{:08X}  a={} r={} g={} b={}  ×{}",
+                argb, (argb >> 24) & 0xFF, (argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, n
+            );
+        }
+        // Sample decoded image pixels (RGBA format 0) at a 3×3 grid so colors can
+        // be diffed against a reference renderer.
+        let mut img_no = 0;
+        for p in &pd.prims {
+            if let Prim::Image { w, h, format, data, .. } = p {
+                if *format != 0 || data.is_empty() {
+                    continue;
+                }
+                println!("  image#{} {}x{}:", img_no, w, h);
+                for fy in [0.25, 0.5, 0.75] {
+                    let mut row = String::new();
+                    for fx in [0.25, 0.5, 0.75] {
+                        let px = ((*w as f64 * fx) as u32).min(w - 1);
+                        let py = ((*h as f64 * fy) as u32).min(h - 1);
+                        let i = ((py * w + px) * 4) as usize;
+                        if i + 3 < data.len() {
+                            row += &format!(
+                                " ({:3},{:3},{:3},{:3})",
+                                data[i], data[i + 1], data[i + 2], data[i + 3]
+                            );
+                        }
+                    }
+                    println!("   {}", row);
+                }
+                img_no += 1;
+                if img_no >= 6 {
+                    break;
+                }
+            }
+        }
+    }
+
     /// Drive every fixture and print a per-PDF / per-page report. This test never
+    /// fails on rendering defects itself (it is a diagnostic harness); it only
+    /// fails if the harness cannot run. Skips cleanly when fixtures are absent.
     /// fails on rendering defects itself (it is a diagnostic harness); it only
     /// fails if the harness cannot run. Skips cleanly when fixtures are absent.
     #[test]
