@@ -27,19 +27,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
+import com.vayunmathur.library.ui.Checkbox
+import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconArrowDropDown
 import com.vayunmathur.library.ui.IconFullscreen
 import com.vayunmathur.library.ui.IconFullscreenExit
 import com.vayunmathur.library.ui.IconList
+import com.vayunmathur.library.ui.IconLock
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Slider
 import com.vayunmathur.library.ui.SliderDefaults
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +70,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.Cue
@@ -158,6 +164,17 @@ fun VideoPlayer(
     var isLanguageMenuExpanded by remember { mutableStateOf(false) }
     var isChapterMenuVisible by remember { mutableStateOf(false) }
     var isCaptionMenuExpanded by remember { mutableStateOf(false) }
+    var isSpeedMenuExpanded by remember { mutableStateOf(false) }
+
+    // Tempo (playback speed) and pitch, applied via PlaybackParameters. When pitch is "hooked"
+    // to tempo it tracks it 1:1 (natural resample); unhooking lets the user set it independently.
+    var playbackSpeed by remember { mutableFloatStateOf(1f) }
+    var playbackPitch by remember { mutableFloatStateOf(1f) }
+    var unhookPitch by remember { mutableStateOf(false) }
+
+    // Lock hides all controls (and disables seek/speed gestures) so a fullscreen video can't be
+    // disturbed by accidental touches, until the user taps the on-screen unlock button.
+    var isLocked by remember { mutableStateOf(false) }
 
     var selectedSubtitle by remember { mutableStateOf<SubtitleTrack?>(null) }
     var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
@@ -380,6 +397,11 @@ fun VideoPlayer(
         }.build()
     }
 
+    // Apply tempo/pitch whenever they change (or the controller connects).
+    LaunchedEffect(controller, playbackSpeed, playbackPitch) {
+        controller?.playbackParameters = PlaybackParameters(playbackSpeed, playbackPitch)
+    }
+
     val isPipMode = rememberIsInPipMode()
     val scope = rememberCoroutineScope()
 
@@ -392,6 +414,7 @@ fun VideoPlayer(
                 detectTapGestures(
                     onTap = { isControlsVisible = !isControlsVisible },
                     onDoubleTap = { offset ->
+                        if (isLocked) return@detectTapGestures
                         val isRightSide = offset.x > size.width / 2
                         if (isRightSide) {
                             controller?.seekTo(currentPosition + 10000L)
@@ -400,6 +423,7 @@ fun VideoPlayer(
                         }
                     },
                     onPress = {
+                        if (isLocked) return@detectTapGestures
                         val job = scope.launch {
                             delay(viewConfiguration.longPressTimeoutMillis)
                             controller?.setPlaybackSpeed(2f)
@@ -408,7 +432,8 @@ fun VideoPlayer(
                             awaitRelease()
                         } finally {
                             job.cancel()
-                            controller?.setPlaybackSpeed(1f)
+                            // Restore the user's chosen tempo/pitch, not a hardcoded 1x.
+                            controller?.playbackParameters = PlaybackParameters(playbackSpeed, playbackPitch)
                         }
                     }
                 )
@@ -450,7 +475,7 @@ fun VideoPlayer(
             }
         }
 
-        AnimatedVisibility(visible = isControlsVisible && !isPipMode, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = isControlsVisible && !isPipMode && !isLocked, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f))) {
 
                 Row(
@@ -542,6 +567,90 @@ fun VideoPlayer(
                             IconList(tint = Color.White, modifier = Modifier.size(20.dp))
                         }
                     }
+
+                    Box {
+                        Surface(
+                            onClick = { isSpeedMenuExpanded = true },
+                            color = Color.Black.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = stringResource(R.string.playback_tempo_value, formatTempo(playbackSpeed)),
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                                IconArrowDropDown(tint = Color.White)
+                            }
+                        }
+                        DropdownMenu(expanded = isSpeedMenuExpanded, onDismissRequest = { isSpeedMenuExpanded = false }) {
+                            Column(modifier = Modifier.width(280.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = stringResource(R.string.playback_tempo), style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        text = stringResource(R.string.playback_tempo_value, formatTempo(playbackSpeed)),
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                }
+                                Slider(
+                                    value = playbackSpeed,
+                                    onValueChange = {
+                                        playbackSpeed = it
+                                        if (!unhookPitch) playbackPitch = it
+                                    },
+                                    valueRange = 0.25f..2f,
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = stringResource(R.string.playback_pitch), style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        text = stringResource(R.string.playback_pitch_value, (playbackPitch * 100).toInt()),
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                }
+                                Slider(
+                                    value = playbackPitch,
+                                    onValueChange = { playbackPitch = it },
+                                    valueRange = 0.5f..2f,
+                                    enabled = unhookPitch,
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            unhookPitch = !unhookPitch
+                                            if (!unhookPitch) playbackPitch = playbackSpeed
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = unhookPitch,
+                                        onCheckedChange = {
+                                            unhookPitch = it
+                                            if (!it) playbackPitch = playbackSpeed
+                                        },
+                                    )
+                                    Text(text = stringResource(R.string.playback_unhook_pitch), style = MaterialTheme.typography.bodyMedium)
+                                }
+                                HorizontalDivider()
+                                TextButton(
+                                    onClick = {
+                                        playbackSpeed = 1f
+                                        playbackPitch = 1f
+                                        unhookPitch = false
+                                    },
+                                    modifier = Modifier.align(Alignment.End)
+                                ) { Text(stringResource(R.string.playback_reset)) }
+                            }
+                        }
+                    }
                 }
 
                 controller?.let { player ->
@@ -614,9 +723,34 @@ fun VideoPlayer(
                         }
                     }
                     Spacer(Modifier.padding(4.dp))
+                    if (isFullscreen) {
+                        IconButton(onClick = {
+                            isLocked = true
+                            isControlsVisible = false
+                        }) {
+                            IconLock(tint = Color.White)
+                        }
+                    }
                     IconButton({onFullscreenChange(!isFullscreen)}) {
                         if(isFullscreen) IconFullscreenExit() else IconFullscreen()
                     }
+                }
+            }
+        }
+
+        AnimatedVisibility(visible = isLocked && isControlsVisible && !isPipMode, enter = fadeIn(), exit = fadeOut()) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                IconButton(
+                    onClick = {
+                        isLocked = false
+                        isControlsVisible = true
+                    },
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .size(56.dp)
+                ) {
+                    IconLock(tint = Color.White, modifier = Modifier.size(28.dp))
                 }
             }
         }
@@ -675,3 +809,10 @@ fun VideoPlayer(
 }
 
 private const val HISTORY_UPSERT_INTERVAL_MS = 5000L
+
+/** Formats a tempo multiplier for display: whole values as "2", fractional as "1.5". */
+private fun formatTempo(speed: Float): String {
+    val rounded = Math.round(speed * 100f) / 100f
+    return if (rounded % 1f == 0f) rounded.toInt().toString()
+    else rounded.toString().trimEnd('0').trimEnd('.')
+}

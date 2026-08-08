@@ -265,4 +265,21 @@
     <string name="settings_sponsorblock_summary">%1$d of %2$d blocked</string>
     <!-- Recommendation preset name when the user has manually adjusted the dials. Adjective -->
     <string name="preset_custom">Custom</string>
+
+    <!-- Player controls: title of the playback tempo (speed) slider. Noun -->
+    <string name="playback_tempo">Tempo</string>
+    <!-- Player controls: title of the playback pitch slider. Noun -->
+    <string name="playback_pitch">Pitch</string>
+    <!-- Player controls: tempo value as a multiplier. %1$s = value e.g. 1.5. Keep the x suffix -->
+    <string name="playback_tempo_value"><xliff:g id="value" example="1.5">%1$s</xliff:g>x</string>
+    <!-- Player controls: pitch value as a percentage. %1$d = value e.g. 100. Keep the percent sign -->
+    <string name="playback_pitch_value"><xliff:g id="value" example="100">%1$d</xliff:g>%%</string>
+    <!-- Player controls: checkbox to control pitch independently of tempo (may distort audio). Phrase -->
+    <string name="playback_unhook_pitch">Unhook pitch (may distort)</string>
+    <!-- Player controls: button that resets tempo and pitch to default. Verb -->
+    <string name="playback_reset">Reset</string>
+    <!-- Player controls: content description for the lock-controls button shown in fullscreen. Verb phrase -->
+    <string name="lock_controls">Lock controls</string>
+    <!-- Player controls: content description for the unlock button shown while controls are locked. Verb phrase -->
+    <string name="unlock_controls">Unlock controls</string>
 </resources>
