@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="channel_info">&lt;xliff:g id=\"count\" example=\"1,2 M\"&gt;%1$s&lt;/xliff:g&gt; abonnés</string>
     <string name="action_unpin">Désépingler</string>
     <string name="video_stat_format">&lt;xliff:g id=\"views\" example=\"1M\"&gt;%1$s&lt;/xliff:g&gt; vues | &lt;xliff:g id=\"time\" example=\"3 days ago\"&gt;%2$s&lt;/xliff:g&gt;</string>
@@ -96,7 +96,7 @@
     <string name="selected_count">%1$s sélectionné(s)</string>
     <string name="selected_1">Sélection : &lt;xliff:g id=\"count\" example=\"2\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="download">Télécharger</string>
-    <string name="language">Langue</string>
+    <string name="language">Langage</string>
     <string name="chapter">Chapitre</string>
     <string name="are_you_sure_you_want_to_clear_all_watch">Voulez-vous vraiment effacer tout l’historique des vidéos regardées ?</string>
     <string name="resolution">Résolution</string>
@@ -104,4 +104,18 @@
     <string name="label_default_page">Ouvrir sur</string>
     <string name="label_general">Général</string>
     <string name="page_downloads">Téléchargements</string>
+    <string name="page_saved">Enregistrés</string>
+    <string name="title_saved">Enregistrés</string>
+    <string name="title_downloads">Téléchargements</string>
+    <string name="playlist_watch_later">À regarder plus tard</string>
+    <string name="title_create_playlist">Créer une playlist</string>
+    <string name="label_playlist_name">Nom de la playlist</string>
+    <string name="action_create_playlist">Créer</string>
+    <string name="add_to_playlist">Ajouter à une playlist</string>
+    <string name="new_playlist">Nouvelle playlist</string>
+    <string name="action_delete_playlist">Supprimer la playlist</string>
+    <string name="playlist_empty">Aucune vidéo dans cette playlist pour le moment</string>
+    <string name="adding_to_watch_later">Ajout à « À regarder plus tard »…</string>
+    <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> vidéos</string>
+    <string name="label_history">Historique</string>
 </resources>
