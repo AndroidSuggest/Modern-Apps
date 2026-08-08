@@ -113,4 +113,6 @@
     <string name="enable_after">在此之后启用</string>
     <string name="auto_toggle_never">从不</string>
     <string name="link_pqc_unavailable">无法在此设备上创建链接。</string>
+    <string name="share_invite_link">分享邀请链接</string>
+    <string name="share_invite_link_chooser">分享寻找家人邀请</string>
 </resources>
