@@ -59,4 +59,9 @@
     <string name="app_name">Mots de passe</string>
     <string name="passkey_created">Créée</string>
     <string name="sync_cancel">Annuler</string>
+    <string name="label_username">Nom d’utilisateur</string>
+    <string name="label_email">Adresse e-mail</string>
+    <string name="label_note">Note</string>
+    <string name="section_note">Note</string>
+    <string name="name_required">Le nom ne peut pas être vide</string>
 </resources>
