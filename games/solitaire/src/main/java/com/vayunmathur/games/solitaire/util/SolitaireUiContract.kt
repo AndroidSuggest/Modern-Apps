@@ -34,6 +34,14 @@ interface SolitaireActions {
     fun pyramidTapCard(id: String) {}
     fun pyramidDealStock() {}
 
+    /**
+     * Tap-to-move: send the card (or valid run) at [sourceId] to its best legal
+     * destination — a foundation first, otherwise a valid tableau/free-cell spot.
+     * A no-op when there is no legal move. Klondike and FreeCell only; Spider has no
+     * foundations and Pyramid is already tap-based.
+     */
+    fun autoMove(sourceId: String) {}
+
     fun undo() {}
     fun restart() {}
     fun giveUp() {}

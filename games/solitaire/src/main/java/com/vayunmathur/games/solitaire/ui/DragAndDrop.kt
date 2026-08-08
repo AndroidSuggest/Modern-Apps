@@ -1,6 +1,7 @@
 package com.vayunmathur.games.solitaire.ui
 
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -49,6 +50,11 @@ fun DraggableCard(
             .onGloballyPositioned { coords ->
                 startPos = coords.positionInRoot()
                 cardSize = coords.size
+            }
+            .pointerInput(card, sourceId) {
+                detectTapGestures(
+                    onTap = { actions.autoMove(sourceId) },
+                )
             }
             .pointerInput(card, sourceId) {
                 detectDragGestures(

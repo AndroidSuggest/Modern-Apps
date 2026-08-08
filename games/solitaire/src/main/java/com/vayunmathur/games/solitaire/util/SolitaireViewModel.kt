@@ -887,6 +887,110 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    // --- Tap to move (auto) ---
+
+    override fun autoMove(sourceId: String) {
+        when (_uiState.value.gameMode) {
+            GameMode.KLONDIKE -> klondikeAutoMove(sourceId)
+            GameMode.FREECELL -> freeCellAutoMove(sourceId)
+            else -> {} // Spider has no foundations; Pyramid is already tap-based.
+        }
+    }
+
+    private fun klondikeAutoMove(sourceId: String) {
+        val state = _uiState.value.klondike ?: return
+        if (state.isWon) return
+        val cards = draggedCards(sourceId)
+        if (cards.isEmpty()) return
+        val topCard = cards.first()
+
+        val fromCol = if (sourceId.startsWith("tableau_"))
+            sourceId.removePrefix("tableau_").substringBefore("_").toIntOrNull() else null
+        val fromIdx = if (sourceId.startsWith("tableau_"))
+            sourceId.removePrefix("tableau_").split("_").getOrNull(1)?.toIntOrNull() ?: 0 else 0
+
+        // 1) Foundation — only a single top card can go up, and it is the preferred move.
+        if (cards.size == 1) {
+            for (fi in state.foundations.indices) {
+                if (canPlaceOnFoundation(topCard, state.foundations[fi])) {
+                    when {
+                        sourceId == "waste" -> klondikeMoveWasteToFoundation(fi)
+                        fromCol != null -> klondikeMoveTableauToFoundation(fromCol, fi)
+                        else -> return
+                    }
+                    return
+                }
+            }
+        }
+
+        // 2) Tableau — first column that legally accepts the run.
+        for (toCol in state.tableauPiles.indices) {
+            if (toCol == fromCol) continue
+            val toPile = state.tableauPiles[toCol]
+            if (!canPlaceOnKlondikeTableau(topCard, toPile)) continue
+            // Skip shuffling a lone King between empty columns — it accomplishes nothing.
+            val toEmpty = toPile.faceUp.isEmpty() && toPile.faceDown.isEmpty()
+            if (toEmpty && fromCol != null && fromIdx == 0 && state.tableauPiles[fromCol].faceDown.isEmpty()) continue
+            when {
+                sourceId == "waste" -> klondikeMoveWasteToTableau(toCol)
+                fromCol != null -> klondikeMoveTableauToTableau(fromCol, fromIdx, toCol)
+                else -> return
+            }
+            return
+        }
+    }
+
+    private fun freeCellAutoMove(sourceId: String) {
+        val state = _uiState.value.freeCell ?: return
+        if (state.isWon) return
+        val cards = draggedCards(sourceId)
+        if (cards.isEmpty()) return
+        val topCard = cards.first()
+        val single = cards.size == 1
+
+        val fromCol = if (sourceId.startsWith("tableau_"))
+            sourceId.removePrefix("tableau_").substringBefore("_").toIntOrNull() else null
+        val fromIdx = if (sourceId.startsWith("tableau_"))
+            sourceId.removePrefix("tableau_").split("_").getOrNull(1)?.toIntOrNull() ?: 0 else 0
+        val fromCell = if (sourceId.startsWith("freecell_"))
+            sourceId.removePrefix("freecell_").toIntOrNull() else null
+
+        // 1) Foundation (single card only), the preferred move.
+        if (single) {
+            for (fi in state.foundations.indices) {
+                if (canPlaceOnFoundation(topCard, state.foundations[fi])) {
+                    when {
+                        fromCell != null -> freeCellMoveFreeCellToFoundation(fromCell, fi)
+                        fromCol != null -> freeCellMoveTableauToFoundation(fromCol, fi)
+                        else -> return
+                    }
+                    return
+                }
+            }
+        }
+
+        // 2) Tableau — first column that legally accepts the run.
+        for (toCol in state.tableauPiles.indices) {
+            if (toCol == fromCol) continue
+            val toPile = state.tableauPiles[toCol]
+            if (!canPlaceOnFreeCellTableau(topCard, toPile)) continue
+            // Skip moving a lone card between empty columns — pointless churn.
+            if (toPile.isEmpty() && fromCol != null && single && state.tableauPiles[fromCol].size == 1) continue
+            when {
+                fromCell != null -> freeCellMoveFromFreeCell(fromCell, toCol)
+                fromCol != null -> freeCellMoveTableauToTableau(fromCol, fromIdx, toCol)
+                else -> return
+            }
+            return
+        }
+
+        // 3) Empty free cell — last resort for a single card off a tableau column.
+        if (single && fromCol != null) {
+            val emptyCell = state.freeCells.indexOfFirst { it == null }
+            if (emptyCell >= 0) freeCellMoveToFreeCell(fromCol, emptyCell)
+        }
+    }
+
     /**
      * Starts a drag from [sourceId], deriving the carried cards from current state.
      * Returns false (and starts nothing) when that source holds no card.
