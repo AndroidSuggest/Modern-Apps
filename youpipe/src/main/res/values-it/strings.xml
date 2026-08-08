@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">YouPipe</string>
     <string name="title_history">Cronologia</string>
     <string name="label_search">Cerca</string>
-    <string name="subscribers_count">%1$s iscritti</string>
+    <string name="subscribers_count">&lt;xliff:g id=\"count\" example=\"12K\"&gt;%1$s&lt;/xliff:g&gt; iscritti</string>
     <string name="title_create_subscription_category">Crea categoria di iscrizioni</string>
     <string name="title_update_subscription_category">Aggiorna categoria di iscrizioni</string>
     <string name="label_category_name">Nome categoria</string>
@@ -18,20 +18,20 @@
     <string name="label_groups">Gruppi:</string>
     <string name="label_all_subscriptions">Tutte le iscrizioni</string>
     <string name="label_channels">Canali:</string>
-    <string name="video_info_format">%1$s | %2$s visualizzazioni | %3$s</string>
+    <string name="video_info_format">&lt;xliff:g id=\"channel\" example=\"Linus Tech Tips\"&gt;%1$s&lt;/xliff:g&gt; | &lt;xliff:g id=\"views\" example=\"1.2M\"&gt;%2$s&lt;/xliff:g&gt; visualizzazioni | &lt;xliff:g id=\"time\" example=\"2 days ago\"&gt;%3$s&lt;/xliff:g&gt;</string>
     <string name="time_ago_just_now">In questo momento</string>
-    <string name="time_ago_minutes">%1$d minuti fa</string>
-    <string name="time_ago_hours">%1$d ore fa</string>
-    <string name="time_ago_days">%1$d giorni fa</string>
-    <string name="time_ago_months">%1$d mesi fa</string>
-    <string name="time_ago_years">%1$d anni fa</string>
-    <string name="count_k_format">%1$sK</string>
-    <string name="count_m_format">%1$sM</string>
-    <string name="count_b_format">%1$sB</string>
+    <string name="time_ago_minutes">&lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; minuti fa</string>
+    <string name="time_ago_hours">&lt;xliff:g id=\"hours\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; ore fa</string>
+    <string name="time_ago_days">&lt;xliff:g id=\"days\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; giorni fa</string>
+    <string name="time_ago_months">&lt;xliff:g id=\"months\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; mesi fa</string>
+    <string name="time_ago_years">&lt;xliff:g id=\"years\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; anni fa</string>
+    <string name="count_k_format">&lt;xliff:g id=\"number\" example=\"12.3\"&gt;%1$s&lt;/xliff:g&gt;K</string>
+    <string name="count_m_format">&lt;xliff:g id=\"number\" example=\"1.2\"&gt;%1$s&lt;/xliff:g&gt;Mln</string>
+    <string name="count_b_format">&lt;xliff:g id=\"number\" example=\"3.4\"&gt;%1$s&lt;/xliff:g&gt;Mld</string>
     <string name="action_subscribe">Iscriviti</string>
     <string name="action_unsubscribe">Annulla iscrizione</string>
-    <string name="channel_info">%1$s iscritti</string>
-    <string name="video_stat_format">%1$s visualizzazioni | %2$s</string>
+    <string name="channel_info">&lt;xliff:g id=\"count\" example=\"1.2M\"&gt;%1$s&lt;/xliff:g&gt; iscritti</string>
+    <string name="video_stat_format">&lt;xliff:g id=\"views\" example=\"1M\"&gt;%1$s&lt;/xliff:g&gt; visualizzazioni | &lt;xliff:g id=\"time\" example=\"3 days ago\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="label_description">Descrizione</string>
     <string name="title_settings">Impostazioni</string>
     <string name="label_sponsorblock">Categorie di SponsorBlock</string>
@@ -40,11 +40,11 @@
     <string name="label_import_newpipe">Importa iscrizioni NewPipe</string>
     <string name="label_import_youtube">Importa da YouTube (Takeout)</string>
     <string name="label_export_youpipe">Esporta iscrizioni</string>
-    <string name="video_quality_fps_codec">%1$s (%2$dfps) %3$s</string>
+    <string name="video_quality_fps_codec">&lt;xliff:g id=\"quality\" example=\"1080p\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"fps\" example=\"60\"&gt;%2$d&lt;/xliff:g&gt;fps) &lt;xliff:g id=\"codec\" example=\"avc\"&gt;%3$s&lt;/xliff:g&gt;</string>
     <string name="empty_recommendations">Guarda alcuni video per ricevere suggerimenti personalizzati</string>
     <string name="label_dearrow">Abilita DeArrow</string>
     <string name="label_dearrow_description">Sostituisci titoli e miniature clickbait con alternative della community</string>
-    <string name="recommendation_reason">Perché: %1$s</string>
+    <string name="recommendation_reason">Motivo: &lt;xliff:g id=\"reason\" example=\"watched similar\"&gt;%1$s&lt;/xliff:g&gt;</string>
     <string name="action_not_interested">Non interessato</string>
     <string name="action_more_like_this">Altri simili</string>
     <string name="action_pin_channel">Fissa canale</string>
@@ -88,4 +88,39 @@
     <string name="label_no_channels">Nessun canale correlato rilevato</string>
     <string name="label_no_topics">Nessun argomento correlato rilevato</string>
     <string name="action_unmute">Attiva audio</string>
+    <string name="download_options">Opzioni download</string>
+    <string name="download">Scarica</string>
+    <string name="resolution">Risoluzione</string>
+    <string name="language">Lingua</string>
+    <string name="off">Disattivo</string>
+    <string name="chapter">Capitolo</string>
+    <string name="cc">CC</string>
+    <string name="loading_recent_subscriptions">Caricamento iscrizioni recenti</string>
+    <string name="label_general">Generali</string>
+    <string name="label_default_page">Apri in</string>
+    <string name="page_home">Home</string>
+    <string name="page_downloads">Download</string>
+    <string name="page_saved">Salvati</string>
+    <string name="title_saved">Salvati</string>
+    <string name="title_downloads">Download</string>
+    <string name="playlist_watch_later">Guarda più tardi</string>
+    <string name="title_create_playlist">Crea playlist</string>
+    <string name="label_playlist_name">Nome playlist</string>
+    <string name="action_create_playlist">Crea</string>
+    <string name="add_to_playlist">Aggiungi alla playlist</string>
+    <string name="new_playlist">Nuova playlist</string>
+    <string name="action_delete_playlist">Elimina playlist</string>
+    <string name="playlist_empty">Nessun video presente in questa playlist</string>
+    <string name="adding_to_watch_later">Aggiunta a Guarda più tardi…</string>
+    <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> video</string>
+    <string name="selected_count"><xliff:g id="count" example="3">%1$s</xliff:g> selezionati</string>
+    <string name="clear_history">Cancella cronologia</string>
+    <string name="are_you_sure_you_want_to_clear_all_watch">Sei sicuro di voler cancellare tutta la cronologia di visualizzazione?</string>
+    <string name="selected_1"><xliff:g id="count" example="2">%1$s</xliff:g> Selezionati</string>
+    <string name="label_history">Cronologia</string>
+    <string name="settings_general_content">Generali e contenuti</string>
+    <string name="settings_sponsorblock">SponsorBlock</string>
+    <string name="settings_data">Dati e backup</string>
+    <string name="settings_sponsorblock_summary">%1$d di %2$d bloccati</string>
+    <string name="preset_custom">Personalizzato</string>
 </resources>
