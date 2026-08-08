@@ -15,4 +15,5 @@
     <string name="rise_1">Sorgere: <xliff:g id="time" example="18:45">%1$s</xliff:g> ?:</string>
     <string name="set_1">Tramonto: <xliff:g id="time" example="04:12">%1$s</xliff:g> ?:</string>
     <string name="use_current_location">Utilizza posizione attuale</string>
+    <string name="off">Disattivo</string>
 </resources>
