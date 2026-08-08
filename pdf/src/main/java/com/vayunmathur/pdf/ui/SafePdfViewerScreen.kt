@@ -388,9 +388,28 @@ private data class EditAction(
  * drawn narrower than the screen so more of the document fits on it at once.
  */
 private const val MIN_ZOOM = 0.5f
+/// Minimum max-zoom (applies to normal-sized pages). Large pages raise this via
+/// [maxZoomFor] so their fine detail can actually be inspected (issue #321
+/// doesntzoomfully/doesntzoomfully2 were capped too low to read large pages).
 private const val MAX_ZOOM = 6f
+/// Absolute ceiling to bound pan math / memory regardless of page size.
+private const val ABS_MAX_ZOOM = 40f
+/// A large page may be zoomed until ~this many device pixels map to one PDF
+/// point, past the fit-to-width baseline.
+private const val TARGET_PX_PER_POINT = 4f
 private const val DOUBLE_TAP_ZOOM = 2.5f
 private const val DOUBLE_TAP_ZOOM_THRESHOLD = 1.2f
+
+/// Effective maximum zoom for a page [pageWidthPts] points wide shown in a
+/// [viewportWidthPx]-wide viewport. At zoom 1 the page fills the viewport width,
+/// so `Z` device-px per point = `Z * viewportWidthPx / pageWidthPts`; solving for
+/// [TARGET_PX_PER_POINT] gives the cap. Clamped to [MAX_ZOOM]..[ABS_MAX_ZOOM] so
+/// small pages keep a sane limit and huge pages can't overflow the pan math.
+private fun maxZoomFor(pageWidthPts: Float, viewportWidthPx: Int): Float {
+    if (pageWidthPts <= 0f || viewportWidthPx <= 0) return MAX_ZOOM
+    val z = TARGET_PX_PER_POINT * pageWidthPts / viewportWidthPx
+    return z.coerceIn(MAX_ZOOM, ABS_MAX_ZOOM)
+}
 
 /**
  * Clamp the zoom [pan] (screen-pixel translation) so the content, scaled by
@@ -617,6 +636,9 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
+    // Widest page seen so far (PDF points), used to raise the zoom cap for large
+    // pages so their detail can be inspected. Monotonic across lazily-loaded pages.
+    var maxPageWidthPts by remember { mutableFloatStateOf(0f) }
     // True while ≥2 fingers are down. The LazyColumn's scroll is a descendant of
     // the transformable, so it can otherwise claim a two-finger drag as a scroll
     // before the pinch is recognized; disabling scroll during multi-touch makes a
@@ -624,7 +646,8 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
     var multiTouch by remember { mutableStateOf(false) }
     val transformState = rememberTransformableState { centroid, zoomChange, panChange, _ ->
         val zoomOld = zoom
-        zoom = (zoom * zoomChange).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        val maxZoom = maxZoomFor(maxPageWidthPts, viewportSize.width)
+        zoom = (zoom * zoomChange).coerceIn(MIN_ZOOM, maxZoom)
         // Keep the content point under the gesture centroid fixed while zooming, then
         // apply the two-finger drag. `transformable` sits above the graphicsLayer in the
         // modifier chain, so centroid/panChange already arrive in viewport pixels, and
@@ -1064,6 +1087,7 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                             onCreated = { id -> registerCreated(index, id) },
                             onMoved = { id, oldR, newR -> registerMoved(index, id, oldR, newR) },
                             onFormEdited = { markEdited(index); nonUndoDirty = true },
+                            onPageWidth = { w -> if (w > maxPageWidthPts) maxPageWidthPts = w },
                             onLinkPage = { p -> scope.launch { listState.animateScrollToItem(p.coerceIn(0, (pageCount - 1).coerceAtLeast(0))) } },
                             textSession = textSession?.takeIf { it.page == index },
                             onStartText = { s -> commitText(textSession); textSession = s },
@@ -1277,6 +1301,7 @@ private fun SafePdfPageItem(
     onCreated: (Long) -> Unit,
     onMoved: (Long, List<Float>, List<Float>) -> Unit,
     onFormEdited: () -> Unit,
+    onPageWidth: (Float) -> Unit = {},
     textSession: TextSession?,
     onStartText: (TextSession) -> Unit,
     onTextChange: (TextFieldValue) -> Unit,
@@ -1302,6 +1327,11 @@ private fun SafePdfPageItem(
     }
 
     val current = page
+
+    // Report this page's width so the viewer can raise the zoom cap for large pages.
+    LaunchedEffect(current?.width) {
+        current?.width?.let { if (it > 0f) onPageWidth(it) }
+    }
 
     SafePdfPageCanvas(current) { cw, ch, scale ->
         // Non-null inside the overlay slot: SafePdfPageCanvas only invokes it once the page
