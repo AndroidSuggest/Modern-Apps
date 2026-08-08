@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="search">Rechercher</string>
     <string name="label_oxygen_saturation">Saturation en oxygène</string>
     <string name="label_blood_pressure">Tension artérielle</string>
@@ -134,4 +134,10 @@
     <string name="hydration_milliliters">Millilitres</string>
     <string name="route_recorded">Itinéraire enregistré</string>
     <string name="create_your_first_recipe">Créez votre première recette</string>
+    <string name="grant_permissions_rationale">Cette application lit et écrit vos données de santé via Health Connect. Aucune donnée ne quitte votre appareil.</string>
+    <string name="food_database">Base de données alimentaires</string>
+    <string name="food_database_absent">La base de données alimentaires est en cours de préparation. En attendant, seuls les ingrédients que vous avez déjà enregistrés peuvent être trouvés.</string>
+    <string name="food_database_preparing">Préparation de <xliff:g id="products_done" example="120,000">%1$s</xliff:g> produits sur <xliff:g id="products_total" example="465,000">%2$s</xliff:g></string>
+    <string name="food_database_retry">Réessayer</string>
+    <string name="food_database_attribution">Données nutritionnelles provenant d’Open Food Facts, ODbL v1.0</string>
 </resources>
