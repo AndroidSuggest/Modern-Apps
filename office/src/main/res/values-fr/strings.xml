@@ -275,4 +275,13 @@
     <string name="image_1">Image…</string>
     <string name="merge_with_right">Fusionner avec la cellule de droite</string>
     <string name="new_sheet">Nouvelle feuille</string>
+    <string name="share_link">Partager le lien</string>
+    <string name="share_link_chooser">Partager l’invitation Office</string>
+    <string name="requests_header">Demandes</string>
+    <string name="approve">Approuver</string>
+    <string name="deny">Refuser</string>
+    <string name="request_wants_to_join">%1$s souhaite rejoindre « %2$s »</string>
+    <string name="join_request_sending">Demande d’accès en cours…</string>
+    <string name="join_request_sent">Demande envoyée — vous aurez accès dès que le propriétaire l’aura approuvée.</string>
+    <string name="join_request_failed">Impossible d’envoyer la demande — vérifiez votre connexion et réessayez.</string>
 </resources>
