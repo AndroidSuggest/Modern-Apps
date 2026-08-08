@@ -27,7 +27,7 @@
     <string name="starttls">STARTTLS</string>
     <string name="listening_for_new_mail">In attesa di nuove email</string>
     <string name="drafts">Bozze</string>
-    <string name="email_widget_description">I messaggi recenti dalla tua casella unificata — tocca per aprire Email</string>
+    <string name="email_widget_description">I messaggi recenti dalla tua casella unificata - tocca per aprire Email</string>
     <string name="account_added">Account aggiunto</string>
     <string name="username">Nome utente</string>
     <string name="username_is_not_my_email">Il nome utente non è la mia email</string>
@@ -133,4 +133,19 @@
     <string name="serif">Graziato</string>
     <string name="font_default">Predefinito</string>
     <string name="alignment">Allineamento</string>
+    <string name="oauth_sign_in">Accesso tramite OAuth</string>
+    <string name="email_address_optional">Indirizzo email (opzionale)</string>
+    <string name="use_app_password_instead">Usa invece una password per l\'app</string>
+    <string name="reading">Lettura</string>
+    <string name="load_remote_images">Carica immagini remote</string>
+    <string name="load_remote_images_summary">Mostra sempre le immagini esterne. I mittenti possono usarle per sapere quando apri un messaggio.</string>
+    <string name="horizontal_rule">Linea orizzontale</string>
+    <string name="text_color">Colore testo</string>
+    <string name="highlight">Evidenziazione</string>
+    <string name="font_size">Dimensione carattere</string>
+    <string name="font_family">Famiglia di caratteri</string>
+    <string name="clear_formatting">Cancella formattazione</string>
+    <string name="email_sync_channel_name">Sincronizzazione e-mail in background</string>
+    <string name="email_sync_channel_desc">Mantiene una connessione IMAP aperta per ricevere istantaneamente le nuove email.</string>
+    <string name="unified_inbox_label">Posta in arrivo combinata</string>
 </resources>
