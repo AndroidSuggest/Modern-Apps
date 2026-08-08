@@ -34,9 +34,8 @@ import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.Icon
-import com.vayunmathur.library.ui.FloatingActionButton
-import com.vayunmathur.library.ui.IconArrowForward
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Surface
@@ -51,7 +50,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -410,14 +408,6 @@ fun GameScreen(state: GameUiState, actions: GameActions, onBack: () -> Unit) {
 
     Scaffold(
         topBar = { TopAppBar({}, navigationIcon = { IconNavigation(onBack) }) },
-        floatingActionButton = {
-            // Quick "next level" shortcut once solved, for players who want to move on fast.
-            if (isLevelWon && state.levelIndex < state.maxLevelIndex) {
-                FloatingActionButton(onClick = { actions.onLevelChange(state.levelIndex + 1) }) {
-                    IconArrowForward()
-                }
-            }
-        },
     ) { innerPadding ->
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -437,21 +427,25 @@ fun GameScreen(state: GameUiState, actions: GameActions, onBack: () -> Unit) {
                 )
             }
             val actionButtons = @Composable {
-                // Kept in the layout (invisible + disabled) once solved so the board doesn't
-                // shift; neither button does anything on a won level.
-                Button(
-                    onClick = { actions.onUndo() },
-                    modifier = Modifier.alpha(if (isLevelWon) 0f else 1f),
-                    enabled = state.canUndo && !isLevelWon
-                ) {
-                    Text(stringResource(UiR.string.undo))
-                }
-                Button(
-                    onClick = { actions.onRestart() },
-                    modifier = Modifier.alpha(if (isLevelWon) 0f else 1f),
-                    enabled = state.canUndo && !isLevelWon
-                ) {
-                    Text(stringResource(R.string.restart))
+                // While playing show Undo/Restart; once solved they're replaced by the
+                // "next level" button in the same row.
+                if (!isLevelWon) {
+                    Button(
+                        onClick = { actions.onUndo() },
+                        enabled = state.canUndo
+                    ) {
+                        Text(stringResource(UiR.string.undo))
+                    }
+                    Button(
+                        onClick = { actions.onRestart() },
+                        enabled = state.canUndo
+                    ) {
+                        Text(stringResource(R.string.restart))
+                    }
+                } else if (state.levelIndex < state.maxLevelIndex) {
+                    Button(onClick = { actions.onLevelChange(state.levelIndex + 1) }) {
+                        Text(stringResource(R.string.next_level))
+                    }
                 }
             }
             val board = @Composable { boardModifier: Modifier ->
