@@ -8,4 +8,6 @@
     <string name="translation">翻译</string>
     <string name="translation_model_not_installed_showing">未安装翻译模型 — 仅显示检测到的文本</string>
     <string name="grant_camera_access">授予相机访问权限，以便翻译所见内容</string>
+    <string name="install_voice">安装</string>
+    <string name="no_voice_installed">未安装 %1$s 语音</string>
 </resources>
