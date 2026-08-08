@@ -9,4 +9,12 @@
     <string name="theme">Thème</string>
     <string name="follows_the_system_light_dark_theme_and">Suit le thème clair ou sombre du système ainsi que les couleurs Material You</string>
     <string name="try_the_keyboard_here">Essayez le clavier ici</string>
+    <string name="keyboard_languages">Langues du clavier</string>
+    <string name="available_for_english_layouts_only">Disponible uniquement pour les dispositions anglaises</string>
+    <string name="search_emoji">Rechercher un emoji</string>
+    <string name="emoji_you_use_show_up_here">Les emoji que vous utilisez apparaissent ici</string>
+    <string name="image">Image</string>
+    <string name="clear_clipboard">Tout effacer</string>
+    <string name="clear_clipboard_history">Effacer l’historique du presse-papiers</string>
+    <string name="copied_text_shows_up_here">Le texte et les images copiés apparaissent ici</string>
 </resources>
