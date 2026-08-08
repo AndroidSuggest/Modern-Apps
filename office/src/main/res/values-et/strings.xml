@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="hide">Peida</string>
     <string name="all">Kõik</string>
     <string name="bookmarks">Järjehoidjad</string>
@@ -38,4 +38,37 @@
     <string name="edit_image">Muuda pilti</string>
     <string name="sort">Järjesta</string>
     <string name="unknown">Pole teada</string>
+    <string name="name">Nimi</string>
+    <string name="normal">Tavaline</string>
+    <string name="heading_1">Pealkiri 1</string>
+    <string name="heading_2">Pealkiri 2</string>
+    <string name="heading_3">Pealkiri 3</string>
+    <string name="left">Vasakul</string>
+    <string name="center">Keskel</string>
+    <string name="right">Paremal</string>
+    <string name="justify">Rööpne</string>
+    <string name="clear_formatting">Eemalda vormindus</string>
+    <string name="go">Mine</string>
+    <string name="line">Rida</string>
+    <string name="slide_number_1">Slaidi number (1-<xliff:g id="total" example="10">%1$s</xliff:g>)</string>
+    <string name="sheet_1">- Arvutustabel</string>
+    <string name="empty_spreadsheet">Tühi arvutustabel</string>
+    <string name="image">[Pilt]</string>
+    <string name="col">- Vrg</string>
+    <string name="page_of">Leht <xliff:g id="current_page" example="2">%1$s</xliff:g> / <xliff:g id="total_pages" example="5">%2$s</xliff:g></string>
+    <string name="replace">Asenda…</string>
+    <string name="row">- Rida</string>
+    <string name="add_bookmark">Lisa järjehoidja</string>
+    <string name="insert_hyperlink">Lisa hüperlink</string>
+    <string name="auto_save">Automaatne salvestus</string>
+    <string name="url">Võrguaadress</string>
+    <string name="special_character">Erimärk</string>
+    <string name="insert_table">Lisa tabel</string>
+    <string name="rename_sheet">Muuda lehe nime</string>
+    <string name="play">▶ Esita</string>
+    <string name="default_font_size_pt">Kirjatüübi vaikimisi suurus: <xliff:g id="size" example="12">%1$s</xliff:g>pt</string>
+    <string name="text">+ Tekst</string>
+    <string name="row_1">+ Rida</string>
+    <string name="empty_drawing">Tühi joonistus</string>
+    <string name="slide_of">Slaid <xliff:g id="current" example="2">%1$s</xliff:g> / <xliff:g id="total" example="10">%2$s</xliff:g></string>
 </resources>
