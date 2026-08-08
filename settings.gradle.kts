@@ -90,6 +90,7 @@ include(":appstore")
 include(":fooddelivery")
 include(":musicbrainz")
 include(":measure")
+include(":taxi")
 
 // Personal / private app modules live under personal/ (gitignored). Included only
 // when present so the public repo still configures without them.
@@ -101,7 +102,4 @@ if (file("personal/amazon").exists()) {
 }
 if (file("personal/kaiser").exists()) {
     include(":personal:kaiser")
-}
-if (file("personal/taxi").exists()) {
-    include(":personal:taxi")
 }

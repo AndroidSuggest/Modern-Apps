@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Taxi</string>
+
+    <!-- Navigation -->
+    <string name="nav_ride">Ride</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Ride planning -->
+    <string name="destination">Destination</string>
+    <string name="use_current_location">Use current location</string>
+    <string name="search_placeholder">Where to?</string>
+    <string name="compare_fares">Compare fares</string>
+    <string name="pickup_label">Pickup</string>
+    <string name="pickup_placeholder">Pickup location</string>
+    <string name="current_location">Current location</string>
+    <string name="searching">Searching…</string>
+    <string name="no_places_found">No fares available for this route</string>
+    <string name="choose_ride">Choose a ride</string>
+    <string name="comparing_fares">Comparing fares…</string>
+    <string name="enter_destination">Enter a destination to see Lyft fares</string>
+    <string name="clear">Clear</string>
+    <string name="best_price">Best price</string>
+    <string name="seats">%1$d seats</string>
+    <string name="surge_short">%1$s× surge</string>
+    <string name="connect_prompt">Connect your %1$s account to see live fares</string>
+
+    <!-- Providers -->
+    <string name="provider_uber">Uber</string>
+    <string name="provider_lyft">Lyft</string>
+
+    <!-- Quotes -->
+    <string name="eta_minutes">%1$d min away</string>
+    <string name="book_with">Book with %1$s</string>
+
+    <string name="phone_number">Phone number</string>
+    <string name="send_code">Send code</string>
+    <string name="verification_code">Verification code</string>
+    <string name="verify">Verify</string>
+    <string name="signed_in_as">Signed in as %1$s</string>
+    <string name="signed_in">Signed in</string>
+    <string name="not_signed_in">Not signed in</string>
+    <string name="account_email">Account email</string>
+    <string name="country_code">Country code</string>
+    <string name="uber_next_screen">Uber next screen: %1$s</string>
+    <string name="uber_use_webview">Sign in with web instead</string>
+    <string name="uber_try_native">Try native sign-in (experimental)</string>
+
+    <!-- Uber API discovery (see uber-re/api-notes.md) -->
+    <string name="uber_captured_calls">Captured %1$d GraphQL calls</string>
+
+    <!-- Payment methods (Settings) -->
+    <string name="payment_methods">Payment methods</string>
+    <string name="payment_methods_loading">Loading payment methods…</string>
+    <string name="payment_methods_none">No payment methods on file</string>
+    <string name="payment_methods_error">Couldn\'t load payment methods: %1$s</string>
+    <string name="payment_sign_in">Sign in to Lyft to manage payment methods</string>
+    <string name="payment_default">Default</string>
+    <string name="payment_set_default">Set as default</string>
+    <string name="payment_remove">Remove</string>
+    <string name="payment_action_failed">%1$s</string>
+
+    <!-- Add card -->
+    <string name="add_card">Add card</string>
+    <string name="add_card_title">Add a card</string>
+    <string name="card_number">Card number</string>
+    <string name="card_expiry">MM/YY</string>
+    <string name="card_cvc">CVC</string>
+    <string name="card_zip">ZIP code</string>
+    <string name="card_set_default">Set as default</string>
+    <string name="adding_card">Adding card…</string>
+    <string name="add">Add</string>
+    <string name="cancel">Cancel</string>
+    <string name="card_invalid_number">Enter a valid card number</string>
+    <string name="card_invalid_expiry">Enter the expiry as MM/YY</string>
+    <string name="card_expired">This card has expired</string>
+    <string name="card_invalid_cvc">Enter a valid CVC</string>
+    <string name="add_card_unsupported">Adding a card isn\'t available for this account</string>
+    <string name="add_card_failed">Couldn\'t add card: %1$s</string>
+
+    <!-- In-app booking -->
+    <string name="choose_payment">Choose payment</string>
+    <string name="confirm_booking">Confirm booking</string>
+    <string name="book">Book</string>
+    <string name="booking">Booking…</string>
+    <string name="booking_failed">Booking failed: %1$s</string>
+    <string name="booking_no_payment">No payment methods on file. Add a card in the Lyft app first.</string>
+    <string name="booking_charge_to">You will be charged to %1$s.</string>
+    <string name="booking_dry_run_notice">Dry run — the request below is shown for verification and will NOT be sent. No charge occurs.</string>
+    <string name="booking_dry_run_title">Dry run: create ride</string>
+    <string name="booking_dry_run_done">Dry run complete — request built, nothing sent.</string>
+    <string name="ride_status">Ride status</string>
+    <string name="ride_created">Ride created%1$s</string>
+    <string name="ride_status_line">Status: %1$s</string>
+    <string name="cancel_ride">Cancel ride</string>
+    <string name="cancel_ride_title">Cancel this ride?</string>
+    <string name="cancel_ride_message">Cancelling may incur a fee. Lyft\'s response will be shown.</string>
+    <string name="keep_ride">Keep ride</string>
+    <string name="close">Close</string>
+    <string name="dismiss">Dismiss</string>
+
+    <!-- Live ride tracking -->
+    <string name="tracking_title">Track ride</string>
+    <string name="ride_in_progress">Ride in progress</string>
+    <string name="track_ride">Track</string>
+    <string name="driver_min_away">Driver is %1$d min away</string>
+    <string name="driver_arriving_now">Driver is arriving now</string>
+    <string name="status_en_route">Driver is on the way</string>
+    <string name="status_arrived">Your driver has arrived</string>
+    <string name="status_on_trip">On the way to your destination</string>
+    <string name="driver_label">Driver</string>
+    <string name="vehicle_label">Vehicle</string>
+    <string name="license_plate">Plate %1$s</string>
+    <string name="driver_rating">%1$s ★</string>
+    <string name="ride_ended">This ride has ended</string>
+    <string name="tracking_loading">Loading ride…</string>
+    <string name="tracking_error">Couldn\'t load ride: %1$s</string>
+    <string name="ride_cancelled">Ride cancelled</string>
+    <string name="cancel_failed">Couldn\'t cancel ride: %1$s</string>
+    <string name="cancelling">Cancelling…</string>
+    <string name="nav_current_ride">Current ride</string>
+    <string name="no_current_ride">No ride in progress</string>
+    <string name="call">Call</string>
+    <string name="your_driver">Your driver</string>
+    <string name="status_finding_driver">Finding your driver</string>
+    <string name="ride_complete">Ride complete</string>
+
+    <!-- Account -->
+    <string name="sign_out">Sign out</string>
+    <string name="sign_out_title">Sign out of Lyft?</string>
+    <string name="sign_out_message">This revokes this device\'s Lyft session. You can sign in again anytime.</string>
+</resources>
