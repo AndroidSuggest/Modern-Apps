@@ -21,6 +21,11 @@ enum class Provider(val label: String, val packageName: String) {
  * providers stay comparable without float rounding; [fareLowMinor] equals [fareHighMinor]
  * when the provider quotes an exact price rather than a range.
  *
+ * [fareLowMinor]/[fareHighMinor] are the **actual** price the rider pays, i.e. after any
+ * applicable promotion/coupon. When a promotion applies, [originalFareLowMinor]/
+ * [originalFareHighMinor] carry the pre-discount amount (for a struck-through "was" price); they
+ * are null when there is no discount.
+ *
  * The trailing [offerId]/[offerToken]/[costToken]/[rideType]/[costTokenExpiryMs] fields carry
  * the tokens an in-app booking needs. They are populated only for providers that support
  * in-app booking (Lyft) and stay null everywhere else, so quote-only and deep-link paths are
@@ -43,8 +48,13 @@ data class RideQuote(
     val costToken: String? = null,
     val rideType: String? = null,
     val costTokenExpiryMs: Long? = null,
+    val originalFareLowMinor: Long? = null,
+    val originalFareHighMinor: Long? = null,
 ) {
     val isRange: Boolean get() = fareLowMinor != fareHighMinor
+
+    /** True when a promotion reduced the fare below its original amount. */
+    val hasDiscount: Boolean get() = originalFareLowMinor != null || originalFareHighMinor != null
 }
 
 sealed interface QuoteResult {

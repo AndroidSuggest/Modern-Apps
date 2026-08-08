@@ -39,6 +39,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -524,10 +525,24 @@ private fun RideOptionCard(quote: RideQuote, isCheapest: Boolean, onBook: () -> 
             }
             Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
+                if (quote.hasDiscount) {
+                    Text(
+                        formatOriginalFare(quote),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            textDecoration = TextDecoration.LineThrough,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     formatFare(quote),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    color = if (quote.hasDiscount) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
                 )
                 quote.surgeMultiplier?.takeIf { it > 1.0 }?.let {
                     Text(
@@ -664,4 +679,12 @@ private fun formatFare(quote: RideQuote): String {
     } else {
         money(quote.fareLowMinor)
     }
+}
+
+/** The pre-discount price, for a struck-through "was" label when a promotion applies. */
+private fun formatOriginalFare(quote: RideQuote): String {
+    fun money(minor: Long) = "$%.2f".format(minor / 100.0)
+    val low = quote.originalFareLowMinor ?: quote.fareLowMinor
+    val high = quote.originalFareHighMinor ?: quote.fareHighMinor
+    return if (low != high) "${money(low)} – ${money(high)}" else money(low)
 }

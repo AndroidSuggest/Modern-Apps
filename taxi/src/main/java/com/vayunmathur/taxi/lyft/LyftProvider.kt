@@ -1171,7 +1171,13 @@ class LyftProvider(private val context: Context) : RideProvider {
         val min = cost?.long("estimated_cost_cents_min")
         val max = cost?.long("estimated_cost_cents_max")
         val upfront = cost?.long("upfront_cost_cents")
-        val (low, high) = priceRange(min, max, upfront) ?: return null
+        // CostEstimate.applicable_coupons[0] carries the discount the rider actually receives.
+        val coupon = cost?.get("applicable_coupons")?.jsonArray?.firstOrNull() as? JsonObject
+        val fare = farePrice(
+            min, max, upfront,
+            discountMin = coupon?.long("discount_amount_min"),
+            discountMax = coupon?.long("discount_amount_max"),
+        ) ?: return null
 
         val pickupEtaMs = offer["ride_travel_details"]?.jsonObject
             ?.get("pickup_estimate")?.jsonObject
@@ -1182,8 +1188,10 @@ class LyftProvider(private val context: Context) : RideProvider {
             provider = Provider.LYFT,
             productId = offer.str("offer_product_id") ?: name,
             displayName = name,
-            fareLowMinor = low,
-            fareHighMinor = high,
+            fareLowMinor = fare.low,
+            fareHighMinor = fare.high,
+            originalFareLowMinor = fare.originalLow,
+            originalFareHighMinor = fare.originalHigh,
             currency = cost?.str("currency") ?: "USD",
             pickupEtaMinutes = pickupEtaMs?.let { (it / 60_000).toInt() },
             tripDurationMinutes = cost?.long("estimated_duration_seconds")?.let { (it / 60).toInt() },
@@ -1243,7 +1251,14 @@ class LyftProvider(private val context: Context) : RideProvider {
         val min = cost?.wrappedLong(6)
         val max = cost?.wrappedLong(5)
         val upfront = cost?.wrappedLong(7)
-        val (low, high) = priceRange(min, max, upfront) ?: return null
+        // applicable_coupons(18, repeated ApplicableCoupon): discount_amount_min(10),
+        // discount_amount_max(11) are plain int64. First coupon is the one the client applies.
+        val coupon = cost?.messages(18)?.firstOrNull()
+        val fare = farePrice(
+            min, max, upfront,
+            discountMin = coupon?.varint(10),
+            discountMax = coupon?.varint(11),
+        ) ?: return null
 
         val pickupEtaMs = offer.message(9)?.message(1)?.message(2)?.wrappedLong(1)
 
@@ -1251,8 +1266,10 @@ class LyftProvider(private val context: Context) : RideProvider {
             provider = Provider.LYFT,
             productId = offer.string(2) ?: name,
             displayName = name,
-            fareLowMinor = low,
-            fareHighMinor = high,
+            fareLowMinor = fare.low,
+            fareHighMinor = fare.high,
+            originalFareLowMinor = fare.originalLow,
+            originalFareHighMinor = fare.originalHigh,
             currency = cost?.wrappedString(8) ?: "USD",
             pickupEtaMinutes = pickupEtaMs?.let { (it / 60_000).toInt() },
             tripDurationMinutes = cost?.wrappedLong(22)?.let { (it / 60).toInt() },
@@ -1276,6 +1293,37 @@ class LyftProvider(private val context: Context) : RideProvider {
         min != null -> min to min
         max != null -> max to max
         else -> null
+    }
+
+    /**
+     * The pre-discount base range plus the actual price after the first applicable coupon. Lyft
+     * carries no post-promo scalar; the app computes it as estimate − coupon discount (clamped at
+     * 0), keeping `upfront`/estimate as the struck-through original. Mirrors that (see api-notes §3).
+     */
+    private data class FarePrice(
+        val low: Long,
+        val high: Long,
+        val originalLow: Long?,
+        val originalHigh: Long?,
+    )
+
+    private fun farePrice(
+        min: Long?,
+        max: Long?,
+        upfront: Long?,
+        discountMin: Long?,
+        discountMax: Long?,
+    ): FarePrice? {
+        val (baseLow, baseHigh) = priceRange(min, max, upfront) ?: return null
+        val dLow = (discountMin ?: 0).coerceAtLeast(0)
+        val dHigh = (discountMax ?: 0).coerceAtLeast(0)
+        if (dLow == 0L && dHigh == 0L) return FarePrice(baseLow, baseHigh, null, null)
+        return FarePrice(
+            low = (baseLow - dLow).coerceAtLeast(0),
+            high = (baseHigh - dHigh).coerceAtLeast(0),
+            originalLow = baseLow,
+            originalHigh = baseHigh,
+        )
     }
 
     companion object {
