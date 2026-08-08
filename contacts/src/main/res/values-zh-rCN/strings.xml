@@ -93,4 +93,6 @@
     <string name="create_new_contact">创建新联系人</string>
     <string name="crop_photo">裁剪照片</string>
     <string name="import_contacts_from_vcf_files">从 .vcf 文件导入联系人</string>
+    <string name="custom_label">自定义标签</string>
+    <string name="enter_custom_label">输入自定义标签</string>
 </resources>
