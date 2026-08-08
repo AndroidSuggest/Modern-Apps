@@ -1,7 +1,10 @@
 package com.vayunmathur.weather.ui.components.blocks
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.IconRain
@@ -37,34 +40,38 @@ fun PrecipitationBlock(
     }
 
     SquareBlock {
-        Box(Modifier.align(Alignment.TopStart)) {
-            BlockHeader(icon = { m, c -> IconRain(m, c) }, title = stringResource(R.string.metric_precipitation))
-        }
         Column(
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.displayMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = unit,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (nowcast != null) {
-            Text(
-                text = nowcast,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = 12.dp, vertical = 14.dp),
-                style = MaterialTheme.typography.labelLarge,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            Box(Modifier.fillMaxWidth()) {
+                BlockHeader(icon = { m, c -> IconRain(m, c) }, title = stringResource(R.string.metric_precipitation))
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.displayMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+                Text(
+                    text = unit,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
+                if (nowcast != null) {
+                    Text(
+                        text = nowcast,
+                        modifier = Modifier.align(Alignment.Center),
+                        style = MaterialTheme.typography.labelLarge,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
         }
     }
 }

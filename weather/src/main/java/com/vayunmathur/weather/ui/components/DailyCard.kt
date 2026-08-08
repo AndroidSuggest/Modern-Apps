@@ -4,11 +4,13 @@ import com.vayunmathur.library.util.DateNameStyle
 import kotlinx.datetime.isoDayNumber
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import com.vayunmathur.library.ui.MaterialTheme
@@ -54,15 +56,16 @@ fun DailyCard(
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             CardsHeader(text = stringResource(R.string.daily_forecast), icon = { m, c -> IconCalendar(m, c) })
             Spacer(Modifier.height(14.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+            ) {
                 items(daily.time.size, key = { "${daily.time[it]}_$it" }) { index ->
                     val date = daily.time.getOrNull(index)
                     val hi = daily.temperatureMax.getOrNull(index) ?: 0.0
                     val lo = daily.temperatureMin.getOrNull(index) ?: 0.0
                     val code = daily.weatherCode.getOrNull(index) ?: 0
                     val precip = daily.precipitationProbabilityMax.getOrNull(index) ?: 0
-
-                    if (index == 0) Spacer(Modifier.width(16.dp))
 
                     DailyItem(
                         weekday = if (index == 0) stringResource(R.string.today) else dayLabel(date),
@@ -74,8 +77,6 @@ fun DailyCard(
                         isSelected = date != null && date == selectedIsoDate,
                         onClick = { if (date != null) onDaySelected(date) },
                     )
-
-                    if (index == daily.time.size - 1) Spacer(Modifier.width(16.dp))
                 }
             }
         }
@@ -100,8 +101,8 @@ private fun DailyItem(
     ) {
         Column(
             modifier = Modifier
-                .height(210.dp)
-                .width(65.dp)
+                .heightIn(min = 210.dp)
+                .widthIn(min = 65.dp)
                 .padding(vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,

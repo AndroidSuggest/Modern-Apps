@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.vayunmathur.library.ui.ExperimentalMaterial3ExpressiveApi
@@ -101,10 +103,9 @@ fun HourlyCard(
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             CardsHeader(text = stringResource(R.string.hourly_forecast), icon = { m, c -> IconSchedule(m, c) })
-            LazyRow(state = listState) {
+            LazyRow(state = listState, contentPadding = PaddingValues(horizontal = 12.dp)) {
                 items(cells.size, key = { "${cells[it].epochSec}_$it" }) { index ->
                     val cell = cells[index]
-                    if (index == 0) Spacer(Modifier.width(10.dp))
                     HourlyItem(
                         time = if (index == 0) stringResource(R.string.now) else formatStripHour(cell.epochSec, use24Hour),
                         dayLabel = formatDayLabel(cell.epochSec, nowEpochSec),
@@ -116,7 +117,6 @@ fun HourlyCard(
                         tempUnit = tempUnit,
                         onClick = { onHourSelected(cell.iso) },
                     )
-                    if (index == cells.size - 1) Spacer(Modifier.width(10.dp))
                 }
             }
         }
@@ -136,7 +136,7 @@ private fun HourlyItem(
     onClick: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.height(135.dp).width(45.dp).clickable(onClick = onClick),
+        modifier = Modifier.heightIn(min = 135.dp).widthIn(min = 45.dp).clickable(onClick = onClick),
         verticalArrangement = Arrangement.Bottom,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
