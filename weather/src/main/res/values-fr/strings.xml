@@ -8,7 +8,7 @@
     <string name="search_location">Rechercher un lieu</string>
     <string name="app_name">Météo</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
-    <string name="weather_widget_description">L\'heure, la date et la météo du moment en un coup d\'œil — appuyez pour consulter les prévisions</string>
+    <string name="weather_widget_description">L\'heure, la date et la météo du moment en un coup d\'œil - appuyez pour consulter les prévisions</string>
     <string name="add_a_city_or_use_your_current_location">Ajoutez une ville ou utilisez votre position actuelle pour consulter les prévisions.</string>
     <string name="locations">Lieux</string>
     <string name="summary_winds_noticeable">Le vent se fera sentir aujourd’hui.</string>
@@ -94,4 +94,14 @@
     <string name="weather_no_data">—</string>
     <string name="days_ago">il y a <xliff:g id="days" example="3">%1$d</xliff:g> j</string>
     <string name="hours_ago">il y a <xliff:g id="hours" example="2">%1$d</xliff:g> h</string>
+    <string name="block_moon">Lune</string>
+    <string name="moon_phase_new">Nouvelle lune</string>
+    <string name="moon_phase_waxing_crescent">Premier croissant</string>
+    <string name="moon_phase_first_quarter">Premier quartier</string>
+    <string name="moon_phase_waxing_gibbous">Lune gibbeuse croissante</string>
+    <string name="moon_phase_full">Pleine lune</string>
+    <string name="moon_phase_waning_gibbous">Lune gibbeuse décroissante</string>
+    <string name="moon_phase_last_quarter">Dernier quartier</string>
+    <string name="moon_phase_waning_crescent">Dernier croissant</string>
+    <string name="weather_blob_widget_description">La météo dans une bulle organique - grande température avec icône sur fond bleu-vert foncé</string>
 </resources>
