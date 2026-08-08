@@ -110,4 +110,44 @@
     <string name="added"><xliff:g id="email" example="kadri@toredomeen.ee">%1$s</xliff:g> konto on lisatud</string>
     <string name="total_attachment_size_exceeds_25_mb_many">Manuste kogumaht on üle 25 MB ja paljud teenusepakkujad selliseid kirju ei edasta.</string>
     <string name="outbox_is_empty">Saadetavate kirjade postkast on tühi</string>
+    <string name="oauth_sign_in">Sisselogimine OAuth-iga</string>
+    <string name="email_address_optional">E-posti aadress (kui tahad lisada)</string>
+    <string name="use_app_password_instead">Selle asemel kasuta rakenduse salasõna</string>
+    <string name="load_remote_images">Laadi kaugserveris olevad pildid</string>
+    <string name="reading">Loen</string>
+    <string name="load_remote_images_summary">Näita veebis kaugserveris olevaid pilte ilma üle küsimata. Muu hulgas võivad e-kirja saatjad selle alusel tuvastada, kas oled kirja avanud.</string>
+    <string name="normal">Tavaline</string>
+    <string name="heading_1">Pealkiri 1</string>
+    <string name="heading_2">Pealkiri 2</string>
+    <string name="heading_3">Pealkiri 3</string>
+    <string name="left">Vasakul</string>
+    <string name="center">Keskel</string>
+    <string name="right">Paremal</string>
+    <string name="justify">Rööpne</string>
+    <string name="small">Väike</string>
+    <string name="large">Suur</string>
+    <string name="extra_large">Väga suur</string>
+    <string name="font_default">Vaikimisi</string>
+    <string name="sans">Seriifideta kirjatüüp</string>
+    <string name="serif">Seriifidega kirjatüüp</string>
+    <string name="monospace">Fikseeritud laiusega kirjatüüp</string>
+    <string name="alignment">Joondumine</string>
+    <string name="blockquote">Tsitaadiplokk</string>
+    <string name="inline_code">Lõigusisene kood</string>
+    <string name="horizontal_rule">Rõhttriip</string>
+    <string name="text_color">Teksti värv</string>
+    <string name="highlight">Esiletõstmine</string>
+    <string name="font_size">Kirjatüübi suurus</string>
+    <string name="font_family">Kirjatüübi perekond</string>
+    <string name="clear_formatting">Eemalda vormindus</string>
+    <string name="email_sync_channel_name">E-kirjade sünkroonimine taustal</string>
+    <string name="email_sync_channel_desc">IMAP-i ühendus jääb pidevalt avatuks ja kirjad saabuvad koheselt.</string>
+    <string name="unified_inbox_label">Ühine sisendpostkast</string>
+    <plurals name="retrying_pending_messages">
+        <item quantity="one">Proovin saata <xliff:g id="count" example="1">%1$s</xliff:g> ootel sõnumit…</item>
+        <item quantity="other">Proovin saata <xliff:g id="count" example="3">%1$s</xliff:g> ootel sõnumit…</item>
+    </plurals>
+    <string name="from">Saatja: <xliff:g id="account" example="kadri@toredomeen.ee">%1$s</xliff:g></string>
+    <string name="to_1">Saaja: <xliff:g id="recipient" example="mati@toredomeen.ee">%1$s</xliff:g></string>
+    <string name="failed">Viga: <xliff:g id="error" example="Autentimisviga">%1$s</xliff:g></string>
 </resources>
