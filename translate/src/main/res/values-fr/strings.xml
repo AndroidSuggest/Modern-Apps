@@ -8,4 +8,6 @@
     <string name="translation">Traduction</string>
     <string name="translation_model_not_installed_showing">Modèle de traduction non installé — seul le texte détecté est affiché</string>
     <string name="grant_camera_access">Autoriser l’accès à l’appareil photo pour traduire ce que vous voyez</string>
+    <string name="no_voice_installed">Aucune voix %1$s installée</string>
+    <string name="install_voice">Installer</string>
 </resources>
