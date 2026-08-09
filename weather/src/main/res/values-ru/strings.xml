@@ -87,7 +87,7 @@
     <string name="summary_rain_likely">Ожидается дождь — возьмите зонт.</string>
     <string name="summary_showers_possible">Позже возможен ливень.</string>
     <string name="summary_slight_chance_rain">Маловероятен дождь.</string>
-    <string name="summary_winds_noticeable">Сегодня будет ветрено.</string>
+    <string name="summary_winds_noticeable">Сегодня будет ветренно.</string>
     <string name="weather_no_data">—</string>
     <string name="weather_blob_widget_description">Виджет в форме капли с температурой и иконкой погоды</string>
     <string name="max_min">Max <xliff:g id="max" example="28°C">%1$s</xliff:g> Min <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
@@ -104,4 +104,5 @@
     <string name="summary_expect_conditions">Ожидается <xliff:g id="conditions" example="light rain">%1$s</xliff:g> в течение дня.</string>
     <string name="summary_high_low">Выс <xliff:g id="high" example="24°C">%1$s</xliff:g>, низ <xliff:g id="low" example="12°C">%2$s</xliff:g>.</string>
     <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
+    <string name="set_units">Задать единицы измерения</string>
 </resources>
