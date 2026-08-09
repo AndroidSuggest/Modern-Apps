@@ -1,3 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="color">色</string>
+    <string name="app_name">PDF</string>
+    <string name="search_label">検索</string>
+    <string name="open_pdf">PDFを開く</string>
+    <string name="safe_pdf_error">このPDFは安全なビューアーで開くことができませんでした。損傷を受けているかサポートされていない機能を使用している可能性があります。</string>
+    <string name="safe_pdf_not_a_pdf">このファイルはPDFではありません</string>
+    <string name="capture_pdf">PDFをキャプチャー</string>
+    <string name="capture_pdf_title">PDFをキャプチャー</string>
+    <string name="request_camera_permission">カメラの権限を要求</string>
+    <string name="upload_image">画像をアップロード</string>
+    <string name="pdf_saved">PDFの保存に成功しました</string>
+    <string name="pdf_save_error">PDFの保存にエラーが発生しました</string>
+    <string name="share_pdf">PDFを共有</string>
+    <string name="pdf_save">保存</string>
+    <string name="crop_image">画像を切り抜く</string>
+    <string name="continue_label">続ける</string>
+    <string name="auto_detect">自動検出</string>
+    <string name="failed_to_save_pdf">PDFの保存に失敗しました</string>
+    <string name="searchable_ocr">検索可能 (OCR)</string>
+    <string name="append_image">画像を添付</string>
+    <string name="append_pdf">PDFを添付</string>
+    <string name="cut_glue">カットと接着</string>
+    <string name="pdf_cut_and_glue">PDFのカットと接着</string>
+    <string name="tap_to_append_a_pdf_or_image">+ をタップしてPDFか画像を添付</string>
 </resources>
