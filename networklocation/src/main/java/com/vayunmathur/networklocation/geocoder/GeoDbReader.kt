@@ -8,7 +8,7 @@ import kotlin.math.min
 /**
  * Reader for a [GeoDb] file, backed by a [ByteSource] (a plain file or an mmap'd APK asset).
  * Dictionaries and the grid directory are held in memory; address columns are read
- * block-by-block on demand (positional read + inflate one block), so the bulk of the database
+ * block-by-block on demand (positional read + decompress one block), so the bulk of the database
  * is never resident. Supports reverse (coord -> address) and structured forward geocoding.
  */
 class GeoDbReader(private val src: ByteSource) : AutoCloseable {
@@ -207,7 +207,7 @@ class GeoDbReader(private val src: ByteSource) : AutoCloseable {
         val rawSize = di.readInt()
         val compSize = di.readInt()
         val comp = ByteArray(compSize); di.readFully(comp)
-        val raw = inflate(comp, rawSize)
+        val raw = decompress(comp, rawSize)
         val r = DataInputStream(raw.inputStream())
         val count = r.readInt()
         return Array(count) {
@@ -219,7 +219,7 @@ class GeoDbReader(private val src: ByteSource) : AutoCloseable {
 }
 
 /**
- * On-demand column reader. Parses the column header (block sizes) up front, then inflates and
+ * On-demand column reader. Parses the column header (block sizes) up front, then decompresses and
  * decodes a single block per access, caching the most recently used block. [get] is
  * synchronised so multiple binder threads can share one reader.
  */
@@ -261,7 +261,7 @@ private class Column(
 
     private fun decode(block: Int) {
         val comp = src.read(blockFileOffset[block], compLens[block])
-        val raw = inflate(comp, rawLens[block])
+        val raw = decompress(comp, rawLens[block])
         val count = min(GeoDb.BLOCK, n - block * GeoDb.BLOCK)
         val values = IntArray(count)
         val vr = VarIntReader(raw)

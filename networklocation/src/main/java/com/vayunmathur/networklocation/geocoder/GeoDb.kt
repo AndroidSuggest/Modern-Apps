@@ -1,14 +1,12 @@
 package com.vayunmathur.networklocation.geocoder
 
+import com.github.luben.zstd.Zstd
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
-import java.util.zip.Deflater
-import java.util.zip.Inflater
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -20,8 +18,8 @@ import kotlin.math.roundToInt
  *    only a small sparse grid directory (no per-record spatial index), and
  *  - coordinates delta-compress well because neighbours are adjacent in the file.
  * Every field is a dictionary index (strings deduped once), and every column is stored in
- * Deflate-compressed blocks so the reader mmaps the file and inflates just one small block per
- * access. Forward geocoding uses a second ordering (records sorted by
+ * Zstandard-compressed blocks so the reader mmaps the file and decompresses just one small block
+ * per access. Forward geocoding uses a second ordering (records sorted by
  * country/state/city/street/house) for binary search.
  *
  * Coordinates are micro-degrees (1e-6 deg, ~11 cm) as Int.
@@ -33,7 +31,7 @@ import kotlin.math.roundToInt
  */
 object GeoDb {
     const val MAGIC = 0x4D41_4745 // "MAGE"
-    const val VERSION = 1
+    const val VERSION = 2 // v2: per-block codec is Zstandard (was Deflate in v1)
     const val BLOCK = 4096
 
     // Grid: 0.05-degree cells over the whole planet.
@@ -118,25 +116,14 @@ internal class VarIntReader(val a: ByteArray) {
     }
 }
 
-private fun deflate(data: ByteArray): ByteArray {
-    val d = Deflater(Deflater.BEST_COMPRESSION, true)
-    d.setInput(data); d.finish()
-    val out = ByteArrayOutputStream(max(64, data.size / 2))
-    val buf = ByteArray(8192)
-    while (!d.finished()) out.write(buf, 0, d.deflate(buf))
-    d.end()
-    return out.toByteArray()
-}
+/** Max standard Zstandard level; the DB is built once offline, so favour ratio over speed. */
+private const val ZSTD_LEVEL = 19
 
-internal fun inflate(data: ByteArray, expected: Int): ByteArray {
-    val inf = Inflater(true)
-    inf.setInput(data)
-    val out = ByteArray(expected)
-    var off = 0
-    while (off < expected && !inf.finished()) off += inf.inflate(out, off, expected - off)
-    inf.end()
-    return out
-}
+/** Compress one block fully in RAM. */
+private fun compress(data: ByteArray): ByteArray = Zstd.compress(data, ZSTD_LEVEL)
+
+/** Decompress one block fully in RAM; [expected] is the known original size. */
+internal fun decompress(data: ByteArray, expected: Int): ByteArray = Zstd.decompress(data, expected)
 
 // ---------------------------------------------------------------------------------------------
 // Random-access byte source. Backs the reader by either a plain File or an mmap'd APK asset.
@@ -184,7 +171,7 @@ class ChannelByteSource(
 // Writer.
 // ---------------------------------------------------------------------------------------------
 
-/** Column encoded as delta+zigzag+varint per block, each block Deflate-compressed. */
+/** Column encoded as delta+zigzag+varint per block, each block Zstandard-compressed. */
 private fun encodeColumn(values: IntArray, delta: Boolean): Pair<ByteArray, IntArray> {
     val n = values.size
     val blocks = (n + GeoDb.BLOCK - 1) / GeoDb.BLOCK
@@ -203,7 +190,7 @@ private fun encodeColumn(values: IntArray, delta: Boolean): Pair<ByteArray, IntA
             prev = v
         }
         val rawBytes = raw.toByteArray()
-        val comp = deflate(rawBytes)
+        val comp = compress(rawBytes)
         rawLens[b] = rawBytes.size
         compLens[b] = comp.size
         body.write(comp)
@@ -226,7 +213,7 @@ private fun encodeDict(strings: List<String>): ByteArray {
         d.writeInt(b.size); d.write(b)
     }
     val rawBytes = raw.toByteArray()
-    val comp = deflate(rawBytes)
+    val comp = compress(rawBytes)
     val out = ByteArrayOutputStream()
     val h = DataOutputStream(out)
     h.writeInt(rawBytes.size); h.writeInt(comp.size)
@@ -320,7 +307,7 @@ class GeoDbWriter {
             }
             out.writeInt(gridBytes.size()); gridBytes.writeTo(out)
 
-            // Forward ordering (delta-varint, deflated as a single column).
+            // Forward ordering (delta-varint, Zstandard-compressed as a single column).
             val (fwdBytes, _) = encodeColumn(fwd, delta = true)
             out.writeInt(fwdBytes.size); out.write(fwdBytes)
         }

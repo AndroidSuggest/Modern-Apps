@@ -103,7 +103,8 @@ dependencies {
     // Reporting loop + IO for the gs-loc queries.
     implementation(libs.kotlinx.coroutines.android)
     // Geocoder DB is a self-contained mmap'd binary (see geocoder/). Block compression uses
-    // java.util.zip (Deflate) — no external dependency needed for the core.
+    // Zstandard via zstd-jni (compress/decompress one 4096-record block fully in RAM).
+    implementation(libs.zstd.jni)
     // kotlinx-serialization-json (from the app convention) is used only by the generator to
     // parse osmium's GeoJSONSeq export.
 }

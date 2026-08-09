@@ -72,6 +72,8 @@ zxing = "3.5.4"
 libphonenumber = "9.0.34"
 litertlmAndroid = "0.14.0"
 brotli = "0.1.2"
+# Zstandard JNI bindings (com.github.luben) for the offline geocoder block codec.
+zstdJni = "1.5.6-9"
 # Standalone library from the AGP toolchain (com.android.tools.build), not the plugin —
 # :appstore uses it at runtime to verify APK source stamps.
 apksig = "8.7.3"
@@ -224,6 +226,7 @@ zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
 litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlmAndroid" }
 brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
+zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstdJni" }
 apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
 
 # =============================================================================
