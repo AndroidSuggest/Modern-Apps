@@ -1,3 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="reset">リセット</string>
+    <string name="apply">適用</string>
+    <string name="copy">コピー</string>
 </resources>
