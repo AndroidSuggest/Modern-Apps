@@ -12,4 +12,5 @@
     <string name="left">Слева</string>
     <string name="center">Центр</string>
     <string name="hide">Скрыть</string>
+    <string name="select_account">Выберите учётную запись</string>
 </resources>
