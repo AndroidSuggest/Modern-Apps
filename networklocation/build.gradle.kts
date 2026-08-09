@@ -1,5 +1,10 @@
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URI
+
 plugins {
     id("common-conventions-app")
+    alias(libs.plugins.protobuf)
 }
 
 launcherIcon {
@@ -47,17 +52,17 @@ val fetchGeocoderDb = tasks.register("fetchGeocoderDb") {
             return@doLast
         }
         geocoderDbFile.parentFile.mkdirs()
-        val tmp = java.io.File(geocoderDbFile.parentFile, "geocoder.geodb.part")
+        val tmp = File(geocoderDbFile.parentFile, "geocoder.geodb.part")
         tmp.delete()
         logger.lifecycle("Fetching geocoder.geodb from $geocoderDbUrl (this is large; first build only)…")
         try {
-            val conn = (java.net.URI(geocoderDbUrl).toURL().openConnection() as java.net.HttpURLConnection).apply {
+            val conn = (URI(geocoderDbUrl).toURL().openConnection() as HttpURLConnection).apply {
                 connectTimeout = 30_000
                 readTimeout = 60_000
                 instanceFollowRedirects = true
             }
             val code = conn.responseCode
-            if (code != java.net.HttpURLConnection.HTTP_OK) {
+            if (code != HttpURLConnection.HTTP_OK) {
                 conn.disconnect()
                 error("server returned HTTP $code")
             }
@@ -91,8 +96,29 @@ dependencies {
     // Compile-only stubs for the framework's unbundled provider API (com.android.location.provider).
     // Provided at runtime by <uses-library>; must NOT be packaged.
     compileOnly(project(":library:locationprovider"))
+    // Apple gs-loc request/response wire format (proto/apple_wps.proto).
+    implementation(libs.protobuf.javalite)
+    // Beacon-location cache (in-memory TimedLruCache in front of a Room table).
+    implementRoom(libs)
+    // Reporting loop + IO for the gs-loc queries.
+    implementation(libs.kotlinx.coroutines.android)
     // Geocoder DB is a self-contained mmap'd binary (see geocoder/). Block compression uses
     // java.util.zip (Deflate) — no external dependency needed for the core.
     // kotlinx-serialization-json (from the app convention) is used only by the generator to
     // parse osmium's GeoJSONSeq export.
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${libs.versions.protobufJavalite.get()}"
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                create("java") {
+                    option("lite")
+                }
+            }
+        }
+    }
 }

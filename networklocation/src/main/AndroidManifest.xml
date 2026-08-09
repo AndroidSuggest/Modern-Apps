@@ -1,6 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Position estimation needs location + the radios it derives location from. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Reaching Apple's gs-loc proxy for beacon coordinates. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Privileged: register as the platform network/geocode provider and attribute work. -->
+    <uses-permission android:name="android.permission.INSTALL_LOCATION_PROVIDER" />
+    <uses-permission android:name="android.permission.LOCATION_HARDWARE" />
+    <uses-permission android:name="android.permission.MODIFY_PHONE_STATE" />
+    <uses-permission android:name="android.permission.UPDATE_DEVICE_STATS" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -12,6 +28,16 @@
         <!-- The unbundled provider base classes (com.android.location.provider.*) are supplied by
              the platform at runtime, not packaged in this APK. -->
         <uses-library android:name="com.android.location.provider" android:required="false" />
+
+        <!-- Network location provider. Bound by the framework via the v3 provider action; becomes
+             THE network provider once config_networkLocationProviderPackageName points here. -->
+        <service
+            android:name=".NetworkLocationService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.android.location.service.v3.NetworkLocationProvider" />
+            </intent-filter>
+        </service>
 
         <!-- Offline geocoder. Bound by the framework via the GeocodeProvider action; becomes THE
              system geocoder once config_geocodeProviderPackageName points here (MAOS overlay). -->
