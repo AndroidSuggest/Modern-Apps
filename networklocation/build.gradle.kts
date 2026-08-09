@@ -17,6 +17,18 @@ android {
     }
 }
 
+androidComponents {
+    onVariants { variant ->
+        variant.sources.jniLibs?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("rustJniLibs").get().asFile.absolutePath
+        )
+    }
+}
+
+// Native device-position estimation (weighted-centroid / inverse-variance least
+// squares over the cached gs-loc beacon fixes). See networklocation/src/main/rust/.
+rustNativeLib("networklocation")
+
 // The geocoder generator runs on the JVM test classpath (GeoDb* are pure-Kotlin). The planet
 // build needs a large heap; override with GEOCODER_HEAP (e.g. 100g). Normal unit tests are
 // unaffected — they won't allocate near this ceiling.

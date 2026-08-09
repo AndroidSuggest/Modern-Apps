@@ -1189,6 +1189,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "networklocation"
+version = "0.1.0"
+dependencies = [
+ "jni",
+]
+
+[[package]]
 name = "nom"
 version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
