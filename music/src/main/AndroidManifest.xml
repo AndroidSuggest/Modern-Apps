@@ -55,6 +55,31 @@
             android:theme="@android:style/Theme.NoDisplay"
             android:permission="com.vayunmathur.music.permissions.ACCESS_MUSIC">
         </activity>
+
+        <!-- Popup single-file player (mirrors AOSP Music's .AudioPreview): VIEW an audio
+             file/content/http uri and play just that track in a translucent dialog over the
+             launching app, without opening the full Music app. -->
+        <activity
+            android:name=".intents.AudioPreviewActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>
