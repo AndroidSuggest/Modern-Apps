@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="label_description">Описание</string>
+    <string name="action_create">Создать</string>
+    <string name="action_create_playlist">Создать</string>
 </resources>
