@@ -1,16 +1,21 @@
 [package]
-name = "networklocation"
+name = "network_location_position_estimation_rust"
 version = "0.1.0"
 edition = "2021"
-description = "Native device-position estimation (weighted-centroid / inverse-variance least squares over Apple gs-loc beacon fixes) for the network location provider, via JNI"
-license = "GPL-2.0-only"
+description = "Robust device-position estimation (RANSAC + Expectation-Maximization multilateration) for the network location provider, via JNI. Ported from GrapheneOS NetworkLocation (MIT)."
+license = "MIT"
 
 [lib]
-name = "networklocation"
+name = "network_location_position_estimation_rust"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni.workspace = true
+log.workspace = true
+itertools = "0.14"
+
+[dev-dependencies]
+rand = { version = "0.8", features = ["small_rng"] }
 
 [profile.release]
 opt-level = 3
