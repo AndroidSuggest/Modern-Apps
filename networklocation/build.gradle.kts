@@ -25,6 +25,9 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    // Compile-only stubs for the framework's unbundled provider API (com.android.location.provider).
+    // Provided at runtime by <uses-library>; must NOT be packaged.
+    compileOnly(project(":library:locationprovider"))
     // Geocoder DB is a self-contained mmap'd binary (see geocoder/). Block compression uses
     // java.util.zip (Deflate) — no external dependency needed for the core.
     // kotlinx-serialization-json (from the app convention) is used only by the generator to

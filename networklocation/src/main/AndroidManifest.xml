@@ -9,9 +9,21 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.General">
 
-        <!-- Status/info screen. The geocoder + network-location provider services (which bind
-             to the framework via com.android.location.provider) are added in a follow-up once
-             the compile-only provider stubs + priv-app allowlist are in place. -->
+        <!-- The unbundled provider base classes (com.android.location.provider.*) are supplied by
+             the platform at runtime, not packaged in this APK. -->
+        <uses-library android:name="com.android.location.provider" android:required="false" />
+
+        <!-- Offline geocoder. Bound by the framework via the GeocodeProvider action; becomes THE
+             system geocoder once config_geocodeProviderPackageName points here (MAOS overlay). -->
+        <service
+            android:name=".GeocodeService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.android.location.service.GeocodeProvider" />
+            </intent-filter>
+        </service>
+
+        <!-- Status/info screen. -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
