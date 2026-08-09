@@ -1,3 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">ノート</string>
+    <string name="title">題名</string>
+    <string name="drawing">描画</string>
+    <string name="add_image">画像を追加</string>
+    <string name="add_drawing">描画を追加</string>
+    <string name="external_saved">ファイルに保存済</string>
+    <string name="external_save_failed">保存できません（ファイルが読み取り専用の可能性があります）</string>
+    <string name="external_read_failed">ファイルを開けません</string>
+    <string name="note">ノート</string>
+    <string name="share_note">ノートを共有</string>
 </resources>
