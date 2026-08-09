@@ -15,6 +15,7 @@ import com.vayunmathur.appstore.data.CatalogRepository
 import com.vayunmathur.appstore.data.InstalledAppsRepository
 import com.vayunmathur.appstore.data.InstalledInfo
 import com.vayunmathur.appstore.data.PlayStoreLinks
+import com.vayunmathur.appstore.data.SandboxedGooglePlay
 import com.vayunmathur.appstore.data.SettingsRepository
 import com.vayunmathur.appstore.data.SyncStep
 import com.vayunmathur.appstore.data.UnifiedApp
@@ -77,6 +78,14 @@ class AppStoreViewModel(
 
     private val _playSections = MutableStateFlow<List<AppSection>>(emptyList())
     private val _recentlyUpdated = MutableStateFlow<List<UnifiedApp>>(emptyList())
+
+    /**
+     * The Sandboxed Google Play bundle rows. Seeded with stand-ins so the section is on
+     * screen immediately; [loadHome] swaps in real Play listings when Play is reachable.
+     * Kept in [SandboxedGooglePlay.PACKAGES] order so the ordered install reads straight off it.
+     */
+    private val _sandboxedGooglePlay =
+        MutableStateFlow(SandboxedGooglePlay.placeholders())
     private val _categories = MutableStateFlow<List<String>>(emptyList())
     private val _selectedCategory = MutableStateFlow<String?>(null)
     private val _categoryApps = MutableStateFlow<List<UnifiedApp>>(emptyList())
@@ -131,10 +140,10 @@ class AppStoreViewModel(
         catalog.modernApps,
         _playSections,
         _recentlyUpdated,
-        _categoryApps,
-        _selectedCategory,
-    ) { modern, playSections, recent, categoryApps, category ->
-        buildSections(modern, playSections, recent, categoryApps, category)
+        _sandboxedGooglePlay,
+        combine(_categoryApps, _selectedCategory) { apps, category -> apps to category },
+    ) { modern, playSections, recent, sandboxed, (categoryApps, category) ->
+        buildSections(modern, playSections, recent, sandboxed, categoryApps, category)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val home: StateFlow<HomeUiState> = combine(
@@ -290,6 +299,14 @@ class AppStoreViewModel(
         _isLoadingHome.value = true
         _recentlyUpdated.value = catalog.recentlyUpdated(RECENT_LIMIT)
 
+        // Replace the Sandboxed Google Play stand-ins with real listings (icon, size,
+        // rating) when Play answers; keep the stand-ins, and the section, when it doesn't.
+        val real = play.details(SandboxedGooglePlay.PACKAGES).associateBy { it.packageName }
+        if (real.isNotEmpty()) {
+            _sandboxedGooglePlay.value =
+                _sandboxedGooglePlay.value.map { real[it.packageName] ?: it }
+        }
+
         val clusters = play.homeClusters()
         _playSections.value = clusters
             .filter { it.apps.isNotEmpty() }
@@ -317,6 +334,7 @@ class AppStoreViewModel(
         modern: List<UnifiedApp>,
         playSections: List<AppSection>,
         recent: List<UnifiedApp>,
+        sandboxed: List<UnifiedApp>,
         categoryApps: List<UnifiedApp>,
         category: String?,
     ): List<AppSection> = buildList {
@@ -341,6 +359,17 @@ class AppStoreViewModel(
                     title = context.getString(R.string.section_modern_apps),
                     apps = modern,
                     subtitle = context.getString(R.string.section_modern_apps_subtitle),
+                )
+            )
+        }
+        if (sandboxed.isNotEmpty()) {
+            add(
+                AppSection(
+                    id = SandboxedGooglePlay.SECTION_ID,
+                    title = context.getString(R.string.section_sandboxed_google_play),
+                    apps = sandboxed,
+                    layout = SectionLayout.LIST,
+                    subtitle = context.getString(R.string.section_sandboxed_google_play_subtitle),
                 )
             )
         }
@@ -540,6 +569,24 @@ class AppStoreViewModel(
     }
 
     override fun dismissInstallFailure(packageName: String) = installer.dismissFailure(packageName)
+
+    /**
+     * Install the Sandboxed Google Play bundle in dependency order.
+     *
+     * Sequential and awaited, like [updateAll]: GSF and GMS provide the accounts and the
+     * provider Vending talks to, so they must land first, and each first-time install shows
+     * its own PackageInstaller confirmation — firing them at once would bury the user in
+     * prompts and let the store client install before the services it needs.
+     */
+    override fun installSandboxedGooglePlay() {
+        viewModelScope.launch {
+            for (app in _sandboxedGooglePlay.value) {
+                installer.install(app)
+            }
+            delay(INSTALL_SETTLE_MS)
+            installedRepo.refresh()
+        }
+    }
 
     override fun openApp(packageName: String) {
         val launchIntent = runCatching {

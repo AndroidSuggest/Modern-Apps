@@ -132,6 +132,9 @@ interface HomeActions : AppActions {
     fun selectCategory(category: String?) {}
     fun refresh() {}
 
+    /** Install the Sandboxed Google Play bundle in dependency order (GSF, GMS, Vending). */
+    fun installSandboxedGooglePlay() {}
+
     companion object {
         val Noop: HomeActions = object : HomeActions {}
     }

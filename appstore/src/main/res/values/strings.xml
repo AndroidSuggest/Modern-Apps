@@ -33,6 +33,9 @@
     <string name="section_recently_updated">New and updated</string>
     <string name="section_recently_updated_subtitle">The newest builds on F-Droid</string>
     <string name="section_category_subtitle">Apps from the offline catalogue in this category</string>
+    <string name="section_sandboxed_google_play">Sandboxed Google Play</string>
+    <string name="section_sandboxed_google_play_subtitle">Google\'s Play components as ordinary, unprivileged apps</string>
+    <string name="action_install_all">Install all</string>
     <string name="home_empty_title">Nothing here yet</string>
     <string name="home_empty_message">Sync your sources to fill this up, or search for an app by name.</string>
     <string name="updates_banner_subtitle">Tap to review and install</string>
