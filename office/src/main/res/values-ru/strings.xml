@@ -48,7 +48,7 @@
     <string name="special_character">Особый Символ</string>
     <string name="insert_table">Вставить Таблицу</string>
     <string name="rename_sheet">Переименовать Лист</string>
-    <string name="play">▶ Play</string>
+    <string name="play">▶ Показ</string>
     <string name="columns">Столбцы</string>
     <string name="default_font_size_pt">Размер шрифта по умлчанию: <xliff:g id="size" example="12">%1$s</xliff:g>pt</string>
     <string name="text">+ Текст</string>
@@ -69,7 +69,7 @@
     <string name="page_count">Количество страниц</string>
     <string name="page_break">Перерыв</string>
     <string name="online_sharing_is_off">Онлайн обмен отключен</string>
-    <string name="header_footer">Заголовок &amp; фут..</string>
+    <string name="header_footer">Заголовок и подвал…</string>
     <string name="recipient_device_id">id устройства получателя</string>
     <string name="words_characters_min_read">&lt;xliff:g id=\"words\" example=\"120\"&gt;%1$s&lt;/xliff:g&gt; слова &lt;xliff:g id=\"characters\" example=\"650\"&gt;%2$s&lt;/xliff:g&gt; символы · xliff:g id=\"минуты\" example=\"1\"&gt;%3$s&lt;/xliff:g&gt; min read</string>
     <string name="speaker_notes">Комментарии</string>
@@ -88,7 +88,7 @@
     <string name="join_request_sending">Запрос доступа…</string>
     <string name="join_request_sent">Запрос отправлен — вы получите доступ, как только владелец одобрит.</string>
     <string name="join_request_failed">Не удалось отправить запрос — проверьте ваше соединение и попробуйте снова.</string>
-    <string name="image_1">Изображение..</string>
+    <string name="image_1">Изображение…</string>
     <string name="time_field">Время (поле)</string>
     <string name="no_online_documents_yet_open_a_document">Пока нет онлайн-документов. Откройте документ и используйте “Поделиться”, чтобы скопировать его здесь и отправить кому-то, или попросите их поделиться с id вашего устройства, а затем нажать обновления.</string>
     <string name="word_docx">Word (.docx)…</string>
@@ -134,7 +134,7 @@
     <string name="tsv">TSV…</string>
     <string name="special_character_1">Особый символ…</string>
     <string name="words_chars_min"><xliff:g id="words" example="120">%1$s</xliff:g> слова · <xliff:g id="characters" example="650">%2$s</xliff:g> символы · ~<xliff:g id="minutes" example="1">%3$s</xliff:g> min read</string>
-    <string name="text_txt">Text (.txt)…</string>
+    <string name="text_txt">Простой текст (.txt)…</string>
     <string name="paper_size">Размер бумаги</string>
     <string name="make_editor">Редактор</string>
     <string name="people_with_access">Люди с доступом:</string>
@@ -194,7 +194,7 @@
     <string name="chart_1">Чарт…</string>
     <string name="unmerge_cell">Разделить ячейку</string>
     <string name="rectangle">Прямоугольник</string>
-    <string name="fill_down">Заполнить</string>
+    <string name="fill_down">Заполнить вниз</string>
     <string name="scientific">Научный</string>
     <string name="insert_column_right">Вставить столбец справа</string>
     <string name="line">Линия</string>
@@ -259,4 +259,15 @@
     <string name="normal_1">● Нормальный</string>
     <string name="wide">● Широкий</string>
     <string name="wide_1">Широкий</string>
+    <string name="series_name_v1_v2">Серии (Название: v1, v2, …)</string>
+    <string name="column_index_0">Индекс столбца (0-<xliff:g id="max_index" example="4">%1$s</xliff:g>)</string>
+    <string name="col">- Кол</string>
+    <string name="go">Перейти</string>
+    <string name="page_of">Страница <xliff:g id="current_page" example="2">%1$s</xliff:g> of <xliff:g id="total_pages" example="5">%2$s</xliff:g></string>
+    <string name="footer">Подвал</string>
+    <string name="col_1">+ Кол</string>
+    <string name="categories_comma_separated">Категории (через запятую)</string>
+    <string name="header_footer_1">Заголовок и подвал</string>
+    <string name="landscape_1">Альбомная</string>
+    <string name="landscape">● Альбомная</string>
 </resources>
