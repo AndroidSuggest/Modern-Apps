@@ -9,4 +9,26 @@
     <string name="publickey">Avalik võti: %1$s</string>
     <string name="peer_publickey">Otspunkti avalik võti: %1$s</string>
     <string name="vpn_channel_name">VPN-tunnel</string>
+    <string name="address">Aadress: %1$s</string>
+    <string name="allowed">Lubatud: %1$s</string>
+    <string name="export_as_conf">Ekspordi .conf failina</string>
+    <string name="settings_about">Seadistused / Rakenduse teave</string>
+    <string name="connected_via_gotatun_wireguard">● Ühendatud gotatuni vahendusel (WireGuard)</string>
+    <string name="always_on_vpn">Alati sisselülitatud VPN</string>
+    <string name="open_system_vpn_settings">Ava süsteemi VPN-i seadistused</string>
+    <string name="name">Nimi: %1$s</string>
+    <string name="endpoint">Otspunkt: %1$s</string>
+    <string name="dns">Nimelahendus: %1$s</string>
+    <string name="allowedips">Lubatud IP-aadressid: %1$s</string>
+    <string name="mtu_keepalive_s">MTU: %1$s Elumärksõnum: %2$ss</string>
+    <string name="bypass_list">Välistusloend</string>
+    <string name="bypass_list_title">Rakendused, mis võivad VPN\'ist mööda minna</string>
+    <string name="bypass_loading_apps">Laadin rakendusi…</string>
+    <string name="delete_all_logs">Kas kustutad kõik logid?</string>
+    <string name="this_will_permanently_remove_all_connect">Järgnevaga kustuvad kõik ühenduste logid ja seda tegevust ei saa tagasi pöörata.</string>
+    <string name="tunnel">Tunnel - %1$s</string>
+    <string name="bypass_selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> rakendust võivad VPN-ist mööda minna</string>
+    <string name="bypass_lockdown_warning">Kui Androidi VPN-seadistustes on sisse lülitatud valik „Blokeeri ühendused ilma VPN-ita“, ei saa need rakendused üldse internetiühendust kasutada. Kui tahad, et ümbersuunamine toimiks, lülita see välja.</string>
+    <string name="need_activity_to_grant_vpn_permission">VPN-i õiguste lubamiseks vajad tegevust</string>
+    <string name="imported_from_wireguard_conf_using_gotat">Imporditud WireGuardi .conf-failist gotatuni abil (mullvad/gotatun), kasutusel on Noise IK / X25519 + ChaCha20Poly1305. Uuendamiseks impordi uus .conf-fail.</string>
 </resources>
