@@ -24,10 +24,15 @@
             </intent-filter>
         </activity>
 
-        <!-- The input method (IME) service the system binds to. -->
+        <!-- The input method (IME) service the system binds to.
+             directBootAware: required so the keyboard is available on the lock screen after
+             a reboot (Direct Boot, before the first unlock) — otherwise you couldn't type
+             your password/PIN password. Any data touched before unlock must come from
+             device-protected storage (see KeyboardService). -->
         <service
             android:name=".ime.KeyboardService"
             android:label="@string/app_name"
+            android:directBootAware="true"
             android:permission="android.permission.BIND_INPUT_METHOD"
             android:exported="true">
             <intent-filter>

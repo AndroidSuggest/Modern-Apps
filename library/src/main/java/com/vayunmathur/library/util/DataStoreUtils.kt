@@ -202,8 +202,23 @@ class DataStoreUtils private constructor(context: Context) {
     companion object {
         @Volatile
         private var instance: DataStoreUtils? = null
-
-        fun getInstance(context: Context): DataStoreUtils {
+        @Volatile
+        private var deviceProtectedInstance: DataStoreUtils? = null
+        /**
+         * @param deviceProtected when true, the store is backed by device-protected storage
+         *   (available in Direct Boot, i.e. before the first unlock after a reboot). Use this
+         *   for components that must run on the lock screen — e.g. an IME used to type the
+         *   unlock password. Data in device-protected storage is not credential-encrypted, so
+         *   only put non-sensitive settings there. The two modes are separate singletons/files.
+         */
+        fun getInstance(context: Context, deviceProtected: Boolean = false): DataStoreUtils {
+            if (deviceProtected) {
+                return deviceProtectedInstance ?: synchronized(this) {
+                    deviceProtectedInstance ?: DataStoreUtils(
+                        context.applicationContext.createDeviceProtectedStorageContext()
+                    ).also { deviceProtectedInstance = it }
+                }
+            }
             // First check (no locking for performance)
             return instance ?: synchronized(this) {
                 // Second check (inside lock to ensure only one thread initializes)

@@ -62,7 +62,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SetupScreen() {
     val context = LocalContext.current
-    val ds = remember { DataStoreUtils.getInstance(context) }
+    val ds = remember { DataStoreUtils.getInstance(context, deviceProtected = true) }
     val scope = rememberCoroutineScope()
     val imm = remember { context.getSystemService(InputMethodManager::class.java) }
 

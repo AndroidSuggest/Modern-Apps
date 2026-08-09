@@ -133,7 +133,7 @@ class KeyboardService : InputMethodService(),
         savedStateRegistryController.performRestore(null)
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
 
-        ds = DataStoreUtils.getInstance(this)
+        ds = DataStoreUtils.getInstance(this, deviceProtected = true)
         kbState.settings = KeyboardSettings.load(ds)
         vibrator = getSystemService(VibratorManager::class.java)?.defaultVibrator
 
