@@ -9,4 +9,6 @@
     <string name="next_level">下一题</string>
     <string name="completed">已完成</string>
     <string name="moves">步数</string>
+    <string name="daily_challenge">每日挑战</string>
+    <string name="daily_streak">连续 <xliff:g id="days" example="5">%1$d</xliff:g> 天</string>
 </resources>
