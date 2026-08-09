@@ -24,4 +24,9 @@
     <string name="seed">种子</string>
     <string name="no_worlds_yet_create_one_to_start">尚无世界 — 创建一个开始。</string>
     <string name="save_quit_to_menu">保存并退出到菜单</string>
+    <string name="share_link">分享链接</string>
+    <string name="requests_header">请求</string>
+    <string name="approve">批准</string>
+    <string name="deny">拒绝</string>
+    <string name="request_wants_to_join">%1$s 想要加入“%2$s”</string>
 </resources>
