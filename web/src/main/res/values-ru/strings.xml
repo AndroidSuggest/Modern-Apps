@@ -4,4 +4,6 @@
     <string name="all">Все</string>
     <string name="bookmarks">Закладки</string>
     <string name="general">Общее</string>
+    <string name="history">История</string>
+    <string name="create">Создать</string>
 </resources>
