@@ -58,7 +58,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -125,7 +127,13 @@ class YouPipeViewModel(
     val subscriptionCategories: StateFlow<List<SubscriptionCategory>> = subscriptionCategoryDao.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val _hasLoadedSubscriptionVideos = MutableStateFlow(false)
+
+    /** Flips true once the subscription-video DAO emits at least once, so the UI can distinguish "still loading" from "loaded and empty". */
+    val hasLoadedSubscriptionVideos: StateFlow<Boolean> = _hasLoadedSubscriptionVideos.asStateFlow()
+
     val subscriptionVideos: StateFlow<List<SubscriptionVideo>> = subscriptionVideoDao.getAllFlow()
+        .onEach { _hasLoadedSubscriptionVideos.value = true }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val historyVideos: StateFlow<List<HistoryVideo>> = historyVideoDao.getAllFlow()
@@ -179,7 +187,7 @@ class YouPipeViewModel(
             visible
                 .map { VideoInfo(it.name, it.id, it.duration, it.views, it.uploadDate, it.thumbnailURL, it.author) }
                 .sortedByDescending { it.uploadDate }
-        }
+        }.flowOn(Dispatchers.Default)
 
     /**
      * The subscriptions currently assigned to [category]. A category row that

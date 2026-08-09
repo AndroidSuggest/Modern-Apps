@@ -101,6 +101,8 @@ data class SubscriptionFeedUiState(
     val videos: List<VideoRowState> = emptyList(),
     /** Refresh progress. Anything outside 0f..1f means "no refresh running". */
     val fetchProgress: Float = -1f,
+    /** True until the first DB emission arrives; drives the loading skeleton. */
+    val isLoading: Boolean = false,
 )
 
 /** Subscription-feed callbacks. Same no-op-default arrangement as [SearchActions]. */
