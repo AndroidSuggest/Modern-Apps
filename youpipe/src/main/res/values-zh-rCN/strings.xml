@@ -118,4 +118,9 @@
     <string name="adding_to_watch_later">正在添加到稍后观看…</string>
     <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> 个视频</string>
     <string name="label_history">历史记录</string>
+    <string name="settings_general_content">常规和内容</string>
+    <string name="settings_sponsorblock">SponsorBlock</string>
+    <string name="settings_data">数据和备份</string>
+    <string name="settings_sponsorblock_summary">已屏蔽 %1$d / %2$d</string>
+    <string name="preset_custom">自定义</string>
 </resources>
