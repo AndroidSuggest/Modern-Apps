@@ -44,8 +44,8 @@ sealed interface InstallStage {
  *
  * Both paths end at the same place — [SessionInstaller.installSplits] with an
  * [InstallRequirement] describing what the bytes have to prove — but they get there
- * differently: F-Droid and Modern Apps publish a URL and a hash, while Play requires an
- * account, a purchase call and a delivery response that names the files.
+ * differently: F-Droid, Modern Apps and GrapheneOS publish a URL and a hash, while Play
+ * requires an account, a purchase call and a delivery response that names the files.
  */
 class InstallCoordinator(
     private val context: Context,
@@ -106,7 +106,7 @@ class InstallCoordinator(
         if (_stages.value[packageName] is InstallStage.Failed) clear(packageName)
     }
 
-    // --- Direct APK: Modern Apps and F-Droid ---------------------------------------
+    // --- Direct APK: Modern Apps, F-Droid and GrapheneOS ---------------------------
 
     private suspend fun installFromUrl(app: UnifiedApp): SessionInstaller.Outcome =
         withContext(Dispatchers.IO) {
@@ -124,6 +124,15 @@ class InstallCoordinator(
                     expectedSha256 = app.apkSha256
                         ?.let { mapOf("${app.packageName}.apk" to it) } ?: emptyMap(),
                     signerOrigin = "this store",
+                )
+                // GrapheneOS re-hosts Google's official signed APKs; the signer and hash
+                // come from its signed release metadata when a sync has cached them.
+                AppSource.GRAPHENEOS -> InstallRequirement(
+                    expectedPackage = app.packageName,
+                    requiredSigners = app.expectedSigners.toSet(),
+                    expectedSha256 = app.apkSha256
+                        ?.let { mapOf("${app.packageName}.apk" to it) } ?: emptyMap(),
+                    signerOrigin = "GrapheneOS's signed app list",
                 )
                 else -> InstallRequirement(
                     expectedPackage = app.packageName,

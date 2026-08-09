@@ -81,7 +81,8 @@ class AppStoreViewModel(
 
     /**
      * The Sandboxed Google Play bundle rows. Seeded with stand-ins so the section is on
-     * screen immediately; [loadHome] swaps in real Play listings when Play is reachable.
+     * screen immediately; [loadHome] swaps in richer catalogue rows when a sync has cached
+     * them. These install from GrapheneOS's release server, never Play.
      * Kept in [SandboxedGooglePlay.PACKAGES] order so the ordered install reads straight off it.
      */
     private val _sandboxedGooglePlay =
@@ -299,12 +300,13 @@ class AppStoreViewModel(
         _isLoadingHome.value = true
         _recentlyUpdated.value = catalog.recentlyUpdated(RECENT_LIMIT)
 
-        // Replace the Sandboxed Google Play stand-ins with real listings (icon, size,
-        // rating) when Play answers; keep the stand-ins, and the section, when it doesn't.
-        val real = play.details(SandboxedGooglePlay.PACKAGES).associateBy { it.packageName }
-        if (real.isNotEmpty()) {
+        // The Sandboxed Google Play components come from GrapheneOS's release server, not
+        // Play. Enrich the stand-ins with richer catalogue rows (icon, size, signer, hash)
+        // when a sync has cached them; keep the stand-ins, and the section, when it hasn't.
+        val cached = catalog.byPackages(SandboxedGooglePlay.PACKAGES).associateBy { it.packageName }
+        if (cached.isNotEmpty()) {
             _sandboxedGooglePlay.value =
-                _sandboxedGooglePlay.value.map { real[it.packageName] ?: it }
+                _sandboxedGooglePlay.value.map { cached[it.packageName] ?: it }
         }
 
         val clusters = play.homeClusters()

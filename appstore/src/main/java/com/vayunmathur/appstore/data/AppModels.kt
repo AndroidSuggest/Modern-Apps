@@ -4,6 +4,14 @@ enum class AppSource {
     /** This monorepo's own repository, signed with the same key as this app. */
     MODERN_APPS,
     FDROID,
+
+    /**
+     * GrapheneOS's app release server (apps.grapheneos.org). Used for the Sandboxed Google
+     * Play components (GSF, GMS, Vending), which GrapheneOS re-hosts as Google's own signed
+     * APKs with signed repo metadata. Installs go through the store's ordinary signed-APK
+     * download + PackageInstaller path, never Google Play.
+     */
+    GRAPHENEOS,
     PLAYSTORE
 }
 

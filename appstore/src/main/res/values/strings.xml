@@ -21,6 +21,7 @@
     <!-- Source chips. Factual labels; the sources are not ranked. -->
     <string name="source_chip_modern_apps">Modern Apps</string>
     <string name="source_chip_fdroid">F-Droid</string>
+    <string name="source_chip_grapheneos">GrapheneOS</string>
     <string name="source_chip_play">Play Store</string>
     <string name="filter_all">All</string>
     <string name="filter_with_count">%1$s (%2$d)</string>
