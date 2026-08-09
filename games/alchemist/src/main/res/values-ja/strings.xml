@@ -1,3 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Alchemist</string>
+    <string name="alchemy_icon_content_description">Alchemy アイコン <xliff:g id="icon_id" example="12">%1$d</xliff:g></string>
+    <string name="see_details">詳細を見る</string>
+    <string name="item_details">アイテムの詳細</string>
+    <string name="counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g></string>
+    <string name="recipes">レシピ (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
+    <string name="used_in">使用されるレシピ (<xliff:g id="count" example="5">%1$d</xliff:g>)</string>
+    <plurals name="locked_recipes">
+        <item quantity="other">+ <xliff:g id="locked_count" example="2">%1$d</xliff:g> 個のロックされたレシピ。</item>
+    </plurals>
+    <string name="locked_description">レシピを見るには使用されるレシピを全てアンロック。</string>
+    <string name="collection">コレクション</string>
+    <string name="discovered_counter"><xliff:g id="discovered" example="10">%1$d</xliff:g> / <xliff:g id="total" example="100">%2$d</xliff:g> 発見済</string>
+    <string name="id">ID: #<xliff:g id="element_id" example="042">%1$s</xliff:g></string>
+    <string name="item_discovered">アイテムを発見！</string>
+    <plurals name="items_discovered">
+        <item quantity="other"><xliff:g id="count" example="3">%1$s</xliff:g> 個のアイテムを発見！</item>
+    </plurals>
+    <string name="cd_final_item">最後のアイテム</string>
+    <string name="cd_delete">削除</string>
 </resources>
