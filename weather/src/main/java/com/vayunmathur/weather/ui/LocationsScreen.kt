@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,7 +35,6 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconDragHandle
-import com.vayunmathur.library.ui.IconRuler
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.ListItem
@@ -260,24 +260,30 @@ fun LocationsScreen(
                         IconBack(tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
-                actions = {
-                    val context = LocalContext.current
-                    IconButton(onClick = { openRegionalUnitsSettings(context) }) {
-                        IconRuler(tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                },
             )
         },
         bottomBar = {
-            Button(
-                onClick = onSearchLocation,
+            val context = LocalContext.current
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                IconSearch()
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.search_location))
+                Button(
+                    onClick = onSearchLocation,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    IconSearch()
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.search_location))
+                }
+                Button(
+                    onClick = { openRegionalUnitsSettings(context) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.set_units))
+                }
             }
         },
     ) { paddingValues ->

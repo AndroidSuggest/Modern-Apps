@@ -24,8 +24,8 @@
 
     <!-- Section header title for locations drawer sheet. Noun plural -->
     <string name="locations">Locations</string>
-    <!-- Locations panel action: opens the OS regional units settings. Verb phrase -->
-    <string name="set_units">Set units</string>
+    <!-- Locations panel action: opens the OS regional units settings. Noun phrase -->
+    <string name="set_units">Units</string>
     <!-- Search dialog title and bottom bar button to open search. Verb phrase -->
     <string name="search_location">Search location</string>
     <!-- TextField placeholder/hint for entering city name. Noun phrase -->
