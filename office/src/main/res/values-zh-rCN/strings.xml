@@ -275,4 +275,13 @@
     <string name="bookmarks">书签</string>
     <string name="merge_with_right">与右侧合并</string>
     <string name="new_sheet">新建工作表</string>
+    <string name="share_link">分享链接</string>
+    <string name="share_link_chooser">分享 Office 邀请</string>
+    <string name="requests_header">请求</string>
+    <string name="approve">批准</string>
+    <string name="deny">拒绝</string>
+    <string name="request_wants_to_join">%1$s 想要加入“%2$s”</string>
+    <string name="join_request_sending">正在请求访问权限…</string>
+    <string name="join_request_sent">请求已发送 — 一旦所有者批准，您将获得访问权限。</string>
+    <string name="join_request_failed">无法发送请求 — 请检查您的连接并重试。</string>
 </resources>
