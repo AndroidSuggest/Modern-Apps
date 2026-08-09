@@ -123,4 +123,12 @@
     <string name="settings_data">Données et sauvegarde</string>
     <string name="settings_sponsorblock_summary">%1$d sur %2$d bloqués</string>
     <string name="preset_custom">Personnalisé</string>
+    <string name="playback_tempo">Vitesse</string>
+    <string name="playback_pitch">Hauteur</string>
+    <string name="playback_tempo_value"><xliff:g id="value" example="1.5">%1$s</xliff:g>×</string>
+    <string name="playback_pitch_value"><xliff:g id="value" example="100">%1$d</xliff:g> %%</string>
+    <string name="playback_unhook_pitch">Dissocier la hauteur (peut entraîner des distorsions)</string>
+    <string name="playback_reset">Réinitialiser</string>
+    <string name="lock_controls">Verrouiller les commandes</string>
+    <string name="unlock_controls">Déverrouiller les commandes</string>
 </resources>
