@@ -1,3 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">キーボード</string>
+    <string name="subtype_en">英語</string>
+    <string name="abc">ABC</string>
+    <string name="enable_keyboard">キーボードを有効化</string>
+    <string name="choose_keyboard">キーボードを選択</string>
+    <string name="key_height">キーの高さ</string>
+    <string name="theme">テーマ</string>
+    <string name="follows_the_system_light_dark_theme_and">システムのライト/ダークテーマとMaterial Youの配色に従う</string>
+    <string name="try_the_keyboard_here">ここでキーボードを試す</string>
+    <string name="keyboard_languages">キーボードの言語</string>
+    <string name="available_for_english_layouts_only">英語のレイアウトのみ利用可能</string>
+    <string name="search_emoji">絵文字を検索</string>
+    <string name="emoji_you_use_show_up_here">使用した絵文字はここに表示</string>
+    <string name="image">画像</string>
+    <string name="clear_clipboard">全てクリア</string>
+    <string name="clear_clipboard_history">クリップボードの履歴をクリア</string>
+    <string name="copied_text_shows_up_here">コピーされたテキストと画像はここに表示</string>
 </resources>
