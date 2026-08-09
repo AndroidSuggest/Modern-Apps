@@ -92,7 +92,7 @@
     <string name="download">Laadi alla</string>
     <string name="resolution">Eraldusvõime</string>
     <string name="language">Keel</string>
-    <string name="off">Väljas</string>
+    <string name="off">Pole kasutusel</string>
     <string name="chapter">Peatükk</string>
     <string name="cc">CC</string>
     <string name="loading_recent_subscriptions">Viimased tellimused on laadimisel</string>
@@ -104,4 +104,23 @@
     <string name="label_default_page">Ava ekraanil</string>
     <string name="page_home">Avaleht</string>
     <string name="page_downloads">Allalaadimised</string>
+    <string name="new_playlist">Uus esitusloend</string>
+    <string name="action_delete_playlist">Kustuta esitusloend</string>
+    <string name="playlist_empty">Selles esitusloendis pole veel ühtegi videot</string>
+    <string name="adding_to_watch_later">Lisan hilisemaks vaatamiseks…</string>
+    <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> videot</string>
+    <string name="page_saved">Salvestatud</string>
+    <string name="title_saved">Salvestatud</string>
+    <string name="title_downloads">Allalaadimised</string>
+    <string name="playlist_watch_later">Vaata hiljem</string>
+    <string name="title_create_playlist">Koosta esitusloend</string>
+    <string name="label_playlist_name">Esitusloendi nimi</string>
+    <string name="action_create_playlist">Koosta</string>
+    <string name="add_to_playlist">Lisa esitusloendisse</string>
+    <string name="label_history">Ajalugu</string>
+    <string name="settings_general_content">Üldseadistused ja sisu</string>
+    <string name="settings_sponsorblock">Sponsorite blokeerija</string>
+    <string name="settings_data">Andmed ja varundus</string>
+    <string name="settings_sponsorblock_summary">%1$d / %2$d on blokeeritud</string>
+    <string name="preset_custom">Sinu valitud</string>
 </resources>
