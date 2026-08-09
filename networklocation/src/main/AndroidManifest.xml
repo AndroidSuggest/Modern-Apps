@@ -40,7 +40,7 @@
         </service>
 
         <!-- Offline geocoder. Bound by the framework via the GeocodeProvider action; becomes THE
-             system geocoder once config_geocodeProviderPackageName points here (MAOS overlay). -->
+             system geocoder once config_geocoderProviderPackageName points here (MAOS overlay). -->
         <service
             android:name=".GeocodeService"
             android:exported="true">

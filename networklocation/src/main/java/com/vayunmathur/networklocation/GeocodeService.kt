@@ -14,7 +14,7 @@ import java.util.Locale
 /**
  * System geocoder backed entirely by the bundled offline planet DB — no network. Bound by the
  * framework via the `com.android.location.service.GeocodeProvider` action; the app must be the
- * configured geocode provider (config_geocodeProviderPackageName) and hold INSTALL_LOCATION_PROVIDER.
+ * configured geocode provider (config_geocoderProviderPackageName) and hold INSTALL_LOCATION_PROVIDER.
  *
  * The provider contract: return null on success (results appended to `addrs`) or an error string.
  */
