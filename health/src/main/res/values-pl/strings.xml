@@ -133,4 +133,11 @@
     <string name="lap">Okrążenie <xliff:g id="lap_index" example="1">%1$s</xliff:g></string>
     <string name="reps"><xliff:g id="reps_count" example="12">%1$s</xliff:g> powtórzeń</string>
     <string name="meals_cal"><xliff:g id="meal_count" example="3">%1$s</xliff:g> posiłków · <xliff:g id="total_cal" example="850">%2$s</xliff:g> kcal</string>
+    <string name="grant_permissions_rationale">Ta aplikacja odczytuje i zapisuje Twoje dane zdrowotne za pośrednictwem Health Connect. Nic nie opuszcza Twojego urządzenia.</string>
+    <string name="food_database">Baza danych żywności</string>
+    <string name="food_database_absent">Przygotowuję bazę danych żywności. Do tego czasu dostępne będą tylko składniki, które już zapisałeś.</string>
+    <string name="food_database_preparing">Przygotowywanie <xliff:g id="products_done" example="120,000">%1$s</xliff:g> z <xliff:g id="products_total" example="465,000">%2$s</xliff:g> produktów</string>
+    <string name="food_database_retry">Ponów</string>
+    <string name="food_database_attribution">Dane żywieniowe z Open Food Facts, ODbL v1.0</string>
+    <string name="kcal_2">kcal</string>
 </resources>
