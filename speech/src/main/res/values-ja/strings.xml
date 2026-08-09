@@ -1,3 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">スピーチ</string>
+    <string name="tts_engine_label">MA スピーチ</string>
+    <string name="recognition_service_label">MA スピーチ</string>
+    <string name="grant_microphone">マイクの権限の許可</string>
+    <string name="open_voice_input_settings">音声入力設定を開く</string>
+    <string name="open_text_to_speech_settings">テキスト読み上げの設定を開く</string>
+    <string name="try_it">試す</string>
+    <string name="test_microphone">マイクをテスト</string>
+    <string name="try_the_voice">音声を試す</string>
+    <string name="speak_sample">サンプルを話す</string>
+    <string name="heard">%1$s を聞く</string>
+    <string name="download_model_113_mb">モデルをダウンロード (~113 MB)</string>
 </resources>
