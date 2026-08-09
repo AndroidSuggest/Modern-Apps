@@ -1,0 +1,4 @@
+# The packed geocoder database is large (~1–1.5 GB) and is NOT committed. Generate it locally
+# with tools/extract-osm-addresses.sh + the GeocoderGenerator, then upload to
+# data.vayunmathur.com/geocoder/ ; release builds fetch it back into assets at build time.
+*.geodb
