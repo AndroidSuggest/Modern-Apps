@@ -1,3 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">Калькулятор</string>
+    <string name="history">История</string>
+    <string name="no_calculations_yet">Пока нету расчётов.</string>
+    <string name="add_function">Добавить функцию</string>
+    <string name="toggle_curve_visibility">Показать или скрыть эту кривую</string>
+    <string name="feature_root">корень</string>
+    <string name="feature_y_intercept">y-пересечение</string>
+    <string name="feature_minimum">минимум</string>
+    <string name="feature_maximum">максимум</string>
+    <string name="feature_intersection">пересечение</string>
+</resources>
