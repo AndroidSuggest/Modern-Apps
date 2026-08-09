@@ -1,3 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="daily_challenge">デイリーチャレンジ</string>
+    <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> 日連続記録</string>
+    <string name="app_name">Word Maker</string>
 </resources>
