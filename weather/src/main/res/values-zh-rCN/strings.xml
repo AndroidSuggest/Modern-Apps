@@ -8,7 +8,7 @@
     <string name="add_location">添加位置</string>
     <string name="map_time">时间</string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
-    <string name="weather_widget_description">一览当前时间、日期和天气 — 点按即可查看天气预报</string>
+    <string name="weather_widget_description">一览当前时间、日期和天气 - 点按即可查看天气预报</string>
     <string name="add_a_city_or_use_your_current_location">添加城市或使用当前位置查看天气预报。</string>
     <string name="locations">位置</string>
     <string name="summary_winds_noticeable">今天风力较明显。</string>
@@ -91,7 +91,17 @@
     <string name="precip_raining_now">正在下雨</string>
     <string name="precip_no_rain_next_2h">未来 2 小时无雨</string>
     <string name="precip_rain_starting_now">即将开始下雨</string>
-    <string name="no_data_yet">暂无数据</string>
+    <string name="no_data_yet">尚无数据</string>
     <string name="just_now">刚刚</string>
     <string name="condition_mostly_clear">大部分晴</string>
+    <string name="block_moon">月相</string>
+    <string name="moon_phase_new">新月</string>
+    <string name="moon_phase_waxing_crescent">蛾眉月</string>
+    <string name="moon_phase_first_quarter">上弦月</string>
+    <string name="moon_phase_waxing_gibbous">盈凸月</string>
+    <string name="moon_phase_full">满月</string>
+    <string name="moon_phase_waning_gibbous">亏凸月</string>
+    <string name="moon_phase_last_quarter">下弦月</string>
+    <string name="moon_phase_waning_crescent">残月</string>
+    <string name="weather_blob_widget_description">天气以有机图形显示 - 大温度配图标，深青色背景</string>
 </resources>
