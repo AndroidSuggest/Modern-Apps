@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="display">Affichage</string>
     <string name="off">Désactivé</string>
+    <string name="app_name">Astronomie</string>
+    <string name="show_deep_sky">Ciel profond (Messier)</string>
+    <string name="night_mode">Mode nuit (rouge)</string>
+    <string name="object_not_found">Objet introuvable : <xliff:g id="object_name" example="Polaris">%1$s</xliff:g></string>
+    <string name="circumpolar_never_sets">Circumpolaire – ne se couche jamais</string>
+    <string name="alt_az">Alt. : <xliff:g id="altitude" example="45">%1$s</xliff:g>° Az. : <xliff:g id="azimuth" example="180">%2$s</xliff:g>°</string>
+    <string name="mag">Magnitude : <xliff:g id="magnitude" example="1.5">%1$s</xliff:g></string>
+    <string name="rise_transit_set">Lever / Passage au méridien / Coucher</string>
+    <string name="trajectory_24h_15m_steps_yellow_line_on">Trajectoire sur 24 h (pas de 15 min) - ligne jaune sur la carte</string>
+    <string name="transit_1">Passage au méridien : <xliff:g id="time" example="21:30">%1$s</xliff:g> ?:</string>
+    <string name="calculating">Calcul en cours…</string>
+    <string name="ra_dec">AD : <xliff:g id="ra" example="5.5">%1$s</xliff:g>° Déc. : <xliff:g id="dec" example="-8.2">%2$s</xliff:g>°</string>
+    <string name="never_rises_at_this_location">Ne se lève jamais à cet emplacement</string>
 </resources>
