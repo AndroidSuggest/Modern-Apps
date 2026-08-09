@@ -25,4 +25,8 @@
     <string name="cd_shuffle">随机排序</string>
     <string name="cd_submit">提交</string>
     <string name="cd_backspace">退格键</string>
+    <string name="daily_challenge">每日挑战</string>
+    <string name="daily_streak">连续 <xliff:g id="days" example="5">%1$d</xliff:g> 天</string>
+    <string name="mode_daily">每日</string>
+    <string name="daily_come_back_tomorrow">已解决！明天再来。</string>
 </resources>
