@@ -3,6 +3,9 @@ package com.vayunmathur.networklocation.geocoder
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
 import java.util.zip.Deflater
 import java.util.zip.Inflater
 import kotlin.math.max
@@ -133,6 +136,48 @@ internal fun inflate(data: ByteArray, expected: Int): ByteArray {
     while (off < expected && !inf.finished()) off += inf.inflate(out, off, expected - off)
     inf.end()
     return out
+}
+
+// ---------------------------------------------------------------------------------------------
+// Random-access byte source. Backs the reader by either a plain File or an mmap'd APK asset.
+// Reads are positional (thread-safe FileChannel.read) with no 2 GB limit, so a multi-GB DB is
+// fine. Values are big-endian to match DataOutputStream on the writer side.
+// ---------------------------------------------------------------------------------------------
+
+interface ByteSource : AutoCloseable {
+    val size: Long
+    fun read(pos: Long, len: Int): ByteArray
+    fun readIntAt(pos: Long): Int = ByteBuffer.wrap(read(pos, 4)).int
+    fun readLongAt(pos: Long): Long = ByteBuffer.wrap(read(pos, 8)).long
+}
+
+/**
+ * [ByteSource] over a region of a [FileChannel] starting at [base]. Works for a whole file
+ * (base = 0) or an uncompressed asset embedded in the APK (base = AssetFileDescriptor.startOffset).
+ */
+class ChannelByteSource(
+    private val channel: FileChannel,
+    private val base: Long,
+    override val size: Long,
+) : ByteSource {
+    override fun read(pos: Long, len: Int): ByteArray {
+        val b = ByteArray(len)
+        val bb = ByteBuffer.wrap(b)
+        var read = 0
+        while (read < len) {
+            val r = channel.read(bb, base + pos + read)
+            if (r < 0) break
+            read += r
+        }
+        return b
+    }
+
+    override fun close() = channel.close()
+
+    companion object {
+        fun of(file: File): ChannelByteSource =
+            ChannelByteSource(RandomAccessFile(file, "r").channel, 0, file.length())
+    }
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -2,18 +2,19 @@ package com.vayunmathur.networklocation.geocoder
 
 import java.io.DataInputStream
 import java.io.File
-import java.io.RandomAccessFile
 import kotlin.math.cos
 import kotlin.math.min
 
 /**
- * Reader for a [GeoDb] file. Dictionaries and the grid directory are held in memory; address
- * columns are read block-by-block from the file on demand (seek + inflate one block), so the
- * bulk of the database is never resident. Supports reverse (coord -> address) and structured
- * forward (country/state/city/street -> addresses) geocoding.
+ * Reader for a [GeoDb] file, backed by a [ByteSource] (a plain file or an mmap'd APK asset).
+ * Dictionaries and the grid directory are held in memory; address columns are read
+ * block-by-block on demand (positional read + inflate one block), so the bulk of the database
+ * is never resident. Supports reverse (coord -> address) and structured forward geocoding.
  */
-class GeoDbReader(file: File) : AutoCloseable {
-    private val raf = RandomAccessFile(file, "r")
+class GeoDbReader(private val src: ByteSource) : AutoCloseable {
+    /** Convenience: read from a plain file. */
+    constructor(file: File) : this(ChannelByteSource.of(file))
+
     private val n: Int
 
     private val dictHouse: Array<String>
@@ -30,22 +31,21 @@ class GeoDbReader(file: File) : AutoCloseable {
     private val fwd: Column // record indices in forward-sorted order
 
     init {
-        raf.seek(0)
-        require(raf.readInt() == GeoDb.MAGIC) { "bad magic" }
-        require(raf.readInt() == GeoDb.VERSION) { "bad version" }
-        n = raf.readInt()
+        var cursor = 0L
+        require(src.readIntAt(cursor) == GeoDb.MAGIC) { "bad magic" }; cursor += 4
+        require(src.readIntAt(cursor) == GeoDb.VERSION) { "bad version" }; cursor += 4
+        n = src.readIntAt(cursor); cursor += 4
 
         fun readSectionBytes(): ByteArray {
-            val size = raf.readInt()
-            val b = ByteArray(size)
-            raf.readFully(b)
+            val size = src.readIntAt(cursor); cursor += 4
+            val b = src.read(cursor, size); cursor += size
             return b
         }
-        fun sectionOffset(): Pair<Long, Int> {
-            val size = raf.readInt()
-            val off = raf.filePointer
-            raf.seek(off + size) // skip body; we'll seek back for block reads
-            return off to size
+        fun skipSection(): Long {
+            val size = src.readIntAt(cursor); cursor += 4
+            val off = cursor
+            cursor += size
+            return off
         }
 
         dictHouse = decodeDict(readSectionBytes())
@@ -55,12 +55,8 @@ class GeoDbReader(file: File) : AutoCloseable {
         dictCountry = decodeDict(readSectionBytes())
         dictPostcode = decodeDict(readSectionBytes())
 
-        // Phase 1: record column offsets by skipping their bodies (do NOT build Column yet —
-        // Column construction seeks, which would corrupt this sequential scan).
-        val colOffsets = LongArray(GeoDb.COLUMN_COUNT)
-        for (i in 0 until GeoDb.COLUMN_COUNT) colOffsets[i] = sectionOffset().first
+        val colOffsets = LongArray(GeoDb.COLUMN_COUNT) { skipSection() }
 
-        // Grid directory.
         val grid = readSectionBytes()
         DataInputStream(grid.inputStream()).use { g ->
             val count = g.readInt()
@@ -69,12 +65,11 @@ class GeoDbReader(file: File) : AutoCloseable {
             for (i in 0 until count) { cellIds[i] = g.readLong(); cellStarts[i] = g.readInt() }
         }
 
-        val fwdOff = sectionOffset().first
+        val fwdOff = skipSection()
 
-        // Phase 2: now that the sequential scan is done, build the on-demand column readers.
         val delta = booleanArrayOf(true, true, false, false, false, false, false, false)
-        columns = Array(GeoDb.COLUMN_COUNT) { i -> Column(raf, colOffsets[i], delta[i]) }
-        fwd = Column(raf, fwdOff, delta = true)
+        columns = Array(GeoDb.COLUMN_COUNT) { i -> Column(src, colOffsets[i], delta[i]) }
+        fwd = Column(src, fwdOff, delta = true)
     }
 
     val size: Int get() = n
@@ -97,7 +92,7 @@ class GeoDbReader(file: File) : AutoCloseable {
             for (r in (row - radius)..(row + radius)) {
                 if (r < 0) continue
                 for (c in (col - radius)..(col + radius)) {
-                    // Only scan the ring edge on expansions after the first.
+                    // On expansions past the first, only scan the new ring edge.
                     if (radius > 1 && r > row - radius && r < row + radius &&
                         c > col - radius && c < col + radius
                     ) continue
@@ -122,7 +117,7 @@ class GeoDbReader(file: File) : AutoCloseable {
 
     // ------------------------------------------------------------------ forward geocoding
 
-    /** All addresses matching the given components (case-insensitive exact on each field). */
+    /** All addresses matching the given components (exact per field). */
     fun forward(
         country: String,
         state: String,
@@ -137,7 +132,6 @@ class GeoDbReader(file: File) : AutoCloseable {
         if (kCountry < 0 || kState < 0 || kCity < 0 || kStreet < 0) return emptyList()
 
         val target = intArrayOf(kCountry, kState, kCity, kStreet)
-        // Lower bound over the forward ordering.
         var lo = 0
         var hi = n
         while (lo < hi) {
@@ -192,7 +186,6 @@ class GeoDbReader(file: File) : AutoCloseable {
     }
 
     private fun dictIndex(dict: Array<String>, key: String): Int {
-        // Dictionaries are stored sorted (lexical), so binary search matches the stored order.
         var lo = 0
         var hi = dict.size - 1
         while (lo <= hi) {
@@ -207,7 +200,7 @@ class GeoDbReader(file: File) : AutoCloseable {
         return -1
     }
 
-    override fun close() = raf.close()
+    override fun close() = src.close()
 
     private fun decodeDict(section: ByteArray): Array<String> {
         val di = DataInputStream(section.inputStream())
@@ -227,10 +220,11 @@ class GeoDbReader(file: File) : AutoCloseable {
 
 /**
  * On-demand column reader. Parses the column header (block sizes) up front, then inflates and
- * decodes a single block per access, caching the most recently used block.
+ * decodes a single block per access, caching the most recently used block. [get] is
+ * synchronised so multiple binder threads can share one reader.
  */
 private class Column(
-    private val raf: RandomAccessFile,
+    private val src: ByteSource,
     sectionOffset: Long,
     private val delta: Boolean,
 ) {
@@ -244,20 +238,21 @@ private class Column(
     private var cachedValues: IntArray = IntArray(0)
 
     init {
-        synchronized(raf) {
-            raf.seek(sectionOffset)
-            n = raf.readInt()
-            blockCount = raf.readInt()
-            rawLens = IntArray(blockCount)
-            compLens = IntArray(blockCount)
-            for (b in 0 until blockCount) { rawLens[b] = raf.readInt(); compLens[b] = raf.readInt() }
-            val bodyStart = raf.filePointer
-            blockFileOffset = LongArray(blockCount)
-            var off = bodyStart
-            for (b in 0 until blockCount) { blockFileOffset[b] = off; off += compLens[b] }
+        var p = sectionOffset
+        n = src.readIntAt(p); p += 4
+        blockCount = src.readIntAt(p); p += 4
+        rawLens = IntArray(blockCount)
+        compLens = IntArray(blockCount)
+        for (b in 0 until blockCount) {
+            rawLens[b] = src.readIntAt(p); p += 4
+            compLens[b] = src.readIntAt(p); p += 4
         }
+        blockFileOffset = LongArray(blockCount)
+        var off = p
+        for (b in 0 until blockCount) { blockFileOffset[b] = off; off += compLens[b] }
     }
 
+    @Synchronized
     fun get(i: Int): Int {
         val block = i / GeoDb.BLOCK
         if (block != cachedBlock) decode(block)
@@ -265,11 +260,7 @@ private class Column(
     }
 
     private fun decode(block: Int) {
-        val comp = ByteArray(compLens[block])
-        synchronized(raf) {
-            raf.seek(blockFileOffset[block])
-            raf.readFully(comp)
-        }
+        val comp = src.read(blockFileOffset[block], compLens[block])
         val raw = inflate(comp, rawLens[block])
         val count = min(GeoDb.BLOCK, n - block * GeoDb.BLOCK)
         val values = IntArray(count)
