@@ -1,3 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">計算機</string>
+    <string name="history">履歴</string>
+    <string name="no_calculations_yet">まだ計算がありません。</string>
+    <string name="add_function">関数を追加</string>
+    <string name="toggle_curve_visibility">曲線を表示/非表示</string>
+    <string name="feature_root">ルート</string>
+    <string name="feature_y_intercept">y切片</string>
+    <string name="feature_minimum">最小値</string>
+    <string name="feature_maximum">最大値</string>
+    <string name="feature_intersection">交点</string>
 </resources>
