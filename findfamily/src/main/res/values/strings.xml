@@ -249,4 +249,11 @@
     <!-- UwbRangingScreen: Hint when azimuth null. Instruction sentence -->
     <string name="point_the_back_of_your_phone_toward_your">Point the back of your phone toward your contact</string>
 
+    <!-- MainPage: Content description for the GPS-only fallback warning icon in the top bar. Noun phrase -->
+    <string name="gps_fallback_warning_content_description">Network location unavailable</string>
+    <!-- GpsFallbackWarningDialog: Title of the GPS-only fallback warning dialog. Noun phrase -->
+    <string name="gps_fallback_warning_title">Using GPS only</string>
+    <!-- GpsFallbackWarningDialog: Body explaining network location is off and GPS drains battery. Sentence -->
+    <string name="gps_fallback_warning_body">Network location isn\'t turned on for this device, so FindFamily is using GPS only to keep tracking your location. GPS is more accurate but may cause significant battery drain. To reduce battery use, turn on network (Wi-Fi &amp; mobile) location in your device settings.</string>
+
 </resources>

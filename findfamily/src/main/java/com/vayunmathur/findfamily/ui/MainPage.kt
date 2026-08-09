@@ -5,6 +5,7 @@ import kotlinx.datetime.format.DateTimeFormat
 import com.vayunmathur.library.util.DateNameStyle
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -84,6 +85,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -100,6 +102,7 @@ import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.Waypoint
 import com.vayunmathur.findfamily.data.toGeoPoint
 import com.vayunmathur.findfamily.ui.dialogs.encodeBase26
+import com.vayunmathur.findfamily.ui.dialogs.GpsFallbackWarningDialog
 import com.vayunmathur.findfamily.ui.dialogs.SecurityCodeDialog
 import com.vayunmathur.findfamily.util.FamilyListActions
 import com.vayunmathur.findfamily.util.FamilyListUiState
@@ -167,6 +170,8 @@ fun MainPage(
     val isShowingPresent by ffViewModel.isShowingPresent.collectAsState()
     val historicalPosition by ffViewModel.historicalPosition.collectAsState()
     var showSecurityCode by remember { mutableStateOf(false) }
+    var showGpsWarning by remember { mutableStateOf(false) }
+    val usingGpsFallback by ffViewModel.usingGpsFallback.collectAsState()
 
     val waypointName by ffViewModel.waypointName.collectAsState()
     val waypointRange by ffViewModel.waypointRange.collectAsState()
@@ -284,6 +289,18 @@ fun MainPage(
                 },
                 actions = {
                     if (selectedUserId == null && (selectedWaypointId == null || selectedWaypointId == 0L)) {
+                        if (usingGpsFallback) {
+                            IconButton({ showGpsWarning = true }) {
+                                // Use Image (not the tinting IconWarning) so the
+                                // custom yellow-and-red drawable keeps both colors.
+                                Image(
+                                    painter = painterResource(R.drawable.ic_warning_gps),
+                                    contentDescription = stringResource(
+                                        R.string.gps_fallback_warning_content_description
+                                    )
+                                )
+                            }
+                        }
                         BackupButtons(
                             dbConfigs = listOf("passwords-db" to ffViewModel.backupPassphrase),
                             dbCodec = SqlCipherDbCodec,
@@ -520,6 +537,10 @@ fun MainPage(
     if (showSecurityCode && selectedUserId != null && selectedUserId != Networking.userid) {
         val user by ffViewModel.userByIdState(selectedUserId!!)
         user?.let { SecurityCodeDialog(it, ffViewModel) { showSecurityCode = false } }
+    }
+
+    if (showGpsWarning) {
+        GpsFallbackWarningDialog { showGpsWarning = false }
     }
 }
 

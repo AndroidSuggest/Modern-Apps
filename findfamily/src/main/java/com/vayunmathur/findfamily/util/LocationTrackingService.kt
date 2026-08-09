@@ -469,15 +469,32 @@ class LocationTrackingService : Service(), SensorEventListener {
         val isLowPower = powerManager.isPowerSaveMode
         val networkInterval = if (isLowPower) 30_000L else 10_000L
 
-        try {
-            locationManager.removeUpdates(networkListener)
-            locationManager.requestLocationUpdates(
-                LocationManager.NETWORK_PROVIDER,
-                networkInterval,
-                0f,
-                networkListener
-            )
-        } catch (_: SecurityException) {
+        // Devices without Play Services / MicroG (e.g. GrapheneOS) may have no
+        // NETWORK_PROVIDER at all. Requesting updates from a missing provider
+        // throws IllegalArgumentException, which used to crash the app on every
+        // launch. Guard the request the same way startGps() guards GPS, and when
+        // network location is unavailable fall back to GPS-only tracking (the
+        // networkListener that would normally start GPS never fires without a
+        // network provider).
+        val hasNetworkProvider =
+            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+
+        if (hasNetworkProvider) {
+            LocationProviderStatus.setUsingGpsFallback(false)
+            try {
+                locationManager.removeUpdates(networkListener)
+                locationManager.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER,
+                    networkInterval,
+                    0f,
+                    networkListener
+                )
+            } catch (_: SecurityException) {
+            } catch (_: IllegalArgumentException) {
+            }
+        } else {
+            LocationProviderStatus.setUsingGpsFallback(true)
+            startGps()
         }
     }
 

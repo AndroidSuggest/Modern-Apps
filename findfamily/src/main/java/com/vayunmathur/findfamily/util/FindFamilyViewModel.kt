@@ -437,6 +437,13 @@ class FindFamilyViewModel(
     /** The peer this session is currently with (initiator OR responder), if any. */
     val uwbPeerUserId: StateFlow<Long?> = UwbSessionManager.peerUserId
 
+    /**
+     * True iff the tracking service has fallen back to GPS-only location because
+     * the device has no network location provider. Backed by
+     * [LocationProviderStatus]; the UI uses it to show a battery-drain warning.
+     */
+    val usingGpsFallback: StateFlow<Boolean> = LocationProviderStatus.usingGpsFallback
+
     /** User tapped "Find with Precision" on the given peer. */
     fun startRanging(peerUserId: Long) {
         UwbSessionManager.startAsInitiator(peerUserId)
