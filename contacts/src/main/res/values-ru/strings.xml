@@ -18,7 +18,7 @@
     <string name="last_name">Фамилия</string>
     <string name="nickname">Ник</string>
     <string name="company">Компания</string>
-    <string name="account">Учетная запись</string>
+    <string name="account">Учётная запись</string>
     <string name="account_display_format"><xliff:g id="account_name" example="Personal">%1$s</xliff:g> (<xliff:g id="account_type" example="com.google">%2$s</xliff:g>)</string>
     <string name="add_phone">Добавить номер</string>
     <string name="remove_phone">Удалить номер</string>
@@ -35,10 +35,10 @@
     <string name="add_picture">Добавить фото</string>
     <string name="change_picture">Изменить</string>
     <string name="remove_picture">Удалить</string>
-    <string name="visible_accounts">Отображаемые Аккаунты</string>
-    <string name="add_contacts_account">Добавить Аккаунт</string>
-    <string name="enter_account_name">Введите имя для нового локального аккаунта:</string>
-    <string name="account_name">Имя Аккаунта</string>
+    <string name="visible_accounts">Отображаемые учётки</string>
+    <string name="add_contacts_account">Добавить учётку</string>
+    <string name="enter_account_name">Введите имя для новой локальной учётки:</string>
+    <string name="account_name">Имя учётки</string>
     <string name="delete_contact_title">Удалить контакт</string>
     <string name="delete_contact_confirm">Вы уверены, что хотите удалить этот контакт? Это действие необратимо.</string>
     <string name="delete_contact_name_confirm">Вы уверены, что хотите удалить \"<xliff:g id="contact_name" example="John Doe">%1$s</xliff:g>\"? Это действие необратимо.</string>
@@ -57,7 +57,7 @@
     <string name="delete_selected_contacts_title">Удалить выбранные контакты</string>
     <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> выбрано</string>
     <string name="display">Дисплей</string>
-    <string name="show_account_labels">Показывать аккаунты</string>
+    <string name="show_account_labels">Показывать учётки контакта</string>
     <string name="search_contacts">Поиск контактов</string>
     <string name="include_year">Вкл. год</string>
     <string name="system_default">По умолчанию</string>
@@ -75,10 +75,10 @@
     <string name="delete_group_confirm">Вы уверены, что хотите удалить эту группу? Контакты не будут удалены.</string>
     <string name="no_groups_found">Группы не найдены. Создайте группу на вкладке «Группы».</string>
     <string name="import_vcf_file">Импорт файла .vcf</string>
-    <string name="import_to_existing_account">Импорт в существующий аккаунт</string>
-    <string name="create_new_account_option">Создать новый аккаунт</string>
+    <string name="import_to_existing_account">Импорт в существующую учётную запись</string>
+    <string name="create_new_account_option">Создать новую учётку</string>
     <string name="no_contacts_found">Контакты не найдены</string>
-    <string name="select_account">Выберите учетную запись</string>
+    <string name="select_account">Выберите учётную запись</string>
     <string name="no_name">(Без имени)</string>
     <string name="add_number_to_contact">Добавить номер телефона</string>
     <string name="create_new_contact">Новый контакт</string>
