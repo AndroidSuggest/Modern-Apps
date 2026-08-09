@@ -1,3 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">時計</string>
+    <string name="label_alarm">アラーム</string>
+    <string name="label_clock">時計</string>
+    <string name="label_timer">タイマー</string>
+    <string name="label_stopwatch">ストップウォッチ</string>
+    <string name="set_an_alarm">アラームをセット</string>
+    <string name="button_stop">停止</string>
+    <string name="button_snooze">スヌーズ (5分)</string>
+    <string name="alarm_notification_wake_up">起きて！</string>
+    <string name="alarm_ringing_notification_title">アラームが鳴っています</string>
+    <string name="channel_ongoing_timers_name">進行中のタイマー</string>
+    <string name="channel_ongoing_timers_description">進行中のカウントダウン</string>
+    <string name="channel_completed_timers_name">終了したタイマー</string>
+    <string name="channel_completed_timers_description">タイマーが終了したときにアラート</string>
+    <string name="channel_alarms_name">アラーム</string>
+    <string name="channel_alarms_description">スケジュールされたアラームの通知</string>
+    <string name="channel_stopwatch_name">ストップウォッチ</string>
+    <string name="channel_stopwatch_description">ストップウォッチコントロール</string>
+    <string name="header_laps">ラップ</string>
+    <string name="lap_number_format"># <xliff:g id="lap_number" example="1">%1$d</xliff:g></string>
+    <string name="duration_ms_format"><xliff:g id="seconds" example="12">%1$d</xliff:g>.<xliff:g id="centiseconds" example="34">%2$02d</xliff:g></string>
+    <string name="duration_m_s_ms_format"><xliff:g id="minutes" example="1">%1$d</xliff:g>:<xliff:g id="seconds" example="23">%2$02d</xliff:g>.<xliff:g id="centiseconds" example="45">%3$02d</xliff:g></string>
+    <string name="header_split">スピリット</string>
+    <string name="header_total">合計</string>
+    <string name="stopwatch_time_format"><xliff:g id="minutes" example="1">%1$d</xliff:g>:<xliff:g id="seconds" example="05">%2$02d</xliff:g></string>
+    <string name="button_add_minute">+ 1:00</string>
+    <string name="timer_finished_title">タイマーが終了</string>
+    <string name="timer_finished_text"><xliff:g id="timer_name" example="Tea">%1$s</xliff:g> が終了しました！</string>
+    <string name="action_pause">一時停止</string>
+    <string name="action_resume">再開</string>
+    <string name="action_cancel">キャンセル</string>
+    <string name="action_reset">リセット</string>
+    <string name="action_lap">ラップ</string>
+    <string name="action_stop">停止</string>
+    <string name="label_new_timer">新しいタイマー</string>
+    <string name="field_label">ラベル</string>
+    <string name="button_cancel">キャンセル</string>
+    <string name="button_save">保存</string>
+    <string name="select_cities_title">都市を選択</string>
+    <string name="search_city_hint">都市または地域を検索…</string>
+    <string name="time_am">午前</string>
+    <string name="time_pm">午後</string>
+    <string name="grant_notifications_permission">通知の権限を許可</string>
+    <string name="analog_clock_widget_label">アナログ時計</string>
+    <string name="analog_clock_widget_description">Material Youアナログ時計 - タップして時計を開く</string>
+    <string name="alarm_settings">アラームの設定</string>
+    <string name="defaults_for_new_alarms">新しいアラームのデフォルト</string>
+    <string name="gradual_off">オフ</string>
+    <string name="ringtone_default">デフォルト</string>
+    <string name="ringtone_silent">無音</string>
+    <string name="ringtone_custom">カスタム</string>
+    <string name="timer_name_optional">タイマーの名前 (オプション)</string>
+    <string name="sound">音</string>
+    <string name="vibrate">バイブレーション</string>
+    <string name="snooze_length">スヌーズの長さ</string>
+    <string name="gradually_increase_volume">徐々に音量を上げる</string>
 </resources>
