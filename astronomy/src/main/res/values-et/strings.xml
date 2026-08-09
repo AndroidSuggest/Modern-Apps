@@ -1,7 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Astronoomia</string>
     <string name="display">Ekraan</string>
     <string name="save_location">Salvesta asukoht</string>
     <string name="location">Asukoht</string>
+    <string name="use_current_location">Kasuta praegust asukohta</string>
+    <string name="planet_sun">Päike</string>
+    <string name="planet_moon">Kuu</string>
+    <string name="planet_mercury">Merkuur</string>
+    <string name="planet_venus">Veenus</string>
+    <string name="planet_mars">Marss</string>
+    <string name="planet_saturn">Saturn</string>
+    <string name="planet_uranus">Uraan</string>
+    <string name="planet_neptune">Neptuun</string>
+    <string name="search_result_planet">Planeet</string>
+    <string name="search_result_star_fallback">Täht <xliff:g id="star_id" example="123">%1$s</xliff:g></string>
+    <string name="search_result_constellation">Tähtkuju <xliff:g id="constellation" example="Orion">%1$s</xliff:g></string>
+    <string name="show_deep_sky">Messier\' tähekataloog</string>
+    <string name="night_mode">Öörežiim (punane)</string>
+    <string name="object_not_found">Objekti ei leidu: <xliff:g id="object_name" example="Polaris">%1$s</xliff:g></string>
+    <string name="calculating">Arvutan…</string>
+    <string name="ra_dec">RA: <xliff:g id="ra" example="5.5">%1$s</xliff:g>° Dec: <xliff:g id="dec" example="-8.2">%2$s</xliff:g>°</string>
+    <string name="rise_1">Tõus: <xliff:g id="time" example="18:45">%1$s</xliff:g> ?:</string>
+    <string name="set_1">Loojang: <xliff:g id="time" example="04:12">%1$s</xliff:g> ?:</string>
+    <string name="search_1">Otsi</string>
+    <string name="search_stars_planets_messier">Otsi tähti, planeete ja Messier\' kataloogist</string>
+    <string name="constellations">Tähekogud</string>
+    <string name="planet_jupiter">Jupiter</string>
+    <string name="search_result_star_mag">Tähesuurus <xliff:g id="magnitude" example="2.1">%1$s</xliff:g></string>
+    <string name="fov">Vaateväli: <xliff:g id="degrees" example="60">%1$s</xliff:g>°</string>
+    <string name="planets_sun_moon">Planeedid / Päike / Kuu</string>
+    <string name="latitude_deg">Laiuskraad (°)</string>
+    <string name="coordinate_grid_whole_sphere">Koordinaatvõrk (kogu kera)</string>
+    <string name="longitude_deg">Pikkuskraad (°)</string>
+    <string name="mag">Tähesuurus: <xliff:g id="magnitude" example="1.5">%1$s</xliff:g></string>
+    <string name="alt_az">Kõrgus: <xliff:g id="altitude" example="45">%1$s</xliff:g>° Asimuut: <xliff:g id="azimuth" example="180">%2$s</xliff:g>°</string>
+    <string name="circumpolar_never_sets">Polaarne - ei looju iialgi</string>
+    <string name="trajectory_24h_15m_steps_yellow_line_on">24h trajektoor (15 min sammudena) - kollane joon kaardil</string>
+    <string name="never_rises_at_this_location">Selles asukohas ei tõuse iialgi</string>
+    <string name="off">Pole kasutusel</string>
+    <string name="lines_only">Vaid jooned</string>
+    <string name="show_below_horizon_all_sky">Näita taevast ka horisondi all (kogu taevast)</string>
+    <string name="lines_art">Jooned + graafika</string>
+    <string name="notes_true_north_correction_via_geomagne">Märkus: Tegeliku põhjasuuna korrigeerimine geomagneetilise deklinatsiooni abil. AR kasutab CameraX-i ja pöördevektori ühendamist.</string>
+    <string name="catalog_stars_constellations_dso">Kataloog: <xliff:g id="star_count" example="5000">%1$s</xliff:g> tähte, <xliff:g id="constellation_count" example="88">%2$s</xliff:g> tähekogu, <xliff:g id="dso_count" example="110">%3$s</xliff:g> Messier\' kataloogi objekti.</string>
+    <string name="rise_transit_set">Tõus / Kulminatsioon / Loojang</string>
+    <string name="transit_1">Kulminatsioon: <xliff:g id="time" example="21:30">%1$s</xliff:g> ?:</string>
+    <string name="ra_h_h">Otsetõus tundides: <xliff:g id="hours" example="5.5">%1$s</xliff:g> t</string>
+    <string name="magnitude_limit">Nähtava tähesuuruse piir: <xliff:g id="limit" example="4.5">%1$s</xliff:g></string>
 </resources>
