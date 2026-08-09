@@ -7,8 +7,13 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Signature|privileged. Granted only when Files ships as the system documents UI (MAOS);
+         ignored on a normal install. Lets the SAF picker return/persist provider-backed URIs. -->
+    <uses-permission android:name="android.permission.MANAGE_DOCUMENTS"
+        tools:ignore="ProtectedPermissions" />
 
     <application
+        android:name=".FilesApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
@@ -55,6 +60,37 @@
 
                 <data android:scheme="content" />
                 <data android:scheme="file" />
+            </intent-filter>
+        </activity>
+
+        <!-- Storage Access Framework picker. Files takes over DocumentsUI's SAF role, but
+             ONLY when it is the privileged system documents UI. Ships DISABLED so it never
+             appears (e.g. in GET_CONTENT choosers) on a normal install; FilesApp enables it
+             at startup iff MANAGE_DOCUMENTS is granted. The OPEN_DOCUMENT / CREATE_DOCUMENT /
+             OPEN_DOCUMENT_TREE actions are only ever routed by the framework to the configured
+             documents UI package, so they are inert elsewhere regardless. -->
+        <activity
+            android:name=".saf.DocumentPickerActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.General">
+            <intent-filter>
+                <action android:name="android.intent.action.OPEN_DOCUMENT" />
+                <action android:name="android.intent.action.CREATE_DOCUMENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 

@@ -131,4 +131,18 @@
     <string name="items_count"><xliff:g id="count" example="12">%1$d</xliff:g> item(s)</string>
     <!-- Close a dialog -->
     <string name="close">Close</string>
+
+    <!-- SAF document picker (shown only when Files is the system documents UI) -->
+    <!-- Title when the caller is opening/selecting existing files -->
+    <string name="saf_title_open">Select a file</string>
+    <!-- Title when the caller is creating/saving a new file -->
+    <string name="saf_title_create">Save file</string>
+    <!-- Title when the caller is picking a folder (grants access to the whole tree) -->
+    <string name="saf_title_tree">Select a folder</string>
+    <!-- Button confirming the current folder as the picked tree -->
+    <string name="saf_use_this_folder">Use this folder</string>
+    <!-- Button saving a newly created document -->
+    <string name="saf_save">Save</string>
+    <!-- Button confirming a multi-file selection. %1$d = number selected -->
+    <string name="saf_select_count">Select (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
 </resources>
