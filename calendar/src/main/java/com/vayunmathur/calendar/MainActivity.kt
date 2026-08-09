@@ -1,11 +1,14 @@
 package com.vayunmathur.calendar
 
 import android.Manifest
+import android.app.AlarmManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.CalendarContract
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -53,6 +56,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         updateWidgetPreviews(CalendarGlanceWidgetReceiver::class)
         enableEdgeToEdge()
+
+        // Reminder notifications rely on exact alarms; route the user to the
+        // system toggle if the app doesn't yet hold that special access.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(AlarmManager::class.java)
+            if (alarmManager != null && !alarmManager.canScheduleExactAlarms()) {
+                runCatching {
+                    startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        data = Uri.fromParts("package", packageName, null)
+                    })
+                }
+            }
+        }
+
         handleIntent(intent)
         setContent {
             val permissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
@@ -69,6 +86,23 @@ class MainActivity : ComponentActivity() {
                     NoPermissionsScreen(permissions, stringResource(R.string.please_grant_calendar_permission)) { hasPermissions = it }
                 } else {
                     val viewModel: CalendarViewModel = viewModel()
+
+                    // Reminder notifications need runtime notification permission on
+                    // Android 13+. Requested here (not gated) so the calendar still
+                    // works if the user declines.
+                    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.RequestPermission()
+                    ) {}
+                    LaunchedEffect(Unit) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(
+                                this@MainActivity,
+                                Manifest.permission.POST_NOTIFICATIONS,
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
 
                     LaunchedEffect(intent) {
                         if (intent?.action == Intent.ACTION_VIEW && intent.type == "time/epoch") {

@@ -309,4 +309,13 @@
     <string name="widget_preview_event_3_title">Design review</string>
     <!-- Widget preview sample event 3: time range -->
     <string name="widget_preview_event_3_time">3:00 – 4:00 PM</string>
+
+    <!-- ReminderReceiver: Notification channel name for event reminders. Noun phrase -->
+    <string name="reminder_channel_name">Event Reminders</string>
+    <!-- ReminderReceiver: Notification channel description for event reminders. Sentence -->
+    <string name="reminder_channel_description">Reminders for upcoming calendar events</string>
+    <!-- ReminderReceiver: Fallback notification title when an event has no title. Noun phrase -->
+    <string name="reminder_notification_default_title">Event reminder</string>
+    <!-- ReminderReceiver: Notification body. %1$s = formatted event start time, e.g. 3:00 PM -->
+    <string name="reminder_notification_text">Starts at <xliff:g id="start_time" example="3:00 PM">%1$s</xliff:g></string>
 </resources>

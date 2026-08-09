@@ -300,6 +300,7 @@ class CalendarViewModel(application: Application) :
                     if (reminders != null) writeReminders(eventId, reminders)
                 }
                 _events.value = Event.getAllEvents(app)
+                ReminderScheduler.reconcileAll(app, _events.value)
                 updateWidgets()
             } catch (e: Exception) {
                 Log.e("CalendarViewModel", "Error upserting event", e)
