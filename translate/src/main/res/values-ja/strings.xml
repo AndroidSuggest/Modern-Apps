@@ -1,3 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">翻訳</string>
+    <string name="enter_text">テキストを入力</string>
+    <string name="loading_translator">翻訳機を読み込み中…</string>
+    <string name="copy">コピー</string>
+    <string name="speak">音声を聞く</string>
+    <string name="translation">翻訳</string>
+    <string name="translation_model_not_installed_showing">翻訳モデルが未インストール — 検出されたテキストのみ表示</string>
+    <string name="grant_camera_access">見ているものを翻訳するにはカメラの権限の許可が必要</string>
+    <string name="no_voice_installed">%1$s の音声が未インストール</string>
+    <string name="install_voice">インストール</string>
 </resources>
