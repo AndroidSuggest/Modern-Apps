@@ -72,4 +72,24 @@
     <string name="all_languages">Kõik keeled</string>
     <string name="language">Keel</string>
     <string name="auto_save">Automaatne salvestus</string>
+    <string name="discard_changes_title">Kas loobud salvestamata muudatutest?</string>
+    <string name="use_regex">Regulaaravaldis</string>
+    <string name="match_case">Sobita tõstutundlikult</string>
+    <string name="invalid_regex">Vigane muster</string>
+    <string name="search_in_project">Otsi projektist</string>
+    <string name="storage_permission_rationale">See rakendus (Kood) vajab juurdepääsu kõigile failidele, et avada sinu projekte, käivitada git\'i ja kasutada terminali tegelike failide asukohtadega.</string>
+    <string name="grant_access">Luba juurdepääs</string>
+    <string name="auto_save_desc">Salvesta koheselt, kui oled lõpetanud sisestamise</string>
+    <string name="trim_trailing_whitespace">Eemalda lõpus olevad tühikud</string>
+    <string name="trim_trailing_whitespace_desc">Salvestamisel eemalda lõpus olevad tühikud ja tabulaatorisammud</string>
+    <string name="source_control">Lähtekoodihoidla haldus</string>
+    <string name="not_a_git_repo">See kaust pole giti lähtekoodihoidla.</string>
+    <string name="git_init">Valmenda lähtekoodihoidla</string>
+    <string name="git_clone">Klooni</string>
+    <string name="clone_url_hint">https://github.com/user/repo.git</string>
+    <string name="format_document">Vorminda dokument</string>
+    <string name="quick_open">Kiiravamine</string>
+    <string name="quick_open_hint">Sisesta failinimi</string>
+    <string name="command_palette">Käsupalett</string>
+    <string name="command_palette_hint">Sisesta käsk</string>
 </resources>
