@@ -620,7 +620,6 @@ fun WordGameScreen(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(16.dp)
-                        .padding(bottom = 32.dp)
                 ) {
                     FilledIconButton(
                         onClick = { showHintDialog = true },
