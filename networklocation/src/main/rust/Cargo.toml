@@ -6,7 +6,10 @@ description = "Robust device-position estimation (RANSAC + Expectation-Maximizat
 license = "MIT"
 
 [lib]
-name = "network_location_position_estimation_rust"
+# Must match `rustNativeLib("networklocation")` in build.gradle.kts and
+# `System.loadLibrary("networklocation")` in the Kotlin loaders: cargo emits `lib<name>.so`,
+# which RustNative.kt copies into jniLibs. The descriptive package name above stays as-is.
+name = "networklocation"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

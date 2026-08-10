@@ -571,21 +571,23 @@ mod tests {
     const F_COUNTRY: usize = 6;
 
     /// Locate a real DB: `$GEOCODER_DB`, else the bundled asset next to the crate.
-    /// Returns `None` (test self-skips) when no DB is present so CI without the ~1.4 GB
-    /// asset stays green; a DB that exists but fails to parse is a hard failure.
+    fn db_path() -> Option<String> {
+        if let Ok(p) = std::env::var("GEOCODER_DB") {
+            return Some(p);
+        }
+        let bundled = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/geocoder.geodb");
+        if std::path::Path::new(bundled).exists() {
+            Some(bundled.to_string())
+        } else {
+            eprintln!("skip: no geocoder DB (set GEOCODER_DB or add the bundled asset)");
+            None
+        }
+    }
+
+    /// Open the real DB. Returns `None` (test self-skips) when no DB is present so CI without
+    /// the ~1.4 GB asset stays green; a DB that exists but fails to parse is a hard failure.
     fn open_db() -> Option<Reader> {
-        let path = match std::env::var("GEOCODER_DB") {
-            Ok(p) => p,
-            Err(_) => {
-                let bundled = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/geocoder.geodb");
-                if std::path::Path::new(bundled).exists() {
-                    bundled.to_string()
-                } else {
-                    eprintln!("skip: no geocoder DB (set GEOCODER_DB or add the bundled asset)");
-                    return None;
-                }
-            }
-        };
+        let path = db_path()?;
         match Reader::open_path(&path) {
             Some(r) => Some(r),
             None => panic!("geocoder DB at {path} exists but failed magic/version/parse"),
@@ -706,5 +708,94 @@ mod tests {
             10,
         );
         assert!(recs.is_empty(), "unknown query should yield no records");
+    }
+
+    /// Micro-benchmark (opt-in). Run with:
+    ///   GEOCODER_DB=/path/geocoder.geodb cargo test -p network_location_position_estimation_rust \
+    ///     geocoder::tests::bench_ops -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_ops() {
+        use std::time::Instant;
+        let path = match db_path() {
+            Some(p) => p,
+            None => return,
+        };
+
+        let t = Instant::now();
+        let mut r = Reader::open_path(&path).expect("open");
+        eprintln!("open (inflate dicts+grid): {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
+
+        // City centers across continents (lat, lon).
+        let cities = [
+            (40.7128, -74.0060),
+            (51.5074, -0.1278),
+            (35.6762, 139.6503),
+            (48.8566, 2.3522),
+            (34.0522, -118.2437),
+            (41.9028, 12.4964),
+            (52.5200, 13.4050),
+            (55.7558, 37.6173),
+            (-33.8688, 151.2093),
+            (19.0760, 72.8777),
+            (-23.5505, -46.6333),
+            (1.3521, 103.8198),
+            (25.2048, 55.2708),
+            (37.7749, -122.4194),
+            (43.6532, -79.3832),
+        ];
+        let reps = 20;
+
+        for &(la, lo) in &cities {
+            let _ = r.reverse(la, lo); // warm the OS page cache
+        }
+
+        let mut rev = Vec::new();
+        for _ in 0..reps {
+            for &(la, lo) in &cities {
+                let t = Instant::now();
+                let rec = r.reverse(la, lo);
+                let us = t.elapsed().as_secs_f64() * 1e6;
+                if rec.is_some() {
+                    rev.push(us);
+                }
+            }
+        }
+
+        // Forward keys taken from a real reverse hit.
+        let seed = r.reverse(40.7128, -74.0060).expect("seed");
+        let a = r.resolve(seed);
+        let (co, st, ci, sr) = (a[6].clone(), a[5].clone(), a[4].clone(), a[3].clone());
+        let mut fwd = Vec::new();
+        for _ in 0..(reps * cities.len()) {
+            let t = Instant::now();
+            let _ = r.forward(&co, &st, &ci, &sr, 10);
+            fwd.push(t.elapsed().as_secs_f64() * 1e6);
+        }
+
+        let mut res = Vec::new();
+        for _ in 0..2000 {
+            let t = Instant::now();
+            let _ = r.resolve(seed);
+            res.push(t.elapsed().as_secs_f64() * 1e6);
+        }
+
+        fn stats(label: &str, mut v: Vec<f64>) {
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let n = v.len();
+            let sum: f64 = v.iter().sum();
+            let q = |x: f64| v[(((n - 1) as f64) * x) as usize];
+            eprintln!(
+                "{label:8} n={n:4}  min={:.1}  p50={:.1}  avg={:.1}  p95={:.1}  max={:.1}  (µs)",
+                v[0],
+                q(0.5),
+                sum / n as f64,
+                q(0.95),
+                v[n - 1]
+            );
+        }
+        stats("reverse", rev);
+        stats("forward", fwd);
+        stats("resolve", res);
     }
 }

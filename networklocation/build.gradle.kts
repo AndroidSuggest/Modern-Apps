@@ -44,20 +44,24 @@ val geocoderDbUrl = "https://data.vayunmathur.com/geocoder/geocoder.geodb"
 val geocoderDbFile = layout.projectDirectory.file("src/main/assets/geocoder.geodb").asFile
 
 val fetchGeocoderDb = tasks.register("fetchGeocoderDb") {
+    // Capture plain String/File locals so the task actions below don't hold references to the
+    // build script itself — Gradle's configuration cache cannot serialize script object refs.
+    val url = geocoderDbUrl
+    val outFile = geocoderDbFile
     description = "Downloads geocoder.geodb into src/main/assets if it is missing."
-    outputs.file(geocoderDbFile)
-    outputs.upToDateWhen { geocoderDbFile.exists() }
+    outputs.file(outFile)
+    outputs.upToDateWhen { outFile.exists() }
     doLast {
-        if (geocoderDbFile.exists()) {
-            logger.lifecycle("geocoder.geodb already present (${geocoderDbFile.length()} bytes); skipping download.")
+        if (outFile.exists()) {
+            logger.lifecycle("geocoder.geodb already present (${outFile.length()} bytes); skipping download.")
             return@doLast
         }
-        geocoderDbFile.parentFile.mkdirs()
-        val tmp = File(geocoderDbFile.parentFile, "geocoder.geodb.part")
+        outFile.parentFile.mkdirs()
+        val tmp = File(outFile.parentFile, "geocoder.geodb.part")
         tmp.delete()
-        logger.lifecycle("Fetching geocoder.geodb from $geocoderDbUrl (this is large; first build only)…")
+        logger.lifecycle("Fetching geocoder.geodb from $url (this is large; first build only)…")
         try {
-            val conn = (URI(geocoderDbUrl).toURL().openConnection() as HttpURLConnection).apply {
+            val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
                 connectTimeout = 30_000
                 readTimeout = 60_000
                 instanceFollowRedirects = true
@@ -69,14 +73,14 @@ val fetchGeocoderDb = tasks.register("fetchGeocoderDb") {
             }
             conn.inputStream.use { input -> tmp.outputStream().use { output -> input.copyTo(output, 1 shl 20) } }
             conn.disconnect()
-            tmp.renameTo(geocoderDbFile)
-            logger.lifecycle("Fetched geocoder.geodb (${geocoderDbFile.length()} bytes).")
+            tmp.renameTo(outFile)
+            logger.lifecycle("Fetched geocoder.geodb (${outFile.length()} bytes).")
         } catch (e: Exception) {
             tmp.delete()
             logger.warn(
                 "WARNING: could not fetch geocoder.geodb ({}). The APK will build WITHOUT the offline " +
                     "geocoder DB. Generate it locally (scripts/geocoder_gen.sh) or check {} and rebuild.",
-                e.message, geocoderDbUrl,
+                e.message, url,
             )
         }
     }
