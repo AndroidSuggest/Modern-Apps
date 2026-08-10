@@ -47,7 +47,7 @@ import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
-import kotlinx.datetime.format
+import com.vayunmathur.library.ui.DateString
 
 /** Binds [CalendarViewModel] to the stateless [EventScreen]. */
 @Composable
@@ -192,20 +192,20 @@ fun EventScreen(state: EventUiState, actions: EventActions) {
 fun dateRangeString(context: Context, startDate: LocalDate, endDate: LocalDate, startTime: LocalTime, endTime: LocalTime, allDay: Boolean, includeDate: Boolean = true): String {
     return if(allDay) {
         if(startDate.toEpochDays() + 1 == endDate.toEpochDays()) {
-            if (includeDate) startDate.format(dateFormat) else context.getString(R.string.all_day)
+            if (includeDate) DateString.dateWeekday(startDate) else context.getString(R.string.all_day)
         } else {
-            context.getString(R.string.date_range_format, startDate.format(dateFormat), endDate.format(dateFormat))
+            context.getString(R.string.date_range_format, DateString.dateWeekday(startDate), DateString.dateWeekday(endDate))
         }
     } else {
-        val timeFmt = if(DateFormat.is24HourFormat(context)) timeFormat24 else timeFormat12
+        val is24 = DateFormat.is24HourFormat(context)
         if(startDate == endDate) {
             if (includeDate) {
-                context.getString(R.string.date_time_range_format, startDate.format(dateFormat), startTime.format(timeFmt), endTime.format(timeFmt))
+                context.getString(R.string.date_time_range_format, DateString.dateWeekday(startDate), DateString.time(startTime, is24), DateString.time(endTime, is24))
             } else {
-                context.getString(R.string.date_range_format, startTime.format(timeFmt), endTime.format(timeFmt))
+                context.getString(R.string.date_range_format, DateString.time(startTime, is24), DateString.time(endTime, is24))
             }
         } else {
-            context.getString(R.string.full_date_time_range_format, startDate.format(dateFormat), startTime.format(timeFmt), endDate.format(dateFormat), endTime.format(timeFmt))
+            context.getString(R.string.full_date_time_range_format, DateString.dateWeekday(startDate), DateString.time(startTime, is24), DateString.dateWeekday(endDate), DateString.time(endTime, is24))
         }
     }
 }

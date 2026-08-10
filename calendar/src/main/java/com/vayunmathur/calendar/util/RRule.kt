@@ -2,7 +2,7 @@ package com.vayunmathur.calendar.util
 import com.vayunmathur.library.util.DateNameStyle
 import android.content.Context
 import com.vayunmathur.calendar.R
-import com.vayunmathur.calendar.ui.dateFormat
+import com.vayunmathur.library.ui.DateString
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
@@ -45,13 +45,13 @@ private fun RRule.EndCondition.toRRuleSuffix(timeZone: TimeZone): String = when 
 private fun RRule.EndCondition.describeSuffix(context: Context): String = when (this) {
     is RRule.EndCondition.Never -> ""
     is RRule.EndCondition.Count -> context.resources.getQuantityString(R.plurals.rrule_count_suffix, count.toInt(), count)
-    is RRule.EndCondition.Until -> context.getString(R.string.rrule_until_suffix, date.format(dateFormat))
+    is RRule.EndCondition.Until -> context.getString(R.string.rrule_until_suffix, DateString.dateWeekday(date))
 }
 
 private fun RRule.EndCondition.toStringSuffix(): String = when (this) {
     is RRule.EndCondition.Never -> ""
     is RRule.EndCondition.Count -> ", $count times"
-    is RRule.EndCondition.Until -> ", Until ${date.format(dateFormat)}"
+    is RRule.EndCondition.Until -> ", Until ${DateString.dateWeekday(date)}"
 }
 
 @Serializable

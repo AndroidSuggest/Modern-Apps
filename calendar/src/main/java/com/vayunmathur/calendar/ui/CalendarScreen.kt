@@ -88,7 +88,7 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.number
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
-import kotlinx.datetime.format
+import com.vayunmathur.library.ui.DateString
 import kotlinx.datetime.todayIn
 import java.util.Locale
 import kotlin.time.Clock
@@ -435,9 +435,9 @@ fun SummaryEventItem(
                 lineHeight = 12.sp
             )
             if (!instance.allDay) {
-                val timeFmt = if(DateFormat.is24HourFormat(context)) timeFormat24 else timeFormat12
+                val is24 = DateFormat.is24HourFormat(context)
                 Text(
-                    "${instance.startDateTime.time.format(timeFmt)} - ${instance.endDateTime.time.format(timeFmt)}",
+                    "${DateString.time(instance.startDateTime.time, is24)} - ${DateString.time(instance.endDateTime.time, is24)}",
                     color = onEventColor.copy(alpha = 0.8f),
                     fontSize = 9.sp,
                     lineHeight = 10.sp
@@ -658,7 +658,7 @@ fun AgendaView(
 
             Column(Modifier.fillMaxWidth().then(if (isToday) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)) else Modifier)) {
                 Text(
-                    text = date.format(dateFormat),
+                    text = DateString.dateWeekday(date),
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.titleMedium,
                     color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -913,14 +913,7 @@ private fun HourLabelColumn(context: android.content.Context, scale: HourScale) 
                     .width(HourGutterWidth)
                     .clipToBounds()
             ) {
-                val hourString = if (DateFormat.is24HourFormat(context)) {
-                    "%02d:00".format(hour)
-                } else when {
-                    hour == 0 -> context.getString(R.string.twelve_am)
-                    hour < 12 -> context.getString(R.string.hour_am, hour)
-                    hour == 12 -> context.getString(R.string.twelve_pm)
-                    else -> context.getString(R.string.hour_pm, hour - 12)
-                }
+                val hourString = DateString.hourLabel(hour, DateFormat.is24HourFormat(context))
                 Text(
                     text = hourString,
                     modifier = Modifier.padding(start = 8.dp),

@@ -41,13 +41,12 @@ import com.vayunmathur.calendar.util.RRule
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.util.RecurrenceParams
 import com.vayunmathur.calendar.Route
-import com.vayunmathur.calendar.ui.dateFormat
+import com.vayunmathur.library.ui.DateString
 import com.vayunmathur.library.util.LocalNavResultRegistry
 import com.vayunmathur.library.util.ResultEffect
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.format
 import com.vayunmathur.library.util.localizedMonthNames
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import kotlinx.datetime.isoDayNumber
@@ -235,7 +234,7 @@ fun RecurrenceDialog(backStack: NavBackStack<Route>, resultKey: String, startDat
                 }
                 if(endCondition is RRule.EndCondition.Until) {
                     OutlinedTextField(
-                        stringResource(R.string.until_date, (endCondition as RRule.EndCondition.Until).date.format(dateFormat)),
+                        stringResource(R.string.until_date, DateString.dateWeekday((endCondition as RRule.EndCondition.Until).date)),
                         { },
                         readOnly = true,
                         interactionSource = remember { MutableInteractionSource() }

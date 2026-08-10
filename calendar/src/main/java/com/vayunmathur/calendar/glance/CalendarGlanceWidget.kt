@@ -1,6 +1,5 @@
 package com.vayunmathur.calendar.glance
 
-import com.vayunmathur.library.util.DateNameStyle
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
@@ -43,21 +42,15 @@ import com.vayunmathur.calendar.MainActivity
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.ui.atEndOfDayIn
 import com.vayunmathur.calendar.ui.computePositionedEventsForDay
-import com.vayunmathur.calendar.ui.dateFormat
 import com.vayunmathur.calendar.ui.dateRangeString
+import com.vayunmathur.library.ui.DateString
 import com.vayunmathur.library.widgets.DynamicThemeGlance
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
-import kotlinx.datetime.format
-import kotlinx.datetime.format.DayOfWeekNames
-import kotlinx.datetime.format.MonthNames
-import kotlinx.datetime.format.Padding
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
-import com.vayunmathur.library.util.localizedDayOfWeekNames
-import com.vayunmathur.library.util.localizedMonthNames
 import kotlinx.serialization.json.Json
 import androidx.glance.LocalContext
 import kotlin.time.Clock
@@ -122,18 +115,11 @@ class CalendarGlanceWidget : GlanceAppWidget() {
 @SuppressLint("RestrictedApi")
 @Composable
 private fun CalendarPreviewContent() {
-    val dateFormatS = LocalDate.Format {
-        dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
-        chars(", ")
-        monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
-        chars(" ")
-        day(Padding.NONE)
-    }
     val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
     val context = LocalContext.current
 
     Scaffold(titleBar = {
-        TitleBar(ImageProvider(R.drawable.calendar_today_24px), today.format(dateFormatS))
+        TitleBar(ImageProvider(R.drawable.calendar_today_24px), DateString.dateWeekdayNoYear(today))
     }) {
         Column(GlanceModifier.fillMaxSize()) {
             CalendarPreviewEvent(
@@ -171,13 +157,6 @@ private fun CalendarPreviewEvent(title: String, time: String, color: Int) {
 @SuppressLint("RestrictedApi")
 @Composable
 fun Content(context: Context, positionedEvents: Map<LocalDate, List<Instance>>) {
-    val dateFormatS = LocalDate.Format {
-        dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
-        chars(", ")
-        monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
-        chars(" ")
-        day(Padding.NONE)
-    }
 
     val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
     val today = now.date
@@ -186,13 +165,13 @@ fun Content(context: Context, positionedEvents: Map<LocalDate, List<Instance>>) 
     val days = today..<nextMonth
 
     Scaffold(titleBar = {
-        TitleBar(ImageProvider(R.drawable.calendar_today_24px), today.format(dateFormatS), modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()))
+        TitleBar(ImageProvider(R.drawable.calendar_today_24px), DateString.dateWeekdayNoYear(today), modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>()))
     }) {
         LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
             for(day in days) {
                 if(positionedEvents[day]!!.isNotEmpty()) {
                     item {
-                        Text(day.format(dateFormat), GlanceModifier.padding(vertical = 6.dp), style = defaultTextStyle.copy(color = GlanceTheme.colors.onSurface))
+                        Text(DateString.dateWeekday(day), GlanceModifier.padding(vertical = 6.dp), style = defaultTextStyle.copy(color = GlanceTheme.colors.onSurface))
                     }
                 }
                 items(positionedEvents[day]!!) { instance ->

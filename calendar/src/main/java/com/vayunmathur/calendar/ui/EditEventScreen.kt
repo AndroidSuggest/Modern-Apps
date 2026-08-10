@@ -1,9 +1,6 @@
 package com.vayunmathur.calendar.ui
 
 import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.util.localizedAmPmMarker
-import kotlinx.datetime.format.DateTimeFormat
-import com.vayunmathur.library.util.DateNameStyle
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -68,12 +65,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.atTime
-import kotlinx.datetime.format
-import kotlinx.datetime.format.DayOfWeekNames
-import kotlinx.datetime.format.MonthNames
-import kotlinx.datetime.format.Padding
-import com.vayunmathur.library.util.localizedDayOfWeekNames
-import com.vayunmathur.library.util.localizedMonthNames
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
@@ -81,6 +72,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
+import com.vayunmathur.library.ui.DateString
 
 // Result keys for the date/time pickers
 private const val KEY_START_DATE = "EditEvent.startDate"
@@ -292,11 +284,11 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
 
             Item(
                 {},
-                { Text(startDate.format(dateFormat), Modifier.clickable {
+                { Text(DateString.dateWeekday(startDate), Modifier.clickable {
                     // open date picker dialog
                     backStack.add(Route.EditEvent.DatePickerDialog(KEY_START_DATE, startDate))
                 }) },
-                { if(!allDay) Text(startTime.format(if(DateFormat.is24HourFormat(context)) timeFormat24 else timeFormat12), Modifier.clickable {
+                { if(!allDay) Text(DateString.time(startTime, DateFormat.is24HourFormat(context)), Modifier.clickable {
                     // open time picker dialog
                     // no min time for start
                     backStack.add(Route.EditEvent.TimePickerDialog(KEY_START_TIME, startTime, null))
@@ -304,11 +296,11 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
             )
             Item(
                 {},
-                { Text(endDate.format(dateFormat), Modifier.clickable {
+                { Text(DateString.dateWeekday(endDate), Modifier.clickable {
                     // when opening end date, prevent selecting a date before startDate
                     backStack.add(Route.EditEvent.DatePickerDialog(KEY_END_DATE, endDate, startDate))
                 }) },
-                { if(!allDay) Text(endTime.format(if(DateFormat.is24HourFormat(context)) timeFormat24 else timeFormat12), Modifier.clickable{
+                { if(!allDay) Text(DateString.time(endTime, DateFormat.is24HourFormat(context)), Modifier.clickable{
                     // when opening end time, supply minTime if endDate equals startDate
                     val minTime = if (endDate == startDate) startTime else null
                     backStack.add(Route.EditEvent.TimePickerDialog(KEY_END_TIME, endTime, minTime))
@@ -376,30 +368,6 @@ fun Item(icon: @Composable () -> Unit = {}, left: @Composable () -> Unit, right:
             right()
         }
     }
-}
-
-val dateFormat: DateTimeFormat<LocalDate> get() = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
-    chars(", ")
-    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
-    chars(" ")
-    day(Padding.NONE)
-    chars(", ")
-    year(Padding.NONE)
-}
-
-val timeFormat12: DateTimeFormat<LocalTime> get() = LocalTime.Format {
-    amPmHour(Padding.NONE)
-    chars(":")
-    minute()
-    chars(" ")
-    localizedAmPmMarker()
-}
-
-val timeFormat24 = LocalTime.Format {
-    hour(Padding.ZERO)
-    chars(":")
-    minute()
 }
 
 /** Common reminder offsets, in minutes before the event start. */
