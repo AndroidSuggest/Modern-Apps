@@ -138,6 +138,11 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
     private val _nightMode = MutableStateFlow(false)
     val nightMode: StateFlow<Boolean> = _nightMode
 
+    // Google-Docs-style dark mode: inverts the displayed colors of the document so the
+    // paper appears dark, without modifying the document itself. View-only, not persisted.
+    private val _documentDarkMode = MutableStateFlow(false)
+    val documentDarkMode: StateFlow<Boolean> = _documentDarkMode
+
     // Incremented whenever the document changes shape via undo/redo so the UI can
     // reset/clamp hoisted selection state (active cell/slide/element). (A4)
     private val _selectionInvalidation = MutableStateFlow(0)
@@ -302,6 +307,7 @@ class OfficeViewModel(application: Application) : AndroidViewModel(application) 
 
     // --- Night mode ---
     fun toggleNightMode() { _nightMode.value = !_nightMode.value }
+    fun toggleDocumentDarkMode() { _documentDarkMode.value = !_documentDarkMode.value }
 
     // --- Load / Clear ---
 

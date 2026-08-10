@@ -533,6 +533,10 @@
     <string name="night_reading_mode">✓ Night reading mode</string>
     <!-- MainActivity: Unchecked menu night reading mode -->
     <string name="night_reading_mode_1">Night reading mode</string>
+    <!-- MainActivity: Checked menu document dark mode with checkmark -->
+    <string name="document_dark_mode">✓ Document dark mode</string>
+    <!-- MainActivity: Unchecked menu document dark mode -->
+    <string name="document_dark_mode_1">Document dark mode</string>
     <!-- MainActivity: Checked menu word count bar with checkmark -->
     <string name="word_count_bar">✓ Word count bar</string>
     <!-- MainActivity: Unchecked menu word count bar -->

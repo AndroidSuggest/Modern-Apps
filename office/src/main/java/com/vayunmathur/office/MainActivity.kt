@@ -10,6 +10,7 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.core.content.IntentCompat
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
@@ -110,8 +111,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.office.R
 import androidx.compose.ui.text.font.FontWeight
@@ -134,6 +141,33 @@ fun OfficeLightTheme(content: @Composable () -> Unit) {
     // Light scheme — used only for the rendered document (the "paper"), which stays light in dark mode.
     val colorScheme = dynamicLightColorScheme(LocalContext.current)
     MaterialTheme(colorScheme = colorScheme, typography = Typography(), content = content)
+}
+
+// Inverts luminance (white paper <-> black) while preserving hue, matching the
+// "invert(1) hue-rotate(180deg)" trick used for document dark modes like Google Docs.
+private val DocumentDarkModeColorMatrix = ColorMatrix(
+    floatArrayOf(
+        0.574f, -1.430f, -0.144f, 0f, 255f,
+        -0.426f, -0.430f, -0.144f, 0f, 255f,
+        -0.426f, -1.430f, 0.856f, 0f, 255f,
+        0f, 0f, 0f, 1f, 0f,
+    ),
+)
+
+/**
+ * Renders the content into an offscreen layer and paints it back through a
+ * luminance-inverting color filter, so the displayed document appears dark
+ * without altering the underlying document colors. View-only (#479).
+ */
+fun Modifier.documentDarkModeInvert(): Modifier = this.drawWithContent {
+    val paint = Paint().apply {
+        colorFilter = ColorFilter.colorMatrix(DocumentDarkModeColorMatrix)
+    }
+    drawIntoCanvas { canvas ->
+        canvas.saveLayer(Rect(0f, 0f, size.width, size.height), paint)
+        drawContent()
+        canvas.restore()
+    }
 }
 
 @Composable
@@ -168,7 +202,7 @@ class MainActivity : ComponentActivity() {
         // them out of the document-loading path (their scheme isn't content/file).
         val joinLink = parseJoinLink(intent)
         if (joinLink != null) handleJoinLink(joinLink)
-        val intentUri: Uri? = intent.data?.takeIf { joinLink == null }
+        val intentUri: Uri? = if (joinLink == null) extractDocumentUri(intent) else null
 
         setContent {
             val startedWithIntent = intentUri != null
@@ -308,6 +342,16 @@ class MainActivity : ComponentActivity() {
         val docId = data.lastPathSegment?.takeIf { it.isNotBlank() } ?: return null
         val ownerId = data.getQueryParameter("owner")?.takeIf { it.isNotBlank() } ?: return null
         return docId to ownerId
+    }
+
+    /**
+     * Resolves the document uri to open from an intent. VIEW/edit intents carry it
+     * in [Intent.getData]; SEND intents (files shared from other apps) carry it in
+     * [Intent.EXTRA_STREAM].
+     */
+    private fun extractDocumentUri(intent: Intent): Uri? = when (intent.action) {
+        Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+        else -> intent.data
     }
 }
 
@@ -727,6 +771,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
     val canRedo by viewModel.canRedo.collectAsState()
     val autoSaveEnabled by viewModel.autoSaveEnabled.collectAsState()
     val nightMode by viewModel.nightMode.collectAsState()
+    val documentDarkMode by viewModel.documentDarkMode.collectAsState()
     var showWordBar by remember { mutableStateOf(false) }
     var showComments by remember { mutableStateOf(false) }
     var showChanges by remember { mutableStateOf(false) }
@@ -980,6 +1025,7 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                                     if (isTextDoc && (headings.isNotEmpty() || bookmarks.isNotEmpty())) DropdownMenuItem(text = { Text(stringResource(R.string.outline)) }, onClick = { viewMenu = false; scope.launch { drawerState.open() } })
                                     DropdownMenuItem(text = { Text(stringResource(R.string.zoom_text)) }, onClick = { viewMenu = false; showFontControl = !showFontControl })
                                     DropdownMenuItem(text = { Text(if (nightMode) stringResource(R.string.night_reading_mode) else stringResource(R.string.night_reading_mode_1)) }, onClick = { viewMenu = false; viewModel.toggleNightMode() })
+                                    DropdownMenuItem(text = { Text(if (documentDarkMode) stringResource(R.string.document_dark_mode) else stringResource(R.string.document_dark_mode_1)) }, onClick = { viewMenu = false; viewModel.toggleDocumentDarkMode() })
                                     if (isTextDoc) DropdownMenuItem(text = { Text(if (showWordBar) stringResource(R.string.word_count_bar) else stringResource(R.string.word_count_bar_1)) }, onClick = { viewMenu = false; showWordBar = !showWordBar })
                                     if (isTextDoc) DropdownMenuItem(text = { Text(stringResource(R.string.comments)) }, onClick = { viewMenu = false; showComments = true })
                                     if (isTextDoc) DropdownMenuItem(text = { Text(stringResource(R.string.track_changes)) }, onClick = { viewMenu = false; showChanges = true })
@@ -1124,7 +1170,12 @@ fun DocumentScreen(document: OdfDocument, viewModel: OfficeViewModel, activity: 
                     }
                 }
                 OfficeLightTheme {
-                  Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                  Surface(
+                    Modifier
+                        .fillMaxSize()
+                        .then(if (documentDarkMode) Modifier.documentDarkModeInvert() else Modifier),
+                    color = MaterialTheme.colorScheme.background,
+                  ) {
                 when (document) {
                     is OdfDocument.TextDocument -> TextDocumentView(doc = document, searchQuery = searchQuery, fontSizeMultiplier = fontSizeMultiplier, listState = listState,
                         remoteCarets = remoteCarets,
