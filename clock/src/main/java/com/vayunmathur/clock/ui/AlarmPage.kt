@@ -1,6 +1,5 @@
 package com.vayunmathur.clock.ui
 
-import com.vayunmathur.library.util.localizedAmPmMarker
 import android.content.Context
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
@@ -62,9 +61,7 @@ import com.vayunmathur.clock.util.ClockViewModel
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.ResultEffect
 import kotlinx.datetime.LocalTime
-import kotlinx.datetime.format
-import kotlinx.datetime.format.Padding
-import kotlinx.datetime.format.char
+import com.vayunmathur.library.ui.DateString
 
 /** Binds [ClockViewModel] to the stateless [AlarmScreen]. */
 @Composable
@@ -310,21 +307,5 @@ fun formatAlarmTime(context: Context, time: LocalTime): String =
  * into [AlarmUiState] so the cards themselves need no [Context], and so a preview renders
  * the same clock format on any machine.
  */
-fun formatAlarmTime(is24Hour: Boolean, time: LocalTime): String {
-    val format = if (is24Hour) {
-        LocalTime.Format {
-            hour(Padding.ZERO)
-            char(':')
-            minute()
-        }
-    } else {
-        LocalTime.Format {
-            amPmHour(Padding.NONE)
-            char(':')
-            minute()
-            char(' ')
-            localizedAmPmMarker()
-        }
-    }
-    return time.format(format)
-}
+fun formatAlarmTime(is24Hour: Boolean, time: LocalTime): String =
+    DateString.time(time, is24Hour)

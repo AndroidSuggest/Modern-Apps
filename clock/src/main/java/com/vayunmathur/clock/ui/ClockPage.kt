@@ -1,6 +1,5 @@
 package com.vayunmathur.clock.ui
 
-import com.vayunmathur.library.util.DateNameStyle
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -37,16 +36,9 @@ import com.vayunmathur.clock.util.WorldClock
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.DataStoreUtils
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.format
-import kotlinx.datetime.format.DayOfWeekNames
-import kotlinx.datetime.format.MonthNames
-import kotlinx.datetime.format.Padding
 import kotlinx.datetime.toLocalDateTime
-import com.vayunmathur.library.util.localizedDayOfWeekNames
-import com.vayunmathur.library.util.localizedMonthNames
+import com.vayunmathur.library.ui.DateString
 
 /** Binds [ClockViewModel] to the stateless [ClockScreen]. */
 @Composable
@@ -88,15 +80,8 @@ fun ClockScreen(backStack: NavBackStack<Route>, state: ClockUiState) {
         LazyColumn(Modifier.fillMaxWidth(), contentPadding = paddingValues, verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             item {
                 val is24h = state.is24Hour
-                val timeFormat = LocalTime.Format {
-                    if (is24h) hour(Padding.ZERO) else amPmHour(Padding.NONE)
-                    chars(":")
-                    minute()
-                    chars(":")
-                    second()
-                }
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(time.time.format(timeFormat), style = MaterialTheme.typography.displayLarge)
+                    Text(DateString.timeSecondsNumeric(time.time, is24h), style = MaterialTheme.typography.displayLarge)
                     if (!is24h) {
                         Spacer(Modifier.width(8.dp))
                         Text(
@@ -107,24 +92,14 @@ fun ClockScreen(backStack: NavBackStack<Route>, state: ClockUiState) {
                 }
             }
             item {
-                Text(time.date.format(LocalDate.Format {
-                    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
-                    chars(", ")
-                    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
-                    chars(" ")
-                    day(Padding.NONE)
-                }))
+                Text(DateString.dateWeekdayNoYear(time.date))
             }
             items(state.worldClocks) { worldClock ->
                 val timeHere = state.now.toLocalDateTime(worldClock.zone)
                 val amPm = if(timeHere.time.hour >= 12) stringResource(R.string.time_pm) else stringResource(R.string.time_am)
                 Card {
                     ListItem({Text(worldClock.city)}, trailingContent = {
-                        Text(timeHere.time.format(LocalTime.Format {
-                            amPmHour(Padding.NONE)
-                            chars(":")
-                            minute()
-                        }) + amPm)
+                        Text(DateString.timeNumeric(timeHere.time, is24Hour = false) + amPm)
                     }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 }
             }
