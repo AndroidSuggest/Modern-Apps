@@ -1,8 +1,5 @@
 package com.vayunmathur.library.ui
 
-import com.vayunmathur.library.util.localizedAmPmMarker
-import kotlinx.datetime.format.DateTimeFormat
-import com.vayunmathur.library.util.DateNameStyle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -32,9 +29,6 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atTime
-import kotlinx.datetime.format
-import kotlinx.datetime.format.MonthNames
-import com.vayunmathur.library.util.localizedMonthNames
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
@@ -43,26 +37,6 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.ui.R
-
-object HistoryDateFormats {
-    val MONTH_DAY: DateTimeFormat<LocalDate> get() = LocalDate.Format {
-        monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
-        chars(" ")
-        day()
-    }
-
-    val TIME_SECOND_AM_PM: DateTimeFormat<LocalTime> get() = LocalTime.Format {
-        amPmHour()
-        chars(":")
-        minute()
-        chars(":")
-        second()
-        chars(" ")
-        localizedAmPmMarker()
-    }
-
-    val DATE_INPUT: DateTimeFormat<LocalDate> get() = MONTH_DAY
-}
 
 /**
  * A single relative jump button for [HistoryScrubberCard]. [label] is shown on
@@ -175,6 +149,8 @@ fun BoxScope.HistoryScrubberCard(
         }
     }
 
+    val is24Hour = rememberIs24Hour()
+
     Card(
         modifier.align(Alignment.BottomCenter)
             .fillMaxWidth()
@@ -194,7 +170,7 @@ fun BoxScope.HistoryScrubberCard(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    state.time.format(HistoryDateFormats.TIME_SECOND_AM_PM),
+                    DateString.timeSeconds(state.time, is24Hour),
                     style = MaterialTheme.typography.labelLarge
                 )
             }
@@ -205,7 +181,7 @@ fun BoxScope.HistoryScrubberCard(
             ) {
                 AssistChip(
                     { onDateChipClick() },
-                    { Text(state.date.format(HistoryDateFormats.DATE_INPUT)) }
+                    { Text(DateString.monthDayYear(state.date)) }
                 )
                 Spacer(Modifier.weight(1f))
                 FilterChip(
