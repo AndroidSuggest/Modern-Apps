@@ -1,12 +1,13 @@
 package com.vayunmathur.messages.ui
 
 import android.content.Context
-import android.text.format.DateFormat
-import androidx.compose.ui.platform.LocalContext
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import kotlin.time.Instant
+import androidx.compose.ui.platform.LocalContext
+import com.vayunmathur.library.ui.DateString
+import com.vayunmathur.library.ui.is24Hour
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.toLocalDateTime
@@ -73,7 +74,6 @@ import com.vayunmathur.messages.util.MessagesViewModel
 import com.vayunmathur.messages.util.SourceConnectionState
 import com.vayunmathur.messages.util.displayTitle
 import com.vayunmathur.messages.util.isMessageRequest
-import java.util.Date
 
 /**
  * Unified inbox over conversations from both sources. Sorted by recency.
@@ -535,16 +535,14 @@ private fun UnreadBadge(count: Int) {
 private fun formatTimestamp(context: Context, ts: Long): String {
     val now = System.currentTimeMillis()
     val daysAgo = (now - ts) / (24L * 60 * 60 * 1000)
-    val date = Date(ts)
     return when {
-        // android.text.format honours the user's 24-hour setting; java.text only follows the locale.
-        daysAgo < 1L -> DateFormat.getTimeFormat(context).format(date)
+        daysAgo < 1L -> DateString.time(Instant.fromEpochMilliseconds(ts), is24Hour(context))
         daysAgo < 7L -> localizedDayOfWeekNames(DateNameStyle.SHORT)[
             Instant.fromEpochMilliseconds(ts)
                 .toLocalDateTime(TimeZone.currentSystemDefault())
                 .dayOfWeek.isoDayNumber - 1
         ]
-        else -> DateFormat.getDateFormat(context).format(date)
+        else -> DateString.dateShort(Instant.fromEpochMilliseconds(ts))
     }
 }
 

@@ -8,6 +8,8 @@ import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import kotlin.time.Clock
 import kotlin.time.Instant
+import com.vayunmathur.library.ui.DateString
+import com.vayunmathur.library.ui.is24Hour
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.isoDayNumber
@@ -1038,9 +1040,8 @@ private fun ConvAvatar(conversation: Conversation?) {
     }
 }
 
-// android.text.format honours the user's 24-hour setting; java.text only follows the locale.
 private fun formatTime(context: Context, ts: Long): String =
-    DateFormat.getTimeFormat(context).format(Date(ts))
+    DateString.time(Instant.fromEpochMilliseconds(ts), is24Hour(context))
 
 /** Epoch-ms at the local-time start of the calendar day [ts] falls in.
  *  Unique per calendar day, used as a stable LazyColumn key. */
