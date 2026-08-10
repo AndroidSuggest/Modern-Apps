@@ -151,4 +151,8 @@
     <string name="layout_short_full_week_compact">S7C</string>
     <string name="layout_short_work_week_compact">S5C</string>
     <string name="layout_work_week_compact">Semaine de travail compacte</string>
+    <string name="reminder_channel_name">Rappels d’événements</string>
+    <string name="reminder_channel_description">Rappels pour les événements à venir du calendrier</string>
+    <string name="reminder_notification_default_title">Rappel d’événement</string>
+    <string name="reminder_notification_text">Commence à %1$s</string>
 </resources>
