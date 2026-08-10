@@ -71,7 +71,7 @@
     <string name="online_sharing_is_off">Онлайн обмен отключен</string>
     <string name="header_footer">Заголовок и подвал…</string>
     <string name="recipient_device_id">id устройства получателя</string>
-    <string name="words_characters_min_read">&lt;xliff:g id=\"words\" example=\"120\"&gt;%1$s&lt;/xliff:g&gt; слова &lt;xliff:g id=\"characters\" example=\"650\"&gt;%2$s&lt;/xliff:g&gt; символы · xliff:g id=\"минуты\" example=\"1\"&gt;%3$s&lt;/xliff:g&gt; min read</string>
+    <string name="words_characters_min_read"><xliff:g id="words" example="120">%1$s</xliff:g> слова <xliff:g id="characters" example="650">%2$s</xliff:g> символы · <xliff:g id="минуты" example="1">%3$s</xliff:g> min read</string>
     <string name="speaker_notes">Комментарии</string>
     <string name="table_of_contents">Содержание</string>
     <string name="csv">CSV…</string>

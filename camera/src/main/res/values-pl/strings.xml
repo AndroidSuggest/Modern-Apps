@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="codec_avc_description">Najbardziej kompatybilny</string>
     <string name="ae_af_lock">BLOKADA AE/AF</string>
     <string name="night">Noc</string>
@@ -20,7 +20,7 @@
     <string name="codec_hevc_description">Bardziej wydajny</string>
     <string name="open_url">Otwórz URL</string>
     <string name="codec_avc_label">H.264 / AVC</string>
-    <string name="burst_count">Seria: &lt;xliff:g id=\"count\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="burst_count">Seria: <xliff:g id="count" example="12">%1$d</xliff:g></string>
     <string name="shadows">Cienie</string>
     <string name="auto">Auto</string>
     <string name="settings_location_description">Zapisz lokalizację w metadanych zdjęcia</string>

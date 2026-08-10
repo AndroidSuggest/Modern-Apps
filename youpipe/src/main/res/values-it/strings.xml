@@ -3,7 +3,7 @@
     <string name="app_name">YouPipe</string>
     <string name="title_history">Cronologia</string>
     <string name="label_search">Cerca</string>
-    <string name="subscribers_count">&lt;xliff:g id=\"count\" example=\"12K\"&gt;%1$s&lt;/xliff:g&gt; iscritti</string>
+    <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> iscritti</string>
     <string name="title_create_subscription_category">Crea categoria di iscrizioni</string>
     <string name="title_update_subscription_category">Aggiorna categoria di iscrizioni</string>
     <string name="label_category_name">Nome categoria</string>
@@ -18,20 +18,20 @@
     <string name="label_groups">Gruppi:</string>
     <string name="label_all_subscriptions">Tutte le iscrizioni</string>
     <string name="label_channels">Canali:</string>
-    <string name="video_info_format">&lt;xliff:g id=\"channel\" example=\"Linus Tech Tips\"&gt;%1$s&lt;/xliff:g&gt; | &lt;xliff:g id=\"views\" example=\"1.2M\"&gt;%2$s&lt;/xliff:g&gt; visualizzazioni | &lt;xliff:g id=\"time\" example=\"2 days ago\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="video_info_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | <xliff:g id="views" example="1.2M">%2$s</xliff:g> visualizzazioni | <xliff:g id="time" example="2 days ago">%3$s</xliff:g></string>
     <string name="time_ago_just_now">In questo momento</string>
-    <string name="time_ago_minutes">&lt;xliff:g id=\"minutes\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; minuti fa</string>
-    <string name="time_ago_hours">&lt;xliff:g id=\"hours\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt; ore fa</string>
-    <string name="time_ago_days">&lt;xliff:g id=\"days\" example=\"2\"&gt;%1$d&lt;/xliff:g&gt; giorni fa</string>
-    <string name="time_ago_months">&lt;xliff:g id=\"months\" example=\"6\"&gt;%1$d&lt;/xliff:g&gt; mesi fa</string>
-    <string name="time_ago_years">&lt;xliff:g id=\"years\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; anni fa</string>
-    <string name="count_k_format">&lt;xliff:g id=\"number\" example=\"12.3\"&gt;%1$s&lt;/xliff:g&gt;K</string>
-    <string name="count_m_format">&lt;xliff:g id=\"number\" example=\"1.2\"&gt;%1$s&lt;/xliff:g&gt;Mln</string>
-    <string name="count_b_format">&lt;xliff:g id=\"number\" example=\"3.4\"&gt;%1$s&lt;/xliff:g&gt;Mld</string>
+    <string name="time_ago_minutes"><xliff:g id="minutes" example="5">%1$d</xliff:g> minuti fa</string>
+    <string name="time_ago_hours"><xliff:g id="hours" example="3">%1$d</xliff:g> ore fa</string>
+    <string name="time_ago_days"><xliff:g id="days" example="2">%1$d</xliff:g> giorni fa</string>
+    <string name="time_ago_months"><xliff:g id="months" example="6">%1$d</xliff:g> mesi fa</string>
+    <string name="time_ago_years"><xliff:g id="years" example="1">%1$d</xliff:g> anni fa</string>
+    <string name="count_k_format"><xliff:g id="number" example="12.3">%1$s</xliff:g>K</string>
+    <string name="count_m_format"><xliff:g id="number" example="1.2">%1$s</xliff:g>Mln</string>
+    <string name="count_b_format"><xliff:g id="number" example="3.4">%1$s</xliff:g>Mld</string>
     <string name="action_subscribe">Iscriviti</string>
     <string name="action_unsubscribe">Annulla iscrizione</string>
-    <string name="channel_info">&lt;xliff:g id=\"count\" example=\"1.2M\"&gt;%1$s&lt;/xliff:g&gt; iscritti</string>
-    <string name="video_stat_format">&lt;xliff:g id=\"views\" example=\"1M\"&gt;%1$s&lt;/xliff:g&gt; visualizzazioni | &lt;xliff:g id=\"time\" example=\"3 days ago\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="channel_info"><xliff:g id="count" example="1.2M">%1$s</xliff:g> iscritti</string>
+    <string name="video_stat_format"><xliff:g id="views" example="1M">%1$s</xliff:g> visualizzazioni | <xliff:g id="time" example="3 days ago">%2$s</xliff:g></string>
     <string name="label_description">Descrizione</string>
     <string name="title_settings">Impostazioni</string>
     <string name="label_sponsorblock">Categorie di SponsorBlock</string>
@@ -40,11 +40,11 @@
     <string name="label_import_newpipe">Importa iscrizioni NewPipe</string>
     <string name="label_import_youtube">Importa da YouTube (Takeout)</string>
     <string name="label_export_youpipe">Esporta iscrizioni</string>
-    <string name="video_quality_fps_codec">&lt;xliff:g id=\"quality\" example=\"1080p\"&gt;%1$s&lt;/xliff:g&gt; (&lt;xliff:g id=\"fps\" example=\"60\"&gt;%2$d&lt;/xliff:g&gt;fps) &lt;xliff:g id=\"codec\" example=\"avc\"&gt;%3$s&lt;/xliff:g&gt;</string>
+    <string name="video_quality_fps_codec"><xliff:g id="quality" example="1080p">%1$s</xliff:g> (<xliff:g id="fps" example="60">%2$d</xliff:g>fps) <xliff:g id="codec" example="avc">%3$s</xliff:g></string>
     <string name="empty_recommendations">Guarda alcuni video per ricevere suggerimenti personalizzati</string>
     <string name="label_dearrow">Abilita DeArrow</string>
     <string name="label_dearrow_description">Sostituisci titoli e miniature clickbait con alternative della community</string>
-    <string name="recommendation_reason">Motivo: &lt;xliff:g id=\"reason\" example=\"watched similar\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="recommendation_reason">Motivo: <xliff:g id="reason" example="watched similar">%1$s</xliff:g></string>
     <string name="action_not_interested">Non interessato</string>
     <string name="action_more_like_this">Altri simili</string>
     <string name="action_pin_channel">Fissa canale</string>

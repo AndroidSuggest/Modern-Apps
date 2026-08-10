@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="sync_section">Synchronisation KDBX</string>
     <string name="sync_create_file">Créer un nouveau fichier</string>
     <string name="cable_prompt_title">Se connecter sur votre autre appareil ?</string>
@@ -34,7 +34,7 @@
     <string name="passkey_user_name">Nom d’utilisateur</string>
     <string name="import_source_bitwarden">Bitwarden</string>
     <string name="hide">Masquer</string>
-    <string name="sync_error_generic">Échec de la synchronisation : &lt;xliff:g id=\"reason\" example=\"Espace insuffisant sur l’appareil\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="sync_error_generic">Échec de la synchronisation : <xliff:g id="reason" example="Espace insuffisant sur l’appareil">%1$s</xliff:g></string>
     <string name="add_password">Ajouter un mot de passe</string>
     <string name="label_password">Mot de passe</string>
     <string name="section_websites">Sites Web</string>
@@ -42,7 +42,7 @@
     <string name="passkey_user_display_name">Nom d’affichage</string>
     <string name="import_source_apple">Mots de passe Apple</string>
     <string name="import_passwords">Importer des mots de passe</string>
-    <string name="totp_refreshes_in">Actualisation dans &lt;xliff:g id=\"seconds\" example=\"15\"&gt;%1$d&lt;/xliff:g&gt; s</string>
+    <string name="totp_refreshes_in">Actualisation dans <xliff:g id="seconds" example="15">%1$d</xliff:g> s</string>
     <string name="websites_none">(aucun)</string>
     <string name="sync_now">Synchroniser maintenant</string>
     <string name="passkey_detail_title">Clé d’accès</string>

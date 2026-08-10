@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="add_a_connection_by_opening_a_conf_file">Ajouter une connexion en ouvrant un fichier .conf</string>
     <string name="open_conf_file">Ouvrir un fichier .conf</string>
     <string name="allowedips">Adresses IP autorisées : %1$s</string>
@@ -25,7 +25,7 @@
     <string name="bypass_list_title">Applications qui contournent le VPN</string>
     <string name="publickey">Clé publique : %1$s</string>
     <string name="need_activity_to_grant_vpn_permission">Une activité est nécessaire pour accorder l’autorisation VPN</string>
-    <string name="bypass_selected_count">Applications contournant le VPN : &lt;xliff:g id=\"count\" example=\"3\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="bypass_selected_count">Applications contournant le VPN : <xliff:g id="count" example="3">%1$d</xliff:g></string>
     <string name="vpn_wireguard_gotatun">VPN — WireGuard (gotatun)</string>
     <string name="no_tunnels_yet">Aucun tunnel pour le moment</string>
     <string name="always_on_vpn">VPN permanent</string>

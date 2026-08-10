@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="normal">Normal</string>
     <string name="heading_1">Titre 1</string>
     <string name="heading_2">Titre 2</string>
@@ -24,7 +24,7 @@
     <string name="insert_table_1">Insérer un tableau</string>
     <string name="opens_odf_word_excel_powerpoint_csv_tsv">Ouvre les fichiers ODF, Word, Excel, PowerPoint, CSV, TSV, Markdown et texte</string>
     <string name="cell_comment">Commentaire de cellule</string>
-    <string name="words_chars_min">&lt;xliff:g id=\"words\" example=\"120\"&gt;%1$s&lt;/xliff:g&gt; mots · &lt;xliff:g id=\"chars\" example=\"650\"&gt;%2$s&lt;/xliff:g&gt; caractères · environ &lt;xliff:g id=\"minutes\" example=\"1\"&gt;%3$s&lt;/xliff:g&gt; min</string>
+    <string name="words_chars_min"><xliff:g id="words" example="120">%1$s</xliff:g> mots · <xliff:g id="chars" example="650">%2$s</xliff:g> caractères · environ <xliff:g id="minutes" example="1">%3$s</xliff:g> min</string>
     <string name="interval_seconds">Intervalle (en secondes)</string>
     <string name="demote_list_item">Abaisser le niveau de l’élément de liste</string>
     <string name="share_online_1">Partager en ligne…</string>
@@ -42,10 +42,10 @@
     <string name="no_online_documents_yet_open_a_document">Aucun document en ligne pour le moment. Ouvrez un document et utilisez « Partager » pour le copier ici et l’envoyer à quelqu’un, ou demandez à cette personne de le partager avec l’identifiant de votre appareil, puis appuyez sur Actualiser.</string>
     <string name="border">Bordure</string>
     <string name="portrait">● Portrait</string>
-    <string name="you_have_access_only_the_owner_can_chang">Vous disposez d’un accès en tant que &lt;xliff:g id=\"role\" example=\"éditeur\"&gt;%1$s&lt;/xliff:g&gt;. Seul le propriétaire peut modifier le partage.</string>
+    <string name="you_have_access_only_the_owner_can_chang">Vous disposez d’un accès en tant que <xliff:g id="role" example="éditeur">%1$s</xliff:g>. Seul le propriétaire peut modifier le partage.</string>
     <string name="bring_to_front">Placer au premier plan</string>
     <string name="special_character_1">Caractère spécial…</string>
-    <string name="slide_number_1">Numéro de la diapositive (1–&lt;xliff:g id=\"total\" example=\"10\"&gt;%1$s&lt;/xliff:g&gt;)</string>
+    <string name="slide_number_1">Numéro de la diapositive (1–<xliff:g id="total" example="10">%1$s</xliff:g>)</string>
     <string name="epub_epub">EPUB (.epub)…</string>
     <string name="meta_modified">Modifié le</string>
     <string name="speaker_notes_1">Notes du présentateur…</string>
@@ -56,7 +56,7 @@
     <string name="insert_chart">Insérer un graphique</string>
     <string name="slide_1">+ Diapositive</string>
     <string name="horizontal_line">Ligne horizontale</string>
-    <string name="words_characters_min_read">&lt;xliff:g id=\"words\" example=\"120\"&gt;%1$s&lt;/xliff:g&gt; mots · &lt;xliff:g id=\"characters\" example=\"650\"&gt;%2$s&lt;/xliff:g&gt; caractères · environ &lt;xliff:g id=\"minutes\" example=\"1\"&gt;%3$s&lt;/xliff:g&gt; min de lecture</string>
+    <string name="words_characters_min_read"><xliff:g id="words" example="120">%1$s</xliff:g> mots · <xliff:g id="characters" example="650">%2$s</xliff:g> caractères · environ <xliff:g id="minutes" example="1">%3$s</xliff:g> min de lecture</string>
     <string name="move_paragraph_up">Déplacer le paragraphe vers le haut</string>
     <string name="anonymous">Anonyme</string>
     <string name="fill_down">Recopier vers le bas</string>
@@ -78,7 +78,7 @@
     <string name="slide_background">Arrière-plan de la diapositive…</string>
     <string name="word_1">☐ Mot entier</string>
     <string name="online">En ligne</string>
-    <string name="save_failed">Échec de l’enregistrement : &lt;xliff:g id=\"error\" example=\"Autorisation refusée\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="save_failed">Échec de l’enregistrement : <xliff:g id="error" example="Autorisation refusée">%1$s</xliff:g></string>
     <string name="reject_all">Tout refuser</string>
     <string name="on">ACTIVÉ</string>
     <string name="insert">Insérer</string>
@@ -134,7 +134,7 @@
     <string name="special_character">Caractère spécial</string>
     <string name="sort_rows">Trier les lignes</string>
     <string name="accept_all">Tout accepter</string>
-    <string name="tracked_changes">Modifications suivies (&lt;xliff:g id=\"count\" example=\"3\"&gt;%1$s&lt;/xliff:g&gt;)</string>
+    <string name="tracked_changes">Modifications suivies (<xliff:g id="count" example="3">%1$s</xliff:g>)</string>
     <string name="computing">Calcul en cours…</string>
     <string name="replace_hint">Remplacer par…</string>
     <string name="replace_1">Remplacer</string>
@@ -157,13 +157,13 @@
     <string name="export_1">Exporter</string>
     <string name="document_name">Nom du document</string>
     <string name="bookmark">Favori</string>
-    <string name="annotation_author_date">&lt;xliff:g id=\"author\" example=\"Anonyme\"&gt;%1$s&lt;/xliff:g&gt;&lt;xliff:g id=\"date_suffix\" example=\" · 2024-01-01\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="annotation_author_date"><xliff:g id="author" example="Anonyme">%1$s</xliff:g><xliff:g id="date_suffix" example=" · 2024-01-01">%2$s</xliff:g></string>
     <string name="document_info">Informations</string>
     <string name="recipient_device_id">Identifiant de l’appareil du destinataire</string>
     <string name="word_count_bar_1">Barre de comptage des mots</string>
     <string name="delete_row">Supprimer la ligne</string>
     <string name="your_device_id">Identifiant de votre appareil :</string>
-    <string name="page_of">Page &lt;xliff:g id=\"current_page\" example=\"2\"&gt;%1$s&lt;/xliff:g&gt; sur &lt;xliff:g id=\"total_pages\" example=\"5\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="page_of">Page <xliff:g id="current_page" example="2">%1$s</xliff:g> sur <xliff:g id="total_pages" example="5">%2$s</xliff:g></string>
     <string name="meta_author">Auteur</string>
     <string name="insert_hyperlink">Insérer un lien hypertexte</string>
     <string name="chart">Graphique</string>
@@ -176,7 +176,7 @@
     <string name="page_break">Saut de page</string>
     <string name="shape">Forme</string>
     <string name="restart_numbering">Recommencer la numérotation</string>
-    <string name="column_index_0">Indice de colonne (0–&lt;xliff:g id=\"max_index\" example=\"4\"&gt;%1$s&lt;/xliff:g&gt;)</string>
+    <string name="column_index_0">Indice de colonne (0–<xliff:g id="max_index" example="4">%1$s</xliff:g>)</string>
     <string name="hide">Masquer</string>
     <string name="portrait_1">Portrait</string>
     <string name="number_format">Format numérique</string>
@@ -214,8 +214,8 @@
     <string name="manage">Gérer</string>
     <string name="sort">Trier</string>
     <string name="edit_chart">Modifier le graphique</string>
-    <string name="tracked_change_author_date">&lt;xliff:g id=\"change_type\" example=\"Insertion\"&gt;%1$s&lt;/xliff:g&gt; · &lt;xliff:g id=\"author\" example=\"Inconnu\"&gt;%2$s&lt;/xliff:g&gt;&lt;xliff:g id=\"date_suffix\" example=\" · 2024-01-01\"&gt;%3$s&lt;/xliff:g&gt;</string>
-    <string name="slide_of">Diapositive &lt;xliff:g id=\"current\" example=\"2\"&gt;%1$s&lt;/xliff:g&gt; sur &lt;xliff:g id=\"total\" example=\"10\"&gt;%2$s&lt;/xliff:g&gt;</string>
+    <string name="tracked_change_author_date"><xliff:g id="change_type" example="Insertion">%1$s</xliff:g> · <xliff:g id="author" example="Inconnu">%2$s</xliff:g><xliff:g id="date_suffix" example=" · 2024-01-01">%3$s</xliff:g></string>
+    <string name="slide_of">Diapositive <xliff:g id="current" example="2">%1$s</xliff:g> sur <xliff:g id="total" example="10">%2$s</xliff:g></string>
     <string name="duplicate_paragraph">Dupliquer le paragraphe</string>
     <string name="font_size_2">Taille de police…</string>
     <string name="night_reading_mode">✓ Mode de lecture nocturne</string>
@@ -233,7 +233,7 @@
     <string name="presentation_timer">Minuteur de présentation</string>
     <string name="go">Aller</string>
     <string name="column_width_px">Largeur de colonne (px)</string>
-    <string name="comments_1">Commentaires (&lt;xliff:g id=\"count\" example=\"2\"&gt;%1$s&lt;/xliff:g&gt;)</string>
+    <string name="comments_1">Commentaires (<xliff:g id="count" example="2">%1$s</xliff:g>)</string>
     <string name="case_1">☐ Respecter la casse</string>
     <string name="add_bookmark">Ajouter un favori</string>
     <string name="replace">Remplacer…</string>
@@ -245,7 +245,7 @@
     <string name="margins">Marges</string>
     <string name="accept">Accepter</string>
     <string name="error_loading">Erreur lors du chargement du document</string>
-    <string name="default_font_size_pt">Taille de police par défaut : &lt;xliff:g id=\"size\" example=\"12\"&gt;%1$s&lt;/xliff:g&gt; pt</string>
+    <string name="default_font_size_pt">Taille de police par défaut : <xliff:g id="size" example="12">%1$s</xliff:g> pt</string>
     <string name="your_device_id_share_this_so_others_can">Identifiant de votre appareil (partagez-le pour que d’autres personnes puissent vous envoyer des documents) :</string>
     <string name="close_search">Fermer</string>
     <string name="insert_table">Insérer un tableau</string>
@@ -253,7 +253,7 @@
     <string name="case_on">☑ Respecter la casse</string>
     <string name="file">Fichier</string>
     <string name="synced_to_cloud">Synchronisé avec le cloud</string>
-    <string name="online_1">En ligne : &lt;xliff:g id=\"presence\" example=\"Alice · Feuille1\"&gt;%1$s&lt;/xliff:g&gt;</string>
+    <string name="online_1">En ligne : <xliff:g id="presence" example="Alice · Feuille1">%1$s</xliff:g></string>
     <string name="show_security_code">Afficher le code de sécurité</string>
     <string name="insert_row_below">Insérer une ligne en dessous</string>
     <string name="people_with_access">Personnes ayant accès :</string>

@@ -32,7 +32,7 @@
     </plurals>
     <string name="view_360">Vue à 360°</string>
     <plurals name="people_in_photo">
-        <item quantity="one">xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt; personne</item>
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> personne</item>
         <item quantity="many"><xliff:g id="count" example="3">%1$d</xliff:g> personnes</item>
         <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> personnes</item>
     </plurals>

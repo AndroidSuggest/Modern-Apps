@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Ummikuvabastaja</string>
     <string name="level">Pusletükk</string>
     <string name="level_selector">Pusletüki valik</string>
@@ -10,5 +10,5 @@
     <string name="completed">Tehtud</string>
     <string name="moves">Käigud</string>
     <string name="daily_challenge">Igapäevane ülesanne</string>
-    <string name="daily_streak">&lt;xliff:g id=\"days\" example=\"5\"&gt;%1$d&lt;/xliff:g&gt; päeva järjest</string>
+    <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> päeva järjest</string>
 </resources>

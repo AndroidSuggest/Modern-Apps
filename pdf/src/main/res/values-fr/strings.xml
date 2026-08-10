@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">PDF</string>
     <string name="open_pdf">Ouvrir un fichier PDF</string>
     <string name="share_pdf">Partager le PDF</string>
@@ -20,7 +20,7 @@
     <string name="password">Mot de passe</string>
     <string name="encrypt_with_password">Chiffrer avec un mot de passe</string>
     <string name="sign">Signer</string>
-    <string name="opacity">Opacité : &lt;xliff:g id=\"value\" example=\"75\"&gt;%1$s&lt;/xliff:g&gt;%</string>
+    <string name="opacity">Opacité : <xliff:g id="value" example="75">%1$s</xliff:g>%</string>
     <string name="pdf_cut_and_glue">Découpage et assemblage de PDF</string>
     <string name="save_as_u2026">Enregistrer sous…</string>
     <string name="failed_to_save_pdf">Échec de l’enregistrement du PDF</string>
