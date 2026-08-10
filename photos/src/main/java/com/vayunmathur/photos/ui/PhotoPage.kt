@@ -2,8 +2,7 @@ package com.vayunmathur.photos.ui
 
 import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.util.DateNameStyle
-import com.vayunmathur.library.util.localizedMonthNames
+import com.vayunmathur.library.ui.DateString
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -96,13 +95,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.absoluteValue
 import kotlin.time.Instant
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.number
-import kotlinx.datetime.toLocalDateTime
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 // Helper class to store zoom information
 data class ZoomState(val scale: Float = 1f, val offset: Offset = Offset.Zero)
@@ -480,11 +476,7 @@ fun PhotoDetailView(
 
                 val dateFormatted =
                         remember(photo.date) {
-                            Instant.fromEpochMilliseconds(photo.date)
-                                    .toLocalDateTime(TimeZone.currentSystemDefault())
-                                    .let {
-                                        "${it.day} ${localizedMonthNames(DateNameStyle.FULL)[it.month.number - 1]} ${it.year}"
-                                    }
+                            DateString.dateLong(Instant.fromEpochMilliseconds(photo.date))
                         }
 
                 Text(
