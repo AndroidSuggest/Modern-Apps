@@ -9,7 +9,7 @@
     <string name="label_category_name">Imię kategori</string>
     <string name="label_select_subscriptions">Wybierz subskrypcję:</string>
     <string name="action_create">Stwórz</string>
-    <string name="action_update">Zaktualizuj</string>
+    <string name="action_update">Aktualizacja</string>
     <string name="video_load_error">Błąd ładowania filmu – YouTube mógł zablokować anonimowy dostęp do filmów z tego adresu IP</string>
     <string name="action_go_back">Wróć</string>
     <string name="label_comments">Komentarze</string>
