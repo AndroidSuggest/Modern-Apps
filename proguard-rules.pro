@@ -100,3 +100,14 @@
 # servlet integration is never used on Android; suppress the missing refs.
 -dontwarn javax.servlet.**
 -dontwarn ch.qos.logback.classic.servlet.**
+
+# JGit (org.eclipse.jgit, used by :code) is a desktop/server Java library. It references JVM
+# APIs absent on Android — JMX (java.lang.management / javax.management), GSS-API/Kerberos
+# (org.ietf.jgss), java.lang.ProcessHandle, and the SLF4J static binder — only on code paths
+# Android never hits (MBean monitoring, Negotiate HTTP auth, PID-file locks). With
+# android.enableR8.fullMode=true these dangling refs fail the build, so suppress them.
+-dontwarn java.lang.ProcessHandle
+-dontwarn java.lang.management.**
+-dontwarn javax.management.**
+-dontwarn org.ietf.jgss.**
+-dontwarn org.slf4j.impl.**
