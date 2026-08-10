@@ -223,8 +223,18 @@ impl Reader {
             return None;
         }
         let file = unsafe { File::from_raw_fd(dupfd) };
-        let src = Src { file, base: offset as u64 };
+        Reader::from_src(Src { file, base: offset as u64 })
+    }
 
+    /// Open a `.geodb` straight from a filesystem path (base offset 0). Test-only: the
+    /// production path receives an APK asset fd + offset via `open`.
+    #[cfg(test)]
+    fn open_path<P: AsRef<std::path::Path>>(path: P) -> Option<Reader> {
+        let file = File::open(path).ok()?;
+        Reader::from_src(Src { file, base: 0 })
+    }
+
+    fn from_src(src: Src) -> Option<Reader> {
         if src.rd_u32(0)? != MAGIC || src.rd_u32(4)? != VERSION {
             return None;
         }
@@ -545,5 +555,156 @@ pub extern "system" fn Java_com_vayunmathur_networklocation_GeocoderNative_close
         unsafe {
             drop(Box::from_raw(handle as *mut Handle));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // resolve() field order: [lat, lon, house, street, city, state, country, postcode]
+    const F_LAT: usize = 0;
+    const F_LON: usize = 1;
+    const F_STREET: usize = 3;
+    const F_CITY: usize = 4;
+    const F_STATE: usize = 5;
+    const F_COUNTRY: usize = 6;
+
+    /// Locate a real DB: `$GEOCODER_DB`, else the bundled asset next to the crate.
+    /// Returns `None` (test self-skips) when no DB is present so CI without the ~1.4 GB
+    /// asset stays green; a DB that exists but fails to parse is a hard failure.
+    fn open_db() -> Option<Reader> {
+        let path = match std::env::var("GEOCODER_DB") {
+            Ok(p) => p,
+            Err(_) => {
+                let bundled = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/geocoder.geodb");
+                if std::path::Path::new(bundled).exists() {
+                    bundled.to_string()
+                } else {
+                    eprintln!("skip: no geocoder DB (set GEOCODER_DB or add the bundled asset)");
+                    return None;
+                }
+            }
+        };
+        match Reader::open_path(&path) {
+            Some(r) => Some(r),
+            None => panic!("geocoder DB at {path} exists but failed magic/version/parse"),
+        }
+    }
+
+    /// The header, dictionaries and index tables the two searches rely on are internally
+    /// consistent (this is what would break if a repack corrupted the file).
+    #[test]
+    fn structure_is_sane() {
+        let r = match open_db() {
+            Some(r) => r,
+            None => return,
+        };
+        assert!(r.n > 0, "record count must be positive");
+        assert_eq!(r.dicts.len(), 6, "expected 6 dictionaries");
+        assert_eq!(r.cols.len(), 8, "expected 8 columns");
+        assert_eq!(r.fwd.n, r.n, "forward index must cover every record");
+        assert_eq!(
+            r.cell_ids.len(),
+            r.cell_starts.len(),
+            "grid cell_ids/cell_starts length mismatch"
+        );
+        for (i, d) in r.dicts.iter().enumerate() {
+            assert!(!d.is_empty(), "dictionary {i} is empty");
+        }
+        // grid_index() binary-searches cell_ids, so they must be strictly ascending.
+        for w in r.cell_ids.windows(2) {
+            assert!(w[0] < w[1], "cell_ids not strictly ascending");
+        }
+        // cell_starts index into records: non-decreasing and within [0, n].
+        let mut prev = 0i32;
+        for &s in &r.cell_starts {
+            assert!(s >= prev && s <= r.n, "cell_start {s} out of range (prev {prev}, n {})", r.n);
+            prev = s;
+        }
+    }
+
+    /// Reverse geocoding a coordinate in the middle of a dense city returns a real,
+    /// nearby address (nearest-address search actually finds and decodes a record).
+    #[test]
+    fn reverse_returns_nearby_address() {
+        let mut r = match open_db() {
+            Some(r) => r,
+            None => return,
+        };
+        // (name, lat, lon) — city centers on different continents.
+        let cases = [
+            ("New York", 40.7128, -74.0060),
+            ("London", 51.5074, -0.1278),
+            ("Tokyo", 35.6762, 139.6503),
+        ];
+        for (name, lat, lon) in cases {
+            let rec = r
+                .reverse(lat, lon)
+                .unwrap_or_else(|| panic!("{name}: reverse returned no record"));
+            let a = r.resolve(rec);
+            let rlat: f64 = a[F_LAT].parse().expect("lat parses");
+            let rlon: f64 = a[F_LON].parse().expect("lon parses");
+            assert!(
+                (rlat - lat).abs() < 0.5 && (rlon - lon).abs() < 0.5,
+                "{name}: nearest address ({rlat},{rlon}) too far from query ({lat},{lon}); full = {a:?}"
+            );
+            assert!(
+                !a[F_STREET].is_empty() || !a[F_CITY].is_empty(),
+                "{name}: resolved address has neither street nor city: {a:?}"
+            );
+            eprintln!("reverse {name} ({lat},{lon}) -> {a:?}");
+        }
+    }
+
+    /// Forward geocoding is consistent with reverse: take a real address found by reverse,
+    /// look it up by its structured fields, and every returned record must carry the same
+    /// country/state/city/street. (We don't assert the exact source record is in the first
+    /// N results — a single street can hold more addresses than the limit.)
+    #[test]
+    fn forward_matches_reverse() {
+        let mut r = match open_db() {
+            Some(r) => r,
+            None => return,
+        };
+        let seed = r.reverse(40.7128, -74.0060).expect("reverse NYC for seed address");
+        let a = r.resolve(seed);
+        let (street, city, state, country) = (
+            a[F_STREET].clone(),
+            a[F_CITY].clone(),
+            a[F_STATE].clone(),
+            a[F_COUNTRY].clone(),
+        );
+        eprintln!("forward seed: {country}/{state}/{city}/{street}");
+
+        let recs = r.forward(&country, &state, &city, &street, 25);
+        assert!(
+            !recs.is_empty(),
+            "forward found nothing for a country/state/city/street produced by reverse"
+        );
+        for rc in recs {
+            let b = r.resolve(rc);
+            assert_eq!(b[F_COUNTRY], country, "country mismatch: {b:?}");
+            assert_eq!(b[F_STATE], state, "state mismatch: {b:?}");
+            assert_eq!(b[F_CITY], city, "city mismatch: {b:?}");
+            assert_eq!(b[F_STREET], street, "street mismatch: {b:?}");
+        }
+    }
+
+    /// A structured lookup that cannot exist returns empty (no panic, no bogus hit).
+    #[test]
+    fn forward_unknown_is_empty() {
+        let mut r = match open_db() {
+            Some(r) => r,
+            None => return,
+        };
+        let recs = r.forward(
+            "__no_such_country__",
+            "__no_such_state__",
+            "__no_such_city__",
+            "__no_such_street__",
+            10,
+        );
+        assert!(recs.is_empty(), "unknown query should yield no records");
     }
 }
