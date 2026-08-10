@@ -18,15 +18,15 @@
     <string name="channel_alarms_name">Sveglie</string>
     <string name="channel_alarms_description">Notifiche per le sveglie programmate</string>
     <string name="header_laps">Giri</string>
-    <string name="lap_number_format"># %1$d</string>
-    <string name="duration_ms_format">%1$d.%2$02d</string>
-    <string name="duration_m_s_ms_format">%1$d:%2$02d.%3$02d</string>
+    <string name="lap_number_format"># &lt;xliff:g id=\"lap_number\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="duration_ms_format">&lt;xliff:g id=\"seconds\" example=\"12\"&gt;%1$d&lt;/xliff:g&gt;.&lt;xliff:g id=\"centiseconds\" example=\"34\"&gt;%2$02d&lt;/xliff:g&gt;</string>
+    <string name="duration_m_s_ms_format">&lt;xliff:g id=\"minutes\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;:&lt;xliff:g id=\"seconds\" example=\"23\"&gt;%2$02d&lt;/xliff:g&gt;.&lt;xliff:g id=\"centiseconds\" example=\"45\"&gt;%3$02d&lt;/xliff:g&gt;</string>
     <string name="header_split">Parziale</string>
     <string name="header_total">Totale</string>
-    <string name="stopwatch_time_format">%1$d:%2$02d</string>
+    <string name="stopwatch_time_format">&lt;xliff:g id=\"minutes\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;:&lt;xliff:g id=\"seconds\" example=\"05\"&gt;%2$02d&lt;/xliff:g&gt;</string>
     <string name="button_add_minute">+ 1:00</string>
     <string name="timer_finished_title">Timer scaduto</string>
-    <string name="timer_finished_text">%1$s è terminato!</string>
+    <string name="timer_finished_text">&lt;xliff:g id=\"timer_name\" example=\"Tea\"&gt;%1$s&lt;/xliff:g&gt; terminato!</string>
     <string name="label_new_timer">Nuovo timer</string>
     <string name="field_label">Etichetta</string>
     <string name="button_cancel">Annulla</string>
@@ -36,5 +36,23 @@
     <string name="time_am">AM</string>
     <string name="time_pm">PM</string>
     <string name="analog_clock_widget_label">Orologio analogico</string>
-    <string name="analog_clock_widget_description">Orologio analogico Materiale You — tocca per aprire l\'orologio</string>
+    <string name="analog_clock_widget_description">Orologio analogico Materiale You - tocca per aprire l\'orologio</string>
+    <string name="channel_stopwatch_name">Cronometro</string>
+    <string name="channel_stopwatch_description">Controlli cronometro</string>
+    <string name="action_pause">Pausa</string>
+    <string name="action_resume">Riprendi</string>
+    <string name="action_cancel">Annulla</string>
+    <string name="action_reset">Reimposta</string>
+    <string name="action_lap">Giro</string>
+    <string name="action_stop">Interrompi</string>
+    <string name="alarm_settings">Impostazioni sveglia</string>
+    <string name="defaults_for_new_alarms">Impostazioni predefinite per le nuove sveglie</string>
+    <string name="gradual_off">Disattivo</string>
+    <string name="ringtone_default">Predefinito</string>
+    <string name="ringtone_silent">Silenzioso</string>
+    <string name="ringtone_custom">Personalizzato</string>
+    <string name="timer_name_optional">Nome timer (opzionale)</string>
+    <string name="sound">Suono</string>
+    <string name="vibrate">Vibrazione</string>
+    <string name="gradually_increase_volume">Aumenta gradualmente il volume</string>
 </resources>
