@@ -99,6 +99,9 @@ private fun DailyItem(
         shape = CircleShape,
         onClick = onClick,
     ) {
+        val onColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+        val mutedColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
+        val accentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
         Column(
             modifier = Modifier
                 .heightIn(min = 210.dp)
@@ -111,26 +114,26 @@ private fun DailyItem(
                 Text(
                     formatTemperatureCompact(maxTemp, tempUnit),
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = onColor,
                 )
                 Text(
                     formatTemperatureCompact(minTemp, tempUnit),
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = mutedColor,
                 )
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                WeatherIconBox(icon = icon, size = 38.dp)
+                WeatherIconBox(icon = icon, size = 38.dp, tint = onColor)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "${precipitationProbability}%",
-                    color = MaterialTheme.colorScheme.primary,
+                    color = accentColor,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     weekday,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = onColor,
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }

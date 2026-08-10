@@ -76,7 +76,7 @@ fun LocationItem(
                     WeatherIconBox(
                         icon = condition.iconContent(isDay),
                         size = 34.dp,
-                        tint = contentColor,
+                        tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             },
