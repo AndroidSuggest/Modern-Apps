@@ -608,9 +608,19 @@ object Networking {
      * Computes the verification "security code" for a connection: a fingerprint of *both* this
      * device's and [user]'s public keys. Identical on both peers' devices; comparing them confirms
      * the end-to-end channel isn't being intercepted. Returns null if the peer's key isn't known yet.
-     * Uses RSA keys (existing behavior).
+     *
+     * Prefers the PQC (quantum-safe) code when both sides support PQC, and falls back to the RSA
+     * code otherwise. The choice is symmetric: PQC is used iff this device is PQC-ready AND the
+     * peer has a PQC bundle available, so if either side lacks PQC both compute the RSA code.
      */
     suspend fun securityCode(user: User): String? {
+        if (pqcReady) {
+            val theirBundle = peerPqcBundle(user)
+            if (theirBundle != null) {
+                runCatching { Pqc.securityCode(pqcIdentity.publicBundle, theirBundle) }
+                    .getOrNull()?.let { return it }
+            }
+        }
         val theirPem = peerPublicKeyPem(user) ?: return null
         return runCatching { E2ee.securityCode(identity.publicKeyPem, theirPem) }.getOrNull()
     }
