@@ -1,8 +1,7 @@
 package com.vayunmathur.findfamily.ui
 
-import com.vayunmathur.library.util.localizedAmPmMarker
-import kotlinx.datetime.format.DateTimeFormat
-import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.ui.DateString
+import com.vayunmathur.library.ui.is24Hour
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -132,14 +131,8 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
 import kotlin.time.Clock
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atTime
-import kotlinx.datetime.format
-import kotlinx.datetime.format.MonthNames
-import kotlinx.datetime.format.Padding
-import com.vayunmathur.library.util.localizedMonthNames
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
@@ -749,17 +742,11 @@ fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: B
         timeSinceEntry < 60.seconds -> stringResource(R.string.since_just_now)
         timeSinceEntry < 15.minutes -> stringResource(R.string.since_minutes_ago, timeSinceEntry.inWholeMinutes)
         else -> {
-            val formattedTime = sinceTime.format(LocalDateTime.Format {
-                amPmHour(Padding.NONE)
-                chars(":")
-                minute()
-                chars(" ")
-                localizedAmPmMarker(lowercase = true)
-            })
+            val formattedTime = DateString.time(sinceTime.time, is24Hour(context))
             val formattedDate = when (sinceTime.date.toEpochDays() - Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date.toEpochDays()) {
                 0L -> stringResource(R.string.today)
                 1L -> stringResource(R.string.yesterday)
-                else -> sinceTime.date.format(DateFormats.MONTH_DAY)
+                else -> DateString.monthDayYear(sinceTime.date)
             }
             stringResource(R.string.since_time_date, formattedTime, formattedDate)
         }
@@ -939,26 +926,4 @@ fun AutoToggleRow(user: User, actions: PersonActions) {
             }
         }
     }
-}
-
-object DateFormats {
-    // example: Jun 4
-    val MONTH_DAY: DateTimeFormat<LocalDate> get() = LocalDate.Format {
-        monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
-        chars(" ")
-        day()
-    }
-
-    // example: 10:05 am
-    val TIME_SECOND_AM_PM: DateTimeFormat<LocalTime> get() = LocalTime.Format {
-        amPmHour()
-        chars(":")
-        minute()
-        chars(":")
-        second()
-        chars(" ")
-        localizedAmPmMarker()
-    }
-
-    val DATE_INPUT: DateTimeFormat<LocalDate> get() = MONTH_DAY
 }
