@@ -10,4 +10,5 @@
     <string name="save_quit_to_menu">Salvesta ja välju menüüsse</string>
     <string name="app_name">Voxels</string>
     <string name="or_add_by_device_id">Või lisa seadme tunnus</string>
+    <string name="stop">Lõpeta</string>
 </resources>
