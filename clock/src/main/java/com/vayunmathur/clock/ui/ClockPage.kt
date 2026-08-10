@@ -96,10 +96,11 @@ fun ClockScreen(backStack: NavBackStack<Route>, state: ClockUiState) {
             }
             items(state.worldClocks) { worldClock ->
                 val timeHere = state.now.toLocalDateTime(worldClock.zone)
-                val amPm = if(timeHere.time.hour >= 12) stringResource(R.string.time_pm) else stringResource(R.string.time_am)
+                val is24h = state.is24Hour
+                val amPm = if (is24h) "" else if (timeHere.time.hour >= 12) stringResource(R.string.time_pm) else stringResource(R.string.time_am)
                 Card {
                     ListItem({Text(worldClock.city)}, trailingContent = {
-                        Text(DateString.timeNumeric(timeHere.time, is24Hour = false) + amPm)
+                        Text(DateString.timeNumeric(timeHere.time, is24h) + amPm)
                     }, colors = ListItemDefaults.colors(containerColor = Color.Transparent))
                 }
             }
