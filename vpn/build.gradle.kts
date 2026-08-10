@@ -12,6 +12,8 @@ launcherIcon {
 
 android {
     defaultConfig {
+        versionCode = 20260809
+        versionName = "v2.6.6"
         applicationId = "com.vayunmathur.vpn"
         minSdk = 31 // required for VpnService with per-app config etc (keep same as others)
     }
