@@ -29,8 +29,6 @@ import com.vayunmathur.health.ui.components.GroupedSection
 import com.vayunmathur.health.ui.components.hypnogramColors
 import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.health.util.displayString
-import com.vayunmathur.health.util.formatHourAmPm
-import com.vayunmathur.health.util.formatTime24
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.util.NavBackStack
@@ -144,6 +142,7 @@ fun SleepSummaryHeader(record: Record) {
     val totalMinutes = (record.value * 60).toLong()
     val startT = record.startTime.atZone(java.time.ZoneId.systemDefault())
     val endT = record.endTime.atZone(java.time.ZoneId.systemDefault())
+    val is24 = rememberIs24Hour()
 
     Column {
         Text(
@@ -153,7 +152,7 @@ fun SleepSummaryHeader(record: Record) {
             color = HealthColors.Sleep,
         )
         Text(
-            text = "${formatTime24(LocalTime(startT.hour, startT.minute))} - ${formatTime24(LocalTime(endT.hour, endT.minute))}",
+            text = "${DateString.time(LocalTime(startT.hour, startT.minute), is24)} - ${DateString.time(LocalTime(endT.hour, endT.minute), is24)}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.outline
         )
@@ -264,14 +263,15 @@ fun SleepStageGraph(record: Record) {
         ) {
             val startT = record.startTime.atZone(java.time.ZoneId.systemDefault())
             val endT = record.endTime.atZone(java.time.ZoneId.systemDefault())
+            val is24 = rememberIs24Hour()
 
             Text(
-                formatHourAmPm(startT.hour),
+                DateString.hourLabel(startT.hour, is24),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline
             )
             Text(
-                formatHourAmPm(endT.hour),
+                DateString.hourLabel(endT.hour, is24),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline
             )

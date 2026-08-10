@@ -5,6 +5,8 @@ package com.vayunmathur.health.util
 import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import com.vayunmathur.library.util.localizedMonthNames
+import com.vayunmathur.library.ui.DateString
+import com.vayunmathur.library.ui.is24Hour
 import kotlinx.datetime.isoDayNumber
 import kotlin.uuid.Uuid
 import android.app.Application
@@ -308,7 +310,7 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
     ): String = when (selectedTab) {
         0 -> {
             val hour = (firstKey % 24).toInt()
-            if (hour % 6 == 0) formatHourAmPm(hour) else ""
+            if (hour % 6 == 0) DateString.hourLabel(hour, is24Hour(getApplication())) else ""
         }
         1 -> {
             val date = LocalDate.fromEpochDays(firstKey.toInt())

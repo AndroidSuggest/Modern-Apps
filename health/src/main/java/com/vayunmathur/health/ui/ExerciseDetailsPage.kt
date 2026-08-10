@@ -29,7 +29,8 @@ import com.vayunmathur.health.ui.components.GroupedSectionDivider
 import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.health.util.exerciseSegmentTypeName
 import com.vayunmathur.health.util.exerciseTypeName
-import com.vayunmathur.health.util.formatTimeAmPm
+import com.vayunmathur.library.ui.DateString
+import com.vayunmathur.library.ui.rememberIs24Hour
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.IconNavigation
@@ -101,6 +102,7 @@ private fun ExerciseSessionCard(record: Record) {
 
     val startZdt = record.startTime.atZone(ZoneId.systemDefault())
     val endZdt = record.endTime.atZone(ZoneId.systemDefault())
+    val is24 = rememberIs24Hour()
     val durationMinutes = record.value.toLong()
 
     val segments = remember(exercise?.segmentsJson) {
@@ -164,7 +166,7 @@ private fun ExerciseSessionCard(record: Record) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                "${formatTimeAmPm(LocalTime(startZdt.hour, startZdt.minute))} – ${formatTimeAmPm(LocalTime(endZdt.hour, endZdt.minute))}",
+                "${DateString.time(LocalTime(startZdt.hour, startZdt.minute), is24)} – ${DateString.time(LocalTime(endZdt.hour, endZdt.minute), is24)}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline
             )
