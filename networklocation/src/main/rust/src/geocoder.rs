@@ -99,8 +99,9 @@ fn zstd_decompress(comp: &[u8], raw_len: usize) -> Option<Vec<u8>> {
     }
     Some(out)
 }
-/// Kotlin `String.compareTo` compares UTF-16 code units; the dictionaries are sorted that way,
-/// so the binary search must compare the same way.
+/// Kotlin `String.compareTo` compares UTF-16 code units; the searchable dictionaries
+/// (street/city/state/country) are sorted that way, so the binary search must match. The
+/// house/postcode dictionaries are frequency-ordered and only ever indexed for display.
 fn cmp_utf16(a: &str, b: &str) -> Ordering {
     a.encode_utf16().cmp(b.encode_utf16())
 }

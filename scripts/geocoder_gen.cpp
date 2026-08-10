@@ -14,14 +14,17 @@
 //   6x dict section   : [int size][ [int rawLen][int compLen][zstd(raw)] ]
 //                       raw = [int count]( [int len][utf8 bytes] )*count
 //                       order: house, street, city, state, country, postcode
-//                       entries sorted in Kotlin String order (UTF-16 code units) so the
-//                       reader's binary search over the dict works.
+//                       street/city/state/country are sorted in Kotlin String order (UTF-16
+//                       code units) so the reader's binary search (forward geocoding) works.
+//                       house/postcode are never searched by name (display only), so they are
+//                       ordered by descending frequency to keep their columns near 1 byte/rec.
 //   8x column section : [int size][ [int n][int blocks]([int rawLen][int compLen])*blocks
 //                                   [zstd block]*blocks ]
 //                       each block: up to BLOCK values, delta(optional)+zigzag+varint(LEB128).
 //                       order: lat(delta), lon(delta), house, street, city, state, country,
 //                       postcode. lat/lon are micro-degrees; the rest are dict indices.
-//                       Records are in grid-primary order (sorted by 0.05-deg cell id).
+//                       Records are in grid-primary order (0.05-deg cell id), and within each
+//                       cell sorted by (lat, lon) so the coordinate deltas stay tiny.
 //   grid section      : [int size][ [int cellCount]( [long cellId][int startRec] )*count ]
 //                       (uncompressed; cellIds ascending)
 //   fwd section        : one delta column of record indices sorted by
@@ -31,6 +34,7 @@
 //   g++ -O2 -fopenmp -std=c++17 geocoder_gen.cpp simdjson.cpp -lzstd -o geocoder_gen
 // Run:
 //   ./geocoder_gen generate addr.geojsonseq geocoder.geodb   # build (then self-verifies)
+//   ./geocoder_gen reencode old.geodb new.geodb              # repack with the current encoder
 //   ./geocoder_gen verify   geocoder.geodb                   # re-check an existing DB
 
 #include <algorithm>
@@ -100,6 +104,23 @@ static inline int64_t cellIdOf(int latM, int lonM) {
     int64_t row = (int64_t)(latM - MIN_LAT_MICRO) / CELL_MICRO;
     int64_t col = (int64_t)(lonM - MIN_LON_MICRO) / CELL_MICRO;
     return row * COLS + col;
+}
+// Interleave the low 16 bits of x into even bit positions (for a 2D Morton/Z-order key).
+static inline uint64_t interleave16(uint32_t x) {
+    uint64_t v = x & 0xFFFFu;
+    v = (v | (v << 8)) & 0x00FF00FFULL;
+    v = (v | (v << 4)) & 0x0F0F0F0FULL;
+    v = (v | (v << 2)) & 0x33333333ULL;
+    v = (v | (v << 1)) & 0x55555555ULL;
+    return v;
+}
+// Z-order key of a record's position *within* its 0.05-deg cell (offsets are < 50000 < 2^16).
+// Sorting a cell's records by this makes both lat and lon vary in small steps, so both delta
+// columns compress well (plain (lat,lon) sort only helps lat and leaves lon oscillating).
+static inline uint64_t mortonInCell(int32_t latM, int32_t lonM) {
+    uint32_t latOff = (uint32_t)(((int64_t)latM - MIN_LAT_MICRO) % CELL_MICRO);
+    uint32_t lonOff = (uint32_t)(((int64_t)lonM - MIN_LON_MICRO) % CELL_MICRO);
+    return (interleave16(latOff) << 1) | interleave16(lonOff);
 }
 
 static std::string zstdCompress(const std::string& raw) {
@@ -243,6 +264,15 @@ static void walkCoords(dom::element e, double& sumLon, double& sumLat, long& cnt
 
 static void generate(const char* inPath, const char* outPath);
 static void verify(const char* dbPath);
+// Shared write path: (re)orders records + house/postcode dicts and emits the DB, then verifies.
+// `dicts` must already have street/city/state/country in UTF-16 order (house/postcode any order).
+static void writeDb(const char* outPath, std::vector<Rec>& recs,
+                    std::vector<std::vector<std::string>>& dicts);
+// Rebuild an existing geocoder.geodb with the current encoder (no 100+ GB reparse needed).
+static void reencode(const char* inDb, const char* outDb);
+
+static const char* const COL_NAME[8] = {
+    "lat", "lon", "house", "street", "city", "state", "country", "postcode"};
 
 // ------------------------------------------------------------------ generate
 static void generate(const char* inPath, const char* outPath) {
@@ -353,13 +383,53 @@ static void generate(const char* inPath, const char* outPath) {
     for (auto& r : recs)
         for (int fi = 0; fi < FIELDS; fi++) r.f[fi] = remap[fi][r.f[fi]];
 
-    // Grid-primary order: sort record indices by cell id.
+    writeDb(outPath, recs, dicts);
+}
+
+// ------------------------------------------------------------------ shared write path
+static void writeDb(const char* outPath, std::vector<Rec>& recs,
+                    std::vector<std::vector<std::string>>& dicts) {
+    size_t n = recs.size();
+    if (n == 0) die("no records to write");
+
+    // Frequency-order the house and postcode dictionaries: the reader never string-searches
+    // them (only display), so giving the most common values the smallest ids makes those
+    // columns almost entirely 1-byte varints. street/city/state/country stay UTF-16 sorted
+    // because forward geocoding binary-searches them by name.
+    auto freqReorder = [&](int fi) {
+        size_t m = dicts[fi].size();
+        if (m == 0) return;
+        std::vector<uint64_t> freq(m, 0);
+        for (const auto& r : recs) freq[r.f[fi]]++;
+        std::vector<uint32_t> ord(m);
+        for (size_t i = 0; i < m; i++) ord[i] = (uint32_t)i;
+        std::sort(ord.begin(), ord.end(), [&](uint32_t a, uint32_t b) {
+            if (freq[a] != freq[b]) return freq[a] > freq[b]; // most common -> id 0
+            return a < b;
+        });
+        std::vector<std::string> nd(m);
+        std::vector<uint32_t> rm(m);
+        for (size_t rank = 0; rank < m; rank++) { nd[rank] = std::move(dicts[fi][ord[rank]]); rm[ord[rank]] = (uint32_t)rank; }
+        dicts[fi].swap(nd);
+        for (auto& r : recs) r.f[fi] = rm[r.f[fi]];
+    };
+    freqReorder(F_HOUSE);
+    freqReorder(F_POSTCODE);
+
+    // Grid-primary order, then by Morton (Z-order) position within each cell so BOTH the lat and
+    // lon delta columns stay small (a plain lat,lon sort leaves lon oscillating).
     std::vector<int64_t> cell(n);
-    for (size_t i = 0; i < n; i++) cell[i] = cellIdOf(recs[i].latM, recs[i].lonM);
+    std::vector<uint64_t> mort(n);
+    for (size_t i = 0; i < n; i++) {
+        cell[i] = cellIdOf(recs[i].latM, recs[i].lonM);
+        mort[i] = mortonInCell(recs[i].latM, recs[i].lonM);
+    }
     std::vector<uint32_t> order(n);
     for (size_t i = 0; i < n; i++) order[i] = (uint32_t)i;
-    std::sort(order.begin(), order.end(),
-              [&](uint32_t a, uint32_t b) { return cell[a] < cell[b]; });
+    std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
+        if (cell[a] != cell[b]) return cell[a] < cell[b];
+        return mort[a] < mort[b];
+    });
 
     fprintf(stderr, "Writing %s (%zu records)...\n", outPath, n);
     FILE* f = fopen(outPath, "wb");
@@ -370,7 +440,11 @@ static void generate(const char* inPath, const char* outPath) {
     be32(hdr, MAGIC); be32(hdr, VERSION); be32(hdr, (uint32_t)n);
     if (fwrite(hdr.data(), 1, hdr.size(), f) != hdr.size()) die("write header");
 
-    for (int fi = 0; fi < FIELDS; fi++) writeSection(f, encodeDict(dicts[fi]));
+    for (int fi = 0; fi < FIELDS; fi++) {
+        std::string sec = encodeDict(dicts[fi]);
+        fprintf(stderr, "  dict[%-8s] = %10zu bytes (%zu entries)\n", COL_NAME[fi + 2], sec.size(), dicts[fi].size());
+        writeSection(f, sec);
+    }
 
     std::vector<int32_t> col(n);
     auto emitCol = [&](int which, bool delta) {
@@ -382,7 +456,9 @@ static void generate(const char* inPath, const char* outPath) {
                 default: col[i] = (int32_t)r.f[which - 2]; break; // house..postcode
             }
         }
-        writeSection(f, encodeColumn(col, delta));
+        std::string sec = encodeColumn(col, delta);
+        fprintf(stderr, "  col [%-8s] = %10zu bytes (%.3f B/rec)\n", COL_NAME[which], sec.size(), sec.size() / (double)n);
+        writeSection(f, sec);
     };
     emitCol(0, true); emitCol(1, true);                 // lat, lon
     for (int c = 2; c < 8; c++) emitCol(c, false);      // house..postcode
@@ -397,6 +473,7 @@ static void generate(const char* inPath, const char* outPath) {
         }
         be32(grid, count);
         grid += body;
+        fprintf(stderr, "  grid              = %10zu bytes (%u cells)\n", grid.size() + 4, count);
         writeSection(f, grid);
     }
 
@@ -412,7 +489,9 @@ static void generate(const char* inPath, const char* outPath) {
             if (ra.f[F_STREET] != rb.f[F_STREET]) return ra.f[F_STREET] < rb.f[F_STREET];
             return ra.f[F_HOUSE] < rb.f[F_HOUSE];
         });
-        writeSection(f, encodeColumn(fwd, true));
+        std::string sec = encodeColumn(fwd, true);
+        fprintf(stderr, "  fwd               = %10zu bytes (%.3f B/rec)\n", sec.size(), sec.size() / (double)n);
+        writeSection(f, sec);
     }
 
     if (fclose(f) != 0) die("close output");
@@ -598,15 +677,52 @@ static void verify(const char* dbPath) {
             cellCount, db.size);
 }
 
+// ------------------------------------------------------------------ reencode
+// Load a v2 geocoder.geodb back into memory (dicts + per-record field ids + coords), then
+// re-emit it with the current encoder. Lets us re-tune the packing without reparsing the
+// multi-hundred-GB GeoJSONSeq. Loaded street/city/state/country dicts are already UTF-16
+// sorted; writeDb re-derives grid order, forward index, and house/postcode dict order.
+static void reencode(const char* inDb, const char* outDb) {
+    MappedDb db; db.openFile(inDb);
+    const uint8_t* p = db.p;
+    if (rd32(p) != MAGIC) die("reencode: bad magic");
+    if (rd32(p + 4) != VERSION) die("reencode: bad version");
+    int n = (int)rd32(p + 8);
+    size_t cursor = 12;
+    auto readSectionOff = [&](size_t& bodyOff) {
+        uint32_t sz = rd32(p + cursor); cursor += 4; bodyOff = cursor; cursor += sz;
+    };
+
+    fprintf(stderr, "Reencoding %s (%d records)...\n", inDb, n);
+    std::vector<std::vector<std::string>> dicts(FIELDS);
+    for (int fi = 0; fi < FIELDS; fi++) { size_t off; readSectionOff(off); dicts[fi] = decodeDict(p + off); }
+    ColReader cols[8];
+    bool delta[8] = {true, true, false, false, false, false, false, false};
+    for (int i = 0; i < 8; i++) { size_t off; readSectionOff(off); cols[i].init(p, off, delta[i]); }
+    // grid + fwd sections are recomputed on write; ignore them here.
+
+    std::vector<Rec> recs((size_t)n);
+    for (int i = 0; i < n; i++) {
+        Rec r;
+        r.latM = cols[0].get(i);
+        r.lonM = cols[1].get(i);
+        for (int fi = 0; fi < FIELDS; fi++) r.f[fi] = (uint32_t)cols[2 + fi].get(i);
+        recs[(size_t)i] = r;
+    }
+    writeDb(outDb, recs, dicts);
+}
+
 // ------------------------------------------------------------------ main
 int main(int argc, char** argv) {
     if (argc >= 4 && strcmp(argv[1], "generate") == 0) { generate(argv[2], argv[3]); return 0; }
+    if (argc >= 4 && strcmp(argv[1], "reencode") == 0) { reencode(argv[2], argv[3]); return 0; }
     if (argc >= 3 && strcmp(argv[1], "verify") == 0) { verify(argv[2]); return 0; }
     if (argc == 3) { generate(argv[1], argv[2]); return 0; } // shorthand: <in> <out>
     fprintf(stderr,
             "usage:\n"
             "  %s generate <addr.geojsonseq> <geocoder.geodb>\n"
+            "  %s reencode <in.geodb> <out.geodb>   # repack an existing DB with current encoder\n"
             "  %s verify   <geocoder.geodb>\n",
-            argv[0], argv[0]);
+            argv[0], argv[0], argv[0]);
     return 2;
 }
