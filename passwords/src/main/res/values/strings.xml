@@ -83,6 +83,7 @@
     <string name="import_source_dashlane">Dashlane</string>
     <!-- Import source: Apple Passwords product name -->
     <string name="import_source_apple">Apple Passwords</string>
+    <string name="import_source_proton_pass">Proton Pass</string>
 
     <string name="cable_channel_name">Cross-device sign-in</string>
     <string name="cable_starting">Starting cross-device sign-in</string>

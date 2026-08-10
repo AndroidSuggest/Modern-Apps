@@ -10,6 +10,12 @@ enum class ImportSource(
     val passwordHeaders: Array<String>,
     val urlHeaders: Array<String>,
     val totpHeaders: Array<String>,
+    val emailHeaders: Array<String> = arrayOf(),
+    val noteHeaders: Array<String> = arrayOf(),
+    val typeHeaders: Array<String> = arrayOf(),
+    // Some exporters put several URLs in a single field separated by commas
+    // (kept as one CSV field via text qualifiers).
+    val splitUrlsOnComma: Boolean = false,
 ) {
     BITWARDEN(
         label = R.string.import_source_bitwarden,
@@ -66,5 +72,17 @@ enum class ImportSource(
         passwordHeaders = arrayOf("password"),
         urlHeaders = arrayOf("url"),
         totpHeaders = arrayOf("otpauth", "otp"),
+    ),
+    PROTON_PASS(
+        label = R.string.import_source_proton_pass,
+        nameHeaders = arrayOf("name"),
+        usernameHeaders = arrayOf("username"),
+        passwordHeaders = arrayOf("password"),
+        urlHeaders = arrayOf("url"),
+        totpHeaders = arrayOf("totp"),
+        emailHeaders = arrayOf("email"),
+        noteHeaders = arrayOf("note"),
+        typeHeaders = arrayOf("type"),
+        splitUrlsOnComma = true,
     ),
 }

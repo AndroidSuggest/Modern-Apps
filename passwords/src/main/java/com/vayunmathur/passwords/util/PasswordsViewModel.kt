@@ -237,38 +237,11 @@ class PasswordsViewModel(
         uri: Uri,
         source: ImportSource,
     ): ImportResult {
-        val rows = contentResolver.openInputStream(uri)?.use { inputStream ->
-            val reader = inputStream.bufferedReader()
-            val list = mutableListOf<List<String>>()
-            var line = reader.readLine()
-            while (line != null) {
-                val row = mutableListOf<String>()
-                var current = StringBuilder()
-                var inQuotes = false
-                var i = 0
-                while (i < line.length) {
-                    val c = line[i]
-                    if (c == '"') {
-                        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
-                            current.append('"')
-                            i++
-                        } else {
-                            inQuotes = !inQuotes
-                        }
-                    } else if (c == ',' && !inQuotes) {
-                        row.add(current.toString())
-                        current = StringBuilder()
-                    } else {
-                        current.append(c)
-                    }
-                    i++
-                }
-                row.add(current.toString())
-                list.add(row)
-                line = reader.readLine()
-            }
-            list
+        val text = contentResolver.openInputStream(uri)?.use { inputStream ->
+            inputStream.bufferedReader().readText()
         } ?: throw Exception("Unable to open selected file")
+
+        val rows = parseCsv(text)
         if (rows.isEmpty()) return ImportResult(0, 0)
 
         val header = rows.first().map { it.trim().lowercase() }
@@ -280,33 +253,51 @@ class PasswordsViewModel(
         val passwordIdx = findCol(*source.passwordHeaders)
         val urlIdx = findCol(*source.urlHeaders)
         val totpIdx = findCol(*source.totpHeaders)
+        val emailIdx = findCol(*source.emailHeaders)
+        val noteIdx = findCol(*source.noteHeaders)
+        val typeIdx = findCol(*source.typeHeaders)
 
         var inserted = 0
         var skipped = 0
 
         for (row in rows.drop(1)) {
+            if (row.all { it.isBlank() }) continue
             try {
                 fun col(idx: Int) = if (idx in row.indices) row[idx] else ""
                 val rawName = col(nameIdx)
                 val rawUrl = col(urlIdx)
-                val name = rawName.ifEmpty { rawUrl }
+                var name = rawName.ifEmpty { rawUrl }
                 val username = col(usernameIdx)
+                val email = col(emailIdx)
                 val password = col(passwordIdx)
+                val note = col(noteIdx)
                 var totp = col(totpIdx).takeIf { it.isNotEmpty() }
+
+                // Prefix the entry name with its type for non-login entries
+                // (e.g. "sshKey: Tyche"), so specialized items stay identifiable.
+                val type = col(typeIdx).trim()
+                if (type.isNotEmpty() && !type.equals("login", ignoreCase = true)) {
+                    name = if (name.isEmpty()) type else "$type: $name"
+                }
 
                 if (totp != null && totp.startsWith("otpauth://")) {
                     val match = Regex("[?&]secret=([^&]+)").find(totp)
                     totp = match?.groupValues?.get(1) ?: totp
                 }
 
-                val websites = rawUrl.split(';', '\n', '\r')
+                val urlSeparators =
+                    if (source.splitUrlsOnComma) charArrayOf(',', ';', '\n', '\r')
+                    else charArrayOf(';', '\n', '\r')
+                val websites = rawUrl.split(*urlSeparators)
                     .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
 
                 passwordDao.upsert(
                     Password(
                         name = name,
                         username = username,
+                        email = email,
                         password = password,
+                        note = note,
                         totpSecret = totp,
                         websites = websites,
                     ),
@@ -318,6 +309,52 @@ class PasswordsViewModel(
         }
 
         return ImportResult(inserted, skipped)
+    }
+
+    /**
+     * Parses CSV text into rows of fields. Respects text qualifiers (double
+     * quotes), escaped quotes (""), and quoted fields spanning multiple lines
+     * (e.g. JSON stored in a note column). Handles both LF and CRLF line endings.
+     */
+    private fun parseCsv(text: String): List<List<String>> {
+        val rows = mutableListOf<List<String>>()
+        var row = mutableListOf<String>()
+        val current = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                inQuotes -> when {
+                    c == '"' && i + 1 < text.length && text[i + 1] == '"' -> {
+                        current.append('"')
+                        i++
+                    }
+                    c == '"' -> inQuotes = false
+                    else -> current.append(c)
+                }
+                c == '"' -> inQuotes = true
+                c == ',' -> {
+                    row.add(current.toString())
+                    current.setLength(0)
+                }
+                c == '\r' -> {} // handled together with '\n'
+                c == '\n' -> {
+                    row.add(current.toString())
+                    current.setLength(0)
+                    rows.add(row)
+                    row = mutableListOf()
+                }
+                else -> current.append(c)
+            }
+            i++
+        }
+        // Flush a trailing field/row when the file does not end with a newline.
+        if (current.isNotEmpty() || row.isNotEmpty()) {
+            row.add(current.toString())
+            rows.add(row)
+        }
+        return rows
     }
 }
 
