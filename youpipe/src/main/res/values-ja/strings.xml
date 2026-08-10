@@ -13,4 +13,5 @@
     <string name="time_ago_days"><xliff:g id="days" example="2">%1$d</xliff:g> 日前</string>
     <string name="time_ago_months"><xliff:g id="months" example="6">%1$d</xliff:g> ヶ月前</string>
     <string name="time_ago_years"><xliff:g id="years" example="1">%1$d</xliff:g> 年前</string>
+    <string name="label_description">説明</string>
 </resources>
