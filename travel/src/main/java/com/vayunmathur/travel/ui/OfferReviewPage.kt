@@ -26,6 +26,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.rememberIs24Hour
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
@@ -131,6 +132,7 @@ fun OfferReviewPage(
 
 @Composable
 private fun SliceDetailCard(title: String, slice: SliceDto) {
+    val is24 = rememberIs24Hour()
     ElevatedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -149,7 +151,7 @@ private fun SliceDetailCard(title: String, slice: SliceDto) {
             slice.segments.forEach { seg ->
                 Column {
                     Text(
-                        "${seg.origin} ${formatTime(seg.departureAt)}  →  ${seg.destination} ${formatTime(seg.arrivalAt)}",
+                        "${seg.origin} ${formatTime(seg.departureAt, is24)}  →  ${seg.destination} ${formatTime(seg.arrivalAt, is24)}",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     val carrier = listOf(seg.carrier, seg.flightNumber).filter { it.isNotBlank() }.joinToString(" ")
@@ -177,6 +179,7 @@ private fun SliceDetailCard(title: String, slice: SliceDto) {
 
 @Composable
 private fun PriceSummaryCard(offer: OfferDto, loading: Boolean) {
+    val is24 = rememberIs24Hour()
     ElevatedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -198,7 +201,7 @@ private fun PriceSummaryCard(offer: OfferDto, loading: Boolean) {
             if (offer.expiresAt.isNotBlank()) {
                 HorizontalDivider()
                 Text(
-                    stringResource(R.string.offer_held_until_price_may_change, formatTime(offer.expiresAt)),
+                    stringResource(R.string.offer_held_until_price_may_change, formatTime(offer.expiresAt, is24)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

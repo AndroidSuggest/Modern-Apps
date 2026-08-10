@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.AssistChip
+import com.vayunmathur.library.ui.rememberIs24Hour
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconNavigation
@@ -153,6 +154,7 @@ private fun PartialLegScaffold(
 
 @Composable
 private fun PartialOfferCard(offer: OfferDto, onClick: () -> Unit) {
+    val is24 = rememberIs24Hour()
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -173,7 +175,7 @@ private fun PartialOfferCard(offer: OfferDto, onClick: () -> Unit) {
                     }
                 }
                 offer.slices.forEach { slice ->
-                    val times = "${formatTime(slice.departureAt)} – ${formatTime(slice.arrivalAt)}"
+                    val times = "${formatTime(slice.departureAt, is24)} – ${formatTime(slice.arrivalAt, is24)}"
                     Text(
                         "${slice.origin} → ${slice.destination}  ·  $times",
                         style = MaterialTheme.typography.bodyMedium,

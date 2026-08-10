@@ -327,9 +327,9 @@ fun formatDuration(minutes: Long): String {
     }
 }
 
-/** "2026-09-01T10:00:00" -> "10:00"; falls back to the raw time part. */
-fun formatTime(iso: String): String = runCatching {
-    DateString.timeNumeric(LocalDateTime.parse(iso.take(19)).time, is24Hour = true)
+/** "2026-09-01T10:00:00" -> "10:00" / "10:00 AM"; falls back to the raw time part. */
+fun formatTime(iso: String, is24Hour: Boolean): String = runCatching {
+    DateString.time(LocalDateTime.parse(iso.take(19)).time, is24Hour)
 }.getOrDefault(iso.substringAfter('T').take(5))
 
 /** Stops label: "Nonstop" / "1 stop" / "N stops". */
