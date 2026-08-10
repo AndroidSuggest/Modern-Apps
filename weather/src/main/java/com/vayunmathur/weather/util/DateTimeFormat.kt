@@ -1,5 +1,6 @@
 package com.vayunmathur.weather.util
 
+import com.vayunmathur.library.ui.DateString
 import com.vayunmathur.library.util.localizedAmPmMarker
 import kotlinx.datetime.format.DateTimeFormat
 import com.vayunmathur.library.util.DateNameStyle
@@ -45,22 +46,6 @@ private val HourOfDayBare = LocalTime.Format {
     hour(Padding.NONE)
 }
 
-/** "3:05 PM" / "12:00 AM" — 12-hour clock with minutes. */
-private val ClockTimeAmPm: DateTimeFormat<LocalTime> get() = LocalTime.Format {
-    amPmHour(Padding.NONE)
-    char(':')
-    minute()
-    char(' ')
-    localizedAmPmMarker()
-}
-
-/** "09:05" / "15:00" — 24-hour clock with minutes. */
-private val ClockTime24 = LocalTime.Format {
-    hour()
-    char(':')
-    minute()
-}
-
 /** "Mon" … "Sun". */
 private val WeekdayShort: DateTimeFormat<LocalDate> get() = LocalDate.Format {
     dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
@@ -80,7 +65,7 @@ private fun localTimeAt(epochSec: Long): LocalTime =
 
 /** Hour-axis label "3 PM" / "09:00" for an epoch second in the system time zone. */
 fun formatHourAxisLabel(epochSec: Long, use24Hour: Boolean): String =
-    localTimeAt(epochSec).format(if (use24Hour) HourOfDayWithZero else HourAmPm)
+    DateString.hourLabel(localTimeAt(epochSec), use24Hour)
 
 /** Hourly-strip label "3 PM" / "9" for an epoch second in the system time zone. */
 fun formatStripHour(epochSec: Long, use24Hour: Boolean): String =
@@ -88,7 +73,7 @@ fun formatStripHour(epochSec: Long, use24Hour: Boolean): String =
 
 /** Clock time "3:05 PM" / "15:00" for an epoch second in the system time zone. */
 fun formatClockTime(epochSec: Long, use24Hour: Boolean): String =
-    localTimeAt(epochSec).format(if (use24Hour) ClockTime24 else ClockTimeAmPm)
+    DateString.time(localTimeAt(epochSec), use24Hour)
 
 /** "Wed 25 Jun" for an ISO date like 2026-06-25; echoes the input on parse failure. */
 fun formatDayMonthLabel(isoDate: String): String {
