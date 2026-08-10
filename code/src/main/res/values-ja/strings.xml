@@ -2,4 +2,8 @@
 <resources>
     <string name="apply">適用</string>
     <string name="theme">テーマ</string>
+    <string name="theme_light">ライト</string>
+    <string name="theme_dark">ダーク</string>
+    <string name="create">作成</string>
+    <string name="search">検索</string>
 </resources>
