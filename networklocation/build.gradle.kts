@@ -30,8 +30,9 @@ androidComponents {
     }
 }
 
-// Native device-position estimation (weighted-centroid / inverse-variance least
-// squares over the cached gs-loc beacon fixes). See networklocation/src/main/rust/.
+// Native code for this module, loaded as libnetworklocation.so: RANSAC + EM multilateration
+// device-position estimation over the cached gs-loc beacon fixes, AND the offline geocoder
+// search over geocoder.geodb. Both live in networklocation/src/main/rust/.
 rustNativeLib("networklocation")
 
 // The packed geocoder DB (~1-1.5 GB) is not committed (see src/main/assets/.gitignore).
@@ -74,7 +75,7 @@ val fetchGeocoderDb = tasks.register("fetchGeocoderDb") {
             tmp.delete()
             logger.warn(
                 "WARNING: could not fetch geocoder.geodb ({}). The APK will build WITHOUT the offline " +
-                    "geocoder DB. Generate it locally (tools/) or check {} and rebuild.",
+                    "geocoder DB. Generate it locally (scripts/geocoder_gen.sh) or check {} and rebuild.",
                 e.message, geocoderDbUrl,
             )
         }
@@ -83,13 +84,6 @@ val fetchGeocoderDb = tasks.register("fetchGeocoderDb") {
 
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(fetchGeocoderDb)
-}
-
-// The geocoder generator runs on the JVM test classpath (GeoDb* are pure-Kotlin). The planet
-// build needs a large heap; override with GEOCODER_HEAP (e.g. 100g). Normal unit tests are
-// unaffected — they won't allocate near this ceiling.
-tasks.withType<Test>().configureEach {
-    maxHeapSize = System.getenv("GEOCODER_HEAP") ?: "2g"
 }
 
 dependencies {
@@ -102,11 +96,8 @@ dependencies {
     implementRoom(libs)
     // Reporting loop + IO for the gs-loc queries.
     implementation(libs.kotlinx.coroutines.android)
-    // Geocoder DB is a self-contained mmap'd binary (see geocoder/). Block compression uses
-    // Zstandard via zstd-jni (compress/decompress one 4096-record block fully in RAM).
-    implementation(libs.zstd.jni)
-    // kotlinx-serialization-json (from the app convention) is used only by the generator to
-    // parse osmium's GeoJSONSeq export.
+    // The offline geocoder search runs natively (Rust/ruzstd) over the bundled geocoder.geodb
+    // asset; there is no Kotlin-side DB code, so no zstd-jni / serialization deps are needed here.
 }
 
 protobuf {

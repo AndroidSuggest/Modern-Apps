@@ -16,6 +16,7 @@ use measurement::Measurement;
 use position::Position;
 
 pub mod coordinate;
+pub mod geocoder;
 mod jni;
 pub mod measurement;
 pub mod multilateration;

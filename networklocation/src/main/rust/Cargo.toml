@@ -13,6 +13,10 @@ crate-type = ["cdylib", "rlib"]
 jni.workspace = true
 log.workspace = true
 itertools = "0.14"
+# Runtime geocoder search reads geocoder.geodb and only ever DECOMPRESSES zstd blocks, so we
+# use the pure-Rust decoder (no NDK C toolchain needed to cross-compile for Android).
+ruzstd = "0.7"
+libc = "0.2"
 
 [dev-dependencies]
 rand = { version = "0.8", features = ["small_rng"] }

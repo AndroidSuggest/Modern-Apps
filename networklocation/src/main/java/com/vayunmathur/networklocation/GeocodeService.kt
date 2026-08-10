@@ -2,13 +2,12 @@ package com.vayunmathur.networklocation
 
 import android.app.Service
 import android.content.Intent
+import android.content.res.AssetFileDescriptor
 import android.location.Address
 import android.location.GeocoderParams
 import android.os.IBinder
 import com.android.location.provider.GeocodeProvider
-import com.vayunmathur.networklocation.geocoder.GeoDbAssets
-import com.vayunmathur.networklocation.geocoder.GeoDbReader
-import com.vayunmathur.networklocation.geocoder.GeoResult
+import java.io.IOException
 import java.util.Locale
 
 /**
@@ -16,10 +15,13 @@ import java.util.Locale
  * framework via the `com.android.location.service.GeocodeProvider` action; the app must be the
  * configured geocode provider (config_geocoderProviderPackageName) and hold INSTALL_LOCATION_PROVIDER.
  *
- * The provider contract: return null on success (results appended to `addrs`) or an error string.
+ * The search itself runs in native Rust ([GeocoderNative]) over `geocoder.geodb`, opened straight
+ * from the APK asset fd. The provider contract: return null on success (results appended to
+ * `addrs`) or an error string.
  */
 class GeocodeService : Service() {
-    private var db: GeoDbReader? = null
+    private var afd: AssetFileDescriptor? = null
+    private var handle: Long = 0L
 
     private val provider: GeocodeProvider by lazy {
         object : GeocodeProvider() {
@@ -30,9 +32,9 @@ class GeocodeService : Service() {
                 params: GeocoderParams,
                 addrs: MutableList<Address>,
             ): String? {
-                val reader = db ?: return "geocoder database unavailable"
-                val r = reader.reverse(latitude, longitude) ?: return null
-                addrs.add(r.toAddress(params.locale))
+                if (handle == 0L) return "geocoder database unavailable"
+                val flat = GeocoderNative.reverse(handle, latitude, longitude) ?: return null
+                if (flat.size >= GeocoderNative.FIELDS_PER_ADDRESS) addrs.add(flat.toAddress(0, params.locale))
                 return null
             }
 
@@ -46,9 +48,21 @@ class GeocodeService : Service() {
                 params: GeocoderParams,
                 addrs: MutableList<Address>,
             ): String? {
-                val reader = db ?: return "geocoder database unavailable"
-                for (r in forwardSearch(reader, locationName, maxResults)) {
-                    addrs.add(r.toAddress(params.locale))
+                if (handle == 0L) return "geocoder database unavailable"
+                val parts = locationName.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                if (parts.size < 4) return null
+                val country = parts[parts.size - 1]
+                val state = parts[parts.size - 2]
+                val city = parts[parts.size - 3]
+                val street = parts[parts.size - 4]
+                val flat = GeocoderNative.forward(
+                    handle, country, state, city, street, maxResults.coerceIn(1, 50),
+                ) ?: return null
+                val stride = GeocoderNative.FIELDS_PER_ADDRESS
+                var base = 0
+                while (base + stride <= flat.size && addrs.size < maxResults) {
+                    addrs.add(flat.toAddress(base, params.locale))
+                    base += stride
                 }
                 return null
             }
@@ -57,36 +71,39 @@ class GeocodeService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        db = GeoDbAssets.open(this)
+        if (!GeocoderNative.available) return
+        try {
+            val fd = assets.openFd(ASSET_NAME)
+            afd = fd
+            handle = GeocoderNative.open(fd.parcelFileDescriptor.fd, fd.startOffset, fd.length)
+        } catch (_: IOException) {
+            handle = 0L
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = provider.binder
 
     override fun onDestroy() {
-        db?.close()
-        db = null
+        if (handle != 0L) {
+            GeocoderNative.close(handle)
+            handle = 0L
+        }
+        afd?.close()
+        afd = null
         super.onDestroy()
     }
 
-    /**
-     * Best-effort freeform forward geocoding over structured data. The DB indexes by
-     * country/state/city/street, so we map the trailing comma-separated components of the query
-     * onto those fields. Full natural-language parsing is a known limitation.
-     */
-    private fun forwardSearch(db: GeoDbReader, query: String, maxResults: Int): List<GeoResult> {
-        val parts = query.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        if (parts.size < 4) return emptyList()
-        val country = parts[parts.size - 1]
-        val state = parts[parts.size - 2]
-        val city = parts[parts.size - 3]
-        val street = parts[parts.size - 4]
-        return db.forward(country, state, city, street, limit = maxResults.coerceIn(1, 50))
-    }
-
-    private fun GeoResult.toAddress(locale: Locale): Address {
+    /** A flat result slice `[lat, lon, house, street, city, state, country, postcode]` at [base]. */
+    private fun Array<String>.toAddress(base: Int, locale: Locale): Address {
         val a = Address(locale)
-        a.latitude = lat
-        a.longitude = lon
+        a.latitude = this[base].toDoubleOrNull() ?: 0.0
+        a.longitude = this[base + 1].toDoubleOrNull() ?: 0.0
+        val house = this[base + 2]
+        val street = this[base + 3]
+        val city = this[base + 4]
+        val state = this[base + 5]
+        val country = this[base + 6]
+        val postcode = this[base + 7]
         val line = listOf(house, street).filter { it.isNotEmpty() }.joinToString(" ")
         if (line.isNotEmpty()) a.setAddressLine(0, line)
         if (house.isNotEmpty()) a.featureName = house
@@ -96,5 +113,9 @@ class GeocodeService : Service() {
         if (postcode.isNotEmpty()) a.postalCode = postcode
         if (country.isNotEmpty()) a.countryCode = country
         return a
+    }
+
+    private companion object {
+        const val ASSET_NAME = "geocoder.geodb"
     }
 }
