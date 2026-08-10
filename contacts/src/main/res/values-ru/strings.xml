@@ -49,7 +49,7 @@
     <string name="action_message">Сообщение</string>
     <string name="action_video">Видео</string>
     <string name="calendar_sync">Синхронизация Календаря</string>
-    <string name="sync_contacts_calendar">Показывать дни рождения в календаре</string>
+    <string name="sync_contacts_calendar">Показывать дни рождения</string>
     <string name="contacts_calendar_name">Контакты</string>
     <string name="anniversary">Памятные даты</string>
     <string name="backup_and_export">Резервное копирование и Экспорт</string>
