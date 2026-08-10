@@ -17,7 +17,7 @@
     <string name="does_not_repeat">Ne pas répéter</string>
     <string name="repeats">Se répète</string>
     <string name="no_account">(Pas de compte)</string>
-    <string name="calendar_id_label">ID : &lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
+    <string name="calendar_id_label">ID : &lt;xliff:g id=\"calendar_id\" example=\"1\"&gt;%1$d&lt;/xliff:g&gt;</string>
     <string name="choose_calendar">Sélectionner le calendrier</string>
     <string name="local_account">(Local)</string>
     <string name="go_to_date">Aller à la date</string>
@@ -41,7 +41,7 @@
     <string name="choose_timezone">Choix du fuseau horaire</string>
     <string name="on_days_of_week">Les jours de la semaine</string>
     <string name="end">Fin</string>
-    <string name="month_year_format">&lt;xliff:g id=\"month_name\" example=\"janvier\"&gt;%1$s&lt;/xliff:g&gt; &lt;xliff:g id=\"year\" example=\"2025\"&gt;%2$d&lt;/xliff:g&gt;</string>
+    <string name="month_year_format">%1$s %2$d</string>
     <string name="date_range_format">Du &lt;xliff:g id=\"start_date\" example=\"1 janv.\"&gt;%1$s&lt;/xliff:g&gt; au &lt;xliff:g id=\"end_date\" example=\"2 janv.\"&gt;%2$s&lt;/xliff:g&gt;</string>
     <string name="date_time_range_format">&lt;xliff:g id=\"date\" example=\"1 janv.\"&gt;%1$s&lt;/xliff:g&gt; • de &lt;xliff:g id=\"start_time\" example=\"09:00\"&gt;%2$s&lt;/xliff:g&gt; à &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%3$s&lt;/xliff:g&gt;</string>
     <string name="full_date_time_range_format">Du &lt;xliff:g id=\"start_date\" example=\"1 janv.\"&gt;%1$s&lt;/xliff:g&gt; à &lt;xliff:g id=\"start_time\" example=\"09:00\"&gt;%2$s&lt;/xliff:g&gt; au &lt;xliff:g id=\"end_date\" example=\"2 janv.\"&gt;%3$s&lt;/xliff:g&gt; à &lt;xliff:g id=\"end_time\" example=\"10:00\"&gt;%4$s&lt;/xliff:g&gt;</string>
