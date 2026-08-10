@@ -134,4 +134,10 @@
     <string name="route_recorded">路线已记录</string>
     <string name="create_your_first_recipe">创建您的第一个食谱</string>
     <string name="kcal_2">千卡</string>
+    <string name="grant_permissions_rationale">此应用通过 Health Connect 读取和写入您的健康数据。数据不会离开您的设备。</string>
+    <string name="food_database">食物数据库</string>
+    <string name="food_database_absent">正在准备食物数据库。在此之前，仅能找到您已保存的配料。</string>
+    <string name="food_database_preparing">正在准备 <xliff:g id="products_done" example="120,000">%1$s</xliff:g> 个产品，共 <xliff:g id="products_total" example="465,000">%2$s</xliff:g> 个</string>
+    <string name="food_database_retry">重试</string>
+    <string name="food_database_attribution">营养数据来自 Open Food Facts，采用 ODbL v1.0 许可协议</string>
 </resources>
