@@ -264,15 +264,15 @@ fun LocationsScreen(
         },
         bottomBar = {
             val context = LocalContext.current
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Button(
                     onClick = onSearchLocation,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     IconSearch()
                     Spacer(Modifier.width(8.dp))
@@ -280,7 +280,7 @@ fun LocationsScreen(
                 }
                 Button(
                     onClick = { openRegionalUnitsSettings(context) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(R.string.set_units))
                 }
