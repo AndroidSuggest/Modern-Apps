@@ -65,6 +65,7 @@ import com.vayunmathur.fooddelivery.data.OrderStage
 import kotlinx.coroutines.delay
 import kotlin.time.Instant
 import com.vayunmathur.library.ui.DateString
+import com.vayunmathur.library.ui.rememberIs24Hour
 import kotlin.math.max
 import kotlin.math.min
 
@@ -256,6 +257,7 @@ private fun MapPin(
 private fun StageHeader(order: Order) {
     val stage = order.stage
     val locale = LocalConfiguration.current.locales[0]
+    val is24 = rememberIs24Hour()
     Column {
         Text(stage.label, style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold)
@@ -266,7 +268,7 @@ private fun StageHeader(order: Order) {
             Spacer(Modifier.height(4.dp))
             Text(
                 if (minutes > 0) stringResource(R.string.eta_minutes, minutes,
-                    DateString.time(Instant.fromEpochMilliseconds(eta), is24Hour = false, locale = locale))
+                    DateString.time(Instant.fromEpochMilliseconds(eta), is24Hour = is24, locale = locale))
                 else stringResource(R.string.eta_any_moment),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,

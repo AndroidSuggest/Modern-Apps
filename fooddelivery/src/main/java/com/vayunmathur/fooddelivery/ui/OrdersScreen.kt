@@ -59,6 +59,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import com.vayunmathur.library.ui.DateString
+import com.vayunmathur.library.ui.rememberIs24Hour
 
 @Composable
 fun OrdersScreen(onTrackOrder: (Int) -> Unit = {}) {
@@ -162,14 +163,14 @@ fun OrdersScreen(onTrackOrder: (Int) -> Unit = {}) {
     }
 }
 
-private fun formatDate(iso: String?): String {
+private fun formatDate(iso: String?, is24Hour: Boolean): String {
     if (iso.isNullOrEmpty()) return ""
     return try {
         val ldt = LocalDateTime.parse(iso.substringBefore(".").substringBefore("Z"))
             .toInstant(TimeZone.UTC)
             .toLocalDateTime(TimeZone.currentSystemDefault())
         DateString.monthDayYear(ldt.date, Locale.US) + ", " +
-            DateString.time(ldt.time, is24Hour = false, locale = Locale.US)
+            DateString.time(ldt.time, is24Hour = is24Hour, locale = Locale.US)
     } catch (_: Exception) { iso }
 }
 
@@ -182,6 +183,7 @@ private fun OrderCard(
 ) {
     val merchantName = order.merchant?.name ?: ""
     val merchantImage = order.merchant?.imageUrl ?: order.merchant?.logoUrl ?: ""
+    val is24 = rememberIs24Hour()
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
@@ -202,7 +204,7 @@ private fun OrderCard(
                     Column {
                         Text(merchantName, fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleSmall)
-                        Text(formatDate(order.createdAt), style = MaterialTheme.typography.bodySmall,
+                        Text(formatDate(order.createdAt, is24), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
