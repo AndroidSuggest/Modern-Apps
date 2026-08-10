@@ -2,4 +2,5 @@
 <resources>
     <string name="recent">最近</string>
     <string name="history">履歴</string>
+    <string name="create">作成</string>
 </resources>
