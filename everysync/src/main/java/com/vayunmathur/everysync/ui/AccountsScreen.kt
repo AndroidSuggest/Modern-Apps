@@ -1,7 +1,6 @@
 package com.vayunmathur.everysync.ui
 
 import android.content.Context
-import android.text.format.DateFormat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -40,8 +39,10 @@ import com.vayunmathur.everysync.util.AccountRow
 import com.vayunmathur.everysync.util.AccountsActions
 import com.vayunmathur.everysync.util.AccountsUiState
 import com.vayunmathur.library.ui.PermissionsChecker
+import com.vayunmathur.library.ui.DateString
+import com.vayunmathur.library.ui.is24Hour
 import com.vayunmathur.library.util.NavBackStack
-import java.util.Date
+import kotlin.time.Instant
 
 /** Binds [EverySyncViewModel] and the back stack to the stateless [AccountsScreen]. */
 @Composable
@@ -153,9 +154,5 @@ fun AccountsScreen(state: AccountsUiState, actions: AccountsActions) {
     }
 }
 
-private fun formatTime(context: Context, millis: Long): String {
-    val date = Date(millis)
-    // android.text.format honours the user's 24-hour setting; java.text only follows the locale.
-    return DateFormat.getDateFormat(context).format(date) + " " +
-        DateFormat.getTimeFormat(context).format(date)
-}
+private fun formatTime(context: Context, millis: Long): String =
+    DateString.dateTime(Instant.fromEpochMilliseconds(millis), is24Hour(context))
