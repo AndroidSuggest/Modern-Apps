@@ -63,8 +63,8 @@ import com.vayunmathur.fooddelivery.api.BitesApi
 import com.vayunmathur.fooddelivery.data.Order
 import com.vayunmathur.fooddelivery.data.OrderStage
 import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.Date
+import kotlin.time.Instant
+import com.vayunmathur.library.ui.DateString
 import kotlin.math.max
 import kotlin.math.min
 
@@ -266,7 +266,7 @@ private fun StageHeader(order: Order) {
             Spacer(Modifier.height(4.dp))
             Text(
                 if (minutes > 0) stringResource(R.string.eta_minutes, minutes,
-                    SimpleDateFormat("h:mm a", locale).format(Date(eta)))
+                    DateString.time(Instant.fromEpochMilliseconds(eta), is24Hour = false, locale = locale))
                 else stringResource(R.string.eta_any_moment),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,

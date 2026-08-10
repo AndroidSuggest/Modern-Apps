@@ -52,10 +52,13 @@ import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.fooddelivery.api.BitesApi
 import com.vayunmathur.fooddelivery.data.FeedbackRequest
 import com.vayunmathur.fooddelivery.data.Order
-import java.text.SimpleDateFormat
-import kotlinx.coroutines.launch
 import java.util.Locale
-import java.util.TimeZone
+import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
+import com.vayunmathur.library.ui.DateString
 
 @Composable
 fun OrdersScreen(onTrackOrder: (Int) -> Unit = {}) {
@@ -162,11 +165,11 @@ fun OrdersScreen(onTrackOrder: (Int) -> Unit = {}) {
 private fun formatDate(iso: String?): String {
     if (iso.isNullOrEmpty()) return ""
     return try {
-        val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
-        parser.timeZone = TimeZone.getTimeZone("UTC")
-        val date = parser.parse(iso.substringBefore(".").substringBefore("Z")) ?: return iso
-        val formatter = SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.US)
-        formatter.format(date)
+        val ldt = LocalDateTime.parse(iso.substringBefore(".").substringBefore("Z"))
+            .toInstant(TimeZone.UTC)
+            .toLocalDateTime(TimeZone.currentSystemDefault())
+        DateString.monthDayYear(ldt.date, Locale.US) + ", " +
+            DateString.time(ldt.time, is24Hour = false, locale = Locale.US)
     } catch (_: Exception) { iso }
 }
 
