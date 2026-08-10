@@ -1,22 +1,13 @@
 package com.vayunmathur.travel.ui
 
 import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.util.DateNameStyle
-import com.vayunmathur.library.util.localizedDayOfWeekNames
-import com.vayunmathur.library.util.localizedMonthNames
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.LocalTime
+import com.vayunmathur.library.ui.DateString
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
-import kotlinx.datetime.format
-import kotlinx.datetime.format.DateTimeFormat
-import kotlinx.datetime.format.DayOfWeekNames
-import kotlinx.datetime.format.MonthNames
-import kotlinx.datetime.format.Padding
-import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -144,11 +135,11 @@ fun DateField(
     value: String,
     onDate: (String) -> Unit,
     modifier: Modifier = Modifier,
-    dateFormat: DateTimeFormat<LocalDate> = WeekdayMonthDay,
+    dateFormat: (LocalDate) -> String = DateString::dateWeekdayNoYear,
 ) {
     var show by remember { mutableStateOf(false) }
     val display = if (value.isBlank()) "" else runCatching {
-        LocalDate.parse(value).format(dateFormat)
+        dateFormat(LocalDate.parse(value))
     }.getOrDefault(value)
 
     Box(modifier) {
@@ -338,28 +329,8 @@ fun formatDuration(minutes: Long): String {
 
 /** "2026-09-01T10:00:00" -> "10:00"; falls back to the raw time part. */
 fun formatTime(iso: String): String = runCatching {
-    LocalDateTime.parse(iso.take(19)).time.format(HourMinute)
+    DateString.timeNumeric(LocalDateTime.parse(iso.take(19)).time, is24Hour = true)
 }.getOrDefault(iso.substringAfter('T').take(5))
-
-/** "Wed, Jun 25" — the default [DateField] display format. */
-val WeekdayMonthDay: DateTimeFormat<LocalDate> get() = LocalDate.Format {
-    dayOfWeek(DayOfWeekNames(localizedDayOfWeekNames(DateNameStyle.SHORT)))
-    chars(", ")
-    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
-    char(' ')
-    day(Padding.NONE)
-}
-
-/** "Jun 25, 2026". */
-val MonthDayYear: DateTimeFormat<LocalDate> get() = LocalDate.Format {
-    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
-    char(' ')
-    day(Padding.NONE)
-    chars(", ")
-    year()
-}
-
-private val HourMinute = LocalTime.Format { hour(); char(':'); minute() }
 
 /** Stops label: "Nonstop" / "1 stop" / "N stops". */
 fun stopsLabel(stops: Long): String = when (stops) {

@@ -44,6 +44,7 @@ import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.ui.DateString
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.AirlineDto
@@ -222,7 +223,7 @@ private fun PassengerForm(
                 stringResource(R.string.date_of_birth),
                 passenger.bornOn,
                 onDate = { onChange(passenger.copy(bornOn = it)) },
-                dateFormat = MonthDayYear,
+                dateFormat = DateString::monthDayYear,
             )
 
             ChipRow("Gender", GENDERS, passenger.gender) { onChange(passenger.copy(gender = it)) }
@@ -298,7 +299,7 @@ private fun IdentityDocumentFields(doc: IdentityDocumentDto?, onChange: (Identit
         stringResource(R.string.expiry_date),
         current.expiresOn,
         onDate = { onChange(current.copy(expiresOn = it)) },
-        dateFormat = MonthDayYear,
+        dateFormat = DateString::monthDayYear,
     )
 }
 

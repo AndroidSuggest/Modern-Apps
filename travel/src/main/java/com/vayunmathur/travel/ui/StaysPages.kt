@@ -43,6 +43,7 @@ import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.ui.DateString
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.StayRateDto
@@ -399,7 +400,7 @@ fun StayGuestsPage(
             }
             OutlinedTextField(givenName, { givenName = it }, label = { Text(stringResource(R.string.given_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(familyName, { familyName = it }, label = { Text(stringResource(R.string.family_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            DateField(stringResource(R.string.date_of_birth), bornOn, onDate = { bornOn = it }, dateFormat = MonthDayYear)
+            DateField(stringResource(R.string.date_of_birth), bornOn, onDate = { bornOn = it }, dateFormat = DateString::monthDayYear)
             OutlinedTextField(
                 email, { email = it }, label = { Text(stringResource(R.string.email)) }, singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),
