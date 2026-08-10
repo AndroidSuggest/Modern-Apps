@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="dav_password">Salasõna (rakendusekohane)</string>
     <string name="icloud_create_password">Loo rakendusekohane salasõna</string>
     <string name="app_specific_password">Rakendusekohane salasõna</string>
@@ -11,4 +11,24 @@
     <string name="login">Logi sisse</string>
     <string name="remove_account">Eemalda kasutajakonto</string>
     <string name="settings_title">Seadistused</string>
+    <string name="app_name">Sünkroonimine</string>
+    <string name="accounts_title">Sünkroonimine</string>
+    <string name="no_accounts">Kasutajakontosid veel pole. Mõne lisamiseks klõps + ikooni.</string>
+    <string name="last_synced">Viimati sünkroonitud: <xliff:g id="date" example="Täna 10:30">%1$s</xliff:g></string>
+    <string name="provider_via_health_connect">Health Connecti kaudu</string>
+    <string name="dav_login_title">Sisselogimine teenusesse <xliff:g id="provider" example="iCloud">%1$s</xliff:g></string>
+    <string name="dav_base_url">Serveri võrguaadress</string>
+    <string name="apple_id_email">Apple ID e-posti aadress</string>
+    <string name="sync_contacts">Sünkrooni kontaktid</string>
+    <string name="sync_calendar">Sünkrooni kalendrid</string>
+    <string name="sync_health">Sünkrooni terviseandmed</string>
+    <string name="global_interval">Sünkroonimise välp (minutites)</string>
+    <string name="wifi_only">Sünkrooni vaid WiFi võrgus</string>
+    <string name="conflict_policy">Andmekonfliktide lahendamine</string>
+    <string name="conflict_lww">Kehtima jääb viimatikirjutatu</string>
+    <string name="conflict_remote">Eelista serveri andmeid</string>
+    <string name="conflict_local">Eelista seadme andmeid</string>
+    <string name="need_permissions">Sünkroonimisrakendus EverySync vajab kasutajakonto andmete sünkroonimiseks ligipääsu kontaktidele ja kalendrile.</string>
+    <string name="everysync_privacy_policy">Sünkroonimisrakendus EverySync sünkroonib kontakte, kalendreid ja terviseandmeid selle seadme ja sinu pilvekontode vahel. Andmed salvestuvad vaid selles seadmes ja sinu valitud pilveteenus(te)s.</string>
+    <string name="icloud_app_password_steps">iCloud vajab rakendusepõhist salasõna (mitte sinu Apple ID salasõna):\n\n1. Logi sisse saidis account.apple.com\n2. Ava „Sisselogimine ja turvalisus“ → „Rakendusepõhised salasõnad“\n3. Loo uus salasõna ja pane nimeks „EverySync“\n4. Sisesta alljärgnevalt oma Apple ID e-posti aadress ja see justloodud salasõna</string>
 </resources>
