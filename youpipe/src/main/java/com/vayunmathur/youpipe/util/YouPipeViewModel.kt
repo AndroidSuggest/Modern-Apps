@@ -347,6 +347,7 @@ class YouPipeViewModel(
                 val filters = ContentFilters(
                     hideShorts = prefs.hideShorts,
                     hideLive = prefs.hideLive,
+                    hidePaid = prefs.hidePaid,
                     minDurationSec = prefs.minDurationSec,
                     maxDurationSec = prefs.maxDurationSec,
                 )
@@ -569,6 +570,7 @@ class YouPipeViewModel(
 
     fun setHideShorts(value: Boolean) = updatePrefs { it.copy(hideShorts = value) }
     fun setHideLive(value: Boolean) = updatePrefs { it.copy(hideLive = value) }
+    fun setHidePaid(value: Boolean) = updatePrefs { it.copy(hidePaid = value) }
     fun setMinDuration(seconds: Long) = updatePrefs { it.copy(minDurationSec = seconds.coerceAtLeast(0)) }
     fun setMaxDuration(seconds: Long) = updatePrefs { it.copy(maxDurationSec = seconds.coerceAtLeast(0)) }
 
@@ -706,8 +708,10 @@ class YouPipeViewModel(
             try {
                 val info = getChannelInfo(channelID)
                 _channelState.update { it.copy(info = info) }
+                val hidePaid = (recommendationPreferencesDao.get() ?: RecommendationPreferences()).hidePaid
                 val channelVideos = mutableListOf<VideoInfo>()
                 getChannelVideos(info.channelID).forEach { video ->
+                    if (hidePaid && video.isPaid) return@forEach
                     channelVideos.add(video)
                     _channelState.update { it.copy(videos = it.videos + video) }
                 }

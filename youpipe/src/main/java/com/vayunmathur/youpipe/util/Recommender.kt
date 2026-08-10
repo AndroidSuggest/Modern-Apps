@@ -44,6 +44,8 @@ data class ContentFilters(
     val hideShorts: Boolean = false,
     /** Drop videos with unknown/zero duration (treated as live). */
     val hideLive: Boolean = false,
+    /** Drop paid/paywalled videos. */
+    val hidePaid: Boolean = false,
     val minDurationSec: Long = 0,
     val maxDurationSec: Long = 0,
 )
@@ -438,6 +440,7 @@ private fun passesHardFilters(
 ): Boolean {
     if (channelPrefs[v.author.lowercase()]?.blocked == true) return false
     if (mutedKeywords.isNotEmpty() && tokenize(v.name).any { it in mutedKeywords }) return false
+    if (filters.hidePaid && v.isPaid) return false
     val d = v.duration
     if (filters.hideLive && d <= 0) return false
     if (filters.hideShorts && d in 1 until 60) return false

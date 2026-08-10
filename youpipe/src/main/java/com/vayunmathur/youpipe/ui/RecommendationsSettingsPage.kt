@@ -116,6 +116,11 @@ fun RecommendationsSettingsPage(
                     checked = recPrefs.hideLive,
                     onCheckedChange = { ypvm.setHideLive(it) },
                 )
+                SettingsSwitchRow(
+                    title = stringResource(R.string.label_hide_paid),
+                    checked = recPrefs.hidePaid,
+                    onCheckedChange = { ypvm.setHidePaid(it) },
+                )
                 DurationField(
                     label = stringResource(R.string.label_min_duration),
                     seconds = recPrefs.minDurationSec,

@@ -61,6 +61,10 @@
     <string name="cc">CC</string>
     <!-- Video stats format: views | time ago for channel list items. %1$s = views e.g. 1M, %2$s = time ago e.g. 3 days ago -->
     <string name="video_stat_format"><xliff:g id="views" example="1M">%1$s</xliff:g> views | <xliff:g id="time" example="3 days ago">%2$s</xliff:g></string>
+    <!-- Video stats format for paid videos, which have no public view count. %1$s = time ago e.g. 3 days ago -->
+    <string name="video_stat_paid_format">Paid | <xliff:g id="time" example="3 days ago">%1$s</xliff:g></string>
+    <!-- Video byline for paid videos, which have no public view count. %1$s = channel name, %2$s = time ago -->
+    <string name="video_info_paid_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | Paid | <xliff:g id="time" example="2 days ago">%2$s</xliff:g></string>
     <!-- Quality with fps and codec. %1$s = quality, %2$d = fps e.g. 60, %3$s = codec -->
     <string name="video_quality_fps_codec"><xliff:g id="quality" example="1080p">%1$s</xliff:g> (<xliff:g id="fps" example="60">%2$d</xliff:g>fps) <xliff:g id="codec" example="avc">%3$s</xliff:g></string>
 
@@ -171,6 +175,8 @@
     <string name="label_hide_shorts">Hide Shorts</string>
     <!-- Filter toggle: hide live or unknown duration videos. Verb phrase -->
     <string name="label_hide_live">Hide live/unknown length</string>
+    <!-- Filter toggle: hide paid/paywalled videos from feeds. Verb phrase -->
+    <string name="label_hide_paid">Hide paid videos</string>
     <!-- Field label: minimum video length in seconds filter input. Noun phrase with unit -->
     <string name="label_min_duration">Min length (seconds)</string>
     <!-- Field label: maximum video length filter input -->

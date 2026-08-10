@@ -124,6 +124,10 @@ val MIGRATION_4_5 = Migration(4, 5) {
     it.execSQL("CREATE INDEX IF NOT EXISTS `index_PlaylistItem_playlistId` ON `PlaylistItem` (`playlistId`)")
 }
 
+val MIGRATION_5_6 = Migration(5, 6) {
+    it.execSQL("ALTER TABLE `RecommendationPreferences` ADD COLUMN `hidePaid` INTEGER NOT NULL DEFAULT 0")
+}
+
 @Dao
 interface HistoryVideoDao {
     @Query("SELECT * FROM HistoryVideo")
@@ -191,7 +195,7 @@ interface SubscriptionVideoDao {
 }
 
 @TypeConverters(DefaultConverters::class)
-@Database(entities = [Subscription::class, SubscriptionVideo::class, HistoryVideo::class, SubscriptionCategory::class, DownloadedVideo::class, CachedRelatedVideo::class, RecommendationImpression::class, RecommendationPreferences::class, ChannelPreference::class, KeywordPreference::class, Playlist::class, PlaylistItem::class], version = 5, exportSchema = false)
+@Database(entities = [Subscription::class, SubscriptionVideo::class, HistoryVideo::class, SubscriptionCategory::class, DownloadedVideo::class, CachedRelatedVideo::class, RecommendationImpression::class, RecommendationPreferences::class, ChannelPreference::class, KeywordPreference::class, Playlist::class, PlaylistItem::class], version = 6, exportSchema = false)
 abstract class SubscriptionDatabase : RoomDatabase() {
     abstract fun subscriptionDao(): SubscriptionDao
     abstract fun subscriptionVideoDao(): SubscriptionVideoDao
@@ -207,6 +211,6 @@ abstract class SubscriptionDatabase : RoomDatabase() {
     abstract fun playlistItemDao(): PlaylistItemDao
 
     companion object : com.vayunmathur.library.util.DatabaseMigrations {
-        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
     }
 }

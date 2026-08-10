@@ -220,12 +220,20 @@ fun VideoPage(
             loaded = videoData != null,
             title = videoData?.title.orEmpty(),
             byline = videoData?.let {
-                resources.getString(
-                    R.string.video_info_format,
-                    it.author,
-                    countString(context, it.views),
-                    uploadTimeAgo(context, it.uploadDate),
-                )
+                if (it.views < 0) {
+                    resources.getString(
+                        R.string.video_info_paid_format,
+                        it.author,
+                        uploadTimeAgo(context, it.uploadDate),
+                    )
+                } else {
+                    resources.getString(
+                        R.string.video_info_format,
+                        it.author,
+                        countString(context, it.views),
+                        uploadTimeAgo(context, it.uploadDate),
+                    )
+                }
             }.orEmpty(),
             authorThumbnailURL = videoData?.authorThumbnail.orEmpty(),
             authorURL = videoData?.authorURL.orEmpty(),

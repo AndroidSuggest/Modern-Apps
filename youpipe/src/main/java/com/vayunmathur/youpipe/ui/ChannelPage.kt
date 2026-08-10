@@ -64,7 +64,7 @@ data class ChannelInfo(val name: String, val channelID: String, val subscribers:
 }
 
 @Serializable
-data class VideoInfo(val name: String, val videoID: Long, val duration: Long, val views: Long, val uploadDate: Instant, val thumbnailURL: String, val author: String): ItemInfo
+data class VideoInfo(val name: String, val videoID: Long, val duration: Long, val views: Long, val uploadDate: Instant, val thumbnailURL: String, val author: String, val isPaid: Boolean = false): ItemInfo
 
 @Composable
 fun ChannelPage(
@@ -132,11 +132,18 @@ fun videoRowState(
     title = (deArrowTitle ?: videoInfo.name).decodeHtml(),
     thumbnailURL = deArrowThumbnailURL ?: videoInfo.thumbnailURL,
     author = videoInfo.author.decodeHtml().takeIf { showAuthor },
-    stats = context.getString(
-        R.string.video_stat_format,
-        countString(context, videoInfo.views),
-        uploadTimeAgo(context, videoInfo.uploadDate),
-    ),
+    stats = if (videoInfo.isPaid || videoInfo.views < 0) {
+        context.getString(
+            R.string.video_stat_paid_format,
+            uploadTimeAgo(context, videoInfo.uploadDate),
+        )
+    } else {
+        context.getString(
+            R.string.video_stat_format,
+            countString(context, videoInfo.views),
+            uploadTimeAgo(context, videoInfo.uploadDate),
+        )
+    },
     reason = reason,
     channelKey = videoInfo.author.lowercase(),
     percentWatched = percentWatched,

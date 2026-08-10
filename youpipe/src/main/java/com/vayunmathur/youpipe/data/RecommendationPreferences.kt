@@ -31,6 +31,7 @@ data class RecommendationPreferences(
     val sourceSearch: Boolean = true,
     val hideShorts: Boolean = false,
     val hideLive: Boolean = false,
+    val hidePaid: Boolean = false,
     val minDurationSec: Long = 0,
     val maxDurationSec: Long = 0,
 )

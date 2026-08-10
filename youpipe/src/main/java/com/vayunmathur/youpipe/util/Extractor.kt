@@ -7,6 +7,7 @@ import com.vayunmathur.youpipe.ui.VideoInfo
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.Serializable
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.stream.ContentAvailability
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.nio.ByteBuffer
 import kotlin.io.encoding.Base64
@@ -36,7 +37,8 @@ fun StreamInfoItem.toVideoInfo(): VideoInfo? {
         getViewCount(),
         date.instant.toKotlinInstant(),
         thumbnails.firstOrNull()?.url ?: "",
-        getUploaderName().orEmpty().decodeHtml()
+        getUploaderName().orEmpty().decodeHtml(),
+        getContentAvailability() == ContentAvailability.PAID,
     )
 }
 
