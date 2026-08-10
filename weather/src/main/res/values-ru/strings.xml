@@ -38,7 +38,7 @@
     <string name="metric_wind_gusts">Порывы</string>
     <string name="metric_pressure">Давление</string>
     <string name="metric_visibility">Видимость</string>
-    <string name="metric_cloud_cover">Облачный покров</string>
+    <string name="metric_cloud_cover">Облачность</string>
     <string name="metric_uv_index">Индекс UV</string>
     <string name="block_sun">Cолнце</string>
     <string name="block_pollen">Аллергены</string>
@@ -56,9 +56,9 @@
     <string name="hourly_forecast">По часам</string>
     <string name="daily_forecast">Дневной прогноз</string>
     <string name="now">Сейчас</string>
-    <string name="today">Сегодня</string>
-    <string name="today_short">Сгд</string>
-    <string name="tomorrow_short">Зав</string>
+    <string name="today">Сгд</string>
+    <string name="today_short">сгд</string>
+    <string name="tomorrow_short">зав</string>
     <string name="level_low">Низко</string>
     <string name="level_medium">Средне</string>
     <string name="level_moderate">Умереннo</string>
@@ -72,7 +72,7 @@
     <string name="cloud_mostly_cloudy">Облачно с прояснениями</string>
     <string name="cloud_overcast">Пасмурно</string>
     <string name="aqi_good">Чисто</string>
-    <string name="aqi_moderate">Приемлимо</string>
+    <string name="aqi_moderate">Приемлемо</string>
     <string name="aqi_unhealthy_sensitive">Вредно (чувств.)</string>
     <string name="aqi_unhealthy">Вредно</string>
     <string name="aqi_very_unhealthy">Очень вредно</string>
@@ -90,9 +90,9 @@
     <string name="summary_winds_noticeable">Сегодня будет ветренно.</string>
     <string name="weather_no_data">—</string>
     <string name="weather_blob_widget_description">Виджет в форме капли с температурой и иконкой погоды</string>
-    <string name="max_min">Max <xliff:g id="max" example="28°C">%1$s</xliff:g> Min <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
+    <string name="max_min">Макс <xliff:g id="max" example="28°C">%1$s</xliff:g> Мин <xliff:g id="min" example="14°C">%2$s</xliff:g></string>
     <string name="feels_like">Ощущается <xliff:g id="temp" example="26°C">%1$s</xliff:g></string>
-    <string name="from_gusts">Направление <xliff:g id="direction" example="NW">%1$s</xliff:g> · Порывы <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
+    <string name="from_gusts">Напр <xliff:g id="direction" example="NW">%1$s</xliff:g> · Порывы <xliff:g id="gusts" example="18 km/h">%2$s</xliff:g></string>
     <string name="map_attribution">© OpenStreetMap · © CARTO</string>
     <string name="level_none">Нет</string>
     <string name="precip_rain_in_min">Дождь через ~<xliff:g id="minutes" example="15">%1$d</xliff:g> минут</string>
