@@ -18,10 +18,10 @@ fun DrawScope.drawEmptyCell(cellRect: Rect) {
         size = cellRect.size
     )
     drawRect(
-        color = Color(0xFF3A3A3A),
+        color = Color(0xFF6B6B6B),
         topLeft = cellRect.topLeft,
         size = cellRect.size,
-        style = Stroke(width = 1f)
+        style = Stroke(width = 1.5f)
     )
 }
 
