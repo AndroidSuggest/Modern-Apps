@@ -64,3 +64,6 @@ health/src/main/assets/staging.db
 # every listing image twice. Remove this ignore if you ever want
 # `validate<Variant>ScreenshotTest` to act as UI regression testing.
 **/src/screenshotTest*/reference/
+# Apple WPS scraping experiment (research scratch: crawler DBs, samples, artifacts)
+wtfps-experiment/
+wtfps/
