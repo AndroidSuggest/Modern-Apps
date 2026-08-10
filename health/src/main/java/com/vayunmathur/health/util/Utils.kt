@@ -1,37 +1,13 @@
 package com.vayunmathur.health.util
 
-import com.vayunmathur.library.util.localizedAmPmMarker
-import kotlinx.datetime.format.DateTimeFormat
-import com.vayunmathur.library.util.DateNameStyle
+import com.vayunmathur.library.ui.DateString
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.format
-import kotlinx.datetime.format.MonthNames
 import kotlinx.datetime.format.Padding
-import com.vayunmathur.library.util.localizedMonthNames
 import kotlin.time.Duration.Companion.minutes
 
-fun LocalDate.displayString() = this.format(LocalDate.Format {
-    monthName(MonthNames(localizedMonthNames(DateNameStyle.SHORT)))
-    chars(" ")
-    day(Padding.NONE)
-    chars(", ")
-    year()
-})
-
-private val timeAmPmFormat: DateTimeFormat<LocalTime> get() = LocalTime.Format {
-    amPmHour(Padding.NONE)
-    chars(":")
-    minute()
-    chars(" ")
-    localizedAmPmMarker()
-}
-
-private val hourAmPmFormat: DateTimeFormat<LocalTime> get() = LocalTime.Format {
-    amPmHour(Padding.NONE)
-    chars(" ")
-    localizedAmPmMarker()
-}
+fun LocalDate.displayString() = DateString.monthDayYear(this)
 
 private val time24Format = LocalTime.Format {
     hour(Padding.NONE)
@@ -40,10 +16,10 @@ private val time24Format = LocalTime.Format {
 }
 
 /** "h:mm AM/PM", e.g. "7:05 AM". */
-fun formatTimeAmPm(time: LocalTime): String = time.format(timeAmPmFormat)
+fun formatTimeAmPm(time: LocalTime): String = DateString.time(time, is24Hour = false)
 
 /** "h AM/PM" for a whole hour, e.g. "7 AM". */
-fun formatHourAmPm(hour: Int): String = LocalTime(hour, 0).format(hourAmPmFormat)
+fun formatHourAmPm(hour: Int): String = DateString.hourLabel(hour, is24Hour = false)
 
 /** 24-hour "H:mm", e.g. "22:30". */
 fun formatTime24(time: LocalTime): String = time.format(time24Format)
