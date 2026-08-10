@@ -56,12 +56,12 @@
     <string name="block_pollen">Pollen</string>
     <string name="block_wind">Vent</string>
     <string name="block_air_quality">Qualité de l’air</string>
-    <string name="hourly_forecast">Prévisions heure par heure</string>
+    <string name="hourly_forecast">Prévisions horaires</string>
     <string name="daily_forecast">Prévisions quotidiennes</string>
     <string name="now">Maintenant</string>
     <string name="today">Aujourd’hui</string>
-    <string name="today_short">AUJ</string>
-    <string name="tomorrow_short">DEM</string>
+    <string name="today_short">auj.</string>
+    <string name="tomorrow_short">dem.</string>
     <string name="level_none">Aucun</string>
     <string name="level_low">Faible</string>
     <string name="level_medium">Moyen</string>
@@ -104,4 +104,5 @@
     <string name="moon_phase_last_quarter">Dernier quartier</string>
     <string name="moon_phase_waning_crescent">Dernier croissant</string>
     <string name="weather_blob_widget_description">La météo dans une bulle organique - grande température avec icône sur fond bleu-vert foncé</string>
+    <string name="set_units">Définir les unités</string>
 </resources>
