@@ -105,4 +105,13 @@
     <string name="label_sleep">Uni</string>
     <string name="ingredient">(Koostisosa)</string>
     <string name="kcal_2">kcal</string>
+    <string name="grant_permissions_rationale">See rakendus loeb ja kirjutab sinu terviseandmeid Health Connect taustateenuse abil. Mitte midagi ei lahku sinu nutiseadmest.</string>
+    <string name="label_active">Aktiivne</string>
+    <string name="log_body_metric">Logi <xliff:g id="metric" example="Kaal">%1$s</xliff:g></string>
+    <string name="view_full_breakdown">Vaata täismahus jaotust</string>
+    <string name="food_database">Toiduainete andmebaas</string>
+    <string name="food_database_absent">Toiduainete andmebaas on ettevalmistamisel. Seni on võimalik leida ainult neid koostisosi, mida oled juba salvestanud.</string>
+    <string name="food_database_retry">Proovi uuesti</string>
+    <string name="route_recorded">Teekond on salvestatud</string>
+    <string name="reps"><xliff:g id="reps_count" example="12">%1$s</xliff:g> kordust</string>
 </resources>
