@@ -22,6 +22,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +40,7 @@ import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.FilledTonalButton
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
+import com.vayunmathur.library.ui.Slider
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,6 +50,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -95,7 +98,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.absoluteValue
 import kotlin.time.Instant
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -613,6 +618,23 @@ fun VideoPlayer(
         }
     }
 
+    // Seek bar state. durationMs is 0 until the player is ready (duration is C.TIME_UNSET,
+    // i.e. negative, before then). While the user drags, positionMs is frozen and scrubPos
+    // drives the slider so polling can't fight the thumb.
+    var durationMs by remember(uri) { mutableLongStateOf(0L) }
+    var positionMs by remember(uri) { mutableLongStateOf(0L) }
+    var isScrubbing by remember(uri) { mutableStateOf(false) }
+    var scrubPos by remember(uri) { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(exoPlayer, isScrubbing) {
+        while (isActive && !isScrubbing) {
+            val d = exoPlayer.duration
+            durationMs = if (d > 0) d else 0L
+            positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+            delay(200)
+        }
+    }
+
     DisposableEffect(exoPlayer) {
         val listener =
                 object : Player.Listener {
@@ -661,5 +683,65 @@ fun VideoPlayer(
                 )
             }
         }
+
+        // Seek bar overlay, shares the metadata-visible gate with the play/pause button.
+        AnimatedVisibility(
+                visible = isMetadataVisible && durationMs > 0,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            val sliderValue =
+                    (if (isScrubbing) scrubPos else positionMs.toFloat())
+                            .coerceIn(0f, durationMs.toFloat())
+            Column(
+                    modifier = Modifier.fillMaxWidth()
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Slider(
+                        value = sliderValue,
+                        onValueChange = {
+                            isScrubbing = true
+                            scrubPos = it
+                        },
+                        onValueChangeFinished = {
+                            exoPlayer.seekTo(scrubPos.toLong())
+                            positionMs = scrubPos.toLong()
+                            isScrubbing = false
+                        },
+                        valueRange = 0f..durationMs.toFloat(),
+                        modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                            formatVideoTime(sliderValue.toLong()),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium
+                    )
+                    Text(
+                            formatVideoTime(durationMs),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Formats a video position/duration in milliseconds as m:ss (or h:mm:ss past an hour). */
+private fun formatVideoTime(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
     }
 }
