@@ -72,9 +72,19 @@
     <string name="updates_channel_description">Tells you when apps you installed here have a newer version.</string>
     <string name="setting_background_updates_title">Install updates in the background</string>
     <string name="setting_background_updates_summary">Update apps this store already installed without asking each time. First-time installs still ask for confirmation.</string>
+    <string name="setting_auto_install_updates_title">Automatically install updates</string>
+    <string name="setting_auto_install_updates_summary">Check for and install updates on their own, with no tap. Only applies to apps this store installed and can update silently; everything else still just notifies you.</string>
     <plurals name="updates_count">
         <item quantity="one">%1$d update available</item>
         <item quantity="other">%1$d updates available</item>
+    </plurals>
+    <plurals name="updates_installing">
+        <item quantity="one">Installing %1$d update…</item>
+        <item quantity="other">Installing %1$d updates…</item>
+    </plurals>
+    <plurals name="updates_installed">
+        <item quantity="one">Installed %1$d update</item>
+        <item quantity="other">Installed %1$d updates</item>
     </plurals>
 
     <!-- Install actions and progress. -->

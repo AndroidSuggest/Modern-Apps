@@ -31,6 +31,7 @@ import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
+import com.vayunmathur.library.ui.SettingsDivider
 import com.vayunmathur.library.ui.SettingsSwitchRow
 import com.vayunmathur.library.ui.Text
 import java.text.SimpleDateFormat
@@ -102,12 +103,22 @@ fun SourcesPage(
 
             item {
                 Card(Modifier.fillMaxWidth()) {
-                    SettingsSwitchRow(
-                        title = stringResource(R.string.setting_background_updates_title),
-                        supportingText = stringResource(R.string.setting_background_updates_summary),
-                        checked = backgroundUpdateInstall,
-                        onCheckedChange = { viewModel.setBackgroundUpdateInstall(it) },
-                    )
+                    Column {
+                        SettingsSwitchRow(
+                            title = stringResource(R.string.setting_background_updates_title),
+                            supportingText = stringResource(R.string.setting_background_updates_summary),
+                            checked = backgroundUpdateInstall,
+                            onCheckedChange = { viewModel.setBackgroundUpdateInstall(it) },
+                        )
+                        SettingsDivider()
+                        SettingsSwitchRow(
+                            title = stringResource(R.string.setting_auto_install_updates_title),
+                            supportingText = stringResource(R.string.setting_auto_install_updates_summary),
+                            checked = autoInstallUpdates && backgroundUpdateInstall,
+                            enabled = backgroundUpdateInstall,
+                            onCheckedChange = { viewModel.setAutoInstallUpdates(it) },
+                        )
+                    }
                 }
             }
 

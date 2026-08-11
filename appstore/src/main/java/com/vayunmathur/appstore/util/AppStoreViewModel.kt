@@ -60,6 +60,9 @@ class AppStoreViewModel(
     /** On-by-default: updates to store-owned apps install without a per-app prompt. */
     val backgroundUpdateInstall: StateFlow<Boolean> = settings.backgroundUpdateInstall
 
+    /** Off-by-default: the periodic check may also download and install updates unattended. */
+    val autoInstallUpdates: StateFlow<Boolean> = settings.autoInstallUpdates
+
     /** SHA-256 of this app's own signing certificate — the Modern Apps trust root. */
     val ownSigningCertificates: Set<String> by lazy { ApkCertificates.selfSigners(context) }
 
@@ -722,6 +725,11 @@ class AppStoreViewModel(
     /** Turn silent background installation of updates on or off. */
     fun setBackgroundUpdateInstall(enabled: Boolean) {
         viewModelScope.launch { settings.setBackgroundUpdateInstall(enabled) }
+    }
+
+    /** Turn fully unattended (no-tap) background update installation on or off. */
+    fun setAutoInstallUpdates(enabled: Boolean) {
+        viewModelScope.launch { settings.setAutoInstallUpdates(enabled) }
     }
 
     // --- Library ------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
 import androidx.core.app.ActivityCompat
@@ -16,13 +17,16 @@ import androidx.core.content.edit
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.vayunmathur.appstore.MainActivity
 import com.vayunmathur.appstore.R
+import com.vayunmathur.appstore.data.installer.InstallCoordinator
 import com.vayunmathur.appstore.data.play.PlayRepository
+import com.vayunmathur.appstore.data.security.ApkCertificates
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.room.buildDatabase
@@ -36,13 +40,15 @@ import java.util.concurrent.TimeUnit
  *
  * The store used to require two manual taps — "Sync F-Droid", then "Check Play" — which
  * is not something anyone remembers to do, so an app installed here would sit on a stale
- * version indefinitely. This refreshes the offline catalogues, asks Play about the
+ * It refreshes the offline catalogues, asks Play about the
  * packages neither of them lists, and posts a notification only when the set of available
  * updates has actually changed since the last notification.
  *
- * It deliberately does not install anything. Every install path in this store shows a
- * verification outcome and, on most devices, a system confirmation dialog; doing that
- * unattended would either bury the user in prompts or hide the outcome.
+ * If the user has opted in to unattended updates ([SettingsRepository.autoInstallUpdates]),
+ * it also downloads and installs — as a foreground service — the updates it can apply
+ * silently: packages this store is the installer or update owner of, on API 31+ with
+ * background installation enabled. Everything it can't install without a prompt is left to
+ * the notification, exactly as before. Auto-install is off by default.
  */
 class UpdateCheckWorker(
     private val context: Context,
@@ -77,7 +83,27 @@ class UpdateCheckWorker(
         }
 
         val updates = (fromCatalog + fromPlay).distinctBy { it.packageName }
-        notifyIfChanged(updates.map { it.packageName }.toSortedSet(), updates.size)
+
+        val settings = SettingsRepository(context, scope)
+        val autoInstall = settings.readAutoInstallUpdates()
+        // Unattended installs are only safe when they will not raise a dialog: silent
+        // install requires API 31+ and the background-install toggle. Below that, or with it
+        // off, fall back to notify-only regardless of the auto-install choice.
+        val silentCapable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            settings.readBackgroundUpdateInstall()
+
+        if (autoInstall && silentCapable && updates.isNotEmpty()) {
+            val eligible = updates.filter { canSilentlyUpdate(it.packageName) }
+            if (eligible.isNotEmpty()) {
+                autoInstall(eligible, db, play)
+                installedRepo.refresh()
+            }
+            // Only nag about the updates we could not apply on our own.
+            val remaining = updates.filterNot { canSilentlyUpdate(it.packageName) }
+            notifyIfChanged(remaining.map { it.packageName }.toSortedSet(), remaining.size)
+        } else {
+            notifyIfChanged(updates.map { it.packageName }.toSortedSet(), updates.size)
+        }
 
         scope.cancel()
         Result.success()
@@ -133,6 +159,99 @@ class UpdateCheckWorker(
         }
     }
 
+    /**
+     * Download and silently install a set of updates, promoting the worker to a foreground
+     * service for the duration so the OS doesn't kill it mid-install.
+     *
+     * Passes `backgroundUpdateInstall = { true }` because [canSilentlyUpdate] has already
+     * confirmed each package will install without a prompt; the caller only reaches here
+     * when the user's silent-install toggle is on.
+     */
+    private suspend fun autoInstall(apps: List<UnifiedApp>, db: AppDatabase, play: PlayRepository) {
+        runCatching { setForeground(installingForegroundInfo(apps.size)) }
+        val installer = InstallCoordinator(
+            context = context,
+            db = db,
+            play = play,
+            ownSigningCertificates = { ApkCertificates.selfSigners(context) },
+            backgroundUpdateInstall = { true },
+        )
+        var installed = 0
+        for (app in apps) {
+            val outcome = runCatching { installer.install(app) }.getOrNull()
+            if (outcome?.started == true) installed++
+        }
+        if (installed > 0) notifyInstalled(installed)
+    }
+
+    /**
+     * Whether an update to [packageName] would install without a system dialog.
+     *
+     * Only true when this store is the package's installer of record — or, on API 34+, its
+     * update owner. For anything else the OS would raise a confirmation the background job
+     * can't usefully answer, so those are left to the notification instead.
+     */
+    private fun canSilentlyUpdate(packageName: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+        return runCatching {
+            val info = context.packageManager.getInstallSourceInfo(packageName)
+            val self = context.packageName
+            val ownsUpdate = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                info.updateOwnerPackageName == self
+            ownsUpdate || info.installingPackageName == self
+        }.getOrDefault(false)
+    }
+
+    private fun installingForegroundInfo(count: Int): ForegroundInfo {
+        createChannel()
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(
+                context.resources.getQuantityString(R.plurals.updates_installing, count, count)
+            )
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                INSTALL_NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            )
+        } else {
+            ForegroundInfo(INSTALL_NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun notifyInstalled(count: Int) {
+        if (!canPostNotifications()) return
+        createChannel()
+        val open = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle(
+                context.resources.getQuantityString(R.plurals.updates_installed, count, count)
+            )
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        runCatching {
+            NotificationManagerCompat.from(context).notify(INSTALLED_NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
     private fun createChannel() {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         manager.createNotificationChannel(
@@ -148,6 +267,8 @@ class UpdateCheckWorker(
         private const val TAG = "UpdateCheckWorker"
         private const val CHANNEL_ID = "appstore-updates"
         private const val NOTIFICATION_ID = 4201
+        private const val INSTALL_NOTIFICATION_ID = 4202
+        private const val INSTALLED_NOTIFICATION_ID = 4203
         private const val PREFS = "appstore-update-check"
         private const val KEY_LAST_NOTIFIED = "last_notified_packages"
 
