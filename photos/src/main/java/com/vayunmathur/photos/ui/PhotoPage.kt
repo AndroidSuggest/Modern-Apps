@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -92,6 +93,7 @@ import com.vayunmathur.photos.R
 import com.vayunmathur.photos.Route
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.util.GalleryViewModel
+import com.vayunmathur.photos.util.LiveWallpaperLauncher
 import com.vayunmathur.photos.util.PhotoMapViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -101,6 +103,7 @@ import kotlin.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -113,6 +116,7 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
     val photosAll by galleryViewModel.photos.collectAsState()
     val photos = overridePhotosList ?: photosAll.filter { !it.isTrashed }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     // Photos deleted from within this viewer, hidden immediately so the pager
     // advances to the next photo without waiting for the MediaStore resync.
     val locallyDeleted = remember { mutableStateListOf<Long>() }
@@ -236,7 +240,13 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
                             context.startActivity(intent)
                         },
                         onSetWallpaper = { p ->
-                            backStack?.add(Route.Wallpaper(p.id, p.uri))
+                            if (p.videoData != null || p.isGif) {
+                                coroutineScope.launch {
+                                    LiveWallpaperLauncher.apply(context, p.uri, p.videoData != null)
+                                }
+                            } else {
+                                backStack?.add(Route.Wallpaper(p.id, p.uri))
+                            }
                         },
                         onDelete = onDeletePhoto
                 )
@@ -525,10 +535,10 @@ fun PhotoDetailView(
                         modifier = Modifier.align(Alignment.End),
                         verticalAlignment = Alignment.CenterVertically
                 ) {
+                    IconButton(onClick = { onSetWallpaper(photo) }) {
+                        IconWallpaper(tint = Color.White)
+                    }
                     if (photo.videoData == null) {
-                        IconButton(onClick = { onSetWallpaper(photo) }) {
-                            IconWallpaper(tint = Color.White)
-                        }
                         IconButton(onClick = onEditPhoto) { IconEdit(tint = Color.White) }
                     }
                     IconButton(
@@ -685,11 +695,13 @@ fun VideoPlayer(
         }
 
         // Seek bar overlay, shares the metadata-visible gate with the play/pause button.
+        // Anchored to the top so it never sits under the centered play/pause control or
+        // the bottom metadata/button card, both of which are drawn over the video.
         AnimatedVisibility(
                 visible = isMetadataVisible && durationMs > 0,
                 enter = fadeIn(),
                 exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier.align(Alignment.TopCenter)
         ) {
             val sliderValue =
                     (if (isScrubbing) scrubPos else positionMs.toFloat())

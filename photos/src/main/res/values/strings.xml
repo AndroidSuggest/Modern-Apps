@@ -491,4 +491,6 @@
     <!-- Desc: drag to draw a line -->
     <string name="editor_desc_shape_line">Drag to draw a line.</string>
     <string name="edit_with_label">Edit with My App</string>
+    <string name="live_wallpaper_description">Animated wallpaper from your photos</string>
+    <string name="live_wallpaper_unavailable">Live wallpapers are not supported on this device</string>
 </resources>
