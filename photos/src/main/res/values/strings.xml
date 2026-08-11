@@ -108,6 +108,51 @@
     <!-- Apply current transformation/adjustment baking it in. Verb -->
     <string name="apply">Apply</string>
 
+    <!-- TopAppBar title for video editor screen. Verb phrase -->
+    <string name="title_edit_video">Edit Video</string>
+    <!-- Video editor tool: trim clip length. Verb -->
+    <string name="video_trim">Trim</string>
+    <!-- Video editor tool: crop and rotate. Noun phrase -->
+    <string name="video_crop_rotate">Crop &amp; Rotate</string>
+    <!-- Hint under crop/rotate tools: drag the corner handles on the preview to crop. Sentence instruction -->
+    <string name="video_crop_hint">Drag the corners on the preview to crop.</string>
+    <!-- Video editor tool: audio track. Noun -->
+    <string name="video_audio">Audio</string>
+    <!-- Button label: audio is currently on (tap to mute). Adjective phrase -->
+    <string name="video_audio_on">Audio on</string>
+    <!-- Button label: audio is currently muted (tap to unmute). Adjective -->
+    <string name="video_muted">Muted</string>
+    <!-- Video editor tool: color filters and adjustments. Noun -->
+    <string name="video_filters">Filters</string>
+    <!-- Filter preset: no filter. Noun -->
+    <string name="video_filter_none">None</string>
+    <!-- Filter preset: black &amp; white. Noun -->
+    <string name="video_filter_mono">Mono</string>
+    <!-- Filter preset: warm tint. Adjective -->
+    <string name="video_filter_warm">Warm</string>
+    <!-- Filter preset: cool tint. Adjective -->
+    <string name="video_filter_cool">Cool</string>
+    <!-- Filter preset: vivid/saturated. Adjective -->
+    <string name="video_filter_vivid">Vivid</string>
+    <!-- Slider label: brightness adjustment. Noun -->
+    <string name="video_brightness">Brightness</string>
+    <!-- Slider label: contrast adjustment. Noun -->
+    <string name="video_contrast">Contrast</string>
+    <!-- Slider label: saturation adjustment. Noun -->
+    <string name="video_saturation">Saturation</string>
+    <!-- Save dialog body: ask whether to keep original or overwrite. Question -->
+    <string name="video_save_prompt">Save the edited video as a new copy or overwrite the original?</string>
+    <!-- Save dialog button: save as a new copy. Verb phrase -->
+    <string name="video_save_copy">Save as copy</string>
+    <!-- Save dialog button: overwrite the original video. Verb -->
+    <string name="video_overwrite">Overwrite</string>
+    <!-- Progress dialog title while exporting the video. Verb -->
+    <string name="video_exporting">Exporting…</string>
+    <!-- Toast/message when video export fails. Sentence -->
+    <string name="video_export_failed">Video export failed.</string>
+    <!-- "Edit with" chooser label for the external video edit intent -->
+    <string name="video_edit_with_label">Edit video with My App</string>
+
     <!-- Slider label: opacity of brush stroke. Noun -->
     <string name="opacity">Opacity</string>
     <!-- Slider label: thickness of brush/line. Noun -->

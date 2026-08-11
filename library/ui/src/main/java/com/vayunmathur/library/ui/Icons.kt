@@ -119,6 +119,11 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Contrast
 import androidx.compose.material.icons.filled.Crop
@@ -323,6 +328,26 @@ fun IconRotateLeft(modifier: Modifier = Modifier, tint: Color = LocalContentColo
 @Composable
 fun IconRotateRight(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.AutoMirrored.Filled.RotateRight, "Rotate Right", modifier, tint)
+
+@Composable
+fun IconContentCut(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.ContentCut, "Trim", modifier, tint)
+
+@Composable
+fun IconFlip(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Flip, "Flip", modifier, tint)
+
+@Composable
+fun IconTune(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Tune, "Adjustments", modifier, tint)
+
+@Composable
+fun IconVolumeOff(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.VolumeOff, "Mute", modifier, tint)
+
+@Composable
+fun IconVolumeUp(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.VolumeUp, "Audio on", modifier, tint)
 
 @Composable
 fun IconNavigation(navBack: () -> Unit) {

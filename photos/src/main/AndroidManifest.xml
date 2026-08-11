@@ -68,6 +68,15 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+        <activity android:name=".ui.VideoEditActivity"
+            android:exported="true"
+            android:theme="@style/Theme.General">
+            <intent-filter android:label="@string/video_edit_with_label">
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
         <!-- Glance widget receiver -->
         <receiver
             android:name=".glance.PhotoGlanceWidgetReceiver"

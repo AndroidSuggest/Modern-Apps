@@ -233,8 +233,11 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
                         onToggleMetadata = { isMetadataVisible = !isMetadataVisible },
                         refreshKey = refreshKey,
                         onEditPhoto = {
+                            val activityClass =
+                                    if (photo.videoData != null) VideoEditActivity::class.java
+                                    else EditActivity::class.java
                             val intent =
-                                    Intent(context, EditActivity::class.java).apply {
+                                    Intent(context, activityClass).apply {
                                         putExtra("photo_id", photo.id)
                                     }
                             context.startActivity(intent)
@@ -538,9 +541,7 @@ fun PhotoDetailView(
                     IconButton(onClick = { onSetWallpaper(photo) }) {
                         IconWallpaper(tint = Color.White)
                     }
-                    if (photo.videoData == null) {
-                        IconButton(onClick = onEditPhoto) { IconEdit(tint = Color.White) }
-                    }
+                    IconButton(onClick = onEditPhoto) { IconEdit(tint = Color.White) }
                     IconButton(
                             onClick = {
                                 val intent =
