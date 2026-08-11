@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the permissive default in the shared :library module.
+
+     Storage audited:
+       database/flashcards-db  FlashcardsDatabase (Deck, Card): the user's decks and
+                               cards plus their spaced-repetition schedule. User content.
+       file/datastore_default.preferences_pb  app settings.
+       sharedpref/secure_prefs  keystore-wrapped SQLCipher passphrase.
+
+     Decks and cards are user-authored content worth restoring on a new device, so both
+     channels carry the flashcards database. Cloud backup is gated on device encryption
+     because card text can contain anything. Caches and the keystore-bound passphrase are
+     left out by the allowlist. -->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <!-- Whole-domain include so the -wal/-shm sidecars travel with the database. -->
+        <include domain="database" path="." />
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="." />
+        <include domain="file" path="datastore_default.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

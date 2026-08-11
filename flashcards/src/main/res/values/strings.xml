@@ -1,0 +1,43 @@
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name displayed in launcher -->
+    <string name="app_name">MA Flashcards</string>
+
+    <!-- DeckListPage: FAB / dialog title to create a deck. Verb phrase. -->
+    <string name="new_deck">New deck</string>
+    <!-- DeckListPage: Placeholder hint for the deck name field. Noun. -->
+    <string name="deck_name">Deck name</string>
+    <!-- DeckListPage: Subtitle summarising a deck's due and total card counts.
+         %1$d = cards due for review, %2$d = total cards in the deck. -->
+    <string name="deck_summary">%1$d due · %2$d cards</string>
+    <!-- DeckListPage: Content description for the button that starts a review of a deck. -->
+    <string name="review_deck">Review deck</string>
+    <!-- DeckListPage / CardListPage: Confirm dialog title before deleting. -->
+    <string name="delete">Delete</string>
+    <!-- DeckListPage: Confirm dialog message before deleting a deck.
+         %1$s = deck name. -->
+    <string name="delete_deck_message">Delete \"%1$s\" and all its cards?</string>
+
+    <!-- Generic dialog buttons. -->
+    <string name="add">Add</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- CardListPage: Button that starts a study session. Verb. -->
+    <string name="study">Study</string>
+    <!-- CardListPage: Empty state when a deck has no cards yet. -->
+    <string name="no_cards">No cards yet</string>
+
+    <!-- CardEditPage: Placeholder hint for the front (question) field. Noun. -->
+    <string name="front">Front</string>
+    <!-- CardEditPage: Placeholder hint for the back (answer) field. Noun. -->
+    <string name="back">Back</string>
+
+    <!-- ReviewPage: Button that reveals the answer side of a card. -->
+    <string name="show_answer">Show answer</string>
+    <!-- ReviewPage: Grade buttons for spaced-repetition scoring. -->
+    <string name="grade_again">Again</string>
+    <string name="grade_hard">Hard</string>
+    <string name="grade_good">Good</string>
+    <string name="grade_easy">Easy</string>
+    <!-- ReviewPage: Shown when there are no more cards due in the session. -->
+    <string name="review_done">All caught up!</string>
+</resources>
