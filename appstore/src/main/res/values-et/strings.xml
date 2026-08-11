@@ -77,4 +77,24 @@
     <string name="trust_play_practice_takedown">Pahatahtlik rakendus on mõne tunni jooksul rakendustepoest eemaldatav ja telefonides blokeeritav</string>
     <string name="trust_play_check_hash">Iga alla laaditud fail vastab Google’i poolt sellega kaasasaadetud räsiväärtusele</string>
     <string name="trust_play_check_key">Allkirjastatud võtmega, mida Google on selle rakenduse kohta ülestähendanud</string>
+    <string name="source_chip_grapheneos">GrapheneOS</string>
+    <string name="section_recently_updated_subtitle">Viimased versioonid F-Droidis</string>
+    <string name="section_sandboxed_google_play">Aedikkäituses Google Play</string>
+    <string name="section_sandboxed_google_play_subtitle">Google Play komponendid tavaliste ilma eriõigusteta rakendustena</string>
+    <string name="action_install_all">Paigalda kõik</string>
+    <string name="home_empty_title">Siin pole veel midagi</string>
+    <string name="updates_channel_name">Rakenduste uuendused</string>
+    <string name="updates_channel_description">Saad teada, kui sinu paigaldatud rakendustel on uusi versioone.</string>
+    <string name="detail_checked_on_install">Kontrollitud paigalduse ajal: %1$s</string>
+    <string name="detail_installed_unverified">Paigaldatud verifitseerimata kujul: %1$s</string>
+    <string name="detail_tap_for_trust">Klõpsa, kui tahad näha, kuidas andmeallikas oli kontrollitud</string>
+    <string name="store_rule_modern_android_title">Vaid moodne Android</string>
+    <string name="store_rule_signed_title">Vaid allkirjastatud rakendused</string>
+    <string name="store_rule_signed_detail">Iga allalaadimise puhul kontrollitakse selle allkirja. Faili, millel puudub kehtiv allkiri, ei alati paigaldamata.</string>
+    <string name="trust_heading_we_check">Mida see rakendus kontrollib</string>
+    <string name="trust_bullet">• %1$s</string>
+    <string name="trust_own_key_title">Selle rakendustepoe allkirjastamisvõti</string>
+    <string name="repos_syncing">Sünkroonimisel…</string>
+    <string name="repos_sync_sources">Sünkrooni tarkvarahoidlad</string>
+    <string name="source_fdroid">F-Droid</string>
 </resources>

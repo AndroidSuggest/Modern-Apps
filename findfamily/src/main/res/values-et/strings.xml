@@ -28,11 +28,11 @@
     <string name="expiry_2_days">2 päeva</string>
     <string name="expiry_1_week">1 nädal</string>
     <string name="notification_channel_location_tracking_name">Asukoha tuvastamine</string>
-    <string name="notification_channel_location_tracking_desc">Kasutusel Pere asukoha rakenduses asukoha uuendamiseks taustal</string>
+    <string name="notification_channel_location_tracking_desc">Kasutusel Pere asukoha rakenduses (FindFamily) asukoha uuendamiseks taustal</string>
     <string name="notification_tracking_title">Pere asukoha rakendus on aktiivne</string>
     <string name="your_findfamily_id">Sinu Pere asukoha rakenduse tunnus (FindFamily ID)</string>
     <string name="contact_findfamily_id">Kontakti Pere asukoha rakenduse tunnus (FindFamily ID)</string>
-    <string name="missing_features_explanation">Pere asukoha rakendus eeldab, et võrgupõhine asukohatuvastus ja geokodeerimine toimib korralikult. Jätkamiseks palun kontrolli, et nad on lülitatud sisse.</string>
+    <string name="missing_features_explanation">Pere asukoha rakendus (FindFamily) eeldab, et võrgupõhine asukohatuvastus ja geokodeerimine toimib korralikult. Jätkamiseks palun kontrolli, et nad on lülitatud sisse.</string>
     <string name="today">täna</string>
     <string name="yesterday">eile</string>
     <string name="notification_channel_battery_name">Akukohased hoiatused</string>
@@ -114,5 +114,8 @@
     <string name="couldn_t_compute_yet_s_key_isn_t_availab">Arvutamine veel ei õnnestunud: kasutaja „<xliff:g id="person_name" example="Bob">%1$s</xliff:g>“ võti pole saadaval. Palun kontrolli, et teil mõlemal ühendus toimib ja proovi siis uuesti.</string>
     <string name="compare_this_code_with_on_their_device_i">Võrdle sead koodi kasutajaga „<xliff:g id="person_name" example="Mati">%1$s</xliff:g>“ tema seadmes kuvatavaga. Kui numbrid on mõlemas seadmes samad, siis on ühendus läbivalt krüptitud ja verifitseeritud ning mitte keegi ei saa seda vahepealt jälgida.</string>
     <string name="share_invite_link">Jaga kutselinki</string>
-    <string name="share_invite_link_chooser">Jaga Pere asukoha rakenduse kutset</string>
+    <string name="share_invite_link_chooser">Jaga Pere asukoha (FindFamily) rakenduse kutset</string>
+    <string name="gps_fallback_warning_content_description">Võrgupõhine tuvastus pole saadaval</string>
+    <string name="gps_fallback_warning_title">Kasutusel on vaid GPS</string>
+    <string name="gps_fallback_warning_body">Võrgupõhine asukohatuvastus pole selles seadmes lülitatud sisse, seega kasutab Pere asukoha rakendus (FindFamily) sinu asukoha tuvastamiseks ainult GPS-i. GPS on täpsem, kuid võib märkimisväärselt tühjendada akut. Aku tarbimise vähendamiseks lülita nutiseadme seadistustes sisse asukoha määramisel võrgu kasutamine (Wi-Fi ja mobiilvõrk).</string>
 </resources>

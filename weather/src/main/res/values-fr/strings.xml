@@ -104,5 +104,5 @@
     <string name="moon_phase_last_quarter">Dernier quartier</string>
     <string name="moon_phase_waning_crescent">Dernier croissant</string>
     <string name="weather_blob_widget_description">La météo dans une bulle organique - grande température avec icône sur fond bleu-vert foncé</string>
-    <string name="set_units">Définir les unités</string>
+    <string name="set_units">Unités</string>
 </resources>

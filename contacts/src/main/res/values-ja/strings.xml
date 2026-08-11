@@ -1,3 +1,98 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">連絡先</string>
+    <string name="contact_not_found">連絡先が見つかりません</string>
+    <string name="name_nickname_format"><xliff:g id="name" example="John Doe">%1$s</xliff:g> (<xliff:g id="nickname" example="Johnny">%2$s</xliff:g>)</string>
+    <string name="contact_photo_description"><xliff:g id="contact_name" example="John Doe">%1$s</xliff:g> の写真</string>
+    <string name="share_contact">連絡先を共有</string>
+    <string name="about_name"><xliff:g id="first_name" example="John">%1$s</xliff:g> について</string>
+    <string name="birthday">誕生日</string>
+    <string name="note">ノート</string>
+    <string name="favorites">お気に入り</string>
+    <string name="export_contacts">全ての連絡先をエクスポート</string>
+    <string name="on_device">デバイス上</string>
+    <string name="add_contact">連絡先を追加</string>
+    <string name="edit_contact">連絡先を編集</string>
+    <string name="first_name">名</string>
+    <string name="middle_name">ミドルネーム</string>
+    <string name="last_name">姓</string>
+    <string name="nickname">ニックネーム</string>
+    <string name="company">会社</string>
+    <string name="account">アカウント</string>
+    <string name="account_display_format"><xliff:g id="account_name" example="Personal">%1$s</xliff:g> (<xliff:g id="account_type" example="com.google">%2$s</xliff:g>)</string>
+    <string name="add_phone">電話番号を追加</string>
+    <string name="remove_phone">電話番号を削除</string>
+    <string name="add_email">Eメールを追加</string>
+    <string name="remove_email">Eメールを削除</string>
+    <string name="add_address">住所を追加</string>
+    <string name="remove_address">住所を削除</string>
+    <string name="add_date">日付を追加</string>
+    <string name="dates">日付</string>
+    <string name="phone">電話番号</string>
+    <string name="email">Eメール</string>
+    <string name="addresses">住所</string>
+    <string name="contact_photo">連絡先の写真</string>
+    <string name="add_picture">写真を追加</string>
+    <string name="change_picture">変更</string>
+    <string name="remove_picture">削除</string>
+    <string name="visible_accounts">利用可能なアカウント</string>
+    <string name="add_contacts_account">連絡先アカウントを追加</string>
+    <string name="enter_account_name">新しいローカルアカウントの名前を入力:</string>
+    <string name="account_name">アカウントの名前</string>
+    <string name="delete_contact_title">連絡先を削除</string>
+    <string name="delete_contact_confirm">この連絡先を削除しても良いでしょうか? この変更は取り消せません。</string>
+    <string name="delete_contact_name_confirm">「<xliff:g id="contact_name" example="John Doe">%1$s</xliff:g>」を削除しても良いでしょうか? この変更は取り消せません。</string>
+    <string name="grant_contacts_permission">連絡先の権限を許可してください</string>
+    <string name="select_contact_hint">詳細を表示する連絡先を選択</string>
+    <string name="import_contacts">連絡先をインポート</string>
+    <string name="action_call">通話</string>
+    <string name="action_message">メッセージ</string>
+    <string name="action_video">ビデオ</string>
+    <string name="calendar_sync">カレンダーの同期</string>
+    <string name="sync_contacts_calendar">カレンダーに誕生日を表示</string>
+    <string name="contacts_calendar_name">連絡先</string>
+    <string name="anniversary">記念日</string>
+    <string name="backup_and_export">バックアップとエクスポート</string>
+    <string name="grant_calendar_permissions">カレンダーの権限を許可</string>
+    <string name="delete_selected_contacts_title">選択された連絡先を削除</string>
+    <plurals name="delete_selected_contacts_confirm">
+        <item quantity="other"><xliff:g id="count" example="5">%1$d</xliff:g> 個の選択された連絡先を削除しても良いでしょうか? この変更は取り消せません。</item>
+    </plurals>
+    <string name="selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> 個選択中</string>
+    <string name="display">表示</string>
+    <string name="show_account_labels">連絡先のアカウントを表示</string>
+    <string name="search_contacts">連絡先を検索</string>
+    <string name="include_year">年を含む</string>
+    <string name="system_default">システムのデフォルト</string>
+    <string name="signal">Signal</string>
+    <string name="whatsapp">WhatsApp</string>
+    <string name="telegram">Telegram</string>
+    <string name="google_meet">Google Meet</string>
+    <string name="contacts">連絡先</string>
+    <string name="groups">グループ</string>
+    <string name="select_group_hint">連絡先を見るグループを選択</string>
+    <string name="add_to_group">グループに追加</string>
+    <string name="add_group">グループを追加</string>
+    <string name="enter_group_name">グループの名前を入力</string>
+    <string name="delete_group_title">グループを削除</string>
+    <string name="delete_group_confirm">このグループを削除しても良いでしょうか? 連絡先は削除されません。</string>
+    <string name="no_groups_found">グループが見つかりません。「グループ」タブから一つ作成してください。</string>
+    <string name="import_vcf_file">.vcf ファイルをインポート</string>
+    <string name="import_to_existing_account">既存のアカウントにインポート</string>
+    <string name="create_new_account_option">新しいアカウントを作成</string>
+    <string name="no_contacts_found">連絡先が見つかりません</string>
+    <plurals name="import_summary_contacts">
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> 個の連絡先のインポートの準備ができています</item>
+    </plurals>
+    <string name="select_account">アカウントを選択</string>
+    <string name="no_name">(名前なし)</string>
+    <plurals name="contacts_count">
+        <item quantity="other"><xliff:g id="count" example="42">%1$d</xliff:g> 個の連絡先</item>
+    </plurals>
+    <string name="add_number_to_contact">連絡先に電話番号を追加</string>
+    <string name="create_new_contact">新しい連絡先を作成</string>
+    <string name="crop_photo">写真の切り抜き</string>
+    <string name="import_contacts_from_vcf_files">連絡先を .vcf ファイルからインポート</string>
+    <string name="custom_label">カスタムラベル</string>
+    <string name="enter_custom_label">カスタムラベルを入力</string>
 </resources>

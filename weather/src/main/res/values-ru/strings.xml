@@ -53,11 +53,11 @@
     <string name="moon_phase_waning_gibbous">Убывающая Луна</string>
     <string name="moon_phase_last_quarter">Последняя четверть</string>
     <string name="moon_phase_waning_crescent">Убывающий серп</string>
-    <string name="hourly_forecast">По часам</string>
-    <string name="daily_forecast">Дневной прогноз</string>
+    <string name="hourly_forecast">Почасовой прогноз</string>
+    <string name="daily_forecast">Прогноз на неделю</string>
     <string name="now">Сейчас</string>
-    <string name="today">Сгд</string>
-    <string name="today_short">сгд</string>
+    <string name="today">Сег</string>
+    <string name="today_short">сег</string>
     <string name="tomorrow_short">зав</string>
     <string name="level_low">Низко</string>
     <string name="level_medium">Средне</string>
@@ -104,5 +104,5 @@
     <string name="summary_expect_conditions">Ожидается <xliff:g id="conditions" example="light rain">%1$s</xliff:g> в течение дня.</string>
     <string name="summary_high_low">Выс <xliff:g id="high" example="24°C">%1$s</xliff:g>, низ <xliff:g id="low" example="12°C">%2$s</xliff:g>.</string>
     <string name="weather_temp_format"><xliff:g id="temp" example="22">%1$d</xliff:g>°</string>
-    <string name="set_units">Задать единицы измерения</string>
+    <string name="set_units">Единицы измерения</string>
 </resources>

@@ -104,5 +104,5 @@
     <string name="moon_phase_last_quarter">Poolkuu - viimane veerand</string>
     <string name="moon_phase_waning_crescent">Vanakuu</string>
     <string name="weather_blob_widget_description">Ilmateade loomulikus vormis - suur ikooniga temperatuurinäit tumedal sinakasrohelisel taustal</string>
-    <string name="set_units">Seadista ühikuid</string>
+    <string name="set_units">Ühikud</string>
 </resources>

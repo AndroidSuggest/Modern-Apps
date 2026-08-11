@@ -11,4 +11,11 @@
     <string name="app_name">Voxels</string>
     <string name="or_add_by_device_id">Või lisa seadme tunnus</string>
     <string name="stop">Lõpeta</string>
+    <string name="share_link">Jaga linki</string>
+    <string name="requests_header">Liitumispäringud</string>
+    <string name="approve">Nõustu</string>
+    <string name="deny">Keeldu</string>
+    <string name="request_wants_to_join">%1$s soovib liitud „%2$s“ dokuemendiga</string>
+    <string name="join_request_sent">Liitumispäring on edastatud ja sa saad ligipääsu, kui omanik sellega nõustub.</string>
+    <string name="shared_with_you">Jagatud sinuga</string>
 </resources>
