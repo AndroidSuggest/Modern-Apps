@@ -94,6 +94,24 @@
 -keep class org.bouncycastle.** { *; }
 -dontwarn org.bouncycastle.**
 
+# gRPC + okhttp + protobuf-lite (:appstore Accrescent source). grpc-okhttp is the first
+# okhttp in the repo. grpc looks up its transport/name-resolver providers via reflection and
+# META-INF/services; okhttp/okio and grpc reference optional compile-time deps (Conscrypp,
+# error-prone, javax.annotation, animal-sniffer) that are absent at runtime on Android.
+-keep class io.grpc.** { *; }
+-dontwarn io.grpc.**
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-dontwarn okhttp3.**
+-keep class okio.** { *; }
+-dontwarn okio.**
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn org.codehaus.mojo.animal_sniffer.**
+-dontwarn org.conscrypt.**
+# Accrescent's generated protobuf-lite messages (app.accrescent.appstore.v1, com.android.bundle)
+# are covered by the GeneratedMessageLite keep above; grpc service descriptors are under io.grpc.
+
 # logback-classic (transitive via KeePassJava2-dom, used by :passwords) is a
 # server-side SLF4J backend that references the Servlet API. javax.servlet.*
 # doesn't exist on Android, so R8 flags the dangling reference. logback's

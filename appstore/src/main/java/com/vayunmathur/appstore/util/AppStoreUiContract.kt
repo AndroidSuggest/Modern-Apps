@@ -46,6 +46,7 @@ enum class SourceFilter(val source: AppSource?) {
     FDROID(AppSource.FDROID),
     GRAPHENEOS(AppSource.GRAPHENEOS),
     PLAYSTORE(AppSource.PLAYSTORE),
+    ACCRESCENT(AppSource.ACCRESCENT),
 }
 
 /** Everything the home screen draws. */

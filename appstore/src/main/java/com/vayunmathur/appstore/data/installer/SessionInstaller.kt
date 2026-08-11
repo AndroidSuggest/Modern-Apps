@@ -69,6 +69,18 @@ class SessionInstaller(
             val pm = context.packageManager
             val installer = pm.packageInstaller
 
+            // Abandon any of our own still-pending sessions for this package before opening a
+            // new one. A previous attempt the user dismissed at the system prompt (or one that
+            // failed after the session was created) leaves a pending session, and committing a
+            // second session for the same package makes PackageManager reject it with
+            // INSTALL_FAILED_DUPLICATE_PACKAGE ("Duplicate package ... in pending install
+            // requests"). Multi-split installs (e.g. Accrescent) hit this most, being slower.
+            runCatching {
+                installer.mySessions
+                    .filter { it.appPackageName == packageName }
+                    .forEach { runCatching { installer.abandonSession(it.sessionId) } }
+            }
+
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
                 if (computedSize > 0) setSize(computedSize)
                 setAppPackageName(packageName)

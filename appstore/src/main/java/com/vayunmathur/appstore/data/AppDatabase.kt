@@ -172,6 +172,48 @@ interface PinnedStampDao {
     suspend fun deleteByPackage(pkg: String)
 }
 
+/**
+ * One entry of Accrescent's ed25519-signed allowlist, cached in Room.
+ *
+ * This is the trust anchor for an Accrescent install: [signingCertHash] is the certificate the
+ * app's APK must be signed with (lowercase-hex SHA-256 of the cert DER, the same encoding the
+ * rest of the store uses), and [minVersionCode] is the oldest version that may be installed
+ * (rollback protection). Populated only from a verified [com.vayunmathur.appstore.data.accrescent.RepoData];
+ * see [com.vayunmathur.appstore.data.accrescent.AccrescentTrustStore].
+ */
+@Entity
+data class AccrescentTrustEntity(
+    @PrimaryKey val appId: String,
+    val signingCertHash: String,
+    val minVersionCode: Long,
+)
+
+@Dao
+interface AccrescentTrustDao {
+    @Query("SELECT * FROM AccrescentTrustEntity WHERE appId = :appId LIMIT 1")
+    suspend fun byId(appId: String): AccrescentTrustEntity?
+
+    @Query("SELECT appId FROM AccrescentTrustEntity")
+    suspend fun allIds(): List<String>
+
+    @Query("DELETE FROM AccrescentTrustEntity")
+    suspend fun clearAll()
+
+    @Upsert
+    suspend fun upsertAll(entries: List<AccrescentTrustEntity>)
+
+    /**
+     * Replace the whole allowlist atomically. The signed repodata is authoritative in full —
+     * an app id it no longer lists must stop being trusted — so this clears first, in one
+     * transaction, rather than merging.
+     */
+    @androidx.room.Transaction
+    suspend fun replaceAll(entries: List<AccrescentTrustEntity>) {
+        clearAll()
+        upsertAll(entries)
+    }
+}
+
 @Dao
 interface RepoDao {
     @Query("SELECT * FROM RepoEntity ORDER BY name ASC")
@@ -268,14 +310,20 @@ interface CachedAppDao {
 }
 
 @Database(
-    entities = [RepoEntity::class, CachedAppEntity::class, PinnedStampEntity::class],
-    version = 6,
+    entities = [
+        RepoEntity::class,
+        CachedAppEntity::class,
+        PinnedStampEntity::class,
+        AccrescentTrustEntity::class,
+    ],
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun repoDao(): RepoDao
     abstract fun cachedAppDao(): CachedAppDao
     abstract fun pinnedStampDao(): PinnedStampDao
+    abstract fun accrescentTrustDao(): AccrescentTrustDao
 
     companion object {
         val migrations = listOf(
@@ -332,6 +380,19 @@ abstract class AppDatabase : RoomDatabase() {
                     // the catalogue now lists non-reproduced F-Droid apps too. Existing rows
                     // predate the badge; the next sync repopulates it. Default false.
                     db.execSQL("ALTER TABLE CachedAppEntity ADD COLUMN reproducible INTEGER NOT NULL DEFAULT 0")
+                }
+            },
+            object : Migration(6, 7) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    // Accrescent's signed allowlist, cached as a trust anchor. Empty until the
+                    // first repodata fetch verifies and populates it; nothing installs from
+                    // Accrescent until then, which is the intended fail-closed default.
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS AccrescentTrustEntity (" +
+                            "appId TEXT NOT NULL PRIMARY KEY, " +
+                            "signingCertHash TEXT NOT NULL, " +
+                            "minVersionCode INTEGER NOT NULL)"
+                    )
                 }
             }
         )

@@ -151,4 +151,5 @@ internal fun SourceFilter.labelRes(): Int = when (this) {
     SourceFilter.FDROID -> R.string.source_chip_fdroid
     SourceFilter.GRAPHENEOS -> R.string.source_chip_grapheneos
     SourceFilter.PLAYSTORE -> R.string.source_chip_play
+    SourceFilter.ACCRESCENT -> R.string.source_chip_accrescent
 }

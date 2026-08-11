@@ -6,6 +6,8 @@ import com.vayunmathur.appstore.data.AppDatabase
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.PinnedStampEntity
 import com.vayunmathur.appstore.data.UnifiedApp
+import com.vayunmathur.appstore.data.accrescent.AccrescentRepository
+import com.vayunmathur.appstore.data.accrescent.IncompatibleDeviceException
 import com.vayunmathur.appstore.data.play.CertUtil
 import com.vayunmathur.appstore.data.play.PlayRepository
 import com.vayunmathur.appstore.data.security.InstallRequirement
@@ -51,6 +53,7 @@ class InstallCoordinator(
     private val context: Context,
     private val db: AppDatabase,
     private val play: PlayRepository,
+    private val accrescent: AccrescentRepository,
     private val ownSigningCertificates: () -> Set<String>,
     backgroundUpdateInstall: () -> Boolean = { false },
 ) {
@@ -82,6 +85,7 @@ class InstallCoordinator(
         return try {
             when (app.source) {
                 AppSource.PLAYSTORE -> installFromPlay(app)
+                AppSource.ACCRESCENT -> installFromAccrescent(app)
                 else -> installFromUrl(app)
             }.also { outcome ->
                 if (outcome.started) {
@@ -181,6 +185,72 @@ class InstallCoordinator(
             conn.disconnect()
         }
     }
+
+    // --- Accrescent ----------------------------------------------------------------
+
+    /**
+     * Install an Accrescent app: verified signed-list trust anchor + per-device split URLs.
+     *
+     * Fail closed at every step. The signing certificate and minimum version come only from
+     * the ed25519-signed allowlist ([AccrescentRepository.refreshRepoData] +
+     * [AccrescentRepository.entryFor]); if the list doesn't vouch for this app id, or the
+     * refresh fails and nothing is cached, the install is refused before anything downloads.
+     * The gRPC API supplies only the split URLs, which are then checked against that anchor by
+     * [InstallVerifier] (correct signer + version code >= minimum). Accrescent publishes no
+     * per-file hashes, so there is no `expectedSha256` — signature + min-version is the guarantee.
+     */
+    private suspend fun installFromAccrescent(app: UnifiedApp): SessionInstaller.Outcome =
+        withContext(Dispatchers.IO) {
+            // Refresh the signed allowlist (best effort — a cached, previously-verified copy is
+            // fine), then read this app's trust anchor. No anchor, no install.
+            accrescent.refreshRepoData()
+            val trust = accrescent.entryFor(app.packageName)
+                ?: return@withContext SessionInstaller.Outcome(
+                    false,
+                    VerificationResult.Rejected("Accrescent's signed app list does not vouch for this app"),
+                )
+
+            val splits = try {
+                accrescent.downloadInfo(app.packageName)
+            } catch (e: IncompatibleDeviceException) {
+                return@withContext SessionInstaller.Outcome(
+                    false, VerificationResult.Rejected("this app has no build for your device")
+                )
+            }
+            if (splits.isEmpty()) {
+                return@withContext SessionInstaller.Outcome(
+                    false, VerificationResult.Rejected("Accrescent returned no files to download")
+                )
+            }
+
+            val totalSize = splits.sumOf { it.size }.takeIf { it > 0 } ?: -1L
+            var downloadedBytes = 0L
+            val files = splits.mapIndexed { index, split ->
+                val file = File(context.cacheDir, "${app.packageName}.split$index.apk")
+                val start = downloadedBytes
+                download(split.url, file, split.size) { fileFraction ->
+                    if (totalSize > 0) {
+                        val overall = (start + fileFraction * split.size) / totalSize
+                        stage(app.packageName, InstallStage.Downloading(overall.coerceIn(0f, 1f)))
+                    }
+                }
+                downloadedBytes += file.length()
+                file
+            }
+
+            val requirement = InstallRequirement(
+                expectedPackage = app.packageName,
+                requiredSigners = setOf(trust.signingCertHash),
+                expectedSha256 = emptyMap(),
+                minVersionCode = trust.minVersionCode,
+                signerOrigin = "Accrescent's signed app list",
+            )
+
+            stage(app.packageName, InstallStage.Verifying)
+            sessionInstaller.installSplits(
+                app.packageName, files, requirement, files.sumOf { it.length() }
+            )
+        }
 
     // --- Play ----------------------------------------------------------------------
 

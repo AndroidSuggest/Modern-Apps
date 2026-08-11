@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.DefaultRepos
 import com.vayunmathur.appstore.data.ModernAppsRepo
+import com.vayunmathur.appstore.data.accrescent.AccrescentRepo
 import com.vayunmathur.appstore.data.security.ApkCertificates
 import com.vayunmathur.appstore.util.AppStoreViewModel
 import com.vayunmathur.library.ui.Button
@@ -51,6 +52,7 @@ fun SourcesPage(
     val repos by viewModel.repos.collectAsState()
     val home by viewModel.home.collectAsState()
     val backgroundUpdateInstall by viewModel.backgroundUpdateInstall.collectAsState()
+    val autoInstallUpdates by viewModel.autoInstallUpdates.collectAsState()
     val fdroid = repos.find { it.url == DefaultRepos.FDROID.url }
 
     Scaffold(
@@ -151,6 +153,16 @@ fun SourcesPage(
                     lastSync = 0L,
                 )
             }
+            item {
+                SourceCard(
+                    title = stringResource(R.string.source_accrescent),
+                    subtitle = AccrescentRepo.REPOSITORY_URL,
+                    pinLabel = stringResource(R.string.source_accrescent_pin),
+                    pins = setOf(AccrescentRepo.REPODATA_PUBKEY),
+                    lastSync = 0L,
+                    abbreviatePins = false,
+                )
+            }
         }
     }
 }
@@ -162,6 +174,11 @@ private fun SourceCard(
     pinLabel: String,
     pins: Set<String>,
     lastSync: Long,
+    /**
+     * Whether [pins] are hex certificate fingerprints to abbreviate for display. Accrescent's
+     * pin is a base64 signify ed25519 key, not a hex fingerprint, so it is shown verbatim.
+     */
+    abbreviatePins: Boolean = true,
 ) {
     val locale = LocalConfiguration.current.locales[0]
     Card(Modifier.fillMaxWidth()) {
@@ -180,7 +197,7 @@ private fun SourceCard(
             )
             pins.forEach {
                 Text(
-                    ApkCertificates.abbreviate(it),
+                    if (abbreviatePins) ApkCertificates.abbreviate(it) else it,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )

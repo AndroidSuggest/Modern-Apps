@@ -107,6 +107,7 @@ fun SourceChip(source: AppSource, modifier: Modifier = Modifier) {
             AppSource.FDROID -> R.string.source_chip_fdroid
             AppSource.GRAPHENEOS -> R.string.source_chip_grapheneos
             AppSource.PLAYSTORE -> R.string.source_chip_play
+            AppSource.ACCRESCENT -> R.string.source_chip_accrescent
         }
     )
     Text(

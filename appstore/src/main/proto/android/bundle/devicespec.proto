@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package android.bundle;
+
+option java_package = "com.android.bundle";
+option java_multiple_files = true;
+// Distinct outer-class name: without this, protoc derives the outer class "Devicespec" from
+// the file name, whose generated Devicespec.java collides with the DeviceSpec message's
+// DeviceSpec.java on case-insensitive filesystems (Windows/macOS), clobbering the message class.
+option java_outer_classname = "DeviceSpecProto";
+
+// Vendored subset of Android bundletool's `DeviceSpec` (google/bundletool `devices.proto`),
+// with the exact upstream field numbers so it is wire-compatible with the DeviceSpec that
+// Accrescent's appstore API consumes for split (config APK) selection.
+//
+// Only the fields this client actually populates are declared. Fields 8 (device_tier), 9
+// (device_groups), 10 (sdk_runtime) and 11 (country_set) are intentionally omitted — they are
+// unused here and 8/11 would drag in google/protobuf/wrappers.proto. Omitting a field number
+// is wire-safe: it is simply never sent. The remaining numbers match upstream exactly.
+message DeviceSpec {
+  repeated string supported_abis = 1;
+  repeated string supported_locales = 2;
+  repeated string device_features = 3;
+  repeated string gl_extensions = 4;
+  uint32 screen_density = 5;
+  uint32 sdk_version = 6;
+  string codename = 7;
+  int64 ram_bytes = 12;
+  string build_brand = 13;
+  string build_device = 14;
+  string soc_manufacturer = 15;
+  string soc_model = 16;
+}

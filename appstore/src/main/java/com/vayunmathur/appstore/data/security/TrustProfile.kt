@@ -80,7 +80,14 @@ enum class TrustProfile {
     FDROID,
 
     /** Google Play, via an anonymous account. */
-    PLAY;
+    PLAY,
+
+    /**
+     * Accrescent, via its ed25519-signed allowlist plus its gRPC listing/download API. Trust
+     * is the pinned repo signing key and, per app, the signing certificate and minimum version
+     * that key vouches for.
+     */
+    ACCRESCENT;
 
     @get:StringRes
     val title: Int
@@ -88,6 +95,7 @@ enum class TrustProfile {
             MODERN_APPS -> R.string.trust_modern_apps_title
             FDROID -> R.string.trust_fdroid_title
             PLAY -> R.string.trust_play_title
+            ACCRESCENT -> R.string.trust_accrescent_title
         }
 
     /** One line, shown under the heading on the app's page. */
@@ -97,6 +105,7 @@ enum class TrustProfile {
             MODERN_APPS -> R.string.trust_modern_apps_summary
             FDROID -> R.string.trust_fdroid_summary
             PLAY -> R.string.trust_play_summary
+            ACCRESCENT -> R.string.trust_accrescent_summary
         }
 
     /** What the source itself does, beyond anything this app can check. */
@@ -116,6 +125,11 @@ enum class TrustProfile {
                 R.string.trust_play_practice_scanning,
                 R.string.trust_play_practice_hsm,
                 R.string.trust_play_practice_takedown,
+            )
+            ACCRESCENT -> listOf(
+                R.string.trust_accrescent_practice_developer_key,
+                R.string.trust_accrescent_practice_signed_list,
+                R.string.trust_accrescent_practice_min_version,
             )
         }
 
@@ -138,6 +152,11 @@ enum class TrustProfile {
                 R.string.trust_play_check_key,
                 R.string.trust_play_check_stamp,
             )
+            ACCRESCENT -> listOf(
+                R.string.trust_accrescent_check_list_signed,
+                R.string.trust_accrescent_check_key,
+                R.string.trust_accrescent_check_min_version,
+            )
         }
 
     /** Where this source is weaker than the others. Every source has one. */
@@ -147,6 +166,7 @@ enum class TrustProfile {
             MODERN_APPS -> R.string.trust_modern_apps_limits
             FDROID -> R.string.trust_fdroid_limits
             PLAY -> R.string.trust_play_limits
+            ACCRESCENT -> R.string.trust_accrescent_limits
         }
 
     companion object {
@@ -160,6 +180,9 @@ enum class TrustProfile {
             // F-Droid, so it shares that profile.
             AppSource.GRAPHENEOS -> FDROID
             AppSource.PLAYSTORE -> PLAY
+            // Accrescent apps are signed by their developers, not by Accrescent; trust is the
+            // ed25519-signed allowlist that pins each app's signing certificate + min version.
+            AppSource.ACCRESCENT -> ACCRESCENT
         }
     }
 }

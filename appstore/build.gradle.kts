@@ -4,6 +4,10 @@ plugins {
     // instrumented test on a device. Same `:appstore:metadata` task name either way.
     id("common-conventions-preview-metadata")
     alias(libs.plugins.ksp)
+    // gRPC/protobuf codegen for the Accrescent app source (data/accrescent). The .proto
+    // schemas are vendored under src/main/proto (see the note there); protoc + the grpc
+    // plugins generate the message + coroutine-stub classes at build time.
+    alias(libs.plugins.protobuf)
 }
 
 launcherIcon {
@@ -13,6 +17,20 @@ launcherIcon {
 android {
     defaultConfig {
         applicationId = "com.vayunmathur.appstore"
+    }
+    packaging {
+        resources {
+            // grpc-okhttp (first okhttp in the repo) and grpc pull in several duplicated
+            // license / service-loader descriptors that collide during Java-resource merge.
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/INDEX.LIST",
+                "META-INF/io.netty.versions.properties",
+                "META-INF/*.kotlin_module",
+            )
+            // grpc discovers transports via META-INF/services; keep those descriptors.
+            merges += setOf("META-INF/services/io.grpc.**")
+        }
     }
 }
 
@@ -30,4 +48,45 @@ dependencies {
     // HttpURLConnection-based PlayHttpClient/AnonymousAuthRepository/PlayDownloader – no okhttp
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.auroraoss.gplayapi)
+
+    // --- Accrescent app source -------------------------------------------------------
+    // gRPC (appstore-api.accrescent.app) over grpc-okhttp, with protobuf-lite messages and
+    // grpc-kotlin coroutine stubs. This is the first okhttp/grpc/protobuf-full surface in
+    // the store, which otherwise uses HttpURLConnection only — accepted deliberately, see
+    // the plan. grpc-okhttp transitively pulls okhttp/okio.
+    implementation(libs.grpc.okhttp)
+    implementation(libs.grpc.protobuf.lite)
+    implementation(libs.grpc.stub)
+    implementation(libs.grpc.kotlin.stub)
+    implementation(libs.protobuf.javalite)
+    implementation(libs.protobuf.kotlin.lite)
+    // grpc-java generated stubs reference @javax.annotation.Generated, absent on Android.
+    compileOnly(libs.javax.annotation.api)
+    // ed25519 verification of Accrescent's signify-signed repodata allowlist.
+    implementation(libs.bouncycastle.bcprov)
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${libs.versions.protobufJavalite.get()}"
+    }
+    plugins {
+        create("grpc") {
+            artifact = libs.grpc.protoc.gen.java.get().toString()
+        }
+        create("grpckt") {
+            artifact = "${libs.grpc.protoc.gen.kotlin.get()}:jdk8@jar"
+        }
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins {
+                create("java") { option("lite") }
+            }
+            task.plugins {
+                create("grpc") { option("lite") }
+                create("grpckt")
+            }
+        }
+    }
 }

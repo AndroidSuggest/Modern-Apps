@@ -19,6 +19,7 @@ import com.vayunmathur.appstore.data.SandboxedGooglePlay
 import com.vayunmathur.appstore.data.SettingsRepository
 import com.vayunmathur.appstore.data.SyncStep
 import com.vayunmathur.appstore.data.UnifiedApp
+import com.vayunmathur.appstore.data.accrescent.AccrescentRepository
 import com.vayunmathur.appstore.data.installer.InstallCoordinator
 import com.vayunmathur.appstore.data.installer.InstallStage
 import com.vayunmathur.appstore.data.play.PlayAuthState
@@ -51,9 +52,10 @@ class AppStoreViewModel(
 
     private val catalog = CatalogRepository(context, db, viewModelScope)
     private val play = PlayRepository(context)
+    private val accrescent = AccrescentRepository(context, db)
     private val installedRepo = InstalledAppsRepository(context)
     private val settings = SettingsRepository(context, viewModelScope)
-    private val installer = InstallCoordinator(context, db, play, { ownSigningCertificates }) {
+    private val installer = InstallCoordinator(context, db, play, accrescent, { ownSigningCertificates }) {
         settings.backgroundUpdateInstall.value
     }
 
@@ -82,6 +84,15 @@ class AppStoreViewModel(
     private val _playSections = MutableStateFlow<List<AppSection>>(emptyList())
     private val _recentlyUpdated = MutableStateFlow<List<UnifiedApp>>(emptyList())
 
+    /** Accrescent listings for the home carousel, from the gRPC listing API. */
+    private val _accrescentApps = MutableStateFlow<List<UnifiedApp>>(emptyList())
+
+    /**
+     * App ids Accrescent's signed allowlist vouches for. Drives library attribution for an
+     * installed Accrescent app. Empty until the first repodata refresh populates it.
+     */
+    private val _accrescentPackages = MutableStateFlow<Set<String>>(emptySet())
+
     /**
      * The Sandboxed Google Play bundle rows. Seeded with stand-ins so the section is on
      * screen immediately; [loadHome] swaps in richer catalogue rows when a sync has cached
@@ -105,6 +116,7 @@ class AppStoreViewModel(
 
     private val _catalogUpdates = MutableStateFlow<List<UnifiedApp>>(emptyList())
     private val _playUpdates = MutableStateFlow<List<UnifiedApp>>(emptyList())
+    private val _accrescentUpdates = MutableStateFlow<List<UnifiedApp>>(emptyList())
 
     private val _libraryFilter = MutableStateFlow(SourceFilter.ALL)
 
@@ -135,10 +147,11 @@ class AppStoreViewModel(
     val updates: StateFlow<List<UnifiedApp>> = combine(
         _catalogUpdates,
         _playUpdates,
+        _accrescentUpdates,
         installedRepo.apps,
-    ) { catalogUpdates, playUpdates, installed ->
+    ) { catalogUpdates, playUpdates, accrescentUpdates, installed ->
         val installedVersions = installed.associate { it.packageName to it.versionCode }
-        (catalogUpdates + playUpdates)
+        (catalogUpdates + playUpdates + accrescentUpdates)
             .distinctBy { it.packageName }
             // Re-check against what is on the device rather than trusting the lists.
             // _playUpdates is a snapshot from the last network check, so without this a
@@ -155,9 +168,13 @@ class AppStoreViewModel(
         _playSections,
         _recentlyUpdated,
         _sandboxedGooglePlay,
-        combine(_categoryApps, _selectedCategory) { apps, category -> apps to category },
-    ) { modern, playSections, recent, sandboxed, (categoryApps, category) ->
-        buildSections(modern, playSections, recent, sandboxed, categoryApps, category)
+        combine(
+            _categoryApps,
+            _selectedCategory,
+            _accrescentApps,
+        ) { apps, category, accrescent -> Triple(apps, category, accrescent) },
+    ) { modern, playSections, recent, sandboxed, (categoryApps, category, accrescentApps) ->
+        buildSections(modern, playSections, recent, sandboxed, accrescentApps, categoryApps, category)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val home: StateFlow<HomeUiState> = combine(
@@ -248,19 +265,22 @@ class AppStoreViewModel(
         chrome,
         catalog.packageIndex,
         _playInstalledPackages,
+        _accrescentPackages,
         _libraryFilter,
-    ) { rows, index, playPackages, filter ->
+    ) { rows, index, playPackages, accrescentPackages, filter ->
         // Source attribution, highest priority first:
         //  1. GrapheneOS's Sandboxed Google Play components (GSF/GMS/Vending) are Google's
         //     APKs re-hosted by GrapheneOS and installed from its release server, so they
         //     are attributed to GrapheneOS — never Play — even though Play lists them too.
         //  2. Whatever the offline catalogue (F-Droid / Modern Apps) recorded.
-        //  3. Play, but only for packages Play confirmed it hosts (see _playInstalledPackages).
+        //  3. Accrescent, for packages its signed allowlist vouches for.
+        //  4. Play, but only for packages Play confirmed it hosts (see _playInstalledPackages).
         // A package no source vouches for — sideloaded, or from a store we don't track — is
         // left out entirely rather than mislabelled as Play.
         fun sourceOf(pkg: String): AppSource? = when {
             pkg in SandboxedGooglePlay.PACKAGES -> AppSource.GRAPHENEOS
             else -> index[pkg]?.source?.let { runCatching { AppSource.valueOf(it) }.getOrNull() }
+                ?: AppSource.ACCRESCENT.takeIf { pkg in accrescentPackages }
                 ?: AppSource.PLAYSTORE.takeIf { pkg in playPackages }
         }
 
@@ -286,6 +306,7 @@ class AppStoreViewModel(
             loadHome()
             refreshPlayInstalledPackages()
         }
+        viewModelScope.launch { loadAccrescent() }
         viewModelScope.launch {
             // Recompute catalogue-side updates whenever either half changes. The Play
             // half needs a network call and is driven by checkForUpdates() instead.
@@ -313,6 +334,12 @@ class AppStoreViewModel(
         }
     }
 
+    override fun onCleared() {
+        // Release the Accrescent gRPC channel (and its okhttp connection pool).
+        accrescent.shutdown()
+        super.onCleared()
+    }
+
     /**
      * Ask Play which installed packages it actually hosts, for library attribution.
      *
@@ -332,6 +359,35 @@ class AppStoreViewModel(
         }
         val available = play.details(candidates).map { it.packageName }.toSet()
         if (available.isNotEmpty()) _playInstalledPackages.value = available
+    }
+
+    /**
+     * Refresh Accrescent's signed allowlist and its home listings. Both fail soft: a network
+     * blip leaves the previous rows and attribution set in place rather than emptying them.
+     */
+    private suspend fun loadAccrescent() {
+        accrescent.refreshRepoData()
+        val ids = accrescent.appIds()
+        if (ids.isNotEmpty()) _accrescentPackages.value = ids
+        val page = accrescent.listApps()
+        if (page.apps.isNotEmpty()) _accrescentApps.value = page.apps.take(CAROUSEL_LIMIT)
+    }
+
+    /**
+     * The available Accrescent update for [packageName] as an installable listing, or null when
+     * there is none. The version code is the update's, so the [updates] filter keeps it only
+     * while it is genuinely newer than what is installed.
+     */
+    private suspend fun accrescentUpdate(packageName: String, currentVersionCode: Long): UnifiedApp? {
+        val update = runCatching {
+            accrescent.updateInfo(packageName, currentVersionCode)
+        }.getOrNull() ?: return null
+        val details = accrescent.details(packageName) ?: UnifiedApp(
+            packageName = packageName,
+            source = AppSource.ACCRESCENT,
+            name = packageName.substringAfterLast('.'),
+        )
+        return details.copy(versionCode = update.versionCode, versionName = update.versionName)
     }
 
     // --- Home ---------------------------------------------------------------------
@@ -385,6 +441,7 @@ class AppStoreViewModel(
         playSections: List<AppSection>,
         recent: List<UnifiedApp>,
         sandboxed: List<UnifiedApp>,
+        accrescent: List<UnifiedApp>,
         categoryApps: List<UnifiedApp>,
         category: String?,
     ): List<AppSection> = buildList {
@@ -424,6 +481,16 @@ class AppStoreViewModel(
             )
         }
         addAll(playSections)
+        if (accrescent.isNotEmpty()) {
+            add(
+                AppSection(
+                    id = "accrescent",
+                    title = context.getString(R.string.section_accrescent),
+                    apps = accrescent,
+                    subtitle = context.getString(R.string.section_accrescent_subtitle),
+                )
+            )
+        }
         if (recent.isNotEmpty()) {
             add(
                 AppSection(
@@ -476,6 +543,7 @@ class AppStoreViewModel(
 
             _categories.value = catalog.categories()
             loadHome()
+            loadAccrescent()
             installedRepo.refresh()
         }
     }
@@ -500,8 +568,11 @@ class AppStoreViewModel(
             val local = catalog.searchLocal(query)
             _searchResults.value = rank(local, query)
 
+            // Accrescent search is client-side over the listings already cached from the home
+            // carousel (its API has no search RPC), so it adds no network round-trip here.
+            val accrescentResults = accrescent.search(query)
             val remote = play.search(query)
-            _searchResults.value = rank(merge(local, remote), query)
+            _searchResults.value = rank(merge(local, remote, accrescentResults), query)
             _isSearching.value = false
             _hasSearched.value = true
         }
@@ -520,8 +591,8 @@ class AppStoreViewModel(
      * rows carry a publisher key and a hash this app can check the download against,
      * which is simply more to show on the detail page than a Play listing has.
      */
-    private fun merge(local: List<UnifiedApp>, remote: List<UnifiedApp>): List<UnifiedApp> =
-        (local + remote).distinctBy { it.packageName }
+    private fun merge(vararg lists: List<UnifiedApp>): List<UnifiedApp> =
+        lists.asSequence().flatten().distinctBy { it.packageName }.toList()
 
     /** Exact hits first, then name prefixes, then everything else alphabetically. */
     private fun rank(apps: List<UnifiedApp>, query: String): List<UnifiedApp> {
@@ -554,6 +625,15 @@ class AppStoreViewModel(
             val cached = catalog.byPackage(app.packageName)
             if (cached != null) {
                 _selectedApp.value = cached
+                return@launch
+            }
+            // Accrescent listings from the home carousel are shells (no version code, no signer
+            // yet); fetch the full listing + package info + trust anchor before the page settles.
+            if (app.source == AppSource.ACCRESCENT) {
+                _isLoadingDetails.value = true
+                val details = accrescent.details(app.packageName)
+                if (details != null) _selectedApp.value = details
+                _isLoadingDetails.value = false
                 return@launch
             }
             // Play listings from a cluster are shells: no description, no
@@ -702,6 +782,15 @@ class AppStoreViewModel(
             // The same response tells us which of these packages Play actually hosts, which
             // the library uses to tell a genuine Play app from a sideloaded one.
             if (remote.isNotEmpty()) _playInstalledPackages.value = remote.keys.toSet()
+
+            // Accrescent: refresh the signed allowlist, then ask its API for a newer build of
+            // each installed package it vouches for.
+            accrescent.refreshRepoData()
+            val accrescentIds = accrescent.appIds()
+            if (accrescentIds.isNotEmpty()) _accrescentPackages.value = accrescentIds
+            _accrescentUpdates.value = installed
+                .filter { it.packageName in accrescentIds }
+                .mapNotNull { inst -> accrescentUpdate(inst.packageName, inst.versionCode) }
 
             _lastUpdateCheck.value = System.currentTimeMillis()
             _statusMessage.value = ""

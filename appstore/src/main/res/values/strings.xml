@@ -23,6 +23,7 @@
     <string name="source_chip_fdroid">F-Droid</string>
     <string name="source_chip_grapheneos">GrapheneOS</string>
     <string name="source_chip_play">Play Store</string>
+    <string name="source_chip_accrescent">Accrescent</string>
     <string name="filter_all">All</string>
     <string name="filter_with_count">%1$s (%2$d)</string>
     <string name="category_all">All</string>
@@ -36,6 +37,8 @@
     <string name="section_category_subtitle">Apps from the offline catalogue in this category</string>
     <string name="section_sandboxed_google_play">Sandboxed Google Play</string>
     <string name="section_sandboxed_google_play_subtitle">Google\'s Play components as ordinary, unprivileged apps</string>
+    <string name="section_accrescent">On Accrescent</string>
+    <string name="section_accrescent_subtitle">Developer-signed apps from Accrescent\'s signed app list</string>
     <string name="action_install_all">Install all</string>
     <string name="home_empty_title">Nothing here yet</string>
     <string name="home_empty_message">Sync your sources to fill this up, or search for an app by name.</string>
@@ -191,6 +194,16 @@
     <string name="trust_play_check_stamp">The app\'s publisher stamp is saved the first time you install it, and has to stay the same afterwards</string>
     <string name="trust_play_limits">No source code and no second build, so nothing proves the app matches any published source. Google supplies both the file and the expectation it is checked against, so these checks catch a tampered download but not a bad update Google signs itself. This store also reaches Play through an anonymous account rather than the official client, so it sees less than the Play app does.</string>
 
+    <string name="trust_accrescent_title">Accrescent</string>
+    <string name="trust_accrescent_summary">Apps signed by their own developers, listed on Accrescent\'s ed25519-signed allowlist which pins each app\'s signing key and lowest allowed version.</string>
+    <string name="trust_accrescent_practice_developer_key">Each app is signed by its developer\'s own key, not by Accrescent</string>
+    <string name="trust_accrescent_practice_signed_list">Which apps are legitimate, and each one\'s expected key, come from a single ed25519-signed list</string>
+    <string name="trust_accrescent_practice_min_version">The list records a minimum version per app, so an old build can\'t be pushed back onto you</string>
+    <string name="trust_accrescent_check_list_signed">The app list is signed and checked against a key built into this store, with a timestamp that can never go backwards</string>
+    <string name="trust_accrescent_check_key">The download is signed by exactly the key the signed list names for this app</string>
+    <string name="trust_accrescent_check_min_version">The download\'s version is at or above the minimum the signed list allows</string>
+    <string name="trust_accrescent_limits">Accrescent publishes no per-file hashes and no reproducible builds, so the guarantee is the signature and minimum version, not a match against source. Listings and download links come from an ordinary server over gRPC; a bad response can only ever produce a file that fails these signature and version checks. Nobody scans the apps, and there is no way to pull a bad release back off phones.</string>
+
     <!-- Sources page. -->
     <string name="repos_syncing">Syncing…</string>
     <string name="repos_sync_sources">Sync sources</string>
@@ -200,4 +213,6 @@
     <string name="source_fdroid_pin">Pinned to F-Droid\'s app list signing key</string>
     <string name="source_play">Play Store (anonymous)</string>
     <string name="source_play_pin">Nothing to pin: Google holds the signing key</string>
+    <string name="source_accrescent">Accrescent</string>
+    <string name="source_accrescent_pin">Pinned to Accrescent\'s repodata signing key (ed25519)</string>
 </resources>

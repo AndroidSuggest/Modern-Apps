@@ -12,7 +12,17 @@ enum class AppSource {
      * download + PackageInstaller path, never Google Play.
      */
     GRAPHENEOS,
-    PLAYSTORE
+    PLAYSTORE,
+
+    /**
+     * Accrescent (accrescent.app). Listings and per-device split download URLs come from
+     * Accrescent's gRPC API (appstore-api.accrescent.app); the trust anchor is a separate
+     * ed25519-signed allowlist (repo.accrescent.app/repodata) that records each app's expected
+     * signing certificate and minimum version code. Installs go through the store's ordinary
+     * verify-then-commit path with those values, plus the new min-version gate. See
+     * [com.vayunmathur.appstore.data.accrescent.AccrescentRepository].
+     */
+    ACCRESCENT
 }
 
 data class UnifiedApp(

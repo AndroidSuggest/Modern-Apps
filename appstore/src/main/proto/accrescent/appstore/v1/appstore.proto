@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package accrescent.appstore.v1;
+
+option java_package = "app.accrescent.appstore.v1";
+option java_multiple_files = true;
+
+import "android/bundle/devicespec.proto";
+
+// Vendored copy of Accrescent's client-facing appstore API (`accrescent.appstore.v1.AppService`,
+// served by appstore-api.accrescent.app over gRPC/HTTP2). Transcribed field-for-field from the
+// upstream `accrescent/appstore-api` protos so it is wire-compatible with the live server.
+//
+// Two upstream concerns are deliberately dropped because they do not affect the wire format:
+//   * the `buf.validate` field options (server-side validation only), and
+//   * the `google.api` service option (default_host annotation only).
+// Each RPC returns a *wrapper* response message (e.g. GetAppListingResponse) — decoding the
+// inner message directly is what produced the earlier garbled listings.
+//
+// The security posture does not depend on this schema: trust comes from the ed25519-signed
+// repodata and on-device APK signature + min-version verification; these RPCs only supply
+// listings and download URLs.
+
+// Graphical image to be displayed in client UI.
+message Image {
+  optional string url = 1;
+}
+
+// A localized store listing for a given app.
+message AppListing {
+  optional string app_id = 1;
+  optional string language = 2;
+  optional string name = 3;
+  optional string short_description = 4;
+  Image icon = 5;
+}
+
+// Package information for a given app.
+message PackageInfo {
+  optional uint64 version_code = 1;
+  optional string version_name = 2;
+}
+
+// A client device's hardware and OS attributes.
+message DeviceAttributes {
+  android.bundle.DeviceSpec spec = 1;
+}
+
+// Download info for an individual split APK.
+message SplitDownloadInfo {
+  optional uint32 download_size = 1;
+  optional string url = 2;
+}
+
+// App download information for a given app.
+message AppDownloadInfo {
+  repeated SplitDownloadInfo split_download_info = 1;
+}
+
+// Update info for an individual split APK.
+message SplitUpdateInfo {
+  optional uint32 apk_download_size = 1;
+  optional string apk_url = 2;
+}
+
+// App update information. Carries only the splits; whether an update exists is signalled by the
+// presence of the wrapping GetAppUpdateInfoResponse.app_update_info field.
+message AppUpdateInfo {
+  repeated SplitUpdateInfo split_update_info = 1;
+}
+
+message ListAppListingsRequest {
+  optional uint32 page_size = 1;
+  optional string page_token = 2;
+  optional uint32 skip = 3;
+  repeated string preferred_languages = 4;
+}
+
+message ListAppListingsResponse {
+  repeated AppListing listings = 1;
+  optional string next_page_token = 2;
+}
+
+message GetAppListingRequest {
+  optional string app_id = 1;
+  repeated string preferred_languages = 2;
+}
+
+message GetAppListingResponse {
+  AppListing listing = 1;
+}
+
+message GetAppPackageInfoRequest {
+  optional string app_id = 1;
+}
+
+message GetAppPackageInfoResponse {
+  PackageInfo package_info = 1;
+}
+
+message GetAppDownloadInfoRequest {
+  optional string app_id = 1;
+  DeviceAttributes device_attributes = 2;
+}
+
+message GetAppDownloadInfoResponse {
+  AppDownloadInfo app_download_info = 1;
+}
+
+message GetAppUpdateInfoRequest {
+  optional string app_id = 1;
+  DeviceAttributes device_attributes = 2;
+  optional uint64 base_version_code = 3;
+}
+
+// The app's update info is present if and only if the app is not up-to-date.
+message GetAppUpdateInfoResponse {
+  AppUpdateInfo app_update_info = 1;
+}
+
+service AppService {
+  rpc GetAppListing(GetAppListingRequest) returns (GetAppListingResponse);
+  rpc ListAppListings(ListAppListingsRequest) returns (ListAppListingsResponse);
+  rpc GetAppPackageInfo(GetAppPackageInfoRequest) returns (GetAppPackageInfoResponse);
+  rpc GetAppDownloadInfo(GetAppDownloadInfoRequest) returns (GetAppDownloadInfoResponse);
+  rpc GetAppUpdateInfo(GetAppUpdateInfoRequest) returns (GetAppUpdateInfoResponse);
+}

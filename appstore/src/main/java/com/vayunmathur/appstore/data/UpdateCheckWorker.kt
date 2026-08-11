@@ -25,6 +25,7 @@ import androidx.work.WorkerParameters
 import com.vayunmathur.appstore.MainActivity
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.installer.InstallCoordinator
+import com.vayunmathur.appstore.data.accrescent.AccrescentRepository
 import com.vayunmathur.appstore.data.play.PlayRepository
 import com.vayunmathur.appstore.data.security.ApkCertificates
 import com.vayunmathur.library.network.NetworkClient
@@ -66,6 +67,7 @@ class UpdateCheckWorker(
         val catalog = CatalogRepository(context, db, scope)
         val installedRepo = InstalledAppsRepository(context)
         val play = PlayRepository(context)
+        val accrescent = AccrescentRepository(context, db)
 
         catalog.sync()
         installedRepo.refresh()
@@ -82,7 +84,26 @@ class UpdateCheckWorker(
             remote[inst.packageName]?.takeIf { it.versionCode > inst.versionCode }
         }
 
-        val updates = (fromCatalog + fromPlay).distinctBy { it.packageName }
+        // Accrescent: refresh its signed allowlist, then ask its API for a newer build of each
+        // installed package it vouches for. Auto-install still routes through InstallCoordinator,
+        // which re-verifies signer + min-version before committing.
+        accrescent.refreshRepoData()
+        val accrescentIds = accrescent.appIds()
+        val fromAccrescent = installed
+            .filter { it.packageName in accrescentIds }
+            .mapNotNull { inst ->
+                val update = runCatching {
+                    accrescent.updateInfo(inst.packageName, inst.versionCode)
+                }.getOrNull() ?: return@mapNotNull null
+                val details = accrescent.details(inst.packageName) ?: UnifiedApp(
+                    packageName = inst.packageName,
+                    source = AppSource.ACCRESCENT,
+                    name = inst.packageName.substringAfterLast('.'),
+                )
+                details.copy(versionCode = update.versionCode, versionName = update.versionName)
+            }
+
+        val updates = (fromCatalog + fromPlay + fromAccrescent).distinctBy { it.packageName }
 
         val settings = SettingsRepository(context, scope)
         val autoInstall = settings.readAutoInstallUpdates()
@@ -95,7 +116,7 @@ class UpdateCheckWorker(
         if (autoInstall && silentCapable && updates.isNotEmpty()) {
             val eligible = updates.filter { canSilentlyUpdate(it.packageName) }
             if (eligible.isNotEmpty()) {
-                autoInstall(eligible, db, play)
+                autoInstall(eligible, db, play, accrescent)
                 installedRepo.refresh()
             }
             // Only nag about the updates we could not apply on our own.
@@ -105,6 +126,7 @@ class UpdateCheckWorker(
             notifyIfChanged(updates.map { it.packageName }.toSortedSet(), updates.size)
         }
 
+        accrescent.shutdown()
         scope.cancel()
         Result.success()
     } catch (e: Exception) {
@@ -167,12 +189,18 @@ class UpdateCheckWorker(
      * confirmed each package will install without a prompt; the caller only reaches here
      * when the user's silent-install toggle is on.
      */
-    private suspend fun autoInstall(apps: List<UnifiedApp>, db: AppDatabase, play: PlayRepository) {
+    private suspend fun autoInstall(
+        apps: List<UnifiedApp>,
+        db: AppDatabase,
+        play: PlayRepository,
+        accrescent: AccrescentRepository,
+    ) {
         runCatching { setForeground(installingForegroundInfo(apps.size)) }
         val installer = InstallCoordinator(
             context = context,
             db = db,
             play = play,
+            accrescent = accrescent,
             ownSigningCertificates = { ApkCertificates.selfSigners(context) },
             backgroundUpdateInstall = { true },
         )

@@ -32,6 +32,13 @@ data class InstallRequirement(
     val pinnedStamp: String? = null,
     /** Refuse to install if the APK carries no verifiable source stamp at all. */
     val requireStamp: Boolean = false,
+    /**
+     * Minimum version code the base APK may declare, below which the install is rejected.
+     * Used by Accrescent, whose ed25519-signed repodata carries a per-app minimum version
+     * for rollback protection. Null (the default) means no floor, so every other source is
+     * unaffected — the gate is additive and defaults to a no-op.
+     */
+    val minVersionCode: Long? = null,
 )
 
 sealed class VerificationResult {
@@ -131,6 +138,23 @@ object InstallVerifier {
         val actualSigners = signerSets.first()
 
         val checks = mutableListOf<String>()
+
+        // Rollback guard (Accrescent): the base APK's version code must be at least the
+        // minimum the source's signed allowlist records. Read from the base APK's manifest,
+        // like the target-SDK check above. Fail closed — a version we cannot read (0) is below
+        // any positive floor and is rejected, since the whole point is to refuse an old build.
+        requirement.minVersionCode?.let { minVc ->
+            val baseInfo = parsed.firstOrNull { (_, info) ->
+                info?.packageName == requirement.expectedPackage && info.splitNames.isNullOrEmpty()
+            }?.second
+            val versionCode = baseInfo?.longVersionCode ?: 0L
+            if (versionCode < minVc) {
+                return VerificationResult.Rejected(
+                    "it is version $versionCode, older than the minimum $minVc the source allows"
+                )
+            }
+            checks += "version $versionCode is at or above the minimum $minVc"
+        }
 
         val installed = ApkCertificates.installedSigners(context, requirement.expectedPackage)
         if (installed.isNotEmpty()) {
