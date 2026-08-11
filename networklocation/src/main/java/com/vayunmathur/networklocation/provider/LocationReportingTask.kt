@@ -35,6 +35,7 @@ class LocationReportingTask(
     private val wifi = NearbyWifi(appContext)
     private val cells = NearbyCells(appContext)
     private val cache = BeaconCache(appContext)
+    private val offlineStore = OfflineBeaconStore(appContext)
     private val apple = ApplePositioningService()
     // gs-loc is only consulted for beacons we have never seen; still throttle it so a
     // burst of new APs (e.g. moving fast) cannot spam Apple.
@@ -57,6 +58,7 @@ class LocationReportingTask(
     fun stop() {
         scope?.cancel()
         scope = null
+        offlineStore.close()
     }
 
     private suspend fun reportOnce() {
@@ -92,8 +94,28 @@ class LocationReportingTask(
         val cached = cache.get(allIds)
         val resolved = ArrayList(cached.values)
 
-        val missingWifi = wifiIds.filter { it !in cached }
-        val missingCell = cellIds.filter { it !in cached }
+        var missingWifi = wifiIds.filter { it !in cached }
+        var missingCell = cellIds.filter { it !in cached }
+
+        // Offline store tier: resolve locally before ever touching the network. Hits are
+        // written back into BeaconCache so the in-memory/Room tier front-runs later scans.
+        if (missingWifi.isNotEmpty() || missingCell.isNotEmpty()) {
+            val offline = withContext(Dispatchers.Default) {
+                buildList {
+                    if (missingWifi.isNotEmpty()) addAll(offlineStore.resolveWifi(missingWifi).values)
+                    if (missingCell.isNotEmpty()) addAll(offlineStore.resolveCell(missingCell).values)
+                }
+            }
+            if (offline.isNotEmpty()) {
+                cache.put(offline)
+                resolved.addAll(offline)
+                val hitIds = offline.mapTo(HashSet()) { it.id }
+                missingWifi = missingWifi.filterNot { it in hitIds }
+                missingCell = missingCell.filterNot { it in hitIds }
+            }
+        }
+
+        // gs-loc fallback: only for beacons still unknown after cache + offline store.
         if ((missingWifi.isNotEmpty() || missingCell.isNotEmpty()) && networkThrottle.tryAcquire()) {
             val fresh = withContext(Dispatchers.IO) {
                 buildList {

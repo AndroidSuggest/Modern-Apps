@@ -21,6 +21,7 @@ mod jni;
 pub mod measurement;
 pub mod multilateration;
 pub mod position;
+pub mod wpsdb;
 
 /// Estimated position.
 pub struct EstimatedPosition {

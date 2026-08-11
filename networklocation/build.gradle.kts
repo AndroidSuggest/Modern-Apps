@@ -16,9 +16,10 @@ android {
         applicationId = "com.vayunmathur.networklocation"
     }
     androidResources {
-        // The geocoder DB must stay uncompressed in the APK so it can be mmap'd directly from
-        // the asset file descriptor (no unzip, no copy to filesDir).
+        // The geocoder DB and the WPSDB stores must stay uncompressed in the APK so they can
+        // be mmap'd / pread directly from the asset file descriptor (no unzip, no copy to filesDir).
         noCompress += "geodb"
+        noCompress += "wpsdb"
     }
 }
 
@@ -88,6 +89,68 @@ val fetchGeocoderDb = tasks.register("fetchGeocoderDb") {
 
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(fetchGeocoderDb)
+}
+
+// The offline WPSDB stores (wifi.wpsdb up to ~2 GB, cells.wpsdb far smaller) are not committed
+// (see src/main/assets/.gitignore). Fetch them into assets at build time exactly like the
+// geocoder DB: only download when absent, fail soft (warn, leave no partial file) so a network
+// hiccup or an intentionally DB-less dev build still compiles and simply runs online-only.
+val wpsStoreBaseUrl = "https://data.vayunmathur.com/wps/"
+val wpsStoreNames = listOf("wifi.wpsdb", "cells.wpsdb")
+val wpsAssetsDir = layout.projectDirectory.dir("src/main/assets").asFile
+
+val fetchWpsStores = tasks.register("fetchWpsStores") {
+    // Capture plain String/File locals so the task actions don't hold references to the build
+    // script itself — Gradle's configuration cache cannot serialize script object refs.
+    val baseUrl = wpsStoreBaseUrl
+    val names = wpsStoreNames
+    val assetsDir = wpsAssetsDir
+    description = "Downloads wifi.wpsdb and cells.wpsdb into src/main/assets if they are missing."
+    val outFiles = names.map { File(assetsDir, it) }
+    outputs.files(*outFiles.toTypedArray())
+    outputs.upToDateWhen { outFiles.all { it.exists() } }
+    doLast {
+        for (name in names) {
+            val outFile = File(assetsDir, name)
+            if (outFile.exists()) {
+                logger.lifecycle("$name already present (${outFile.length()} bytes); skipping download.")
+                continue
+            }
+            outFile.parentFile.mkdirs()
+            val url = baseUrl + name
+            val tmp = File(outFile.parentFile, "$name.part")
+            tmp.delete()
+            logger.lifecycle("Fetching $name from $url (this may be large; first build only)…")
+            try {
+                val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 30_000
+                    readTimeout = 60_000
+                    instanceFollowRedirects = true
+                }
+                val code = conn.responseCode
+                if (code != HttpURLConnection.HTTP_OK) {
+                    conn.disconnect()
+                    error("server returned HTTP $code")
+                }
+                conn.inputStream.use { input -> tmp.outputStream().use { output -> input.copyTo(output, 1 shl 20) } }
+                conn.disconnect()
+                tmp.renameTo(outFile)
+                logger.lifecycle("Fetched $name (${outFile.length()} bytes).")
+            } catch (e: Exception) {
+                tmp.delete()
+                logger.warn(
+                    "WARNING: could not fetch {} ({}). The APK will build WITHOUT this offline store; " +
+                        "the provider falls back to online lookups for those beacons. Build it locally " +
+                        "(wtfps-experiment/RUNBOOK.md) or check {} and rebuild.",
+                    name, e.message, url,
+                )
+            }
+        }
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(fetchWpsStores)
 }
 
 dependencies {
