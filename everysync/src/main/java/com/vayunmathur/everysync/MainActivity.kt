@@ -5,7 +5,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import com.vayunmathur.everysync.ui.AccountDetailScreen
 import com.vayunmathur.everysync.ui.AccountsScreen
 import com.vayunmathur.everysync.ui.AddAccountScreen
@@ -30,8 +35,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             DynamicTheme {
-                OfflineAware {
-                    Navigation(viewModel)
+                // Paint the theme background behind everything (incl. the status bar strip the
+                // offline banner leaves transparent) so no white window background shows through
+                // when offline. See issue #488.
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    OfflineAware {
+                        Navigation(viewModel)
+                    }
                 }
             }
         }
