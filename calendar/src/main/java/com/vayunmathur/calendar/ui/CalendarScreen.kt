@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -523,6 +524,19 @@ fun MonthView(
         val monthInstances = previewInstances ?: loadedInstances
 
         Column(Modifier.fillMaxSize().padding(4.dp), Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(4.dp)) {
+                val headerStart = weeks.first()
+                (0..6).forEach { i ->
+                    val d = headerStart.plus(DatePeriod(days = i))
+                    Text(
+                        localizedDayOfWeekNames(DateNameStyle.SHORT)[d.dayOfWeek.isoDayNumber - 1],
+                        Modifier.weight(1f),
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
             weeks.forEach { weekSunday ->
                 MonthWeekRow(
                     Modifier.weight(1f),
