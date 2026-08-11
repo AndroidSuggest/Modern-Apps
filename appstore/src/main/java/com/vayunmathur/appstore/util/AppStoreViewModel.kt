@@ -105,6 +105,16 @@ class AppStoreViewModel(
 
     private val _libraryFilter = MutableStateFlow(SourceFilter.ALL)
 
+    /**
+     * Installed packages Play confirmed it actually hosts.
+     *
+     * Drives library attribution so a sideloaded app isn't labelled Play just for being
+     * unrecognised. Empty until the first resolution; a package no offline source lists
+     * stays out of the library until Play vouches for it. A failed lookup leaves the
+     * previous answer in place rather than emptying it — see [refreshPlayInstalledPackages].
+     */
+    private val _playInstalledPackages = MutableStateFlow<Set<String>>(emptySet())
+
     private var searchJob: Job? = null
     private var detailJob: Job? = null
 
@@ -234,16 +244,26 @@ class AppStoreViewModel(
     val library: StateFlow<LibraryUiState> = combine(
         chrome,
         catalog.packageIndex,
+        _playInstalledPackages,
         _libraryFilter,
-    ) { rows, index, filter ->
-        // Anything the catalogue has never heard of is attributed to Play: it is on the
-        // device and neither offline source lists it. This is a display label, not a
-        // provenance claim — the app may equally have been sideloaded.
-        fun sourceOf(pkg: String): AppSource =
-            index[pkg]?.source?.let { runCatching { AppSource.valueOf(it) }.getOrNull() }
-                ?: AppSource.PLAYSTORE
+    ) { rows, index, playPackages, filter ->
+        // Source attribution, highest priority first:
+        //  1. GrapheneOS's Sandboxed Google Play components (GSF/GMS/Vending) are Google's
+        //     APKs re-hosted by GrapheneOS and installed from its release server, so they
+        //     are attributed to GrapheneOS — never Play — even though Play lists them too.
+        //  2. Whatever the offline catalogue (F-Droid / Modern Apps) recorded.
+        //  3. Play, but only for packages Play confirmed it hosts (see _playInstalledPackages).
+        // A package no source vouches for — sideloaded, or from a store we don't track — is
+        // left out entirely rather than mislabelled as Play.
+        fun sourceOf(pkg: String): AppSource? = when {
+            pkg in SandboxedGooglePlay.PACKAGES -> AppSource.GRAPHENEOS
+            else -> index[pkg]?.source?.let { runCatching { AppSource.valueOf(it) }.getOrNull() }
+                ?: AppSource.PLAYSTORE.takeIf { pkg in playPackages }
+        }
 
-        val all = rows.installed.map { it.toUnifiedApp(sourceOf(it.packageName)) }
+        val all = rows.installed.mapNotNull { info ->
+            sourceOf(info.packageName)?.let { info.toUnifiedApp(it) }
+        }
         LibraryUiState(
             apps = all.filter { filter.source == null || it.source == filter.source },
             filter = filter,
@@ -261,6 +281,7 @@ class AppStoreViewModel(
             installedRepo.refresh()
             play.restore()
             loadHome()
+            refreshPlayInstalledPackages()
         }
         viewModelScope.launch {
             // Recompute catalogue-side updates whenever either half changes. The Play
@@ -283,7 +304,31 @@ class AppStoreViewModel(
     }
 
     fun refreshInstalled() {
-        viewModelScope.launch { installedRepo.refresh() }
+        viewModelScope.launch {
+            installedRepo.refresh()
+            refreshPlayInstalledPackages()
+        }
+    }
+
+    /**
+     * Ask Play which installed packages it actually hosts, for library attribution.
+     *
+     * Only packages neither offline source lists and that aren't GrapheneOS components are
+     * worth asking about — the rest are already attributed. Play returning nothing (no
+     * account, no network) leaves the previous answer in place rather than emptying the
+     * library, so a transient failure can't hide apps Play was known to host.
+     */
+    private suspend fun refreshPlayInstalledPackages() {
+        val index = catalog.packageIndex.value
+        val candidates = installedRepo.apps.value
+            .map { it.packageName }
+            .filter { it !in index && it !in SandboxedGooglePlay.PACKAGES }
+        if (candidates.isEmpty()) {
+            _playInstalledPackages.value = emptySet()
+            return
+        }
+        val available = play.details(candidates).map { it.packageName }.toSet()
+        if (available.isNotEmpty()) _playInstalledPackages.value = available
     }
 
     // --- Home ---------------------------------------------------------------------
@@ -651,6 +696,9 @@ class AppStoreViewModel(
             _playUpdates.value = installed.mapNotNull { inst ->
                 remote[inst.packageName]?.takeIf { it.versionCode > inst.versionCode }
             }
+            // The same response tells us which of these packages Play actually hosts, which
+            // the library uses to tell a genuine Play app from a sideloaded one.
+            if (remote.isNotEmpty()) _playInstalledPackages.value = remote.keys.toSet()
 
             _lastUpdateCheck.value = System.currentTimeMillis()
             _statusMessage.value = ""

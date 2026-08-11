@@ -44,6 +44,7 @@ enum class SourceFilter(val source: AppSource?) {
     ALL(null),
     MODERN_APPS(AppSource.MODERN_APPS),
     FDROID(AppSource.FDROID),
+    GRAPHENEOS(AppSource.GRAPHENEOS),
     PLAYSTORE(AppSource.PLAYSTORE),
 }
 
