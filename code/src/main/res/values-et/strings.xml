@@ -92,4 +92,5 @@
     <string name="quick_open_hint">Sisesta failinimi</string>
     <string name="command_palette">Käsupalett</string>
     <string name="command_palette_hint">Sisesta käsk</string>
+    <string name="delete_title">Kas kustutad „%1$s“?</string>
 </resources>
