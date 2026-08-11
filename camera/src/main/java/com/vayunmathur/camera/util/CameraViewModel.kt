@@ -50,6 +50,7 @@ import java.util.concurrent.Executors
 import androidx.camera.extensions.ExtensionMode
 import androidx.camera.extensions.ExtensionSessionConfig
 import androidx.camera.extensions.ExtensionsManager
+import androidx.camera.video.AudioSpec
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.HighSpeedVideoSessionConfig
 import androidx.camera.video.MediaStoreOutputOptions
@@ -91,6 +92,16 @@ enum class VideoCodec(@StringRes val labelRes: Int, @StringRes val descriptionRe
     AVC(R.string.codec_avc_label, R.string.codec_avc_description),
     HEVC(R.string.codec_hevc_label, R.string.codec_hevc_description),
     AV1(R.string.codec_av1_label, R.string.codec_av1_description),
+}
+enum class AudioInputSource(
+    @StringRes val labelRes: Int,
+    @StringRes val descriptionRes: Int,
+    val specValue: Int,
+) {
+    CAMCORDER(R.string.audio_source_camcorder_label, R.string.audio_source_camcorder_description, AudioSpec.SOURCE_CAMCORDER),
+    MIC(R.string.audio_source_mic_label, R.string.audio_source_mic_description, AudioSpec.SOURCE_MIC),
+    VOICE_COMMUNICATION(R.string.audio_source_voice_communication_label, R.string.audio_source_voice_communication_description, AudioSpec.SOURCE_VOICE_COMMUNICATION),
+    UNPROCESSED(R.string.audio_source_unprocessed_label, R.string.audio_source_unprocessed_description, AudioSpec.SOURCE_UNPROCESSED),
 }
 
 /** Formats a zoom ratio for the zoom bar: ".5", "1x", "2x", or "1.5x". */
@@ -232,6 +243,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     )
     val videoCodec = _videoCodec.asStateFlow()
+
+    private val _audioInputSource = MutableStateFlow(AudioInputSource.CAMCORDER)
+    val audioInputSource = _audioInputSource.asStateFlow()
 
     private val _isRecording = MutableStateFlow(false)
     val isRecording = _isRecording.asStateFlow()
@@ -678,8 +692,10 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
             }
         }
         ds.getString("camera_location")?.let { _locationEnabled.value = it.toBoolean() }
+        ds.getString("camera_audio_source")?.let {
+            _audioInputSource.value = try { AudioInputSource.valueOf(it) } catch (_: Exception) { AudioInputSource.CAMCORDER }
+        }
         // Guard against a blank persisted value: Uri.parse("") yields a non-null
-        // but invalid URI, making the app think an image exists when none does.
         ds.getString("camera_last_capture")?.takeIf { it.isNotBlank() }?.let { _lastCaptureUri.value = it.toUri() }
         ds.getString("camera_grid")?.let { _gridEnabled.value = it.toBoolean() }
         ds.getString("camera_level")?.let { _levelEnabled.value = it.toBoolean() }
@@ -751,6 +767,11 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     fun setVideoCodec(codec: VideoCodec) {
         _videoCodec.value = codec
         viewModelScope.launch { ds.setString("camera_video_codec", codec.name) }
+    }
+
+    fun setAudioInputSource(source: AudioInputSource) {
+        _audioInputSource.value = source
+        viewModelScope.launch { ds.setString("camera_audio_source", source.name) }
     }
 
     fun toggleGrid() {
@@ -1818,6 +1839,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
                 preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
                 val recorderBuilder = Recorder.Builder()
                     .setQualitySelector(qualitySelector)
+                    .setAudioSource(_audioInputSource.value.specValue)
                 if (av1) recorderBuilder.setVideoMimeType(MediaFormat.MIMETYPE_VIDEO_AV1)
                 else if (hevc) recorderBuilder.setVideoMimeType(MediaFormat.MIMETYPE_VIDEO_HEVC)
                 if (opus) recorderBuilder.setAudioMimeType(MediaFormat.MIMETYPE_AUDIO_OPUS)

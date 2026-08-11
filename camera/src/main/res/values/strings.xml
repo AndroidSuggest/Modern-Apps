@@ -48,6 +48,28 @@
     <!-- Video codec description: most efficient but may not be supported everywhere -->
     <string name="codec_av1_description">Most efficient</string>
 
+    <!-- Audio input source settings (SettingsPage): mic source used for video recordings -->
+    <!-- SettingsPage: section header for audio input source selection -->
+    <string name="settings_audio_source">Audio input source</string>
+    <!-- SettingsPage: text field label for audio input source dropdown -->
+    <string name="settings_audio_source_label">Audio input source</string>
+    <!-- Audio source option label: camcorder (default, tuned for video) -->
+    <string name="audio_source_camcorder_label">Camcorder</string>
+    <!-- Audio source description: default mic tuned for video recording -->
+    <string name="audio_source_camcorder_description">Default, tuned for video</string>
+    <!-- Audio source option label: main microphone -->
+    <string name="audio_source_mic_label">Microphone</string>
+    <!-- Audio source description: the device's main microphone -->
+    <string name="audio_source_mic_description">Main microphone</string>
+    <!-- Audio source option label: voice communication -->
+    <string name="audio_source_voice_communication_label">Voice</string>
+    <!-- Audio source description: noise and echo cancellation, good for speaking to camera -->
+    <string name="audio_source_voice_communication_description">Noise and echo cancellation</string>
+    <!-- Audio source option label: unprocessed / raw audio -->
+    <string name="audio_source_unprocessed_label">Unprocessed</string>
+    <!-- Audio source description: raw audio with no processing -->
+    <string name="audio_source_unprocessed_description">Raw, no processing</string>
+
     <!-- QR code detection overlay -->
     <!-- QrResultOverlay: header title when QR code detected -->
     <string name="qr_result">QR Code</string>

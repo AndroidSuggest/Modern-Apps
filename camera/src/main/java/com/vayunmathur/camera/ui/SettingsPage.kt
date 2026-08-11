@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.vayunmathur.camera.R
 import com.vayunmathur.camera.util.CameraViewModel
+import com.vayunmathur.camera.util.AudioInputSource
 import com.vayunmathur.camera.util.CodecSupport
 import com.vayunmathur.camera.util.VideoCodec
 import com.vayunmathur.library.ui.DropdownMenuItem
@@ -45,6 +46,7 @@ import com.vayunmathur.library.util.NavKey
 fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewModel) {
     val locationEnabled by viewModel.locationEnabled.collectAsState()
     val videoCodec by viewModel.videoCodec.collectAsState()
+    val audioInputSource by viewModel.audioInputSource.collectAsState()
     val context = LocalContext.current
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -111,6 +113,49 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                                     }
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            SettingsSection(title = stringResource(R.string.settings_audio_source)) {
+                var audioExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = audioExpanded,
+                    onExpandedChange = { audioExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = "${stringResource(audioInputSource.labelRes)} — ${stringResource(audioInputSource.descriptionRes)}",
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = audioExpanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                        label = { Text(stringResource(R.string.settings_audio_source_label)) }
+                    )
+                    ExposedDropdownMenu(
+                        expanded = audioExpanded,
+                        onDismissRequest = { audioExpanded = false }
+                    ) {
+                        AudioInputSource.entries.forEach { source ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(stringResource(source.labelRes))
+                                        Text(
+                                            stringResource(source.descriptionRes),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    viewModel.setAudioInputSource(source)
+                                    audioExpanded = false
+                                }
+                            )
                         }
                     }
                 }
