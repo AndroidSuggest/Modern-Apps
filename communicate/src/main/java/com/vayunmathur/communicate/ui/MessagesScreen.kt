@@ -58,31 +58,33 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit) {
             }
         },
     ) { padding ->
-        PermissionGate(
-            permission = Manifest.permission.READ_SMS,
-            message = stringResource(R.string.permission_sms_message),
-            modifier = Modifier.padding(padding),
-        ) { revision ->
-            val threads = produceState<List<SmsThread>?>(initialValue = null, revision) {
-                value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsThreads(context) }
-            }
+        DefaultSmsGate(modifier = Modifier.padding(padding)) { roleRevision ->
+            PermissionGate(
+                permission = Manifest.permission.READ_SMS,
+                message = stringResource(R.string.permission_sms_message),
+                modifier = Modifier.padding(padding),
+            ) { permissionRevision ->
+                val threads = produceState<List<SmsThread>?>(initialValue = null, roleRevision, permissionRevision) {
+                    value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsThreads(context) }
+                }
 
-            when (val rows = threads.value) {
-                null -> com.vayunmathur.library.ui.LoadingState(Modifier.padding(padding))
-                emptyList<SmsThread>() -> EmptyState(
-                    title = stringResource(R.string.empty_messages),
-                    icon = { IconSms() },
-                    modifier = Modifier.padding(padding),
-                )
-                else -> LazyColumn(
-                    modifier = Modifier
-                        .padding(padding)
-                        .fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 88.dp),
-                ) {
-                    items(rows, key = { it.threadId }) { thread ->
-                        MessageThreadRow(thread = thread, onClick = { onOpenThread(thread) })
-                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                when (val rows = threads.value) {
+                    null -> com.vayunmathur.library.ui.LoadingState(Modifier.padding(padding))
+                    emptyList<SmsThread>() -> EmptyState(
+                        title = stringResource(R.string.empty_messages),
+                        icon = { IconSms() },
+                        modifier = Modifier.padding(padding),
+                    )
+                    else -> LazyColumn(
+                        modifier = Modifier
+                            .padding(padding)
+                            .fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 88.dp),
+                    ) {
+                        items(rows, key = { it.threadId }) { thread ->
+                            MessageThreadRow(thread = thread, onClick = { onOpenThread(thread) })
+                            HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                        }
                     }
                 }
             }

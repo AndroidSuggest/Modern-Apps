@@ -94,30 +94,32 @@ fun ConversationScreen(threadId: Long, address: String, onBack: () -> Unit) {
             )
         },
     ) { padding ->
-        PermissionGate(
-            permission = Manifest.permission.READ_SMS,
-            message = stringResource(R.string.permission_sms_message),
-            modifier = Modifier.padding(padding),
-        ) { revision ->
-            val messages = produceState<List<SmsMessage>?>(initialValue = null, threadId, revision) {
-                value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsMessages(context, threadId) }
-            }
-            when (val rows = messages.value) {
-                null -> com.vayunmathur.library.ui.LoadingState(Modifier.padding(padding))
-                emptyList<SmsMessage>() -> EmptyState(
-                    title = stringResource(R.string.empty_messages),
-                    icon = { IconSms() },
-                    modifier = Modifier.padding(padding),
-                )
-                else -> LazyColumn(
-                    modifier = Modifier
-                        .padding(padding)
-                        .fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    items(rows, key = { it.id }) { message ->
-                        MessageBubble(message)
+        DefaultSmsGate(modifier = Modifier.padding(padding)) { roleRevision ->
+            PermissionGate(
+                permission = Manifest.permission.READ_SMS,
+                message = stringResource(R.string.permission_sms_message),
+                modifier = Modifier.padding(padding),
+            ) { permissionRevision ->
+                val messages = produceState<List<SmsMessage>?>(initialValue = null, threadId, roleRevision, permissionRevision) {
+                    value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsMessages(context, threadId) }
+                }
+                when (val rows = messages.value) {
+                    null -> com.vayunmathur.library.ui.LoadingState(Modifier.padding(padding))
+                    emptyList<SmsMessage>() -> EmptyState(
+                        title = stringResource(R.string.empty_messages),
+                        icon = { IconSms() },
+                        modifier = Modifier.padding(padding),
+                    )
+                    else -> LazyColumn(
+                        modifier = Modifier
+                            .padding(padding)
+                            .fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        items(rows, key = { it.id }) { message ->
+                            MessageBubble(message)
+                        }
                     }
                 }
             }

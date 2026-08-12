@@ -39,30 +39,32 @@ fun CallLogsScreen() {
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(R.string.call_logs_title)) }) },
     ) { padding ->
-        PermissionGate(
-            permission = Manifest.permission.READ_CALL_LOG,
-            message = stringResource(R.string.permission_call_logs_message),
-            modifier = Modifier.padding(padding),
-        ) { revision ->
-            val callLogs = produceState<List<CommunicateCallLogEntry>?>(initialValue = null, revision) {
-                value = withContext(Dispatchers.IO) { CommunicateRepository.loadCallLogs(context) }
-            }
-            when (val rows = callLogs.value) {
-                null -> com.vayunmathur.library.ui.LoadingState(Modifier.padding(padding))
-                emptyList<CommunicateCallLogEntry>() -> EmptyState(
-                    title = stringResource(R.string.empty_call_logs),
-                    icon = { IconHistory() },
-                    modifier = Modifier.padding(padding),
-                )
-                else -> LazyColumn(
-                    modifier = Modifier
-                        .padding(padding)
-                        .fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 8.dp),
-                ) {
-                    items(rows, key = { it.id }) { entry ->
-                        CallLogRow(entry) {
-                            CommunicateRepository.placeCall(context, entry.phoneNumber)
+        DefaultDialerGate(modifier = Modifier.padding(padding)) { roleRevision ->
+            PermissionGate(
+                permission = Manifest.permission.READ_CALL_LOG,
+                message = stringResource(R.string.permission_call_logs_message),
+                modifier = Modifier.padding(padding),
+            ) { permissionRevision ->
+                val callLogs = produceState<List<CommunicateCallLogEntry>?>(initialValue = null, roleRevision, permissionRevision) {
+                    value = withContext(Dispatchers.IO) { CommunicateRepository.loadCallLogs(context) }
+                }
+                when (val rows = callLogs.value) {
+                    null -> com.vayunmathur.library.ui.LoadingState(Modifier.padding(padding))
+                    emptyList<CommunicateCallLogEntry>() -> EmptyState(
+                        title = stringResource(R.string.empty_call_logs),
+                        icon = { IconHistory() },
+                        modifier = Modifier.padding(padding),
+                    )
+                    else -> LazyColumn(
+                        modifier = Modifier
+                            .padding(padding)
+                            .fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                    ) {
+                        items(rows, key = { it.id }) { entry ->
+                            CallLogRow(entry) {
+                                CommunicateRepository.placeCall(context, entry.phoneNumber)
+                            }
                         }
                     }
                 }

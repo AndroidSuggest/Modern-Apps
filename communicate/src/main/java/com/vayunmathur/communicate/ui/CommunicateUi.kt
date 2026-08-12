@@ -1,6 +1,7 @@
 package com.vayunmathur.communicate.ui
 
 import android.Manifest
+import android.app.role.RoleManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.text.format.DateFormat
@@ -8,19 +9,21 @@ import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
+import com.vayunmathur.communicate.R
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.IconCall
+import com.vayunmathur.library.ui.IconSms
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.communicate.R
 import java.util.Date
 
 @Composable
@@ -30,7 +33,7 @@ fun PermissionGate(
     modifier: Modifier = Modifier,
     content: @Composable (Int) -> Unit,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     var grantRevision by remember { mutableStateOf(0) }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -52,6 +55,75 @@ fun PermissionGate(
             modifier = modifier.fillMaxSize(),
         )
     }
+}
+
+@Composable
+fun RoleGate(
+    roleName: String,
+    message: String,
+    actionLabel: String,
+    modifier: Modifier = Modifier,
+    icon: @Composable () -> Unit,
+    content: @Composable (Int) -> Unit,
+) {
+    val context = LocalContext.current
+    val roleManager = remember(context) { context.getSystemService(RoleManager::class.java)!! }
+    var roleRevision by remember { mutableStateOf(0) }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { roleRevision++ }
+    val available = roleManager.isRoleAvailable(roleName)
+    val held = roleManager.isRoleHeld(roleName)
+
+    if (held) {
+        content(roleRevision)
+    } else {
+        EmptyState(
+            title = stringResource(R.string.default_app_title),
+            message = if (available) message else stringResource(R.string.default_role_unavailable),
+            icon = icon,
+            action = if (available) {
+                {
+                    Button(onClick = { launcher.launch(roleManager.createRequestRoleIntent(roleName)) }) {
+                        Text(actionLabel)
+                    }
+                }
+            } else {
+                null
+            },
+            modifier = modifier.fillMaxSize(),
+        )
+    }
+}
+
+@Composable
+fun DefaultSmsGate(
+    modifier: Modifier = Modifier,
+    content: @Composable (Int) -> Unit,
+) {
+    RoleGate(
+        roleName = RoleManager.ROLE_SMS,
+        message = stringResource(R.string.default_sms_message),
+        actionLabel = stringResource(R.string.become_default_sms),
+        modifier = modifier,
+        icon = { IconSms() },
+        content = content,
+    )
+}
+
+@Composable
+fun DefaultDialerGate(
+    modifier: Modifier = Modifier,
+    content: @Composable (Int) -> Unit,
+) {
+    RoleGate(
+        roleName = RoleManager.ROLE_DIALER,
+        message = stringResource(R.string.default_dialer_message),
+        actionLabel = stringResource(R.string.become_default_dialer),
+        modifier = modifier,
+        icon = { IconCall() },
+        content = content,
+    )
 }
 
 fun Context.hasCommunicatePermission(permission: String): Boolean =

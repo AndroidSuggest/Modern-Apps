@@ -9,6 +9,12 @@
     <string name="call_logs_title">Call logs</string>
     <string name="conversation_title">Conversation</string>
     <string name="permission_title">Permission needed</string>
+    <string name="default_app_title">Default app needed</string>
+    <string name="default_sms_message">Set Communicate as your default SMS app to read and manage messages here.</string>
+    <string name="default_dialer_message">Set Communicate as your default phone app to use the dialer and call history here.</string>
+    <string name="default_role_unavailable">This device does not offer that default app role.</string>
+    <string name="become_default_sms">Set as default SMS</string>
+    <string name="become_default_dialer">Set as default phone</string>
     <string name="permission_contacts_message">Allow Contacts to show people you can call.</string>
     <string name="permission_sms_message">Allow SMS access to show conversations stored on this phone.</string>
     <string name="permission_call_logs_message">Allow Call log access to show recent calls.</string>
