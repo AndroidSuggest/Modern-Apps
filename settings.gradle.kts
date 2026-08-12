@@ -94,6 +94,7 @@ include(":fooddelivery")
 include(":musicbrainz")
 include(":measure")
 include(":taxi")
+include(":communicate")
 
 // Personal / private app modules live under personal/ (gitignored). Included only
 // when present so the public repo still configures without them.
