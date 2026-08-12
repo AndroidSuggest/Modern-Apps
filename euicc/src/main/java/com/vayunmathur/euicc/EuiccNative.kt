@@ -62,4 +62,11 @@ object EuiccNative {
 
     /** Removes the notification with sequence number [seq]. 0 = success, else error / -1. */
     external fun nativeRemoveNotification(seq: Int): Int
+
+    /**
+     * Runs the full SGP.22 download for an activation code and returns a JSON
+     * `{"success":Boolean,"message":String}` string. Must be called while the
+     * ISD-R channel is open (inside `withIsdrChannel`).
+     */
+    external fun nativeDownloadProfile(activationCode: String): String
 }

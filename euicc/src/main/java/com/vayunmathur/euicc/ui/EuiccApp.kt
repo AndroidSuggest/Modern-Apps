@@ -24,6 +24,7 @@ import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ConfirmDialog
+import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconRefresh
 import com.vayunmathur.library.ui.ListItem
@@ -38,10 +39,12 @@ fun EuiccApp(viewModel: EuiccViewModel) {
     val state = viewModel.state
     var renameTarget by remember { mutableStateOf<Profile?>(null) }
     var deleteTarget by remember { mutableStateOf<Profile?>(null) }
+    var showDownload by remember { mutableStateOf(false) }
 
     AppScaffold(
         title = "EUICC",
         actions = {
+            IconButton(onClick = { showDownload = true }, enabled = !state.loading) { IconAdd() }
             IconButton(onClick = viewModel::reload, enabled = !state.loading) { IconRefresh() }
         },
     ) { padding ->
@@ -55,6 +58,7 @@ fun EuiccApp(viewModel: EuiccViewModel) {
         ) {
             if (state.loading) CircularProgressIndicator()
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
 
             ProfilesSection(
                 profiles = state.profiles,
@@ -95,6 +99,52 @@ fun EuiccApp(viewModel: EuiccViewModel) {
             onDismiss = { deleteTarget = null },
         )
     }
+
+    if (showDownload) {
+        DownloadDialog(
+            onDownload = {
+                viewModel.downloadProfile(it)
+                showDownload = false
+            },
+            onDismiss = { showDownload = false },
+        )
+    }
+}
+
+@Composable
+private fun DownloadDialog(onDownload: (String) -> Unit, onDismiss: () -> Unit) {
+    var code by remember { mutableStateOf("") }
+    var scanning by remember { mutableStateOf(false) }
+
+    if (scanning) {
+        QrScannerScreen(
+            onResult = { code = it; scanning = false },
+            onCancel = { scanning = false },
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Download profile") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it },
+                    label = { Text("Activation code") },
+                )
+                TextButton(onClick = { scanning = true }) { Text("Scan QR code") }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (code.isNotBlank()) onDownload(code.trim()) },
+                enabled = code.isNotBlank(),
+            ) { Text("Download") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

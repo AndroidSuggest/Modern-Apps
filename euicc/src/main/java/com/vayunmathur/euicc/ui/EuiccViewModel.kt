@@ -20,11 +20,17 @@ import kotlinx.serialization.json.Json
 data class EuiccScreenState(
     val loading: Boolean = true,
     val error: String? = null,
+    /** Transient success/info notice (e.g. after a download). */
+    val message: String? = null,
     val eid: String? = null,
     val info: EuiccInfo? = null,
     val profiles: List<Profile> = emptyList(),
     val notifications: List<Notification> = emptyList(),
 )
+
+/** Native download outcome (`{success, message}`). */
+@kotlinx.serialization.Serializable
+private data class DownloadResult(val success: Boolean = false, val message: String = "")
 
 class EuiccViewModel(app: Application) : AndroidViewModel(app) {
     private val channelManager = EuiccChannelManager(app)
@@ -39,6 +45,7 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Reads EID, eUICC info, profiles, and notifications in one channel session. */
     fun reload() {
+        val carryMessage = state.message
         state = state.copy(loading = true, error = null)
         viewModelScope.launch {
             val outcome = withContext(Dispatchers.IO) {
@@ -46,6 +53,7 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
                     channelManager.withIsdrChannel {
                         EuiccScreenState(
                             loading = false,
+                            message = carryMessage,
                             eid = EuiccNative.nativeGetEid(),
                             info = EuiccNative.nativeGetEuiccInfo()?.let { json.decodeFromString<EuiccInfo>(it) },
                             profiles = EuiccNative.nativeGetProfiles()
@@ -59,6 +67,32 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
             state = outcome.getOrElse {
                 state.copy(loading = false, error = it.message ?: "eUICC unavailable")
             }
+        }
+    }
+
+    /** Downloads and installs the profile for an activation code, then reloads. */
+    fun downloadProfile(activationCode: String) {
+        state = state.copy(loading = true, error = null, message = null)
+        viewModelScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching {
+                    channelManager.withIsdrChannel { EuiccNative.nativeDownloadProfile(activationCode) }
+                }
+            }
+            outcome.fold(
+                onSuccess = { raw ->
+                    val result = runCatching { json.decodeFromString<DownloadResult>(raw) }.getOrNull()
+                    when {
+                        result == null -> state = state.copy(loading = false, error = "Download failed")
+                        result.success -> {
+                            state = state.copy(message = result.message)
+                            reload()
+                        }
+                        else -> state = state.copy(loading = false, error = result.message)
+                    }
+                },
+                onFailure = { state = state.copy(loading = false, error = it.message ?: "Download failed") },
+            )
         }
     }
 

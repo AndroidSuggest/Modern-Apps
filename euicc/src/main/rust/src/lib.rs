@@ -13,10 +13,14 @@
 //! (GPL-3.0-only). Ported files carry attribution in their own headers.
 //!
 //! Phase 3 adds the ASN.1 + ES10 (local ISD-R) layers and the STORE DATA
-//! transport; the ES9+/SM-DP+ and crypto modules land in later phases.
+//! transport; Phase 4 adds profile management; Phase 5 adds the ES9+/SM-DP+
+//! orchestration and the profile download/install flow.
 
 mod asn1;
+mod base64;
+mod download;
 mod es10;
+mod es9p;
 mod jni;
 
 /// Version string reported by the native core.

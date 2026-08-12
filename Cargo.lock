@@ -591,6 +591,7 @@ name = "euicc"
 version = "0.1.0"
 dependencies = [
  "jni",
+ "jni_http",
  "log",
  "serde_json",
 ]

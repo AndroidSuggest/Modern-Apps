@@ -44,6 +44,30 @@ const TAG_NOTIFICATION_EVENT: u32 = 0x81; // [1] profileManagementOperation BIT 
 const TAG_NOTIFICATION_ADDRESS: u32 = 0x82; // [2] notificationAddress UTF8String
 const TAG_REMOVE_NOTIFICATION: u32 = 0xBF30; // ES10b RemoveNotificationFromList
 
+const TAG_GET_EUICC_CHALLENGE: u32 = 0xBF2E; // ES10b GetEUICCChallenge
+const TAG_EUICC_CHALLENGE: u32 = 0x80; // [0] euiccChallenge Octet16
+const TAG_AUTHENTICATE_SERVER: u32 = 0xBF38; // ES10b AuthenticateServer
+const TAG_PREPARE_DOWNLOAD: u32 = 0xBF21; // ES10b PrepareDownload
+const TAG_HASH_CC: u32 = 0x04; // hashCc Octet32 (confirmation code)
+const TAG_BPP: u32 = 0xBF36; // BoundProfilePackage
+const TAG_INITIALISE_SECURE_CHANNEL: u32 = 0xBF23; // initialiseSecureChannelRequest
+const TAG_BPP_SEQ_87: u32 = 0xA0; // firstSequenceOf87
+const TAG_BPP_SEQ_88: u32 = 0xA1; // sequenceOf88
+const TAG_BPP_SEQ_87B: u32 = 0xA2; // secondSequenceOf87
+const TAG_BPP_SEQ_86: u32 = 0xA3; // sequenceOf86
+const TAG_PROFILE_INSTALL_RESULT: u32 = 0xBF37; // ProfileInstallationResult
+const TAG_PIR_DATA: u32 = 0xBF27; // profileInstallationResultData
+const TAG_FINAL_RESULT: u32 = 0xA2; // [2] finalResult
+const TAG_SUCCESS_RESULT: u32 = 0xA0; // [0] successResult
+const TAG_ERROR_RESULT: u32 = 0xA1; // [1] errorResult
+
+// ctxParams1 / DeviceInfo construction tags.
+const TAG_CTX_PARAMS_COMMON: u32 = 0xA0; // [0] ctxParamsForCommonAuthentication
+const TAG_MATCHING_ID: u32 = 0x80; // [0] matchingId UTF8String
+const TAG_DEVICE_INFO: u32 = 0x30; // DeviceInfo SEQUENCE
+const TAG_TAC: u32 = 0x80; // [0] tac Octet4
+const TAG_DEVICE_CAPS: u32 = 0xA1; // [1] deviceCapabilities SEQUENCE
+
 /// Parsed subset of EUICCInfo1 useful for display.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EuiccInfo1 {
@@ -285,6 +309,133 @@ pub fn parse_remove_result(response: &[u8]) -> Result<i64, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Download flow (ES10b): challenge, AuthenticateServer, PrepareDownload,
+// LoadBoundProfilePackage
+// ---------------------------------------------------------------------------
+
+/// Outcome of installing a Bound Profile Package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallResult {
+    pub success: bool,
+    pub message: String,
+    /// The raw ProfileInstallationResult (BF37) to deliver via HandleNotification.
+    pub notification: Vec<u8>,
+}
+
+/// Builds the ES10b GetEUICCChallenge request (empty BF2E).
+pub fn build_get_euicc_challenge() -> Vec<u8> {
+    asn1::tlv(TAG_GET_EUICC_CHALLENGE, &[])
+}
+
+/// Parses a GetEUICCChallenge response into the 16-byte challenge.
+pub fn parse_euicc_challenge(response: &[u8]) -> Result<Vec<u8>, String> {
+    let body = asn1::find(response, TAG_GET_EUICC_CHALLENGE).ok_or("GetEUICCChallenge: missing BF2E")?;
+    let challenge = asn1::find(body, TAG_EUICC_CHALLENGE).ok_or("GetEUICCChallenge: missing challenge")?;
+    Ok(challenge.to_vec())
+}
+
+/// Builds ctxParams1 for common authentication: matchingId + a minimal DeviceInfo.
+///
+/// `tac` is the 4-byte Type Allocation Code; deviceCapabilities is sent empty.
+pub fn build_ctx_params1(matching_id: &str, tac: &[u8; 4]) -> Vec<u8> {
+    let mut device_info_val = asn1::tlv(TAG_TAC, tac);
+    device_info_val.extend(asn1::tlv(TAG_DEVICE_CAPS, &[])); // empty DeviceCapabilities
+    let device_info = asn1::tlv(TAG_DEVICE_INFO, &device_info_val);
+
+    let mut common = asn1::tlv(TAG_MATCHING_ID, matching_id.as_bytes());
+    common.extend(device_info);
+    asn1::tlv(TAG_CTX_PARAMS_COMMON, &common)
+}
+
+/// Builds the ES10b AuthenticateServer request by concatenating the server blobs
+/// (each already a complete DER TLV) with ctxParams1, wrapped in BF38.
+pub fn build_authenticate_server(
+    server_signed1: &[u8],
+    server_signature1: &[u8],
+    euicc_ci_pkid: &[u8],
+    server_certificate: &[u8],
+    ctx_params1: &[u8],
+) -> Vec<u8> {
+    let mut v = Vec::new();
+    v.extend_from_slice(server_signed1);
+    v.extend_from_slice(server_signature1);
+    v.extend_from_slice(euicc_ci_pkid);
+    v.extend_from_slice(server_certificate);
+    v.extend_from_slice(ctx_params1);
+    asn1::tlv(TAG_AUTHENTICATE_SERVER, &v)
+}
+
+/// Builds the ES10b PrepareDownload request from the SM-DP+ blobs (each a
+/// complete DER TLV), wrapped in BF21.
+pub fn build_prepare_download(
+    smdp_signed2: &[u8],
+    smdp_signature2: &[u8],
+    hash_cc: Option<&[u8]>,
+    smdp_certificate: &[u8],
+) -> Vec<u8> {
+    let mut v = Vec::new();
+    v.extend_from_slice(smdp_signed2);
+    v.extend_from_slice(smdp_signature2);
+    if let Some(cc) = hash_cc {
+        v.extend(asn1::tlv(TAG_HASH_CC, cc));
+    }
+    v.extend_from_slice(smdp_certificate);
+    asn1::tlv(TAG_PREPARE_DOWNLOAD, &v)
+}
+
+/// Segments a Bound Profile Package (BF36) into the ordered list of TLVs the LPA
+/// must transmit to the eUICC via STORE DATA: the initialiseSecureChannelRequest
+/// followed by each element of the 87/88/87/86 sequences.
+pub fn segment_bpp(bpp: &[u8]) -> Result<Vec<Vec<u8>>, String> {
+    let body = asn1::find(bpp, TAG_BPP).ok_or("BoundProfilePackage: missing BF36")?;
+    let mut segments = Vec::new();
+    for child in asn1::children(body).ok_or("BoundProfilePackage: malformed")? {
+        match child.tag {
+            TAG_INITIALISE_SECURE_CHANNEL => {
+                segments.push(asn1::tlv(child.tag, child.value));
+            }
+            TAG_BPP_SEQ_87 | TAG_BPP_SEQ_88 | TAG_BPP_SEQ_87B | TAG_BPP_SEQ_86 => {
+                for element in asn1::children(child.value).ok_or("BPP: malformed sequence")? {
+                    segments.push(asn1::tlv(element.tag, element.value));
+                }
+            }
+            other => {
+                // Unknown top-level element: forward it verbatim to be safe.
+                segments.push(asn1::tlv(other, child.value));
+            }
+        }
+    }
+    Ok(segments)
+}
+
+/// Parses a ProfileInstallationResult (BF37) into an [`InstallResult`].
+pub fn parse_install_result(response: &[u8]) -> Result<InstallResult, String> {
+    let body = asn1::find(response, TAG_PROFILE_INSTALL_RESULT)
+        .ok_or("ProfileInstallationResult: missing BF37")?;
+    let data = asn1::find(body, TAG_PIR_DATA).ok_or("ProfileInstallationResult: missing BF27")?;
+    let final_result = asn1::find(data, TAG_FINAL_RESULT)
+        .ok_or("ProfileInstallationResult: missing finalResult")?;
+
+    let (success, message) = if asn1::find(final_result, TAG_SUCCESS_RESULT).is_some() {
+        (true, "Profile installed".to_string())
+    } else if let Some(err) = asn1::find(final_result, TAG_ERROR_RESULT) {
+        // errorResult ::= SEQUENCE { bppCommandId INTEGER, errorReason ENUMERATED, ... }
+        let reason = asn1::children(err)
+            .and_then(|kids| kids.get(1).map(|k| parse_int(k.value)))
+            .unwrap_or(-1);
+        (false, format!("Install failed (errorReason {reason})"))
+    } else {
+        (false, "Install failed (unknown result)".to_string())
+    };
+
+    Ok(InstallResult {
+        success,
+        message,
+        notification: response.to_vec(),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -521,5 +672,73 @@ mod tests {
         assert_eq!(notes[0].seq_number, 3);
         assert_eq!(notes[0].operation, "enable");
         assert_eq!(notes[0].address, "smdp.example.com");
+    }
+
+    #[test]
+    fn euicc_challenge_roundtrip() {
+        assert_eq!(build_get_euicc_challenge(), vec![0xBF, 0x2E, 0x00]);
+        let challenge = [0x11u8; 16];
+        let inner = asn1::tlv(TAG_EUICC_CHALLENGE, &challenge);
+        let resp = asn1::tlv(TAG_GET_EUICC_CHALLENGE, &inner);
+        assert_eq!(parse_euicc_challenge(&resp).unwrap(), challenge.to_vec());
+    }
+
+    #[test]
+    fn ctx_params1_shape() {
+        let ctx = build_ctx_params1("MID-123", &[0, 0, 0, 0]);
+        // A0 { 80 <mid> 30 { 80 04 <tac> A1 00 } }
+        let common = asn1::find(&ctx, TAG_CTX_PARAMS_COMMON).unwrap();
+        assert_eq!(asn1::find(common, TAG_MATCHING_ID).unwrap(), b"MID-123");
+        let di = asn1::find(common, TAG_DEVICE_INFO).unwrap();
+        assert_eq!(asn1::find(di, TAG_TAC).unwrap(), &[0, 0, 0, 0]);
+        assert_eq!(asn1::find(di, TAG_DEVICE_CAPS).unwrap(), &[] as &[u8]);
+    }
+
+    #[test]
+    fn authenticate_server_concatenates_blobs() {
+        let req = build_authenticate_server(&[0x30, 0x01, 0xAA], &[0x5F, 0x37, 0x01, 0xBB], &[0x04, 0x01, 0xCC], &[0x30, 0x01, 0xDD], &[0xA0, 0x00]);
+        let body = asn1::find(&req, TAG_AUTHENTICATE_SERVER).unwrap();
+        assert_eq!(body, &[0x30, 0x01, 0xAA, 0x5F, 0x37, 0x01, 0xBB, 0x04, 0x01, 0xCC, 0x30, 0x01, 0xDD, 0xA0, 0x00]);
+    }
+
+    #[test]
+    fn segment_bpp_orders_elements() {
+        let isc = asn1::tlv(TAG_INITIALISE_SECURE_CHANNEL, &[0x01]);
+        let seq87 = asn1::tlv(TAG_BPP_SEQ_87, &asn1::tlv(0x87, &[0x11, 0x22]));
+        let mut seq88_inner = asn1::tlv(0x88, &[0x33]);
+        seq88_inner.extend(asn1::tlv(0x88, &[0x44]));
+        let seq88 = asn1::tlv(TAG_BPP_SEQ_88, &seq88_inner);
+        let seq86 = asn1::tlv(TAG_BPP_SEQ_86, &asn1::tlv(0x86, &[0x55]));
+        let mut body = Vec::new();
+        body.extend(isc);
+        body.extend(seq87);
+        body.extend(seq88);
+        body.extend(seq86);
+        let bpp = asn1::tlv(TAG_BPP, &body);
+
+        let segments = segment_bpp(&bpp).unwrap();
+        assert_eq!(segments.len(), 5); // BF23, 87, 88, 88, 86
+        assert_eq!(segments[0], vec![0xBF, 0x23, 0x01, 0x01]);
+        assert_eq!(segments[1], vec![0x87, 0x02, 0x11, 0x22]);
+        assert_eq!(segments[2], vec![0x88, 0x01, 0x33]);
+        assert_eq!(segments[3], vec![0x88, 0x01, 0x44]);
+        assert_eq!(segments[4], vec![0x86, 0x01, 0x55]);
+    }
+
+    #[test]
+    fn install_result_success_and_error() {
+        let ok_final = asn1::tlv(TAG_FINAL_RESULT, &asn1::tlv(TAG_SUCCESS_RESULT, &[]));
+        let ok_data = asn1::tlv(TAG_PIR_DATA, &ok_final);
+        let ok = asn1::tlv(TAG_PROFILE_INSTALL_RESULT, &ok_data);
+        assert!(parse_install_result(&ok).unwrap().success);
+
+        let mut err_inner = asn1::tlv(TAG_RESULT, &[0x00]); // bppCommandId
+        err_inner.extend(asn1::tlv(0x81, &[0x05])); // errorReason = 5
+        let err_final = asn1::tlv(TAG_FINAL_RESULT, &asn1::tlv(TAG_ERROR_RESULT, &err_inner));
+        let err_data = asn1::tlv(TAG_PIR_DATA, &err_final);
+        let err = asn1::tlv(TAG_PROFILE_INSTALL_RESULT, &err_data);
+        let r = parse_install_result(&err).unwrap();
+        assert!(!r.success);
+        assert!(r.message.contains('5'));
     }
 }

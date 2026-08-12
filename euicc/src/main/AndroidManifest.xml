@@ -5,6 +5,11 @@
          privileges or a platform-signed system app holding these permissions. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.MODIFY_PHONE_STATE" />
+    <!-- Reaching the SM-DP+ for profile download. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Scanning eSIM activation-code QR codes. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
         android:allowBackup="true"
