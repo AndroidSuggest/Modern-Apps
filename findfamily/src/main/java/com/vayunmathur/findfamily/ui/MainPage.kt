@@ -592,24 +592,29 @@ fun PersonDetailSheet(state: PersonUiState, actions: PersonActions) {
     Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 4.dp)) {
         UserCard(user, state.location, true) {}
         Spacer(Modifier.height(8.dp))
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                stringResource(R.string.share_your_location),
-                Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Switch(
-                user.sendingEnabled,
-                { send -> actions.setUserSharing(user, send) }
-            )
+        // Sharing controls are hidden for your own entry: you can't "stop sharing with
+        // yourself", and doing so per-person was a confusing way to try to turn the
+        // service off. Use the Quick Settings tile to disable tracking (GitHub #487).
+        if (user.id != Networking.userid) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.share_your_location),
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Switch(
+                    user.sendingEnabled,
+                    { send -> actions.setUserSharing(user, send) }
+                )
+            }
+            // Auto-toggle: "Turn on/off after" + duration dropdown (Never default)
+            Spacer(Modifier.height(4.dp))
+            AutoToggleRow(user, actions)
+            Spacer(Modifier.height(4.dp))
         }
-        // Auto-toggle: "Turn on/off after" + duration dropdown (Never default)
-        Spacer(Modifier.height(4.dp))
-        AutoToggleRow(user, actions)
-        Spacer(Modifier.height(4.dp))
         OutlinedButton(
             { actions.changeConnectedContact() },
             Modifier.fillMaxWidth()

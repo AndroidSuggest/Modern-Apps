@@ -700,21 +700,34 @@ class ServiceRestartWorker(
  * Single source of truth for whether the [LocationTrackingService] should be
  * running and for (re)starting / stopping it accordingly.
  *
- * The service must run whenever fine (precise) location permission is granted,
- * regardless of whether location sharing is enabled. Sharing toggles are
- * enforced inside the heartbeat (we only publish to users with
- * sendingEnabled=true) rather than by stopping the service, so that UWB
- * inbox draining, waypoint entry/exit, low-battery alerts, and receiving peers'
- * locations continue to work even when the user pauses sharing or on fresh
- * install before any contact is added.
+ * The service runs whenever fine (precise) location permission is granted **and**
+ * the user hasn't turned tracking off (the [TRACKING_ENABLED_KEY] flag, toggled
+ * from the Quick Settings tile — see TrackingTileService). Sharing toggles are
+ * enforced inside the heartbeat (we only publish to users with sendingEnabled=true)
+ * rather than by stopping the service, so that UWB inbox draining, waypoint
+ * entry/exit, low-battery alerts, and receiving peers' locations continue to work
+ * even when the user pauses sharing or on fresh install before any contact is added.
  */
 object LocationServiceController {
+
+    /** Persisted on/off switch for the whole tracking service (default on). */
+    const val TRACKING_ENABLED_KEY = "tracking_enabled"
 
     fun hasFineLocationPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
+
+    /** Whether the user has left tracking enabled. Defaults to true (opt-out, not opt-in). */
+    suspend fun isTrackingEnabled(context: Context): Boolean =
+        DataStoreUtils.getInstance(context).getBooleanAwait(TRACKING_ENABLED_KEY, true)
+
+    /** Persist the tracking on/off choice and immediately start/stop the service to match. */
+    suspend fun setTrackingEnabled(context: Context, enabled: Boolean) {
+        DataStoreUtils.getInstance(context).setBoolean(TRACKING_ENABLED_KEY, enabled)
+        syncServiceState(context)
+    }
 
     /**
      * True iff the user is sharing their location with at least one *other*
@@ -730,11 +743,12 @@ object LocationServiceController {
 
     /**
      * Start the service if eligible, otherwise make sure it is stopped. Safe to
-     * call from any context (worker, boot, ViewModel, permission refresh).
+     * call from any context (worker, boot, ViewModel, permission refresh, tile).
+     * Eligible = fine-location permission granted AND tracking not turned off.
      */
     suspend fun syncServiceState(context: Context) {
         val appContext = context.applicationContext
-        val eligible = hasFineLocationPermission(appContext)
+        val eligible = hasFineLocationPermission(appContext) && isTrackingEnabled(appContext)
         val intent = Intent(appContext, LocationTrackingService::class.java)
         withContext(Dispatchers.Main) {
             if (eligible) {
