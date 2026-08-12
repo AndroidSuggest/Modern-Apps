@@ -8,45 +8,81 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.euicc.EuiccNative
 import com.vayunmathur.euicc.data.EuiccInfo
+import com.vayunmathur.euicc.data.Notification
+import com.vayunmathur.euicc.data.Profile
 import com.vayunmathur.euicc.telephony.EuiccChannelManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
-/** UI state for the EID / eUICC-info screen. */
-sealed interface EuiccUiState {
-    data object Loading : EuiccUiState
-    data class Ready(val eid: String?, val info: EuiccInfo?) : EuiccUiState
-    data class Error(val message: String) : EuiccUiState
-}
+/** Aggregate UI state for the LPA screen. */
+data class EuiccScreenState(
+    val loading: Boolean = true,
+    val error: String? = null,
+    val eid: String? = null,
+    val info: EuiccInfo? = null,
+    val profiles: List<Profile> = emptyList(),
+    val notifications: List<Notification> = emptyList(),
+)
 
 class EuiccViewModel(app: Application) : AndroidViewModel(app) {
     private val channelManager = EuiccChannelManager(app)
     private val json = Json { ignoreUnknownKeys = true }
 
-    var state by mutableStateOf<EuiccUiState>(EuiccUiState.Loading)
+    var state by mutableStateOf(EuiccScreenState())
         private set
 
     init {
-        refresh()
+        reload()
     }
 
-    /** Opens the ISD-R channel and reads the EID + EUICCInfo1 off the eUICC. */
-    fun refresh() {
-        state = EuiccUiState.Loading
+    /** Reads EID, eUICC info, profiles, and notifications in one channel session. */
+    fun reload() {
+        state = state.copy(loading = true, error = null)
         viewModelScope.launch {
-            state = withContext(Dispatchers.IO) {
-                try {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching {
                     channelManager.withIsdrChannel {
-                        val eid = EuiccNative.nativeGetEid()
-                        val info = EuiccNative.nativeGetEuiccInfo()
-                            ?.let { json.decodeFromString<EuiccInfo>(it) }
-                        EuiccUiState.Ready(eid, info)
+                        EuiccScreenState(
+                            loading = false,
+                            eid = EuiccNative.nativeGetEid(),
+                            info = EuiccNative.nativeGetEuiccInfo()?.let { json.decodeFromString<EuiccInfo>(it) },
+                            profiles = EuiccNative.nativeGetProfiles()
+                                ?.let { json.decodeFromString<List<Profile>>(it) } ?: emptyList(),
+                            notifications = EuiccNative.nativeListNotifications()
+                                ?.let { json.decodeFromString<List<Notification>>(it) } ?: emptyList(),
+                        )
                     }
-                } catch (e: Exception) {
-                    EuiccUiState.Error(e.message ?: "eUICC unavailable")
                 }
+            }
+            state = outcome.getOrElse {
+                state.copy(loading = false, error = it.message ?: "eUICC unavailable")
+            }
+        }
+    }
+
+    fun enable(iccid: String) = action { EuiccNative.nativeEnableProfile(iccid) }
+    fun disable(iccid: String) = action { EuiccNative.nativeDisableProfile(iccid) }
+    fun delete(iccid: String) = action { EuiccNative.nativeDeleteProfile(iccid) }
+    fun rename(iccid: String, nickname: String) = action { EuiccNative.nativeSetNickname(iccid, nickname) }
+    fun removeNotification(seq: Int) = action { EuiccNative.nativeRemoveNotification(seq) }
+
+    /** Runs a single ES10 mutation in its own channel session, then reloads. */
+    private fun action(op: () -> Int) {
+        state = state.copy(loading = true, error = null)
+        viewModelScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching { channelManager.withIsdrChannel { op() } }
+            }
+            val error = outcome.fold(
+                onSuccess = { code -> if (code == 0) null else "Operation failed (code $code)" },
+                onFailure = { it.message ?: "Operation failed" },
+            )
+            if (error == null) {
+                reload()
+            } else {
+                state = state.copy(loading = false, error = error)
             }
         }
     }

@@ -41,4 +41,25 @@ object EuiccNative {
 
     /** Returns the EUICCInfo1 subset as a JSON string, or null on error. */
     external fun nativeGetEuiccInfo(): String?
+
+    /** Returns the installed profiles as a JSON array string, or null on error. */
+    external fun nativeGetProfiles(): String?
+
+    /** Enables the profile with [iccid] (raw hex). 0 = success, else error code / -1. */
+    external fun nativeEnableProfile(iccid: String): Int
+
+    /** Disables the profile with [iccid] (raw hex). 0 = success, else error code / -1. */
+    external fun nativeDisableProfile(iccid: String): Int
+
+    /** Deletes the profile with [iccid] (raw hex). 0 = success, else error code / -1. */
+    external fun nativeDeleteProfile(iccid: String): Int
+
+    /** Sets the nickname of the profile with [iccid] (raw hex). 0 = success, else error / -1. */
+    external fun nativeSetNickname(iccid: String, nickname: String): Int
+
+    /** Returns pending notifications as a JSON array string, or null on error. */
+    external fun nativeListNotifications(): String?
+
+    /** Removes the notification with sequence number [seq]. 0 = success, else error / -1. */
+    external fun nativeRemoveNotification(seq: Int): Int
 }
