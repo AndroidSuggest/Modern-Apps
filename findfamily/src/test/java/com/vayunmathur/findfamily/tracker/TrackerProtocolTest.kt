@@ -1,0 +1,59 @@
+package com.vayunmathur.findfamily.tracker
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * Pure-JVM tests for the tracker beacon crypto. These assert the exact properties
+ * the server's `tracker_epoch_id` mirror relies on; a regression here silently
+ * breaks crowd resolution between the app and the Rust server.
+ */
+class TrackerProtocolTest {
+
+    private val secret = ByteArray(32) { it.toByte() }
+
+    @Test
+    fun epochIdIsDeterministicAndSized() {
+        val a = TrackerProtocol.epochId(secret, 100)
+        val b = TrackerProtocol.epochId(secret, 100)
+        assertEquals(TrackerProtocol.EPOCH_ID_LEN, a.size)
+        assertTrue(a.contentEquals(b), "same (secret, epoch) -> same id")
+    }
+
+    @Test
+    fun epochIdRotatesWithEpochAndSecret() {
+        val a = TrackerProtocol.epochId(secret, 100)
+        assertFalse(a.contentEquals(TrackerProtocol.epochId(secret, 101)), "different epoch -> different id")
+        val other = ByteArray(32) { (it + 1).toByte() }
+        assertFalse(a.contentEquals(TrackerProtocol.epochId(other, 100)), "different secret -> different id")
+    }
+
+    @Test
+    fun currentEpochMatchesFormula() {
+        val nowMs = 1_786_570_000_000L
+        assertEquals((nowMs / 1000L) / TrackerProtocol.EPOCH_SECONDS, TrackerProtocol.currentEpoch(nowMs))
+    }
+
+    @Test
+    fun recentEpochIdsCoverTheWindowNewestFirst() {
+        val nowMs = 1_786_570_000_000L
+        val ids = TrackerProtocol.recentEpochIds(secret, nowMs = nowMs, back = 8)
+        assertEquals(9, ids.size)
+        val cur = TrackerProtocol.currentEpoch(nowMs)
+        assertTrue(ids[0].contentEquals(TrackerProtocol.epochId(secret, cur)), "index 0 is the current epoch id")
+        assertTrue(ids[8].contentEquals(TrackerProtocol.epochId(secret, cur - 8)), "last is 8 epochs back")
+    }
+
+    @Test
+    fun kemPrivParsingExtractsLengthPrefixedComponent() {
+        val kem = byteArrayOf(1, 2, 3, 4, 5)
+        val dsa = byteArrayOf(9, 9)
+        val bundle = ByteArray(4 + kem.size + dsa.size)
+        bundle[3] = kem.size.toByte() // 4-byte big-endian length = 5
+        kem.copyInto(bundle, 4)
+        dsa.copyInto(bundle, 4 + kem.size)
+        assertTrue(TrackerProtocol.kemPrivFromPrivateBundle(bundle).contentEquals(kem))
+    }
+}

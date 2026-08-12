@@ -14,6 +14,19 @@ enum class RequestStatus {
     AWAITING_RESPONSE
 }
 
+/**
+ * Distinguishes a normal person contact from a custom UWB item-tracker. Trackers
+ * reuse the [User] row (and therefore the whole map/list/relay pipeline) but are
+ * non-interactive: they never publish, never auto-toggle, and only ever appear as
+ * a received location pin. Stored by Room as the enum name (`"PERSON"`/`"TRACKER"`).
+ * Gated behind `BuildConfig.DEV_BUILD`; release rows are always [PERSON].
+ */
+@Serializable
+enum class UserKind {
+    PERSON,
+    TRACKER
+}
+
 @Serializable
 @Entity
 data class User(
@@ -35,7 +48,10 @@ data class User(
      * Mutually exclusive with [sharingAutoToggleAt]: setting one clears the other. */
     val sharingAutoToggleWaypointId: Long? = null,
     /** Peer post-quantum public bundle (base64: [4B kemLen][kemPubDer][dsaPubDer]), nullable for backward compat. */
-    val pqcEncryptionKey: String? = null
+    val pqcEncryptionKey: String? = null,
+    /** Whether this row is a person contact or a custom UWB tracker. Defaults to
+     * [UserKind.PERSON]; only the DEV_BUILD tracker feature ever writes [UserKind.TRACKER]. */
+    val kind: UserKind = UserKind.PERSON
 ): DatabaseItem {
     companion object {
         val EMPTY = User(" ", null, "Unnamed Location", true, RequestStatus.MUTUAL_CONNECTION, Clock.System.now(), null)

@@ -149,7 +149,7 @@ interface TemporaryLinkDao {
     suspend fun delete(value: TemporaryLink): Int
 }
 
-@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class], version = 9, exportSchema = false)
+@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class], version = 10, exportSchema = false)
 @TypeConverters(DefaultConverters::class)
 abstract class FFDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -211,6 +211,11 @@ abstract class FFDatabase : RoomDatabase() {
             },
             androidx.room.migration.Migration(8, 9) {
                 it.execSQL("ALTER TABLE `User` ADD COLUMN `sharingAutoToggleWaypointId` INTEGER")
+            },
+            // Custom UWB tracker support (DEV_BUILD): a `User` can now be a person or a
+            // tracker. Room stores the enum as its name; existing rows default to PERSON.
+            androidx.room.migration.Migration(9, 10) {
+                it.execSQL("ALTER TABLE `User` ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'PERSON'")
             }
         )
     }

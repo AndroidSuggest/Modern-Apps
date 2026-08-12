@@ -48,6 +48,11 @@ import com.vayunmathur.findfamily.data.havershine
 import com.vayunmathur.findfamily.uwb.UwbEnvelope
 import com.vayunmathur.findfamily.uwb.UwbEnvelopeKind
 import com.vayunmathur.findfamily.uwb.UwbInbox
+import com.vayunmathur.findfamily.BuildConfig
+import com.vayunmathur.findfamily.data.UserKind
+import com.vayunmathur.findfamily.tracker.TrackerBeaconScanner
+import com.vayunmathur.findfamily.tracker.TrackerReporting
+import com.vayunmathur.findfamily.tracker.TrackerStore
 import com.vayunmathur.findfamily.MainActivity
 import com.vayunmathur.findfamily.R
 import com.vayunmathur.library.util.DataStoreUtils
@@ -103,6 +108,11 @@ class LocationTrackingService : Service(), SensorEventListener {
     private var lastKnownLocation: Location? = null
     private var heartbeatJob: Job? = null
     private var trackingInitialized = false
+
+    // Custom UWB tracker feature (DEV_BUILD only). Owner-side store of tracker
+    // secrets/private keys, and the finder-side beacon scan job.
+    private var trackerStore: TrackerStore? = null
+    private var trackerScanJob: Job? = null
 
     private val networkListener = LocationListener { location ->
         lastKnownLocation = location
@@ -318,6 +328,59 @@ class LocationTrackingService : Service(), SensorEventListener {
         }
     }
 
+    // -----------------------------------------------------------------
+    // Custom UWB tracker crowd-finding (DEV_BUILD only)
+    // -----------------------------------------------------------------
+
+    /**
+     * Finder path: subscribe to tracker beacon sightings and, for each, upload a
+     * report stamped with this device's current GPS (if accurate enough). The sealed
+     * report is readable only by the tracker's owner. Started once from startTracking.
+     */
+    private fun startTrackerScanner() {
+        if (trackerScanJob?.isActive == true) return
+        trackerScanJob = serviceScope.launch {
+            runCatching {
+                TrackerBeaconScanner(this@LocationTrackingService).sightings().collect { sighting ->
+                    val loc = lastKnownLocation ?: return@collect
+                    if (loc.accuracy > 100f) return@collect
+                    val battery = runCatching {
+                        bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).toFloat()
+                    }.getOrDefault(0f)
+                    val lv = LocationValue(
+                        Networking.userid,
+                        Coord(loc.latitude, loc.longitude),
+                        0f,
+                        loc.accuracy,
+                        Clock.System.now(),
+                        battery,
+                    )
+                    runCatching { TrackerReporting.reportSighting(sighting, lv) }
+                        .onFailure { Log.w("FF-Tracker", "reportSighting failed", it) }
+                }
+            }.onFailure { Log.w("FF-Tracker", "tracker scan collect failed", it) }
+        }
+    }
+
+    /**
+     * Owner path: (re)register owned trackers so finders can resolve them, then fetch
+     * and decrypt recent crowd reports and feed them through the normal incoming
+     * pipeline so each tracker shows up as a map pin. Runs on the heartbeat tick.
+     */
+    private suspend fun pollTrackerReports() {
+        val store = trackerStore ?: return
+        val trackers = runCatching { userDao.getAll().filter { it.kind == UserKind.TRACKER } }
+            .getOrDefault(emptyList())
+        if (trackers.isEmpty()) return
+        val locs = ArrayList<LocationValue>()
+        for (t in trackers) {
+            runCatching { TrackerReporting.registerTracker(t, store) }
+            locs += runCatching { TrackerReporting.fetchTrackerLocations(t, store) }
+                .getOrDefault(emptyList())
+        }
+        if (locs.isNotEmpty()) processIncomingLocations(locs)
+    }
+
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type == Sensor.TYPE_LINEAR_ACCELERATION) {
             val x = event.values[0]
@@ -405,6 +468,12 @@ class LocationTrackingService : Service(), SensorEventListener {
                 // bring the app to foreground first. See UwbSessionManager.
                 UwbSessionManager.init(this@LocationTrackingService, userDao)
 
+                // Custom UWB tracker crowd-finding (DEV_BUILD): owner-side secret/key
+                // store. Gated so release builds never touch it.
+                if (BuildConfig.DEV_BUILD) {
+                    trackerStore = TrackerStore(DataStoreUtils.getInstance(this@LocationTrackingService))
+                }
+
                 withContext(Dispatchers.Main) {
                     registerSensors()
                     // If we don't have any recent location (e.g. fresh start or recovery
@@ -433,6 +502,7 @@ class LocationTrackingService : Service(), SensorEventListener {
                         break
                     }
                     syncHeartbeat()
+                    if (BuildConfig.DEV_BUILD) runCatching { pollTrackerReports() }
                     delay(30.seconds)
                 }
             }
@@ -445,6 +515,10 @@ class LocationTrackingService : Service(), SensorEventListener {
                 onLocations = { processIncomingLocations(it) },
                 onUwb = { handleUwbEnvelopes(it) },
             )
+
+            // Finder side of the crowd-finding network: scan for tracker beacons and
+            // report each sighting with our own GPS. DEV_BUILD only.
+            if (BuildConfig.DEV_BUILD) startTrackerScanner()
         }
     }
 

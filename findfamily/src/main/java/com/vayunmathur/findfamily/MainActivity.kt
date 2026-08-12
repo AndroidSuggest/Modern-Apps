@@ -53,6 +53,7 @@ import com.vayunmathur.findfamily.ui.MainPage
 import com.vayunmathur.findfamily.ui.UwbRangingScreen
 import com.vayunmathur.findfamily.ui.dialogs.AddLinkDialog
 import com.vayunmathur.findfamily.ui.dialogs.AddPersonDialog
+import com.vayunmathur.findfamily.ui.dialogs.AddTrackerDialog
 import com.vayunmathur.findfamily.ui.dialogs.decodeBase26
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
@@ -328,6 +329,10 @@ sealed interface Route: NavKey {
     @Serializable
     data object AddLinkDialog: Route
 
+    /** Dev-only (DEV_BUILD): bind a new custom UWB tracker. */
+    @Serializable
+    data object AddTrackerDialog: Route
+
     @Serializable
     data object MissingFeaturesDialog: Route
 
@@ -381,6 +386,9 @@ fun Navigation(
         }
         entry<Route.AddLinkDialog>(metadata = DialogPage()) {
             AddLinkDialog(backStack, ffViewModel)
+        }
+        entry<Route.AddTrackerDialog>(metadata = DialogPage()) {
+            AddTrackerDialog(backStack)
         }
         entry<Route.MissingFeaturesDialog>(metadata = DialogPage()) {
             MissingFeaturesDialog(backStack)

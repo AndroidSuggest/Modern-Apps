@@ -61,6 +61,11 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
     }
     buildFeatures {
         compose = true
+        // Repo-wide DEV_BUILD flag (see buildTypes below). Every app gets a
+        // BuildConfig.DEV_BUILD constant: true for assembleDev/assembleDebug,
+        // false for assembleRelease. Gate experimental/dev-only features on it so
+        // R8 strips them from release builds.
+        buildConfig = true
     }
 
     namespace = "com.vayunmathur${path.replace(":", ".")}"
@@ -135,11 +140,13 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"), proguardFile.absolutePath,
             )
+            buildConfigField("boolean", "DEV_BUILD", "false")
         }
         debug {
             ndk {
                 abiFilters.add("arm64-v8a")
             }
+            buildConfigField("boolean", "DEV_BUILD", "true")
         }
         create("dev") {
             initWith(getByName("release"))
@@ -150,6 +157,8 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
                 abiFilters.clear()
                 abiFilters.add("arm64-v8a")
             }
+            // initWith(release) copied DEV_BUILD=false; dev is a developer build, so flip it on.
+            buildConfigField("boolean", "DEV_BUILD", "true")
         }
     }
 

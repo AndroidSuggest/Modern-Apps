@@ -26,6 +26,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.io.encoding.Base64
 import kotlin.random.Random
 import kotlin.time.Clock
@@ -138,6 +139,16 @@ object Networking {
     private const val WS_OP_GETKEY_RESP: Byte = 0x05
     private const val WS_FLAG_UWB = 0x01
 
+    // Custom UWB tracker crowd-finding opcodes (DEV_BUILD). Mirrored on the server
+    // (src/handlers/findfamily.rs). Older servers ignore unknown opcodes, so these
+    // are backward-compatible: resolve/report-get simply time out to null/empty.
+    private const val WS_OP_TRACKER_REGISTER: Byte = 0x06 // [0x06][u64 tracker_id][u16 secretLen][secret][bundle…]
+    private const val WS_OP_RESOLVE_REQ: Byte = 0x07 //      [0x07][16B epochId]
+    private const val WS_OP_RESOLVE_RESP: Byte = 0x08 //     [0x08][status][16B epochId][bundle…]
+    private const val WS_OP_REPORT_PUT: Byte = 0x09 //       [0x09][16B epochId][ciphertext…]
+    private const val WS_OP_REPORT_GET_REQ: Byte = 0x0A //   [0x0A][u16 n]([16B epochId]×n)
+    private const val WS_OP_REPORT_GET_RESP: Byte = 0x0B //  [0x0B][u16 count]([u32 len][ct]×count)
+
     private const val WS_KEY_NONE = 0
     private const val WS_KEY_CLASSIC = 1
     private const val WS_KEY_PQC = 2
@@ -149,6 +160,12 @@ object Networking {
 
     /** In-flight GETKEY requests, keyed by target userid, completed when the KEYRESP arrives. */
     private val pendingKeyRequests = ConcurrentHashMap<Long, CompletableDeferred<KeyResult?>>()
+
+    /** In-flight tracker RESOLVE requests, keyed by the epoch-id hex, completed on RESOLVE_RESP. */
+    private val pendingResolves = ConcurrentHashMap<String, CompletableDeferred<ByteArray?>>()
+
+    /** In-flight tracker REPORT_GET requests (FIFO — the owner polls them one at a time). */
+    private val pendingReportGets = ConcurrentLinkedQueue<CompletableDeferred<List<ByteArray>>>()
 
     /** True while the live socket is connected. */
     val liveConnected: Boolean get() = wsSession != null
@@ -211,6 +228,9 @@ object Networking {
                 // Fail any awaiting key lookups so their callers don't hang until timeout.
                 pendingKeyRequests.values.forEach { it.complete(null) }
                 pendingKeyRequests.clear()
+                pendingResolves.values.forEach { it.complete(null) }
+                pendingResolves.clear()
+                while (true) { (pendingReportGets.poll() ?: break).complete(emptyList()) }
                 if (!isActive) break
                 delay(backoff)
                 backoff = (backoff * 2).coerceAtMost(15_000)
@@ -222,6 +242,9 @@ object Networking {
         liveJob?.cancel(); liveJob = null; wsSession = null
         pendingKeyRequests.values.forEach { it.complete(null) }
         pendingKeyRequests.clear()
+        pendingResolves.values.forEach { it.complete(null) }
+        pendingResolves.clear()
+        while (true) { (pendingReportGets.poll() ?: break).complete(emptyList()) }
     }
 
     /** Parse one server frame and dispatch: MSG → decrypt+deliver; KEYRESP → complete the lookup. */
@@ -256,6 +279,32 @@ object Networking {
                 val target = readU64Be(buf, 2)
                 val bundle = if (buf.size > 10) buf.copyOfRange(10, buf.size) else null
                 pendingKeyRequests.remove(target)?.complete(KeyResult(status, bundle))
+            }
+            WS_OP_RESOLVE_RESP -> {
+                // [0x08][status][16B epochId][bundle…]
+                if (buf.size < 18) return
+                val found = buf[1].toInt() == 1
+                val epochHex = buf.copyOfRange(2, 18).toHex()
+                val bundle = if (found && buf.size > 18) buf.copyOfRange(18, buf.size) else null
+                pendingResolves.remove(epochHex)?.complete(bundle)
+            }
+            WS_OP_REPORT_GET_RESP -> {
+                // [0x0B][u16 count]([u32 len][ct]×count)
+                if (buf.size < 3) return
+                val count = ((buf[1].toInt() and 0xFF) shl 8) or (buf[2].toInt() and 0xFF)
+                val out = ArrayList<ByteArray>(count)
+                var off = 3
+                var i = 0
+                while (i < count && off + 4 <= buf.size) {
+                    val len = ((buf[off].toInt() and 0xFF) shl 24) or
+                        ((buf[off + 1].toInt() and 0xFF) shl 16) or
+                        ((buf[off + 2].toInt() and 0xFF) shl 8) or
+                        (buf[off + 3].toInt() and 0xFF)
+                    off += 4
+                    if (len < 0 || off + len > buf.size) break
+                    out.add(buf.copyOfRange(off, off + len)); off += len; i++
+                }
+                pendingReportGets.poll()?.complete(out)
             }
             else -> Unit
         }
@@ -363,6 +412,93 @@ object Networking {
             false
         }
     }
+
+    // ----------------------------------------------------------------
+    // Custom UWB tracker crowd-finding (DEV_BUILD). All methods no-op / return
+    // empty when the socket is down or the server is an older build that doesn't
+    // implement these opcodes (resolve/report-get time out). See TrackerProtocol
+    // and the mirror implementation in the server's findfamily.rs.
+    // ----------------------------------------------------------------
+
+    /** Owner: register/refresh a tracker's secret + ML-KEM public bundle on the server. */
+    suspend fun registerTracker(trackerUserId: Long, secret: ByteArray, publicBundle: ByteArray): Boolean {
+        val session = wsSession ?: return false
+        return try {
+            val frame = ByteArray(11 + secret.size + publicBundle.size)
+            frame[0] = WS_OP_TRACKER_REGISTER
+            putU64Be(frame, 1, trackerUserId.toULong())
+            frame[9] = (secret.size ushr 8).toByte()
+            frame[10] = secret.size.toByte()
+            secret.copyInto(frame, 11)
+            publicBundle.copyInto(frame, 11 + secret.size)
+            session.send(frame)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "registerTracker failed", e); false
+        }
+    }
+
+    /** Finder: resolve a beacon epoch-id to the owning tracker's ML-KEM public bundle. */
+    suspend fun resolveTrackerBundle(epochId: ByteArray): ByteArray? {
+        val session = wsSession ?: return null
+        val hex = epochId.toHex()
+        val deferred = CompletableDeferred<ByteArray?>()
+        pendingResolves[hex] = deferred
+        return try {
+            val req = ByteArray(1 + epochId.size)
+            req[0] = WS_OP_RESOLVE_REQ
+            epochId.copyInto(req, 1)
+            session.send(req)
+            withTimeoutOrNull(GETKEY_TIMEOUT_MS) { deferred.await() }
+        } catch (e: Exception) {
+            Log.w(TAG, "resolveTrackerBundle failed", e); null
+        } finally {
+            pendingResolves.remove(hex)
+        }
+    }
+
+    /** Finder: upload a sealed crowd report keyed by the beacon epoch-id. */
+    suspend fun uploadTrackerReport(epochId: ByteArray, ciphertext: ByteArray): Boolean {
+        val session = wsSession ?: return false
+        return try {
+            val frame = ByteArray(1 + epochId.size + ciphertext.size)
+            frame[0] = WS_OP_REPORT_PUT
+            epochId.copyInto(frame, 1)
+            ciphertext.copyInto(frame, 1 + epochId.size)
+            session.send(frame)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "uploadTrackerReport failed", e); false
+        }
+    }
+
+    /** Owner: fetch (and drain) sealed reports for a batch of recent epoch-ids. */
+    suspend fun fetchTrackerReports(epochIds: List<ByteArray>): List<ByteArray> {
+        val session = wsSession ?: return emptyList()
+        if (epochIds.isEmpty()) return emptyList()
+        val deferred = CompletableDeferred<List<ByteArray>>()
+        pendingReportGets.add(deferred)
+        return try {
+            val n = epochIds.size.coerceAtMost(0xFFFF)
+            val frame = ByteArray(3 + n * 16)
+            frame[0] = WS_OP_REPORT_GET_REQ
+            frame[1] = (n ushr 8).toByte()
+            frame[2] = n.toByte()
+            var off = 3
+            for (i in 0 until n) {
+                epochIds[i].copyInto(frame, off, 0, 16.coerceAtMost(epochIds[i].size))
+                off += 16
+            }
+            session.send(frame)
+            withTimeoutOrNull(GETKEY_TIMEOUT_MS) { deferred.await() } ?: emptyList()
+        } catch (e: Exception) {
+            Log.w(TAG, "fetchTrackerReports failed", e); emptyList()
+        } finally {
+            pendingReportGets.remove(deferred)
+        }
+    }
+
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
     // ----------------------------------------------------------------
     // Encryption helpers (post-quantum only)

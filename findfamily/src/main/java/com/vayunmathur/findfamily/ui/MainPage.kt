@@ -94,6 +94,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import com.vayunmathur.findfamily.R
+import com.vayunmathur.findfamily.BuildConfig
 import com.vayunmathur.findfamily.Route
 import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.TemporaryLink
@@ -470,6 +471,13 @@ fun MainPage(
                             },
                                 { Text(stringResource(R.string.fab_link)) },
                                 { IconLink() })
+                            if (BuildConfig.DEV_BUILD) {
+                                FloatingActionButtonMenuItem({
+                                    backStack.add(Route.AddTrackerDialog)
+                                },
+                                    { Text(stringResource(R.string.fab_tracker)) },
+                                    { IconNavigationArrow() })
+                            }
                         }
                     } else if (selectedWaypointId != null) {
                         FloatingActionButton(

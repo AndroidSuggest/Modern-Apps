@@ -57,6 +57,21 @@
     <!-- MainPage FAB menu: Option to create temporary share link. Noun -->
     <string name="fab_link">Link</string>
 
+    <!-- MainPage FAB menu (dev builds only): bind a custom UWB tracker. Noun -->
+    <string name="fab_tracker">Tracker</string>
+    <!-- Add Tracker dialog title -->
+    <string name="add_tracker_title">Add tracker</string>
+    <!-- Add Tracker dialog: label for the tracker name text field -->
+    <string name="add_tracker_name_label">Tracker name</string>
+    <!-- Add Tracker dialog: hint explaining the tracker must be in pairing mode -->
+    <string name="add_tracker_scan_hint">Put the tracker in pairing mode, then pick it below.</string>
+    <!-- Add Tracker dialog: shown while scanning for nearby trackers -->
+    <string name="add_tracker_scanning">Scanning for trackers…</string>
+    <!-- Add Tracker dialog: shown while binding to the selected tracker -->
+    <string name="add_tracker_binding">Binding…</string>
+    <!-- Add Tracker dialog: shown when binding fails -->
+    <string name="add_tracker_failed">Could not bind to that tracker. Try again.</string>
+
     <!-- MainPage: Section header for pending location-sharing requests list. Noun phrase -->
     <string name="section_location_sharing_requests">Location Sharing Requests</string>
     <!-- MainPage: Section header for temporary links grid. Noun phrase -->
