@@ -1,0 +1,36 @@
+Portions of the Backup app reimplement concepts from Seedvault, the encrypted
+backup application for Android:
+
+    https://github.com/seedvault-app/seedvault
+
+Seedvault's application code is distributed under the Apache License 2.0. The
+ported concepts here are the recovery-code scheme (a BIP-0039 12-word mnemonic
+deriving a 512-bit seed via PBKDF2-HMAC-SHA512), the segmented AES-256-GCM
+on-disk backup format, and the overall app-data backup transport design. This
+is an independent Kotlin reimplementation, not a copy of Seedvault's source, but
+attribution is retained per the established convention in this repository (see
+networklocation/src/main/rust/LICENSE-GrapheneOS).
+
+The BIP-0039 English wordlist bundled at
+backup/src/main/resources/bip39-english.txt is the canonical list from the
+Bitcoin BIPs repository (public domain / BSD-2-Clause):
+
+    https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   Copyright The Seedvault Contributors
+
+   Licensed under the Apache License, Version 2.0 (the "License"); you may not
+   use these concepts' originating files except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+   WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+   License for the specific language governing permissions and limitations
+   under the License.
