@@ -31,6 +31,9 @@ data class User(
     val platform: String? = null,
     /** When to auto-toggle sharing (flip sendingEnabled). Null means Never / disabled. Single field. */
     val sharingAutoToggleAt: Instant? = null,
+    /** Waypoint whose arrival (by "Me") flips sendingEnabled. Null means no arrival trigger.
+     * Mutually exclusive with [sharingAutoToggleAt]: setting one clears the other. */
+    val sharingAutoToggleWaypointId: Long? = null,
     /** Peer post-quantum public bundle (base64: [4B kemLen][kemPubDer][dsaPubDer]), nullable for backward compat. */
     val pqcEncryptionKey: String? = null
 ): DatabaseItem {

@@ -358,7 +358,7 @@ fun MainPage(
                     val personActions = object : PersonActions by ffViewModel {
                         override fun changeConnectedContact() = requestPickContact()
                     }
-                    PersonDetailSheet(PersonUiState(user, userPositions[user.id]), personActions)
+                    PersonDetailSheet(PersonUiState(user, userPositions[user.id], waypoints), personActions)
                 }
             } else if (selectedWaypointId != null) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 4.dp)) {
@@ -610,9 +610,9 @@ fun PersonDetailSheet(state: PersonUiState, actions: PersonActions) {
                     { send -> actions.setUserSharing(user, send) }
                 )
             }
-            // Auto-toggle: "Turn on/off after" + duration dropdown (Never default)
+            // Auto-toggle: "Turn on/off after" + duration/arrival dropdown (Never default)
             Spacer(Modifier.height(4.dp))
-            AutoToggleRow(user, actions)
+            AutoToggleRow(user, state.waypoints, actions)
             Spacer(Modifier.height(4.dp))
         }
         OutlinedButton(
@@ -842,7 +842,7 @@ private fun formatAutoToggleCountdown(remaining: Duration): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AutoToggleRow(user: User, actions: PersonActions) {
+fun AutoToggleRow(user: User, waypoints: List<Waypoint>, actions: PersonActions) {
     val neverLabel = stringResource(R.string.auto_toggle_never)
     val opts = remember {
         listOf(
@@ -874,6 +874,11 @@ fun AutoToggleRow(user: User, actions: PersonActions) {
 
     val labelToDuration: Map<String, Duration> = opts.associate { (k, v) -> (resolvedLabels[k] ?: k) to v }
 
+    // Arrival triggers: one "Arrival at <name>" option per named saved place.
+    val arrivalWaypoints = waypoints.filter { it.name.isNotBlank() }
+    val arrivalWaypointName = user.sharingAutoToggleWaypointId
+        ?.let { id -> arrivalWaypoints.firstOrNull { it.id == id }?.name }
+
     // Live ticker for countdown — ticks every second while a timeout is active
     var now by remember { mutableStateOf(Clock.System.now()) }
     val endAt = user.sharingAutoToggleAt
@@ -887,12 +892,15 @@ fun AutoToggleRow(user: User, actions: PersonActions) {
         }
     }
 
-    // If enabled, show live [hh:]mm:ss countdown; otherwise Never. Dropdown remains for picking new value.
-    val currentLabel = if (endAt == null) {
-        neverLabel
-    } else {
-        val remaining = endAt - now
-        if (remaining.inWholeSeconds <= 0) neverLabel else formatAutoToggleCountdown(remaining)
+    // Arrival trigger wins if set; otherwise show live [hh:]mm:ss countdown; otherwise Never.
+    // Auto-toggle modes are mutually exclusive, so at most one of these is active.
+    val currentLabel = when {
+        arrivalWaypointName != null -> stringResource(R.string.arrival_at, arrivalWaypointName)
+        endAt == null -> neverLabel
+        else -> {
+            val remaining = endAt - now
+            if (remaining.inWholeSeconds <= 0) neverLabel else formatAutoToggleCountdown(remaining)
+        }
     }
 
     val dropdownLabel = if (user.sendingEnabled) stringResource(R.string.disable_after) else stringResource(R.string.enable_after)
@@ -926,6 +934,13 @@ fun AutoToggleRow(user: User, actions: PersonActions) {
                     DropdownMenuItem({ Text(label) }, {
                         expanded = false
                         actions.setUserAutoToggle(user, dur)
+                    })
+                }
+                // Arrival triggers — flip sharing when "Me" arrives at a saved place (GitHub #406).
+                arrivalWaypoints.forEach { waypoint ->
+                    DropdownMenuItem({ Text(stringResource(R.string.arrival_at, waypoint.name)) }, {
+                        expanded = false
+                        actions.setUserArrivalToggle(user, waypoint.id)
                     })
                 }
             }

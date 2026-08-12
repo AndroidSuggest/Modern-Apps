@@ -375,6 +375,14 @@ class FindFamilyViewModel(
         }
     }
 
+    /** Set arrival-based auto-toggle for sharing — flips sendingEnabled when "Me" arrives at
+     * [waypointId]. Null means Never. Atomic and mutually exclusive with the time-based deadline. */
+    override fun setUserArrivalToggle(user: User, waypointId: Long?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            userDao.setSharingAutoToggleWaypointId(user.id, waypointId)
+        }
+    }
+
     /** Called from foreground service (or init) when any auto-toggle is due.
      * Atomic SQL flip guarded by the timer value itself — prevents TOCTOU where the user
      * manually cleared or rescheduled the timer but a stale service snapshot still flips. */

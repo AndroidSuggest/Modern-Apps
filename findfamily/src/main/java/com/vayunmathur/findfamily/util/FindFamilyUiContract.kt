@@ -55,6 +55,8 @@ interface FamilyListActions {
 data class PersonUiState(
     val user: User,
     val location: LocationValue? = null,
+    /** Saved places, offered in the auto-toggle dropdown as "Arrival at <name>" triggers. */
+    val waypoints: List<Waypoint> = emptyList(),
 )
 
 /** Person-sheet callbacks. Same no-op-default arrangement as [FamilyListActions]. */
@@ -63,6 +65,9 @@ interface PersonActions {
 
     /** Flip sharing after [duration]; null means Never. */
     fun setUserAutoToggle(user: User, duration: Duration?) {}
+
+    /** Flip sharing when "Me" arrives at waypoint [waypointId]; null means Never. */
+    fun setUserArrivalToggle(user: User, waypointId: Long?) {}
 
     /** Re-pick which device contact this connection is named after. */
     fun changeConnectedContact() {}

@@ -118,6 +118,8 @@
     <string name="enable_after">Enable after</string>
     <!-- UserPage: Auto-toggle dropdown option for never / disabled -->
     <string name="auto_toggle_never">Never</string>
+    <!-- UserPage: Auto-toggle dropdown option that flips sharing when you arrive at a saved place. %1$s = place name, e.g. Home -->
+    <string name="arrival_at">Arrival at %1$s</string>
     <!-- MainPage TopAppBar: Title when in history mode. %1$s = selected user name, e.g. Alice -->
     <string name="history_title">History: <xliff:g id="person_name" example="Alice">%1$s</xliff:g></string>
     <!-- HistoryScrubber: Button label to step back 5 minutes. Verb with duration -->

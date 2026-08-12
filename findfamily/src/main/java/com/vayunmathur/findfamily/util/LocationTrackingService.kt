@@ -181,6 +181,25 @@ class LocationTrackingService : Service(), SensorEventListener {
                 Log.w("FF-Heartbeat", "auto-toggle apply failed", e)
             }
 
+            // Arrival auto-toggle check (GitHub #406): flip sharing for any user whose trigger
+            // points at a saved place that "Me" is currently inside. Uses the same atomic,
+            // waypoint-id-guarded update as the timer path so a stale snapshot cannot mis-flip.
+            try {
+                val myCoord = Coord(location.latitude, location.longitude)
+                val insideWaypointIds = waypointDao.getAll()
+                    .filter { havershine(it.coord, myCoord) < it.range }
+                    .map { it.id }
+                if (insideWaypointIds.isNotEmpty()) {
+                    val flippedArrival = userDao.applyDueArrivalToggles(insideWaypointIds)
+                    if (flippedArrival > 0) {
+                        Log.d("FF-Heartbeat", "arrival auto-toggle flipped $flippedArrival user(s), reloading sharing state before publish")
+                        publishBaseUsers = userDao.getAll()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("FF-Heartbeat", "arrival auto-toggle apply failed", e)
+            }
+
             val publishTargets = publishBaseUsers.filter { it.id != Networking.userid && it.sendingEnabled }
             Log.d("FF-Heartbeat", "publish targets count=${publishTargets.size} ids=${publishTargets.map{ it.id.toULong() }} names=${publishTargets.map{ it.name }}")
             publishTargets.forEach {

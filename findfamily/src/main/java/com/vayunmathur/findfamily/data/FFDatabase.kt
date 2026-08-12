@@ -80,12 +80,18 @@ interface UserDao {
 
     // --- Atomic helpers for the "Disable after / Enable after" feature ---
 
-    /** Atomically set only the auto-toggle deadline (Never = null). Avoids clobbering other columns. */
-    @Query("UPDATE User SET sharingAutoToggleAt = :atEpochSeconds WHERE id = :id")
+    /** Atomically set only the time-based auto-toggle deadline (Never = null). Also clears any
+     * arrival trigger so the two auto-toggle modes stay mutually exclusive. */
+    @Query("UPDATE User SET sharingAutoToggleAt = :atEpochSeconds, sharingAutoToggleWaypointId = NULL WHERE id = :id")
     suspend fun setSharingAutoToggleAt(id: Long, atEpochSeconds: Long?)
 
+    /** Atomically set the arrival-based auto-toggle waypoint (Never = null). Also clears any
+     * time-based deadline so the two auto-toggle modes stay mutually exclusive. */
+    @Query("UPDATE User SET sharingAutoToggleWaypointId = :waypointId, sharingAutoToggleAt = NULL WHERE id = :id")
+    suspend fun setSharingAutoToggleWaypointId(id: Long, waypointId: Long?)
+
     /** Atomically set sharing enabled AND clear any pending auto-toggle (manual toggle path). */
-    @Query("UPDATE User SET sendingEnabled = :enabled, sharingAutoToggleAt = NULL WHERE id = :id")
+    @Query("UPDATE User SET sendingEnabled = :enabled, sharingAutoToggleAt = NULL, sharingAutoToggleWaypointId = NULL WHERE id = :id")
     suspend fun setSendingEnabledAndClearToggle(id: Long, enabled: Boolean)
 
     /**
@@ -96,6 +102,16 @@ interface UserDao {
      */
     @Query("UPDATE User SET sendingEnabled = CASE WHEN sendingEnabled THEN 0 ELSE 1 END, sharingAutoToggleAt = NULL WHERE sharingAutoToggleAt IS NOT NULL AND sharingAutoToggleAt <= :nowEpochSeconds")
     suspend fun applyDueAutoToggles(nowEpochSeconds: Long): Int
+
+    /**
+     * Atomically flip sharing for every row whose arrival trigger points at a waypoint that
+     * "Me" is currently inside ([insideWaypointIds]). The waypoint id in the WHERE clause guards
+     * against TOCTOU races the same way the timer does above: if the user cleared or changed the
+     * trigger, the row no longer matches. Clears the trigger on flip so it fires once per arrival.
+     * Returns number of rows flipped.
+     */
+    @Query("UPDATE User SET sendingEnabled = CASE WHEN sendingEnabled THEN 0 ELSE 1 END, sharingAutoToggleWaypointId = NULL WHERE sharingAutoToggleWaypointId IS NOT NULL AND sharingAutoToggleWaypointId IN (:insideWaypointIds)")
+    suspend fun applyDueArrivalToggles(insideWaypointIds: List<Long>): Int
 
     // --- Atomic partial updates to avoid heartbeat clobbering sharingAutoToggleAt / sendingEnabled ---
 
@@ -133,7 +149,7 @@ interface TemporaryLinkDao {
     suspend fun delete(value: TemporaryLink): Int
 }
 
-@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class], version = 8, exportSchema = false)
+@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class], version = 9, exportSchema = false)
 @TypeConverters(DefaultConverters::class)
 abstract class FFDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -192,6 +208,9 @@ abstract class FFDatabase : RoomDatabase() {
                 )
                 it.execSQL("DROP TABLE `TemporaryLink`")
                 it.execSQL("ALTER TABLE `TemporaryLink_new` RENAME TO `TemporaryLink`")
+            },
+            androidx.room.migration.Migration(8, 9) {
+                it.execSQL("ALTER TABLE `User` ADD COLUMN `sharingAutoToggleWaypointId` INTEGER")
             }
         )
     }
