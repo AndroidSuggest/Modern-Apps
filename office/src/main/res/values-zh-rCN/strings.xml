@@ -284,4 +284,6 @@
     <string name="join_request_sending">正在请求访问权限…</string>
     <string name="join_request_sent">请求已发送 — 一旦所有者批准，您将获得访问权限。</string>
     <string name="join_request_failed">无法发送请求 — 请检查您的连接并重试。</string>
+    <string name="document_dark_mode">✓ 文档深色模式</string>
+    <string name="document_dark_mode_1">文档深色模式</string>
 </resources>
