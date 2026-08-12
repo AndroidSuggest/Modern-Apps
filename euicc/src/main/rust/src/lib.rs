@@ -12,9 +12,11 @@
 //! Reimplemented for this repo, following the open-source OpenEUICC
 //! (GPL-3.0-only). Ported files carry attribution in their own headers.
 //!
-//! Phase 1 ships only the JNI plumbing and a version stub; the protocol modules
-//! land in later phases.
+//! Phase 3 adds the ASN.1 + ES10 (local ISD-R) layers and the STORE DATA
+//! transport; the ES9+/SM-DP+ and crypto modules land in later phases.
 
+mod asn1;
+mod es10;
 mod jni;
 
 /// Version string reported by the native core.

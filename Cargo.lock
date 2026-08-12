@@ -592,6 +592,7 @@ version = "0.1.0"
 dependencies = [
  "jni",
  "log",
+ "serde_json",
 ]
 
 [[package]]
