@@ -91,15 +91,27 @@ class ConfigurableBackupTransport(private val context: Context) : BackupTranspor
         val pkg = packageInfo.packageName
         val reader = backupDataInput(inFd.fileDescriptor)
         runBlocking {
+            // A non-incremental pass streams the full dataset with no per-key deletions,
+            // so drop the previously stored keys first to avoid leaving stale entities.
+            if (flags and FLAG_NON_INCREMENTAL != 0) {
+                repo.delete(BackupRepository.kvPackageDir(pkg))
+            }
             while (reader.readNextHeader()) {
                 val key = reader.key
                 val keyId = encodeKey(key)
                 val size = reader.dataSize
                 if (size < 0) {
+                    // A negative size marks a deleted key (incremental pass).
                     repo.delete(BackupRepository.kvPath(pkg, keyId))
                 } else {
                     val data = ByteArray(size)
-                    reader.readEntityData(data, 0, size)
+                    // readEntityData may return the entity in several chunks.
+                    var offset = 0
+                    while (offset < size) {
+                        val n = reader.readEntityData(data, offset, size - offset)
+                        if (n <= 0) break
+                        offset += n
+                    }
                     repo.writeEncrypted(BackupRepository.kvPath(pkg, keyId), data)
                 }
             }
