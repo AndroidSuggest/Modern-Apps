@@ -126,6 +126,82 @@ class GoogleVoiceParserTest {
     }
 
     @Test
+    fun parseThreadMessages_keepsTextOnlyMessagesWithoutMedia() {
+        val body = "[[[\"t.+14152124034\",1,[[\"m1\",1786000000000,\"+12133945548\"," +
+            "[\"+14152124034\"],10,1,null,null,null,\"plain text\",null,null,5,1,null,\"+14152124034\",0]]," +
+            "null,[[\"+14152124034\"]]]]]"
+        val message = GoogleVoiceParser.parseThreadMessages(body, "t.+14152124034").single()
+        assertEquals("plain text", message.text)
+        assertEquals(emptyList(), message.mediaUrls)
+    }
+
+    @Test
+    fun parseThreadMessages_extractsGoogleHostedMediaUrls() {
+        val media = "https://lh3.googleusercontent.com/voice-mms/photo.jpg=s1024"
+        val body = "[[[\"t.+14152124034\",1,[[\"m1\",1786000000000,\"+12133945548\"," +
+            "[\"+14152124034\"],10,1,null,null,null,\"photo\",null,[null,\"$media\"],5,1,null,\"+14152124034\",0]]," +
+            "null,[[\"+14152124034\"]]]]]"
+        val message = GoogleVoiceParser.parseThreadMessages(body, "t.+14152124034").single()
+        assertEquals(listOf(media), message.mediaUrls)
+        assertTrue(message.hasMedia)
+    }
+
+    @Test
+    fun parseThreadMessages_blanksOutboundMediaOnlyStatusLabel() {
+        val body = "[[[\"t.+14152124034\",1,[[\"m1\",1786000000000,\"+12133945548\"," +
+            "[\"+14152124034\"],11,1,null,null,null,\"MMS Sent\",null,null,5,1,null,\"+14152124034\"," +
+            "[[null,\"image/jpeg\",\"m1-1\"]]]],null,[[\"+14152124034\"]]]]]"
+        val message = GoogleVoiceParser.parseThreadMessages(body, "t.+14152124034").single()
+        assertEquals("", message.text)
+        assertEquals(emptyList(), message.mediaUrls)
+        assertTrue(message.hasMedia)
+        assertTrue(message.outgoing)
+    }
+
+    @Test
+    fun parseThreadMessages_blanksInboundMediaOnlyStatusLabel() {
+        val body = "[[[\"t.+14152124034\",1,[[\"m1\",1786000000000,\"+12133945548\"," +
+            "[\"+14152124034\"],10,1,null,null,null,\"mMs ReCeIvEd\",null,null,5,1,null,\"+14152124034\"," +
+            "[[null,\"image/jpeg\",\"m1-1\"]]]],null,[[\"+14152124034\"]]]]]"
+        val message = GoogleVoiceParser.parseThreadMessages(body, "t.+14152124034").single()
+        assertEquals("", message.text)
+        assertEquals(emptyList(), message.mediaUrls)
+        assertTrue(message.hasMedia)
+        assertFalse(message.outgoing)
+    }
+
+    @Test
+    fun parseThreadMessages_preservesCaptionTextWithMediaMetadata() {
+        val body = "[[[\"t.+14152124034\",1,[[\"m1\",1786000000000,\"+12133945548\"," +
+            "[\"+14152124034\"],10,1,null,null,null,\"real caption\",null,null,5,1,null,\"+14152124034\"," +
+            "[[null,\"image/jpeg\",\"m1-1\"]]]],null,[[\"+14152124034\"]]]]]"
+        val message = GoogleVoiceParser.parseThreadMessages(body, "t.+14152124034").single()
+        assertEquals("real caption", message.text)
+        assertTrue(message.hasMedia)
+    }
+
+    @Test
+    fun parseThreadMessages_ignoresMalformedSlot16Metadata() {
+        val body = "[[[\"t.+14152124034\",1,[[\"m1\",1786000000000,\"+12133945548\"," +
+            "[\"+14152124034\"],10,1,null,null,null,\"MMS Received\",null,null,5,1,null,\"+14152124034\"," +
+            "[null,123,{}]]],null,[[\"+14152124034\"]]]]]"
+        val message = GoogleVoiceParser.parseThreadMessages(body, "t.+14152124034").single()
+        assertEquals("MMS Received", message.text)
+        assertFalse(message.hasMedia)
+    }
+
+    @Test
+    fun parseThreadMessages_ignoresMalformedNullAndNonMediaShapes() {
+        val body = "[[[\"t.+14152124034\",1,[[\"m1\",1786000000000,\"+12133945548\"," +
+            "[\"+14152124034\"],10,1,null,null,null,\"https://example.com/not-media\",null," +
+            "[null,123,null,[\"https://accounts.google.com/signin\"]],5,1,null,\"+14152124034\",0]]," +
+            "null,[[\"+14152124034\"]]]]]"
+        val message = GoogleVoiceParser.parseThreadMessages(body, "t.+14152124034").single()
+        assertEquals("https://example.com/not-media", message.text)
+        assertEquals(emptyList(), message.mediaUrls)
+    }
+
+    @Test
     fun parseAccount_findsPrimaryNumber() {
         val body = "[\"+15550001111\",null,[\"settings\"]]"
         assertEquals("+15550001111", GoogleVoiceParser.parseAccount(body).phoneNumber)

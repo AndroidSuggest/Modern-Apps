@@ -32,6 +32,7 @@ data class GvMessage(
     val outgoing: Boolean,
     val read: Boolean,
     val mediaUrls: List<String> = emptyList(),
+    val hasMedia: Boolean = mediaUrls.isNotEmpty(),
 )
 
 data class GvThread(

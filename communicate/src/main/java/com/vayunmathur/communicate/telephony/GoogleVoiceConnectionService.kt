@@ -6,6 +6,7 @@ import android.telecom.ConnectionRequest
 import android.telecom.ConnectionService
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
+import android.telecom.VideoProfile
 import com.vayunmathur.communicate.data.googlevoice.call.GoogleVoiceCallManager
 
 /**
@@ -39,7 +40,12 @@ class GoogleVoiceConnectionService : ConnectionService() {
         GoogleVoiceCallManager.init(applicationContext)
         val address = request?.extras?.getParcelable(TelecomManager.EXTRA_INCOMING_CALL_ADDRESS) as? Uri
         val connection = GoogleVoiceConnection().apply {
-            if (address != null) setAddress(address, TelecomManager.PRESENTATION_ALLOWED)
+            if (address != null) {
+                setAddress(address, TelecomManager.PRESENTATION_ALLOWED)
+                setCallerDisplayName(address.schemeSpecificPart, TelecomManager.PRESENTATION_ALLOWED)
+            }
+            videoState = VideoProfile.STATE_AUDIO_ONLY
+            setInitializing()
             setRinging()
             connectionProperties = connectionProperties or Connection.PROPERTY_SELF_MANAGED
         }

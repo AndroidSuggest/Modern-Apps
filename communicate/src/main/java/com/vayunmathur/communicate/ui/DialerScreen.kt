@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateContact
 import com.vayunmathur.communicate.data.CommunicateRepository
+import com.vayunmathur.communicate.data.LineChoice
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
 import com.vayunmathur.communicate.data.googlevoice.call.GoogleVoiceCallManager
 import com.vayunmathur.communicate.telephony.GoogleVoiceTelecom
@@ -70,12 +72,23 @@ fun DialerScreen() {
     val scope = rememberCoroutineScope()
     var number by remember { mutableStateOf("") }
     val lineChoices = rememberLineChoices()
-    var selectedLine by remember(lineChoices) { mutableStateOf(lineChoices.firstOrNull()) }
+    var selectedLine by remember { mutableStateOf<LineChoice?>(null) }
+    var userSelectedLine by remember { mutableStateOf(false) }
+
+    LaunchedEffect(lineChoices) {
+        val current = selectedLine
+        if (current == null || current !in lineChoices) {
+            selectedLine = lineChoices.firstOrNull { it is LineChoice.GoogleVoice } ?: lineChoices.firstOrNull()
+            userSelectedLine = false
+        } else if (!userSelectedLine && lineChoices.any { it is LineChoice.GoogleVoice }) {
+            selectedLine = lineChoices.first { it is LineChoice.GoogleVoice }
+        }
+    }
 
     fun place(target: String) {
         if (target.isBlank()) return
         val choice = selectedLine
-        if (choice is com.vayunmathur.communicate.data.LineChoice.GoogleVoice) {
+        if (choice is LineChoice.GoogleVoice) {
             GoogleVoiceCallManager.init(context)
         }
         CommunicateRepository.placeCall(context, choice, target)
@@ -91,7 +104,10 @@ fun DialerScreen() {
                         LineSelector(
                             choices = lineChoices,
                             selected = sel,
-                            onSelect = { selectedLine = it },
+                            onSelect = {
+                                selectedLine = it
+                                userSelectedLine = true
+                            },
                             modifier = Modifier.padding(end = 8.dp),
                         )
                     }

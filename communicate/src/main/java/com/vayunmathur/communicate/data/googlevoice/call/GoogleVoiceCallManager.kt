@@ -5,7 +5,9 @@ import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceClient
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +51,7 @@ object GoogleVoiceCallManager {
     private var gvNumber: String = ""
     private var remoteNumber: String = ""
     private var registered = false
+    private var registrationJob: Job? = null
     private var remoteApplied = false
     private var pendingInviteTarget: String? = null
     private var pendingInviteSdp: String? = null
@@ -77,10 +80,13 @@ object GoogleVoiceCallManager {
                 val offer = a.createOffer()
                 pendingInviteTarget = number
                 pendingInviteSdp = offer
-                val s = SipClient(info, gvNumber, scope, sipListener())
-                sip = s
+                val s = ensureSipClient(info)
                 s.connect()
-                s.register()
+                if (registered) {
+                    s.invite(number, offer)
+                } else {
+                    s.register()
+                }
             }.onFailure {
                 android.util.Log.e("GoogleVoiceCall", "placeCall setup failed", it)
                 fail(it.message ?: "call setup failed")
@@ -91,18 +97,33 @@ object GoogleVoiceCallManager {
     /** Connect + register without placing a call, so inbound INVITEs can arrive. */
     fun startRegistration() {
         val ctx = appContext ?: return
-        if (sip != null) return
-        scope.launch {
+        if (registrationJob?.isActive == true || registered) return
+        registrationJob = scope.launch {
             runCatching {
                 val session = GoogleVoiceSession.get(ctx)
                 val info = GoogleVoiceClient.get(ctx).getSipRegisterInfo()
                 gvNumber = session.phoneNumber() ?: info.phoneNumber.orEmpty()
-                val s = SipClient(info, gvNumber, scope, sipListener())
-                sip = s
+                val s = ensureSipClient(info)
                 s.connect()
                 s.register()
-            }.onFailure { fail(it.message ?: "registration failed") }
+            }.onFailure { reason ->
+                android.util.Log.e("GoogleVoiceCall", "registration failed", reason)
+                stopRegistration()
+            }
         }
+    }
+
+    fun stopRegistration() {
+        registrationJob?.cancel()
+        registrationJob = null
+        registered = false
+        pendingInviteTarget = null
+        pendingInviteSdp = null
+        runCatching { sip?.close() }
+        sip = null
+        runCatching { audio?.close() }
+        audio = null
+        _state.value = CallState()
     }
 
     fun answer() {
@@ -151,6 +172,7 @@ object GoogleVoiceCallManager {
     private fun sipListener() = object : SipClient.Listener {
         override fun onRegistered() {
             registered = true
+            scheduleRegistrationRefresh()
             val target = pendingInviteTarget
             val sdp = pendingInviteSdp
             if (target != null && sdp != null) {
@@ -205,27 +227,43 @@ object GoogleVoiceCallManager {
     }
 
     private fun endCall() {
-        cleanup()
+        cleanupCall()
         _state.value = CallState(phase = CallPhase.Ended, remoteNumber = remoteNumber)
         connection?.onCallEnded()
     }
 
     private fun fail(reason: String) {
         android.util.Log.e("GoogleVoiceCall", "call failed: $reason")
-        cleanup()
+        cleanupCall()
         _state.value = CallState(phase = CallPhase.Ended, remoteNumber = remoteNumber)
         connection?.onCallEnded()
+        if (!registered) stopRegistration()
     }
 
-    private fun cleanup() {
-        runCatching { sip?.close() }
+    private fun cleanupCall() {
         runCatching { audio?.close() }
-        sip = null
         audio = null
-        registered = false
         remoteApplied = false
         pendingInviteTarget = null
         pendingInviteSdp = null
+        remoteNumber = ""
+    }
+
+    private fun ensureSipClient(info: com.vayunmathur.communicate.data.googlevoice.GvSipRegisterInfo): SipClient {
+        sip?.let { return it }
+        return SipClient(info, gvNumber, scope, sipListener()).also { sip = it }
+    }
+
+    private fun scheduleRegistrationRefresh() {
+        registrationJob?.cancel()
+        registrationJob = scope.launch {
+            delay(50 * 60 * 1000L)
+            registered = false
+            runCatching { sip?.register() }.onFailure {
+                android.util.Log.e("GoogleVoiceCall", "registration refresh failed", it)
+                stopRegistration()
+            }
+        }
     }
 
     /** Reset to Idle once the UI has consumed a terminal state. */

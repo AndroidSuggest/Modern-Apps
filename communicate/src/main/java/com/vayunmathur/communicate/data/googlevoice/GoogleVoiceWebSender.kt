@@ -2,14 +2,18 @@ package com.vayunmathur.communicate.data.googlevoice
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.net.Uri
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.vayunmathur.communicate.data.CommunicateAttachment
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,6 +35,9 @@ object GoogleVoiceWebSender {
     private const val TAG = "GVAUTO"
 
     private var webView: WebView? = null
+    private var currentRecipient: String = ""
+    private var currentText: String = ""
+    private var currentAttachments: List<Uri> = emptyList()
 
     @Volatile
     private var pending: CompletableDeferred<String>? = null
@@ -45,21 +52,54 @@ object GoogleVoiceWebSender {
         return GoogleVoiceParser.extractBotToken(body)
     }
 
+    /** Return the full web-constructed sendsms body, including media upload metadata. */
+    suspend fun mintPreparedBody(
+        activity: Activity,
+        recipient: String,
+        text: String,
+        attachments: List<CommunicateAttachment>,
+    ): String? = mintBody(
+        activity = activity,
+        recipient = recipient,
+        text = text,
+        attachments = attachments.map { Uri.parse(it.contentUri) },
+    )
+
     /** Drive the offscreen WebView to produce the exact sendsms body (with token). */
-    private suspend fun mintBody(activity: Activity, recipient: String, text: String): String? {
+    private suspend fun mintBody(
+        activity: Activity,
+        recipient: String,
+        text: String,
+        attachments: List<Uri> = emptyList(),
+    ): String? {
         val deferred = CompletableDeferred<String>()
         withContext(Dispatchers.Main) {
             pending = deferred
-            val wv = ensureWebView(activity, recipient, text)
+            currentRecipient = recipient
+            currentText = text
+            currentAttachments = attachments
+            disposeWebView()
+            val wv = ensureWebView(activity)
             wv.loadUrl("https://voice.google.com/u/0/messages")
         }
-        val body = withTimeoutOrNull(60_000) { deferred.await() }
-        withContext(Dispatchers.Main) { runCatching { webView?.stopLoading() } }
+        val body = withTimeoutOrNull(if (attachments.isEmpty()) 60_000 else 120_000) { deferred.await() }
+        withContext(Dispatchers.Main) {
+            disposeWebView()
+            currentAttachments = emptyList()
+        }
         return body
     }
 
+    private fun disposeWebView() {
+        val old = webView ?: return
+        runCatching { old.stopLoading() }
+        runCatching { (old.parent as? ViewGroup)?.removeView(old) }
+        runCatching { old.destroy() }
+        webView = null
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
-    private fun ensureWebView(activity: Activity, recipient: String, text: String): WebView {
+    private fun ensureWebView(activity: Activity): WebView {
         webView?.let { return it }
         CookieManager.getInstance().setAcceptCookie(true)
         val wv = WebView(activity)
@@ -86,9 +126,24 @@ object GoogleVoiceWebSender {
             }
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                if (injected || url == null || !url.contains("voice.google.com/u/")) return
+                if (url == null || !url.contains("voice.google.com/u/")) return
+                if (injected) return
                 injected = true
-                view?.evaluateJavascript(automationScript(recipient, text), null)
+                view?.evaluateJavascript(
+                    automationScript(currentRecipient, currentText, hasAttachments = currentAttachments.isNotEmpty()),
+                    null,
+                )
+            }
+        }
+        wv.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?,
+            ): Boolean {
+                Log.d(TAG, "file chooser requested for ${currentAttachments.size} attachment(s)")
+                filePathCallback?.onReceiveValue(currentAttachments.toTypedArray())
+                return true
             }
         }
         // Place the WebView BEHIND the app's opaque UI: it must lay out on-screen for GV's CDK
@@ -157,13 +212,14 @@ object GoogleVoiceWebSender {
      * the sendsms request. Sequence: open composer → fill recipient → fill message → click the real
      * "Send message" button (NOT the "Send new message" FAB). Dumps DOM to Logcat for tuning.
      */
-    private fun automationScript(recipient: String, text: String): String {
+    private fun automationScript(recipient: String, text: String, hasAttachments: Boolean): String {
         val num = recipient.replace("\"", "")
         val body = text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+        val wantsAttachment = if (hasAttachments) "true" else "false"
         return """
             (function(){
               function log(m){ try{ AndroidGV.log(""+m);}catch(e){} }
-              var NUM="$num", TEXT="$body";
+              var NUM="$num", TEXT="$body", WANT_ATTACH=$wantsAttachment;
               function qa(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); }
               function q(s){ return document.querySelector(s); }
               function lbl(e){ return (e.getAttribute('aria-label')||'').toLowerCase(); }
@@ -177,6 +233,8 @@ object GoogleVoiceWebSender {
               function type(el,val){ el.focus(); var ok=false; try{ ok=document.execCommand('insertText',false,val);}catch(e){} if(!ok){ if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){ setNative(el,val);} else { el.textContent=val; el.dispatchEvent(new InputEvent('input',{bubbles:true,data:val,inputType:'insertText'})); } } }
               function typeReal(el,val){ el.focus(); try{ el.value=''; }catch(e){} for(var i=0;i<val.length;i++){ var ch=val.charAt(i); el.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:ch})); try{ el.value=(el.value||'')+ch; }catch(e){} el.dispatchEvent(new InputEvent('input',{bubbles:true,data:ch,inputType:'insertText'})); el.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:ch})); } el.dispatchEvent(new Event('change',{bubbles:true})); }
               function enter(el){ ['keydown','keypress','keyup'].forEach(function(t){ el.dispatchEvent(new KeyboardEvent(t,{bubbles:true,key:'Enter',code:'Enter',keyCode:13,which:13})); }); }
+              function visibleButtons(){ return qa('button,[role="button"],[aria-label]').filter(vis); }
+              function findAttach(){ var bs=visibleButtons(); for(var i=0;i<bs.length;i++){ var l=lbl(bs[i]); if(l.indexOf('attach')>=0||l.indexOf('photo')>=0||l.indexOf('image')>=0||l.indexOf('media')>=0||l.indexOf('mms')>=0) return bs[i]; } var file=q('input[type="file"]'); if(file) return file; return null; }
               var B=document.body;
               var step=0;
               var timer=setInterval(function(){
@@ -226,9 +284,17 @@ object GoogleVoiceWebSender {
                   }
                   if(!B.dataset.gvRecip){ log('await recip '+step); return; }
                   if(!B.dataset.gvRecipDone){ log('await recip commit '+step); return; }
-                  // Fill the message once the recipient chip is committed.
-                  if(msg && !B.dataset.gvMsg){ B.dataset.gvMsg='1'; log('fill message ['+fld(msg)+']'); type(msg,TEXT); return; }
+                  // Fill the message once the recipient chip is committed. MMS can be media-only,
+                  // but entering text when present helps the web composer enable its final send path.
+                  if(msg && !B.dataset.gvMsg){ B.dataset.gvMsg='1'; log('fill message ['+fld(msg)+']'); if(TEXT.length>0) type(msg,TEXT); return; }
                   if(!B.dataset.gvMsg){ if(step%4===0) dumpFields('FIELDS@'+step); log('await msg '+step); return; }
+                  if(WANT_ATTACH && !B.dataset.gvAttach){
+                    var attach=findAttach();
+                    if(attach){ B.dataset.gvAttach='1'; log('click attach ['+attach.tagName+' '+lbl(attach)+']'); attach.click(); return; }
+                    log('await attach '+step+' labels='+JSON.stringify(labels()).slice(0,900)); return;
+                  }
+                  if(WANT_ATTACH && !B.dataset.gvAttachWait){ B.dataset.gvAttachWait=String(step); return; }
+                  if(WANT_ATTACH && (step-(parseInt(B.dataset.gvAttachWait)||step))<6){ log('wait upload '+step); return; }
                   if(send){ var dis=(send.getAttribute('aria-disabled')==='true'||send.disabled); if(!dis){ log('click SEND ['+lbl(send)+']'); send.click(); clearInterval(timer); log('sent-clicked'); return; } else { log('send disabled '+step+' recipVal='+((recip&&(recip.value||recip.textContent))||'')); return; } }
                   log('await send '+step+' recip='+!!recip+' msg='+!!msg);
                 }catch(e){ log('auto err '+e); }

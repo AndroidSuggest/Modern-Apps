@@ -64,6 +64,7 @@ class SipClient(
     private var lastExpires = 3600
     private var registerRetried = false
     private var authRetried = false
+    private var inboundInvite: InboundInvite? = null
 
     // The SIP AOR/username is credential[0]; the digest password is credential[1] (from
     // sipregisterinfo/get). The AOR user is credential[0] URL-encoded ("=" -> "%3D").
@@ -73,6 +74,7 @@ class SipClient(
     private val contactUser = randomToken(8)
 
     suspend fun connect() {
+        if (socket != null) return
         socket = WebSocketClient.connect(
             urlStr = WS_URL,
             headers = mapOf(
@@ -163,25 +165,24 @@ class SipClient(
 
     /** Answer an inbound INVITE with our answer SDP (200 OK). */
     suspend fun answerInbound(answerSdp: String) {
-        // Best-effort: echo a 200 OK for the pending inbound INVITE.
-        val response = buildString {
-            append("SIP/2.0 200 OK\r\n")
-            append("Content-Type: application/sdp\r\n")
-            append("Content-Length: ${answerSdp.toByteArray().size}\r\n")
-            append("\r\n")
-            append(answerSdp)
-        }
-        send(response)
+        val invite = inboundInvite ?: return
+        send(buildInboundResponse(invite, 200, "OK", body = answerSdp, contentType = "application/sdp"))
     }
 
     /** Decline an inbound INVITE (603). */
     suspend fun declineInbound() {
-        send("SIP/2.0 603 Decline\r\nContent-Length: 0\r\n\r\n")
+        val invite = inboundInvite ?: return
+        send(buildInboundResponse(invite, 603, "Decline"))
+        inboundInvite = null
     }
 
     fun close() {
         readJob?.cancel()
-        scope.launch { runCatching { socket?.close() } }
+        readJob = null
+        val s = socket
+        socket = null
+        inboundInvite = null
+        scope.launch { runCatching { s?.close() } }
     }
 
     // ------------------------------------------------------------------
@@ -248,10 +249,31 @@ class SipClient(
                 }
             }
             firstLine.startsWith("INVITE", true) -> {
+                val invite = InboundInvite.from(message, headers)
+                inboundInvite = invite
+                scope.launch {
+                    runCatching { send(buildInboundResponse(invite, 100, "Trying")) }
+                    runCatching { send(buildInboundResponse(invite, 180, "Ringing")) }
+                }
                 val from = headers["from"]?.let { extractUserFromHeader(it) } ?: "Unknown"
                 listener.onIncomingInvite(body, from)
             }
-            firstLine.startsWith("BYE", true) -> listener.onEnded()
+            firstLine.startsWith("CANCEL", true) -> {
+                val invite = inboundInvite
+                scope.launch {
+                    runCatching { send(buildCancelOk(message, headers)) }
+                    if (invite != null) {
+                        runCatching { send(buildInboundResponse(invite, 487, "Request Terminated")) }
+                    }
+                }
+                inboundInvite = null
+                listener.onEnded()
+            }
+            firstLine.startsWith("BYE", true) -> {
+                scope.launch { runCatching { send(buildByeOk(message, headers)) } }
+                inboundInvite = null
+                listener.onEnded()
+            }
         }
     }
 
@@ -288,6 +310,64 @@ class SipClient(
         }
     }
 
+    private fun buildInboundResponse(
+        invite: InboundInvite,
+        code: Int,
+        reason: String,
+        body: String? = null,
+        contentType: String? = null,
+    ): String {
+        val bytes = body?.toByteArray()?.size ?: 0
+        return buildString {
+            append("SIP/2.0 $code $reason\r\n")
+            invite.viaLines.forEach { append("$it\r\n") }
+            append("From: ${invite.from}\r\n")
+            append("To: ${invite.to}${invite.toTagForResponse(code)}\r\n")
+            append("Call-ID: ${invite.callId}\r\n")
+            append("CSeq: ${invite.cseq}\r\n")
+            invite.recordRouteLines.forEach { append("$it\r\n") }
+            if (code == 200) append("Contact: <sip:$contactUser@$localHost;transport=wss>\r\n")
+            if (contentType != null) append("Content-Type: $contentType\r\n")
+            append("Content-Length: $bytes\r\n")
+            append("\r\n")
+            if (body != null) append(body)
+        }
+    }
+
+    private fun buildCancelOk(message: String, headers: Map<String, String>): String {
+        val viaLines = headerLines(message, "Via")
+        val from = headers["from"].orEmpty()
+        val to = headers["to"].orEmpty()
+        val callId = headers["call-id"].orEmpty()
+        val cseq = headers["cseq"].orEmpty()
+        return buildString {
+            append("SIP/2.0 200 OK\r\n")
+            viaLines.forEach { append("$it\r\n") }
+            append("From: $from\r\n")
+            append("To: $to\r\n")
+            append("Call-ID: $callId\r\n")
+            append("CSeq: $cseq\r\n")
+            append("Content-Length: 0\r\n\r\n")
+        }
+    }
+
+    private fun buildByeOk(message: String, headers: Map<String, String>): String {
+        val viaLines = headerLines(message, "Via")
+        val from = headers["from"].orEmpty()
+        val to = headers["to"].orEmpty()
+        val callId = headers["call-id"].orEmpty()
+        val cseq = headers["cseq"].orEmpty()
+        return buildString {
+            append("SIP/2.0 200 OK\r\n")
+            viaLines.forEach { append("$it\r\n") }
+            append("From: $from\r\n")
+            append("To: $to\r\n")
+            append("Call-ID: $callId\r\n")
+            append("CSeq: $cseq\r\n")
+            append("Content-Length: 0\r\n\r\n")
+        }
+    }
+
     /** The remote target URI from a response's Contact header (used for in-dialog ACK/BYE). */
     private fun extractContact(message: String): String? {
         val line = message.lineSequence().firstOrNull { it.trim().startsWith("Contact:", true) } ?: return null
@@ -303,6 +383,15 @@ class SipClient(
             .toList()
 
     private fun fromUri() = "<sip:$aorUser@$SIP_DOMAIN>"
+
+    private fun headerLines(message: String, name: String): List<String> {
+        val prefix = "$name:"
+        return message.lineSequence()
+            .map { it.trimEnd() }
+            .takeWhile { it.isNotEmpty() }
+            .filter { it.startsWith(prefix, ignoreCase = true) }
+            .toList()
+    }
 
     private fun parseHeaders(message: String): Map<String, String> {
         val out = mutableMapOf<String, String>()
@@ -342,9 +431,39 @@ class SipClient(
     private fun extractUserFromHeader(headerValue: String): String? =
         Regex("sip:([^@>;\\s]+)@").find(headerValue)?.groupValues?.getOrNull(1)
 
-    private fun randomToken(len: Int): String {
-        val chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-        return (1..len).map { chars[Random.nextInt(chars.length)] }.joinToString("")
+    private data class InboundInvite(
+        val viaLines: List<String>,
+        val recordRouteLines: List<String>,
+        val from: String,
+        val to: String,
+        val callId: String,
+        val cseq: String,
+        val responseToTag: String = randomToken(8),
+    ) {
+        fun toTagForResponse(code: Int): String {
+            if (to.contains(";tag=", ignoreCase = true)) return ""
+            return if (code > 100) ";tag=$responseToTag" else ""
+        }
+
+        companion object {
+            fun from(message: String, headers: Map<String, String>) = InboundInvite(
+                viaLines = headerLinesStatic(message, "Via"),
+                recordRouteLines = headerLinesStatic(message, "Record-Route"),
+                from = headers["from"].orEmpty(),
+                to = headers["to"].orEmpty(),
+                callId = headers["call-id"].orEmpty(),
+                cseq = headers["cseq"].orEmpty(),
+            )
+
+            private fun headerLinesStatic(message: String, name: String): List<String> {
+                val prefix = "$name:"
+                return message.lineSequence()
+                    .map { it.trimEnd() }
+                    .takeWhile { it.isNotEmpty() }
+                    .filter { it.startsWith(prefix, ignoreCase = true) }
+                    .toList()
+            }
+        }
     }
 
     companion object {
@@ -353,4 +472,9 @@ class SipClient(
         // Registrar/domain observed in capture 2 (User-Agent: GoogleVoice; PBX host).
         private const val SIP_DOMAIN = "web.c.pbx.voice.sip.google.com"
     }
+}
+
+private fun randomToken(len: Int): String {
+    val chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+    return (1..len).map { chars[Random.nextInt(chars.length)] }.joinToString("")
 }

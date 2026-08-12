@@ -13,6 +13,7 @@ import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceClient
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceWebSender
@@ -321,15 +322,25 @@ object CommunicateRepository {
         address: String,
         body: String,
         threadRemoteId: String? = null,
+        attachments: List<CommunicateAttachment> = emptyList(),
     ): Boolean = when (choice) {
-        is LineChoice.Sim -> sendSimSms(context, choice.subscriptionId, address, body)
+        is LineChoice.Sim -> if (attachments.isEmpty()) {
+            sendSimSms(context, choice.subscriptionId, address, body)
+        } else {
+            false
+        }
         LineChoice.GoogleVoice -> runCatching {
             // The bot-defense token is minted invisibly in an offscreen WebView; the app then
-            // builds and sends the sendsms API call itself using that token.
+            // builds and sends the sendsms API call itself using that token. For MMS, let the
+            // real web composer upload media and build the media-bearing body, then replay it.
             val activity = context as? android.app.Activity ?: return@runCatching false
-            val token = GoogleVoiceWebSender.mintToken(activity, address, body) ?: return@runCatching false
-            val sendBody = com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser
-                .buildSendSmsBody(address, body, threadRemoteId, botToken = token)
+            val sendBody = if (attachments.isEmpty()) {
+                val token = GoogleVoiceWebSender.mintToken(activity, address, body) ?: return@runCatching false
+                com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser
+                    .buildSendSmsBody(address, body, threadRemoteId, botToken = token)
+            } else {
+                GoogleVoiceWebSender.mintPreparedBody(activity, address, body, attachments) ?: return@runCatching false
+            }
             GoogleVoiceClient.get(context).sendPreparedSms(sendBody)
             true
         }.getOrDefault(false)
@@ -400,7 +411,7 @@ object CommunicateRepository {
         threadId = stableThreadId(id),
         address = phoneNumber,
         displayName = displayName ?: findContactName(context, phoneNumber),
-        snippet = snippet,
+        snippet = snippet.ifBlank { if (messages.any { it.hasMedia }) context.getString(R.string.gv_media_message) else "" },
         timestampMillis = timestampMillis,
         unreadCount = unreadCount,
         line = CommunicateLine.GoogleVoice,
@@ -411,7 +422,7 @@ object CommunicateRepository {
         id = ("$threadId#$id").hashCode().toLong(),
         threadId = threadId,
         address = phoneNumber,
-        body = text,
+        body = text.ifBlank { if (hasMedia) context.getString(R.string.gv_media_message) else "" },
         timestampMillis = timestampMillis,
         outgoing = outgoing,
         read = read,

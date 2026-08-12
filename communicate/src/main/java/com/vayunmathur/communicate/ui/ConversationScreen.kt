@@ -1,6 +1,10 @@
 package com.vayunmathur.communicate.ui
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +31,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +44,7 @@ import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.IconArchive
 import com.vayunmathur.library.ui.IconAttachment
+import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconSend
 import com.vayunmathur.library.ui.IconSms
@@ -47,16 +55,19 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.image.compose.AsyncImage
+import com.vayunmathur.library.image.compose.AsyncImageState
 import com.vayunmathur.communicate.R
+import com.vayunmathur.communicate.data.CommunicateAttachment
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
+import com.vayunmathur.communicate.data.LineChoice
 import com.vayunmathur.communicate.data.SmsMessage
 import com.vayunmathur.communicate.data.SmsThread
 import com.vayunmathur.library.util.AppMessages
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import android.content.Intent
 
 @Composable
 fun ConversationScreen(
@@ -70,19 +81,29 @@ fun ConversationScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var draft by remember(threadId) { mutableStateOf("") }
+    var selectedAttachments by remember(threadId) { mutableStateOf<List<CommunicateAttachment>>(emptyList()) }
     // Bumped after a send to re-fetch the thread.
     var refresh by remember(threadId) { mutableIntStateOf(0) }
     val lineChoices = rememberLineChoices()
-    // Default the send line to this thread's line (matching SIM subscription when known).
-    var selectedLine by remember(threadId, lineChoices) {
-        mutableStateOf(
-            when (line) {
-                CommunicateLine.GoogleVoice ->
-                    lineChoices.firstOrNull { it is com.vayunmathur.communicate.data.LineChoice.GoogleVoice }
-                CommunicateLine.Sim ->
-                    lineChoices.firstOrNull { it is com.vayunmathur.communicate.data.LineChoice.Sim && it.subscriptionId == subscriptionId }
-            } ?: lineChoices.firstOrNull(),
-        )
+    val fixedLineChoice = remember(line, subscriptionId, lineChoices) {
+        when (line) {
+            CommunicateLine.GoogleVoice -> LineChoice.GoogleVoice
+            CommunicateLine.Sim -> lineChoices
+                .filterIsInstance<LineChoice.Sim>()
+                .firstOrNull { subscriptionId == null || it.subscriptionId == subscriptionId }
+                ?: LineChoice.Sim(subscriptionId ?: -1, context.getString(R.string.line_sim))
+        }
+    }
+    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        selectedAttachments = uris.map { uri ->
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            CommunicateAttachment(
+                contentUri = uri.toString(),
+                mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream",
+            )
+        }
     }
     val thread = remember(threadId) {
         SmsThread(
@@ -166,24 +187,29 @@ fun ConversationScreen(
             ComposeSmsRow(
                 draft = draft,
                 onDraftChange = { draft = it },
-                lineSelector = {
-                    val sel = selectedLine
-                    if (lineChoices.size > 1 && sel != null) {
-                        LineSelector(choices = lineChoices, selected = sel, onSelect = { selectedLine = it })
-                    }
+                attachments = selectedAttachments,
+                onAttach = { attachmentPicker.launch(arrayOf("image/*", "video/*")) },
+                onRemoveAttachment = { attachment ->
+                    selectedAttachments = selectedAttachments.filterNot { it.contentUri == attachment.contentUri }
                 },
                 onSend = {
                     val text = draft.trim()
-                    val choice = selectedLine
-                    if (text.isEmpty() || choice == null) return@ComposeSmsRow
+                    val attachments = selectedAttachments
+                    if (text.isEmpty() && attachments.isEmpty()) return@ComposeSmsRow
+                    if (fixedLineChoice is LineChoice.Sim && attachments.isNotEmpty()) {
+                        AppMessages.show(context.getString(R.string.sim_mms_unsupported))
+                        return@ComposeSmsRow
+                    }
                     draft = ""
+                    selectedAttachments = emptyList()
                     scope.launch {
                         val ok = CommunicateRepository.sendMessage(
                             context,
-                            choice,
+                            fixedLineChoice,
                             address,
                             text,
-                            if (choice is com.vayunmathur.communicate.data.LineChoice.GoogleVoice) remoteId else null,
+                            if (fixedLineChoice is LineChoice.GoogleVoice) remoteId else null,
+                            attachments,
                         )
                         if (ok) refresh++ else AppMessages.show(context.getString(R.string.gv_send_failed))
                     }
@@ -209,6 +235,91 @@ fun ConversationScreen(
                 }
                 MessagesContent(padding, messages.value)
             }
+        }
+    }
+}
+
+@Composable
+private fun MessageAttachment(
+    attachment: CommunicateAttachment,
+    bubbleColor: androidx.compose.ui.graphics.Color,
+    contentColor: androidx.compose.ui.graphics.Color,
+    shape: RoundedCornerShape,
+) {
+    val context = LocalContext.current
+    val openAttachment = {
+        ExternalIntents.launch(
+            context,
+            Intent(Intent.ACTION_VIEW, attachment.contentUri.toUri()),
+        )
+        Unit
+    }
+    if (attachment.mimeType.startsWith("image/")) {
+        var showFallback by remember(attachment.contentUri) { mutableStateOf(false) }
+        if (!showFallback) {
+            Surface(
+                shape = shape,
+                modifier = Modifier
+                    .widthIn(max = 320.dp)
+                    .heightIn(max = 260.dp)
+                    .padding(top = 2.dp)
+                    .clickable(onClick = openAttachment),
+            ) {
+                AsyncImage(
+                    model = attachment.contentUri,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    onState = { state -> showFallback = state is AsyncImageState.Error },
+                    modifier = Modifier
+                        .widthIn(min = 180.dp, max = 320.dp)
+                        .heightIn(min = 120.dp, max = 260.dp),
+                )
+            }
+        }
+        if (showFallback) {
+            AttachmentFallbackRow(
+                attachment = attachment,
+                bubbleColor = bubbleColor,
+                contentColor = contentColor,
+                shape = shape,
+                onClick = openAttachment,
+            )
+        }
+    } else {
+        AttachmentFallbackRow(
+            attachment = attachment,
+            bubbleColor = bubbleColor,
+            contentColor = contentColor,
+            shape = shape,
+            onClick = openAttachment,
+        )
+    }
+}
+
+@Composable
+private fun AttachmentFallbackRow(
+    attachment: CommunicateAttachment,
+    bubbleColor: androidx.compose.ui.graphics.Color,
+    contentColor: androidx.compose.ui.graphics.Color,
+    shape: RoundedCornerShape,
+    onClick: () -> Unit,
+) {
+    Surface(
+        color = bubbleColor,
+        contentColor = contentColor,
+        shape = shape,
+        modifier = Modifier
+            .widthIn(max = 320.dp)
+            .padding(top = 2.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconAttachment()
+            Spacer(Modifier.size(6.dp))
+            Text(attachment.mimeType, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -248,7 +359,9 @@ private fun MessagesContent(padding: PaddingValues, rows: List<SmsMessage>?) {
 private fun ComposeSmsRow(
     draft: String,
     onDraftChange: (String) -> Unit,
-    lineSelector: @Composable () -> Unit,
+    attachments: List<CommunicateAttachment>,
+    onAttach: () -> Unit,
+    onRemoveAttachment: (CommunicateAttachment) -> Unit,
     onSend: () -> Unit,
 ) {
     Surface(
@@ -257,25 +370,88 @@ private fun ComposeSmsRow(
             .fillMaxWidth()
             .imePadding(),
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 8.dp),
+        ) {
+            if (attachments.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    attachments.forEach { attachment ->
+                        SelectedAttachmentPreview(
+                            attachment = attachment,
+                            onRemove = { onRemoveAttachment(attachment) },
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onAttach) {
+                    IconAttachment()
+                }
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = onDraftChange,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp),
+                    placeholder = { Text(stringResource(R.string.message_hint)) },
+                    maxLines = 5,
+                    shape = RoundedCornerShape(24.dp),
+                )
+                IconButton(onClick = onSend, enabled = draft.isNotBlank() || attachments.isNotEmpty()) {
+                    IconSend()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectedAttachmentPreview(
+    attachment: CommunicateAttachment,
+    onRemove: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.widthIn(max = 160.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            lineSelector()
-            OutlinedTextField(
-                value = draft,
-                onValueChange = onDraftChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 4.dp),
-                placeholder = { Text(stringResource(R.string.message_hint)) },
-                maxLines = 5,
-                shape = RoundedCornerShape(24.dp),
+            if (attachment.mimeType.startsWith("image/")) {
+                AsyncImage(
+                    model = Uri.parse(attachment.contentUri),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp)),
+                )
+            } else {
+                IconAttachment()
+            }
+            Spacer(Modifier.size(6.dp))
+            Text(
+                attachment.mimeType,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
-            IconButton(onClick = onSend, enabled = draft.isNotBlank()) {
-                IconSend()
+            IconButton(onClick = onRemove) {
+                IconClose(Modifier.size(18.dp))
             }
         }
     }
@@ -321,29 +497,12 @@ private fun MessageBubble(message: SmsMessage) {
             }
         }
         message.attachments.forEach { attachment ->
-            Surface(
-                color = bubbleColor,
+            MessageAttachment(
+                attachment = attachment,
+                bubbleColor = bubbleColor,
                 contentColor = contentColor,
                 shape = shape,
-                modifier = Modifier
-                    .widthIn(max = 320.dp)
-                    .padding(top = 2.dp)
-                    .clickable {
-                        ExternalIntents.launch(
-                            context,
-                            Intent(Intent.ACTION_VIEW, attachment.contentUri.toUri()),
-                        )
-                    },
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconAttachment()
-                    Spacer(Modifier.size(6.dp))
-                    Text(attachment.mimeType, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
+            )
         }
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),

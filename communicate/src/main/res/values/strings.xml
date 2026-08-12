@@ -58,6 +58,16 @@
     <string name="choose_line">Send from</string>
     <string name="gv_send_failed">Couldn\'t send via Google Voice</string>
     <string name="gv_action_failed">Google Voice action failed</string>
+    <string name="sim_mms_unsupported">SIM MMS attachments are not supported yet</string>
+    <string name="gv_media_message">Media message</string>
+    <string name="gv_sync_channel_name">Google Voice receive</string>
+    <string name="gv_sync_channel_desc">Keeps Google Voice calls and messages available in the background.</string>
+    <string name="gv_incoming_channel_name">Google Voice messages</string>
+    <string name="gv_incoming_channel_desc">New Google Voice message alerts.</string>
+    <string name="gv_sync_notification_title">Google Voice receive active</string>
+    <string name="gv_sync_notification_text">Listening for calls and checking for new messages</string>
+    <string name="notification_action_stop">Stop</string>
+    <string name="you">You</string>
     <string name="call_mute">Mute</string>
     <string name="call_unmute">Unmute</string>
     <string name="call_speaker">Speaker</string>
@@ -72,6 +82,8 @@
     <string name="call_state_incoming">Incoming Google Voice call</string>
     <string name="call_state_idle">Idle</string>
     <string name="gv_call_channel_name">Google Voice calls</string>
+    <string name="gv_incoming_call_channel_name">Incoming Google Voice calls</string>
+    <string name="gv_incoming_call_channel_desc">Full-screen alerts for incoming Google Voice calls.</string>
     <string name="gv_ongoing_call">Ongoing Google Voice call</string>
     <string name="gv_call_failed">Google Voice call failed</string>
 </resources>

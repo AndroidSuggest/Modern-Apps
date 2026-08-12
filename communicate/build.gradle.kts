@@ -16,6 +16,8 @@ dependencies {
     // Google Voice virtual line: protojson RPCs + SIP-over-WSS transport go through
     // the repo's own Android-only HTTP/WebSocket stack (no OkHttp/Ktor).
     implementation(project(":library:network"))
+    // Local Compose image loading for Google Voice MMS previews (remote https + content://).
+    implementation(project(":library:image"))
     // Maintained prebuilt WebRTC (org.webrtc.*) for the calling audio session.
     implementation(libs.stream.webrtc.android)
     // E.164 normalization to reconcile SIM vs Google Voice numbers.

@@ -1,6 +1,7 @@
 package com.vayunmathur.communicate.telephony
 
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -33,6 +34,16 @@ class GoogleVoiceCallForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_ANSWER -> GoogleVoiceCallManager.answer()
+            ACTION_HANGUP -> {
+                if (GoogleVoiceCallManager.state.value.phase == CallPhase.Incoming) {
+                    GoogleVoiceCallManager.reject()
+                } else {
+                    GoogleVoiceCallManager.hangup()
+                }
+            }
+        }
         startForegroundWithNotification()
         observeJob?.cancel()
         observeJob = scope.launch {
@@ -47,18 +58,14 @@ class GoogleVoiceCallForegroundService : Service() {
     }
 
     private fun startForegroundWithNotification() {
-        ensureNotificationChannel(CHANNEL_ID, getString(R.string.gv_call_channel_name))
-        val contentIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val notification: Notification = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.gv_ongoing_call))
-            .setContentText(GoogleVoiceCallManager.state.value.remoteNumber)
-            .setSmallIcon(android.R.drawable.sym_action_call)
-            .setOngoing(true)
-            .setContentIntent(contentIntent)
-            .build()
+        ensureChannels()
+        val state = GoogleVoiceCallManager.state.value
+        val contentIntent = callActivityIntent(0)
+        val notification = if (state.phase == CallPhase.Incoming) {
+            buildIncomingCallNotification(state.remoteNumber, contentIntent)
+        } else {
+            buildOngoingCallNotification(state.phase, state.remoteNumber, contentIntent)
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
@@ -66,6 +73,85 @@ class GoogleVoiceCallForegroundService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
     }
+
+    private fun ensureChannels() {
+        ensureNotificationChannel(CHANNEL_ID, getString(R.string.gv_call_channel_name))
+        ensureNotificationChannel(
+            id = INCOMING_CHANNEL_ID,
+            name = getString(R.string.gv_incoming_call_channel_name),
+            importance = NotificationManager.IMPORTANCE_HIGH,
+            description = getString(R.string.gv_incoming_call_channel_desc),
+        ) {
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+    }
+
+    private fun buildIncomingCallNotification(remoteNumber: String, contentIntent: PendingIntent): Notification {
+        val fullScreenIntent = callActivityIntent(1)
+        return Notification.Builder(this, INCOMING_CHANNEL_ID)
+            .setContentTitle(getString(R.string.call_state_incoming))
+            .setContentText(remoteNumber.ifBlank { getString(R.string.account_google_voice) })
+            .setSmallIcon(android.R.drawable.sym_call_incoming)
+            .setCategory(Notification.CATEGORY_CALL)
+            .setPriority(Notification.PRIORITY_MAX)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setContentIntent(contentIntent)
+            .setFullScreenIntent(fullScreenIntent, true)
+            .addAction(
+                android.R.drawable.sym_call_incoming,
+                getString(R.string.call_answer),
+                serviceActionIntent(ACTION_ANSWER, 2),
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                getString(R.string.call_decline),
+                serviceActionIntent(ACTION_HANGUP, 3),
+            )
+            .build()
+    }
+
+    private fun buildOngoingCallNotification(
+        phase: CallPhase,
+        remoteNumber: String,
+        contentIntent: PendingIntent,
+    ): Notification {
+        val title = when (phase) {
+            CallPhase.Dialing -> getString(R.string.call_state_dialing)
+            CallPhase.Ringing -> getString(R.string.call_state_ringing)
+            else -> getString(R.string.gv_ongoing_call)
+        }
+        return Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(remoteNumber)
+            .setSmallIcon(android.R.drawable.sym_action_call)
+            .setCategory(Notification.CATEGORY_CALL)
+            .setOngoing(true)
+            .setContentIntent(contentIntent)
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                getString(R.string.call_end),
+                serviceActionIntent(ACTION_HANGUP, 3),
+            )
+            .build()
+    }
+
+    private fun serviceActionIntent(action: String, requestCode: Int): PendingIntent = PendingIntent.getService(
+        this,
+        requestCode,
+        Intent(this, GoogleVoiceCallForegroundService::class.java).apply { this.action = action },
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    private fun callActivityIntent(requestCode: Int): PendingIntent = PendingIntent.getActivity(
+        this,
+        requestCode,
+        Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        },
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
 
     private fun stopSelfSafely() {
         androidx.core.app.ServiceCompat.stopForeground(
@@ -81,7 +167,10 @@ class GoogleVoiceCallForegroundService : Service() {
 
     companion object {
         private const val CHANNEL_ID = "gv_calls"
+        private const val INCOMING_CHANNEL_ID = "gv_calls_incoming"
         private const val NOTIFICATION_ID = 4711
+        private const val ACTION_ANSWER = "com.vayunmathur.communicate.googlevoice.ANSWER_CALL"
+        private const val ACTION_HANGUP = "com.vayunmathur.communicate.googlevoice.HANGUP_CALL"
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(

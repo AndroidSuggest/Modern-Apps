@@ -273,14 +273,18 @@ object GoogleVoiceParser {
         // Direction is the type field: 10 = inbound SMS, 11 = outbound SMS (confirmed from the wire).
         val type = longAt(ITEM_TYPE)
         val outgoing = type == 11L
+        val mediaUrls = mediaUrlsIn(this)
+        val hasMedia = mediaUrls.isNotEmpty() || hasMediaMetadata()
         return GvMessage(
             id = strAt(ITEM_ID) ?: "$threadId#$index",
             threadId = threadId,
             phoneNumber = counterparty,
-            text = strAt(ITEM_BODY).orEmpty(),
+            text = normalizedBodyText(hasMedia),
             timestampMillis = ts,
             outgoing = outgoing,
             read = true,
+            mediaUrls = mediaUrls,
+            hasMedia = hasMedia,
         )
     }
 
@@ -292,6 +296,77 @@ object GoogleVoiceParser {
         val fromId = recordId(record)?.removePrefix("t.")
         if (fromId != null && (looksLikePhone(fromId) || fromId.all { it.isDigit() })) return fromId
         return null
+    }
+
+    private fun JsonArray.normalizedBodyText(hasMedia: Boolean): String {
+        val raw = strAt(ITEM_BODY).orEmpty()
+        return if (hasMedia && raw.trim().isMmsStatusLabel()) "" else raw
+    }
+
+    private fun String.isMmsStatusLabel(): Boolean = when (trim().lowercase()) {
+        "mms sent", "mms received" -> true
+        else -> false
+    }
+
+    private fun JsonArray.hasMediaMetadata(): Boolean = getOrNull(16)?.let(::hasMediaMetadataIn) == true
+
+    private fun hasMediaMetadataIn(el: JsonElement): Boolean = allStrings(el).any {
+        it.looksLikeMimeType() || it.looksLikeAttachmentId()
+    }
+
+    private fun String.looksLikeMimeType(): Boolean {
+        val lower = trim().lowercase()
+        return lower.startsWith("image/") || lower.startsWith("video/") || lower.startsWith("audio/")
+    }
+
+    private fun String.looksLikeAttachmentId(): Boolean = Regex("^[A-Za-z0-9_.-]+-\\d+$").matches(trim())
+
+    private fun mediaUrlsIn(item: JsonArray): List<String> {
+        val text = item.strAt(ITEM_BODY).orEmpty()
+        val knownNonMedia = buildSet {
+            item.strAt(ITEM_ID)?.let(::add)
+            item.strAt(ITEM_OWN)?.let(::add)
+            text.takeIf { it.isNotBlank() }?.let(::add)
+            item.strAt(15)?.let(::add)
+        }
+        return mediaUrlStrings(item)
+            .filterNot { it in knownNonMedia }
+            .distinct()
+    }
+
+    private fun mediaUrlStrings(el: JsonElement): List<String> {
+        val out = mutableListOf<String>()
+        fun visit(e: JsonElement) {
+            when (e) {
+                is JsonArray -> e.forEach { visit(it) }
+                is JsonObject -> e.values.forEach { visit(it) }
+                is JsonPrimitive -> if (e.isString) {
+                    val url = e.content.trim()
+                    if (looksLikeMediaUrl(url)) out.add(url)
+                }
+            }
+        }
+        visit(el)
+        return out
+    }
+
+    private fun looksLikeMediaUrl(raw: String): Boolean {
+        val lower = raw.lowercase()
+        if (!lower.startsWith("https://")) return false
+        val isGoogleAttachmentHost = lower.contains("googleusercontent.com") ||
+            lower.contains("ggpht.com") ||
+            lower.contains("lh3.google.com") ||
+            lower.contains("voice.google.com/media")
+        if (!isGoogleAttachmentHost) return false
+        return lower.contains("=s") ||
+            lower.contains("/mms") ||
+            lower.contains("/media") ||
+            lower.contains("image") ||
+            lower.endsWith(".jpg") ||
+            lower.endsWith(".jpeg") ||
+            lower.endsWith(".png") ||
+            lower.endsWith(".gif") ||
+            lower.endsWith(".webp")
     }
 
     private fun recordId(record: JsonArray): String? =

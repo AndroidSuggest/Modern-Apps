@@ -31,6 +31,13 @@ class GoogleVoiceSession private constructor(private val store: DataStoreUtils) 
     /** The account's Google Voice phone number (from `account/get`), for display + line label. */
     suspend fun phoneNumber(): String? = store.getStringAwait(KEY_PHONE_NUMBER)
 
+    /** New-message notification watermark; zero means the first background poll should seed it. */
+    suspend fun lastSeenMessageTimestampMillis(): Long = store.getLongAwait(KEY_LAST_SEEN_MESSAGE_TS) ?: 0L
+
+    suspend fun setLastSeenMessageTimestampMillis(timestampMillis: Long) {
+        store.setLong(KEY_LAST_SEEN_MESSAGE_TS, timestampMillis)
+    }
+
     suspend fun isSignedIn(): Boolean = store.getBooleanAwait(KEY_SIGNED_IN, default = false)
 
     /** Reactive sign-in state for UI (Accounts screen, line pickers). */
@@ -71,7 +78,7 @@ class GoogleVoiceSession private constructor(private val store: DataStoreUtils) 
 
     suspend fun signOut() {
         store.removeKeys(
-            listOf(KEY_COOKIE, KEY_SAPISID, KEY_API_KEY, KEY_AUTHUSER, KEY_PHONE_NUMBER),
+            listOf(KEY_COOKIE, KEY_SAPISID, KEY_API_KEY, KEY_AUTHUSER, KEY_PHONE_NUMBER, KEY_LAST_SEEN_MESSAGE_TS),
         )
         store.setBoolean(KEY_SIGNED_IN, false)
     }
@@ -86,6 +93,7 @@ class GoogleVoiceSession private constructor(private val store: DataStoreUtils) 
         private const val KEY_AUTHUSER = "gv_authuser"
         private const val KEY_PHONE_NUMBER = "gv_phone_number"
         private const val KEY_SIGNED_IN = "gv_signed_in"
+        private const val KEY_LAST_SEEN_MESSAGE_TS = "gv_last_seen_message_ts"
 
         fun get(context: Context): GoogleVoiceSession =
             GoogleVoiceSession(DataStoreUtils.getInstance(context.applicationContext))

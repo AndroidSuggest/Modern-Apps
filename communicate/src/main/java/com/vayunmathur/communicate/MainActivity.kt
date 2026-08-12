@@ -1,5 +1,8 @@
 package com.vayunmathur.communicate
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +26,7 @@ import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
 import com.vayunmathur.communicate.data.googlevoice.call.CallPhase
 import com.vayunmathur.communicate.data.googlevoice.call.GoogleVoiceCallManager
+import com.vayunmathur.communicate.telephony.GoogleVoiceSyncService
 import com.vayunmathur.communicate.telephony.GoogleVoiceTelecom
 import com.vayunmathur.communicate.ui.AccountsScreen
 import com.vayunmathur.communicate.ui.CallLogsScreen
@@ -57,11 +61,21 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_POST_NOTIFICATIONS)
+        }
+
         setContent {
             DynamicTheme {
                 CommunicateApp()
             }
         }
+    }
+
+    companion object {
+        private const val REQUEST_POST_NOTIFICATIONS = 1001
     }
 }
 
@@ -72,13 +86,16 @@ private fun CommunicateApp() {
     val gvSignedIn by session.signedInFlow.collectAsState(initial = false)
     val callState by GoogleVoiceCallManager.state.collectAsState()
 
-    // Make Google Voice a selectable line and route inbound SIP INVITEs to the system.
+    // Keep the Telecom account fresh, but let the foreground service own always-on receive state.
     LaunchedEffect(gvSignedIn) {
         GoogleVoiceCallManager.init(context)
         GoogleVoiceCallManager.onIncomingCall = { from -> GoogleVoiceTelecom.addIncoming(context, from) }
         if (gvSignedIn) {
             val number = session.phoneNumber() ?: context.getString(R.string.account_google_voice)
             GoogleVoiceTelecom.registerPhoneAccount(context, number)
+            GoogleVoiceSyncService.start(context)
+        } else {
+            GoogleVoiceSyncService.stop(context)
         }
     }
 
