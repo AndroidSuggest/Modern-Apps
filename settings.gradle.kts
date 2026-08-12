@@ -97,6 +97,7 @@ include(":measure")
 include(":taxi")
 include(":communicate")
 include(":euicc")
+include(":backup")
 
 // Personal / private app modules live under personal/ (gitignored). Included only
 // when present so the public repo still configures without them.
