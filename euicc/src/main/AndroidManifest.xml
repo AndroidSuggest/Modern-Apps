@@ -5,6 +5,10 @@
          privileges or a platform-signed system app holding these permissions. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.MODIFY_PHONE_STATE" />
+    <!-- Privileged: manage embedded (eSIM) subscriptions as the system LPA. Granted
+         only to a platform-signed priv-app whitelisted in privapp-permissions*.xml. -->
+    <uses-permission android:name="android.permission.WRITE_EMBEDDED_SUBSCRIPTIONS" />
+    <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
     <!-- Reaching the SM-DP+ for profile download. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Scanning eSIM activation-code QR codes. -->
@@ -28,7 +32,25 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Local User Interface (LUI) the framework starts for eSIM management. -->
+            <intent-filter android:priority="10">
+                <action android:name="android.service.euicc.action.MANAGE_EMBEDDED_SUBSCRIPTIONS" />
+                <action android:name="android.service.euicc.action.PROVISION_EMBEDDED_SUBSCRIPTION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
+
+        <!-- System LPA service. The platform's EuiccManager binds this via the
+             EuiccService action once this app is the configured LPA; access is
+             gated by the system-only BIND_EUICC_SERVICE permission. -->
+        <service
+            android:name=".service.EuiccManagerService"
+            android:exported="true"
+            android:permission="android.permission.BIND_EUICC_SERVICE">
+            <intent-filter android:priority="10">
+                <action android:name="android.service.euicc.EuiccService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

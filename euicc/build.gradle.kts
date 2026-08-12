@@ -28,6 +28,10 @@ androidComponents {
 rustNativeLib("euicc")
 
 dependencies {
+    // Compile-only stubs for the framework's @SystemApi eSIM LPA classes
+    // (android.service.euicc.*, EuiccProfileInfo). Provided by the framework at
+    // runtime on a system image; must NOT be packaged.
+    compileOnly(project(":library:euicc-stubs"))
     // Rust reaches the SM-DP+ over HTTP through the flat-framed JNI bridge in
     // library:network (NativeHttpBridge), so libeuicc.so links no TLS of its own.
     implementation(project(":library:network"))
