@@ -50,4 +50,15 @@
     <string name="updates">Aktualisierungen</string>
     <string name="update_all">Alle aktualisieren (%1$d)</string>
     <string name="action_check_again">Nochmal prüfen</string>
+    <string name="source_chip_grapheneos">GrapheneOS</string>
+    <string name="source_chip_accrescent">Accrescent Store</string>
+    <string name="section_sandboxed_google_play">Google Play in einer Sandbox</string>
+    <string name="section_sandboxed_google_play_subtitle">Googles Play Komponenten als normale Apps, ohne Sonderrechte</string>
+    <string name="section_accrescent">Bei Accrescend</string>
+    <string name="section_accrescent_subtitle">Entwicklersignierte Apps von der Accrescend Liste signierter Apps</string>
+    <string name="action_install_all">Alle installieren</string>
+    <string name="updates_checking">Überprüfe auf Aktualisierungen…</string>
+    <string name="updates_empty_message">Eine Überprüfung der Quellen findet bei Wi-Fi Verbindung alle zwölf Stunden im Hintergund statt.</string>
+    <string name="updates_last_checked">Letzte Prüfung %1$s</string>
+    <string name="updates_notification_body">Öffne den App Store zur Überprüfung und Installation.</string>
 </resources>
