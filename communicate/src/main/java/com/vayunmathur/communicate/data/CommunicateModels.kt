@@ -10,6 +10,24 @@ enum class CommunicateLine {
     GoogleVoice,
 }
 
+/**
+ * A selectable outgoing line for the line picker: a specific physical SIM (by subscription id)
+ * or Google Voice. Mirrors how the OS lets you pick which SIM to call/text from.
+ */
+sealed interface LineChoice {
+    val label: String
+    val category: CommunicateLine
+
+    data class Sim(val subscriptionId: Int, override val label: String) : LineChoice {
+        override val category get() = CommunicateLine.Sim
+    }
+
+    data object GoogleVoice : LineChoice {
+        override val label = "Google Voice"
+        override val category get() = CommunicateLine.GoogleVoice
+    }
+}
+
 data class CommunicateContact(
     val id: Long,
     val name: String,
@@ -35,6 +53,8 @@ data class CommunicateCallLogEntry(
     val timestampMillis: Long,
     val durationSeconds: Long,
     val line: CommunicateLine = CommunicateLine.Sim,
+    /** Physical SIM subscription id for SIM calls (from the call log), null if unknown/GV. */
+    val subscriptionId: Int? = null,
 )
 
 /**
@@ -61,6 +81,7 @@ data class SmsThread(
      * [threadId] (hash of [remoteId]) so list keys and navigation still work.
      */
     val remoteId: String? = null,
+    val subscriptionId: Int? = null,
 )
 
 data class SmsMessage(
@@ -74,4 +95,5 @@ data class SmsMessage(
     val line: CommunicateLine = CommunicateLine.Sim,
     val remoteId: String? = null,
     val attachments: List<CommunicateAttachment> = emptyList(),
+    val subscriptionId: Int? = null,
 )

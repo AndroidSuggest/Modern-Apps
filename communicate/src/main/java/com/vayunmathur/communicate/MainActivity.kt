@@ -48,6 +48,7 @@ sealed interface Route : NavKey {
         // Serialized as the enum name; defaults keep older back-stack entries valid.
         val line: CommunicateLine = CommunicateLine.Sim,
         val remoteId: String? = null,
+        val subscriptionId: Int? = null,
     ) : Route
 }
 
@@ -115,6 +116,7 @@ private fun CommunicateApp() {
                             address = thread.address,
                             line = thread.line,
                             remoteId = thread.remoteId,
+                            subscriptionId = thread.subscriptionId,
                         ),
                     )
                 },
@@ -141,6 +143,7 @@ private fun CommunicateApp() {
                 address = route.address,
                 line = route.line,
                 remoteId = route.remoteId,
+                subscriptionId = route.subscriptionId,
                 onBack = { backStack.pop() },
             )
         }

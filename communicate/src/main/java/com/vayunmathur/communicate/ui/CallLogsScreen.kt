@@ -87,7 +87,7 @@ private fun CallLogRow(entry: CommunicateCallLogEntry, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = if (entry.type == CommunicateCallType.Missed) FontWeight.Bold else FontWeight.Medium,
                 )
-                LineBadge(entry.line, modifier = Modifier.padding(start = 6.dp))
+                LineBadge(entry.line, entry.subscriptionId, modifier = Modifier.padding(start = 6.dp))
             }
         },
         supportingContent = {

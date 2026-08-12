@@ -82,6 +82,7 @@ object CommunicateRepository {
             CallLog.Calls.TYPE,
             CallLog.Calls.DATE,
             CallLog.Calls.DURATION,
+            CallLog.Calls.PHONE_ACCOUNT_ID,
         )
         return runCatching {
             context.contentResolver.query(
@@ -98,9 +99,17 @@ object CommunicateRepository {
                     val type = cursor.getColumnIndexOrThrow(CallLog.Calls.TYPE)
                     val date = cursor.getColumnIndexOrThrow(CallLog.Calls.DATE)
                     val duration = cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION)
+                    val account = cursor.getColumnIndex(CallLog.Calls.PHONE_ACCOUNT_ID)
+                    val activeSubs = SimManager.activeSims(context).map { it.subscriptionId }.toSet()
 
                     while (cursor.moveToNext()) {
                         val phoneNumber = cursor.getString(number).orEmpty().ifBlank { "Unknown" }
+                        // PHONE_ACCOUNT_ID is the SIM's subscription id on most devices; keep it
+                        // only when it maps to an active SIM so we can label the row by SIM.
+                        val subId = account.takeIf { it >= 0 }
+                            ?.let { cursor.getString(it) }
+                            ?.toIntOrNull()
+                            ?.takeIf { it in activeSubs }
                         add(
                             CommunicateCallLogEntry(
                                 id = cursor.getLong(id),
@@ -109,6 +118,7 @@ object CommunicateRepository {
                                 type = cursor.getInt(type).toCommunicateCallType(),
                                 timestampMillis = cursor.getLong(date),
                                 durationSeconds = cursor.getLong(duration),
+                                subscriptionId = subId,
                             )
                         )
                     }
@@ -132,6 +142,7 @@ object CommunicateRepository {
                     snippet = newest.body,
                     timestampMillis = newest.timestampMillis,
                     unreadCount = messages.count { !it.outgoing && !it.read },
+                    subscriptionId = newest.subscriptionId,
                 )
             }
             .sortedByDescending { it.timestampMillis }
@@ -148,6 +159,7 @@ object CommunicateRepository {
             Telephony.Sms.DATE,
             Telephony.Sms.TYPE,
             Telephony.Sms.READ,
+            Telephony.Sms.SUBSCRIPTION_ID,
         )
         val selection = threadId?.let { "${Telephony.Sms.THREAD_ID} = ?" }
         val args = threadId?.let { arrayOf(it.toString()) }
@@ -167,6 +179,7 @@ object CommunicateRepository {
                     val date = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
                     val type = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
                     val read = cursor.getColumnIndexOrThrow(Telephony.Sms.READ)
+                    val sub = cursor.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID)
 
                     while (cursor.moveToNext()) {
                         add(
@@ -179,6 +192,7 @@ object CommunicateRepository {
                                 outgoing = cursor.getInt(type) == Telephony.Sms.MESSAGE_TYPE_SENT ||
                                     cursor.getInt(type) == Telephony.Sms.MESSAGE_TYPE_OUTBOX,
                                 read = cursor.getInt(read) != 0,
+                                subscriptionId = sub.takeIf { it >= 0 }?.let { cursor.getInt(it) }?.takeIf { it >= 0 },
                             )
                         )
                     }
@@ -207,15 +221,27 @@ object CommunicateRepository {
     }
 
     fun placeCall(context: Context, number: String) {
+        placeCall(context, choice = null, number = number)
+    }
+
+    /**
+     * Place a call from a chosen line. Google Voice routes through the self-managed account; a SIM
+     * choice places via that SIM's [PhoneAccountHandle]; null uses the default outgoing account.
+     */
+    fun placeCall(context: Context, choice: LineChoice?, number: String) {
         if (number.isBlank()) return
+        if (choice is LineChoice.GoogleVoice) {
+            com.vayunmathur.communicate.telephony.GoogleVoiceTelecom.placeOutgoing(context, number)
+            return
+        }
         val uri = Uri.fromParts("tel", number, null)
         if (context.hasPermission(Manifest.permission.CALL_PHONE)) {
             try {
                 val telecomManager = context.getSystemService(TelecomManager::class.java)
                 val extras = Bundle()
-                telecomManager.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)?.let {
-                    extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it)
-                }
+                val handle = (choice as? LineChoice.Sim)?.let { phoneAccountHandleForSub(context, it.subscriptionId) }
+                    ?: telecomManager.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)
+                handle?.let { extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
                 telecomManager.placeCall(uri, extras)
                 return
             } catch (_: Exception) {
@@ -225,6 +251,16 @@ object CommunicateRepository {
         ExternalIntents.launch(context, Intent(Intent.ACTION_DIAL, uri))
     }
 
+    /** Map a SIM subscription id to its Telecom [PhoneAccountHandle] (handle id is the sub id). */
+    private fun phoneAccountHandleForSub(context: Context, subscriptionId: Int): android.telecom.PhoneAccountHandle? {
+        if (subscriptionId < 0) return null
+        if (!context.hasPermission(Manifest.permission.READ_PHONE_STATE)) return null
+        val tm = context.getSystemService(TelecomManager::class.java) ?: return null
+        return runCatching {
+            tm.callCapablePhoneAccounts.firstOrNull { it.id == subscriptionId.toString() }
+        }.getOrNull()
+    }
+
     fun openSmsComposer(context: Context, number: String? = null, body: String? = null) {
         val uri = if (number.isNullOrBlank()) "smsto:".toUri() else "smsto:$number".toUri()
         val intent = Intent(Intent.ACTION_SENDTO, uri).apply {
@@ -232,6 +268,11 @@ object CommunicateRepository {
         }
         ExternalIntents.launch(context, intent)
     }
+
+    /** Resolve (or create) the SIM thread id for an address, so a new SIM conversation shows history. */
+    fun getOrCreateSmsThreadId(context: Context, address: String): Long? = runCatching {
+        Telephony.Threads.getOrCreateThreadId(context, address)
+    }.getOrNull()
 
     // ------------------------------------------------------------------
     // Google Voice merge (second line)
@@ -270,21 +311,19 @@ object CommunicateRepository {
     }
 
     /**
-     * Dispatch an outgoing message to the right line. SIM uses the existing composer path;
-     * Google Voice posts through `api2thread/sendsms`. Returns true on success.
+     * Dispatch an outgoing message from a chosen line. A SIM choice sends via that SIM's
+     * [android.telephony.SmsManager] and records it in the provider; Google Voice mints a token in
+     * an offscreen WebView and posts `api2thread/sendsms`. Returns true on success.
      */
     suspend fun sendMessage(
         context: Context,
-        line: CommunicateLine,
+        choice: LineChoice,
         address: String,
         body: String,
         threadRemoteId: String? = null,
-    ): Boolean = when (line) {
-        CommunicateLine.Sim -> {
-            openSmsComposer(context, address, body)
-            true
-        }
-        CommunicateLine.GoogleVoice -> runCatching {
+    ): Boolean = when (choice) {
+        is LineChoice.Sim -> sendSimSms(context, choice.subscriptionId, address, body)
+        LineChoice.GoogleVoice -> runCatching {
             // The bot-defense token is minted invisibly in an offscreen WebView; the app then
             // builds and sends the sendsms API call itself using that token.
             val activity = context as? android.app.Activity ?: return@runCatching false
@@ -292,6 +331,38 @@ object CommunicateRepository {
             val sendBody = com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser
                 .buildSendSmsBody(address, body, threadRemoteId, botToken = token)
             GoogleVoiceClient.get(context).sendPreparedSms(sendBody)
+            true
+        }.getOrDefault(false)
+    }
+
+    /** Send an SMS from a specific SIM subscription and store it in the Sent box. */
+    private fun sendSimSms(context: Context, subscriptionId: Int, address: String, body: String): Boolean {
+        if (address.isBlank() || body.isBlank()) return false
+        if (!context.hasPermission(Manifest.permission.SEND_SMS)) {
+            openSmsComposer(context, address, body)
+            return true
+        }
+        return runCatching {
+            val base = context.getSystemService(android.telephony.SmsManager::class.java)
+            val sms = if (subscriptionId >= 0) base.createForSubscriptionId(subscriptionId) else base
+            val parts = sms.divideMessage(body)
+            if (parts.size > 1) {
+                sms.sendMultipartTextMessage(address, null, parts, null, null)
+            } else {
+                sms.sendTextMessage(address, null, body, null, null)
+            }
+            // Record in the provider Sent box so it shows in the thread (we're the default SMS app).
+            runCatching {
+                val values = android.content.ContentValues().apply {
+                    put(Telephony.Sms.ADDRESS, address)
+                    put(Telephony.Sms.BODY, body)
+                    put(Telephony.Sms.DATE, System.currentTimeMillis())
+                    put(Telephony.Sms.READ, 1)
+                    put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
+                    if (subscriptionId >= 0) put(Telephony.Sms.SUBSCRIPTION_ID, subscriptionId)
+                }
+                context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
+            }
             true
         }.getOrDefault(false)
     }

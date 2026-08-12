@@ -64,13 +64,26 @@ fun ConversationScreen(
     address: String,
     line: CommunicateLine,
     remoteId: String?,
+    subscriptionId: Int? = null,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var draft by remember(threadId) { mutableStateOf("") }
-    // Bumped after a Google Voice send to re-fetch the thread (no realtime channel yet).
+    // Bumped after a send to re-fetch the thread.
     var refresh by remember(threadId) { mutableIntStateOf(0) }
+    val lineChoices = rememberLineChoices()
+    // Default the send line to this thread's line (matching SIM subscription when known).
+    var selectedLine by remember(threadId, lineChoices) {
+        mutableStateOf(
+            when (line) {
+                CommunicateLine.GoogleVoice ->
+                    lineChoices.firstOrNull { it is com.vayunmathur.communicate.data.LineChoice.GoogleVoice }
+                CommunicateLine.Sim ->
+                    lineChoices.firstOrNull { it is com.vayunmathur.communicate.data.LineChoice.Sim && it.subscriptionId == subscriptionId }
+            } ?: lineChoices.firstOrNull(),
+        )
+    }
     val thread = remember(threadId) {
         SmsThread(
             threadId = threadId,
@@ -153,23 +166,26 @@ fun ConversationScreen(
             ComposeSmsRow(
                 draft = draft,
                 onDraftChange = { draft = it },
+                lineSelector = {
+                    val sel = selectedLine
+                    if (lineChoices.size > 1 && sel != null) {
+                        LineSelector(choices = lineChoices, selected = sel, onSelect = { selectedLine = it })
+                    }
+                },
                 onSend = {
                     val text = draft.trim()
-                    if (text.isEmpty()) return@ComposeSmsRow
-                    when (line) {
-                        CommunicateLine.Sim -> {
-                            CommunicateRepository.openSmsComposer(context, address, text)
-                            draft = ""
-                        }
-                        CommunicateLine.GoogleVoice -> {
-                            draft = ""
-                            scope.launch {
-                                val ok = CommunicateRepository.sendMessage(
-                                    context, line, address, text, remoteId,
-                                )
-                                if (ok) refresh++ else AppMessages.show(context.getString(R.string.gv_send_failed))
-                            }
-                        }
+                    val choice = selectedLine
+                    if (text.isEmpty() || choice == null) return@ComposeSmsRow
+                    draft = ""
+                    scope.launch {
+                        val ok = CommunicateRepository.sendMessage(
+                            context,
+                            choice,
+                            address,
+                            text,
+                            if (choice is com.vayunmathur.communicate.data.LineChoice.GoogleVoice) remoteId else null,
+                        )
+                        if (ok) refresh++ else AppMessages.show(context.getString(R.string.gv_send_failed))
                     }
                 },
             )
@@ -232,6 +248,7 @@ private fun MessagesContent(padding: PaddingValues, rows: List<SmsMessage>?) {
 private fun ComposeSmsRow(
     draft: String,
     onDraftChange: (String) -> Unit,
+    lineSelector: @Composable () -> Unit,
     onSend: () -> Unit,
 ) {
     Surface(
@@ -246,12 +263,13 @@ private fun ComposeSmsRow(
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            lineSelector()
             OutlinedTextField(
                 value = draft,
                 onValueChange = onDraftChange,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 4.dp),
+                    .padding(horizontal = 4.dp),
                 placeholder = { Text(stringResource(R.string.message_hint)) },
                 maxLines = 5,
                 shape = RoundedCornerShape(24.dp),

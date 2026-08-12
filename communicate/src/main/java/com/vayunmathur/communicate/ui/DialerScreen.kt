@@ -69,22 +69,35 @@ fun DialerScreen() {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     var number by remember { mutableStateOf("") }
-    val session = remember { GoogleVoiceSession.get(context) }
-    val gvSignedIn by session.signedInFlow.collectAsState(initial = false)
-    var useGoogleVoice by remember { mutableStateOf(false) }
+    val lineChoices = rememberLineChoices()
+    var selectedLine by remember(lineChoices) { mutableStateOf(lineChoices.firstOrNull()) }
 
     fun place(target: String) {
         if (target.isBlank()) return
-        if (useGoogleVoice && gvSignedIn) {
+        val choice = selectedLine
+        if (choice is com.vayunmathur.communicate.data.LineChoice.GoogleVoice) {
             GoogleVoiceCallManager.init(context)
-            GoogleVoiceTelecom.placeOutgoing(context, target)
-        } else {
-            CommunicateRepository.placeCall(context, target)
         }
+        CommunicateRepository.placeCall(context, choice, target)
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.dialer_title)) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.dialer_title)) },
+                actions = {
+                    val sel = selectedLine
+                    if (lineChoices.size > 1 && sel != null) {
+                        LineSelector(
+                            choices = lineChoices,
+                            selected = sel,
+                            onSelect = { selectedLine = it },
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                },
+            )
+        },
     ) { padding ->
         DefaultDialerGate(modifier = Modifier.padding(padding)) { roleRevision ->
             Column(
@@ -92,21 +105,6 @@ fun DialerScreen() {
                     .padding(padding)
                     .fillMaxSize(),
             ) {
-                if (gvSignedIn) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            stringResource(R.string.account_google_voice),
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Switch(checked = useGoogleVoice, onCheckedChange = { useGoogleVoice = it })
-                    }
-                }
                 PermissionGate(
                     permission = Manifest.permission.READ_CONTACTS,
                     message = stringResource(R.string.permission_contacts_message),

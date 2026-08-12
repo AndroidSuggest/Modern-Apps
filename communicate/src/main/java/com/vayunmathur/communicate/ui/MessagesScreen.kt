@@ -62,29 +62,33 @@ import kotlinx.coroutines.withContext
 @Composable
 fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit) {
     val context = LocalContext.current
-    val session = remember { GoogleVoiceSession.get(context) }
-    val gvSignedIn by session.signedInFlow.collectAsState(initial = false)
+    val lineChoices = rememberLineChoices()
     var showPicker by remember { mutableStateOf(false) }
 
     if (showPicker) {
         NewMessagePicker(
+            choices = lineChoices,
             onDismiss = { showPicker = false },
-            onSim = {
+            onCompose = { choice, number ->
                 showPicker = false
-                CommunicateRepository.openSmsComposer(context)
-            },
-            onGoogleVoice = { number ->
-                showPicker = false
+                val sim = choice as? com.vayunmathur.communicate.data.LineChoice.Sim
+                val threadId = if (sim != null) {
+                    CommunicateRepository.getOrCreateSmsThreadId(context, number)
+                        ?: CommunicateRepository.stableThreadId(number)
+                } else {
+                    CommunicateRepository.stableThreadId(number)
+                }
                 onOpenThread(
                     SmsThread(
-                        threadId = CommunicateRepository.stableThreadId(number),
+                        threadId = threadId,
                         address = number,
                         displayName = null,
                         snippet = "",
                         timestampMillis = System.currentTimeMillis(),
                         unreadCount = 0,
-                        line = CommunicateLine.GoogleVoice,
+                        line = choice.category,
                         remoteId = null,
+                        subscriptionId = sim?.subscriptionId,
                     ),
                 )
             },
@@ -102,7 +106,8 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
         },
         floatingActionButton = {
             FloatingActionButton(onClick = {
-                if (gvSignedIn) showPicker = true else CommunicateRepository.openSmsComposer(context)
+                // With more than one line, let the user pick which SIM / Google Voice to text from.
+                if (lineChoices.size > 1) showPicker = true else CommunicateRepository.openSmsComposer(context)
             }) {
                 IconAdd()
             }
@@ -166,7 +171,7 @@ private fun MessageThreadRow(thread: SmsThread, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                LineBadge(thread.line, modifier = Modifier.padding(start = 6.dp))
+                LineBadge(thread.line, thread.subscriptionId, modifier = Modifier.padding(start = 6.dp))
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -227,33 +232,22 @@ private fun UnreadBadge(count: Int) {
 }
 
 /**
- * FAB flow when a Google Voice line is connected: pick which line to compose from. SIM opens
- * the system composer (we're the default SMS app); Google Voice collects a recipient number
- * and opens a new GV conversation.
+ * FAB flow when more than one line is available: enter a recipient number and pick which line
+ * (SIM or Google Voice) to compose from, then open that conversation.
  */
 @Composable
 private fun NewMessagePicker(
+    choices: List<com.vayunmathur.communicate.data.LineChoice>,
     onDismiss: () -> Unit,
-    onSim: () -> Unit,
-    onGoogleVoice: (String) -> Unit,
+    onCompose: (com.vayunmathur.communicate.data.LineChoice, String) -> Unit,
 ) {
     var number by remember { mutableStateOf("") }
+    var selected by remember(choices) { mutableStateOf(choices.firstOrNull()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.choose_line)) },
+        title = { Text(stringResource(R.string.new_message)) },
         text = {
             Column {
-                ListItem(
-                    leadingContent = { IconSms() },
-                    content = { Text(stringResource(R.string.account_sim)) },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    modifier = Modifier.clickable(onClick = onSim),
-                )
-                HorizontalDivider()
-                ListItem(
-                    content = { Text(stringResource(R.string.account_google_voice)) },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                )
                 OutlinedTextField(
                     value = number,
                     onValueChange = { number = it.filter { c -> c.isDigit() || c == '+' } },
@@ -261,13 +255,25 @@ private fun NewMessagePicker(
                     placeholder = { Text(stringResource(R.string.phone_number)) },
                     singleLine = true,
                 )
+                Spacer(Modifier.size(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.choose_line),
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                    val sel = selected
+                    if (sel != null) {
+                        LineSelector(choices = choices, selected = sel, onSelect = { selected = it })
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { if (number.isNotBlank()) onGoogleVoice(number) },
-                enabled = number.isNotBlank(),
-            ) { Text(stringResource(R.string.account_google_voice)) }
+                onClick = { val s = selected; if (s != null && number.isNotBlank()) onCompose(s, number) },
+                enabled = selected != null && number.isNotBlank(),
+            ) { Text(stringResource(R.string.send)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.clear)) }
