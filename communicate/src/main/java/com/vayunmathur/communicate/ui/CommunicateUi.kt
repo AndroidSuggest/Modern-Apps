@@ -9,6 +9,8 @@ import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,12 +19,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.vayunmathur.communicate.R
+import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.IconCall
 import com.vayunmathur.library.ui.IconSms
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import java.util.Date
 
@@ -150,3 +158,26 @@ fun initialsFor(text: String): String = text
     .take(2)
     .joinToString("") { it.first().uppercase() }
     .ifBlank { "?" }
+
+/**
+ * Small pill that tags a row with the line (SIM vs Google Voice) it belongs to, so the
+ * merged inbox / call log stays legible. Only Google Voice is badged; SIM is the implicit
+ * default and left unbadged to avoid noise.
+ */
+@Composable
+fun LineBadge(line: CommunicateLine, modifier: Modifier = Modifier) {
+    if (line != CommunicateLine.GoogleVoice) return
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = modifier,
+    ) {
+        Text(
+            stringResource(R.string.line_gv),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}

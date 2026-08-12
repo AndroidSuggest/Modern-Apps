@@ -40,4 +40,38 @@
     <string name="blocked_call">Blocked</string>
     <string name="voicemail_call">Voicemail</string>
     <string name="unknown_call">Unknown</string>
+
+    <!-- Google Voice virtual line -->
+    <string name="gv_sign_in_title">Sign in to Google Voice</string>
+    <string name="gv_signed_in">Google Voice connected</string>
+    <string name="gv_signed_out">Signed out of Google Voice</string>
+    <string name="gv_sign_in_failed">Google Voice sign-in failed</string>
+    <string name="accounts_title">Accounts</string>
+    <string name="account_sim">SIM</string>
+    <string name="account_google_voice">Google Voice</string>
+    <string name="gv_sign_in">Sign in</string>
+    <string name="gv_sign_out">Sign out</string>
+    <string name="gv_not_signed_in">Not signed in</string>
+    <string name="gv_number_unknown">Google Voice</string>
+    <string name="line_sim">SIM</string>
+    <string name="line_gv">Voice</string>
+    <string name="choose_line">Send from</string>
+    <string name="gv_send_failed">Couldn\'t send via Google Voice</string>
+    <string name="gv_action_failed">Google Voice action failed</string>
+    <string name="call_mute">Mute</string>
+    <string name="call_unmute">Unmute</string>
+    <string name="call_speaker">Speaker</string>
+    <string name="call_end">End call</string>
+    <string name="call_answer">Answer</string>
+    <string name="call_decline">Decline</string>
+    <string name="call_keypad">Keypad</string>
+    <string name="call_state_dialing">Dialing…</string>
+    <string name="call_state_ringing">Ringing…</string>
+    <string name="call_state_active">Connected</string>
+    <string name="call_state_ended">Call ended</string>
+    <string name="call_state_incoming">Incoming Google Voice call</string>
+    <string name="call_state_idle">Idle</string>
+    <string name="gv_call_channel_name">Google Voice calls</string>
+    <string name="gv_ongoing_call">Ongoing Google Voice call</string>
+    <string name="gv_call_failed">Google Voice call failed</string>
 </resources>

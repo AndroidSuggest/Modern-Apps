@@ -1,8 +1,8 @@
 package com.vayunmathur.communicate.ui
 
 import android.Manifest
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,9 +18,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,7 +32,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import com.vayunmathur.library.ui.EmptyState
+import com.vayunmathur.library.ui.ExternalIntents
+import com.vayunmathur.library.ui.IconArchive
+import com.vayunmathur.library.ui.IconAttachment
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconSend
 import com.vayunmathur.library.ui.IconSms
@@ -42,19 +48,63 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.communicate.R
+import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.SmsMessage
+import com.vayunmathur.communicate.data.SmsThread
+import com.vayunmathur.library.util.AppMessages
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.content.Intent
 
 @Composable
-fun ConversationScreen(threadId: Long, address: String, onBack: () -> Unit) {
+fun ConversationScreen(
+    threadId: Long,
+    address: String,
+    line: CommunicateLine,
+    remoteId: String?,
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var draft by remember(threadId) { mutableStateOf("") }
+    // Bumped after a Google Voice send to re-fetch the thread (no realtime channel yet).
+    var refresh by remember(threadId) { mutableIntStateOf(0) }
+    val thread = remember(threadId) {
+        SmsThread(
+            threadId = threadId,
+            address = address,
+            displayName = null,
+            snippet = "",
+            timestampMillis = 0,
+            unreadCount = 0,
+            line = line,
+            remoteId = remoteId,
+        )
+    }
     val title = produceState(initialValue = address.ifBlank { context.getString(R.string.conversation_title) }, address) {
         value = withContext(Dispatchers.IO) {
             CommunicateRepository.findContactName(context, address)
                 ?: address.ifBlank { context.getString(R.string.conversation_title) }
+        }
+    }
+
+    // Opening a Google Voice thread marks it read server-side via batchupdateattributes.
+    androidx.compose.runtime.LaunchedEffect(remoteId, line) {
+        if (line == CommunicateLine.GoogleVoice && remoteId != null) {
+            CommunicateRepository.updateGoogleVoiceThread(
+                context, remoteId, com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser.ThreadAction.MarkRead,
+            )
+        }
+    }
+    // Foreground polling for the open GV thread (no realtime channel yet).
+    androidx.compose.runtime.LaunchedEffect(remoteId, line) {
+        if (line == CommunicateLine.GoogleVoice && remoteId != null) {
+            while (true) {
+                kotlinx.coroutines.delay(10_000)
+                refresh++
+            }
         }
     }
 
@@ -63,12 +113,15 @@ fun ConversationScreen(threadId: Long, address: String, onBack: () -> Unit) {
             TopAppBar(
                 title = {
                     Column {
-                        Text(
-                            title.value,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                title.value,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            LineBadge(line, modifier = Modifier.padding(start = 8.dp))
+                        }
                         if (address.isNotBlank() && title.value != address) {
                             Text(
                                 address,
@@ -81,6 +134,19 @@ fun ConversationScreen(threadId: Long, address: String, onBack: () -> Unit) {
                     }
                 },
                 navigationIcon = { IconNavigation(onBack) },
+                actions = {
+                    if (line == CommunicateLine.GoogleVoice && remoteId != null) {
+                        IconButton(onClick = {
+                            scope.launch {
+                                val ok = CommunicateRepository.updateGoogleVoiceThread(
+                                    context, remoteId,
+                                    com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser.ThreadAction.Archive,
+                                )
+                                if (ok) onBack() else AppMessages.show(context.getString(R.string.gv_action_failed))
+                            }
+                        }) { IconArchive() }
+                    }
+                },
             )
         },
         bottomBar = {
@@ -88,40 +154,75 @@ fun ConversationScreen(threadId: Long, address: String, onBack: () -> Unit) {
                 draft = draft,
                 onDraftChange = { draft = it },
                 onSend = {
-                    CommunicateRepository.openSmsComposer(context, address, draft.trim())
-                    draft = ""
+                    val text = draft.trim()
+                    if (text.isEmpty()) return@ComposeSmsRow
+                    when (line) {
+                        CommunicateLine.Sim -> {
+                            CommunicateRepository.openSmsComposer(context, address, text)
+                            draft = ""
+                        }
+                        CommunicateLine.GoogleVoice -> {
+                            draft = ""
+                            scope.launch {
+                                val ok = CommunicateRepository.sendMessage(
+                                    context, line, address, text, remoteId,
+                                )
+                                if (ok) refresh++ else AppMessages.show(context.getString(R.string.gv_send_failed))
+                            }
+                        }
+                    }
                 },
             )
         },
     ) { padding ->
+        // Google Voice threads don't require the default-SMS role or READ_SMS; only SIM does.
+        if (line == CommunicateLine.GoogleVoice) {
+            MessagesList(padding, refresh) {
+                CommunicateRepository.loadSmsMessagesMerged(context, thread)
+            }
+            return@Scaffold
+        }
         DefaultSmsGate(modifier = Modifier.padding(padding)) { roleRevision ->
             PermissionGate(
                 permission = Manifest.permission.READ_SMS,
                 message = stringResource(R.string.permission_sms_message),
                 modifier = Modifier.padding(padding),
             ) { permissionRevision ->
-                val messages = produceState<List<SmsMessage>?>(initialValue = null, threadId, roleRevision, permissionRevision) {
-                    value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsMessages(context, threadId) }
+                val messages = produceState<List<SmsMessage>?>(initialValue = null, threadId, roleRevision, permissionRevision, refresh) {
+                    value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsMessagesMerged(context, thread) }
                 }
-                when (val rows = messages.value) {
-                    null -> com.vayunmathur.library.ui.LoadingState(Modifier.padding(padding))
-                    emptyList<SmsMessage>() -> EmptyState(
-                        title = stringResource(R.string.empty_messages),
-                        icon = { IconSms() },
-                        modifier = Modifier.padding(padding),
-                    )
-                    else -> LazyColumn(
-                        modifier = Modifier
-                            .padding(padding)
-                            .fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        items(rows, key = { it.id }) { message ->
-                            MessageBubble(message)
-                        }
-                    }
-                }
+                MessagesContent(padding, messages.value)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessagesList(padding: PaddingValues, refresh: Int, load: suspend () -> List<SmsMessage>) {
+    val messages = produceState<List<SmsMessage>?>(initialValue = null, refresh) {
+        value = withContext(Dispatchers.IO) { load() }
+    }
+    MessagesContent(padding, messages.value)
+}
+
+@Composable
+private fun MessagesContent(padding: PaddingValues, rows: List<SmsMessage>?) {
+    when (rows) {
+        null -> com.vayunmathur.library.ui.LoadingState(Modifier.padding(padding))
+        emptyList<SmsMessage>() -> EmptyState(
+            title = stringResource(R.string.empty_messages),
+            icon = { IconSms() },
+            modifier = Modifier.padding(padding),
+        )
+        else -> LazyColumn(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items(rows, key = { it.id }) { message ->
+                MessageBubble(message)
             }
         }
     }
@@ -187,17 +288,44 @@ private fun MessageBubble(message: SmsMessage) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = alignment,
     ) {
-        Surface(
-            color = bubbleColor,
-            contentColor = contentColor,
-            shape = shape,
-            modifier = Modifier.widthIn(max = 320.dp),
-        ) {
-            Text(
-                message.body,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                fontSize = 15.sp,
-            )
+        if (message.body.isNotBlank()) {
+            Surface(
+                color = bubbleColor,
+                contentColor = contentColor,
+                shape = shape,
+                modifier = Modifier.widthIn(max = 320.dp),
+            ) {
+                Text(
+                    message.body,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    fontSize = 15.sp,
+                )
+            }
+        }
+        message.attachments.forEach { attachment ->
+            Surface(
+                color = bubbleColor,
+                contentColor = contentColor,
+                shape = shape,
+                modifier = Modifier
+                    .widthIn(max = 320.dp)
+                    .padding(top = 2.dp)
+                    .clickable {
+                        ExternalIntents.launch(
+                            context,
+                            Intent(Intent.ACTION_VIEW, attachment.contentUri.toUri()),
+                        )
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconAttachment()
+                    Spacer(Modifier.size(6.dp))
+                    Text(attachment.mimeType, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),

@@ -38,8 +38,12 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateContact
 import com.vayunmathur.communicate.data.CommunicateRepository
+import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
+import com.vayunmathur.communicate.data.googlevoice.call.GoogleVoiceCallManager
+import com.vayunmathur.communicate.telephony.GoogleVoiceTelecom
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.FilledIconButton
+import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconBackspace
 import com.vayunmathur.library.ui.IconCall
 import com.vayunmathur.library.ui.IconContacts
@@ -50,9 +54,11 @@ import com.vayunmathur.library.ui.ListItemDefaults
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Switch
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TopAppBar
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,6 +69,19 @@ fun DialerScreen() {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     var number by remember { mutableStateOf("") }
+    val session = remember { GoogleVoiceSession.get(context) }
+    val gvSignedIn by session.signedInFlow.collectAsState(initial = false)
+    var useGoogleVoice by remember { mutableStateOf(false) }
+
+    fun place(target: String) {
+        if (target.isBlank()) return
+        if (useGoogleVoice && gvSignedIn) {
+            GoogleVoiceCallManager.init(context)
+            GoogleVoiceTelecom.placeOutgoing(context, target)
+        } else {
+            CommunicateRepository.placeCall(context, target)
+        }
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(stringResource(R.string.dialer_title)) }) },
@@ -73,6 +92,21 @@ fun DialerScreen() {
                     .padding(padding)
                     .fillMaxSize(),
             ) {
+                if (gvSignedIn) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            stringResource(R.string.account_google_voice),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Switch(checked = useGoogleVoice, onCheckedChange = { useGoogleVoice = it })
+                    }
+                }
                 PermissionGate(
                     permission = Manifest.permission.READ_CONTACTS,
                     message = stringResource(R.string.permission_contacts_message),
@@ -102,7 +136,7 @@ fun DialerScreen() {
                             }
                             items(rows, key = { "${it.id}-${it.phoneNumber}" }) { contact ->
                                 ContactRow(contact) {
-                                    CommunicateRepository.placeCall(context, contact.phoneNumber)
+                                    place(contact.phoneNumber)
                                 }
                             }
                         }
@@ -125,7 +159,7 @@ fun DialerScreen() {
                             if (pasted.isNotBlank()) number = pasted
                         }
                     },
-                    onCall = { CommunicateRepository.placeCall(context, number) },
+                    onCall = { place(number) },
                 )
             }
         }

@@ -13,6 +13,13 @@ import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceClient
+import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
+import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceWebSender
+import com.vayunmathur.communicate.data.googlevoice.GvCall
+import com.vayunmathur.communicate.data.googlevoice.GvCallType
+import com.vayunmathur.communicate.data.googlevoice.GvMessage
+import com.vayunmathur.communicate.data.googlevoice.GvThread
 import com.vayunmathur.library.ui.ExternalIntents
 
 object CommunicateRepository {
@@ -224,6 +231,140 @@ object CommunicateRepository {
             if (!body.isNullOrBlank()) putExtra("sms_body", body)
         }
         ExternalIntents.launch(context, intent)
+    }
+
+    // ------------------------------------------------------------------
+    // Google Voice merge (second line)
+    //
+    // These suspend variants return SIM data (tagged CommunicateLine.Sim) merged with Google
+    // Voice data (tagged CommunicateLine.GoogleVoice) when a GV session is present. All GV
+    // network work is done here off the main thread; callers already invoke us from
+    // Dispatchers.IO in produceState. GV failures are swallowed so the SIM inbox still loads.
+    // ------------------------------------------------------------------
+
+    /** Merged thread list: SIM threads + Google Voice threads, newest first. */
+    suspend fun loadSmsThreadsMerged(context: Context): List<SmsThread> {
+        val sim = loadSmsThreads(context)
+        val gv = loadGoogleVoiceThreads(context)
+        return (sim + gv).sortedByDescending { it.timestampMillis }
+    }
+
+    /** Route by line: SIM threads read the provider; GV threads hit `api2thread/get`. */
+    suspend fun loadSmsMessagesMerged(context: Context, thread: SmsThread): List<SmsMessage> =
+        when (thread.line) {
+            CommunicateLine.Sim -> loadSmsMessages(context, thread.threadId)
+            CommunicateLine.GoogleVoice -> {
+                val remoteId = thread.remoteId ?: return emptyList()
+                runCatching {
+                    GoogleVoiceClient.get(context).getThread(remoteId)
+                        .map { it.toSmsMessage(thread.threadId, context) }
+                }.getOrDefault(emptyList())
+            }
+        }
+
+    /** Merged call history: device call log + Google Voice calls, newest first. */
+    suspend fun loadCallLogsMerged(context: Context): List<CommunicateCallLogEntry> {
+        val device = loadCallLogs(context)
+        val gv = loadGoogleVoiceCalls(context)
+        return (device + gv).sortedByDescending { it.timestampMillis }
+    }
+
+    /**
+     * Dispatch an outgoing message to the right line. SIM uses the existing composer path;
+     * Google Voice posts through `api2thread/sendsms`. Returns true on success.
+     */
+    suspend fun sendMessage(
+        context: Context,
+        line: CommunicateLine,
+        address: String,
+        body: String,
+        threadRemoteId: String? = null,
+    ): Boolean = when (line) {
+        CommunicateLine.Sim -> {
+            openSmsComposer(context, address, body)
+            true
+        }
+        CommunicateLine.GoogleVoice -> runCatching {
+            // The bot-defense token is minted invisibly in an offscreen WebView; the app then
+            // builds and sends the sendsms API call itself using that token.
+            val activity = context as? android.app.Activity ?: return@runCatching false
+            val token = GoogleVoiceWebSender.mintToken(activity, address, body) ?: return@runCatching false
+            val sendBody = com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser
+                .buildSendSmsBody(address, body, threadRemoteId, botToken = token)
+            GoogleVoiceClient.get(context).sendPreparedSms(sendBody)
+            true
+        }.getOrDefault(false)
+    }
+
+    /** Toggle a Google Voice thread attribute (read/archive/spam) via batchupdateattributes. */
+    suspend fun updateGoogleVoiceThread(
+        context: Context,
+        remoteId: String,
+        action: com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser.ThreadAction,
+    ): Boolean = runCatching {
+        GoogleVoiceClient.get(context).updateThreadAttributes(remoteId, action)
+        true
+    }.getOrDefault(false)
+
+    private suspend fun loadGoogleVoiceThreads(context: Context): List<SmsThread> {
+        val session = GoogleVoiceSession.get(context)
+        if (!session.hasUsableCredentials()) return emptyList()
+        return runCatching {
+            GoogleVoiceClient.get(context).listThreads().map { it.toSmsThread(context) }
+        }.getOrDefault(emptyList())
+    }
+
+    private suspend fun loadGoogleVoiceCalls(context: Context): List<CommunicateCallLogEntry> {
+        val session = GoogleVoiceSession.get(context)
+        if (!session.hasUsableCredentials()) return emptyList()
+        return runCatching {
+            GoogleVoiceClient.get(context).listCalls().map { it.toCallLogEntry(context) }
+        }.getOrDefault(emptyList())
+    }
+
+    /** Stable positive Long key for a GV remote id, kept clear of provider thread ids. */
+    fun stableThreadId(remoteId: String): Long = (remoteId.hashCode().toLong() and 0xFFFFFFFFL) or 0x1_0000_0000L
+
+    private fun GvThread.toSmsThread(context: Context): SmsThread = SmsThread(
+        threadId = stableThreadId(id),
+        address = phoneNumber,
+        displayName = displayName ?: findContactName(context, phoneNumber),
+        snippet = snippet,
+        timestampMillis = timestampMillis,
+        unreadCount = unreadCount,
+        line = CommunicateLine.GoogleVoice,
+        remoteId = id,
+    )
+
+    private fun GvMessage.toSmsMessage(threadId: Long, context: Context): SmsMessage = SmsMessage(
+        id = ("$threadId#$id").hashCode().toLong(),
+        threadId = threadId,
+        address = phoneNumber,
+        body = text,
+        timestampMillis = timestampMillis,
+        outgoing = outgoing,
+        read = read,
+        line = CommunicateLine.GoogleVoice,
+        remoteId = id,
+        attachments = mediaUrls.map { CommunicateAttachment(it, "image/*") },
+    )
+
+    private fun GvCall.toCallLogEntry(context: Context): CommunicateCallLogEntry = CommunicateCallLogEntry(
+        id = stableThreadId(id),
+        displayName = displayName ?: findContactName(context, phoneNumber),
+        phoneNumber = phoneNumber,
+        type = type.toCommunicateCallType(),
+        timestampMillis = timestampMillis,
+        durationSeconds = durationSeconds,
+        line = CommunicateLine.GoogleVoice,
+    )
+
+    private fun GvCallType.toCommunicateCallType(): CommunicateCallType = when (this) {
+        GvCallType.Incoming -> CommunicateCallType.Incoming
+        GvCallType.Outgoing -> CommunicateCallType.Outgoing
+        GvCallType.Missed -> CommunicateCallType.Missed
+        GvCallType.Voicemail -> CommunicateCallType.Voicemail
+        GvCallType.Unknown -> CommunicateCallType.Unknown
     }
 }
 

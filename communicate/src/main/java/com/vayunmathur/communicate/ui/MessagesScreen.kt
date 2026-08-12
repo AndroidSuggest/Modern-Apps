@@ -33,6 +33,8 @@ import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconAdd
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconPerson
 import com.vayunmathur.library.ui.IconSms
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.ListItemDefaults
@@ -42,18 +44,66 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.communicate.R
+import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.SmsThread
+import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
+import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.OutlinedTextField
+import com.vayunmathur.library.ui.TextButton
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
-fun MessagesScreen(onOpenThread: (SmsThread) -> Unit) {
+fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit) {
     val context = LocalContext.current
+    val session = remember { GoogleVoiceSession.get(context) }
+    val gvSignedIn by session.signedInFlow.collectAsState(initial = false)
+    var showPicker by remember { mutableStateOf(false) }
+
+    if (showPicker) {
+        NewMessagePicker(
+            onDismiss = { showPicker = false },
+            onSim = {
+                showPicker = false
+                CommunicateRepository.openSmsComposer(context)
+            },
+            onGoogleVoice = { number ->
+                showPicker = false
+                onOpenThread(
+                    SmsThread(
+                        threadId = CommunicateRepository.stableThreadId(number),
+                        address = number,
+                        displayName = null,
+                        snippet = "",
+                        timestampMillis = System.currentTimeMillis(),
+                        unreadCount = 0,
+                        line = CommunicateLine.GoogleVoice,
+                        remoteId = null,
+                    ),
+                )
+            },
+        )
+    }
+
     Scaffold(
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.messages_title)) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.messages_title)) },
+                actions = {
+                    IconButton(onClick = onOpenAccounts) { IconPerson() }
+                },
+            )
+        },
         floatingActionButton = {
-            FloatingActionButton(onClick = { CommunicateRepository.openSmsComposer(context) }) {
+            FloatingActionButton(onClick = {
+                if (gvSignedIn) showPicker = true else CommunicateRepository.openSmsComposer(context)
+            }) {
                 IconAdd()
             }
         },
@@ -64,8 +114,18 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit) {
                 message = stringResource(R.string.permission_sms_message),
                 modifier = Modifier.padding(padding),
             ) { permissionRevision ->
-                val threads = produceState<List<SmsThread>?>(initialValue = null, roleRevision, permissionRevision) {
-                    value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsThreads(context) }
+                // Foreground polling: Google Voice has no cheap realtime channel wired up yet,
+                // so while this screen is shown we re-fetch the merged inbox on an interval.
+                // (The Punctual/WebChannel realtime upgrade is noted as future work.)
+                var tick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+                androidx.compose.runtime.LaunchedEffect(roleRevision, permissionRevision) {
+                    while (true) {
+                        kotlinx.coroutines.delay(15_000)
+                        tick++
+                    }
+                }
+                val threads = produceState<List<SmsThread>?>(initialValue = null, roleRevision, permissionRevision, tick) {
+                    value = withContext(Dispatchers.IO) { CommunicateRepository.loadSmsThreadsMerged(context) }
                 }
 
                 when (val rows = threads.value) {
@@ -104,8 +164,10 @@ private fun MessageThreadRow(thread: SmsThread, onClick: () -> Unit) {
                     fontWeight = if (thread.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                LineBadge(thread.line, modifier = Modifier.padding(start = 6.dp))
+                Spacer(Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 Text(
                     formatDateTime(context, thread.timestampMillis),
@@ -162,4 +224,53 @@ private fun UnreadBadge(count: Int) {
             fontWeight = FontWeight.Bold,
         )
     }
+}
+
+/**
+ * FAB flow when a Google Voice line is connected: pick which line to compose from. SIM opens
+ * the system composer (we're the default SMS app); Google Voice collects a recipient number
+ * and opens a new GV conversation.
+ */
+@Composable
+private fun NewMessagePicker(
+    onDismiss: () -> Unit,
+    onSim: () -> Unit,
+    onGoogleVoice: (String) -> Unit,
+) {
+    var number by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.choose_line)) },
+        text = {
+            Column {
+                ListItem(
+                    leadingContent = { IconSms() },
+                    content = { Text(stringResource(R.string.account_sim)) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable(onClick = onSim),
+                )
+                HorizontalDivider()
+                ListItem(
+                    content = { Text(stringResource(R.string.account_google_voice)) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+                OutlinedTextField(
+                    value = number,
+                    onValueChange = { number = it.filter { c -> c.isDigit() || c == '+' } },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(stringResource(R.string.phone_number)) },
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (number.isNotBlank()) onGoogleVoice(number) },
+                enabled = number.isNotBlank(),
+            ) { Text(stringResource(R.string.account_google_voice)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.clear)) }
+        },
+    )
 }

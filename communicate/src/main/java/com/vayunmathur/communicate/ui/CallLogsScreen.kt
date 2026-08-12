@@ -4,6 +4,7 @@ import android.Manifest
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,7 +47,7 @@ fun CallLogsScreen() {
                 modifier = Modifier.padding(padding),
             ) { permissionRevision ->
                 val callLogs = produceState<List<CommunicateCallLogEntry>?>(initialValue = null, roleRevision, permissionRevision) {
-                    value = withContext(Dispatchers.IO) { CommunicateRepository.loadCallLogs(context) }
+                    value = withContext(Dispatchers.IO) { CommunicateRepository.loadCallLogsMerged(context) }
                 }
                 when (val rows = callLogs.value) {
                     null -> com.vayunmathur.library.ui.LoadingState(Modifier.padding(padding))
@@ -79,12 +80,15 @@ private fun CallLogRow(entry: CommunicateCallLogEntry, onClick: () -> Unit) {
     val title = entry.displayName ?: entry.phoneNumber
     ListItem(
         content = {
-            Text(
-                title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = if (entry.type == CommunicateCallType.Missed) FontWeight.Bold else FontWeight.Medium,
-            )
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(
+                    title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = if (entry.type == CommunicateCallType.Missed) FontWeight.Bold else FontWeight.Medium,
+                )
+                LineBadge(entry.line, modifier = Modifier.padding(start = 6.dp))
+            }
         },
         supportingContent = {
             Column {
