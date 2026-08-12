@@ -133,4 +133,8 @@
     <string name="layout_short_full_week_compact">W7C</string>
     <string name="layout_short_work_week_compact">W5C</string>
     <string name="layout_work_week_compact">工作周紧凑型</string>
+    <string name="reminder_channel_name">活动提醒</string>
+    <string name="reminder_channel_description">即将进行的日历活动提醒</string>
+    <string name="reminder_notification_default_title">活动提醒</string>
+    <string name="reminder_notification_text">开始时间：<xliff:g id="start_time" example="3:00 PM">%1$s</xliff:g></string>
 </resources>
