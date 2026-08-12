@@ -14,4 +14,7 @@
     <string name="time_ago_months"><xliff:g id="months" example="6">%1$d</xliff:g> ヶ月前</string>
     <string name="time_ago_years"><xliff:g id="years" example="1">%1$d</xliff:g> 年前</string>
     <string name="label_description">説明</string>
+    <string name="count_k_format"><xliff:g id="number" example="12.3">%1$s</xliff:g>K</string>
+    <string name="count_m_format"><xliff:g id="number" example="1.2">%1$s</xliff:g>M</string>
+    <string name="count_b_format"><xliff:g id="number" example="3.4">%1$s</xliff:g>B</string>
 </resources>

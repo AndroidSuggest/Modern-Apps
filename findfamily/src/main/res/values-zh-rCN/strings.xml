@@ -75,7 +75,7 @@
     <string name="clipboard_label">文本</string>
     <string name="me_label">我</string>
     <string name="missing_features_title">所需功能已禁用</string>
-    <string name="missing_features_explanation">FindFamily 需要网络定位和地理编码器才能正常运行。您必须启用它们才能继续。</string>
+    <string name="missing_features_explanation">FindFamily 需要网络位置信息和地理编码器才能正常运行。您必须启用它们才能继续。</string>
     <string name="notification_channel_uwb_request_name">附近查找（UWB）请求</string>
     <string name="notification_channel_uwb_request_desc">有人正在使用附近查找（UWB）来定位您</string>
     <string name="notification_uwb_request_title">有人正在查找您</string>
@@ -114,5 +114,8 @@
     <string name="auto_toggle_never">从不</string>
     <string name="link_pqc_unavailable">无法在此设备上创建链接。</string>
     <string name="share_invite_link">分享邀请链接</string>
-    <string name="share_invite_link_chooser">分享寻找家人邀请</string>
+    <string name="share_invite_link_chooser">分享 FindFamily 邀请</string>
+    <string name="gps_fallback_warning_content_description">网络位置信息不可用</string>
+    <string name="gps_fallback_warning_title">仅使用 GPS</string>
+    <string name="gps_fallback_warning_body">此设备未开启网络位置信息功能，因此 FindFamily 仅使用 GPS 来持续追踪您的位置信息。GPS 定位更准确，但可能会显著消耗电池电量。如需降低耗电量，请在设备设置中开启网络（WLAN 和移动网络）位置信息功能。</string>
 </resources>
