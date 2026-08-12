@@ -7,46 +7,51 @@ import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.RequestStatus
 import com.vayunmathur.findfamily.data.UserDao
 import com.vayunmathur.findfamily.uwb.UwbEnvelope
-import com.vayunmathur.e2ee.E2ee
-import com.vayunmathur.e2ee.E2eeIdentity
 import com.vayunmathur.e2ee.E2eeKeyStore
 import com.vayunmathur.e2ee.Pqc
 import com.vayunmathur.e2ee.PqcIdentity
-import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.WebSocketClient
+import com.vayunmathur.library.network.WsSession
+import com.vayunmathur.library.network.webSocket
 import com.vayunmathur.library.util.DataStoreUtils
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.Serializable
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.encoding.Base64
 import kotlin.random.Random
 import kotlin.time.Clock
 
+/**
+ * FindFamily networking — **WebSocket only**. Every server interaction (register,
+ * key lookup, publish, receive) rides one persistent binary socket at
+ * `wss://findfamily.cc/api/ws`; there are deliberately no HTTP requests and no
+ * HTTP fallback. If the socket drops, [startLive] reconnects (1s→15s backoff) and
+ * re-registers on connect.
+ *
+ * Post-quantum only: there is no classic RSA identity. The PQC identity mirrors
+ * Office's `PqcIdentity.loadOrCreate` with a distinct `ff_pqc` DataStore prefix.
+ * Bundle format [4B kemLen][kemPubDer][dsaPubDer]; sealed layout
+ * [4B encapLen][encap][aesGCM] with KDF SHA256(BE32(1)||Z) — iOS must match to interop.
+ */
 object Networking {
-    private const val URL = "https://findfamily.cc"
     private const val TAG = "FF-Networking"
+    private const val PLATFORM = "android"
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-    }
+    private val json = Json { ignoreUnknownKeys = true }
 
     /** Shared end-to-end-encryption identity (key generation/storage/crypto lives in :library:e2ee-p2p). */
-    private lateinit var identity: E2eeIdentity
-    /**
-     * Post-quantum identity — mirrors Office's `PqcIdentity.loadOrCreate` pattern.
-     * Reuses the exact same library (`e2ee-p2p`) and store abstraction, but uses
-     * a distinct DataStore prefix `ff_pqc` so FindFamily PQC keys don't collide
-     * with Office's `office` prefix nor with classic RSA keys (`publicKey`/`privateKey`).
-     *
-     * Bundle format is identical to Office: [4B kemLen BE][kemPubDer][dsaPubDer],
-     * encrypt layout [4B encapLen][encap][aesGCM] with SP800-56A KDF SHA256(BE32(1)||Z),
-     * so iOS must implement the same framing to interoperate.
-     */
     private lateinit var pqcIdentity: PqcIdentity
     @Volatile private var pqcReady = false
     @Volatile private var pqcInitAttempted = false
-    private var network_is_down = false
 
     var userid = 0L
         private set
@@ -74,13 +79,10 @@ object Networking {
             if (initialized) return
             Networking.dataStoreUtils = dataStoreUtils
             Networking.userDao = userDao
-            // Loads the persisted RSA keypair (or generates+stores one on first launch) using the same
-            // "publicKey"/"privateKey" datastore entries as before, so existing installs keep their key.
-            // Uses suspend DataStore hydration (getByteArrayAwait) to avoid the cold-start race where
-            // state.value is still emptyPreferences() → ephemeral identity → OAEP_DECODING_ERROR.
-            identity = E2eeIdentity.loadOrCreate(DataStoreKeyStore(dataStoreUtils))
-            // PQC identity — same library as Office, distinct prefix so FF PQC keys are independent.
-            // Wrapped in try/catch so devices where libe2ee_pqc.so fails to load still work with RSA only.
+            // FindFamily is post-quantum only — there is no classic RSA identity. The PQC identity
+            // uses the same library as Office with a distinct `ff_pqc` prefix. The try/catch keeps the
+            // app from crashing if libe2ee_pqc.so fails to load (pqcReady stays false and the app
+            // cannot share until the native lib is present); there is deliberately no RSA fallback.
             if (!pqcInitAttempted) {
                 pqcInitAttempted = true
                 try {
@@ -88,12 +90,12 @@ object Networking {
                     pqcReady = true
                     Log.d(TAG, "PQC identity ready bundleLen=${pqcIdentity.publicBundle.size}")
                 } catch (e: Throwable) {
-                    Log.w(TAG, "PQC identity unavailable (native lib load failed), falling back to RSA only", e)
+                    Log.w(TAG, "PQC identity unavailable (native lib load failed)", e)
                     pqcReady = false
                 }
             }
-            // Avoid negative IDs: server stores ULong but receive uses Long in request; generating
-            // only positive IDs keeps both sides consistent and makes Base26 encoding stable.
+            // Avoid negative IDs: server keys on ULong; generating only positive IDs keeps both
+            // sides consistent and makes Base26 encoding stable.
             if (dataStoreUtils.getLongAwait("userid") == null) {
                 dataStoreUtils.setLong("userid", Random.nextLong(from = 1, until = Long.MAX_VALUE), true)
             }
@@ -117,457 +119,262 @@ object Networking {
         }
     }
 
-    private suspend fun <T> checkNetworkDown(makeRequest: suspend ()->T?): T? {
-        try {
-            val x = makeRequest()
-            network_is_down = false
-            return x
-        } catch (e: CancellationException) {
-            throw e
-        } catch(e: Exception) {
-            Log.w(TAG, "checkNetworkDown caught exception", e)
-            network_is_down = true
-        }
-        return null
+    // ----------------------------------------------------------------
+    // Binary wire protocol (no JSON, no base64 on the wire):
+    //   client→server SUB    : [0x01][u64 userid][optional raw PQC bundle…]  (subscribe + register)
+    //   client→server PUB    : [0x02][flags][u64 recipient][raw ciphertext…]
+    //   client→server GETKEY : [0x04][u64 target userid]
+    //   server→client MSG    : [0x03][flags][raw ciphertext…]
+    //   server→client KEYRESP: [0x05][status][u64 target userid][optional raw PQC bundle…]
+    // flags: bit0 = kind (0 location, 1 uwb). KEYRESP status: 0 none, 1 classic, 2 pqc.
+    // ----------------------------------------------------------------
+
+    private const val WS_URL = "wss://findfamily.cc/api/ws"
+
+    private const val WS_OP_SUB: Byte = 0x01
+    private const val WS_OP_PUB: Byte = 0x02
+    private const val WS_OP_MSG: Byte = 0x03
+    private const val WS_OP_GETKEY_REQ: Byte = 0x04
+    private const val WS_OP_GETKEY_RESP: Byte = 0x05
+    private const val WS_FLAG_UWB = 0x01
+
+    private const val WS_KEY_NONE = 0
+    private const val WS_KEY_CLASSIC = 1
+    private const val WS_KEY_PQC = 2
+
+    private const val GETKEY_TIMEOUT_MS = 5_000L
+
+    @Volatile private var wsSession: WsSession? = null
+    private var liveJob: Job? = null
+
+    /** In-flight GETKEY requests, keyed by target userid, completed when the KEYRESP arrives. */
+    private val pendingKeyRequests = ConcurrentHashMap<Long, CompletableDeferred<KeyResult?>>()
+
+    /** True while the live socket is connected. */
+    val liveConnected: Boolean get() = wsSession != null
+
+    private data class KeyResult(val status: Int, val bundle: ByteArray?)
+
+    /** Encodes [v] as 8 big-endian bytes into [dst] starting at [off]. */
+    private fun putU64Be(dst: ByteArray, off: Int, v: ULong) {
+        for (i in 0 until 8) dst[off + i] = (v shr (56 - i * 8)).toByte()
     }
 
-    private suspend inline fun <reified T, reified I> makeRequest(path: String, body: I): T? {
-        return checkNetworkDown {
-            try {
-                // Important: NetworkClient.callJson expects body:String/ByteArray to be sent raw.
-                // If we pass a @Serializable object directly, HttpUrlEngine.toBodyBytes does
-                // body.toString() → "Register(userid=...)" not JSON → server returns 400
-                // "expected value at line 1 column 1" which is exactly what live logs showed.
-                val encodedBody = when (body) {
-                    is String -> body
-                    else -> json.encodeToString(body)
-                }
-                NetworkClient.callJson<T>(
-                    url = "$URL$path",
-                    method = "POST",
-                    headers = mapOf("Content-Type" to "application/json"),
-                    body = encodedBody
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "makeRequest $path failed", e)
-                null
-            }
-        }
+    /** Reads 8 big-endian bytes at [off] back into the original Long bit pattern. */
+    private fun readU64Be(src: ByteArray, off: Int): Long {
+        var v = 0L
+        for (i in 0 until 8) v = (v shl 8) or (src[off + i].toLong() and 0xFF)
+        return v
     }
 
-    private suspend fun register(): Boolean {
-        @Serializable
-        data class Register(val userid: ULong, val key: String)
-        val ok = makeRequest<Boolean, Register>("/api/register", Register(
-            userid.toULong(),
-            Base64.encode(identity.publicKeyPem)
-        )
-        ) ?: false
-        Log.d(TAG, "register userid=${userid.toULong()} ok=$ok")
-        return ok
-    }
-
-    private suspend fun registerPqc(): Boolean {
-        if (!pqcReady) return false
-        @Serializable
-        data class Register(val userid: ULong, val key: String)
-        val ok = makeRequest<Boolean, Register>("/api/pqc/register", Register(
-            userid.toULong(),
-            Base64.encode(pqcIdentity.publicBundle)
-        )
-        ) ?: false
-        Log.d(TAG, "registerPqc userid=${userid.toULong()} ok=$ok bundleLen=${pqcIdentity.publicBundle.size}")
-        return ok
-    }
-
-    suspend fun ensureUserExists() {
-        val selfKey = getKey(userid)
-        if(selfKey == null) {
-            Log.w(TAG, "ensureUserExists: getKey failed for self ${userid.toULong()}, re-registering")
-            register()
-        } else {
-            // Self-healing: if DataStore race previously registered an ephemeral key,
-            // the server holds wrong key → peers encrypt to wrong pubkey → OAEP_DECODING_ERROR.
-            // Detect mismatch and re-register correct key.
-            val localB64 = Base64.encode(identity.publicKeyPem)
-            val serverB64 = Base64.encode(selfKey)
-            if (localB64 != serverB64) {
-                Log.w(TAG, "ensureUserExists: server key mismatch for self ${userid.toULong()}, re-registering correct key localLen=${localB64.length} serverLen=${serverB64.length}")
-                register()
-            } else {
-                Log.d(TAG, "ensureUserExists: self key exists and matches")
-            }
-        }
-        // PQC self-healing: same race detection for the PQC bundle.
-        if (pqcReady) {
-            val selfPqcKey = getPqcKey(userid)
-            if (selfPqcKey == null) {
-                Log.w(TAG, "ensureUserExists: PQC getKey failed for self ${userid.toULong()}, re-registering PQC")
-                registerPqc()
-            } else {
-                val localB64 = Base64.encode(pqcIdentity.publicBundle)
-                val serverB64 = Base64.encode(selfPqcKey)
-                if (localB64 != serverB64) {
-                    Log.w(TAG, "ensureUserExists: PQC server mismatch self ${userid.toULong()}, re-registering len local=${localB64.length} server=${serverB64.length}")
-                    registerPqc()
-                } else {
-                    Log.d(TAG, "ensureUserExists: PQC self key matches")
-                }
-            }
-        }
-    }
-
-    /** Fetches a peer's public key by id, returning its PEM bytes (or null if unknown/offline). */
-    private suspend fun getKey(userid: Long): ByteArray? {
-        val result = checkNetworkDown {
-            val response = NetworkClient.performRequest(
-                url = "$URL/api/getkey",
-                method = "POST",
-                headers = mapOf("Content-Type" to "application/json"),
-                body = json.encodeToString(GetKeyRequest(userid.toULong()))
-            )
-            Log.d(TAG, "getKey id=${userid.toULong()} status=${response.status}")
-            if(response.status != 200) {
-                return@checkNetworkDown null
-            }
-            return@checkNetworkDown Base64.decode(response.body)
-        }
-        if (result == null) Log.w(TAG, "getKey failed for ${userid.toULong()}")
-        return result
-    }
-
-    /** Fetches a peer's PQC public bundle by id, returning its raw bundle bytes (or null). Same key normalization as classic. */
-    private suspend fun getPqcKey(userid: Long): ByteArray? {
-        if (!pqcReady) return null
-        val result = checkNetworkDown {
-            val response = NetworkClient.performRequest(
-                url = "$URL/api/pqc/getkey",
-                method = "POST",
-                headers = mapOf("Content-Type" to "application/json"),
-                body = json.encodeToString(GetKeyRequest(userid.toULong()))
-            )
-            Log.d(TAG, "getPqcKey id=${userid.toULong()} status=${response.status}")
-            if (response.status != 200) return@checkNetworkDown null
-            return@checkNetworkDown Base64.decode(response.body)
-        }
-        // Don't spam warn for users who haven't upgraded to PQC yet.
-        if (result == null) Log.d(TAG, "getPqcKey: no PQC key for ${userid.toULong()} (peer may not support PQC yet)")
-        return result
-    }
-
-    /** Local platform tag included in outgoing heartbeat payloads so the peer learns we're on Android. */
-    private const val PLATFORM = "android"
+    private fun wsFlags(kind: String): Int = if (kind == "uwb") WS_FLAG_UWB else 0
 
     /**
-     * Publish location to a connected user.
-     * PQC routing: if the peer has a PQC bundle (cached `User.pqcEncryptionKey` or fetched
-     * from `/api/pqc/getkey`), encrypt + publish ONLY to the higher PQC endpoint
-     * (`/api/location/publish_pqc`). Otherwise fall back to classic RSA endpoint.
+     * Start (or no-op if already running) the live relay loop. On connect it subscribes
+     * and registers this device's PQC bundle in one frame; [onLocations]/[onUwb] then
+     * receive already-decrypted pushes. Reconnects with 1s→15s backoff — there is no
+     * HTTP fallback, so a dropped socket is simply re-established.
      */
-    suspend fun publishLocation(location: LocationValue, user: User): Boolean {
-        // Fast-path: check PQC capability first. The peer's PQC bundle is stored in
-        // `pqcEncryptionKey` (base64 bundle). If present, we skip classic entirely.
-        val pqcBundle = peerPqcBundle(user)
-        if (pqcBundle != null) {
-            return try {
-                val encrypted = encryptLocationPqc(location, user.id, pqcBundle)
-                val ok = makeRequest<Boolean, LocationSharingData>("/api/location/publish_pqc", encrypted) ?: false
-                Log.d(TAG, "publishLocation PQC to ${user.id.toULong()} (${user.name}) ok=$ok encLen=${encrypted.encryptedLocation.length}")
-                ok
-            } catch (e: Exception) {
-                Log.w(TAG, "publishLocation PQC to ${user.id.toULong()} exception, falling back to RSA", e)
-                // Fallback to RSA on PQC encrypt failure.
-                publishLocationClassic(location, user)
+    fun startLive(
+        scope: CoroutineScope,
+        onLocations: suspend (List<LocationValue>) -> Unit,
+        onUwb: suspend (List<UwbEnvelope>) -> Unit,
+    ) {
+        if (liveJob?.isActive == true) return
+        stopLive()
+        liveJob = scope.launch(Dispatchers.IO) {
+            var backoff = 1000L
+            while (isActive) {
+                runCatching {
+                    webSocket(WS_URL) {
+                        wsSession = this
+                        // SUB doubles as registration: append our PQC bundle so the server stores
+                        // it (no separate register call). Sent every (re)connect, so it self-heals.
+                        val bundle = if (pqcReady) pqcIdentity.publicBundle else ByteArray(0)
+                        val sub = ByteArray(9 + bundle.size)
+                        sub[0] = WS_OP_SUB
+                        putU64Be(sub, 1, userid.toULong())
+                        bundle.copyInto(sub, 9)
+                        send(sub)
+                        backoff = 1000L
+                        Log.d(TAG, "live WS connected, subscribed+registered as ${userid.toULong()} bundleLen=${bundle.size}")
+                        incoming.collect { frame ->
+                            when (frame) {
+                                is WebSocketClient.WsFrame.Binary ->
+                                    dispatchLiveFrame(frame.bytes, onLocations, onUwb)
+                                else -> Unit
+                            }
+                        }
+                    }
+                }.onFailure { Log.w(TAG, "live WS loop error", it) }
+                wsSession = null
+                // Fail any awaiting key lookups so their callers don't hang until timeout.
+                pendingKeyRequests.values.forEach { it.complete(null) }
+                pendingKeyRequests.clear()
+                if (!isActive) break
+                delay(backoff)
+                backoff = (backoff * 2).coerceAtMost(15_000)
             }
         }
-        return publishLocationClassic(location, user)
     }
 
-    private suspend fun publishLocationClassic(location: LocationValue, user: User): Boolean {
-        val keyPem = if (user.encryptionKey != null) {
-            Base64.decode(user.encryptionKey)
-        } else {
-            getKey(user.id)?.also {
-                // Atomic partial update — avoids stale User copy clobbering sharing flags.
-                runCatching { userDao.setEncryptionKey(user.id, Base64.encode(it)) }
+    fun stopLive() {
+        liveJob?.cancel(); liveJob = null; wsSession = null
+        pendingKeyRequests.values.forEach { it.complete(null) }
+        pendingKeyRequests.clear()
+    }
+
+    /** Parse one server frame and dispatch: MSG → decrypt+deliver; KEYRESP → complete the lookup. */
+    private suspend fun dispatchLiveFrame(
+        buf: ByteArray,
+        onLocations: suspend (List<LocationValue>) -> Unit,
+        onUwb: suspend (List<UwbEnvelope>) -> Unit,
+    ) {
+        val op = buf.firstOrNull() ?: return
+        when (op) {
+            WS_OP_MSG -> {
+                if (buf.size < 2) return
+                val isUwb = (buf[1].toInt() and WS_FLAG_UWB) != 0
+                val raw = buf.copyOfRange(2, buf.size)
+                if (!isUwb) {
+                    val decoded = runCatching { decryptLocationPqcBytes(raw) }
+                        .onFailure { Log.w(TAG, "live location decrypt fail", it) }.getOrNull() ?: return
+                    val (loc, platform) = decoded
+                    if (platform != null) runCatching { userDao.setPlatform(loc.userid, platform) }
+                    runCatching { onLocations(listOf(loc)) }
+                } else {
+                    val env = runCatching {
+                        val plain = pqcIdentity.decrypt(raw)
+                        json.decodeFromString<UwbEnvelope>(plain.decodeToString())
+                    }.onFailure { Log.w(TAG, "live uwb decrypt fail", it) }.getOrNull() ?: return
+                    runCatching { onUwb(listOf(env)) }
+                }
             }
+            WS_OP_GETKEY_RESP -> {
+                if (buf.size < 10) return
+                val status = buf[1].toInt()
+                val target = readU64Be(buf, 2)
+                val bundle = if (buf.size > 10) buf.copyOfRange(10, buf.size) else null
+                pendingKeyRequests.remove(target)?.complete(KeyResult(status, bundle))
+            }
+            else -> Unit
         }
-        if (keyPem == null) {
-            Log.w(TAG, "publishLocation: no key for user ${user.id.toULong()} (${user.name})")
+    }
+
+    /** Send an already-encrypted payload to [recipient] over the socket. False if the socket is down. */
+    private suspend fun sendLivePublish(recipient: Long, kind: String, raw: ByteArray): Boolean {
+        val session = wsSession ?: return false
+        return runCatching {
+            val frame = ByteArray(10 + raw.size)
+            frame[0] = WS_OP_PUB
+            frame[1] = wsFlags(kind).toByte()
+            putU64Be(frame, 2, recipient.toULong())
+            raw.copyInto(frame, 10)
+            session.send(frame)
+            true
+        }.onFailure { Log.w(TAG, "live publish failed", it) }.getOrDefault(false)
+    }
+
+    /**
+     * Look up a peer's key over the socket (request/response, [GETKEY_TIMEOUT_MS] timeout).
+     * Returns null when the socket is down or the reply times out — callers treat that as
+     * "unknown" and rely on reconnection rather than any HTTP fallback.
+     */
+    private suspend fun wsGetKey(userId: Long): KeyResult? {
+        val session = wsSession ?: return null
+        val deferred = CompletableDeferred<KeyResult?>()
+        pendingKeyRequests[userId] = deferred
+        return try {
+            val req = ByteArray(9)
+            req[0] = WS_OP_GETKEY_REQ
+            putU64Be(req, 1, userId.toULong())
+            session.send(req)
+            withTimeoutOrNull(GETKEY_TIMEOUT_MS) { deferred.await() }
+        } catch (e: Exception) {
+            Log.w(TAG, "wsGetKey failed for ${userId.toULong()}", e)
+            null
+        } finally {
+            pendingKeyRequests.remove(userId)
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Publish (WebSocket only)
+    // ----------------------------------------------------------------
+
+    /**
+     * Publish location to a connected user over the socket. Returns false if the peer has no
+     * PQC bundle (outdated app — surface [PeerCrypto.NEEDS_UPDATE] via [peerCryptoStatus]) or
+     * the socket is down (the next heartbeat retries once reconnected).
+     */
+    suspend fun publishLocation(location: LocationValue, user: User): Boolean {
+        val bundle = peerPqcBundle(user)
+        if (bundle == null) {
+            Log.w(TAG, "publishLocation: no PQC bundle for ${user.id.toULong()} (${user.name}); peer must update")
             return false
         }
         return try {
-            val encrypted = encryptLocation(location, user.id, keyPem)
-            val ok = makeRequest<Boolean, LocationSharingData>("/api/location/publish", encrypted) ?: false
-            Log.d(TAG, "publishLocation RSA to ${user.id.toULong()} (${user.name}) ok=$ok encLen=${encrypted.encryptedLocation.length}")
+            val ok = sendLivePublish(user.id, "location", sealLocation(location, bundle))
+            Log.d(TAG, "publishLocation PQC to ${user.id.toULong()} (${user.name}) ok=$ok")
             ok
         } catch (e: Exception) {
-            Log.w(TAG, "publishLocation RSA to ${user.id.toULong()} exception", e)
+            Log.w(TAG, "publishLocation to ${user.id.toULong()} exception", e)
             false
         }
     }
 
-    /**
-     * Publish to an anonymous share link. Links are post-quantum only — there is deliberately
-     * no classic RSA fallback here, so an encrypt/publish failure fails the send rather than
-     * silently downgrading the link to pre-quantum crypto.
-     */
+    /** Publish to an anonymous share link (post-quantum only). */
     suspend fun publishLocation(location: LocationValue, link: TemporaryLink): Boolean {
         return try {
             val bundle = Base64.decode(link.pqcPublicKey)
-            val encrypted = encryptLocationPqc(location, link.id, bundle)
-            val ok = makeRequest<Boolean, LocationSharingData>("/api/location/publish_pqc", encrypted) ?: false
-            Log.d(TAG, "publishLocation PQC to temp link ${link.id} ok=$ok encLen=${encrypted.encryptedLocation.length}")
+            val ok = sendLivePublish(link.id, "location", sealLocation(location, bundle))
+            Log.d(TAG, "publishLocation PQC to temp link ${link.id} ok=$ok")
             ok
         } catch (e: Exception) {
-            Log.w(TAG, "publishLocation PQC temp link ${link.id} failed (no RSA fallback for links)", e)
+            Log.w(TAG, "publishLocation temp link ${link.id} failed", e)
             false
         }
     }
 
-    /**
-     * Receives locations from both classic and PQC queues and merges them.
-     * Classic queue may be empty when all peers upgraded to PQC; PQC queue is drained
-     * here too for backward compat during rollout.
-     */
-    suspend fun receiveLocations(): List<LocationValue>? {
-        val classic = receiveLocationsClassic()
-        val pqc = receiveLocationsPqc()
-        // One null means network failure — if either failed we can't tell whether the other
-        // is authoritative empty or partial. Return classic if pqc is null and vice versa,
-        // but if classic is null return pqc (or null if both). This keeps heartbeat alive.
-        if (classic == null && pqc == null) return null
-        val merged = (classic ?: emptyList()) + (pqc ?: emptyList())
-        Log.d(TAG, "receiveLocations merged total=${merged.size} classic=${classic?.size} pqc=${pqc?.size}")
-        return merged
-    }
-
-    private suspend fun receiveLocationsClassic(): List<LocationValue>? {
-        // Use raw performRequest to correctly handle 204 No Content (empty queue) vs parsing error.
-        val response = try {
-            NetworkClient.performRequest(
-                url = "$URL/api/location/receive",
-                method = "POST",
-                headers = mapOf("Content-Type" to "application/json"),
-                body = json.encodeToString(UserIdRequest(userid.toULong()))
-            )
-        } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            Log.w(TAG, "receiveLocationsClassic: performRequest threw", e)
-            return null
-        }
-        Log.d(TAG, "receiveLocationsClassic: status=${response.status} bodyLen=${response.body.length} for self ${userid.toULong()}")
-        if (response.status == 204 || response.body.isBlank()) {
-            Log.d(TAG, "receiveLocationsClassic: 204/empty")
-            return emptyList()
-        }
-        if (response.status !in 200..299) {
-            Log.w(TAG, "receiveLocationsClassic: server status ${response.status} body=${response.body.take(500)}")
-            return null
-        }
-        val strings: List<String> = try {
-            json.decodeFromString(response.body)
-        } catch (e: Exception) {
-            Log.w(TAG, "receiveLocationsClassic: parse fail ${response.body.take(500)}", e)
-            return null
-        }
-        Log.d(TAG, "receiveLocationsClassic: got ${strings.size} raw blobs")
-        var decryptFails = 0
-        val decoded = strings.mapNotNull { enc ->
-            runCatching { decryptLocation(enc) }.onFailure { e ->
-                decryptFails++
-                Log.w(TAG, "receiveLocationsClassic: decrypt fail encLen=${enc.length}", e)
-            }.getOrNull()
-        }
-        if (decryptFails > 0) Log.w(TAG, "receiveLocationsClassic: $decryptFails / ${strings.size} decrypt fail")
-        if (decoded.isNotEmpty()) {
-            decoded.forEach { (loc, platform) ->
-                if (platform != null) {
-                    // Atomic — don't use copy()+upsert() which can clobber sharing timer.
-                    runCatching { userDao.setPlatform(loc.userid, platform) }
-                }
-            }
-        }
-        Log.d(TAG, "receiveLocationsClassic: returning ${decoded.size}")
-        return decoded.map { it.first }
-    }
-
-    private suspend fun receiveLocationsPqc(): List<LocationValue>? {
-        if (!pqcReady) return emptyList()
-        val response = try {
-            NetworkClient.performRequest(
-                url = "$URL/api/location/receive_pqc",
-                method = "POST",
-                headers = mapOf("Content-Type" to "application/json"),
-                body = json.encodeToString(UserIdRequest(userid.toULong()))
-            )
-        } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            Log.w(TAG, "receiveLocationsPqc: performRequest threw", e)
-            return null
-        }
-        Log.d(TAG, "receiveLocationsPqc: status=${response.status} bodyLen=${response.body.length} for self ${userid.toULong()}")
-        if (response.status == 204 || response.body.isBlank()) return emptyList()
-        if (response.status !in 200..299) {
-            Log.w(TAG, "receiveLocationsPqc: server status ${response.status} body=${response.body.take(500)}")
-            return null
-        }
-        val strings: List<String> = try {
-            json.decodeFromString(response.body)
-        } catch (e: Exception) {
-            Log.w(TAG, "receiveLocationsPqc: parse fail", e)
-            return null
-        }
-        Log.d(TAG, "receiveLocationsPqc: got ${strings.size} raw blobs")
-        var fails = 0
-        val decoded = strings.mapNotNull { enc ->
-            runCatching { decryptLocationPqc(enc) }.onFailure { e ->
-                fails++
-                Log.w(TAG, "receiveLocationsPqc: decrypt fail encLen=${enc.length}", e)
-            }.getOrNull()
-        }
-        if (fails > 0) Log.w(TAG, "receiveLocationsPqc: $fails / ${strings.size} decrypt fail")
-        decoded.forEach { (loc, platform) ->
-            if (platform != null) {
-                runCatching {
-                    userDao.setPlatform(loc.userid, platform)
-                }
-            }
-        }
-        Log.d(TAG, "receiveLocationsPqc: returning ${decoded.size}")
-        return decoded.map { it.first }
-    }
-
     // ----------------------------------------------------------------
-    // UWB session-setup channel
-    //
-    // Mirrors the location publish/receive flow but carries the small UWB
-    // handshake envelopes (request / ack / config / cancel) end-to-end
-    // encrypted. Each payload is at most a few hundred bytes; ranging samples
-    // themselves never touch the server. PQC routing: only bother publishing
-    // to the higher PQC endpoint when peer supports it.
+    // UWB session-setup channel — small handshake envelopes (request / ack /
+    // config / cancel), end-to-end encrypted over the same socket. Ranging
+    // samples never touch the server.
     // ----------------------------------------------------------------
 
     suspend fun publishUwbMessage(envelope: UwbEnvelope, recipientUserId: Long, recipient: User? = null): Boolean {
-        // Try PQC first if peer has bundle.
         val resolvedUser = recipient ?: userDao.getById(recipientUserId)
-        val pqcBundle = resolvedUser?.let { peerPqcBundle(it) } ?: getPqcKey(recipientUserId)
-        if (pqcBundle != null) {
-            // Cache bundle if we just fetched — atomic to avoid clobbering sharing flags.
-            if (resolvedUser != null && resolvedUser.pqcEncryptionKey == null) {
-                runCatching { userDao.setPqcEncryptionKey(resolvedUser.id, Base64.encode(pqcBundle)) }
-            }
-            return publishUwbMessagePqc(envelope, recipientUserId, pqcBundle)
-        }
-        return publishUwbMessageClassic(envelope, recipientUserId, resolvedUser)
-    }
-
-    private suspend fun publishUwbMessageClassic(envelope: UwbEnvelope, recipientUserId: Long, recipient: User? = null): Boolean {
-        val keyPem = if (recipient?.encryptionKey != null) {
-            Base64.decode(recipient.encryptionKey)
+        val bundle = if (resolvedUser != null) {
+            peerPqcBundle(resolvedUser)
         } else {
-            getKey(recipientUserId) ?: return false
+            wsGetKey(recipientUserId)?.takeIf { it.status == WS_KEY_PQC }?.bundle
         }
-        val str = json.encodeToString(envelope)
-        val encryptedData = Base64.encode(E2ee.sealTo(keyPem, str.encodeToByteArray()))
-        val bodyJson = json.encodeToString(LocationSharingData(recipientUserId.toULong(), encryptedData))
-        return checkNetworkDown {
-            val resp = NetworkClient.performRequest(
-                url = "$URL/api/uwb/publish",
-                method = "POST",
-                headers = mapOf("Content-Type" to "application/json"),
-                body = bodyJson
-            )
-            resp.status in 200..299
-        } ?: false
-    }
-
-    private suspend fun publishUwbMessagePqc(envelope: UwbEnvelope, recipientUserId: Long, bundle: ByteArray): Boolean {
+        if (bundle == null) {
+            Log.w(TAG, "publishUwbMessage: no PQC bundle for ${recipientUserId.toULong()}; peer must update")
+            return false
+        }
         return try {
-            val str = json.encodeToString(envelope)
-            val encryptedData = Base64.encode(Pqc.encryptTo(bundle, str.encodeToByteArray()))
-            val bodyJson = json.encodeToString(LocationSharingData(recipientUserId.toULong(), encryptedData))
-            checkNetworkDown {
-                val resp = NetworkClient.performRequest(
-                    url = "$URL/api/uwb/publish_pqc",
-                    method = "POST",
-                    headers = mapOf("Content-Type" to "application/json"),
-                    body = bodyJson
-                )
-                resp.status in 200..299
-            } ?: false
+            val sealed = Pqc.encryptTo(bundle, json.encodeToString(envelope).encodeToByteArray())
+            val ok = sendLivePublish(recipientUserId, "uwb", sealed)
+            Log.d(TAG, "publishUwbMessage PQC to ${recipientUserId.toULong()} ok=$ok")
+            ok
         } catch (e: Exception) {
-            Log.w(TAG, "publishUwbMessagePqc to ${recipientUserId.toULong()} failed", e)
+            Log.w(TAG, "publishUwbMessage to ${recipientUserId.toULong()} failed", e)
             false
         }
     }
 
-    /**
-     * Drains incoming UWB envelopes from both classic and PQC queues.
-     * Supports both hybrid (sealTo) and legacy direct RSA for classic, and PQC bundle decrypt for PQC.
-     */
-    suspend fun receiveUwbMessages(): List<UwbEnvelope>? {
-        val classic = receiveUwbMessagesClassic()
-        val pqc = receiveUwbMessagesPqc()
-        if (classic == null && pqc == null) return null
-        return (classic ?: emptyList()) + (pqc ?: emptyList())
-    }
-
-    private suspend fun receiveUwbMessagesClassic(): List<UwbEnvelope>? {
-        val strings: List<String>? = makeRequest("/api/uwb/receive", json.encodeToString(UserIdRequest(userid.toULong())))
-        return strings?.mapNotNull { b64 ->
-            runCatching {
-                val raw = Base64.decode(b64)
-                val plainBytes = runCatching { identity.unseal(raw) }.getOrElse { identity.decrypt(raw) }
-                json.decodeFromString<UwbEnvelope>(plainBytes.decodeToString())
-            }.getOrNull()
-        }
-    }
-
-    private suspend fun receiveUwbMessagesPqc(): List<UwbEnvelope>? {
-        if (!pqcReady) return emptyList()
-        val strings: List<String>? = makeRequest("/api/uwb/receive_pqc", json.encodeToString(UserIdRequest(userid.toULong())))
-        return strings?.mapNotNull { b64 ->
-            runCatching {
-                val raw = Base64.decode(b64)
-                val plainBytes = pqcIdentity.decrypt(raw)
-                json.decodeFromString<UwbEnvelope>(plainBytes.decodeToString())
-            }.onFailure { e ->
-                Log.w(TAG, "receiveUwbMessagesPqc: decrypt fail", e)
-            }.getOrNull()
-        }
-    }
-
     // ----------------------------------------------------------------
-    // Encryption helpers
+    // Encryption helpers (post-quantum only)
     // ----------------------------------------------------------------
 
-    private suspend fun encryptLocation(location: LocationValue, recipientUserID: Long, keyPem: ByteArray): LocationSharingData {
-        val str = json.encodeToString(location.toCompatible(senderPlatform = PLATFORM))
-        // Hybrid encryption: avoids 126-byte RSA-OAEP limit; location JSON is ~150-250 bytes.
-        val encryptedData = Base64.encode(E2ee.sealTo(keyPem, str.encodeToByteArray()))
-        return LocationSharingData(recipientUserID.toULong(), encryptedData)
-    }
-
-    private fun encryptLocationPqc(location: LocationValue, recipientUserID: Long, bundle: ByteArray): LocationSharingData {
+    private fun sealLocation(location: LocationValue, bundle: ByteArray): ByteArray {
         val str = json.encodeToString(location.toCompatible(senderPlatform = PLATFORM))
         // PQC hybrid: ML-KEM encapsulate → AES-256-GCM, layout [4B encapLen][encap][aes].
-        val sealed = Pqc.encryptTo(bundle, str.encodeToByteArray())
-        val encryptedData = Base64.encode(sealed)
-        return LocationSharingData(recipientUserID.toULong(), encryptedData)
+        return Pqc.encryptTo(bundle, str.encodeToByteArray())
     }
 
-    private suspend fun decryptLocation(encryptedLocation: String): Pair<LocationValue, String?> {
-        val raw = Base64.decode(encryptedLocation)
-        // Backward compat: try unseal (new encrypted form) then direct decrypt (legacy peers).
-        val decryptedData = runCatching { identity.unseal(raw).decodeToString() }
-            .getOrElse { identity.decrypt(raw).decodeToString() }
-        val compat = json.decodeFromString<LocationValueCompatible>(decryptedData)
-        return compat.toLocationValue() to compat.senderPlatform
-    }
-
-    private fun decryptLocationPqc(encryptedLocation: String): Pair<LocationValue, String?> {
-        val raw = Base64.decode(encryptedLocation)
+    private fun decryptLocationPqcBytes(raw: ByteArray): Pair<LocationValue, String?> {
         val plainBytes = pqcIdentity.decrypt(raw)
         val compat = json.decodeFromString<LocationValueCompatible>(plainBytes.decodeToString())
         return compat.toLocationValue() to compat.senderPlatform
@@ -575,9 +382,8 @@ object Networking {
 
     /**
      * Generates a fresh PQC key bundle for an ephemeral temporary link.
-     * Returns (publicBundleBase64, privateBundleBase64) where private bundle is
+     * Returns (publicBundleBase64, privateBundleBase64) where the private bundle is
      * [4B kemPrivLen][kemPrivDer][dsaPrivDer] — DERs, BC-compatible, same KDF as Office.
-     * This mirrors Office's generation but for anonymous links.
      */
     fun generatePqcKeyPair(): PqcLinkKeyPair {
         val (kemPub, kemPriv) = Pqc.generateKem()
@@ -605,74 +411,61 @@ object Networking {
     }
 
     /**
-     * Computes the verification "security code" for a connection: a fingerprint of *both* this
-     * device's and [user]'s public keys. Identical on both peers' devices; comparing them confirms
-     * the end-to-end channel isn't being intercepted. Returns null if the peer's key isn't known yet.
-     *
-     * Prefers the PQC (quantum-safe) code when both sides support PQC, and falls back to the RSA
-     * code otherwise. The choice is symmetric: PQC is used iff this device is PQC-ready AND the
-     * peer has a PQC bundle available, so if either side lacks PQC both compute the RSA code.
+     * Computes the quantum-safe verification "security code" for a connection: a fingerprint of
+     * *both* this device's and [user]'s PQC bundles. Identical on both peers; comparing them
+     * confirms the channel isn't intercepted. Null if PQC is unavailable or the peer has no bundle.
      */
     suspend fun securityCode(user: User): String? {
-        if (pqcReady) {
-            val theirBundle = peerPqcBundle(user)
-            if (theirBundle != null) {
-                runCatching { Pqc.securityCode(pqcIdentity.publicBundle, theirBundle) }
-                    .getOrNull()?.let { return it }
-            }
-        }
-        val theirPem = peerPublicKeyPem(user) ?: return null
-        return runCatching { E2ee.securityCode(identity.publicKeyPem, theirPem) }.getOrNull()
+        if (!pqcReady) return null
+        val theirBundle = peerPqcBundle(user) ?: return null
+        return runCatching { Pqc.securityCode(pqcIdentity.publicBundle, theirBundle) }.getOrNull()
     }
 
-    /** PQC safety number — same contract as classic but from PQC bundles. */
+    /** PQC safety number from a cached peer bundle (no lookup). */
     fun securityCodePqc(user: User): String? {
         val theirBundle = user.pqcEncryptionKey?.let { Base64.decode(it) } ?: return null
         if (!pqcReady) return null
         return runCatching { Pqc.securityCode(pqcIdentity.publicBundle, theirBundle) }.getOrNull()
     }
 
-    /** The peer's public key as PEM bytes — from the cached [User.encryptionKey] or fetched by id. */
-    private suspend fun peerPublicKeyPem(user: User): ByteArray? {
-        user.encryptionKey?.let { return Base64.decode(it) }
-        val pem = getKey(user.id) ?: return null
-        // Atomic — stale copy() + upsert() would clobber sharingAutoToggleAt / sendingEnabled
-        // and accidentally disable sharing when you didn't intend it.
-        runCatching { userDao.setEncryptionKey(user.id, Base64.encode(pem)) }
-        return pem
-    }
-
     /**
-     * The peer's PQC public bundle — from cached `User.pqcEncryptionKey` (base64 bundle)
-     * or fetched from `/api/pqc/getkey`. If fetched, caches it. This is the "higher"
-     * endpoint check: non-null means peer supports PQC → caller should publish only to PQC.
+     * The peer's PQC public bundle — from cached `User.pqcEncryptionKey` or looked up over the
+     * socket. If looked up, caches it. Non-null means the peer supports post-quantum sharing.
      */
     private suspend fun peerPqcBundle(user: User): ByteArray? {
         if (!pqcReady) return null
         user.pqcEncryptionKey?.let { return Base64.decode(it) }
-        val bundle = getPqcKey(user.id) ?: return null
-        runCatching { userDao.setPqcEncryptionKey(user.id, Base64.encode(bundle)) }
-        return bundle
+        val res = wsGetKey(user.id) ?: return null
+        if (res.status == WS_KEY_PQC && res.bundle != null) {
+            runCatching { userDao.setPqcEncryptionKey(user.id, Base64.encode(res.bundle)) }
+            return res.bundle
+        }
+        return null
+    }
+
+    /** The post-quantum capability of a peer, used to gate connecting/sharing. */
+    enum class PeerCrypto {
+        /** Peer has a PQC bundle registered — sharing works. */
+        PQC,
+
+        /** Peer has only a classic (RSA) key — they are on an outdated app and must update. */
+        NEEDS_UPDATE,
+
+        /** Peer is not registered, or the lookup couldn't complete (socket down/timeout). */
+        UNKNOWN,
     }
 
     /**
-     * Whether a given [User] has a PQC key available (cached or fetchable). Used to decide
-     * whether to skip classic endpoint.
+     * Checks a peer's post-quantum capability "when connecting", over the socket. PQC bundle →
+     * [PeerCrypto.PQC]; only a classic key → [PeerCrypto.NEEDS_UPDATE] (show the update dialog);
+     * neither, or the socket is down/times out → [PeerCrypto.UNKNOWN].
      */
-    suspend fun isPqcUser(user: User): Boolean {
-        if (!pqcReady) return false
-        if (user.pqcEncryptionKey != null) return true
-        // Opportunistic fetch without caching twice (peerPqcBundle will cache if found).
-        return getPqcKey(user.id) != null
+    suspend fun peerCryptoStatus(userId: Long): PeerCrypto {
+        val res = wsGetKey(userId) ?: return PeerCrypto.UNKNOWN
+        return when (res.status) {
+            WS_KEY_PQC -> PeerCrypto.PQC
+            WS_KEY_CLASSIC -> PeerCrypto.NEEDS_UPDATE
+            else -> PeerCrypto.UNKNOWN
+        }
     }
-
-    @Serializable
-    private data class LocationSharingData(val recipientUserID: ULong, val encryptedLocation: String)
-
-    /** Unified to ULong to match server storage from register (toULong). Prevents negative-ID mismatch. */
-    @Serializable
-    private data class UserIdRequest(val userid: ULong)
-
-    @Serializable
-    private data class GetKeyRequest(val userid: ULong)
 }

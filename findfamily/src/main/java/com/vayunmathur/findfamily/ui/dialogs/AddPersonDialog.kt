@@ -57,6 +57,7 @@ fun AddPersonDialog(
 
     val userStatus = usersByID[userid.decodeBase26()]?.requestStatus
     val context = LocalContext.current
+    var showOutdatedPeer by remember { mutableStateOf(false) }
 
     Dialog({backStack.pop()}) {
         Card {
@@ -130,9 +131,11 @@ fun AddPersonDialog(
                             null,
                             userid.decodeBase26()
                         )
-                        ffViewModel.upsertUser(userToAdd) {
-                            backStack.pop()
-                        }
+                        ffViewModel.connectUser(
+                            userToAdd,
+                            onNeedsUpdate = { showOutdatedPeer = true },
+                            onDone = { backStack.pop() },
+                        )
                     },
                     enabled = userid.isNotBlank() && contactName != null && !(userStatus == RequestStatus.MUTUAL_CONNECTION || userStatus == RequestStatus.AWAITING_RESPONSE)
                 ) {
@@ -144,6 +147,10 @@ fun AddPersonDialog(
                 }
             }
         }
+    }
+
+    if (showOutdatedPeer) {
+        OutdatedPeerDialog(onDismiss = { showOutdatedPeer = false })
     }
 }
 

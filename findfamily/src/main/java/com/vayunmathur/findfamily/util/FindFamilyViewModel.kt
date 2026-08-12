@@ -156,6 +156,25 @@ class FindFamilyViewModel(
         }
     }
 
+    /**
+     * Connects to a peer, but first checks their post-quantum capability. If the peer is
+     * on an outdated (classic-only) app, invokes [onNeedsUpdate] and does NOT add them.
+     * Unknown (not-yet-registered) peers are allowed through — they may register with PQC
+     * once they install the app.
+     */
+    fun connectUser(user: User, onNeedsUpdate: () -> Unit, onDone: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val status = Networking.peerCryptoStatus(user.id)
+            if (status == Networking.PeerCrypto.NEEDS_UPDATE) {
+                withContext(Dispatchers.Main) { onNeedsUpdate() }
+            } else {
+                userDao.upsert(user)
+                LocationServiceController.syncServiceState(ctx)
+                withContext(Dispatchers.Main) { onDone() }
+            }
+        }
+    }
+
     fun updateContactNamePhoto(userId: Long, name: String, photo: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             userDao.updateContactNamePhoto(userId, name, photo)

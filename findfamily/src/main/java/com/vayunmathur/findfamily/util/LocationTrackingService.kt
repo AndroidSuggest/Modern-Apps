@@ -102,7 +102,6 @@ class LocationTrackingService : Service(), SensorEventListener {
     private var lastMovementTime = 0L
     private var lastKnownLocation: Location? = null
     private var heartbeatJob: Job? = null
-    private var uwbPollJob: Job? = null
     private var trackingInitialized = false
 
     private val networkListener = LocationListener { location ->
@@ -132,9 +131,7 @@ class LocationTrackingService : Service(), SensorEventListener {
         // FATAL BadPaddingException in decrypt).
         try {
             val currentUsers = userDao.getAll()
-            val currentWaypoints = waypointDao.getAll()
             val currentLinks = temporaryLinkDao.getAll()
-            val userIDs = currentUsers.map { it.id }
             val now = Clock.System.now()
 
             Log.d("FF-Heartbeat", "heartbeat userid=${Networking.userid.toULong()} self raw=${Networking.userid} users=${currentUsers.size} links=${currentLinks.size} moving=$isMoving loc=${location.latitude},${location.longitude} acc=${location.accuracy}")
@@ -150,13 +147,6 @@ class LocationTrackingService : Service(), SensorEventListener {
 
             Log.d("FF-Heartbeat", "upsert local LocationValue for self")
             locationValueDao.upsert(locationValue)
-            try {
-                Log.d("FF-Heartbeat", "ensureUserExists start")
-                Networking.ensureUserExists()
-                Log.d("FF-Heartbeat", "ensureUserExists done")
-            } catch (e: Exception) {
-                Log.w("FF-Heartbeat", "ensureUserExists threw", e)
-            }
 
             if (currentUsers.none { it.id == Networking.userid }) {
                 Log.d("FF-Heartbeat", "self not in user DB, inserting me")
@@ -203,101 +193,102 @@ class LocationTrackingService : Service(), SensorEventListener {
             }
             currentLinks.filter { now >= it.deleteAt }.forEach { runCatching { temporaryLinkDao.delete(it) } }
 
-            Log.d("FF-Heartbeat", "delay 3s then receive")
-            delay(3000)
-            val locations = try {
-                Networking.receiveLocations()
-            } catch (e: Exception) {
-                Log.w("FF-Heartbeat", "receiveLocations threw", e)
-                null
-            }
-            Log.d("FF-Heartbeat", "receiveLocations result=${locations?.size} for self ${Networking.userid.toULong()}")
-            locations?.let { locList ->
-                val usersRecieved = locList.map { it.userid }.distinct()
-                Log.d("FF-Heartbeat", "received userids=${usersRecieved.map{ it.toULong() }} self=${Networking.userid.toULong()} known=${userIDs.map{ it.toULong() }}")
-                val newUsers = usersRecieved.filter { it !in userIDs && it != Networking.userid }
-                Log.d("FF-Heartbeat", "newUsers to insert=${newUsers.map{ it.toULong() }}")
-                userDao.insertAllIgnore(newUsers.map {
-                    User(" ", null, "Unknown Location", false, RequestStatus.AWAITING_REQUEST, Clock.System.now(), null, it)
-                })
-
-                val latestMap = locationValueDao.getLatest().first().associateBy { it.userid }
-                currentUsers.forEach { user ->
-                    // Self never receives its own published location, so fall back to the fix we
-                    // just recorded this heartbeat; otherwise "me" never gets its waypoint recomputed.
-                    val lastLoc = if (user.id == Networking.userid) locationValue
-                    else locList.filter { it.userid == user.id }.maxByOrNull { it.timestamp }
-                    lastLoc ?: return@forEach
-                    val lastSavedLoc = latestMap[user.id]
-
-                    if (lastLoc.battery <= 15f && (lastSavedLoc?.battery ?: 100f) > 15f) {
-                        if (user.id != Networking.userid) {
-                            createNotificationWithCategory(user.name, getString(R.string.notification_low_battery, user.name), "BATTERY_LOW", user.id)
-                        }
-                    }
-
-                    val inWaypoint = currentWaypoints.find { havershine(it.coord, lastLoc.coord) < it.range }
-                    val prevId = user.lastWaypointId
-                    val stillInsidePrev = prevId?.let { pid ->
-                        currentWaypoints.find { it.id == pid }?.let {
-                            havershine(it.coord, lastLoc.coord) < it.range * 1.2
-                        }
-                    } ?: false
-                    val currentId: Long? = inWaypoint?.id ?: if (stillInsidePrev) prevId else null
-
-                    // Display name: prefer waypoint name (either entered or sticky-via-hysteresis), then geocoded address.
-                    val displayName = inWaypoint?.name
-                        ?: currentWaypoints.find { it.id == currentId }?.name
-                        ?: runCatching { fetchAddress(lastLoc.coord.lat, lastLoc.coord.lon) }.getOrNull()?.let {
-                            it.featureName ?: it.thoroughfare
-                        }
-                        ?: "Unknown Location"
-
-                    if (currentId != prevId || displayName != user.locationName) {
-                        // Atomic partial update — avoids stale snapshot via copy() + upsert()
-                        // clobbering sharingAutoToggleAt / sendingEnabled and accidentally
-                        // disabling sharing when you didn't intend it.
-                        userDao.updateLocationMeta(
-                            id = user.id,
-                            locationName = displayName,
-                            lastWaypointId = currentId,
-                            lastLocationChangeTime = lastLoc.timestamp.epochSeconds
-                        )
-                    }
-
-                    if (currentId != prevId && user.id != Networking.userid) {
-                        if (currentId != null) {
-                            val enteredName = inWaypoint?.name
-                                ?: currentWaypoints.find { it.id == currentId }?.name
-                                ?: displayName
-                            createNotificationWithCategory(user.name, getString(R.string.notification_entered_waypoint, user.name, enteredName), "ENTRY_EXIT", user.id)
-                        } else if (prevId != null) {
-                            val exitedName = currentWaypoints.find { it.id == prevId }?.name ?: user.locationName
-                            createNotificationWithCategory(user.name, getString(R.string.notification_exited_waypoint, user.name, exitedName), "ENTRY_EXIT", user.id)
-                        }
-                    }
-                }
-                locationValueDao.upsertAll(locList)
-                Log.d("FF-Heartbeat", "upsertAll ${locList.size} locations done")
-            }
+            // Incoming peer locations arrive via the live WebSocket push (see startTracking →
+            // Networking.startLive). There is no HTTP receive; if the socket is down the loop
+            // reconnects and the next heartbeat re-publishes.
         } catch (e: Exception) {
             Log.w("FF-Heartbeat", "syncHeartbeat crashed", e)
         }
     }
 
     /**
-     * Fast-path drain of the UWB session-setup channel, run on a dedicated
-     * coroutine every 3s (vs. the 30s heartbeat). Each envelope is forwarded
-     * to [UwbInbox] so the manager / open screen can react; REQUEST envelopes
-     * also fire a local notification so the user knows ranging is happening.
+     * Processes a batch of freshly-decrypted peer locations: inserts unknown
+     * senders, recomputes waypoint entry/exit + low-battery notifications, and
+     * upserts the values. Self-contained (re-reads users/waypoints) so it can be
+     * driven by both the 30s heartbeat poll and the live WebSocket push.
      */
-    private suspend fun drainUwbInbox() {
-        val envelopes = try {
-            Networking.receiveUwbMessages() ?: return
-        } catch (_: Exception) { return }
-        if (envelopes.isEmpty()) return
+    private suspend fun processIncomingLocations(locList: List<LocationValue>) {
+        if (locList.isEmpty()) return
+        val currentUsers = userDao.getAll()
+        val currentWaypoints = waypointDao.getAll()
+        val userIDs = currentUsers.map { it.id }
+
+        val usersRecieved = locList.map { it.userid }.distinct()
+        Log.d("FF-Heartbeat", "received userids=${usersRecieved.map{ it.toULong() }} self=${Networking.userid.toULong()} known=${userIDs.map{ it.toULong() }}")
+        val newUsers = usersRecieved.filter { it !in userIDs && it != Networking.userid }
+        Log.d("FF-Heartbeat", "newUsers to insert=${newUsers.map{ it.toULong() }}")
+        userDao.insertAllIgnore(newUsers.map {
+            User(" ", null, "Unknown Location", false, RequestStatus.AWAITING_REQUEST, Clock.System.now(), null, it)
+        })
+
+        val latestMap = locationValueDao.getLatest().first().associateBy { it.userid }
+        currentUsers.forEach { user ->
+            // Self never receives its own published location, so fall back to the latest
+            // stored fix; otherwise "me" never gets its waypoint recomputed.
+            val lastLoc = if (user.id == Networking.userid) latestMap[Networking.userid]
+            else locList.filter { it.userid == user.id }.maxByOrNull { it.timestamp }
+            lastLoc ?: return@forEach
+            val lastSavedLoc = latestMap[user.id]
+
+            if (lastLoc.battery <= 15f && (lastSavedLoc?.battery ?: 100f) > 15f) {
+                if (user.id != Networking.userid) {
+                    createNotificationWithCategory(user.name, getString(R.string.notification_low_battery, user.name), "BATTERY_LOW", user.id)
+                }
+            }
+
+            val inWaypoint = currentWaypoints.find { havershine(it.coord, lastLoc.coord) < it.range }
+            val prevId = user.lastWaypointId
+            val stillInsidePrev = prevId?.let { pid ->
+                currentWaypoints.find { it.id == pid }?.let {
+                    havershine(it.coord, lastLoc.coord) < it.range * 1.2
+                }
+            } ?: false
+            val currentId: Long? = inWaypoint?.id ?: if (stillInsidePrev) prevId else null
+
+            // Display name: prefer waypoint name (either entered or sticky-via-hysteresis), then geocoded address.
+            val displayName = inWaypoint?.name
+                ?: currentWaypoints.find { it.id == currentId }?.name
+                ?: runCatching { fetchAddress(lastLoc.coord.lat, lastLoc.coord.lon) }.getOrNull()?.let {
+                    it.featureName ?: it.thoroughfare
+                }
+                ?: "Unknown Location"
+
+            if (currentId != prevId || displayName != user.locationName) {
+                // Atomic partial update — avoids stale snapshot via copy() + upsert()
+                // clobbering sharingAutoToggleAt / sendingEnabled and accidentally
+                // disabling sharing when you didn't intend it.
+                userDao.updateLocationMeta(
+                    id = user.id,
+                    locationName = displayName,
+                    lastWaypointId = currentId,
+                    lastLocationChangeTime = lastLoc.timestamp.epochSeconds
+                )
+            }
+
+            if (currentId != prevId && user.id != Networking.userid) {
+                if (currentId != null) {
+                    val enteredName = inWaypoint?.name
+                        ?: currentWaypoints.find { it.id == currentId }?.name
+                        ?: displayName
+                    createNotificationWithCategory(user.name, getString(R.string.notification_entered_waypoint, user.name, enteredName), "ENTRY_EXIT", user.id)
+                } else if (prevId != null) {
+                    val exitedName = currentWaypoints.find { it.id == prevId }?.name ?: user.locationName
+                    createNotificationWithCategory(user.name, getString(R.string.notification_exited_waypoint, user.name, exitedName), "ENTRY_EXIT", user.id)
+                }
+            }
+        }
+        locationValueDao.upsertAll(locList)
+        Log.d("FF-Heartbeat", "upsertAll ${locList.size} locations done")
+    }
+
+    /**
+     * Forwards decrypted UWB envelopes to [UwbInbox] and fires a local
+     * notification for REQUEST envelopes. Driven by the live WebSocket push.
+     */
+    private suspend fun handleUwbEnvelopes(list: List<UwbEnvelope>) {
+        if (list.isEmpty()) return
         val users = userDao.getAll()
-        for (envelope in envelopes) {
+        for (envelope in list) {
             UwbInbox.tryEmit(envelope)
             if (envelope.kind == UwbEnvelopeKind.REQUEST) {
                 val senderId = envelope.sender.toLong()
@@ -427,19 +418,14 @@ class LocationTrackingService : Service(), SensorEventListener {
                 }
             }
 
-            // Separate, faster poll for the UWB session-setup channel. The
-            // location heartbeat runs every 30s for battery reasons, but UWB
-            // REQUEST envelopes need to be picked up quickly so the responder
-            // device auto-accepts within a few seconds. This loop ONLY drains
-            // /api/uwb/receive — no location publish/receive, no geocoding,
-            // no waypoint logic.
-            uwbPollJob?.cancel()
-            uwbPollJob = launch {
-                while (isActive) {
-                    drainUwbInbox()
-                    delay(3.seconds)
-                }
-            }
+            // Live relay: the server pushes peer locations and UWB envelopes over the
+            // WebSocket the instant they arrive, driving the same processing paths the
+            // heartbeat used to. This is the only inbound path — there is no HTTP poll.
+            Networking.startLive(
+                serviceScope,
+                onLocations = { processIncomingLocations(it) },
+                onUwb = { handleUwbEnvelopes(it) },
+            )
         }
     }
 
@@ -646,6 +632,7 @@ class LocationTrackingService : Service(), SensorEventListener {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+        Networking.stopLive()
         // These are only initialized once startTracking()/registerSensors() runs.
         // The service can be destroyed before that (e.g. stopped immediately in
         // onStartCommand when permission is missing), so guard every access.

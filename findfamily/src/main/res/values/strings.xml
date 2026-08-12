@@ -256,4 +256,9 @@
     <!-- GpsFallbackWarningDialog: Body explaining network location is off and GPS drains battery. Sentence -->
     <string name="gps_fallback_warning_body">Network location isn\'t turned on for this device, so FindFamily is using GPS only to keep tracking your location. GPS is more accurate but may cause significant battery drain. To reduce battery use, turn on network (Wi-Fi &amp; mobile) location in your device settings.</string>
 
+    <!-- OutdatedPeerDialog: Title shown when connecting to someone whose app is too old for post-quantum encryption. Noun phrase -->
+    <string name="outdated_peer_title">Update needed</string>
+    <!-- OutdatedPeerDialog: Body telling the user the other person must update their app before sharing can work. Sentence -->
+    <string name="outdated_peer_body">This person is using an older version of FindFamily that doesn\'t support quantum-safe encryption. Ask them to update their app, then try connecting again.</string>
+
 </resources>
