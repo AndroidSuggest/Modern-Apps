@@ -1,8 +1,5 @@
 package com.vayunmathur.backup.ui
 
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,10 +34,6 @@ fun DashboardScreen(
     onRestoreNow: () -> Unit,
     onDismissMessages: () -> Unit,
 ) {
-    val mediaPermissions = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { onBackupNow() }
-
     AppScaffold(title = "Backup") { padding ->
         Column(
             modifier = Modifier
@@ -97,7 +90,7 @@ fun DashboardScreen(
             }
 
             Button(
-                onClick = { mediaPermissions.launch(mediaPermissionList()) },
+                onClick = onBackupNow,
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Back up files now") }
@@ -112,17 +105,6 @@ fun DashboardScreen(
         }
     }
 }
-
-private fun mediaPermissionList(): Array<String> =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        arrayOf(
-            android.Manifest.permission.READ_MEDIA_IMAGES,
-            android.Manifest.permission.READ_MEDIA_VIDEO,
-            android.Manifest.permission.READ_MEDIA_AUDIO,
-        )
-    } else {
-        arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-    }
 
 private fun Long.asDateTime(): String =
     java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(this))

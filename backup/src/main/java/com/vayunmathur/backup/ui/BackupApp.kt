@@ -1,6 +1,7 @@
 package com.vayunmathur.backup.ui
 
 import android.content.Intent
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -28,6 +29,10 @@ fun BackupApp(viewModel: BackupViewModel) {
         }
     }
 
+    val mediaPermissions = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { viewModel.backupFilesNow() }
+
     if (state.onboarded) {
         DashboardScreen(
             state = state,
@@ -35,7 +40,7 @@ fun BackupApp(viewModel: BackupViewModel) {
             onSetWebDav = viewModel::setWebDavBackend,
             onAppBackupToggle = viewModel::setAppBackupEnabled,
             onFileBackupToggle = viewModel::setFileBackupEnabled,
-            onBackupNow = viewModel::backupFilesNow,
+            onBackupNow = { mediaPermissions.launch(mediaPermissionList()) },
             onRestoreNow = viewModel::restoreFilesNow,
             onDismissMessages = viewModel::dismissMessages,
         )
@@ -51,3 +56,14 @@ fun BackupApp(viewModel: BackupViewModel) {
         )
     }
 }
+
+private fun mediaPermissionList(): Array<String> =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(
+            android.Manifest.permission.READ_MEDIA_IMAGES,
+            android.Manifest.permission.READ_MEDIA_VIDEO,
+            android.Manifest.permission.READ_MEDIA_AUDIO,
+        )
+    } else {
+        arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
