@@ -36,7 +36,30 @@ import com.vayunmathur.library.ui.TextButton
 
 @Composable
 fun EuiccApp(viewModel: EuiccViewModel) {
-    val state = viewModel.state
+    EuiccScreen(
+        state = viewModel.state,
+        onReload = viewModel::reload,
+        onDownload = viewModel::downloadProfile,
+        onEnable = { viewModel.enable(it.iccid) },
+        onDisable = { viewModel.disable(it.iccid) },
+        onRename = { profile, name -> viewModel.rename(profile.iccid, name) },
+        onDelete = { viewModel.delete(it.iccid) },
+        onRemoveNotification = { viewModel.removeNotification(it.seqNumber) },
+    )
+}
+
+/** Stateless LPA screen; all inputs are the [state] and the action callbacks. */
+@Composable
+fun EuiccScreen(
+    state: EuiccScreenState,
+    onReload: () -> Unit,
+    onDownload: (String) -> Unit,
+    onEnable: (Profile) -> Unit,
+    onDisable: (Profile) -> Unit,
+    onRename: (Profile, String) -> Unit,
+    onDelete: (Profile) -> Unit,
+    onRemoveNotification: (Notification) -> Unit,
+) {
     var renameTarget by remember { mutableStateOf<Profile?>(null) }
     var deleteTarget by remember { mutableStateOf<Profile?>(null) }
     var showDownload by remember { mutableStateOf(false) }
@@ -45,7 +68,7 @@ fun EuiccApp(viewModel: EuiccViewModel) {
         title = "EUICC",
         actions = {
             IconButton(onClick = { showDownload = true }, enabled = !state.loading) { IconAdd() }
-            IconButton(onClick = viewModel::reload, enabled = !state.loading) { IconRefresh() }
+            IconButton(onClick = onReload, enabled = !state.loading) { IconRefresh() }
         },
     ) { padding ->
         Column(
@@ -62,14 +85,14 @@ fun EuiccApp(viewModel: EuiccViewModel) {
 
             ProfilesSection(
                 profiles = state.profiles,
-                onEnable = { viewModel.enable(it.iccid) },
-                onDisable = { viewModel.disable(it.iccid) },
+                onEnable = onEnable,
+                onDisable = onDisable,
                 onRename = { renameTarget = it },
                 onDelete = { deleteTarget = it },
             )
             NotificationsSection(
                 notifications = state.notifications,
-                onRemove = { viewModel.removeNotification(it.seqNumber) },
+                onRemove = onRemoveNotification,
             )
             EuiccSection(eid = state.eid, info = state.info)
         }
@@ -79,7 +102,7 @@ fun EuiccApp(viewModel: EuiccViewModel) {
         RenameDialog(
             profile = profile,
             onConfirm = { name ->
-                viewModel.rename(profile.iccid, name)
+                onRename(profile, name)
                 renameTarget = null
             },
             onDismiss = { renameTarget = null },
@@ -93,7 +116,7 @@ fun EuiccApp(viewModel: EuiccViewModel) {
             confirmLabel = "Delete",
             destructive = true,
             onConfirm = {
-                viewModel.delete(profile.iccid)
+                onDelete(profile)
                 deleteTarget = null
             },
             onDismiss = { deleteTarget = null },
@@ -103,48 +126,12 @@ fun EuiccApp(viewModel: EuiccViewModel) {
     if (showDownload) {
         DownloadDialog(
             onDownload = {
-                viewModel.downloadProfile(it)
+                onDownload(it)
                 showDownload = false
             },
             onDismiss = { showDownload = false },
         )
     }
-}
-
-@Composable
-private fun DownloadDialog(onDownload: (String) -> Unit, onDismiss: () -> Unit) {
-    var code by remember { mutableStateOf("") }
-    var scanning by remember { mutableStateOf(false) }
-
-    if (scanning) {
-        QrScannerScreen(
-            onResult = { code = it; scanning = false },
-            onCancel = { scanning = false },
-        )
-        return
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Download profile") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it },
-                    label = { Text("Activation code") },
-                )
-                TextButton(onClick = { scanning = true }) { Text("Scan QR code") }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { if (code.isNotBlank()) onDownload(code.trim()) },
-                enabled = code.isNotBlank(),
-            ) { Text("Download") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
 }
 
 @Composable
@@ -220,6 +207,42 @@ private fun EuiccSection(eid: String?, info: EuiccInfo?) {
             Text(info.svn.ifEmpty { "unknown" })
         }
     }
+}
+
+@Composable
+private fun DownloadDialog(onDownload: (String) -> Unit, onDismiss: () -> Unit) {
+    var code by remember { mutableStateOf("") }
+    var scanning by remember { mutableStateOf(false) }
+
+    if (scanning) {
+        QrScannerScreen(
+            onResult = { code = it; scanning = false },
+            onCancel = { scanning = false },
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Download profile") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it },
+                    label = { Text("Activation code") },
+                )
+                TextButton(onClick = { scanning = true }) { Text("Scan QR code") }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (code.isNotBlank()) onDownload(code.trim()) },
+                enabled = code.isNotBlank(),
+            ) { Text("Download") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
