@@ -86,4 +86,8 @@
     <string name="gv_incoming_call_channel_desc">Full-screen alerts for incoming Google Voice calls.</string>
     <string name="gv_ongoing_call">Ongoing Google Voice call</string>
     <string name="gv_call_failed">Google Voice call failed</string>
+    <string name="regular_call_channel_name">Phone calls</string>
+    <string name="regular_call_channel_desc">Call controls for regular phone calls.</string>
+    <string name="regular_call_incoming">Incoming call</string>
+    <string name="regular_call_ongoing">Ongoing call</string>
 </resources>
