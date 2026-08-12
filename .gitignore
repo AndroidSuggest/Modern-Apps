@@ -27,6 +27,7 @@ scratch/LiteRT-LM/
 # Issue #321 reproduction PDFs (potential copyright; harness reads them locally,
 # see pdf/src/main/rust/src/issue321_tests.rs). Not committed.
 issue321_pdfs/
+apk-analysis
 
 # Personal / private app modules (kept out of the public repo)
 /personal/
