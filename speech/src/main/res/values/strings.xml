@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">speech</string>
+    <string name="app_name">Speech</string>
     <string name="tts_engine_label">MA Speech</string>
     <string name="recognition_service_label">MA Speech</string>
     <string name="grant_microphone">Grant microphone</string>
