@@ -17,14 +17,20 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.round
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import java.security.MessageDigest
+import kotlin.coroutines.coroutineContext
 
 /**
  * Internal unit of work: one on-disk [fileName] fetched from a single [url] with
@@ -102,9 +108,9 @@ private fun InitialDownloadScreen(
 ) {
     val context = LocalContext.current
 
-    // Enqueue with Android's DownloadManager and poll it for progress, writing
-    // the same DataStore keys the UI below observes. When every requested file is
-    // present on disk, advance to the main page.
+    // Stream each required file directly into the app's external files dir (no
+    // DownloadManager), writing the same DataStore keys the UI below observes.
+    // When every requested file is present on disk, advance to the main page.
     LaunchedEffect(Unit) {
         runDownloadsCore(context, ds, specs)
         if (allFilesPresent(context, specs)) {
@@ -158,22 +164,23 @@ private fun InitialDownloadScreen(
 
 private const val SPEED_WINDOW_MS = 4000L
 
-private class Active(
-    val spec: DownloadSpec,
-    val id: Long,
-) {
-    val fileName get() = spec.fileName
+/** How often to publish progress/speed to DataStore while streaming. */
+private const val PUBLISH_INTERVAL_MS = 500L
 
-    /** Recent (timeMs, bytesSoFar) samples for a moving-average download speed. */
-    val samples = ArrayDeque<Pair<Long, Long>>()
-}
+/** Bounded retry for transient network failures per file. */
+private const val MAX_ATTEMPTS = 4
+private const val RETRY_DELAY_MS = 2000L
+
+private const val DOWNLOAD_BUFFER_SIZE = 1 shl 16
+private const val CONNECT_TIMEOUT_MS = 30_000
+private const val READ_TIMEOUT_MS = 30_000
 
 /**
  * Mirror-only on-demand download: fetches each [ModelDownloadItem] from the
  * self-hosted mirror (no third-party fallback), with optional SHA-256
  * verification (supply-chain mitigation #1). Publishes the same `progress_*` /
- * `speed_*` DataStore keys as the initial screen, skips files already present on
- * disk, and resumes still-valid prior requests.
+ * `speed_*` DataStore keys as the initial screen and skips files already present
+ * on disk.
  */
 suspend fun downloadModels(
     context: Context,
@@ -182,145 +189,236 @@ suspend fun downloadModels(
 ) = runDownloadsCore(context, ds, models.map { it.toSpec() })
 
 /**
- * Shared enqueue + poll loop. Each file is enqueued once (reusing a still-valid
- * prior request id stored in DataStore so we resume across process restarts),
- * then the manager is polled to publish `progress_*` / `speed_*`. On failure or
- * a SHA-256 mismatch the file is dropped and re-enqueued on the next entry.
+ * Self-managed streaming download loop. Each spec is streamed directly into the
+ * app's [Context.getExternalFilesDir] with [java.net.HttpURLConnection], so the
+ * files are ordinary app-owned files with no `DownloadManager` database row for
+ * the system download provider to track or garbage-collect (the root cause of
+ * the periodic model re-download).
+ *
+ * Files are processed sequentially; each publishes `progress_*` / `speed_*` for
+ * the UI. On checksum mismatch the download is retried; on final failure any
+ * `.part` file is left in place so the next run resumes it.
  */
 private suspend fun runDownloadsCore(
     context: Context,
     ds: DataStoreUtils,
     specs: List<DownloadSpec>,
 ) = withContext(Dispatchers.IO) {
-    val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-
-    val active = mutableListOf<Active>()
     val dir = context.getExternalFilesDir(null)
     for (spec in specs) {
+        // Sever any legacy DownloadManager claim on an already-present file before
+        // we treat it as a plain app file (one-time, guarded — see fn docs).
+        migrateLegacyDownload(context, ds, dir, spec)
+
         val file = File(dir, spec.fileName)
-        // If file already exists, verify SHA when pinned; a stale or tiny old bundle
-        // (e.g. 593 KB dict vs 2.2 MB, or sherpa .onnx leftover) must be re-downloaded.
+        // If the file already exists, verify SHA when pinned; a stale or tiny old
+        // bundle (e.g. 593 KB dict vs 2.2 MB, or sherpa .onnx leftover) must be
+        // re-downloaded.
         if (file.exists()) {
-            if (checksumOk(dir, spec)) {
+            if (checksumOk(file, spec.sha256)) {
                 ds.setDouble("progress_${spec.fileName}", 1.0)
                 continue
             } else {
                 file.delete()
-                ds.setLong("dlid_${spec.fileName}", 0L)
                 ds.setDouble("progress_${spec.fileName}", 0.0)
             }
         }
-        val existingId = ds.getLong("dlid_${spec.fileName}") ?: 0L
-        val id = if (existingId > 0L && isQueryable(dm, existingId)) {
-            // Reuse only if the underlying row is not already FAILED/SUCCESSFUL with
-            // missing file; checksum failure above cleared the id, but a FAILED id may
-            // still be queryable and cause "download doesn't work" UI freeze.
-            val status = dm.query(DownloadManager.Query().setFilterById(existingId))?.use { c ->
-                val statusIdx = c.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                if (statusIdx >= 0 && c.moveToFirst()) c.getInt(statusIdx) else -1
-            } ?: -1
-            if (status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PENDING) {
-                existingId
-            } else {
-                ds.setLong("dlid_${spec.fileName}", 0L)
-                enqueue(dm, context, ds, spec)
-            }
-        } else {
-            enqueue(dm, context, ds, spec)
-        }
-        active += Active(spec, id)
+        downloadSpec(ds, dir, spec)
     }
+}
 
-    while (active.isNotEmpty()) {
-        val query = DownloadManager.Query().setFilterById(*active.map { it.id }.toLongArray())
-        dm.query(query)?.use { c ->
-            val idIdx = c.getColumnIndex(DownloadManager.COLUMN_ID)
-            val statusIdx = c.getColumnIndex(DownloadManager.COLUMN_STATUS)
-            val soFarIdx = c.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-            val totalIdx = c.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-            val seen = mutableSetOf<Long>()
-            while (c.moveToNext()) {
-                val id = c.getLong(idIdx)
-                seen += id
-                val a = active.firstOrNull { it.id == id } ?: continue
-                val status = c.getInt(statusIdx)
-                val soFar = c.getLong(soFarIdx)
-                val total = c.getLong(totalIdx)
-                val now = System.currentTimeMillis()
-                when (status) {
-                    DownloadManager.STATUS_SUCCESSFUL -> {
-                        if (checksumOk(dir, a.spec)) {
-                            ds.setDouble("progress_${a.fileName}", 1.0)
-                            ds.setDouble("speed_${a.fileName}", 0.0)
-                        } else {
-                            // Corrupt/tampered mirror copy — drop it and forget the
-                            // id so it re-downloads on the next entry.
-                            File(dir, a.fileName).takeIf { it.exists() }?.delete()
-                            ds.setLong("dlid_${a.fileName}", 0L)
+/**
+ * Downloads a single [spec] into `<fileName>.part`, verifies its SHA-256, then
+ * atomically renames it to the final name. Retries transient failures up to
+ * [MAX_ATTEMPTS]; on a checksum mismatch the partial is discarded and the file
+ * is re-fetched from scratch. On final failure any `.part` is left for the next
+ * run to resume (the download screen stays, as before).
+ */
+private suspend fun downloadSpec(
+    ds: DataStoreUtils,
+    dir: File?,
+    spec: DownloadSpec,
+) {
+    val finalFile = File(dir, spec.fileName)
+    val partFile = File(dir, "${spec.fileName}.part")
+
+    repeat(MAX_ATTEMPTS) { attempt ->
+        try {
+            streamToPart(ds, spec, partFile)
+            if (checksumOk(partFile, spec.sha256)) {
+                finalizeDownload(ds, spec, partFile, finalFile)
+                return
+            }
+            // Corrupt/tampered copy — drop the partial and re-fetch from scratch.
+            partFile.delete()
+        } catch (e: CancellationException) {
+            // Cooperative cancellation (screen left / process paused): keep the
+            // `.part` so the next run resumes via the Range header.
+            throw e
+        } catch (_: Exception) {
+            // Transient network error — keep the `.part` for resume and back off.
+            if (attempt < MAX_ATTEMPTS - 1) delay(RETRY_DELAY_MS)
+        }
+    }
+}
+
+/**
+ * Streams [spec] from the network into [partFile]. Resumes an existing partial
+ * with a `Range` request, appending on HTTP 206 and restarting (truncating) on
+ * 200. Publishes throttled `progress_*` / `speed_*` while streaming.
+ */
+private suspend fun streamToPart(
+    ds: DataStoreUtils,
+    spec: DownloadSpec,
+    partFile: File,
+) {
+    var startOffset = if (partFile.exists()) partFile.length() else 0L
+    val conn = (URL(spec.url).openConnection() as HttpURLConnection).apply {
+        connectTimeout = CONNECT_TIMEOUT_MS
+        readTimeout = READ_TIMEOUT_MS
+        requestMethod = "GET"
+        if (startOffset > 0) setRequestProperty("Range", "bytes=$startOffset-")
+    }
+    try {
+        conn.connect()
+        // Mirror MapTileCache.kt: treat 206 as a resume, 200 as a full restart
+        // (the server ignored our Range).
+        val append = when (val code = conn.responseCode) {
+            HttpURLConnection.HTTP_PARTIAL -> true
+            HttpURLConnection.HTTP_OK -> {
+                startOffset = 0L
+                false
+            }
+            else -> throw IOException("Unexpected HTTP $code for ${spec.url}")
+        }
+        // contentLengthLong is the *remaining* bytes; add the resume offset for the total.
+        val remaining = conn.contentLengthLong
+        val total = if (remaining >= 0) startOffset + remaining else -1L
+
+        val samples = ArrayDeque<Pair<Long, Long>>()
+        var soFar = startOffset
+        var lastPublish = 0L
+
+        if (total > 0) {
+            ds.setDouble(
+                "progress_${spec.fileName}",
+                (soFar.toDouble() / total).coerceIn(0.0, 1.0)
+            )
+        }
+
+        FileOutputStream(partFile, append).use { output ->
+            conn.inputStream.use { input ->
+                val buf = ByteArray(DOWNLOAD_BUFFER_SIZE)
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    output.write(buf, 0, n)
+                    soFar += n
+
+                    val now = System.currentTimeMillis()
+                    if (now - lastPublish >= PUBLISH_INTERVAL_MS) {
+                        lastPublish = now
+                        if (total > 0) {
+                            ds.setDouble(
+                                "progress_${spec.fileName}",
+                                (soFar.toDouble() / total).coerceIn(0.0, 1.0)
+                            )
                         }
-                        active.remove(a)
-                    }
-                    DownloadManager.STATUS_FAILED -> {
-                        // Forget the id so it is re-enqueued on the next entry.
-                        ds.setLong("dlid_${a.fileName}", 0L)
-                        active.remove(a)
-                    }
-                    else -> {
-                        val progress = if (total > 0) soFar.toDouble() / total else 0.0
-                        ds.setDouble("progress_${a.fileName}", progress)
                         // Moving-average speed over the last SPEED_WINDOW_MS so the
-                        // reading stays stable even when a poll tick reports no new
-                        // bytes (DownloadManager updates in bursts).
-                        a.samples.addLast(now to soFar)
-                        while (a.samples.size > 1 && now - a.samples.first().first > SPEED_WINDOW_MS) {
-                            a.samples.removeFirst()
+                        // reading stays stable across bursty reads.
+                        samples.addLast(now to soFar)
+                        while (samples.size > 1 && now - samples.first().first > SPEED_WINDOW_MS) {
+                            samples.removeFirst()
                         }
-                        val (oldestTime, oldestBytes) = a.samples.first()
+                        val (oldestTime, oldestBytes) = samples.first()
                         val spanSec = (now - oldestTime) / 1000.0
                         if (spanSec >= 0.5) {
                             val speedMbps = ((soFar - oldestBytes) * 8.0) / 1_000_000.0 / spanSec
-                            ds.setDouble("speed_${a.fileName}", speedMbps.coerceAtLeast(0.0))
+                            ds.setDouble("speed_${spec.fileName}", speedMbps.coerceAtLeast(0.0))
                         }
                     }
                 }
             }
-            // Rows that vanished from the manager (e.g. cleared) — drop & retry later.
-            active.removeAll { it.id !in seen }
+            output.fd.sync()
         }
-        if (active.isEmpty()) break
-        delay(700)
+    } finally {
+        conn.disconnect()
     }
 }
 
-private suspend fun enqueue(
-    dm: DownloadManager,
-    context: Context,
+/** Atomically promotes a verified [partFile] to [finalFile] and marks it done. */
+private suspend fun finalizeDownload(
     ds: DataStoreUtils,
     spec: DownloadSpec,
-): Long {
-    // DownloadManager fails if the destination already exists; clear any stale partial.
-    File(context.getExternalFilesDir(null), spec.fileName).takeIf { it.exists() }?.delete()
-    val request = DownloadManager.Request(spec.url.toUri()).apply {
-        setTitle(spec.fileName)
-        setDescription("Downloading required components")
-        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-        setDestinationInExternalFilesDir(context, null, spec.fileName)
-        setAllowedOverMetered(true)
-        setAllowedOverRoaming(true)
+    partFile: File,
+    finalFile: File,
+) {
+    if (finalFile.exists()) finalFile.delete()
+    if (!partFile.renameTo(finalFile)) {
+        // Rename can fail across some filesystems; fall back to a copy.
+        partFile.copyTo(finalFile, overwrite = true)
+        partFile.delete()
     }
-    val id = dm.enqueue(request)
-    ds.setLong("dlid_${spec.fileName}", id)
-    return id
+    ds.setDouble("progress_${spec.fileName}", 1.0)
+    ds.setDouble("speed_${spec.fileName}", 0.0)
 }
 
 /**
- * True when the downloaded file matches [DownloadSpec.sha256]. Files without an
- * expected hash pass unconditionally (integrity is opt-in until the mirror is
- * populated with published checksums).
+ * One-time, crash-guarded severing of a legacy `DownloadManager` claim on an
+ * already-present file. The file currently on disk was created by
+ * `DownloadManager` and still has a tracking row (`dlid_<fileName>`), so the
+ * download provider could sweep it one last time. To drop that row without
+ * re-downloading the (multi-GB) file, we move the real file aside first so
+ * `DownloadManager.remove()` finds nothing to delete, then move it back.
+ *
+ * This is the only remaining reference to `DownloadManager`; once the id is
+ * cleared it never runs again for that file.
  */
-private fun checksumOk(dir: File?, spec: DownloadSpec): Boolean {
-    val expected = spec.sha256 ?: return true
-    val file = File(dir, spec.fileName)
+private suspend fun migrateLegacyDownload(
+    context: Context,
+    ds: DataStoreUtils,
+    dir: File?,
+    spec: DownloadSpec,
+) {
+    val finalFile = File(dir, spec.fileName)
+    val migrating = File(dir, "${spec.fileName}.migrating")
+
+    // Crash recovery: a leftover `.migrating` (with no final file) means a prior
+    // run renamed away but didn't finish — restore it before doing anything else.
+    if (migrating.exists() && !finalFile.exists()) {
+        migrating.renameTo(finalFile)
+    }
+
+    val dlid = ds.getLong("dlid_${spec.fileName}") ?: 0L
+    if (dlid <= 0L) return
+    if (!finalFile.exists()) {
+        // Nothing to protect; just drop the stale id.
+        ds.setLong("dlid_${spec.fileName}", 0L)
+        return
+    }
+
+    try {
+        if (finalFile.renameTo(migrating)) {
+            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            // The tracked path is now empty, so this drops only the DB row.
+            dm.remove(dlid)
+            migrating.renameTo(finalFile)
+        }
+    } catch (_: Exception) {
+        // Best effort: ensure the file is restored if anything went wrong.
+        if (!finalFile.exists() && migrating.exists()) migrating.renameTo(finalFile)
+    } finally {
+        ds.setLong("dlid_${spec.fileName}", 0L)
+    }
+}
+
+/**
+ * True when [file] matches [expected] SHA-256. A null [expected] passes
+ * unconditionally (integrity is opt-in until the mirror publishes checksums).
+ */
+private fun checksumOk(file: File, expected: String?): Boolean {
+    val exp = expected ?: return true
     if (!file.exists()) return false
     val md = MessageDigest.getInstance("SHA-256")
     file.inputStream().use { ins ->
@@ -332,12 +430,7 @@ private fun checksumOk(dir: File?, spec: DownloadSpec): Boolean {
         }
     }
     val actual = md.digest().joinToString("") { "%02x".format(it) }
-    return actual.equals(expected, ignoreCase = true)
-}
-
-private fun isQueryable(dm: DownloadManager, id: Long): Boolean {
-    dm.query(DownloadManager.Query().setFilterById(id))?.use { return it.moveToFirst() }
-    return false
+    return actual.equals(exp, ignoreCase = true)
 }
 
 @Composable
