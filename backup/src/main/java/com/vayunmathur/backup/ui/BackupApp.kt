@@ -1,36 +1,53 @@
 package com.vayunmathur.backup.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.vayunmathur.library.ui.AppScaffold
-import com.vayunmathur.library.ui.Card
-import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.Text
+import androidx.compose.ui.platform.LocalContext
 
+/**
+ * Root of the Backup UI: routes to onboarding until a recovery code and a destination
+ * are set, then to the dashboard. Owns the SAF folder picker so both flows can select
+ * a backup destination.
+ */
 @Composable
-fun BackupApp() {
-    AppScaffold(title = "Backup") { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text("Encrypted backup", style = MaterialTheme.typography.titleMedium)
-                    Text("Set up an encrypted backup destination to get started.")
-                }
-            }
+fun BackupApp(viewModel: BackupViewModel) {
+    val context = LocalContext.current
+    val state = viewModel.state
+
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+            viewModel.setSafBackend(uri.toString())
         }
+    }
+
+    if (state.onboarded) {
+        DashboardScreen(
+            state = state,
+            onPickFolder = { folderPicker.launch(null) },
+            onSetWebDav = viewModel::setWebDavBackend,
+            onAppBackupToggle = viewModel::setAppBackupEnabled,
+            onFileBackupToggle = viewModel::setFileBackupEnabled,
+            onBackupNow = viewModel::backupFilesNow,
+            onRestoreNow = viewModel::restoreFilesNow,
+            onDismissMessages = viewModel::dismissMessages,
+        )
+    } else {
+        OnboardingScreen(
+            state = state,
+            onPickFolder = { folderPicker.launch(null) },
+            onSetWebDav = viewModel::setWebDavBackend,
+            onGenerate = viewModel::generateRecoveryCode,
+            onConfirmNew = viewModel::confirmNewCode,
+            onRestoreWithCode = viewModel::restoreWithCode,
+            onDismissMessages = viewModel::dismissMessages,
+        )
     }
 }
