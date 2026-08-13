@@ -140,4 +140,26 @@
     <string name="editor_desc_crop">Kadreeri, sirgenda ja pööra fotot.</string>
     <string name="tool_photo_filter">Fotofilter</string>
     <string name="gif_badge">GIF-fail</string>
+    <string name="video_muted">Summutatud</string>
+    <string name="video_audio_on">Heli on sisselülitatud</string>
+    <string name="video_audio">Heliriba</string>
+    <string name="video_filters">Filtrid</string>
+    <string name="video_filter_none">Puudub</string>
+    <string name="video_filter_mono">Monoheli</string>
+    <string name="video_filter_warm">Soe</string>
+    <string name="video_filter_cool">Jahe</string>
+    <string name="video_filter_vivid">Ergas</string>
+    <string name="video_brightness">Eredus</string>
+    <string name="video_contrast">Kontrast</string>
+    <string name="video_saturation">Küllastus</string>
+    <string name="video_save_prompt">Kas salvestad muudetud video uue failina või kirjutad algfaili üle?</string>
+    <string name="video_save_copy">Salvesta koopiana</string>
+    <string name="video_overwrite">Kirjuta üle</string>
+    <string name="video_exporting">Eksportimisel…</string>
+    <string name="video_export_failed">Video eksportimine ei õnnestunud.</string>
+    <string name="tool_hsl">HSL</string>
+    <string name="tool_bw">M/V</string>
+    <string name="editor_desc_invert">Pööra värvid teistpidi (tee fotonegatiiv).</string>
+    <string name="live_wallpaper_unavailable">Reaalajas toimiva taustapildid pole selles seadmes toetatud</string>
+    <string name="live_wallpaper_description">Animeeritud taustapilt sinu fotodest</string>
 </resources>
