@@ -50,6 +50,12 @@ class WhatsAppSyncService : Service() {
         ensureChannels()
         startForegroundCompat(buildSyncNotification())
 
+        // Dev-only feature: if ever started in a release build, immediately stand down.
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) {
+            shutdown()
+            return START_NOT_STICKY
+        }
+
         if (intent?.action == ACTION_STOP) {
             shutdown()
             return START_NOT_STICKY
@@ -188,6 +194,8 @@ class WhatsAppSyncService : Service() {
         const val EXTRA_OPEN_WHATSAPP_THREAD = "open_whatsapp_thread"
 
         fun start(context: Context) {
+            // Dev-only feature: never start the WhatsApp sync service in the release variant.
+            if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return
             ContextCompat.startForegroundService(context, Intent(context, WhatsAppSyncService::class.java))
         }
 

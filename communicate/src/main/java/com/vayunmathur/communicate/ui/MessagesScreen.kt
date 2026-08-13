@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +35,8 @@ import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconClose
+import com.vayunmathur.library.ui.IconGroup
 import com.vayunmathur.library.ui.IconPerson
 import com.vayunmathur.library.ui.IconSms
 import com.vayunmathur.library.ui.ListItem
@@ -49,13 +52,19 @@ import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.SmsThread
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
 import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.Checkbox
+import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.util.AppMessages
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import android.content.Context
 import android.telephony.TelephonyManager
 import androidx.compose.foundation.layout.heightIn
@@ -68,6 +77,7 @@ import kotlinx.coroutines.withContext
 fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit) {
     val context = LocalContext.current
     val lineChoices = rememberLineChoices()
+    val scope = rememberCoroutineScope()
     var showPicker by remember { mutableStateOf(false) }
 
     if (showPicker) {
@@ -96,6 +106,68 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                         subscriptionId = sim?.subscriptionId,
                     ),
                 )
+            },
+            onCreateGroup = { choice, subject, contacts ->
+                showPicker = false
+                scope.launch {
+                    when (choice.category) {
+                        CommunicateLine.WhatsApp -> {
+                            if (!CommunicateRepository.isWhatsAppConnected()) {
+                                AppMessages.show("WhatsApp isn't connected — the number may be logged out or banned. Re-register in Accounts.")
+                                return@launch
+                            }
+                            val groupJid = withContext(Dispatchers.IO) {
+                                CommunicateRepository.createWhatsAppGroup(context, subject, contacts)
+                            }
+                            if (groupJid == null) {
+                                AppMessages.show("Couldn't create the group (server rejected it)")
+                            } else {
+                                onOpenThread(
+                                    SmsThread(
+                                        threadId = CommunicateRepository.stableThreadId(groupJid),
+                                        address = groupJid,
+                                        displayName = subject.ifBlank { null },
+                                        snippet = "",
+                                        timestampMillis = System.currentTimeMillis(),
+                                        unreadCount = 0,
+                                        line = CommunicateLine.WhatsApp,
+                                        remoteId = groupJid,
+                                        isGroup = true,
+                                        participants = contacts,
+                                        groupTitle = subject.ifBlank { null },
+                                    ),
+                                )
+                            }
+                        }
+                        CommunicateLine.Sim -> {
+                            val sim = choice as? com.vayunmathur.communicate.data.LineChoice.Sim
+                            val groupThreadId = withContext(Dispatchers.IO) {
+                                CommunicateRepository.getOrCreateSmsGroupThreadId(context, contacts)
+                            }
+                            if (groupThreadId == null) {
+                                AppMessages.show("Couldn't create the group thread")
+                            } else {
+                                onOpenThread(
+                                    SmsThread(
+                                        threadId = groupThreadId,
+                                        address = contacts.joinToString(", "),
+                                        displayName = subject.ifBlank { null },
+                                        snippet = "",
+                                        timestampMillis = System.currentTimeMillis(),
+                                        unreadCount = 0,
+                                        line = CommunicateLine.Sim,
+                                        remoteId = null,
+                                        subscriptionId = sim?.subscriptionId,
+                                        isGroup = true,
+                                        participants = contacts,
+                                        groupTitle = subject.ifBlank { null },
+                                    ),
+                                )
+                            }
+                        }
+                        else -> AppMessages.show("Groups aren't supported on this line")
+                    }
+                }
             },
         )
     }
@@ -165,7 +237,13 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
 @Composable
 private fun MessageThreadRow(thread: SmsThread, onClick: () -> Unit) {
     val context = LocalContext.current
-    val title = thread.displayName ?: thread.address.ifBlank { stringResource(R.string.conversation_title) }
+    val title = when {
+        thread.isGroup -> thread.groupTitle
+            ?: thread.displayName
+            ?: groupTitleFromParticipants(thread.participants)
+            ?: thread.address.ifBlank { stringResource(R.string.conversation_title) }
+        else -> thread.displayName ?: thread.address.ifBlank { stringResource(R.string.conversation_title) }
+    }
     ListItem(
         content = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -194,7 +272,7 @@ private fun MessageThreadRow(thread: SmsThread, onClick: () -> Unit) {
                 fontWeight = if (thread.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
             )
         },
-        leadingContent = { ThreadAvatar(title = title) },
+        leadingContent = { ThreadAvatar(title = title, isGroup = thread.isGroup) },
         trailingContent = {
             if (thread.unreadCount > 0) UnreadBadge(thread.unreadCount)
         },
@@ -203,8 +281,16 @@ private fun MessageThreadRow(thread: SmsThread, onClick: () -> Unit) {
     )
 }
 
+/** "Alice, Bob +N" from a group's participant addresses; null if there are none. */
+private fun groupTitleFromParticipants(participants: List<String>): String? {
+    if (participants.isEmpty()) return null
+    val shown = participants.take(2)
+    val extra = participants.size - shown.size
+    return if (extra > 0) shown.joinToString(", ") + " +$extra" else shown.joinToString(", ")
+}
+
 @Composable
-private fun ThreadAvatar(title: String) {
+private fun ThreadAvatar(title: String, isGroup: Boolean = false) {
     Box(
         modifier = Modifier
             .size(44.dp)
@@ -212,11 +298,15 @@ private fun ThreadAvatar(title: String) {
             .background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            initialsFor(title),
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            fontWeight = FontWeight.SemiBold,
-        )
+        if (isGroup) {
+            IconGroup(tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        } else {
+            Text(
+                initialsFor(title),
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -237,27 +327,64 @@ private fun UnreadBadge(count: Int) {
 }
 
 /**
- * FAB flow when more than one line is available: enter a recipient number and pick which line
- * (SIM or Google Voice) to compose from, then open that conversation.
+ * FAB flow: pick a line + recipient to start a 1:1 conversation, or flip the "Group" switch to
+ * multi-select recipients (chips) + an optional name and create a group (WhatsApp, or SIM MMS).
  */
 @Composable
 private fun NewMessagePicker(
     choices: List<com.vayunmathur.communicate.data.LineChoice>,
     onDismiss: () -> Unit,
     onCompose: (com.vayunmathur.communicate.data.LineChoice, String) -> Unit,
+    onCreateGroup: (com.vayunmathur.communicate.data.LineChoice, String, List<String>) -> Unit,
 ) {
     val context = LocalContext.current
     val region = remember { deviceRegion(context) }
     var query by remember { mutableStateOf("") }
+    var groupMode by remember { mutableStateOf(false) }
+    var groupName by remember { mutableStateOf("") }
+    // Selected recipients for group mode, keyed by phone number (value = display label).
+    val selectedContacts = remember { mutableStateListOf<Pair<String, String>>() }
+    // Lines that support group chats: WhatsApp and SIM (MMS). GV is 1:1 only.
+    val groupChoices = remember(choices) {
+        choices.filter {
+            it.category == CommunicateLine.WhatsApp || it.category == CommunicateLine.Sim
+        }
+    }
     var selected by remember(choices) { mutableStateOf(choices.firstOrNull()) }
+    val activeChoices = if (groupMode) groupChoices else choices
+
+    // Keep the selected line valid when toggling into group mode.
+    androidx.compose.runtime.LaunchedEffect(groupMode) {
+        if (groupMode && (selected == null || selected !in groupChoices)) {
+            selected = groupChoices.firstOrNull()
+        }
+    }
+
+    fun toggleContact(phone: String, label: String) {
+        val idx = selectedContacts.indexOfFirst { it.first == phone }
+        if (idx >= 0) selectedContacts.removeAt(idx) else selectedContacts.add(phone to label)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.new_message)) },
+        title = { Text(if (groupMode) "New group" else stringResource(R.string.new_message)) },
         text = {
             Column {
+                if (groupChoices.isNotEmpty()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    ) {
+                        Text("Group", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.weight(1f))
+                        com.vayunmathur.library.ui.Switch(
+                            checked = groupMode,
+                            onCheckedChange = { groupMode = it },
+                        )
+                    }
+                }
                 val sel = selected
-                if (sel != null && choices.size > 1) {
+                if (sel != null && activeChoices.size > 1) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(bottom = 8.dp),
@@ -267,7 +394,33 @@ private fun NewMessagePicker(
                             style = MaterialTheme.typography.labelLarge,
                             modifier = Modifier.padding(end = 8.dp),
                         )
-                        LineSelector(choices = choices, selected = sel, onSelect = { selected = it })
+                        LineSelector(choices = activeChoices, selected = sel, onSelect = { selected = it })
+                    }
+                }
+                if (groupMode) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = groupName,
+                        onValueChange = { groupName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Group name (optional)") },
+                        singleLine = true,
+                    )
+                    Spacer(Modifier.size(6.dp))
+                    if (selectedContacts.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+                        ) {
+                            items(selectedContacts.toList(), key = { it.first }) { (phone, label) ->
+                                FilterChip(
+                                    selected = true,
+                                    onClick = { toggleContact(phone, label) },
+                                    label = { Text(label, maxLines = 1) },
+                                    trailingIcon = { IconClose(Modifier.size(16.dp)) },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.size(6.dp))
                     }
                 }
                 androidx.compose.material3.OutlinedTextField(
@@ -297,43 +450,71 @@ private fun NewMessagePicker(
                     }
                     val exactExists = qDigits.isNotEmpty() &&
                         contacts.any { it.phoneNumber.filter { c -> c.isDigit() }.endsWith(qDigits) }
-                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp)) {
-                        // Fallback: message a raw number that isn't in contacts (shown formatted).
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
+                        // Fallback: a raw number not in contacts (shown formatted).
                         if (qDigits.length >= 4 && !exactExists) {
                             item {
-                                ContactPickRow(title = "Send to ${formatNumber(q, region)}", subtitle = null) {
-                                    selected?.let { onCompose(it, q) }
+                                val label = formatNumber(q, region)
+                                ContactPickRow(title = "Send to $label", subtitle = null, selected = null) {
+                                    if (groupMode) toggleContact(q, label) else selected?.let { onCompose(it, q) }
                                 }
                             }
                         }
                         items(filtered, key = { it.id }) { c ->
-                            ContactPickRow(title = c.name, subtitle = c.phoneNumber) {
-                                selected?.let { onCompose(it, c.phoneNumber) }
+                            val isSel = if (groupMode) selectedContacts.any { it.first == c.phoneNumber } else null
+                            ContactPickRow(title = c.name, subtitle = c.phoneNumber, selected = isSel) {
+                                if (groupMode) toggleContact(c.phoneNumber, c.name) else selected?.let { onCompose(it, c.phoneNumber) }
                             }
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.clear)) } },
+        confirmButton = {
+            if (groupMode) {
+                TextButton(
+                    onClick = {
+                        val choice = selected
+                        if (choice != null && selectedContacts.isNotEmpty()) {
+                            onCreateGroup(choice, groupName.trim(), selectedContacts.map { it.first })
+                        }
+                    },
+                    enabled = selected != null && selectedContacts.size >= 1,
+                ) { Text("Create") }
+            } else {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.clear)) }
+            }
+        },
+        dismissButton = if (groupMode) {
+            { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        } else {
+            null
+        },
     )
 }
 
 @Composable
-private fun ContactPickRow(title: String, subtitle: String?, onClick: () -> Unit) {
-    Column(
+private fun ContactPickRow(title: String, subtitle: String?, selected: Boolean? = null, onClick: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, fontWeight = FontWeight.Medium)
-        if (subtitle != null) {
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        if (selected != null) {
+            Checkbox(checked = selected, onCheckedChange = { onClick() })
+            Spacer(Modifier.size(8.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.Medium)
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

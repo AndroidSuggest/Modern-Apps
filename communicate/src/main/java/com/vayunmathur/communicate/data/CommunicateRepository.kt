@@ -139,24 +139,190 @@ object CommunicateRepository {
 
     fun loadSmsThreads(context: Context): List<SmsThread> {
         if (!context.hasPermission(Manifest.permission.READ_SMS)) return emptyList()
-        return loadSmsMessages(context, threadId = null)
+        val recipientsByThread = loadThreadRecipients(context)
+        // Merge SMS + MMS messages so group MMS threads (which have no SMS rows) still appear.
+        val byThread = (loadSmsMessages(context, threadId = null) + loadMmsMessages(context, threadId = null))
             .groupBy { it.threadId }
-            .values
-            .mapNotNull { messages ->
-                val newest = messages.maxByOrNull { it.timestampMillis } ?: return@mapNotNull null
-                val address = newest.address
-                SmsThread(
-                    threadId = newest.threadId,
-                    address = address,
-                    displayName = findContactName(context, address),
-                    snippet = newest.body,
-                    timestampMillis = newest.timestampMillis,
-                    unreadCount = messages.count { !it.outgoing && !it.read },
-                    subscriptionId = newest.subscriptionId,
-                )
+        return byThread.values.mapNotNull { messages ->
+            val newest = messages.maxByOrNull { it.timestampMillis } ?: return@mapNotNull null
+            val threadId = newest.threadId
+            val participants = recipientsByThread[threadId]
+                ?: messages.mapNotNull { it.senderAddress }.distinct().ifEmpty { listOf(newest.address) }
+            val isGroup = participants.size > 1
+            val primary = participants.firstOrNull()?.takeIf { it.isNotBlank() } ?: newest.address
+            val displayName = if (isGroup) {
+                participants.joinToString(", ") { findContactName(context, it) ?: it }
+            } else {
+                findContactName(context, primary)
             }
-            .sortedByDescending { it.timestampMillis }
+            SmsThread(
+                threadId = threadId,
+                address = primary,
+                displayName = displayName,
+                snippet = newest.body,
+                timestampMillis = newest.timestampMillis,
+                unreadCount = messages.count { !it.outgoing && !it.read },
+                subscriptionId = newest.subscriptionId,
+                isGroup = isGroup,
+                participants = if (isGroup) participants else emptyList(),
+            )
+        }.sortedByDescending { it.timestampMillis }
     }
+
+    /**
+     * Map each provider thread id to its recipient addresses via `mms-sms/conversations` +
+     * `mms-sms/canonical-addresses`. Threads with >1 recipient are group threads. Empty on any
+     * provider error (falls back to per-message address inference).
+     */
+    private fun loadThreadRecipients(context: Context): Map<Long, List<String>> = runCatching {
+        // recipient_ids is a space-separated list of ids into the canonical-addresses table.
+        val canonical = HashMap<String, String>()
+        context.contentResolver.query(
+            Uri.parse("content://mms-sms/canonical-addresses"),
+            arrayOf("_id", "address"),
+            null, null, null,
+        )?.use { c ->
+            val idIdx = c.getColumnIndexOrThrow("_id")
+            val addrIdx = c.getColumnIndexOrThrow("address")
+            while (c.moveToNext()) canonical[c.getString(idIdx)] = c.getString(addrIdx).orEmpty()
+        }
+        val result = HashMap<Long, List<String>>()
+        context.contentResolver.query(
+            Telephony.Threads.CONTENT_URI.buildUpon().appendQueryParameter("simple", "true").build(),
+            arrayOf(Telephony.Threads._ID, Telephony.Threads.RECIPIENT_IDS),
+            null, null, null,
+        )?.use { c ->
+            val idIdx = c.getColumnIndexOrThrow(Telephony.Threads._ID)
+            val ridIdx = c.getColumnIndexOrThrow(Telephony.Threads.RECIPIENT_IDS)
+            while (c.moveToNext()) {
+                val tid = c.getLong(idIdx)
+                val addrs = c.getString(ridIdx).orEmpty().split(" ")
+                    .mapNotNull { rid -> canonical[rid]?.takeIf { it.isNotBlank() } }
+                if (addrs.isNotEmpty()) result[tid] = addrs
+            }
+        }
+        result
+    }.getOrDefault(emptyMap())
+
+    /**
+     * Read MMS messages (text + image parts) from `Telephony.Mms`, with the per-message sender
+     * (from `Telephony.Mms.Addr`, for group labeling) and image/text attachments. Returns them in
+     * the shared [SmsMessage] model so they merge with SMS by threadId.
+     */
+    fun loadMmsMessages(context: Context, threadId: Long?): List<SmsMessage> {
+        if (!context.hasPermission(Manifest.permission.READ_SMS)) return emptyList()
+        val selection = threadId?.let { "${Telephony.Mms.THREAD_ID} = ?" }
+        val args = threadId?.let { arrayOf(it.toString()) }
+        return runCatching {
+            context.contentResolver.query(
+                Telephony.Mms.CONTENT_URI,
+                arrayOf(
+                    Telephony.Mms._ID,
+                    Telephony.Mms.THREAD_ID,
+                    Telephony.Mms.DATE,
+                    Telephony.Mms.MESSAGE_BOX,
+                    Telephony.Mms.READ,
+                    Telephony.Mms.SUBSCRIPTION_ID,
+                ),
+                selection, args,
+                "${Telephony.Mms.DATE} ASC",
+            )?.use { c ->
+                val idIdx = c.getColumnIndexOrThrow(Telephony.Mms._ID)
+                val threadIdx = c.getColumnIndexOrThrow(Telephony.Mms.THREAD_ID)
+                val dateIdx = c.getColumnIndexOrThrow(Telephony.Mms.DATE)
+                val boxIdx = c.getColumnIndexOrThrow(Telephony.Mms.MESSAGE_BOX)
+                val readIdx = c.getColumnIndexOrThrow(Telephony.Mms.READ)
+                val subIdx = c.getColumnIndex(Telephony.Mms.SUBSCRIPTION_ID)
+                buildList {
+                    while (c.moveToNext()) {
+                        val mmsId = c.getLong(idIdx)
+                        val box = c.getInt(boxIdx)
+                        val outgoing = box == Telephony.Mms.MESSAGE_BOX_SENT ||
+                            box == Telephony.Mms.MESSAGE_BOX_OUTBOX
+                        val (text, attachments) = loadMmsParts(context, mmsId)
+                        val sender = if (!outgoing) loadMmsSender(context, mmsId) else null
+                        add(
+                            SmsMessage(
+                                // Keep MMS ids clear of SMS ids (both are provider row ids).
+                                id = mmsId or 0x2_0000_0000L,
+                                threadId = c.getLong(threadIdx),
+                                address = sender.orEmpty(),
+                                body = text,
+                                // MMS DATE is in seconds, unlike SMS (ms).
+                                timestampMillis = c.getLong(dateIdx) * 1000L,
+                                outgoing = outgoing,
+                                read = c.getInt(readIdx) != 0,
+                                attachments = attachments,
+                                subscriptionId = subIdx.takeIf { it >= 0 }?.let { c.getInt(it) }?.takeIf { it >= 0 },
+                                senderAddress = sender,
+                                status = if (outgoing) MessageStatus.Sent else MessageStatus.None,
+                            )
+                        )
+                    }
+                }
+            }.orEmpty()
+        }.getOrDefault(emptyList())
+    }
+
+    /** Extract the text body + image attachments from an MMS message's parts. */
+    private fun loadMmsParts(context: Context, mmsId: Long): Pair<String, List<CommunicateAttachment>> {
+        val text = StringBuilder()
+        val attachments = ArrayList<CommunicateAttachment>()
+        runCatching {
+            context.contentResolver.query(
+                Uri.parse("content://mms/part"),
+                arrayOf("_id", "ct", "text", "_data"),
+                "mid = ?", arrayOf(mmsId.toString()), null,
+            )?.use { c ->
+                val idIdx = c.getColumnIndexOrThrow("_id")
+                val ctIdx = c.getColumnIndexOrThrow("ct")
+                val textIdx = c.getColumnIndexOrThrow("text")
+                val dataIdx = c.getColumnIndexOrThrow("_data")
+                while (c.moveToNext()) {
+                    val ct = c.getString(ctIdx).orEmpty()
+                    when {
+                        ct == "text/plain" -> {
+                            val hasData = c.getString(dataIdx) != null
+                            if (hasData) {
+                                // Body stored as a file part; read via the part content uri.
+                                text.append(readMmsTextPart(context, c.getLong(idIdx)))
+                            } else {
+                                text.append(c.getString(textIdx).orEmpty())
+                            }
+                        }
+                        ct.startsWith("image/") || ct.startsWith("video/") -> {
+                            attachments.add(
+                                CommunicateAttachment(
+                                    contentUri = "content://mms/part/${c.getLong(idIdx)}",
+                                    mimeType = ct,
+                                ),
+                            )
+                        }
+                        // application/smil and others are ignored.
+                    }
+                }
+            }
+        }
+        return text.toString() to attachments
+    }
+
+    private fun readMmsTextPart(context: Context, partId: Long): String = runCatching {
+        context.contentResolver.openInputStream(Uri.parse("content://mms/part/$partId"))?.use {
+            it.readBytes().toString(Charsets.UTF_8)
+        }.orEmpty()
+    }.getOrDefault("")
+
+    /** The inbound sender address for an MMS (Addr rows with type=FROM=137). */
+    private fun loadMmsSender(context: Context, mmsId: Long): String? = runCatching {
+        context.contentResolver.query(
+            Uri.parse("content://mms/$mmsId/addr"),
+            arrayOf("address", "type"),
+            "type = 137", null, null,
+        )?.use { c ->
+            val addrIdx = c.getColumnIndexOrThrow("address")
+            if (c.moveToFirst()) c.getString(addrIdx)?.takeIf { it.isNotBlank() && it != "insert-address-token" } else null
+        }
+    }.getOrNull()
 
     fun loadSmsMessages(context: Context, threadId: Long?): List<SmsMessage> {
         if (!context.hasPermission(Manifest.permission.READ_SMS)) return emptyList()
@@ -169,6 +335,7 @@ object CommunicateRepository {
             Telephony.Sms.DATE,
             Telephony.Sms.TYPE,
             Telephony.Sms.READ,
+            Telephony.Sms.STATUS,
             Telephony.Sms.SUBSCRIPTION_ID,
         )
         val selection = threadId?.let { "${Telephony.Sms.THREAD_ID} = ?" }
@@ -189,9 +356,14 @@ object CommunicateRepository {
                     val date = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
                     val type = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
                     val read = cursor.getColumnIndexOrThrow(Telephony.Sms.READ)
+                    val status = cursor.getColumnIndex(Telephony.Sms.STATUS)
                     val sub = cursor.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID)
 
                     while (cursor.moveToNext()) {
+                        val msgType = cursor.getInt(type)
+                        val outgoing = msgType == Telephony.Sms.MESSAGE_TYPE_SENT ||
+                            msgType == Telephony.Sms.MESSAGE_TYPE_OUTBOX
+                        val statusVal = status.takeIf { it >= 0 }?.let { cursor.getInt(it) } ?: -1
                         add(
                             SmsMessage(
                                 id = cursor.getLong(id),
@@ -199,16 +371,25 @@ object CommunicateRepository {
                                 address = cursor.getString(address).orEmpty(),
                                 body = cursor.getString(body).orEmpty(),
                                 timestampMillis = cursor.getLong(date),
-                                outgoing = cursor.getInt(type) == Telephony.Sms.MESSAGE_TYPE_SENT ||
-                                    cursor.getInt(type) == Telephony.Sms.MESSAGE_TYPE_OUTBOX,
+                                outgoing = outgoing,
                                 read = cursor.getInt(read) != 0,
                                 subscriptionId = sub.takeIf { it >= 0 }?.let { cursor.getInt(it) }?.takeIf { it >= 0 },
+                                status = smsStatus(msgType, outgoing, statusVal),
                             )
                         )
                     }
                 }
             }.orEmpty()
         }.getOrDefault(emptyList())
+    }
+
+    /** Map a SIM SMS/MMS provider TYPE + STATUS into the shared [MessageStatus] tick model. */
+    private fun smsStatus(msgType: Int, outgoing: Boolean, status: Int): MessageStatus = when {
+        msgType == Telephony.Sms.MESSAGE_TYPE_FAILED -> MessageStatus.Failed
+        !outgoing -> MessageStatus.None
+        status == Telephony.Sms.STATUS_COMPLETE -> MessageStatus.Delivered
+        status == Telephony.Sms.STATUS_FAILED -> MessageStatus.Failed
+        else -> MessageStatus.Sent // STATUS_PENDING / STATUS_NONE → single tick
     }
 
     fun findContactName(context: Context, number: String): String? {
@@ -284,6 +465,17 @@ object CommunicateRepository {
         Telephony.Threads.getOrCreateThreadId(context, address)
     }.getOrNull()
 
+    /**
+     * Get (or create) the provider thread id for a multi-recipient MMS group thread. All replies to
+     * a group land in this single thread. Returns null if the set is empty or the provider rejects
+     * it (e.g. MMS unavailable). Used by both group creation and group MMS send.
+     */
+    fun getOrCreateSmsGroupThreadId(context: Context, recipients: List<String>): Long? = runCatching {
+        val set = recipients.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        if (set.isEmpty()) return null
+        Telephony.Threads.getOrCreateThreadId(context, set)
+    }.getOrNull()
+
     // ------------------------------------------------------------------
     // Google Voice merge (second line)
     //
@@ -304,7 +496,9 @@ object CommunicateRepository {
     /** Route by line: SIM threads read the provider; GV threads hit `api2thread/get`. */
     suspend fun loadSmsMessagesMerged(context: Context, thread: SmsThread): List<SmsMessage> =
         when (thread.line) {
-            CommunicateLine.Sim -> loadSmsMessages(context, thread.threadId)
+            CommunicateLine.Sim -> (loadSmsMessages(context, thread.threadId) +
+                loadMmsMessages(context, thread.threadId))
+                .sortedBy { it.timestampMillis }
             CommunicateLine.GoogleVoice -> {
                 val remoteId = thread.remoteId ?: return emptyList()
                 runCatching {
@@ -339,11 +533,18 @@ object CommunicateRepository {
         body: String,
         threadRemoteId: String? = null,
         attachments: List<CommunicateAttachment> = emptyList(),
+        participants: List<String> = emptyList(),
     ): Boolean = when (choice) {
-        is LineChoice.Sim -> if (attachments.isEmpty()) {
-            sendSimSms(context, choice.subscriptionId, address, body)
-        } else {
-            false
+        is LineChoice.Sim -> withContext(Dispatchers.IO) {
+            // Group (multi-recipient) or media messages go out as MMS so all replies land in one
+            // thread; plain 1:1 text stays SMS.
+            val recipients = participants.map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf(address) }
+            val isGroup = recipients.size > 1
+            if (attachments.isEmpty() && !isGroup) {
+                sendSimSms(context, choice.subscriptionId, address, body)
+            } else {
+                sendSimMms(context, choice.subscriptionId, recipients, body, attachments)
+            }
         }
         LineChoice.GoogleVoice -> runCatching {
             // The bot-defense token is minted invisibly in an offscreen WebView; the app then
@@ -365,16 +566,19 @@ object CommunicateRepository {
                 // For WhatsApp the conversation is addressed by JID: use the thread's remoteId when
                 // replying to an existing chat, else derive a 1:1 JID from the phone number.
                 val jid = threadRemoteId ?: toWhatsAppJid(context, address)
-                val ok = if (attachments.isEmpty()) {
+                val sentId = if (attachments.isEmpty()) {
                     WhatsAppClient.sendMessage(jid, body)
                 } else {
                     // Media send goes through the dedicated path; here just send any caption text.
-                    if (body.isNotBlank()) WhatsAppClient.sendMessage(jid, body) else true
+                    if (body.isNotBlank()) WhatsAppClient.sendMessage(jid, body) else ""
                 }
                 // Echo the outgoing message into the local cache so it shows in our own thread
-                // (a primary-only line gets no server echo of its own sends).
-                if (ok && body.isNotBlank()) cacheOutgoingWhatsApp(context, jid, body)
-                ok
+                // (a primary-only line gets no server echo of its own sends). Cache under the real
+                // WA message id so delivery/read receipts can advance its status ticks.
+                if (sentId != null && body.isNotBlank()) {
+                    cacheOutgoingWhatsApp(context, jid, body, sentId.ifBlank { "local-${java.util.UUID.randomUUID()}" })
+                }
+                sentId != null
             }.getOrDefault(false)
         }
     }
@@ -405,10 +609,94 @@ object CommunicateRepository {
                     put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
                     if (subscriptionId >= 0) put(Telephony.Sms.SUBSCRIPTION_ID, subscriptionId)
                 }
-                context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
+            context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
             }
             true
         }.getOrDefault(false)
+    }
+
+    private fun smsManagerFor(context: Context, subscriptionId: Int): android.telephony.SmsManager {
+        val base = context.getSystemService(android.telephony.SmsManager::class.java)
+        return if (subscriptionId >= 0) base.createForSubscriptionId(subscriptionId) else base
+    }
+
+    /**
+     * Send a group / media message as MMS via [android.telephony.SmsManager.sendMultimediaMessage].
+     * Composes an M-Send.req PDU ([MmsPdu]), hands it to the system MMS service through a
+     * FileProvider uri, and records the message in the provider so it shows in the group thread.
+     * Best-effort / carrier-dependent (see plan caveat).
+     */
+    private fun sendSimMms(
+        context: Context,
+        subscriptionId: Int,
+        recipients: List<String>,
+        body: String,
+        attachments: List<CommunicateAttachment>,
+    ): Boolean {
+        if (recipients.isEmpty()) return false
+        if (!context.hasPermission(Manifest.permission.SEND_SMS)) return false
+        return runCatching {
+            val txnId = "T${System.currentTimeMillis()}"
+            val mediaParts = attachments.mapNotNull { att ->
+                runCatching {
+                    val bytes = context.contentResolver.openInputStream(att.contentUri.toUri())
+                        ?.use { it.readBytes() } ?: return@mapNotNull null
+                    com.vayunmathur.communicate.telephony.MmsPdu.Part(att.mimeType, bytes)
+                }.getOrNull()
+            }
+            val pdu = com.vayunmathur.communicate.telephony.MmsPdu.composeSendReq(
+                txnId, recipients, body.takeIf { it.isNotBlank() }, mediaParts,
+            )
+            val dir = java.io.File(context.cacheDir, "mms").apply { mkdirs() }
+            val file = java.io.File(dir, "$txnId.pdu").apply { writeBytes(pdu) }
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.mmsfileprovider", file,
+            )
+            smsManagerFor(context, subscriptionId).sendMultimediaMessage(context, uri, null, null, null)
+            persistOutgoingMms(context, subscriptionId, recipients, body)
+            true
+        }.getOrDefault(false)
+    }
+
+    /** Record an outgoing MMS (Sent box) + its text part + recipient/sender addr rows. */
+    private fun persistOutgoingMms(
+        context: Context,
+        subscriptionId: Int,
+        recipients: List<String>,
+        body: String,
+    ) {
+        runCatching {
+            val threadId = getOrCreateSmsGroupThreadId(context, recipients)
+            val values = android.content.ContentValues().apply {
+                if (threadId != null) put(Telephony.Mms.THREAD_ID, threadId)
+                put(Telephony.Mms.DATE, System.currentTimeMillis() / 1000L)
+                put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_SENT)
+                put(Telephony.Mms.READ, 1)
+                put(Telephony.Mms.SEEN, 1)
+                put(Telephony.Mms.MESSAGE_TYPE, 128) // M-Send.req
+                if (subscriptionId >= 0) put(Telephony.Mms.SUBSCRIPTION_ID, subscriptionId)
+            }
+            val mmsUri = context.contentResolver.insert(Telephony.Mms.CONTENT_URI, values) ?: return
+            val mmsId = mmsUri.lastPathSegment ?: return
+            // Text part.
+            if (body.isNotBlank()) {
+                val partValues = android.content.ContentValues().apply {
+                    put("mid", mmsId)
+                    put("ct", "text/plain")
+                    put("text", body)
+                }
+                context.contentResolver.insert(Uri.parse("content://mms/$mmsId/part"), partValues)
+            }
+            // Address rows: TO (151) per recipient.
+            for (r in recipients) {
+                val addrValues = android.content.ContentValues().apply {
+                    put("address", r)
+                    put("type", 151)
+                    put("charset", 106)
+                }
+                context.contentResolver.insert(Uri.parse("content://mms/$mmsId/addr"), addrValues)
+            }
+        }
     }
 
     /** Toggle a Google Voice thread attribute (read/archive/spam) via batchupdateattributes. */
@@ -449,18 +737,23 @@ object CommunicateRepository {
     val isVirtualLine = setOf(CommunicateLine.GoogleVoice, CommunicateLine.WhatsApp)
 
     private suspend fun loadWhatsAppThreads(context: Context): List<SmsThread> {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return emptyList()
         if (!WhatsAppLineSession.get(context).isSignedIn()) return emptyList()
         return runCatching {
             val db = WhatsAppDatabase.getDatabase(context)
             db.cachedMessageDao().getLatestPerConversation().map { m ->
                 val sd = WhatsAppServiceData.parse(m.serviceData)
                 val jid = m.conversationJid
-                val isGroup = sd?.isGroup ?: jid.endsWith("@g.us")
-                val unread = db.conversationDao().getConversation(jid)?.unreadCount ?: 0
+                val conv = db.conversationDao().getConversation(jid)
+                val isGroup = conv?.isGroup ?: sd?.isGroup ?: jid.endsWith("@g.us")
+                val unread = conv?.unreadCount ?: 0
+                val participants = parseParticipantsCsv(conv?.participants)
+                val groupTitle = conv?.name?.takeIf { it.isNotBlank() }
                 SmsThread(
                     threadId = stableThreadId(jid),
                     address = jidToDisplayAddress(jid),
-                    displayName = whatsAppDisplayName(context, jid, sd),
+                    displayName = if (isGroup) (groupTitle ?: whatsAppDisplayName(context, jid, sd))
+                        else whatsAppDisplayName(context, jid, sd),
                     snippet = if (m.isRevoked) "This message was deleted" else m.body,
                     timestampMillis = m.timestamp,
                     unreadCount = unread,
@@ -468,9 +761,23 @@ object CommunicateRepository {
                     remoteId = jid,
                     isGroup = isGroup,
                     avatarUrl = null,
+                    participants = participants,
+                    groupTitle = groupTitle,
                 )
             }
         }.getOrDefault(emptyList())
+    }
+
+    /** Parse the conversation's stored participants column (JSON array of names) into a list. */
+    private fun parseParticipantsCsv(stored: String?): List<String> {
+        if (stored.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val arr = org.json.JSONArray(stored)
+            (0 until arr.length()).map { arr.getString(it) }
+        }.getOrElse {
+            // Legacy/plain CSV fallback.
+            stored.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        }
     }
 
     private suspend fun loadWhatsAppMessages(context: Context, jid: String): List<SmsMessage> =
@@ -488,6 +795,12 @@ object CommunicateRepository {
                     line = CommunicateLine.WhatsApp,
                     remoteId = m.messageId,
                     serviceData = m.serviceData,
+                    senderAddress = m.senderJid.takeIf { it.isNotBlank() && !m.outgoing },
+                    status = m.status.let { s ->
+                        com.vayunmathur.communicate.data.MessageStatus.entries.getOrElse(s) {
+                            com.vayunmathur.communicate.data.MessageStatus.None
+                        }
+                    },
                 )
             }
         }.getOrDefault(emptyList())
@@ -531,6 +844,27 @@ object CommunicateRepository {
 
     suspend fun sendWhatsAppMedia(jid: String, bytes: ByteArray, mimeType: String, fileName: String?): Boolean =
         withContext(Dispatchers.IO) { WhatsAppClient.sendMedia(jid, bytes, mimeType, fileName) }
+
+    /** True only when the WhatsApp primary client is logged in (needed for send/group ops). */
+    fun isWhatsAppConnected(): Boolean = WhatsAppClient.isConnected()
+
+    /**
+     * Create a WhatsApp group with [subject] and the given [contacts] (phone numbers / addresses).
+     * Each contact is normalized to a full WhatsApp user JID before the create IQ is sent. Returns
+     * the new group's `@g.us` JID on success so the caller can open the thread, or null on failure.
+     */
+    suspend fun createWhatsAppGroup(
+        context: Context,
+        subject: String,
+        contacts: List<String>,
+    ): String? = withContext(Dispatchers.IO) {
+        val jids = contacts
+            .map { toWhatsAppJid(context, it) }
+            .filter { it.endsWith("@s.whatsapp.net") }
+            .distinct()
+        if (jids.isEmpty()) return@withContext null
+        WhatsAppClient.createGroup(subject, jids)
+    }
 
     suspend fun sendWhatsAppReadReceipt(
         jid: String,
@@ -611,17 +945,19 @@ object CommunicateRepository {
     }
 
     /** Insert an outgoing WhatsApp message into the local cache so it shows in our own thread. */
-    private suspend fun cacheOutgoingWhatsApp(context: Context, jid: String, body: String) {
+    private suspend fun cacheOutgoingWhatsApp(context: Context, jid: String, body: String, messageId: String) {
         runCatching {
             val db = WhatsAppDatabase.getDatabase(context)
             val now = System.currentTimeMillis()
             db.cachedMessageDao().upsert(
                 WhatsAppCachedMessage(
-                    messageId = "local-${java.util.UUID.randomUUID()}",
+                    messageId = messageId,
                     conversationJid = jid,
                     body = body,
                     timestamp = now,
                     outgoing = true,
+                    // Sent (1) = single grey tick until a delivery/read receipt advances it.
+                    status = 1,
                 ),
             )
             val existing = db.conversationDao().getConversation(jid)

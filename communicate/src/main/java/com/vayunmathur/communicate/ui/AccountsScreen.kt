@@ -134,37 +134,39 @@ fun AccountsScreen(
                 )
             }
 
-            // WhatsApp primary line.
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(bottom = 8.dp)) {
-                    ListItem(
-                        leadingContent = { IconPerson() },
-                        content = { Text("WhatsApp", fontWeight = FontWeight.SemiBold) },
-                        supportingContent = {
-                            Text(if (waSignedIn) (waNumber ?: "Registered") else "Not registered")
-                        },
-                    )
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        if (waSignedIn) {
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        waSession.signOut(context)
-                                        AppMessages.show("Signed out of WhatsApp")
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Sign out") }
-                        } else {
-                            Button(onClick = onRegisterWhatsApp, modifier = Modifier.fillMaxWidth()) {
-                                Text("Register")
+            // WhatsApp primary line (dev-only; hidden in the release variant).
+            if (com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                        ListItem(
+                            leadingContent = { IconPerson() },
+                            content = { Text("WhatsApp", fontWeight = FontWeight.SemiBold) },
+                            supportingContent = {
+                                Text(if (waSignedIn) (waNumber ?: "Registered") else "Not registered")
+                            },
+                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (waSignedIn) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            waSession.signOut(context)
+                                            AppMessages.show("Signed out of WhatsApp")
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("Sign out") }
+                            } else {
+                                Button(onClick = onRegisterWhatsApp, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Register")
+                                }
                             }
-                        }
-                        OutlinedButton(onClick = onImportBackup, modifier = Modifier.fillMaxWidth()) {
-                            Text("Import backup (.crypt15)")
+                            OutlinedButton(onClick = onImportBackup, modifier = Modifier.fillMaxWidth()) {
+                                Text("Import backup (.crypt15)")
+                            }
                         }
                     }
                 }

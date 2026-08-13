@@ -157,6 +157,17 @@
             android:name=".telephony.GoogleVoiceCallForegroundService"
             android:exported="false"
             android:foregroundServiceType="phoneCall" />
+
+        <!-- Exposes the temporary M-Send.req PDU file to the system MMS service. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.mmsfileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/mms_file_paths" />
+        </provider>
     </application>
 
 </manifest>

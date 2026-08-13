@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -62,6 +63,7 @@ import com.vayunmathur.communicate.data.CommunicateAttachment
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.LineChoice
+import com.vayunmathur.communicate.data.MessageStatus
 import com.vayunmathur.communicate.data.SmsMessage
 import com.vayunmathur.communicate.data.SmsThread
 import com.vayunmathur.library.util.AppMessages
@@ -76,6 +78,9 @@ fun ConversationScreen(
     line: CommunicateLine,
     remoteId: String?,
     subscriptionId: Int? = null,
+    isGroup: Boolean = false,
+    participants: List<String> = emptyList(),
+    groupTitle: String? = null,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -116,12 +121,30 @@ fun ConversationScreen(
             unreadCount = 0,
             line = line,
             remoteId = remoteId,
+            isGroup = isGroup,
+            participants = participants,
+            groupTitle = groupTitle,
         )
     }
     val title = produceState(initialValue = address.ifBlank { context.getString(R.string.conversation_title) }, address) {
         value = withContext(Dispatchers.IO) {
             CommunicateRepository.findContactName(context, address)
                 ?: address.ifBlank { context.getString(R.string.conversation_title) }
+        }
+    }
+    // For groups, resolve a "Alice, Bob +N" subtitle from the participant addresses (contact names
+    // where available). Cheap: runs once off the main thread.
+    val groupSubtitle = produceState<String?>(initialValue = null, isGroup, participants) {
+        if (!isGroup || participants.isEmpty()) {
+            value = null
+        } else {
+            value = withContext(Dispatchers.IO) {
+                val names = participants.take(3).map { p ->
+                    CommunicateRepository.findContactName(context, p) ?: p
+                }
+                val extra = participants.size - names.size
+                if (extra > 0) names.joinToString(", ") + " +$extra" else names.joinToString(", ")
+            }
         }
     }
 
@@ -165,17 +188,28 @@ fun ConversationScreen(
         topBar = {
             TopAppBar(
                 title = {
+                    val displayTitle = if (isGroup) (groupTitle ?: title.value) else title.value
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                title.value,
+                                displayTitle,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 fontWeight = FontWeight.SemiBold,
                             )
                             LineBadge(line, modifier = Modifier.padding(start = 8.dp))
                         }
-                        if (address.isNotBlank() && title.value != address) {
+                        if (isGroup) {
+                            groupSubtitle.value?.let { subtitle ->
+                                Text(
+                                    subtitle,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        } else if (address.isNotBlank() && title.value != address) {
                             Text(
                                 address,
                                 maxLines = 1,
@@ -215,10 +249,6 @@ fun ConversationScreen(
                     val text = draft.trim()
                     val attachments = selectedAttachments
                     if (text.isEmpty() && attachments.isEmpty()) return@ComposeSmsRow
-                    if (fixedLineChoice is LineChoice.Sim && attachments.isNotEmpty()) {
-                        AppMessages.show(context.getString(R.string.sim_mms_unsupported))
-                        return@ComposeSmsRow
-                    }
                     draft = ""
                     selectedAttachments = emptyList()
                     scope.launch {
@@ -229,6 +259,7 @@ fun ConversationScreen(
                             text,
                             if (fixedLineChoice is LineChoice.Sim) null else remoteId,
                             attachments,
+                            participants = if (isGroup) participants else emptyList(),
                         )
                         if (ok) refresh++ else AppMessages.show(context.getString(R.string.gv_send_failed))
                     }
@@ -511,10 +542,21 @@ private fun MessageBubble(message: SmsMessage) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = alignment,
     ) {
-        // Group sender name (incoming group messages).
-        if (!message.outgoing && sd?.senderName != null) {
+        // Group sender name (incoming group messages). WhatsApp carries it in serviceData;
+        // other lines (SIM/GV groups) resolve it from the per-message sender address.
+        val senderLabel = produceState<String?>(initialValue = null, message.id, sd?.senderName, message.senderAddress) {
+            value = when {
+                message.outgoing -> null
+                sd?.senderName != null -> sd.senderName
+                message.senderAddress != null -> withContext(Dispatchers.IO) {
+                    CommunicateRepository.findContactName(context, message.senderAddress) ?: message.senderAddress
+                }
+                else -> null
+            }
+        }
+        senderLabel.value?.let { label ->
             Text(
-                sd.senderName,
+                label,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(horizontal = 14.dp),
@@ -602,12 +644,40 @@ private fun MessageBubble(message: SmsMessage) {
             )
             if (message.outgoing) {
                 Spacer(Modifier.size(4.dp))
-                Text(
-                    stringResource(R.string.send),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                MessageStatusTicks(message.status)
             }
+        }
+    }
+}
+
+/**
+ * Renders WhatsApp-style delivery ticks for an outgoing message:
+ * grey ✓ (Sent), grey ✓✓ (Delivered), blue ✓✓ (Read). [MessageStatus.Failed] shows a red "!".
+ * [MessageStatus.None] renders nothing (lines without receipts).
+ */
+@Composable
+private fun MessageStatusTicks(status: MessageStatus) {
+    when (status) {
+        MessageStatus.None -> Unit
+        MessageStatus.Failed -> Text(
+            "!",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.error,
+            fontWeight = FontWeight.Bold,
+        )
+        else -> {
+            val glyph = if (status == MessageStatus.Sent) "✓" else "✓✓"
+            val color = if (status == MessageStatus.Read) {
+                // WhatsApp's read-receipt blue (not theme-tinted).
+                Color(0xFF34B7F1)
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Text(
+                glyph,
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+            )
         }
     }
 }

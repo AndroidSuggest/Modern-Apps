@@ -124,12 +124,37 @@ class WhatsAppEventProcessor(private val db: WhatsAppDatabase) {
             }
 
             is WhatsAppEvent.ConversationUpdate -> {
-                touchConversation(chatJid(event.conversationId), event.lastTimestamp, incrementUnread = false)
+                val jid = chatJid(event.conversationId)
+                touchConversation(jid, event.lastTimestamp, incrementUnread = false)
+                // Persist group metadata (name + participants) so groups render named/flagged and
+                // survive restarts. Only overwrite with non-empty values so a later bare update
+                // (e.g. a plain message touch) doesn't clobber a good name/participant list.
+                val isGroup = event.isGroup || jid.endsWith("@g.us")
+                val participantsJson = participantsJsonFromServiceData(event.serviceData)
+                if (isGroup || !event.peerName.isNullOrBlank() || participantsJson != null) {
+                    val existing = conversations.getConversation(jid) ?: WhatsAppConversation(chatJid = jid)
+                    conversations.upsert(
+                        existing.copy(
+                            isGroup = isGroup || existing.isGroup,
+                            name = event.peerName?.takeIf { it.isNotBlank() } ?: existing.name,
+                            participants = participantsJson ?: existing.participants,
+                        ),
+                    )
+                }
             }
 
             is WhatsAppEvent.ConversationDeleted -> {
                 messages.deleteConversation(chatJid(event.conversationId))
                 conversations.delete(chatJid(event.conversationId))
+            }
+
+            is WhatsAppEvent.ReadReceipt -> {
+                // Advance the outgoing message's tick: delivery → Delivered (grey ✓✓), read → Read
+                // (blue ✓✓). The client emits one event per message id (incl. <list><item> batches),
+                // so a single update per event covers the batch case.
+                event.messageId?.let { id ->
+                    if (event.isDelivery) messages.markDelivered(id) else messages.markReadStatus(id)
+                }
             }
 
             is WhatsAppEvent.HistorySync -> {
@@ -165,6 +190,21 @@ class WhatsAppEventProcessor(private val db: WhatsAppDatabase) {
         val at = s.indexOf('@')
         if (at <= 0) return s
         return s.substring(0, at).substringBefore(':') + s.substring(at)
+    }
+
+    /**
+     * Extract the group's participant display names from a [WhatsAppEvent.ConversationUpdate]'s
+     * serviceData blob (`{"participantNames":[...]}`, emitted by `fetchAndEmitGroupInfo`) and
+     * re-serialize them as a JSON array for the conversation's `participants` column. Returns null
+     * when there is nothing to persist (so we don't clobber an existing list).
+     */
+    private fun participantsJsonFromServiceData(serviceData: String?): String? {
+        if (serviceData.isNullOrBlank()) return null
+        return runCatching {
+            val arr = org.json.JSONObject(serviceData).optJSONArray("participantNames") ?: return null
+            if (arr.length() == 0) return null
+            arr.toString()
+        }.getOrNull()
     }
 
     private suspend fun touchConversation(jid: String, timestamp: Long, incrementUnread: Boolean) {

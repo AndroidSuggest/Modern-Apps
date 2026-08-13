@@ -1777,6 +1777,39 @@ object WhatsAppProtocol {
     }
 
     /**
+     * Build a create-group IQ node (whatsmeow group.go CreateGroup):
+     * `<iq to="g.us" type="set" xmlns="w:g2" id=...><create subject=".." key="..">
+     *   <participant jid="..."/>…</create></iq>`.
+     * [key] is a client-chosen unique id echoed back in the response so we can correlate.
+     */
+    fun buildCreateGroup(
+        subject: String,
+        participantJids: List<String>,
+        id: String,
+        key: String,
+    ): Node {
+        val participants = participantJids.map { jid ->
+            Node(tag = "participant", attrs = mapOf("jid" to jid))
+        }
+        return Node(
+            tag = "iq",
+            attrs = mapOf(
+                "id" to id,
+                "type" to "set",
+                "xmlns" to "w:g2",
+                "to" to "g.us",
+            ),
+            content = listOf(
+                Node(
+                    tag = "create",
+                    attrs = mapOf("subject" to subject, "key" to key),
+                    content = participants,
+                ),
+            ),
+        )
+    }
+
+    /**
      * Build a group participant change IQ node.
      * From whatsmeow group.go UpdateGroupParticipants
      */

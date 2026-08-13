@@ -58,6 +58,9 @@ sealed interface Route : NavKey {
         val line: CommunicateLine = CommunicateLine.Sim,
         val remoteId: String? = null,
         val subscriptionId: Int? = null,
+        val isGroup: Boolean = false,
+        val participants: List<String> = emptyList(),
+        val groupTitle: String? = null,
     ) : Route
 }
 
@@ -93,8 +96,9 @@ private fun CommunicateApp() {
     val waSignedIn by waSession.signedInFlow.collectAsState(initial = false)
     val callState by GoogleVoiceCallManager.state.collectAsState()
 
-    // Own the WhatsApp always-on receive state via its foreground sync service.
+    // Own the WhatsApp always-on receive state via its foreground sync service (dev-only).
     LaunchedEffect(waSignedIn) {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@LaunchedEffect
         if (waSignedIn) WhatsAppSyncService.start(context) else WhatsAppSyncService.stop(context)
     }
 
@@ -148,6 +152,9 @@ private fun CommunicateApp() {
                             line = thread.line,
                             remoteId = thread.remoteId,
                             subscriptionId = thread.subscriptionId,
+                            isGroup = thread.isGroup,
+                            participants = thread.participants,
+                            groupTitle = thread.groupTitle,
                         ),
                     )
                 },
@@ -160,8 +167,16 @@ private fun CommunicateApp() {
             AccountsScreen(
                 onBack = { backStack.pop() },
                 onSignIn = { backStack.add(Route.GoogleVoiceSignIn) },
-                onRegisterWhatsApp = { backStack.add(Route.WhatsAppRegistration) },
-                onImportBackup = { backStack.add(Route.WhatsAppBackupImport) },
+                onRegisterWhatsApp = {
+                    if (com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) {
+                        backStack.add(Route.WhatsAppRegistration)
+                    }
+                },
+                onImportBackup = {
+                    if (com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) {
+                        backStack.add(Route.WhatsAppBackupImport)
+                    }
+                },
             )
         }
         entry<Route.GoogleVoiceSignIn> {
@@ -188,6 +203,9 @@ private fun CommunicateApp() {
                 line = route.line,
                 remoteId = route.remoteId,
                 subscriptionId = route.subscriptionId,
+                isGroup = route.isGroup,
+                participants = route.participants,
+                groupTitle = route.groupTitle,
                 onBack = { backStack.pop() },
             )
         }

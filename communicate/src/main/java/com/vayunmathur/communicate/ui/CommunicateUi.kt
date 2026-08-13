@@ -223,10 +223,13 @@ fun rememberLineChoices(): List<LineChoice> {
     val gv by session.signedInFlow.collectAsState(initial = false)
     val waSession = remember { com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession.get(context) }
     val wa by waSession.signedInFlow.collectAsState(initial = false)
-    return remember(gv, wa) {
+    // WhatsApp is a dev-only feature (unofficial primary client, ToS/ban risk) — never offer it in
+    // the release variant.
+    val waEnabled = wa && com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled
+    return remember(gv, waEnabled) {
         SimManager.simLineChoices(context) +
             (if (gv) listOf(LineChoice.GoogleVoice) else emptyList()) +
-            (if (wa) listOf(LineChoice.WhatsApp) else emptyList())
+            (if (waEnabled) listOf(LineChoice.WhatsApp) else emptyList())
     }
 }
 

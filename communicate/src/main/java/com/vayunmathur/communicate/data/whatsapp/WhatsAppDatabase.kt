@@ -24,6 +24,9 @@ import com.vayunmathur.library.util.DatabaseMigrations
  *
  * v7 (Rust migration): E2E tables now hold Rust's own versioned blobs (RECORD_VERSION=1)
  * rather than Java SignalRecord. Old Java blobs are incompatible, so migration clears E2E tables.
+ *
+ * communicate v2: adds message delivery status (sent/delivered/read ticks) and group metadata
+ * (isGroup/name/participants) on conversations.
  */
 @Database(
     entities = [
@@ -44,7 +47,7 @@ import com.vayunmathur.library.util.DatabaseMigrations
         WhatsAppCachedMessage::class,
         WhatsAppCachedReaction::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(WhatsAppTypeConverters::class)
@@ -68,8 +71,28 @@ abstract class WhatsAppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: WhatsAppDatabase? = null
 
-        // Fresh database in communicate (v1) — no migration history to carry from messages.
-        override val migrations: List<Migration> = emptyList()
+        /**
+         * v1 → v2: message delivery status (ticks) + group metadata on conversations. All new
+         * columns are additive with defaults, so existing rows stay valid.
+         */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE whatsapp_cached_message ADD COLUMN status INTEGER NOT NULL DEFAULT 0",
+                )
+                db.execSQL(
+                    "ALTER TABLE whatsapp_history_sync_conversation ADD COLUMN isGroup INTEGER NOT NULL DEFAULT 0",
+                )
+                db.execSQL(
+                    "ALTER TABLE whatsapp_history_sync_conversation ADD COLUMN name TEXT",
+                )
+                db.execSQL(
+                    "ALTER TABLE whatsapp_history_sync_conversation ADD COLUMN participants TEXT NOT NULL DEFAULT ''",
+                )
+            }
+        }
+
+        override val migrations: List<Migration> = listOf(MIGRATION_1_2)
 
         fun getDatabase(context: Context): WhatsAppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -113,6 +136,12 @@ data class WhatsAppConversation(
     val ephemeralSettingTimestamp: Long = 0L,
     val markedAsUnread: Boolean = false,
     val unreadCount: Int = 0,
+    /** communicate v2: true for group chats (@g.us). */
+    val isGroup: Boolean = false,
+    /** communicate v2: group subject / display name when known. */
+    val name: String? = null,
+    /** communicate v2: CSV of participant JIDs for groups (empty for 1:1). */
+    val participants: String = "",
 )
 
 @Dao
@@ -410,6 +439,11 @@ data class WhatsAppCachedMessage(
     val mediaMime: String? = null,
     val mediaName: String? = null,
     val serviceData: String? = null,
+    /**
+     * communicate v2: outgoing delivery status, encoded as the [com.vayunmathur.communicate.data.MessageStatus]
+     * ordinal (0=None, 1=Sent, 2=Delivered, 3=Read, 4=Failed). Inbound messages stay 0.
+     */
+    val status: Int = 0,
 )
 
 @Dao
@@ -442,6 +476,14 @@ interface WhatsAppCachedMessageDao {
 
     @Query("UPDATE whatsapp_cached_message SET serviceData = :serviceData WHERE messageId = :messageId")
     suspend fun updateServiceData(messageId: String, serviceData: String?)
+
+    /** Advance to Delivered (2) only from a lower state (won't downgrade a Read message). */
+    @Query("UPDATE whatsapp_cached_message SET status = 2 WHERE messageId = :messageId AND status < 2")
+    suspend fun markDelivered(messageId: String)
+
+    /** Advance to Read (3) only from a lower state. */
+    @Query("UPDATE whatsapp_cached_message SET status = 3 WHERE messageId = :messageId AND status < 3")
+    suspend fun markReadStatus(messageId: String)
 
     @Query("DELETE FROM whatsapp_cached_message WHERE conversationJid = :jid")
     suspend fun deleteConversation(jid: String)

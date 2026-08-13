@@ -92,7 +92,26 @@ data class SmsThread(
     val isGroup: Boolean = false,
     /** Optional avatar URL/path for the thread (WhatsApp contact/group photo). */
     val avatarUrl: String? = null,
+    /**
+     * Group participants (addresses/JIDs). Empty for 1:1 threads. Used to render the
+     * group subtitle ("Alice, Bob +N") and, for SIM/GV groups, to route sends.
+     */
+    val participants: List<String> = emptyList(),
+    /** Explicit group name/subject when known (WhatsApp subject, MMS group name). */
+    val groupTitle: String? = null,
 )
+
+/**
+ * Delivery lifecycle of an outgoing message, rendered as ticks in the bubble.
+ * [None] means "don't show a tick" (inbound messages, or lines without receipts).
+ */
+enum class MessageStatus {
+    None,
+    Sent,
+    Delivered,
+    Read,
+    Failed,
+}
 
 data class SmsMessage(
     val id: Long,
@@ -111,4 +130,11 @@ data class SmsMessage(
      * (reactions/polls/edited/revoked/quoted/group). Null for SIM/GV.
      */
     val serviceData: String? = null,
+    /**
+     * Sender address/JID for inbound group messages, used to render a per-message
+     * sender label. Null for 1:1 threads and outgoing messages.
+     */
+    val senderAddress: String? = null,
+    /** Delivery status for outgoing messages (drives the sent/delivered/read ticks). */
+    val status: MessageStatus = MessageStatus.None,
 )

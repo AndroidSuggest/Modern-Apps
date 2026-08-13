@@ -73,6 +73,9 @@ object WhatsAppClient {
 
     val source: MessageSource = MessageSource.WHATSAPP
 
+    /** True only when the Noise socket is logged in (`<success>`). Group/message ops require it. */
+    fun isConnected(): Boolean = _state.value is State.Connected
+
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
 
@@ -1162,12 +1165,6 @@ object WhatsAppClient {
         val isDelivered = receiptType == null || receiptType.isEmpty()
         if (!isRead && !isDelivered) return
 
-        // Log delivery receipts (Go handleWAReceipt ReceiptTypeDelivered)
-        if (isDelivered) {
-            Log.d(TAG, "Delivery receipt from ${node.attrs["from"]} for ${node.attrs["id"]}")
-            return
-        }
-
         val from = node.attrs["from"] ?: return
         val participant = node.attrs["participant"]
 
@@ -1177,11 +1174,15 @@ object WhatsAppClient {
         val messageId = node.attrs["id"] ?: return
         val timestamp = (node.attrs["t"]?.toLongOrNull() ?: System.currentTimeMillis() / 1000) * 1000
 
+        // Delivery (type absent/empty) advances our sent message to "delivered" (grey ✓✓); a
+        // read/read-self receipt advances to "read" (blue ✓✓). Both are surfaced as ReadReceipt.
         _events.emit(WhatsAppEvent.ReadReceipt(
             source = MessageSource.WHATSAPP,
             conversationId = "wa:$from",
             messageId = messageId,
+            senderId = sender,
             timestamp = timestamp,
+            isDelivery = isDelivered,
         ))
 
         // Handle additional message IDs in list node
@@ -1192,7 +1193,9 @@ object WhatsAppClient {
                 source = MessageSource.WHATSAPP,
                 conversationId = "wa:$from",
                 messageId = itemId,
+                senderId = sender,
                 timestamp = timestamp,
+                isDelivery = isDelivered,
             ))
         }
     }
@@ -1863,6 +1866,7 @@ object WhatsAppClient {
         if (msgs.isEmpty()) return 0
 
         // Register the conversation row first.
+        val isGroupChat = chatJid.endsWith("@g.us")
         _events.emit(
             WhatsAppEvent.ConversationUpdate(
                 source = MessageSource.WHATSAPP,
@@ -1873,6 +1877,7 @@ object WhatsAppClient {
                 lastPreview = lastBody,
                 lastTimestamp = lastTs,
                 unreadCount = conv.unreadCount,
+                isGroup = isGroupChat,
             )
         )
         // Then backfill its messages.
@@ -1988,20 +1993,24 @@ object WhatsAppClient {
         return out.toByteArray()
     }
 
-    suspend fun sendMessage(conversationId: String, body: String): Boolean {
-        if (_state.value !is State.Connected) { WhatsAppDiag.log(TAG, "send: not connected"); return false }
-        val ws = webSocket ?: return false
+    /**
+     * Send a 1:1/group text message. Returns the WhatsApp message id on success (so callers can cache
+     * the outgoing echo under the same id that delivery/read receipts reference), or null on failure.
+     */
+    suspend fun sendMessage(conversationId: String, body: String): String? {
+        if (_state.value !is State.Connected) { WhatsAppDiag.log(TAG, "send: not connected"); return null }
+        val ws = webSocket ?: return null
 
-        val to = extractJid(conversationId) ?: run { WhatsAppDiag.log(TAG, "send: bad convId $conversationId"); return false }
+        val to = extractJid(conversationId) ?: run { WhatsAppDiag.log(TAG, "send: bad convId $conversationId"); return null }
         val id = WhatsAppProtocol.generateMessageId(authData?.wid)
         WhatsAppDiag.log(TAG, "send: building message to $to")
 
-        val node = buildEncryptedTextNode(to, id, body) ?: run { WhatsAppDiag.log(TAG, "send: build FAILED (no enc)"); return false }
+        val node = buildEncryptedTextNode(to, id, body) ?: run { WhatsAppDiag.log(TAG, "send: build FAILED (no enc)"); return null }
         pendingMessageIDs.add(id)
         val sent = ws.send(WhatsAppProtocol.encodeNode(node))
         if (!sent) pendingMessageIDs.remove(id)
         WhatsAppDiag.log(TAG, "send: stanza sent=$sent id=$id")
-        return sent
+        return if (sent) id else null
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -2875,6 +2884,40 @@ object WhatsAppClient {
         val id = WhatsAppProtocol.generateMessageId(authData?.wid)
         val node = WhatsAppProtocol.buildGroupParticipantChange(groupJid, participantJids, action, id)
         return ws.send(WhatsAppProtocol.encodeNode(node))
+    }
+
+    /**
+     * Create a new group with [subject] and [participantJids] (full user JIDs, e.g.
+     * `15551234567@s.whatsapp.net`). Sends the `w:g2` create IQ, awaits the `<group>` result, and
+     * returns the new group's `@g.us` JID (or null on failure). On success it also fetches + emits
+     * the group info so the thread appears named + flagged with its participants persisted.
+     * Ref whatsmeow group.go CreateGroup.
+     */
+    suspend fun createGroup(subject: String, participantJids: List<String>): String? {
+        if (_state.value !is State.Connected) { WhatsAppDiag.log(TAG, "createGroup: not connected"); return null }
+        if (participantJids.isEmpty()) { WhatsAppDiag.log(TAG, "createGroup: no participants"); return null }
+
+        val id = generateMessageId()
+        // whatsmeow uses a client-chosen unique key (unix seconds) echoed back in the response.
+        val key = (System.currentTimeMillis() / 1000).toString()
+        val iq = WhatsAppProtocol.buildCreateGroup(subject, participantJids, id, key)
+        val resp = sendIqAndWait(iq) ?: run { WhatsAppDiag.log(TAG, "createGroup: no response"); return null }
+        if (resp.attrs["type"] == "error") {
+            val err = resp.getChildByTag("error")
+            WhatsAppDiag.log(
+                TAG,
+                "createGroup: server error code=${err?.attrs?.get("code")} text=${err?.attrs?.get("text")}",
+            )
+            return null
+        }
+        val group = resp.getChildByTag("group") ?: run { WhatsAppDiag.log(TAG, "createGroup: no <group>"); return null }
+        // Response group node carries the new JID either as `jid` or as a bare `id` local-part.
+        val groupJid = group.attrs["jid"]
+            ?: group.attrs["id"]?.let { if (it.contains("@")) it else "$it@g.us" }
+            ?: run { WhatsAppDiag.log(TAG, "createGroup: no group jid in resp"); return null }
+        WhatsAppDiag.log(TAG, "createGroup: created $groupJid")
+        runCatching { fetchAndEmitGroupInfo(groupJid) }
+        return groupJid
     }
 
     /**
