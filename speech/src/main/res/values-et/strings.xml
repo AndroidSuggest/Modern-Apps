@@ -8,8 +8,8 @@
     <string name="download_model_113_mb">Laadi tuvastusmudel alla (~113 MB)</string>
     <string name="download_voice_64_mb">Laadi häälemudel alla (~64 MB)</string>
     <string name="app_name">Kõne</string>
-    <string name="tts_engine_label">MA kõne</string>
-    <string name="recognition_service_label">MA kõne</string>
+    <string name="tts_engine_label">MA Kõne</string>
+    <string name="recognition_service_label">MA Kõne</string>
     <string name="grant_microphone">Luba mikrofoni kasutamine</string>
     <string name="open_voice_input_settings">Ava häälesisendi seadistused</string>
     <string name="open_text_to_speech_settings">Ava kõnesünteesi seadistused</string>
