@@ -29,4 +29,5 @@
     <string name="codec_hevc_label">H.265 / HEVC</string>
     <string name="brightness">Jasność</string>
     <string name="open_gallery">Galeria</string>
+    <string name="settings_audio_source">Źródło sygnału dźwieku</string>
 </resources>
