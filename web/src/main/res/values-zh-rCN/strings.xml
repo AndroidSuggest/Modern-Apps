@@ -26,7 +26,7 @@
     <string name="select_files_to_upload">选择要上传的文件。</string>
     <string name="icon">图标：%1$s</string>
     <string name="clear_history">清除历史记录？</string>
-    <string name="uses_system_location_services_private_ta">使用系统位置信息服务。无痕标签页永远不会授予位置权限。</string>
+    <string name="uses_system_location_services_private_ta">使用系统位置信息服务。私密标签页永远不会授予位置权限。</string>
     <string name="shortcuts_launch_pwaactivity_standalone">快捷方式将启动独立的 PwaActivity WebView（支持权限处理、下载和第三方 Cookie）。在此处移除将删除数据库条目；如果已固定，必须通过长按来移除固定的启动器图标。</string>
     <string name="new_folder">新文件夹</string>
     <string name="allow_location">允许使用位置信息？</string>
@@ -47,11 +47,11 @@
         <item quantity="other">%1$s 个 PWA</item>
     </plurals>
     <string name="about">关于</string>
-    <string name="private_prefix">无痕 •</string>
+    <string name="private_prefix">私密 •</string>
     <string name="site_data">网站数据</string>
     <string name="privacy_data">隐私和数据</string>
     <string name="open_a_site_and_tap_menu_install_app_add">打开一个网站，点击菜单 → 安装应用 / 添加到主屏幕。这将创建一个固定快捷方式，用于独立启动 PwaActivity（无浏览器界面）。图标将优先使用最佳的 192×192 图标或 apple-touch-icon；如果没有，则回退为字母图标。</string>
-    <string name="new_private_tab">新无痕标签页</string>
+    <string name="new_private_tab">新私密标签页</string>
     <string name="reload">重新加载</string>
     <string name="blank_new_tab_tap_the_address_pill_to_se">空白新标签页 — 点击地址栏进行搜索。地址栏中显示完整网址。在展开的搜索栏卡片中可直接刷新/清除实时内容。</string>
     <string name="delete_bookmark">删除书签？</string>
@@ -61,7 +61,7 @@
     <string name="recent">最近</string>
     <string name="pick_files">选择文件</string>
     <string name="app_name_2">应用名称</string>
-    <string name="private_tab">无痕标签页</string>
+    <string name="private_tab">私密标签页</string>
     <string name="no_history_yet">尚无历史记录</string>
     <string name="no_installed_apps">没有已安装的应用</string>
     <string name="this_will_permanently_delete_your_browsi">这将永久删除您的浏览历史记录。</string>
@@ -73,7 +73,7 @@
         <item quantity="other">%1$s 个标签页</item>
     </plurals>
     <string name="allow">允许</string>
-    <string name="no_site_data_yet_cookies_localstorage_in">尚无网站数据。Cookie、localStorage、IndexedDB 和权限会在 WebView 配置文件目录中的加载过程中持续存在。无痕标签页除外。</string>
+    <string name="no_site_data_yet_cookies_localstorage_in">尚无网站数据。Cookie、localStorage、IndexedDB 和权限会在 WebView 配置文件目录中的加载过程中持续存在。私密标签页除外。</string>
     <string name="no_downloads">没有下载</string>
     <string name="new_tab">新标签页</string>
     <string name="ad_tracker_blocking">广告跟踪器拦截</string>
@@ -82,4 +82,33 @@
     <string name="search_engine">搜索引擎</string>
     <string name="bookmarks">书签</string>
     <string name="allow_to_access">允许 %1$s 访问吗？</string>
+    <string name="new_window">新窗口</string>
+    <string name="new_incognito_window">新无痕窗口</string>
+    <string name="new_incognito_tab">新无痕标签页</string>
+    <string name="shields">防护</string>
+    <string name="shields_down">已为此网站关闭防护</string>
+    <string name="shields_up">已开启防护</string>
+    <string name="shields_for_host">%1$s 的防护</string>
+    <string name="shields_level">防护级别</string>
+    <string name="shields_level_off">关闭</string>
+    <string name="shields_level_off_desc">不拦截广告、跟踪器或指纹识别</string>
+    <string name="shields_level_standard">标准</string>
+    <string name="shields_level_standard_desc">拦截广告和跟踪器</string>
+    <string name="shields_level_aggressive">激进</string>
+    <string name="shields_level_aggressive_desc">同时模糊时区并禁用 WebRTC</string>
+    <string name="shields_block_trackers">拦截广告和跟踪器</string>
+    <string name="shields_block_trackers_desc">EasyList、EasyPrivacy 和 Brave 过滤列表</string>
+    <string name="shields_cosmetic">隐藏广告占位符</string>
+    <string name="shields_cosmetic_desc">使用元素隐藏规则移除残留空隙</string>
+    <string name="shields_fingerprint">阻止指纹识别</string>
+    <string name="shields_fingerprint_desc">随机化 canvas、WebGL、音频和字体读取</string>
+    <string name="shields_https">将连接升级到 HTTPS</string>
+    <string name="shields_https_desc">同时除去 utm_、fbclid 和其他跟踪参数</string>
+    <string name="shields_blocked_count">在此页面上已拦截 %1$d 个</string>
+    <string name="shields_reload_to_apply">重新加载以应用</string>
+    <string name="shields_site_exceptions">网站例外</string>
+    <string name="shields_no_site_exceptions">尚无针对单个网站的更改。请打开工具栏中的防护图标以更改网站的设置。</string>
+    <string name="shields_reset_site">重置为默认</string>
+    <string name="shields_clear_exceptions">清除所有网站例外</string>
+    <string name="shields_engine_loading">正在加载过滤列表…</string>
 </resources>
