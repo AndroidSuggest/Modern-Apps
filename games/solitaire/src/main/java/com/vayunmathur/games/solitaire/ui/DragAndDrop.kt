@@ -60,7 +60,7 @@ fun DraggableCard(
                 detectDragGestures(
                     onDragStart = {
                         dragOffset = Offset.Zero
-                        isDragging = actions.startDrag(sourceId, startPos)
+                        isDragging = actions.startDrag(sourceId, startPos, cardSize)
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
@@ -69,7 +69,7 @@ fun DraggableCard(
                     },
                     onDragEnd = {
                         val center = Offset(cardSize.width / 2f, cardSize.height / 2f)
-                        actions.endDrag(startPos + dragOffset + center)
+                        actions.endDrag(startPos + dragOffset + center, cardSize)
                         isDragging = false
                         dragOffset = Offset.Zero
                     },

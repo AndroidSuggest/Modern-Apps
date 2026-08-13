@@ -15,8 +15,18 @@ data class DragInfo(
     val cards: List<Card>,
     val sourceId: String,
     val offset: Offset = Offset.Zero,
-    val startPos: Offset = Offset.Zero
+    val startPos: Offset = Offset.Zero,
+    val cardSize: androidx.compose.ui.unit.IntSize = androidx.compose.ui.unit.IntSize.Zero
 )
+
+private fun overlapArea(a: Rect, b: Rect): Float {
+    val left = maxOf(a.left, b.left)
+    val right = minOf(a.right, b.right)
+    val top = maxOf(a.top, b.top)
+    val bottom = minOf(a.bottom, b.bottom)
+    if (left >= right || top >= bottom) return 0f
+    return (right - left) * (bottom - top)
+}
 
 class SolitaireViewModel(application: Application) : AndroidViewModel(application), SolitaireActions {
     private val _uiState = MutableStateFlow(SolitaireUiState())
@@ -793,10 +803,8 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
     /** A foundation only ever accepts a drag that carries the single top card. */
     private fun isSingleCardDrag(sourceId: String): Boolean = draggedCards(sourceId).size == 1
 
-    fun tryMoveByDrag(sourceId: String, dropOffset: Offset) {
-        val targetId = dropTargets.entries.find { (_, rect) ->
-            rect.contains(dropOffset)
-        }?.key ?: return
+    fun tryMoveByDrag(sourceId: String, dropOffset: Offset, cardSize: androidx.compose.ui.unit.IntSize = androidx.compose.ui.unit.IntSize.Zero) {
+        val targetId = resolveDropTarget(dropOffset, cardSize) ?: return
 
         when (_uiState.value.gameMode) {
             GameMode.KLONDIKE -> handleKlondikeDrop(sourceId, targetId)
@@ -805,6 +813,36 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
             GameMode.PYRAMID -> {} // Pyramid is tap-based, not drag-based.
             null -> {}
         }
+    }
+
+    /**
+     * Resolves the drop target for the leading (top) card of the dragged stack.
+     *
+     * The previous implementation picked the target whose bounds contained the
+     * single pointer-derived point (`dropOffset`). For a large tableau stack
+     * the user drops by the bottom and the center point of the dragged card
+     * can fall outside a short destination column (or land on an adjacent
+     * pile), causing valid moves to be silently discarded — the symptom of
+     * issue #505.
+     *
+     * The fix uses the bounds of the leading card being dropped (top of the
+     * moving run, centered on the finger) and picks the target with the
+     * greatest overlap area. A non-overlapping point-in-rect check is kept as
+     * a fallback for very small drags or zero-size rects.
+     */
+    private fun resolveDropTarget(dropOffset: Offset, cardSize: androidx.compose.ui.unit.IntSize): String? {
+        // Prefer overlap-area of the leading card's bounds.
+        if (cardSize.width > 0 && cardSize.height > 0) {
+            val w = cardSize.width.toFloat()
+            val h = cardSize.height.toFloat()
+            val cardRect = Rect(dropOffset.x - w / 2f, dropOffset.y - h / 2f, dropOffset.x + w / 2f, dropOffset.y + h / 2f)
+            val overlapped = dropTargets.maxByOrNull { (_, rect) -> overlapArea(cardRect, rect) }
+            if (overlapped != null && overlapArea(cardRect, overlapped.value) > 0f) {
+                return overlapped.key
+            }
+        }
+        // Fallback: any rect containing the center point.
+        return dropTargets.entries.find { (_, rect) -> rect.contains(dropOffset) }?.key
     }
 
     private fun handleKlondikeDrop(sourceId: String, targetId: String) {
@@ -995,13 +1033,13 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
      * Starts a drag from [sourceId], deriving the carried cards from current state.
      * Returns false (and starts nothing) when that source holds no card.
      */
-    override fun startDrag(sourceId: String, startPos: Offset): Boolean {
+    override fun startDrag(sourceId: String, startPos: Offset, cardSize: androidx.compose.ui.unit.IntSize): Boolean {
         val cards = draggedCards(sourceId)
         if (cards.isEmpty()) {
             _dragInfo.value = null
             return false
         }
-        _dragInfo.value = DragInfo(cards, sourceId, startPos, startPos)
+        _dragInfo.value = DragInfo(cards, sourceId, startPos, startPos, cardSize)
         return true
     }
 
@@ -1009,9 +1047,12 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         _dragInfo.update { it?.copy(offset = offset) }
     }
 
-    override fun endDrag(dropOffset: Offset) {
+    override fun endDrag(dropOffset: Offset, cardSize: androidx.compose.ui.unit.IntSize) {
         val info = _dragInfo.value ?: return
-        tryMoveByDrag(info.sourceId, dropOffset)
+        // Use the cardSize recorded at drag start (finger owns that card), with the
+        // current drop size as fallback so call sites lacking a size still resolve.
+        val effectiveSize = if (cardSize.width > 0 && cardSize.height > 0) cardSize else info.cardSize
+        tryMoveByDrag(info.sourceId, dropOffset, effectiveSize)
         _dragInfo.value = null
     }
 

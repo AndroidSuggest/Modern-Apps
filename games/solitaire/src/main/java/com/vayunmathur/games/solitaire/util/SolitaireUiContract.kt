@@ -2,6 +2,7 @@ package com.vayunmathur.games.solitaire.util
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -23,9 +24,9 @@ interface SolitaireActions {
     /** Drop zones, registered by the piles as they are laid out. */
     val dropTargets: MutableMap<String, Rect> get() = DiscardedDropTargets
 
-    fun startDrag(sourceId: String, startPos: Offset): Boolean = false
+    fun startDrag(sourceId: String, startPos: Offset, cardSize: IntSize = IntSize.Zero): Boolean = false
     fun updateDrag(offset: Offset) {}
-    fun endDrag(dropOffset: Offset) {}
+    fun endDrag(dropOffset: Offset, cardSize: IntSize = IntSize.Zero) {}
     fun cancelDrag() {}
 
     fun drawFromStock() {}
