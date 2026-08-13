@@ -154,6 +154,9 @@ fun VideoPlayer(
         currentAudioStream = filtered.maxByOrNull { it.bitrate } ?: filtered.firstOrNull()
     }
     var isControlsVisible by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var controlsInteractionTick by remember { mutableStateOf(0) }
+    val keepControlsVisible by ypvm.keepPlayerControlsVisible.collectAsState()
     var currentPosition by remember { mutableLongStateOf(0L) }
     var bufferedPosition by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
@@ -233,16 +236,20 @@ fun VideoPlayer(
 
     DisposableEffect(controller) {
         val player = controller ?: return@DisposableEffect onDispose {}
+        // Sync initial playing state once controller is available
+        isPlaying = player.isPlaying
         val listener = object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
                 if (events.contains(Player.EVENT_TIMELINE_CHANGED) || events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED)) {
                     duration = player.duration.coerceAtLeast(0L)
                     isBuffering = player.playbackState == Player.STATE_BUFFERING
+                    isPlaying = player.isPlaying
                 }
             }
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
+            override fun onIsPlayingChanged(isPlayingNow: Boolean) {
+                isPlaying = isPlayingNow
                 context.findActivity().setPictureInPictureParams(PictureInPictureParams.Builder().apply {
-                    setAutoEnterEnabled(isPlaying)
+                    setAutoEnterEnabled(isPlayingNow)
                 }.build())
             }
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -405,16 +412,73 @@ fun VideoPlayer(
     val isPipMode = rememberIsInPipMode()
     val scope = rememberCoroutineScope()
 
+    // When paused, keep controls visible (no auto-hide). When playing resumes, re-show and start timer.
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            isControlsVisible = true
+            controlsInteractionTick++
+        } else {
+            isControlsVisible = true
+        }
+    }
+
+    // Auto-hide controls after 2 seconds of inactivity while playing. Resets on any interaction.
+    LaunchedEffect(
+        isControlsVisible, isPlaying, keepControlsVisible, isLocked, isDragging,
+        isVideoMenuExpanded, isLanguageMenuExpanded, isCaptionMenuExpanded,
+        isSpeedMenuExpanded, isChapterMenuVisible, isPipMode, controlsInteractionTick
+    ) {
+        if (!isControlsVisible) return@LaunchedEffect
+        if (keepControlsVisible) return@LaunchedEffect
+        if (isLocked) return@LaunchedEffect
+        if (!isPlaying) return@LaunchedEffect
+        if (isDragging) return@LaunchedEffect
+        if (isVideoMenuExpanded || isLanguageMenuExpanded || isCaptionMenuExpanded || isSpeedMenuExpanded || isChapterMenuVisible) return@LaunchedEffect
+        if (isPipMode) return@LaunchedEffect
+        delay(CONTROLS_AUTO_HIDE_DELAY_MS)
+        isControlsVisible = false
+    }
+
+    // Accessibility toggle: when "keep controls visible" is enabled, force controls on.
+    LaunchedEffect(keepControlsVisible) {
+        if (keepControlsVisible) {
+            isControlsVisible = true
+        } else {
+            // Re-arm timer when re-enabling auto-hide while playing.
+            if (isPlaying && isControlsVisible) controlsInteractionTick++
+        }
+    }
+
     val modifier = if(isFullscreen) Modifier.fillMaxHeight() else Modifier.aspectRatio(16f / 9f)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .pointerInput(Unit) {
+            .pointerInput(isLocked, keepControlsVisible) {
                 detectTapGestures(
-                    onTap = { isControlsVisible = !isControlsVisible },
+                    onTap = {
+                        if (isLocked) {
+                            isControlsVisible = true
+                            controlsInteractionTick++
+                            return@detectTapGestures
+                        }
+                        if (isControlsVisible) {
+                            // When auto-hide is disabled for accessibility, tapping keeps controls visible and resets timer.
+                            if (keepControlsVisible) {
+                                controlsInteractionTick++
+                            } else {
+                                isControlsVisible = false
+                            }
+                        } else {
+                            isControlsVisible = true
+                            controlsInteractionTick++
+                        }
+                    },
                     onDoubleTap = { offset ->
                         if (isLocked) return@detectTapGestures
+                        // Any gesture re-shows controls and resets auto-hide timer.
+                        isControlsVisible = true
+                        controlsInteractionTick++
                         val isRightSide = offset.x > size.width / 2
                         if (isRightSide) {
                             controller?.seekTo(currentPosition + 10000L)
@@ -809,6 +873,7 @@ fun VideoPlayer(
 }
 
 private const val HISTORY_UPSERT_INTERVAL_MS = 5000L
+private const val CONTROLS_AUTO_HIDE_DELAY_MS = 2000L
 
 /** Formats a tempo multiplier for display: whole values as "2", fractional as "1.5". */
 private fun formatTempo(speed: Float): String {

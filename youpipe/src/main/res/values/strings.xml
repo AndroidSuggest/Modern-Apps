@@ -288,4 +288,11 @@
     <string name="lock_controls">Lock controls</string>
     <!-- Player controls: content description for the unlock button shown while controls are locked. Verb phrase -->
     <string name="unlock_controls">Unlock controls</string>
+
+    <!-- Player section header in general settings. Noun -->
+    <string name="label_player">Player</string>
+    <!-- Toggle: keep video player controls always visible instead of auto-hiding. Verb phrase -->
+    <string name="label_keep_controls_visible">Keep player controls visible</string>
+    <!-- Description for keep-controls toggle: controls stay on screen rather than hiding after inactivity. Accessibility feature -->
+    <string name="label_keep_controls_visible_description">Controls stay on screen instead of hiding after 2 seconds. Useful for accessibility.</string>
 </resources>

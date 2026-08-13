@@ -41,6 +41,7 @@ fun GeneralSettingsPage(
     val deArrowEnabled by ypvm.deArrowEnabled.collectAsState()
     val youtubeLanguage by ypvm.youtubeLanguage.collectAsState()
     val defaultPage by ypvm.defaultPage.collectAsState()
+    val keepControlsVisible by ypvm.keepPlayerControlsVisible.collectAsState()
 
     AppScaffold(
         title = stringResource(R.string.settings_general_content),
@@ -62,6 +63,14 @@ fun GeneralSettingsPage(
                     supportingText = stringResource(R.string.label_dearrow_description),
                     checked = deArrowEnabled,
                     onCheckedChange = { ypvm.setDeArrowEnabled(it) },
+                )
+            }
+            SettingsSection(title = stringResource(R.string.label_player)) {
+                SettingsSwitchRow(
+                    title = stringResource(R.string.label_keep_controls_visible),
+                    supportingText = stringResource(R.string.label_keep_controls_visible_description),
+                    checked = keepControlsVisible,
+                    onCheckedChange = { ypvm.setKeepPlayerControlsVisible(it) },
                 )
             }
             SettingsSection(title = stringResource(R.string.label_youtube_content)) {

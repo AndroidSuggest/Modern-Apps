@@ -1065,6 +1065,18 @@ class YouPipeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DEFAULT_SPONSOR_CATEGORIES)
     val sponsorBlockCategories: StateFlow<Set<String>> = _sponsorBlockCategories
 
+    private val _keepPlayerControlsVisible: StateFlow<Boolean> = DataStoreUtils
+        .getInstance(application)
+        .booleanFlow("keep_player_controls_visible")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val keepPlayerControlsVisible: StateFlow<Boolean> = _keepPlayerControlsVisible
+
+    fun setKeepPlayerControlsVisible(keepVisible: Boolean) {
+        viewModelScope.launch {
+            DataStoreUtils.getInstance(getApplication()).setBoolean("keep_player_controls_visible", keepVisible)
+        }
+    }
+
     fun setDeArrowEnabled(enabled: Boolean) {
         viewModelScope.launch {
             DataStoreUtils.getInstance(getApplication()).setBoolean("dearrow_enabled", enabled)
