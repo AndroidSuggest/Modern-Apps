@@ -29,4 +29,14 @@
     <string name="default_address">Vaikimisi aadress</string>
     <string name="set_default">Määra vaikimisi kasutatavaks</string>
     <string name="edit">Muuda</string>
+    <string name="checkout">Suundu maksma</string>
+    <string name="order_summary">Tellimuse kokkuvõte</string>
+    <string name="order_type">Tellimuse tüüp</string>
+    <string name="delivery">Kohaletoimetamine</string>
+    <string name="pickup">Järeletulemine</string>
+    <string name="delivery_address">Kohaletoimetamise aadress</string>
+    <string name="no_saved_addresses_add_one_in_account_se">Ühtegi salvestatud aadressi pole. Kasutajakonto seadistustest lisa mõni.</string>
+    <string name="delivery_instructions_optional">Kohaletoimetamise juhend (kui on vaja)</string>
+    <string name="tip">Jootraha</string>
+    <string name="promo_code">Allahindluskood</string>
 </resources>
