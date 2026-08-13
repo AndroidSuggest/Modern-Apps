@@ -37,9 +37,17 @@ import kotlinx.coroutines.launch
  * line, with sign-in / sign-out and the connected GV number.
  */
 @Composable
-fun AccountsScreen(onBack: () -> Unit, onSignIn: () -> Unit) {
+fun AccountsScreen(
+    onBack: () -> Unit,
+    onSignIn: () -> Unit,
+    onRegisterWhatsApp: () -> Unit = {},
+    onImportBackup: () -> Unit = {},
+) {
     val context = LocalContext.current
     val session = remember { GoogleVoiceSession.get(context) }
+    val waSession = remember { com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession.get(context) }
+    val waSignedIn by waSession.signedInFlow.collectAsState(initial = false)
+    val waNumber by waSession.phoneNumberFlow.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
     val signedIn by session.signedInFlow.collectAsState(initial = false)
     val number by session.phoneNumberFlow.collectAsState(initial = null)
@@ -124,6 +132,42 @@ fun AccountsScreen(onBack: () -> Unit, onSignIn: () -> Unit) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            // WhatsApp primary line.
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                    ListItem(
+                        leadingContent = { IconPerson() },
+                        content = { Text("WhatsApp", fontWeight = FontWeight.SemiBold) },
+                        supportingContent = {
+                            Text(if (waSignedIn) (waNumber ?: "Registered") else "Not registered")
+                        },
+                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (waSignedIn) {
+                            OutlinedButton(
+                                onClick = {
+                                    scope.launch {
+                                        waSession.signOut(context)
+                                        AppMessages.show("Signed out of WhatsApp")
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Sign out") }
+                        } else {
+                            Button(onClick = onRegisterWhatsApp, modifier = Modifier.fillMaxWidth()) {
+                                Text("Register")
+                            }
+                        }
+                        OutlinedButton(onClick = onImportBackup, modifier = Modifier.fillMaxWidth()) {
+                            Text("Import backup (.crypt15)")
+                        }
+                    }
+                }
             }
         }
     }

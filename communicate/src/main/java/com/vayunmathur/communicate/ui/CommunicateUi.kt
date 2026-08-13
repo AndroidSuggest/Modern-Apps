@@ -199,6 +199,7 @@ fun lineLabel(line: CommunicateLine, subscriptionId: Int?, alwaysShowSim: Boolea
     val context = LocalContext.current
     return when (line) {
         CommunicateLine.GoogleVoice -> stringResource(R.string.line_gv)
+        CommunicateLine.WhatsApp -> "WhatsApp"
         CommunicateLine.Sim -> {
             val sims = remember { SimManager.activeSims(context) }
             // Only label SIM rows when there's more than one SIM (or explicitly requested).
@@ -220,8 +221,12 @@ fun rememberLineChoices(): List<LineChoice> {
     val context = LocalContext.current
     val session = remember { GoogleVoiceSession.get(context) }
     val gv by session.signedInFlow.collectAsState(initial = false)
-    return remember(gv) {
-        SimManager.simLineChoices(context) + if (gv) listOf(LineChoice.GoogleVoice) else emptyList()
+    val waSession = remember { com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession.get(context) }
+    val wa by waSession.signedInFlow.collectAsState(initial = false)
+    return remember(gv, wa) {
+        SimManager.simLineChoices(context) +
+            (if (gv) listOf(LineChoice.GoogleVoice) else emptyList()) +
+            (if (wa) listOf(LineChoice.WhatsApp) else emptyList())
     }
 }
 

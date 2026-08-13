@@ -56,6 +56,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.content.Context
+import android.telephony.TelephonyManager
+import androidx.compose.foundation.layout.heightIn
+import com.google.i18n.phonenumbers.PhoneNumberUtil
+import com.vayunmathur.communicate.data.CommunicateContact
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -106,8 +111,8 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
         },
         floatingActionButton = {
             FloatingActionButton(onClick = {
-                // With more than one line, let the user pick which SIM / Google Voice to text from.
-                if (lineChoices.size > 1) showPicker = true else CommunicateRepository.openSmsComposer(context)
+                // Open the contact picker to choose a recipient + line.
+                showPicker = true
             }) {
                 IconAdd()
             }
@@ -241,42 +246,107 @@ private fun NewMessagePicker(
     onDismiss: () -> Unit,
     onCompose: (com.vayunmathur.communicate.data.LineChoice, String) -> Unit,
 ) {
-    var number by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val region = remember { deviceRegion(context) }
+    var query by remember { mutableStateOf("") }
     var selected by remember(choices) { mutableStateOf(choices.firstOrNull()) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.new_message)) },
         text = {
             Column {
-                OutlinedTextField(
-                    value = number,
-                    onValueChange = { number = it.filter { c -> c.isDigit() || c == '+' } },
+                val sel = selected
+                if (sel != null && choices.size > 1) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.choose_line),
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        LineSelector(choices = choices, selected = sel, onSelect = { selected = it })
+                    }
+                }
+                androidx.compose.material3.OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text(stringResource(R.string.phone_number)) },
+                    placeholder = { Text("Search name or number") },
                     singleLine = true,
                 )
-                Spacer(Modifier.size(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        stringResource(R.string.choose_line),
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(end = 8.dp),
-                    )
-                    val sel = selected
-                    if (sel != null) {
-                        LineSelector(choices = choices, selected = sel, onSelect = { selected = it })
+                Spacer(Modifier.size(8.dp))
+                PermissionGate(
+                    permission = Manifest.permission.READ_CONTACTS,
+                    message = "Allow contacts access to pick a recipient.",
+                ) { rev ->
+                    val contacts by produceState(initialValue = emptyList<CommunicateContact>(), rev) {
+                        value = withContext(Dispatchers.IO) { CommunicateRepository.loadContacts(context) }
+                    }
+                    val q = query.trim()
+                    val qDigits = q.filter { it.isDigit() }
+                    val filtered = if (q.isEmpty()) {
+                        contacts
+                    } else {
+                        contacts.filter { c ->
+                            c.name.contains(q, ignoreCase = true) ||
+                                (qDigits.isNotEmpty() && c.phoneNumber.filter { it.isDigit() }.contains(qDigits))
+                        }
+                    }
+                    val exactExists = qDigits.isNotEmpty() &&
+                        contacts.any { it.phoneNumber.filter { c -> c.isDigit() }.endsWith(qDigits) }
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp)) {
+                        // Fallback: message a raw number that isn't in contacts (shown formatted).
+                        if (qDigits.length >= 4 && !exactExists) {
+                            item {
+                                ContactPickRow(title = "Send to ${formatNumber(q, region)}", subtitle = null) {
+                                    selected?.let { onCompose(it, q) }
+                                }
+                            }
+                        }
+                        items(filtered, key = { it.id }) { c ->
+                            ContactPickRow(title = c.name, subtitle = c.phoneNumber) {
+                                selected?.let { onCompose(it, c.phoneNumber) }
+                            }
+                        }
                     }
                 }
             }
         },
-        confirmButton = {
-            TextButton(
-                onClick = { val s = selected; if (s != null && number.isNotBlank()) onCompose(s, number) },
-                enabled = selected != null && number.isNotBlank(),
-            ) { Text(stringResource(R.string.send)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.clear)) }
-        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.clear)) } },
     )
 }
+
+@Composable
+private fun ContactPickRow(title: String, subtitle: String?, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+    ) {
+        Text(title, fontWeight = FontWeight.Medium)
+        if (subtitle != null) {
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Device region (SIM > network > locale) for phone-number formatting/parsing. */
+private fun deviceRegion(context: Context): String {
+    val tm = runCatching { context.getSystemService(TelephonyManager::class.java) }.getOrNull()
+    return (tm?.simCountryIso?.takeIf { it.isNotBlank() } ?: tm?.networkCountryIso)?.uppercase()
+        ?: context.resources.configuration.locales[0].country.ifEmpty { "US" }
+}
+
+/** Human-friendly display of a typed number (national format), falling back to the raw input. */
+private fun formatNumber(raw: String, region: String): String = runCatching {
+    val util = PhoneNumberUtil.getInstance()
+    util.format(util.parse(raw, region), PhoneNumberUtil.PhoneNumberFormat.NATIONAL)
+}.getOrDefault(raw)

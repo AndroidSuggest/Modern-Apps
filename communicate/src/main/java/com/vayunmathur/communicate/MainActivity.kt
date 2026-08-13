@@ -35,6 +35,9 @@ import com.vayunmathur.communicate.ui.DialerScreen
 import com.vayunmathur.communicate.ui.MessagesScreen
 import com.vayunmathur.communicate.ui.call.CallScreen
 import com.vayunmathur.communicate.ui.googlevoice.GoogleVoiceSignInScreen
+import com.vayunmathur.communicate.ui.whatsapp.WhatsAppRegistrationScreen
+import com.vayunmathur.communicate.telephony.WhatsAppSyncService
+import com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.serialization.Serializable
 
@@ -44,6 +47,8 @@ sealed interface Route : NavKey {
     @Serializable data object CallLogs : Route
     @Serializable data object Accounts : Route
     @Serializable data object GoogleVoiceSignIn : Route
+    @Serializable data object WhatsAppRegistration : Route
+    @Serializable data object WhatsAppBackupImport : Route
 
     @Serializable
     data class Conversation(
@@ -84,7 +89,14 @@ private fun CommunicateApp() {
     val context = LocalContext.current
     val session = remember { GoogleVoiceSession.get(context) }
     val gvSignedIn by session.signedInFlow.collectAsState(initial = false)
+    val waSession = remember { WhatsAppLineSession.get(context) }
+    val waSignedIn by waSession.signedInFlow.collectAsState(initial = false)
     val callState by GoogleVoiceCallManager.state.collectAsState()
+
+    // Own the WhatsApp always-on receive state via its foreground sync service.
+    LaunchedEffect(waSignedIn) {
+        if (waSignedIn) WhatsAppSyncService.start(context) else WhatsAppSyncService.stop(context)
+    }
 
     // Keep the Telecom account fresh, but let the foreground service own always-on receive state.
     LaunchedEffect(gvSignedIn) {
@@ -104,6 +116,8 @@ private fun CommunicateApp() {
     val currentRoot = when (currentPage) {
         is Route.Conversation -> Route.Messages
         is Route.Accounts, is Route.GoogleVoiceSignIn -> Route.Messages
+        is Route.WhatsAppRegistration -> Route.Messages
+        is Route.WhatsAppBackupImport -> Route.Messages
         else -> currentPage
     }
     val pages = listOf(
@@ -146,12 +160,25 @@ private fun CommunicateApp() {
             AccountsScreen(
                 onBack = { backStack.pop() },
                 onSignIn = { backStack.add(Route.GoogleVoiceSignIn) },
+                onRegisterWhatsApp = { backStack.add(Route.WhatsAppRegistration) },
+                onImportBackup = { backStack.add(Route.WhatsAppBackupImport) },
             )
         }
         entry<Route.GoogleVoiceSignIn> {
             GoogleVoiceSignInScreen(
                 onBack = { backStack.pop() },
                 onSignedIn = { backStack.pop() },
+            )
+        }
+        entry<Route.WhatsAppRegistration> {
+            WhatsAppRegistrationScreen(
+                onBack = { backStack.pop() },
+                onRegistered = { backStack.pop() },
+            )
+        }
+        entry<Route.WhatsAppBackupImport> {
+            com.vayunmathur.communicate.ui.whatsapp.WhatsAppBackupImportScreen(
+                onBack = { backStack.pop() },
             )
         }
         entry<Route.Conversation> { route ->

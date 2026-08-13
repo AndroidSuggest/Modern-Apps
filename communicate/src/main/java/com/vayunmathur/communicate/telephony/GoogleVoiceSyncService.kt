@@ -47,13 +47,17 @@ class GoogleVoiceSyncService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Always enter the foreground first: startForegroundService() requires a startForeground()
+        // call within ~5s, including the ACTION_STOP path (MainActivity calls stop() at launch when
+        // signed out, on a fresh install where this service was never started → crash otherwise).
+        ensureChannels()
+        startForegroundCompat(buildSyncNotification())
+
         if (intent?.action == ACTION_STOP) {
             shutdown()
             return START_NOT_STICKY
         }
 
-        ensureChannels()
-        startForegroundCompat(buildSyncNotification())
         GoogleVoiceCallManager.init(this)
         GoogleVoiceCallManager.onIncomingCall = { from -> GoogleVoiceTelecom.addIncoming(this, from) }
 

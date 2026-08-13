@@ -8,6 +8,7 @@ package com.vayunmathur.communicate.data
 enum class CommunicateLine {
     Sim,
     GoogleVoice,
+    WhatsApp,
 }
 
 /**
@@ -25,6 +26,11 @@ sealed interface LineChoice {
     data object GoogleVoice : LineChoice {
         override val label = "Google Voice"
         override val category get() = CommunicateLine.GoogleVoice
+    }
+
+    data object WhatsApp : LineChoice {
+        override val label = "WhatsApp"
+        override val category get() = CommunicateLine.WhatsApp
     }
 }
 
@@ -82,6 +88,10 @@ data class SmsThread(
      */
     val remoteId: String? = null,
     val subscriptionId: Int? = null,
+    /** WhatsApp (and future group-capable lines): true for group chats. */
+    val isGroup: Boolean = false,
+    /** Optional avatar URL/path for the thread (WhatsApp contact/group photo). */
+    val avatarUrl: String? = null,
 )
 
 data class SmsMessage(
@@ -96,4 +106,9 @@ data class SmsMessage(
     val remoteId: String? = null,
     val attachments: List<CommunicateAttachment> = emptyList(),
     val subscriptionId: Int? = null,
+    /**
+     * Line-specific rich payload as JSON. For WhatsApp this is [WhatsAppServiceData]
+     * (reactions/polls/edited/revoked/quoted/group). Null for SIM/GV.
+     */
+    val serviceData: String? = null,
 )

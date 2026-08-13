@@ -372,6 +372,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "communicate_signal"
+version = "0.1.0"
+dependencies = [
+ "aes 0.8.4",
+ "curve25519-dalek",
+ "hmac 0.12.1",
+ "jni",
+ "rand_core 0.6.4",
+ "sha2 0.10.9",
+ "subtle",
+ "x25519-dalek",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

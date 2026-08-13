@@ -20,7 +20,7 @@
     <string name="permission_call_logs_message">Allow Call log access to show recent calls.</string>
     <string name="permission_all_message">Allow contacts, SMS, and call log access to use Communicate.</string>
     <string name="grant_permission">Grant permission</string>
-    <string name="empty_messages">No SMS conversations found</string>
+    <string name="empty_messages">No conversations yet</string>
     <string name="empty_contacts">No contacts found</string>
     <string name="empty_call_logs">No recent calls found</string>
     <string name="new_message">New message</string>

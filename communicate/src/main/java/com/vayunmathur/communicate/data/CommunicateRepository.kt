@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.Telephony
+import android.telephony.TelephonyManager
 import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import androidx.core.content.ContextCompat
@@ -21,6 +22,14 @@ import com.vayunmathur.communicate.data.googlevoice.GvCall
 import com.vayunmathur.communicate.data.googlevoice.GvCallType
 import com.vayunmathur.communicate.data.googlevoice.GvMessage
 import com.vayunmathur.communicate.data.googlevoice.GvThread
+import com.vayunmathur.communicate.data.whatsapp.WhatsAppClient
+import com.vayunmathur.communicate.data.whatsapp.WhatsAppDatabase
+import com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession
+import com.vayunmathur.communicate.data.whatsapp.WhatsAppServiceData
+import com.vayunmathur.communicate.data.whatsapp.WhatsAppCachedMessage
+import com.vayunmathur.communicate.data.whatsapp.WhatsAppConversation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.vayunmathur.library.ui.ExternalIntents
 
 object CommunicateRepository {
@@ -288,7 +297,8 @@ object CommunicateRepository {
     suspend fun loadSmsThreadsMerged(context: Context): List<SmsThread> {
         val sim = loadSmsThreads(context)
         val gv = loadGoogleVoiceThreads(context)
-        return (sim + gv).sortedByDescending { it.timestampMillis }
+        val wa = loadWhatsAppThreads(context)
+        return (sim + gv + wa).sortedByDescending { it.timestampMillis }
     }
 
     /** Route by line: SIM threads read the provider; GV threads hit `api2thread/get`. */
@@ -301,6 +311,12 @@ object CommunicateRepository {
                     GoogleVoiceClient.get(context).getThread(remoteId)
                         .map { it.toSmsMessage(thread.threadId, context) }
                 }.getOrDefault(emptyList())
+            }
+            CommunicateLine.WhatsApp -> {
+                // New conversations have no remoteId yet — derive the JID from the address so the
+                // outgoing echo (cached under the same normalized JID) shows immediately.
+                val jid = thread.remoteId?.takeIf { it.isNotBlank() } ?: toWhatsAppJid(context, thread.address)
+                loadWhatsAppMessages(context, jid)
             }
         }
 
@@ -344,6 +360,23 @@ object CommunicateRepository {
             GoogleVoiceClient.get(context).sendPreparedSms(sendBody)
             true
         }.getOrDefault(false)
+        LineChoice.WhatsApp -> withContext(Dispatchers.IO) {
+            runCatching {
+                // For WhatsApp the conversation is addressed by JID: use the thread's remoteId when
+                // replying to an existing chat, else derive a 1:1 JID from the phone number.
+                val jid = threadRemoteId ?: toWhatsAppJid(context, address)
+                val ok = if (attachments.isEmpty()) {
+                    WhatsAppClient.sendMessage(jid, body)
+                } else {
+                    // Media send goes through the dedicated path; here just send any caption text.
+                    if (body.isNotBlank()) WhatsAppClient.sendMessage(jid, body) else true
+                }
+                // Echo the outgoing message into the local cache so it shows in our own thread
+                // (a primary-only line gets no server echo of its own sends).
+                if (ok && body.isNotBlank()) cacheOutgoingWhatsApp(context, jid, body)
+                ok
+            }.getOrDefault(false)
+        }
     }
 
     /** Send an SMS from a specific SIM subscription and store it in the Sent box. */
@@ -406,6 +439,197 @@ object CommunicateRepository {
 
     /** Stable positive Long key for a GV remote id, kept clear of provider thread ids. */
     fun stableThreadId(remoteId: String): Long = (remoteId.hashCode().toLong() and 0xFFFFFFFFL) or 0x1_0000_0000L
+
+    // ------------------------------------------------------------------
+    // WhatsApp primary line: threads/messages read from the local Room cache
+    // (populated by WhatsAppEventProcessor), rich actions delegate to WhatsAppClient.
+    // ------------------------------------------------------------------
+
+    /** Virtual (network-backed) lines that don't map to a physical SIM subscription. */
+    val isVirtualLine = setOf(CommunicateLine.GoogleVoice, CommunicateLine.WhatsApp)
+
+    private suspend fun loadWhatsAppThreads(context: Context): List<SmsThread> {
+        if (!WhatsAppLineSession.get(context).isSignedIn()) return emptyList()
+        return runCatching {
+            val db = WhatsAppDatabase.getDatabase(context)
+            db.cachedMessageDao().getLatestPerConversation().map { m ->
+                val sd = WhatsAppServiceData.parse(m.serviceData)
+                val jid = m.conversationJid
+                val isGroup = sd?.isGroup ?: jid.endsWith("@g.us")
+                val unread = db.conversationDao().getConversation(jid)?.unreadCount ?: 0
+                SmsThread(
+                    threadId = stableThreadId(jid),
+                    address = jidToDisplayAddress(jid),
+                    displayName = whatsAppDisplayName(context, jid, sd),
+                    snippet = if (m.isRevoked) "This message was deleted" else m.body,
+                    timestampMillis = m.timestamp,
+                    unreadCount = unread,
+                    line = CommunicateLine.WhatsApp,
+                    remoteId = jid,
+                    isGroup = isGroup,
+                    avatarUrl = null,
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private suspend fun loadWhatsAppMessages(context: Context, jid: String): List<SmsMessage> =
+        runCatching {
+            val db = WhatsAppDatabase.getDatabase(context)
+            db.cachedMessageDao().getForConversation(jid).map { m ->
+                SmsMessage(
+                    id = (m.messageId.hashCode().toLong() and 0xFFFFFFFFL),
+                    threadId = stableThreadId(jid),
+                    address = jidToDisplayAddress(jid),
+                    body = if (m.isRevoked) "" else m.body,
+                    timestampMillis = m.timestamp,
+                    outgoing = m.outgoing,
+                    read = true,
+                    line = CommunicateLine.WhatsApp,
+                    remoteId = m.messageId,
+                    serviceData = m.serviceData,
+                )
+            }
+        }.getOrDefault(emptyList())
+
+    // -- WhatsApp rich actions (delegate to the client) --
+
+    suspend fun sendWhatsAppReaction(
+        jid: String,
+        messageId: String,
+        emoji: String,
+        targetFromMe: Boolean,
+        targetSenderJid: String?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        WhatsAppClient.sendReaction(jid, messageId, emoji, targetFromMe, targetSenderJid)
+    }
+
+    suspend fun editWhatsAppMessage(jid: String, messageId: String, newBody: String): Boolean =
+        withContext(Dispatchers.IO) { WhatsAppClient.sendEdit(jid, messageId, newBody) }
+
+    suspend fun revokeWhatsAppMessage(jid: String, messageId: String, senderJid: String = ""): Boolean =
+        withContext(Dispatchers.IO) { WhatsAppClient.sendRevoke(jid, messageId, senderJid) }
+
+    suspend fun sendWhatsAppPollVote(
+        jid: String,
+        pollMessageId: String,
+        pollCreatorJid: String,
+        pollFromMe: Boolean,
+        selectedOptionNames: List<String>,
+    ): Boolean = withContext(Dispatchers.IO) {
+        WhatsAppClient.sendPollVote(jid, pollMessageId, pollCreatorJid, pollFromMe, selectedOptionNames)
+    }
+
+    suspend fun createWhatsAppPoll(
+        jid: String,
+        question: String,
+        options: List<String>,
+        selectableCount: Int = 0,
+    ): String? = withContext(Dispatchers.IO) {
+        WhatsAppClient.sendPollCreation(jid, question, options, selectableCount)
+    }
+
+    suspend fun sendWhatsAppMedia(jid: String, bytes: ByteArray, mimeType: String, fileName: String?): Boolean =
+        withContext(Dispatchers.IO) { WhatsAppClient.sendMedia(jid, bytes, mimeType, fileName) }
+
+    suspend fun sendWhatsAppReadReceipt(
+        jid: String,
+        lastMessageId: String?,
+        lastTimestamp: Long,
+        senderJid: String? = null,
+    ): Boolean = withContext(Dispatchers.IO) {
+        WhatsAppClient.sendReadReceipt(jid, lastMessageId, lastTimestamp, senderJid)
+    }
+
+    /**
+     * Mark a WhatsApp conversation read: clear the local unread badge and send a `read` receipt for
+     * the latest inbound message (blue ticks on the sender's side). [alreadyReadId] is the last
+     * message we already receipted, so the foreground poll doesn't re-send. Returns the id now
+     * marked read (or [alreadyReadId] when there is nothing newer).
+     */
+    suspend fun markWhatsAppRead(
+        context: Context,
+        remoteId: String?,
+        address: String,
+        alreadyReadId: String?,
+    ): String? = withContext(Dispatchers.IO) {
+        val jid = remoteId?.takeIf { it.isNotBlank() } ?: toWhatsAppJid(context, address)
+        val db = WhatsAppDatabase.getDatabase(context)
+        runCatching {
+            db.conversationDao().getConversation(jid)?.let {
+                if (it.unreadCount != 0) db.conversationDao().upsert(it.copy(unreadCount = 0))
+            }
+        }
+        val lastInbound = runCatching {
+            db.cachedMessageDao().getForConversation(jid).lastOrNull { !it.outgoing }
+        }.getOrNull() ?: return@withContext alreadyReadId
+        if (lastInbound.messageId == alreadyReadId) return@withContext alreadyReadId
+        // For groups the receipt needs the participant; 1:1 goes to the chat JID itself.
+        val sender = if (jid.endsWith("@g.us")) lastInbound.senderJid.takeIf { it.isNotBlank() } else null
+        runCatching {
+            WhatsAppClient.sendReadReceipt(jid, lastInbound.messageId, lastInbound.timestamp / 1000, sender)
+        }
+        lastInbound.messageId
+    }
+
+    /** numeric local part of a JID (strips :device and .agent suffixes). */
+    private fun jidLocalPart(jid: String): String =
+        jid.substringBefore("@").substringBefore(":").substringBefore(".")
+
+    private fun jidToDisplayAddress(jid: String): String {
+        if (jid.endsWith("@g.us")) return jid
+        val phone = jidLocalPart(jid)
+        return if (phone.isNotEmpty() && phone.all { it.isDigit() }) "+$phone" else phone
+    }
+
+    private fun whatsAppDisplayName(context: Context, jid: String, sd: WhatsAppServiceData?): String? {
+        if (jid.endsWith("@g.us")) return sd?.senderName // group display name not cached in v1
+        val phone = jidLocalPart(jid)
+        return findContactName(context, "+$phone") ?: sd?.senderName
+    }
+
+    /**
+     * Build a 1:1 WhatsApp JID from a phone number / address. WhatsApp JIDs require the FULL
+     * international number (country code, no '+'), so a nationally-typed number like "2134774209"
+     * must be normalized to "12134774209" — otherwise usync returns 0 devices and the message goes
+     * nowhere. Uses libphonenumber with the SIM/locale region to infer the country code.
+     */
+    private fun toWhatsAppJid(context: Context, address: String): String {
+        if (address.contains("@")) return address
+        val region = runCatching {
+            val tm = context.getSystemService(TelephonyManager::class.java)
+            (tm?.simCountryIso?.takeIf { it.isNotBlank() } ?: tm?.networkCountryIso)?.uppercase()
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: context.resources.configuration.locales[0].country.ifEmpty { "US" }
+        val e164 = runCatching {
+            val util = com.google.i18n.phonenumbers.PhoneNumberUtil.getInstance()
+            val parsed = util.parse(address, region)
+            util.format(parsed, com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat.E164)
+        }.getOrNull()
+        val normalized = (e164 ?: address).filter { it.isDigit() }
+        return "$normalized@s.whatsapp.net"
+    }
+
+    /** Insert an outgoing WhatsApp message into the local cache so it shows in our own thread. */
+    private suspend fun cacheOutgoingWhatsApp(context: Context, jid: String, body: String) {
+        runCatching {
+            val db = WhatsAppDatabase.getDatabase(context)
+            val now = System.currentTimeMillis()
+            db.cachedMessageDao().upsert(
+                WhatsAppCachedMessage(
+                    messageId = "local-${java.util.UUID.randomUUID()}",
+                    conversationJid = jid,
+                    body = body,
+                    timestamp = now,
+                    outgoing = true,
+                ),
+            )
+            val existing = db.conversationDao().getConversation(jid)
+            db.conversationDao().upsert(
+                (existing ?: WhatsAppConversation(chatJid = jid)).copy(lastMessageTimestamp = now),
+            )
+        }
+    }
 
     private fun GvThread.toSmsThread(context: Context): SmsThread = SmsThread(
         threadId = stableThreadId(id),

@@ -88,6 +88,7 @@ fun ConversationScreen(
     val fixedLineChoice = remember(line, subscriptionId, lineChoices) {
         when (line) {
             CommunicateLine.GoogleVoice -> LineChoice.GoogleVoice
+            CommunicateLine.WhatsApp -> LineChoice.WhatsApp
             CommunicateLine.Sim -> lineChoices
                 .filterIsInstance<LineChoice.Sim>()
                 .firstOrNull { subscriptionId == null || it.subscriptionId == subscriptionId }
@@ -139,6 +140,24 @@ fun ConversationScreen(
                 kotlinx.coroutines.delay(10_000)
                 refresh++
             }
+        }
+    }
+    // WhatsApp messages land in local Room via the socket→event-processor; poll the cache so inbound
+    // (and our own outgoing echo) appear live while the conversation is open. Cheap local reads.
+    androidx.compose.runtime.LaunchedEffect(line) {
+        if (line == CommunicateLine.WhatsApp) {
+            while (true) {
+                kotlinx.coroutines.delay(2_000)
+                refresh++
+            }
+        }
+    }
+    // Send WhatsApp read receipts (and clear the unread badge) for the open conversation. Re-runs on
+    // each poll tick; the repository guards against re-sending for an already-read message.
+    var waLastReadId by remember(remoteId, address) { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(line, remoteId, refresh) {
+        if (line == CommunicateLine.WhatsApp) {
+            waLastReadId = CommunicateRepository.markWhatsAppRead(context, remoteId, address, waLastReadId)
         }
     }
 
@@ -208,7 +227,7 @@ fun ConversationScreen(
                             fixedLineChoice,
                             address,
                             text,
-                            if (fixedLineChoice is LineChoice.GoogleVoice) remoteId else null,
+                            if (fixedLineChoice is LineChoice.Sim) null else remoteId,
                             attachments,
                         )
                         if (ok) refresh++ else AppMessages.show(context.getString(R.string.gv_send_failed))
@@ -478,22 +497,90 @@ private fun MessageBubble(message: SmsMessage) {
         bottomEnd = if (message.outgoing) 4.dp else 20.dp,
     )
 
+    val sd = if (message.line == CommunicateLine.WhatsApp) {
+        com.vayunmathur.communicate.data.whatsapp.WhatsAppServiceData.parse(message.serviceData)
+    } else {
+        null
+    }
+    val bodyText = when {
+        sd?.isRevoked == true -> "🚫 This message was deleted"
+        else -> message.body
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = alignment,
     ) {
-        if (message.body.isNotBlank()) {
+        // Group sender name (incoming group messages).
+        if (!message.outgoing && sd?.senderName != null) {
+            Text(
+                sd.senderName,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 14.dp),
+            )
+        }
+        // Quoted reply preview.
+        if (sd?.quotedBody != null) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.widthIn(max = 320.dp).padding(horizontal = 14.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    (sd.quotedSender?.let { "$it: " } ?: "") + sd.quotedBody,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (bodyText.isNotBlank()) {
             Surface(
                 color = bubbleColor,
                 contentColor = contentColor,
                 shape = shape,
                 modifier = Modifier.widthIn(max = 320.dp),
             ) {
-                Text(
-                    message.body,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    fontSize = 15.sp,
-                )
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text(bodyText, fontSize = 15.sp)
+                    // Poll rendering.
+                    if (sd?.pollQuestion != null) {
+                        Spacer(Modifier.size(4.dp))
+                        Text("📊 ${sd.pollQuestion}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        sd.pollOptions.forEach { opt ->
+                            Text("• ${opt.name} (${opt.voteCount})", fontSize = 13.sp)
+                        }
+                    }
+                    if (sd?.isEdited == true) {
+                        Text(
+                            "edited",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f),
+                        )
+                    }
+                }
+            }
+        }
+        // Reaction chips.
+        if (sd != null && sd.reactions.isNotEmpty()) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                sd.reactions.forEach { r ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(50),
+                    ) {
+                        Text(
+                            if (r.count > 1) "${r.emoji} ${r.count}" else r.emoji,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
             }
         }
         message.attachments.forEach { attachment ->

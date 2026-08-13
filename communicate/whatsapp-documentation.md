@@ -386,3 +386,335 @@ Relay/proxy/TURN/STUN note: exact TURN/STUN hostnames were not found in the Java
 - Call media transport and encryption internals are mostly behind `Voip`/JNI/native media engine boundaries; Java shows callbacks, key derivation hooks, and signaling wrappers, not the full RTP/SRTP implementation.
 - Some DEX xref class names collide with JADX deobfuscated filesystem names. For those, the DEX owner signature is more reliable than the Java filename.
 - The generated 805-candidate inventory at `C:\Users\Vayun\Documents\code\Modern-Apps\apk-analysis\whatsapp\full_endpoint_inventory.csv` includes many SDK docs/store URLs and allowlist hosts; this document focuses on network-relevant endpoints and protocol flows with reverse-slice evidence.
+
+## Registration Attestation — RECOVERED (token / ENC / H, pure Java)
+
+Follow-up deep-dive (for the `communicate` primary-client effort) established that the `/v2/*`
+registration attestation is **not native** for this APK — it is reproducible from Java alone.
+
+### `token` param (`/v2/code`) — refutes "token is in libwhatsapp.so"
+
+Call chain:
+`com/whatsapp/registration/p144ui/task/RequestCodeRepository$requestCode$2.java:99-105`
+computes `token = ES2.A00.A01(application, phoneNumber)` where `ES2.A00` is a `p000X.C34029EuU`
+singleton; it is forwarded verbatim through
+`KotlinRegistrationBridge$generateAuthCodeBlocking$1` into
+`KotlinRegistrationBridge.A06(...)` (`.../core/http/KotlinRegistrationBridge.java:703`, fallback
+`:1102`) where `c34244EyE.A01("token", str8)` (line 730) adds it to the form body.
+
+Generator `p000X.C34029EuU.A01(Context, String phoneNumber)`
+(`jadx-fallback-out/sources/p000X/C34029EuU.java:50-200`) — pure `javax.crypto`, **no `native`,
+no `System.loadLibrary`, no JniBridge**:
+```
+password = packageName.getBytes(UTF_8) || bytes(res/drawable-hdpi/about_logo.png)
+salt     = Base64.decode(ES3.A00)
+dk       = SecretKeyFactory("PBKDF2WithHmacSHA1And8BIT").deriveKey(password, salt, iters=128, keyLenBits=512)
+mac      = Mac("HmacSHA1"); mac.init(dk)
+mac.update(signatureBytes)     // PackageManager GET_SIGNATURES of com.whatsapp
+mac.update(MD5(classes.dex))   // MessageDigest MD5 over ZipFile(packageCodePath)."classes.dex"
+mac.update(phoneNumber.getBytes(UTF_8))
+token    = Base64UrlSafeNoWrap(mac.doFinal())
+```
+
+### `ENC` param (encrypted query string) — Curve25519 ECDH → AES-256-GCM
+
+`jadx-fallback-out/.../core/http/retry/RetryingHttpClient.java:236-281`
+(`RegistrationEncryption/encryptQueryString`):
+```
+eph    = X25519 ephemeral keypair (AbstractC172807jm.A01())
+shared = X25519(eph.priv, ES4.A00)          // ES4.A00 = 32-byte server static pub, keytype 5
+key    = shared as AES-256 key
+iv     = 12 bytes
+ct     = AES/GCM/NoPadding(key, iv, plaintextQueryString)   // 128-bit tag
+ENC    = eph.pub(32) || iv(12) || ct||tag   (base64)
+```
+
+### `H` param — key-attestation HMAC
+
+`RetryingHttpClient.java:297-315` (`RegistrationBodyBuilder/signWithKeyAttestation`):
+`H = C1DC.A07(bodyBytes, key = C1DB.A0I())` — HMAC using a locally generated key persisted by
+`C1DB` (SharedPreferences "keystore" / AndroidKeyStore).
+
+### Constants
+- **ES3 salt (Base64)** — `p000X/ES3.java:7`:
+  `PkTwKSZqUfAUyR0rPQ8hYJ0wNsQQ3dW1+3SCnyTXIfEAxxS75FwkDf47wNv/c8pP3p0GXKR6OOQmhyERwx74fw1RYSU10I4r1gyBVDbRJ40pidjM41G1I1oN`
+- **ES4 server X25519 public key (hex)** — `p000X/ES4.java:7-11`:
+  `8e8c0f74c3ebc5d7a6865c6c3c843856b06121cce8ea774d22fb6f122512302d`
+- App-pinned token inputs to extract from `apk-analysis/whatsapp/apks`: `com.whatsapp` packageName,
+  `res/drawable-hdpi/about_logo.png` bytes, WhatsApp signing-cert bytes, `MD5(classes.dex)`, exact
+  app version. All four must come from the **same** APK build that `WA_VERSION` claims.
+
+## Registration `bad_param: platform` — SOLVED via un-superpacking the native lib
+
+**Update (resolved):** The earlier hypothesis that `platform` is an opaque native param was WRONG.
+`split_config.arm64_v8a.apk/lib/arm64-v8a/libs.so` is a thin ELF whose `.data` is a **superpack
+archive** (exports `_superpack_archive_start/_end/_size`) of ~140 **XZ-compressed** `.so` files. The
+real native lib is `libwhatsappmerged.so` (XZ stream #0, ~6.9 MB decompressed). Un-superpacking it
+(scan for XZ magic `FD 37 7A 58 5A 00`, `lzma.LZMADecompressor(FORMAT_XZ)` per stream — see
+`apk-analysis/whatsapp/unpack_superpack.py`) exposes plaintext strings.
+
+Dumping the decompressed lib's registration param-key cluster (around the `backup_token` string)
+gives WhatsApp's **complete** `/v2/*` param key set:
+```
+advertising_id, method, context, clicked_education_link, manage_call_permission,
+call_log_permission, token, client_start_message, code, auth_response,
+encrypted_verifier_data, email, reset, wipe, wipe_token, consent, current_screen,
+previous_screen, action_taken, device_exp_id, fdid, expid, access_session_id,
+backup_token, authkey, e_keytype, e_regid, e_ident, e_skey_id, e_skey_val, e_skey_sig
+```
+and the response-reason strings (`sent`, `fail`, `bad_token`, `bad_param`, `missing_param`,
+`old_platform`, `too_many`, ...).
+
+**`platform` is NOT a form parameter anywhere in WhatsApp's registration.** Therefore the server
+error `{"param":"platform","reason":"bad_param"}` is the server failing to **derive the client
+platform from the `User-Agent`** — our bug was mangling the UA with `.replace(' ', '_')` on the whole
+string (destroying the `WhatsApp/<v> Android/<os> Device/<dev>` separators). Fix: correct the UA
+(sanitize only the device token) and do NOT send a `platform` form param. Confirmed the real reg
+host is `v.whatsapp.net` (also `vx.whatsapp.net`), plain HTTPS.
+
+Tooling used: radare2 6.2.0 (`r2blob.static.exe`) confirmed `libs.so` exports the superpack symbols
+and has no plaintext JNI strings (packed); Python `lzma` un-superpacked it; the decompressed
+`libwhatsappmerged.so` has the plaintext param table above.
+
+## Verification pass (cross-checked communicate impl vs. APK) — fixes applied
+
+After un-superpacking, the reproduced client was cross-checked against the APK + the companion
+reference. Results:
+
+- **token attestation** — VALIDATED live (server accepted it; no `bad_token`). Algorithm/constants
+  correct.
+- **`id` / `expid` / `backup_token` / e2e-bundle encoding** — match `C34244EyE`
+  (`A05`=percent-encode, `A03`=UUID→16B→urlsafe-b64, `A04`=urlsafe-b64) and the companion's
+  `e_regid`(4B) / `e_keytype`(0x05) / `e_skey_id`(3B via `copyOfRange(1,4)`).
+- **`platform`** — CONFIRMED not a form param anywhere in WhatsApp; server derives it from the
+  User-Agent. Removed the bogus `platform=android`; fixed UA mangling.
+- **`registrationId`** — FIXED: was `1..0xFFFFFE`; the reference uses `random.nextInt(0x3FFF)+1`
+  (14-bit Signal id) and `signedPreKeyId = 1`. Now matches.
+- **crypt15 backup** — key derivation was a guess; made **self-verifying**: the decryptor tries the
+  candidate HKDF/expand-only/raw derivations and lets AES-256-GCM's auth tag select the correct one
+  (see `backup/Crypt15Decryptor.kt`).
+- **endpoints** — `v.whatsapp.net` (registration REST) and `g.whatsapp.net` (mobile Noise) both
+  confirmed present in the DEX (`e1..e16.whatsapp.net` are edge fallbacks). Noise port 443 is the
+  standard default (not a distinct literal); revisit in the Phase-4 login spike.
+- **method** values `sms`/`voice`(/`flash`) confirmed in `RequestCodeRepository`.
+
+Still pending LIVE validation (only reachable once registration returns `sent`): the primary Noise
+`ClientPayload` (`passive`/`pull`), the raw-socket endpoint/port, and the call-signaling stanza
+shape (Phase 10 spike).
+
+---
+
+# communicate — WhatsApp Primary Client Implementation Guide (WORKING)
+
+This section documents the *working* reimplementation of WhatsApp as a **primary client**
+(own phone-number registration, like a fresh install — NOT a QR/companion) inside the
+`communicate` app. Everything below was verified live on a real number (US, +1 650‑398‑8058,
+device density xxhdpi, WhatsApp v2.26.29.73 / versionCode 262907320).
+
+## 0. Status — what works live
+
+- ✅ **Registration** (`/v2/code` → SMS → `/v2/register` → `status:ok`). Takes over the number
+  (deregisters the real WhatsApp app on the other device — expected for a primary client).
+- ✅ **Noise login** to `g.whatsapp.net:443` (XX handshake, `<success>`, prekey upload, offline
+  sync, keepalives).
+- ✅ **1:1 message send** (usync device list → Signal fan‑out → `pkmsg`/`msg` → server `<ack>`),
+  with local outgoing echo.
+- ✅ **1:1 message receive** (inbound decrypt → event → Room → conversation view).
+- ✅ **Read receipts** (outgoing: sending `read` when the conversation is opened).
+- ✅ **Contact picker + as‑you‑type / E.164 normalization** for choosing recipients.
+- ⚠️ Not yet exercised live: media send/receive, groups, reactions/polls/edits/revokes UI round‑trip,
+  inbound receipt→tick UI (sent/delivered/read state on our own messages), calls (Phase‑10 spike only).
+
+## 1. Architecture / file map (all under `communicate/src/main/`)
+
+- `data/whatsapp/registration/`
+  - `WhatsAppRegistrationConstants.kt` — pinned constants (package, salt, dex md5, server X25519
+    pubkey, asset paths, host `v.whatsapp.net`).
+  - `RegistrationAttestation.kt` — `computeToken` (PBKDF2‑HMAC‑SHA1 + HMAC‑SHA1), `encryptQueryString`
+    (ENC), `signWithAttestation` (H).
+  - `RegEncoding.kt` — the exact `C34244EyE` encoders: `b64Url` (flag 11), `uuidToBytes`,
+    `percentEncode` (EPJ.A00).
+  - `WhatsAppDeviceFingerprint.kt` — persisted fdid (UUID), expid (UUID), recovery `id` (16B),
+    `backup_token` (20B), attestation key (32B).
+  - `RegistrationKeys.kt` — identity/noise/signed‑prekey generation + the `/v2/*` E2E key bundle.
+  - `RegistrationHttpClient.kt` — the `/v2/code|register|security|exist` client (param builder +
+    query encoder + User‑Agent + response parsing).
+- `data/whatsapp/transport/`
+  - `WhatsAppSocket.kt` — raw TCP + Noise_XX_25519_AESGCM_SHA256 to `g.whatsapp.net:443`,
+    length‑framed, `send()` is `synchronized`.
+  - `PrimaryClientPayload.kt` — primary (non‑companion) `ClientPayload`.
+- `data/whatsapp/WhatsAppClient.kt` — the ported message engine (stanza dispatch, login,
+  encrypt/decrypt, usync fan‑out, receipts, history sync). Pairing/QR/ADV removed.
+- `data/whatsapp/WhatsAppLineSession.kt` — DataStore‑backed line session (signed‑in flag, phone).
+- `data/whatsapp/WhatsAppDatabase.kt` — Room DB `communicate_whatsapp.db` (E2E stores + message/
+  reaction/conversation cache).
+- `data/whatsapp/WhatsAppEventProcessor.kt` — drains `WhatsAppClient.events` into Room.
+- `data/whatsapp/WhatsAppServiceData.kt` — JSON blob for rich features on `SmsMessage.serviceData`.
+- `data/whatsapp/e2e/` + `src/main/rust/` (crate `communicate_signal`) — Signal primitives (JNI).
+- `data/CommunicateRepository.kt` — merges WhatsApp into the SIM/GV inbox model; send/receive/
+  read/normalization glue.
+- `ui/whatsapp/WhatsAppRegistrationScreen.kt`, `ui/MessagesScreen.kt` (contact picker),
+  `ui/ConversationScreen.kt`, `telephony/WhatsAppSyncService.kt` (FGS).
+
+## 2. Registration — the full recovered contract
+
+**Endpoints** (plain HTTPS, host `v.whatsapp.net`; `g.whatsapp.net`/`e1..e16.whatsapp.net` are the
+Noise hosts): `POST /v2/code`, `/v2/register`, `/v2/security`, `/v2/exist`. Body is
+`application/x-www-form-urlencoded`. The official client tries an `ENC`/`H` wrapper and falls back to
+plain — plain is accepted, so we default to plain.
+
+**Param encoders** (mirror `C34244EyE`; see `RegEncoding.kt`):
+- `A00(k,int)` → literal `"true"`/`"false"` (only 0/1).
+- `A01(k,String)` → plain.
+- `A02(k,String)` → plain if non‑null.
+- `A03(k,uuid)` → `b64Url(uuidToBytes(uuid))` (URL‑safe base64, no pad; flag 11).
+- `A04(k,bytes)` → `b64Url(bytes)`.
+- `A05(k,bytes)` → `percentEncode(bytes)` (RFC‑3986, keeps `-._~`), stored **pre‑encoded** (never
+  re‑URL‑encoded at query build).
+- `A06(map)` → per‑entry `percentEncode(byte[])`.
+
+**`/v2/code` param set** (what we send): `cc`, `in`, `lg`, `lc`, `fdid`(A01 UUID string),
+`expid`(A03), `id`(A05), `backup_token`(A05), `token`(A01), `method`(sms/voice), the three
+`*_permission`/`clicked_education_link` booleans (A00), the 7‑field E2E bundle
+`authkey/e_ident/e_keytype/e_regid/e_skey_id/e_skey_val/e_skey_sig` (A04 url‑safe base64), plus the
+device fields `mcc/mnc/sim_mcc/sim_mnc/network_radio_type/simnum/hasinrc/pid/rc`.
+**`platform` is NOT a form param** — the server derives it from the **User‑Agent**.
+
+**User‑Agent (critical):** `WhatsApp/2.26.29.73 Android/<osrel> Device/<mfr>-<model>` — the three
+space separators MUST be preserved (only the device token is sanitized). A wrong UA →
+`{"param":"platform","reason":"bad_param"}`.
+
+**`token` (the attestation gate).** Recovered as pure Java (`C34029EuU.A01`):
+```
+token = Base64_STANDARD(               // AbstractC169977f8.A0n = Base64 flag 2 (NOT url-safe!)
+          HMAC-SHA1(
+            key = PBKDF2WithHmacSHA1And8BIT(
+                    password = "com.whatsapp".bytes || about_logo.png bytes,
+                    salt = base64.decode(ES3),  iterations = 128,  keyLen = 512 bits),
+            msg = signingCertDER || MD5(classes.dex) || phoneNationalDigits))
+```
+Key details that each caused a real failure until fixed:
+- Base64 variant is **standard w/ padding** (flag 2, `A0n`), not url‑safe/no‑pad (flag 11, `A0o`,
+  which is only for `expid` + the E2E bundle). Wrong → `param:token, bad_format`.
+- The phone fed to the token is the **NATIONAL number only** (`ES2.A00.A01(app, $phoneNumber)`;
+  `$countryCode` is separate). Wrong (cc+national) → `bad_token`.
+- `PBKDF2WithHmacSHA1And8BIT` ≡ PBKDF2‑HMAC‑SHA1 with the password bytes used directly (the "8BIT"
+  conversion is `char & 0xFF`), so a manual PBKDF2 over the raw bytes is byte‑exact.
+- `about_logo.png` is **density‑specific** (lives in `split_config.<density>.apk`); the token uses
+  the device's density variant. We bundle the xxhdpi one; on a different‑density device you must
+  bundle that density's logo (or read it from the installed split).
+- `registrationId` = `random(0x3FFF)+1` (14‑bit Signal id), `signedPreKeyId = 1`.
+
+**`/v2/register` success may omit `new_jid`** (for `type:"existing"` re‑registration it returns
+`login` + `lid` instead). Treat `status:ok` as success and derive the JID from `login`
+(`<login>@s.whatsapp.net`); capture `lid`.
+
+**Live journey (each was a distinct fix):** `bad_param:platform` (UA) → `bad_param:id`
+(double‑encoding) → `bad_format:token` (base64 variant) → `bad_token` (national number) →
+`register:ok`.
+
+## 3. Un‑superpacking the native lib (how the constants were confirmed)
+
+`split_config.arm64_v8a.apk/lib/arm64-v8a/libs.so` is a thin ELF whose `.data` is a **superpack
+archive** (exports `_superpack_archive_start/_end/_size`) of ~140 **XZ‑compressed** `.so` files
+(one is `libwhatsappmerged.so`). To read plaintext strings/param tables:
+```
+# scan for XZ magic FD 37 7A 58 5A 00; decompress each stream with Python stdlib lzma
+python apk-analysis/whatsapp/unpack_superpack.py   # -> unpacked/stream_0_*.so (libwhatsappmerged)
+```
+radare2 6.2.0 (`r2blob.static.exe`) confirms `libs.so` has only the 3 superpack exports; the real
+symbols/strings live in the decompressed stream. This is how we confirmed the full param‑key table
+and that `platform` is not a form param.
+
+## 4. Noise transport & login (`WhatsAppSocket` + `WhatsAppClient`)
+
+- Raw TCP to **`g.whatsapp.net:443`**, then Noise_XX_25519_AESGCM_SHA256: `ClientHello` →
+  `ServerHello` (verify server static cert) → `ClientFinish` (carrying the encrypted
+  `ClientPayload`). Frames are 3‑byte big‑endian length prefixed.
+- `PrimaryClientPayload`: platform ANDROID, `passive=false`, `pull=false`, app version
+  `2.26.29.73`. On success the server returns `<success ... lid=... >`; we then upload prekeys,
+  run offline sync, and send keepalives.
+- `WhatsAppSocket.send()` is `synchronized` (per‑frame AES‑GCM counter must not interleave).
+
+## 5. Message send
+
+Path: `ConversationScreen → CommunicateRepository.sendMessage(LineChoice.WhatsApp) →
+WhatsAppClient.sendMessage(jid, body)`.
+- **Threading (critical):** all WhatsApp socket work MUST run on `Dispatchers.IO`. The UI uses
+  Compose's Main‑dispatcher `rememberCoroutineScope()`, so the repository wraps every WhatsApp call
+  in `withContext(Dispatchers.IO)`. A main‑thread `ws.send` throws `NetworkOnMainThreadException`
+  mid‑frame → desyncs the Noise counter → `<stream:error>{bad-mac}` → disconnect.
+- **Recipient JID normalization (critical):** the typed number must be full **E.164 (with country
+  code, no `+`)** or `usync` returns 0 devices and the message goes nowhere. `toWhatsAppJid` uses
+  libphonenumber with the SIM/locale region (`2134774209` → `12134774209@s.whatsapp.net`).
+- Flow: `usync` device list → Signal fan‑out to recipient devices + our own other devices (skipping
+  our primary) → `pkmsg` (new session, includes identity) or `msg` → server `<ack class=message>`.
+- **Outgoing echo:** a primary‑only line gets no server echo of its own sends, so on success we cache
+  the outgoing message locally (`cacheOutgoingWhatsApp`) so it shows in our thread.
+
+## 6. Message receive & the event pipeline
+
+Inbound stanza → `WhatsAppClient` decrypt → `WhatsAppEvent` (SharedFlow) → `WhatsAppEventProcessor`
+→ Room → UI (2s foreground poll of the local cache while a conversation is open; 15s poll of the
+thread list).
+- **JID normalization (critical):** the client tags inbound `conversationId = "wa:<jid>"` (a
+  messages‑module convention). The processor's `chatJid()` strips the `wa:` prefix **and** any
+  `:device` suffix (`user:5@server → user@server`) so inbound + outgoing land in the same
+  conversation. Without this, `jidLocalPart("wa:…")` renders as the literal **"wa"** and creates a
+  phantom thread.
+- **Unread de‑dupe:** unread is incremented only for a genuinely new `messageId` (the same stanza
+  can arrive live + via offline replay), and cleared to 0 when the conversation is opened.
+- Timestamps are milliseconds everywhere (inbound `t*1000`, outgoing `currentTimeMillis`).
+
+## 7. Read receipts
+
+`CommunicateRepository.markWhatsAppRead` (called from `ConversationScreen` on open + each poll,
+guarded by the last‑read message id): clears the local unread badge and sends a `read` receipt for
+the latest inbound message via `WhatsAppClient.sendReadReceipt(jid, msgId, t/1000, participant)`
+(participant only for groups). Requires `readReceipts=on` (server reported it on).
+
+## 8. E2E crypto
+
+Signal primitives (X25519, Ed25519/XEdDSA sign, HKDF, AES‑GCM) live in the Rust crate
+`communicate_signal` (`src/main/rust/`, JNI symbols under
+`Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_`), copied from `messages`
+(NOT depended on — repo rule). Session/identity/prekey/sender‑key records persist in Room
+(`whatsapp_e2e_*` tables), format‑versioned to the Rust record.
+
+## 9. Bugs found & fixed (chronological)
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| crash on open | `WhatsAppClient.stop()` used `appContext` before `init()`, and wiped auth | init‑guard; `stop()` no longer clears creds |
+| crash on open (2) | FGS `ACTION_STOP` didn't call `startForeground()` | call `startForeground` first in `onStartCommand` (WA + GV services) |
+| `bad_param:platform` | mangled User‑Agent (`.replace(' ','_')` on whole UA) | keep UA separators; `platform` is UA‑derived, not a form param |
+| `bad_param:id` | `id`/`backup_token` double‑encoded | percent‑encode once, mark pre‑encoded (A05) |
+| `bad_format:token` | url‑safe base64 for token | standard base64 (flag 2, `A0n`) |
+| `bad_token` | token used cc+national | token uses **national** number only |
+| still "not registered" | register `ok` had no `new_jid` | treat `ok` as success; derive JID from `login`/`lid` |
+| send failed / `bad-mac` | socket write on main thread | run all WA calls on `Dispatchers.IO` |
+| "sent to nobody" | recipient JID missing country code | libphonenumber E.164 normalization |
+| sent msg not shown | new convo `remoteId=null`; no outgoing echo | loader derives JID from address; cache outgoing |
+| inbound in "wa" thread | `conversationId="wa:<jid>"` prefix | `chatJid()` strips `wa:`+device suffix |
+| unread over‑count (2 for 1) | unread bumped per event incl. replays | bump only for new `messageId`; clear on open |
+
+## 10. Rebuild / install / debug
+
+```
+./gradlew.bat :communicate:assembleDebug
+adb install -r communicate/build/outputs/apk/debug/communicate-debug.apk
+adb logcat -d | findstr "WARegHttp WhatsAppClient WhatsAppSocket WAEventProcessor"
+```
+Registration debug: `checkExist` ("Check number (no SMS)") logs the computed token and probes
+`/v2/exist` without sending an SMS — use it to validate params before spending an SMS.
+
+## 11. Remaining work / caveats
+
+- Media (send/receive), groups, and the rich‑feature round‑trips (reactions/polls/edits/revokes)
+  compile but are not yet live‑verified.
+- Inbound receipts → sent/delivered/read tick UI on our own messages is not wired.
+- `about_logo.png` is pinned to xxhdpi + WhatsApp v2.26.29.73; a WhatsApp version bump or a
+  different‑density device requires re‑pinning `CLASSES_DEX_MD5_HEX`, `WA_VERSION`, and the logo.
+- Calls are a signaling‑only spike (Phase 10a); no media engine.
+- This is an unofficial primary‑client reimplementation: registering deregisters WhatsApp on the
+  number's real phone and carries real ToS/ban risk — use a test number.
