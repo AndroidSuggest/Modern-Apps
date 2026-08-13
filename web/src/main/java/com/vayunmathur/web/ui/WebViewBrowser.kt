@@ -56,6 +56,7 @@ fun WebViewBrowser(
     modifier: Modifier = Modifier,
     onRequestNewTab: (String) -> Unit = {},
     webViewPool: MutableMap<String, WebView>,
+    onLinkLongPress: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val holder = remember(tabId) { WebViewHolder() }
@@ -124,6 +125,19 @@ fun WebViewBrowser(
             webViewPool[tabId]?.let { existing ->
                 (existing.parent as? ViewGroup)?.removeView(existing)
                 applySettings(existing, viewModel)
+                existing.setOnLongClickListener {
+                    val hit = existing.hitTestResult
+                    val url: String? = when (hit?.type) {
+                        WebView.HitTestResult.SRC_ANCHOR_TYPE,
+                        WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> hit.extra
+                        else -> null
+                    }
+                    if (!url.isNullOrBlank()) {
+                        onLinkLongPress(url)
+                        return@setOnLongClickListener true
+                    }
+                    false
+                }
                 return@AndroidView existing
             }
 
@@ -138,6 +152,23 @@ fun WebViewBrowser(
                 cookieManager.setAcceptThirdPartyCookies(this, !viewModel.blockThirdPartyCookies)
 
                 applySettings(this, viewModel)
+
+                // Long-press on a link: intercept before WebView's default tooltip/context menu
+                setOnLongClickListener {
+                    val hit = hitTestResult
+                    val hitType = hit?.type
+                    val url: String? = when (hitType) {
+                        WebView.HitTestResult.SRC_ANCHOR_TYPE,
+                        WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> hit.extra
+                        else -> null
+                    }
+                    if (!url.isNullOrBlank()) {
+                        onLinkLongPress(url)
+                        return@setOnLongClickListener true
+                    }
+                    false
+                }
+
 
                 setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
                     val fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
@@ -387,6 +418,20 @@ fun WebViewBrowser(
             applySettings(webView, viewModel)
             (webView.webViewClient as? ShieldsWebViewClient)
                 ?.installFarbling(webView, farblingConfig)
+            // Keep the long-press handler in sync after pool reuse / recomposition
+            webView.setOnLongClickListener {
+                val hit = webView.hitTestResult
+                val url: String? = when (hit?.type) {
+                    WebView.HitTestResult.SRC_ANCHOR_TYPE,
+                    WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> hit.extra
+                    else -> null
+                }
+                if (!url.isNullOrBlank()) {
+                    onLinkLongPress(url)
+                    return@setOnLongClickListener true
+                }
+                false
+            }
             holder.webView = webView
         }
     )

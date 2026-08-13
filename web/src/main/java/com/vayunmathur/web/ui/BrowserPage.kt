@@ -124,6 +124,7 @@ fun BrowserPage(
 
     var showMenu by remember { mutableStateOf(false) }
     var showInstallDialog by remember { mutableStateOf(false) }
+    var linkContextMenuUrl by remember { mutableStateOf<String?>(null) }
     val searchFocusRequester = remember { FocusRequester() }
 
     BackHandler(enabled = viewModel.showTabSwitcher) { viewModel.showTabSwitcher = false }
@@ -405,6 +406,7 @@ fun BrowserPage(
                                     viewModel = viewModel,
                                     webViewPool = webViewPool,
                                     onRequestNewTab = { url -> viewModel.newTab(url = url) },
+                                    onLinkLongPress = { url -> linkContextMenuUrl = url },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
@@ -498,6 +500,29 @@ fun BrowserPage(
                         }
                     } catch (_: Exception) { viewModel.clearFileChooser() }
                 }
+            )
+        }
+
+        linkContextMenuUrl?.let { linkUrl ->
+            LinkContextMenu(
+                url = linkUrl,
+                onDismiss = { linkContextMenuUrl = null },
+                onCopyLink = {
+                    com.vayunmathur.library.ui.ExternalIntents.copyToClipboard(
+                        context,
+                        linkUrl,
+                        linkUrl,
+                    )
+                    com.vayunmathur.library.util.AppMessages.show(context.getString(R.string.link_copied))
+                },
+                onShareLink = {
+                    com.vayunmathur.library.ui.ExternalIntents.shareText(
+                        context,
+                        linkUrl,
+                        context.getString(R.string.share_link),
+                    )
+                },
+                onOpenInNewTab = { viewModel.newTab(url = linkUrl) },
             )
         }
 
