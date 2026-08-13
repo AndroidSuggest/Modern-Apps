@@ -125,6 +125,12 @@
     <string name="status_finding_driver">Finding your driver</string>
     <string name="ride_complete">Ride complete</string>
 
+    <!-- Live Update notification -->
+    <string name="ride_tracking_channel">Ride tracking</string>
+    <string name="ride_tracking_channel_desc">Ongoing updates while your ride is in progress</string>
+    <!-- %1$s = status label e.g. Driver is on the way, %2$d = minutes remaining -->
+    <string name="notif_status_eta">%1$s · %2$d min</string>
+
     <!-- Account -->
     <string name="sign_out">Sign out</string>
     <string name="sign_out_title">Sign out of Lyft?</string>

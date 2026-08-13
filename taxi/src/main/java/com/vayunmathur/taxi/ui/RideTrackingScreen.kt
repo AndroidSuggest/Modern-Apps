@@ -66,6 +66,7 @@ import com.vayunmathur.taxi.data.RideStatus
 import com.vayunmathur.taxi.data.RideStatusResult
 import com.vayunmathur.taxi.data.RideStopInfo
 import com.vayunmathur.taxi.lyft.LyftProvider
+import com.vayunmathur.taxi.notifications.RideTrackingService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -143,6 +144,9 @@ fun RideTrackingScreen(rideId: String) {
 
     // Active-ride poll: status, driver/vehicle details, per-stop ETA.
     LaunchedEffect(rideId) {
+        // Keep the background Live Update tracker running for this ride too, so tracking
+        // opened from the Current ride tab (or a re-opened app) is covered. Idempotent.
+        RideTrackingService.start(context, rideId)
         while (true) {
             when (val result = provider.activeRide()) {
                 is RideStatusResult.Active -> {

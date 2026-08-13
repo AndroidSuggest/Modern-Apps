@@ -38,6 +38,7 @@ import com.vayunmathur.taxi.data.PaymentMethodsResult
 import com.vayunmathur.taxi.data.Place
 import com.vayunmathur.taxi.data.RideQuote
 import com.vayunmathur.taxi.lyft.LyftProvider
+import com.vayunmathur.taxi.notifications.RideTrackingService
 import kotlinx.coroutines.launch
 
 /** Everything the Lyft booking flow needs, gathered when the user taps a Lyft fare. */
@@ -110,7 +111,11 @@ fun LyftBookingFlow(
                 )
             ) {
                 is BookingResult.DryRun -> Step.DryRun(result.requestJson)
-                is BookingResult.Created -> Step.Created(result.rideId, result.status, result.raw)
+                is BookingResult.Created -> {
+                    // Kick off the background Live Update tracker for the new ride.
+                    RideTrackingService.start(context, result.rideId)
+                    Step.Created(result.rideId, result.status, result.raw)
+                }
                 is BookingResult.Failed -> Step.Failed(result.message)
                 BookingResult.Unsupported ->
                     Step.Failed(context.getString(R.string.booking_no_payment))
