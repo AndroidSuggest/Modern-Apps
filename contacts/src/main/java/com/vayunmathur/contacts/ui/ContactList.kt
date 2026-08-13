@@ -66,6 +66,7 @@ import com.vayunmathur.contacts.util.ContactSorting.groupKey
 import com.vayunmathur.contacts.util.ContactSorting.sortedLocale
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.contacts.util.ContactsActions
+import com.vayunmathur.contacts.util.SimContactsActions
 import com.vayunmathur.contacts.util.ContactsTab
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconSettings

@@ -36,6 +36,7 @@ import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FilledTonalButton
+import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.InputChip
 import com.vayunmathur.library.ui.MaterialTheme

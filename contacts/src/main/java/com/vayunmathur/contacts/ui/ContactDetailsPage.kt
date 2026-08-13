@@ -92,6 +92,7 @@ import com.vayunmathur.library.ui.IconEvent
 import com.vayunmathur.library.ui.IconGroup
 import com.vayunmathur.library.ui.IconLocationOn
 import com.vayunmathur.library.ui.IconMail
+import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.IconSms

@@ -40,6 +40,13 @@ val materialSymbolsRef = "819d78680a849ceef4c78f863d8753e3160b7c89"
 val materialSymbolsCache = File(gradle.gradleUserHomeDir, "material-symbols-cache")
 
 extensions.configure<com.android.build.api.variant.ApplicationAndroidComponentsExtension> {
+    // Only `dev` and `release` ship. AGP always creates a `debug` build type and
+    // forbids removing it, so disable its variants instead — no debug variant means
+    // no assembleDebug/compileDebugKotlin tasks are generated. (The `debug` *signing*
+    // config is untouched; `release` still falls back to it, and testBuildType = "dev".)
+    beforeVariants(selector().withBuildType("debug")) { variant ->
+        variant.enable = false
+    }
     onVariants { variant ->
         val gen = tasks.register(
             "generate${variant.name.replaceFirstChar { it.uppercase() }}LauncherIcon",
@@ -62,8 +69,8 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
     buildFeatures {
         compose = true
         // Repo-wide DEV_BUILD flag (see buildTypes below). Every app gets a
-        // BuildConfig.DEV_BUILD constant: true for assembleDev/assembleDebug,
-        // false for assembleRelease. Gate experimental/dev-only features on it so
+        // BuildConfig.DEV_BUILD constant: true for assembleDev, false for
+        // assembleRelease. Gate experimental/dev-only features on it so
         // R8 strips them from release builds.
         buildConfig = true
     }
@@ -128,6 +135,10 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         }
     }
 
+    // AGP auto-creates a `debug` build type; this repo only ships `dev` and `release`.
+    // Point all test tasks at `dev` before dropping `debug` in the block below.
+    testBuildType = "dev"
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -141,12 +152,6 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
                 getDefaultProguardFile("proguard-android-optimize.txt"), proguardFile.absolutePath,
             )
             buildConfigField("boolean", "DEV_BUILD", "false")
-        }
-        debug {
-            ndk {
-                abiFilters.add("arm64-v8a")
-            }
-            buildConfigField("boolean", "DEV_BUILD", "true")
         }
         create("dev") {
             initWith(getByName("release"))

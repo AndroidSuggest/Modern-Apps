@@ -52,8 +52,8 @@ val screenshotsOut = File(rootDir, "metadata_data/photos/$moduleKey")
 // recording mode the images land in the reference dir; they are an intermediate for us (see
 // .gitignore), though keeping them is also what would let `validate…ScreenshotTest` act as
 // UI regression testing later.
-val referenceDir = File(projectDir, "src/screenshotTestDebug/reference")
-val renderedDir = File(layout.buildDirectory.get().asFile, "outputs/screenshotTest-results/preview/debug/rendered")
+val referenceDir = File(projectDir, "src/screenshotTestDev/reference")
+val renderedDir = File(layout.buildDirectory.get().asFile, "outputs/screenshotTest-results/preview/dev/rendered")
 
 /**
  * Collects rendered previews into `metadata_data/photos/<module-key>/`.
@@ -99,7 +99,7 @@ tasks.register<CollectPreviewScreenshots>("metadata") {
         "Render Compose previews and copy them into metadata_data/photos/$moduleKey (no device required)"
     // `update…` renders the previews and writes them out; `validate…` would additionally
     // diff them against a committed baseline, which we do not keep.
-    dependsOn("updateDebugScreenshotTest")
+    dependsOn("updateScreenshotTest")
     sourceDirs.set(listOf(referenceDir, renderedDir))
     destination.set(screenshotsOut)
     label.set(path)

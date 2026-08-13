@@ -28,4 +28,4 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Check All Apps Compile
-        run: ./gradlew :compileDebugKotlin
+        run: ./gradlew :compileDevKotlin
