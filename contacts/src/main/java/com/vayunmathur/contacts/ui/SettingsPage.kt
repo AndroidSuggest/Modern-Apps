@@ -52,6 +52,11 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
         }
     }
 
+    val hasSim by viewModel.hasSim.collectAsStateWithLifecycle()
+    val simContacts by viewModel.simContacts.collectAsStateWithLifecycle()
+    val defaultTarget by viewModel.defaultContactTarget.collectAsStateWithLifecycle()
+    var simMessage by remember { mutableStateOf<String?>(null) }
+
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/vcard"),
         onResult = { uri ->
@@ -178,6 +183,67 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
                     }
                 )
                 HorizontalDivider()
+                // SIM import/export
+                ListItem(
+                    content = { Text(stringResource(R.string.sim_contacts)) },
+                    supportingContent = {
+                        Text(
+                            if (!hasSim) stringResource(R.string.no_sim_inserted)
+                            else if (simContacts.isEmpty()) stringResource(R.string.no_sim_contacts)
+                            else "${simContacts.size} " + stringResource(R.string.sim_contacts)
+                        )
+                    },
+                    trailingContent = {
+                        Row {
+                            IconButton(onClick = { viewModel.loadSimContacts() }) { IconRefresh() }
+                            IconButton(
+                                enabled = hasSim && simContacts.isNotEmpty(),
+                                onClick = {
+                                    viewModel.importAllSimContacts { count ->
+                                        simMessage = if (count > 0) context.getString(R.string.sim_import_success, count) else context.getString(R.string.sim_import_failed)
+                                    }
+                                }
+                            ) { IconDownload() }
+                        }
+                    }
+                )
+                if (simMessage != null) {
+                    Text(simMessage!!, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp, top = 4.dp))
+                }
+                HorizontalDivider()
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.default_save_location),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text(
+                    text = stringResource(R.string.default_save_location_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = defaultTarget == ContactViewModel.ContactDraftTarget.DEVICE,
+                        onClick = { viewModel.setDefaultContactTarget(ContactViewModel.ContactDraftTarget.DEVICE) },
+                        label = { Text(stringResource(R.string.device)) }
+                    )
+                    FilterChip(
+                        selected = defaultTarget == ContactViewModel.ContactDraftTarget.SIM,
+                        onClick = { if (hasSim) viewModel.setDefaultContactTarget(ContactViewModel.ContactDraftTarget.SIM) },
+                        enabled = hasSim,
+                        label = { Text(stringResource(R.string.sim_card)) }
+                    )
+                }
+                if (!hasSim) {
+                    Text(stringResource(R.string.no_sim_available), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                }
+                HorizontalDivider(modifier = Modifier.padding(top = 12.dp))
             }
 
             item {

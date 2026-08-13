@@ -34,7 +34,17 @@ data class ContactListUiState(
     /** Contact open in the detail pane, highlighted in the list on a wide screen. */
     val openContactId: Long? = null,
     val showAddButton: Boolean = true,
+    val simContacts: List<com.vayunmathur.contacts.data.SimContact> = emptyList(),
+    val hasSim: Boolean = false,
 )
+
+interface SimContactsActions {
+    fun importSimContact(simContact: com.vayunmathur.contacts.data.SimContact) {}
+    fun deleteSimContact(simContact: com.vayunmathur.contacts.data.SimContact) {}
+    fun importAllSimContacts() {}
+    fun refreshSim() {}
+    companion object { val Noop: SimContactsActions = object : SimContactsActions {} }
+}
 
 /** Everything the contact details page draws. */
 data class ContactDetailsUiState(

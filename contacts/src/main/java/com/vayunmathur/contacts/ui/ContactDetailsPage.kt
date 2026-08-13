@@ -150,9 +150,12 @@ fun ContactDetailsPage(
         value = withContext(Dispatchers.IO) { PackageUtils.isGoogleMeetInstalled(context) }
     }
     val groups by viewModel.groups.collectAsStateWithLifecycle()
+    val hasSim by viewModel.hasSim.collectAsStateWithLifecycle()
 
     val scope = rememberCoroutineScope()
     val shareContactLabel = stringResource(R.string.share_contact)
+    val simExportSuccess = stringResource(R.string.sim_export_success)
+    val simExportFailed = stringResource(R.string.sim_export_failed)
 
     ContactDetailsScreen(
         state = ContactDetailsUiState(
@@ -173,6 +176,12 @@ fun ContactDetailsPage(
             }
         },
         showBackButton = showBackButton,
+        hasSim = hasSim,
+        onExportToSim = { c ->
+            viewModel.exportContactToSim(c) { ok ->
+                android.widget.Toast.makeText(context, if (ok) simExportSuccess else simExportFailed, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        },
     )
 }
 
@@ -185,7 +194,9 @@ fun ContactDetailsPage(
 fun ContactDetailsScreen(
     state: ContactDetailsUiState,
     actions: ContactsActions,
-    showBackButton: Boolean = true
+    showBackButton: Boolean = true,
+    hasSim: Boolean = false,
+    onExportToSim: ((Contact) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val contact = state.contact
@@ -210,6 +221,20 @@ fun ContactDetailsScreen(
                         actions.shareContacts(listOf(contact), "${contact.name.value.replace(' ', '_')}.vcf")
                     }) {
                         IconShare()
+                    }
+                    var showMore by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { showMore = true }) { IconMoreVert() }
+                        DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.export_to_sim)) },
+                                enabled = hasSim,
+                                onClick = {
+                                    showMore = false
+                                    onExportToSim?.invoke(contact)
+                                }
+                            )
+                        }
                     }
                     IconButton(onClick = { actions.confirmDeleteContact(contact) }) {
                         IconDelete()

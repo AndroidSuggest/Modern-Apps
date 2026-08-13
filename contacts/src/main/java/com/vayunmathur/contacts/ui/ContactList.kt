@@ -101,12 +101,15 @@ fun ContactList(
     LaunchedEffect(Unit) {
         viewModel.loadContacts()
         viewModel.loadAccounts()
+        viewModel.loadSimContacts()
     }
 
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val showAccountLabels by viewModel.showAccountLabels.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val simContacts by viewModel.simSearchResults.collectAsStateWithLifecycle()
+    val hasSim by viewModel.hasSim.collectAsStateWithLifecycle()
 
     val last = backStack.last()
 
@@ -122,6 +125,8 @@ fun ContactList(
                 else -> null
             },
             showAddButton = last !is Route.EditContact,
+            simContacts = simContacts,
+            hasSim = hasSim,
         ),
         actions = object : ContactsActions by viewModel {
             override fun openContact(contact: Contact) = onContactClick(contact)
@@ -138,6 +143,12 @@ fun ContactList(
 
             override fun selectTab(tab: ContactsTab) = navigateToTab(backStack, tab)
         },
+        simActions = object : SimContactsActions {
+            override fun importSimContact(simContact: com.vayunmathur.contacts.data.SimContact) { viewModel.importSimContact(simContact) }
+            override fun deleteSimContact(simContact: com.vayunmathur.contacts.data.SimContact) { viewModel.deleteSimContact(simContact) }
+            override fun importAllSimContacts() { viewModel.importAllSimContacts() }
+            override fun refreshSim() { viewModel.loadSimContacts() }
+        }
     )
 }
 
@@ -147,7 +158,7 @@ fun ContactList(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactListScreen(state: ContactListUiState, actions: ContactsActions) {
+fun ContactListScreen(state: ContactListUiState, actions: ContactsActions, simActions: com.vayunmathur.contacts.util.SimContactsActions = com.vayunmathur.contacts.util.SimContactsActions.Noop) {
     val contacts = state.contacts
     val selectedIds = remember { mutableStateListOf<Long>() }
     val isSelectionMode = selectedIds.isNotEmpty()
@@ -332,6 +343,18 @@ fun ContactListScreen(state: ContactListUiState, actions: ContactsActions) {
                             )
                         }
                     }
+                }
+
+                item(key = "sim-section") {
+                    SimContactsSection(
+                        simContacts = state.simContacts,
+                        hasSim = state.hasSim,
+                        onImportOne = { simActions.importSimContact(it) },
+                        onDeleteOne = { simActions.deleteSimContact(it) },
+                        onImportAll = { simActions.importAllSimContacts() },
+                        onRefresh = { simActions.refreshSim() },
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
             }
         }

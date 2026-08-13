@@ -99,6 +99,10 @@ import kotlin.io.encoding.Base64
 fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel, editRoute: Route.EditContact, onExit: () -> Unit = { backStack.pop() }) {
     val contactId = editRoute.contactId
     val context = LocalContext.current
+    val hasSim by viewModel.hasSim.collectAsStateWithLifecycle()
+    val simSubs by viewModel.simSubscriptions.collectAsStateWithLifecycle()
+    var saveError by remember { mutableStateOf<String?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
 
     // Initialize the VM draft for this contact. No-op on rotation (same key).
     LaunchedEffect(contactId) {
@@ -143,8 +147,19 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
                 },
                 actions = {
                     Button(onClick = {
-                        viewModel.saveEditDraft()
-                        onExit()
+                        if (isSaving) return@Button
+                        // Validate duplicate behavior handled by editor
+                        if (currentDraft.target == ContactViewModel.ContactDraftTarget.SIM) {
+                            if (currentDraft.simName.isBlank() && currentDraft.simPhone.isBlank()) {
+                                saveError = context.getString(R.string.sim_name_or_phone_required)
+                                return@Button
+                            }
+                        }
+                        isSaving = true
+                        viewModel.saveEditDraft { ok, err ->
+                            isSaving = false
+                            if (ok) onExit() else saveError = err ?: context.getString(R.string.save_failed)
+                        }
                     }) {
                         Text(stringResource(UiR.string.save))
                     }
@@ -152,7 +167,7 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
             )
         },
         bottomBar = {
-            if (noteController.focused) {
+            if (currentDraft.target == ContactViewModel.ContactDraftTarget.DEVICE && noteController.focused) {
                 com.vayunmathur.library.ui.OdfMarkdownEditorToolbar(noteController)
             }
         }
@@ -165,7 +180,68 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(24.dp))
+            if (saveError != null) {
+                Text(saveError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+            }
+
+            // Storage target chooser (new contacts only, when SIM available)
+            if (isNewContact) {
+                SimTargetChooser(
+                    selected = currentDraft.target,
+                    enabled = hasSim,
+                    simSubscriptions = simSubs,
+                    selectedSubId = currentDraft.simSubscriptionId,
+                    onTargetChange = { t -> viewModel.updateEditDraft { it.copy(target = t) } },
+                    onSubIdChange = { id -> viewModel.updateEditDraft { it.copy(simSubscriptionId = id) } }
+                )
+                Spacer(Modifier.height(12.dp))
+                // Account chooser only for Device target
+                if (currentDraft.target == ContactViewModel.ContactDraftTarget.DEVICE) {
+                    AccountChooser(currentDraft.accountName, accounts) { name, type ->
+                        viewModel.updateEditDraft { it.copy(accountName = name, accountType = type) }
+                        viewModel.setLastSelectedAccount(name, type)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+            }
+
+            // SIM mode: limited form only
+            if (currentDraft.target == ContactViewModel.ContactDraftTarget.SIM && isNewContact) {
+                Text(
+                    stringResource(R.string.sim_limited_fields_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = currentDraft.simName,
+                    onValueChange = { v -> viewModel.updateEditDraft { it.copy(simName = v) } },
+                    label = { Text(stringResource(R.string.sim_name)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = currentDraft.simPhone,
+                    onValueChange = { v -> viewModel.updateEditDraft { it.copy(simPhone = v) } },
+                    label = { Text(stringResource(R.string.sim_phone)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = currentDraft.simEmail,
+                    onValueChange = { v -> viewModel.updateEditDraft { it.copy(simEmail = v) } },
+                    label = { Text(stringResource(R.string.sim_email)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(16.dp))
+                return@Column
+            }
+
+            Spacer(Modifier.height(8.dp))
             AddPictureSection(
                 photo = currentDraft.photo?.photo,
                 viewModel = viewModel,
@@ -178,13 +254,6 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
             )
             Spacer(Modifier.height(24.dp))
 
-            if (isNewContact) {
-                AccountChooser(currentDraft.accountName, accounts) { name, type ->
-                    viewModel.updateEditDraft { it.copy(accountName = name, accountType = type) }
-                    viewModel.setLastSelectedAccount(name, type)
-                }
-                Spacer(Modifier.height(16.dp))
-            }
 
             OutlinedTextField(
                 value = currentDraft.firstName,
@@ -702,6 +771,65 @@ private fun ColumnScope.GroupMembershipSection(
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SimTargetChooser(
+    selected: ContactViewModel.ContactDraftTarget,
+    enabled: Boolean,
+    simSubscriptions: List<Int>,
+    selectedSubId: Int?,
+    onTargetChange: (ContactViewModel.ContactDraftTarget) -> Unit,
+    onSubIdChange: (Int?) -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            stringResource(R.string.save_to),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            FilterChip(
+                selected = selected == ContactViewModel.ContactDraftTarget.DEVICE,
+                onClick = { onTargetChange(ContactViewModel.ContactDraftTarget.DEVICE) },
+                label = { Text(stringResource(R.string.device)) }
+            )
+            FilterChip(
+                selected = selected == ContactViewModel.ContactDraftTarget.SIM,
+                onClick = { if (enabled) onTargetChange(ContactViewModel.ContactDraftTarget.SIM) },
+                enabled = enabled,
+                label = { Text(stringResource(R.string.sim_card)) }
+            )
+        }
+        if (!enabled) {
+            Text(
+                stringResource(R.string.no_sim_available),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else if (selected == ContactViewModel.ContactDraftTarget.SIM && simSubscriptions.size > 1) {
+            Spacer(Modifier.height(8.dp))
+            var expanded by remember { mutableStateOf(false) }
+            Box {
+                OutlinedTextField(
+                    value = selectedSubId?.let { "SIM $it" } ?: "SIM ${simSubscriptions.first()}",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.sim_slot)) },
+                    trailingIcon = { IconButton(onClick = { expanded = true }) { IconArrowDropDown() } },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                DropdownMenu(expanded, { expanded = false }) {
+                    simSubscriptions.forEach { sid ->
+                        DropdownMenuItem(text = { Text("SIM $sid") }, onClick = { onSubIdChange(sid); expanded = false })
+                    }
+                }
+                Box(Modifier.matchParentSize().clickable { expanded = true })
             }
         }
     }

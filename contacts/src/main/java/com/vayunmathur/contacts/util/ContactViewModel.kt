@@ -29,6 +29,8 @@ import com.vayunmathur.contacts.data.Note
 import com.vayunmathur.contacts.data.Organization
 import com.vayunmathur.contacts.data.PhoneNumber
 import com.vayunmathur.contacts.data.Photo
+import com.vayunmathur.contacts.data.SimContact
+import com.vayunmathur.contacts.data.SimContactsDataSource
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -83,6 +85,36 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
     ) { all, query, hidden ->
         filterBySearch(all.filter { it.accountName !in hidden }, query)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // Where the draft should be persisted when saved via saveEditDraft.
+    enum class ContactDraftTarget { DEVICE, SIM }
+
+    // ---- SIM contacts ----
+    private val _simContacts = MutableStateFlow<List<SimContact>>(emptyList())
+    val simContacts: StateFlow<List<SimContact>> = _simContacts.asStateFlow()
+
+    private val _simSubscriptions = MutableStateFlow<List<Int>>(emptyList())
+    val simSubscriptions: StateFlow<List<Int>> = _simSubscriptions.asStateFlow()
+
+    val hasSim: StateFlow<Boolean> = _simSubscriptions.map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    val simSearchResults: StateFlow<List<SimContact>> = combine(_simContacts, _searchQuery) { all, query ->
+        val tokens = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (tokens.isEmpty()) return@combine all
+        all.filter { c ->
+            val hay = "${c.name} ${c.number} ${c.emails.orEmpty()}".lowercase()
+            tokens.all { hay.contains(it) }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val defaultContactTarget: StateFlow<ContactDraftTarget> = dataStore.stringFlow("default_contact_target")
+        .map { v -> if (v == "sim") ContactDraftTarget.SIM else ContactDraftTarget.DEVICE }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContactDraftTarget.DEVICE)
+
+    fun setDefaultContactTarget(target: ContactDraftTarget) {
+        viewModelScope.launch { dataStore.setString("default_contact_target", if (target == ContactDraftTarget.SIM) "sim" else "device") }
+    }
 
     val groups: StateFlow<List<ContactGroup>> = callbackFlow {
         val resolver = getApplication<Application>().contentResolver
@@ -157,6 +189,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         }
         loadAccounts()
         loadLastSelectedAccount()
+        loadSimContacts()
     }
 
     override fun setSearchQuery(query: String) {
@@ -218,6 +251,116 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
             _allContacts.value = com.vayunmathur.contacts.data.Contact.getAllContacts(getApplication())
         } catch (e: Exception) {
             Log.e("ContactViewModel", "Error loading contacts", e)
+        }
+    }
+
+    // ---- SIM helpers ----
+    fun loadSimContacts() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _simSubscriptions.value = SimContactsDataSource.getActiveSubscriptionIds(getApplication())
+                _simContacts.value = SimContactsDataSource.listSimContacts(getApplication())
+            } catch (e: Exception) {
+                Log.e("ContactViewModel", "Error loading SIM contacts", e)
+                _simContacts.value = emptyList()
+            }
+        }
+    }
+
+    fun insertSimContact(name: String, number: String, email: String? = null, subscriptionId: Int? = null, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = SimContactsDataSource.insertSimContact(getApplication(), name, number, email, subscriptionId)
+            if (ok) {
+                _simContacts.value = SimContactsDataSource.listSimContacts(getApplication())
+            }
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
+    }
+
+    fun deleteSimContact(simContact: SimContact, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = SimContactsDataSource.deleteSimContact(getApplication(), simContact)
+            if (ok) {
+                _simContacts.value = SimContactsDataSource.listSimContacts(getApplication())
+            }
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
+    }
+
+    /**
+     * Import a SIM contact into device storage as a proper [Contact].
+     * Uses [accountName]/[accountType] if provided, otherwise uses last-selected or null.
+     */
+    fun importSimContact(simContact: SimContact, onDone: (Boolean) -> Unit = {}) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val draftName = simContact.name.trim()
+                val first = draftName.substringBefore(" ").ifEmpty { draftName }
+                val last = if (draftName.contains(" ")) draftName.substringAfter(" ") else ""
+                val details = ContactDetails(
+                    phoneNumbers = listOfNotNull(simContact.number.takeIf { it.isNotBlank() }?.let { PhoneNumber(0, it, CDKPhone.TYPE_MOBILE) }),
+                    emails = listOfNotNull(simContact.emails?.takeIf { it.isNotBlank() }?.let { Email(0, it, CDKEmail.TYPE_HOME) }),
+                    addresses = emptyList(),
+                    dates = emptyList(),
+                    photos = emptyList(),
+                    names = listOf(Name(0, "", first, "", last, "")),
+                    orgs = listOf(Organization(0, "")),
+                    notes = listOf(Note(0, "")),
+                    nicknames = listOf(Nickname(0, "", CDKNickname.TYPE_DEFAULT)),
+                    groups = emptyList()
+                )
+                val lastAcc = _lastSelectedAccount.value
+                val contact = Contact(0, lastAcc?.type?.ifEmpty { null }, lastAcc?.name?.ifEmpty { null }, false, details)
+                contact.save(app, details, ContactDetails.empty())
+                withContext(Dispatchers.Main) { onDone(true) }
+            } catch (e: Exception) {
+                Log.e("ContactViewModel", "importSimContact failed", e)
+                withContext(Dispatchers.Main) { onDone(false) }
+            }
+        }
+    }
+
+    fun importAllSimContacts(onDone: (Int) -> Unit = {}) {
+        val snapshot = _simContacts.value.toList()
+        if (snapshot.isEmpty()) { onDone(0); return }
+        viewModelScope.launch(Dispatchers.IO) {
+            var imported = 0
+            val app = getApplication<Application>()
+            val lastAcc = _lastSelectedAccount.value
+            for (sim in snapshot) {
+                try {
+                    val draftName = sim.name.trim()
+                    val first = draftName.substringBefore(" ").ifEmpty { draftName }
+                    val last = if (draftName.contains(" ")) draftName.substringAfter(" ") else ""
+                    val details = ContactDetails(
+                        phoneNumbers = listOfNotNull(sim.number.takeIf { it.isNotBlank() }?.let { PhoneNumber(0, it, CDKPhone.TYPE_MOBILE) }),
+                        emails = listOfNotNull(sim.emails?.takeIf { it.isNotBlank() }?.let { Email(0, it, CDKEmail.TYPE_HOME) }),
+                        addresses = emptyList(), dates = emptyList(), photos = emptyList(),
+                        names = listOf(Name(0, "", first, "", last, "")),
+                        orgs = listOf(Organization(0, "")), notes = listOf(Note(0, "")),
+                        nicknames = listOf(Nickname(0, "", CDKNickname.TYPE_DEFAULT)), groups = emptyList()
+                    )
+                    Contact(0, lastAcc?.type?.ifEmpty { null }, lastAcc?.name?.ifEmpty { null }, false, details)
+                        .save(app, details, ContactDetails.empty())
+                    imported++
+                } catch (e: Exception) { Log.w("ContactViewModel", "import one SIM failed", e) }
+            }
+            withContext(Dispatchers.Main) { onDone(imported) }
+        }
+    }
+
+    fun exportContactToSim(contact: Contact, subscriptionId: Int? = null, onDone: (Boolean) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val name = contact.name.value.ifBlank { contact.nickname.nickname }.ifBlank { contact.details.phoneNumbers.firstOrNull()?.number ?: "" }
+            val number = contact.details.phoneNumbers.firstOrNull()?.number ?: ""
+            val email = contact.details.emails.firstOrNull()?.address
+            // SIM may have capacity limits — attempt insert as-is and report failure gracefully
+            val ok = if (number.isBlank() && name.isBlank()) false else SimContactsDataSource.insertSimContact(
+                getApplication(), name, number, email, subscriptionId ?: _simSubscriptions.value.firstOrNull()
+            )
+            if (ok) _simContacts.value = SimContactsDataSource.listSimContacts(getApplication())
+            withContext(Dispatchers.Main) { onDone(ok) }
         }
     }
 
@@ -497,6 +640,12 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         val dates: List<Event> = emptyList(),
         val addresses: List<Address> = emptyList(),
         val groupMemberships: List<GroupMembership> = emptyList(),
+        val target: ContactDraftTarget = ContactDraftTarget.DEVICE,
+        val simSubscriptionId: Int? = null,
+        // SIM-only simplified fields (when target == SIM, only these 3 are used)
+        val simName: String = "",
+        val simPhone: String = "",
+        val simEmail: String = "",
     )
 
     private val _editDraft = MutableStateFlow<ContactDraft?>(null)
@@ -534,6 +683,15 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         editingOriginal = contact
         editingContactId = contactId
         editingInitialized = true
+        // For new contacts, honor default target preference; editing existing always Device.
+        val initialTarget = if (contactId == null) {
+            val raw = dataStore.getString("default_contact_target")
+            if (raw == "sim") ContactDraftTarget.SIM else ContactDraftTarget.DEVICE
+        } else ContactDraftTarget.DEVICE
+        val defaultSubId = _simSubscriptions.value.firstOrNull()
+        val initialSimName = prefillName ?: contact?.name?.value ?: ""
+        val initialSimPhone = prefillPhone ?: details?.phoneNumbers?.firstOrNull()?.number ?: ""
+        val initialSimEmail = prefillEmail ?: details?.emails?.firstOrNull()?.address ?: ""
         _editDraft.value = ContactDraft(
             namePrefix = contact?.name?.namePrefix ?: "",
             firstName = contact?.name?.firstName ?: prefillName ?: "",
@@ -563,6 +721,11 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
             dates = details?.dates ?: emptyList(),
             addresses = details?.addresses ?: emptyList(),
             groupMemberships = details?.groups ?: emptyList(),
+            target = initialTarget,
+            simSubscriptionId = defaultSubId,
+            simName = initialSimName,
+            simPhone = initialSimPhone,
+            simEmail = initialSimEmail,
         )
     }
 
@@ -640,12 +803,34 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Builds a [Contact] from the current draft (merging IDs from the originally
-     * loaded contact where applicable) and persists it via [saveContact], then
-     * clears the draft.
+     * Persists the current draft. When target==SIM (new-contact only), writes
+     * via the SIM data source (name/phone/email only). Otherwise builds a
+     * [Contact] and persists via [saveContact].
+     * Returns true if the draft was handled as SIM (caller should not double-save).
      */
-    fun saveEditDraft() {
+    fun saveEditDraft(onResult: ((Boolean, String?) -> Unit)? = null) {
         val draft = _editDraft.value ?: return
+        if (draft.target == ContactDraftTarget.SIM && editingOriginal == null) {
+            // SIM path: only 3 fields
+            val name = draft.simName.trim()
+            val phone = draft.simPhone.trim()
+            val email = draft.simEmail.trim().ifEmpty { null }
+            if (name.isEmpty() && phone.isEmpty()) {
+                onResult?.invoke(false, "Name or phone required")
+                return
+            }
+            viewModelScope.launch(Dispatchers.IO) {
+                val ok = SimContactsDataSource.insertSimContact(
+                    getApplication(), name, phone, email, draft.simSubscriptionId
+                )
+                if (ok) _simContacts.value = SimContactsDataSource.listSimContacts(getApplication())
+                withContext(Dispatchers.Main) {
+                    if (ok) clearEditDraft()
+                    onResult?.invoke(ok, if (ok) null else "Failed to write to SIM (full or not available)")
+                }
+            }
+            return
+        }
         val original = editingOriginal
         val birthdayId = original?.birthday?.id ?: 0L
         val datesWithoutBirthday = draft.dates.filter { it.type != CDKEvent.TYPE_BIRTHDAY }.toMutableList()
@@ -688,5 +873,6 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         )
         saveContact(newContact)
         clearEditDraft()
+        onResult?.invoke(true, null)
     }
 }
