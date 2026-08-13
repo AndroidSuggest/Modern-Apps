@@ -118,4 +118,11 @@
     <string name="gps_fallback_warning_content_description">Võrgupõhine tuvastus pole saadaval</string>
     <string name="gps_fallback_warning_title">Kasutusel on vaid GPS</string>
     <string name="gps_fallback_warning_body">Võrgupõhine asukohatuvastus pole selles seadmes lülitatud sisse, seega kasutab Pere asukoha rakendus (FindFamily) sinu asukoha tuvastamiseks ainult GPS-i. GPS on täpsem, kuid võib märkimisväärselt tühjendada akut. Aku tarbimise vähendamiseks lülita nutiseadme seadistustes sisse asukoha määramisel võrgu kasutamine (Wi-Fi ja mobiilvõrk).</string>
+    <string name="arrival_at">Saabumine asukohta %1$s</string>
+    <string name="outdated_peer_title">Vajalik on rakenduse uuendamine</string>
+    <string name="outdated_peer_body">Teine osapool kasutab selle rakenduse vanemat versiooni, mis ei toeta postkvantkrüptograafia võimalusi. Palun tal seda rakendust uuendada ja siis proovi uuesti ühendada.</string>
+    <string name="tile_label">Pere asukoha tuvastamine</string>
+    <string name="tile_subtitle_on">Sees</string>
+    <string name="tile_subtitle_off">Väljas</string>
+    <string name="tile_subtitle_no_permission">Seadistamiseks klõpsa</string>
 </resources>
