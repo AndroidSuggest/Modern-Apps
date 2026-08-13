@@ -26,6 +26,12 @@ data class CalculatorUiState(
     val memory: Double = 0.0,
     val angleMode: AngleMode = AngleMode.RADIANS,
     val history: List<HistoryEntry> = emptyList(),
+    /** Units compatible with the current result's dimension; empty when it's dimensionless. */
+    val unitOptions: List<UnitDef> = emptyList(),
+    /** The unit the result is currently shown in, chosen from [unitOptions]. */
+    val selectedUnit: UnitDef? = null,
+    /** Every category the unit picker can insert from. */
+    val unitCategories: List<UnitCategory> = emptyList(),
 )
 
 /** Everything the graph screen draws. */
@@ -53,6 +59,9 @@ interface CalculatorActions {
     fun useHistory(entry: HistoryEntry) {}
     fun clearHistory() {}
 
+    /** Show the result in the compatible unit identified by [token]. */
+    fun selectOutputUnit(token: String) {}
+
     companion object {
         val Noop: CalculatorActions = object : CalculatorActions {}
     }
@@ -78,5 +87,28 @@ interface GraphActions {
 
     companion object {
         val Noop: GraphActions = object : GraphActions {}
+    }
+}
+
+/** Everything the unit-converter screen draws. */
+data class UnitConverterUiState(
+    val categories: List<UnitCategory> = emptyList(),
+    val selectedCategoryIndex: Int = 0,
+    val fromToken: String = "",
+    val toToken: String = "",
+    val inputText: String = "",
+    val outputText: String = "",
+)
+
+/** Unit-converter callbacks. Same no-op-default arrangement as [CalculatorActions]. */
+interface UnitConverterActions {
+    fun selectCategory(index: Int) {}
+    fun setFrom(token: String) {}
+    fun setTo(token: String) {}
+    fun setConverterInput(text: String) {}
+    fun swapUnits() {}
+
+    companion object {
+        val Noop: UnitConverterActions = object : UnitConverterActions {}
     }
 }

@@ -32,7 +32,7 @@ data class GraphMarker(
  * Holds all calculator state at the Activity scope so it survives switching between the
  * Calculator and Graph tabs (which reset the nav back stack).
  */
-class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions {
+class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions, UnitConverterActions {
 
     // ---- Shared ----
     var angleMode by mutableStateOf(AngleMode.RADIANS)
@@ -40,13 +40,14 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions {
 
     override fun toggleAngleMode() {
         angleMode = if (angleMode == AngleMode.RADIANS) AngleMode.DEGREES else AngleMode.RADIANS
+        recomputePreview()
     }
 
     // ---- Calculator tab ----
     var input by mutableStateOf("")
         private set
 
-    /** Live-evaluated preview of [input]; empty when blank or invalid. */
+    /** Live-evaluated preview of [input]; empty when blank or invalid. Unit-aware. */
     var preview by mutableStateOf("")
         private set
 
@@ -57,6 +58,17 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions {
     /** The single memory register (M+ / M- / MR / MC). */
     var memory by mutableStateOf(0.0)
         private set
+
+    /** Units the current result can be shown in; empty when the result is dimensionless. */
+    var unitOptions by mutableStateOf<List<UnitDef>>(emptyList())
+        private set
+
+    /** The unit [preview] is currently rendered in. */
+    var selectedUnit by mutableStateOf<UnitDef?>(null)
+        private set
+
+    /** The most recent parsed preview value, kept so switching output units is instant. */
+    private var previewQuantity: Quantity? = null
 
     val history = mutableStateListOf<HistoryEntry>()
 
@@ -71,6 +83,9 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions {
             memory = memory,
             angleMode = angleMode,
             history = history,
+            unitOptions = unitOptions,
+            selectedUnit = selectedUnit,
+            unitCategories = UnitRegistry.categories,
         )
 
     /** Snapshot of everything [com.vayunmathur.calculator.ui.GraphScreen] draws. */
@@ -84,7 +99,7 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions {
 
     fun updateInput(value: String) {
         input = value
-        preview = computePreview(value)
+        recomputePreview()
     }
 
     override fun append(text: String) = updateInput(input + text)
@@ -98,21 +113,30 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions {
     /** Evaluate the current input, push it to history, store `ans`, show the result. */
     override fun evaluate() {
         if (input.isBlank()) return
-        val value = try {
-            Expression.parse(input).eval(angle = angleMode, ans = lastAnswer)
+        val quantity = try {
+            Expression.parse(input).evalQuantity(angle = angleMode, ans = lastAnswer)
         } catch (e: ExpressionError) {
             return // leave input untouched; the preview already flagged the problem
         }
-        if (value.isNaN()) return
-        val result = formatResult(value)
-        history.add(0, HistoryEntry(input, result))
-        lastAnswer = value
-        updateInput(result)
+        if (quantity.value.isNaN()) return
+        val unit = if (quantity.isDimensionless) null else (selectedUnit ?: UnitRegistry.defaultUnitFor(quantity.dimension))
+        val display = formatQuantity(quantity, unit)
+        history.add(0, HistoryEntry(input, display))
+        lastAnswer = quantity.value
+        if (unit != null) selectedUnit = unit
+        // The token form re-parses, so the result can seed the next calculation.
+        updateInput(formatQuantity(quantity, unit, useToken = true))
     }
 
     override fun useHistory(entry: HistoryEntry) = updateInput(entry.result)
 
     override fun clearHistory() = history.clear()
+
+    override fun selectOutputUnit(token: String) {
+        val unit = unitOptions.firstOrNull { it.token == token } ?: return
+        selectedUnit = unit
+        previewQuantity?.let { preview = formatQuantity(it, unit) }
+    }
 
     // Memory register operations. M+/M- fold the current preview (or input) into memory.
     override fun memoryClear() { memory = 0.0 }
@@ -125,13 +149,25 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions {
             .takeIf { !it.isNaN() }
     } catch (e: ExpressionError) { null }
 
-    private fun computePreview(value: String): String {
-        if (value.isBlank()) return ""
-        return try {
-            val r = Expression.parse(value).eval(angle = angleMode, ans = lastAnswer)
-            if (r.isNaN()) "" else formatResult(r)
+    /** Re-derive [preview], [unitOptions] and [selectedUnit] from the current [input]. */
+    private fun recomputePreview() {
+        val quantity = try {
+            if (input.isBlank()) null
+            else Expression.parse(input).evalQuantity(angle = angleMode, ans = lastAnswer)
+                .takeIf { !it.value.isNaN() }
         } catch (e: ExpressionError) {
-            ""
+            null
+        }
+        previewQuantity = quantity
+        if (quantity == null || quantity.isDimensionless) {
+            unitOptions = emptyList()
+            selectedUnit = null
+            preview = if (quantity == null) "" else formatResult(quantity.value)
+        } else {
+            val options = UnitRegistry.unitsFor(quantity.dimension)
+            unitOptions = options
+            if (selectedUnit !in options) selectedUnit = UnitRegistry.defaultUnitFor(quantity.dimension)
+            preview = formatQuantity(quantity, selectedUnit)
         }
     }
 
@@ -194,6 +230,55 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions {
     }
 
     private fun dropMarkersFor(id: Long) = markers.removeAll { id in it.curveIds }
+
+    // ---- Units tab (converter) ----
+    var converterCategoryIndex by mutableStateOf(0)
+        private set
+    var converterFromToken by mutableStateOf(UnitRegistry.categories[0].units[0].token)
+        private set
+    var converterToToken by mutableStateOf(
+        UnitRegistry.categories[0].units.getOrElse(1) { UnitRegistry.categories[0].units[0] }.token,
+    )
+        private set
+    var converterValueText by mutableStateOf("1")
+        private set
+
+    val unitConverterUiState: UnitConverterUiState
+        get() {
+            val category = UnitRegistry.categories[converterCategoryIndex]
+            return UnitConverterUiState(
+                categories = UnitRegistry.categories,
+                selectedCategoryIndex = converterCategoryIndex,
+                fromToken = converterFromToken,
+                toToken = converterToToken,
+                inputText = converterValueText,
+                outputText = convert(category),
+            )
+        }
+
+    private fun convert(category: UnitCategory): String {
+        val from = category.units.firstOrNull { it.token == converterFromToken } ?: return ""
+        val to = category.units.firstOrNull { it.token == converterToToken } ?: return ""
+        val value = converterValueText.toDoubleOrNull() ?: return ""
+        return formatResult(to.fromBase(from.toBase(value)))
+    }
+
+    override fun selectCategory(index: Int) {
+        if (index !in UnitRegistry.categories.indices) return
+        converterCategoryIndex = index
+        val units = UnitRegistry.categories[index].units
+        converterFromToken = units[0].token
+        converterToToken = units.getOrElse(1) { units[0] }.token
+    }
+
+    override fun setFrom(token: String) { converterFromToken = token }
+    override fun setTo(token: String) { converterToToken = token }
+    override fun setConverterInput(text: String) { converterValueText = text }
+    override fun swapUnits() {
+        val from = converterFromToken
+        converterFromToken = converterToToken
+        converterToToken = from
+    }
 
     /**
      * Samples every visible curve over the current viewport. Drawing and analysis share this

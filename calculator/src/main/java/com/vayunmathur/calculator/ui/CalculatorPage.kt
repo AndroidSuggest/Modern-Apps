@@ -5,17 +5,21 @@ import com.vayunmathur.calculator.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,15 +37,21 @@ import com.vayunmathur.calculator.util.CalculatorViewModel
 import com.vayunmathur.calculator.util.HistoryEntry
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.AssistChip
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ButtonDefaults
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CenterAlignedTopAppBar
+import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconHistory
+import com.vayunmathur.library.ui.IconRuler
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.ModalBottomSheet
+import com.vayunmathur.library.ui.PrimaryScrollableTabRow
 import com.vayunmathur.library.ui.Scaffold
+import com.vayunmathur.library.ui.Tab
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 
@@ -116,9 +126,11 @@ fun CalculatorScreen(
      */
     initialShowHistory: Boolean = false,
     initialSecond: Boolean = false,
+    initialShowUnitPicker: Boolean = false,
 ) {
     var showHistory by remember { mutableStateOf(initialShowHistory) }
     var second by remember { mutableStateOf(initialSecond) }
+    var showUnitPicker by remember { mutableStateOf(initialShowUnitPicker) }
 
     fun ins(text: String): (CalculatorActions) -> Unit = { it.append(text) }
 
@@ -184,7 +196,10 @@ fun CalculatorScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                actions = { IconButton({ showHistory = true }) { IconHistory() } },
+                actions = {
+                    IconButton({ showUnitPicker = true }) { IconRuler() }
+                    IconButton({ showHistory = true }) { IconHistory() }
+                },
             )
         },
     ) { padding ->
@@ -216,6 +231,26 @@ fun CalculatorScreen(
                     softWrap = false,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (state.unitOptions.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            stringResource(R.string.convert_to),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        state.unitOptions.forEach { unit ->
+                            FilterChip(
+                                selected = unit == state.selectedUnit,
+                                onClick = { actions.selectOutputUnit(unit.token) },
+                                label = { Text(unit.symbol) },
+                            )
+                        }
+                    }
+                }
             }
 
             HorizontalDivider()
@@ -232,6 +267,53 @@ fun CalculatorScreen(
     }
 
     if (showHistory) HistoryDialog(state.history, actions) { showHistory = false }
+    if (showUnitPicker) UnitPickerSheet(state, actions) { showUnitPicker = false }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UnitPickerSheet(
+    state: CalculatorUiState,
+    actions: CalculatorActions,
+    onDismiss: () -> Unit,
+) {
+    val categories = state.unitCategories.filter { it.inEquations }
+    var categoryIndex by remember { mutableStateOf(0) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            stringResource(R.string.insert_unit),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            fontSize = 20.sp,
+        )
+        if (categories.isNotEmpty()) {
+            PrimaryScrollableTabRow(selectedTabIndex = categoryIndex) {
+                categories.forEachIndexed { index, category ->
+                    Tab(
+                        selected = index == categoryIndex,
+                        onClick = { categoryIndex = index },
+                        text = { Text(category.name) },
+                    )
+                }
+            }
+            categories.getOrNull(categoryIndex)?.let { category ->
+                FlowRow(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    category.units.forEach { unit ->
+                        AssistChip(
+                            onClick = { actions.append(unit.token); onDismiss() },
+                            label = { Text(unit.symbol) },
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

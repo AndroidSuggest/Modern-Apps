@@ -15,6 +15,9 @@ import com.vayunmathur.calculator.util.GraphPoint
 import com.vayunmathur.calculator.util.GraphUiState
 import com.vayunmathur.calculator.util.GraphViewport
 import com.vayunmathur.calculator.util.HistoryEntry
+import com.vayunmathur.calculator.util.UnitConverterActions
+import com.vayunmathur.calculator.util.UnitConverterUiState
+import com.vayunmathur.calculator.util.UnitRegistry
 import com.vayunmathur.library.ui.DynamicTheme
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
@@ -113,6 +116,25 @@ class MetadataPreviews {
                 ),
                 actions = CalculatorActions.Noop,
                 initialShowHistory = true,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-units", device = PHONE, showSystemUi = true)
+    @Composable
+    fun Preview4Units() {
+        DynamicTheme(darkTheme = true) {
+            UnitConverterScreen(
+                state = UnitConverterUiState(
+                    categories = UnitRegistry.categories,
+                    selectedCategoryIndex = 3, // Temperature
+                    fromToken = "degC",
+                    toToken = "degF",
+                    inputText = "100",
+                    outputText = "212",
+                ),
+                actions = UnitConverterActions.Noop,
             )
         }
     }

@@ -16,4 +16,20 @@
     <string name="feature_maximum">maximum</string>
     <!-- Graph: label on a marker where two curves cross. Lowercase noun, shown as "intersection (1, 1)". -->
     <string name="feature_intersection">intersection</string>
+    <!-- Bottom navigation label for the unit converter tab. -->
+    <string name="units">Units</string>
+    <!-- Calculator: content description / title for the unit picker that inserts a unit into the expression. -->
+    <string name="insert_unit">Insert unit</string>
+    <!-- Calculator: label before the dropdown that chooses which unit the result is shown in. -->
+    <string name="convert_to">Convert to</string>
+    <!-- Converter: label for the field holding the value being converted. -->
+    <string name="converter_value">Value</string>
+    <!-- Converter: label above the unit the value is converted from. -->
+    <string name="converter_from">From</string>
+    <!-- Converter: label above the unit the value is converted to. -->
+    <string name="converter_to">To</string>
+    <!-- Converter: label above the converted result. -->
+    <string name="converter_result">Result</string>
+    <!-- Converter: content description for the button that swaps the from and to units. -->
+    <string name="converter_swap">Swap units</string>
 </resources>

@@ -51,8 +51,16 @@ class EvalContext(val variable: Double, val angle: AngleMode, val ans: Double)
  */
 class Expression private constructor(private val root: Node) {
 
-    /** Evaluate for a given free-variable value, [angle] mode and [ans]. */
+    /**
+     * Evaluate for a given free-variable value, [angle] mode and [ans], returning the numeric
+     * magnitude only. Preserves the graphing path and every dimensionless caller: for a
+     * dimensionless expression this is exactly the number, so nothing downstream changes.
+     */
     fun eval(variable: Double = 0.0, angle: AngleMode = AngleMode.RADIANS, ans: Double = 0.0): Double =
+        evalQuantity(variable, angle, ans).value
+
+    /** Evaluate to a full [Quantity], carrying units through the calculation. */
+    fun evalQuantity(variable: Double = 0.0, angle: AngleMode = AngleMode.RADIANS, ans: Double = 0.0): Quantity =
         root.eval(EvalContext(variable, angle, ans))
 
     companion object {
@@ -62,19 +70,23 @@ class Expression private constructor(private val root: Node) {
     // ---- AST ----
 
     internal sealed interface Node {
-        fun eval(ctx: EvalContext): Double
+        fun eval(ctx: EvalContext): Quantity
     }
 
     private class Num(val value: Double) : Node {
-        override fun eval(ctx: EvalContext) = value
+        override fun eval(ctx: EvalContext) = Quantity.scalar(value)
     }
 
     private object Var : Node {
-        override fun eval(ctx: EvalContext) = ctx.variable
+        override fun eval(ctx: EvalContext) = Quantity.scalar(ctx.variable)
     }
 
     private object Ans : Node {
-        override fun eval(ctx: EvalContext) = ctx.ans
+        override fun eval(ctx: EvalContext) = Quantity.scalar(ctx.ans)
+    }
+
+    private class UnitNode(val unit: UnitDef) : Node {
+        override fun eval(ctx: EvalContext) = Quantity(unit.factorToBase, unit.dimension, unit.offsetK)
     }
 
     private class Neg(val operand: Node) : Node {
@@ -82,11 +94,11 @@ class Expression private constructor(private val root: Node) {
     }
 
     private class Fact(val operand: Node) : Node {
-        override fun eval(ctx: EvalContext) = factorial(operand.eval(ctx))
+        override fun eval(ctx: EvalContext) = Quantity.scalar(factorial(operand.eval(ctx).requireScalar("Factorial")))
     }
 
     private class Binary(val op: Char, val left: Node, val right: Node) : Node {
-        override fun eval(ctx: EvalContext): Double {
+        override fun eval(ctx: EvalContext): Quantity {
             val a = left.eval(ctx)
             val b = right.eval(ctx)
             return when (op) {
@@ -102,15 +114,21 @@ class Expression private constructor(private val root: Node) {
     }
 
     private class Call(val name: String, val args: List<Node>) : Node {
-        override fun eval(ctx: EvalContext): Double {
-            val a = args.map { it.eval(ctx) }
+        override fun eval(ctx: EvalContext): Quantity {
+            // `abs` is the one function that keeps its argument's dimension; everything else is
+            // defined on plain numbers, so its arguments must be dimensionless.
+            if (name == "abs") {
+                if (args.size != 1) throw ExpressionError("abs expects 1 argument")
+                return args[0].eval(ctx).abs()
+            }
+            val a = args.map { it.eval(ctx).requireScalar(name) }
             fun one(): Double {
                 if (a.size != 1) throw ExpressionError("$name expects 1 argument")
                 return a[0]
             }
             fun toRad(v: Double) = if (ctx.angle == AngleMode.DEGREES) v * PI / 180.0 else v
             fun fromRad(v: Double) = if (ctx.angle == AngleMode.DEGREES) v * 180.0 / PI else v
-            return when (name) {
+            val result: Double = when (name) {
                 "sin" -> sin(toRad(one()))
                 "cos" -> cos(toRad(one()))
                 "tan" -> tan(toRad(one()))
@@ -132,7 +150,6 @@ class Expression private constructor(private val root: Node) {
                 "ln" -> ln(one())
                 "log2" -> log2(one())
                 "log" -> if (a.size == 2) ln(a[1]) / ln(a[0]) else log10(one())
-                "abs" -> abs(one())
                 "floor" -> floor(one())
                 "ceil" -> ceil(one())
                 "round" -> round(one())
@@ -150,6 +167,7 @@ class Expression private constructor(private val root: Node) {
                 "min" -> a.min()
                 else -> throw ExpressionError("Unknown function '$name'")
             }
+            return Quantity.scalar(result)
         }
 
         private fun require2(a: List<Double>) {
@@ -302,7 +320,8 @@ class Expression private constructor(private val root: Node) {
             if (src[pos] == 'θ') { pos++; return Var }
             val start = pos
             while (pos < src.length && (src[pos].isLetterOrDigit() || src[pos] == '_')) pos++
-            val name = src.substring(start, pos).lowercase()
+            val raw = src.substring(start, pos)
+            val name = raw.lowercase()
             return when (name) {
                 "x", "t", "theta" -> Var
                 "ans" -> Ans
@@ -318,7 +337,10 @@ class Expression private constructor(private val root: Node) {
                         pos++
                         Call(name, args)
                     } else {
-                        throw ExpressionError("Unknown symbol '$name'")
+                        // Not a function call: try the unit registry (case-sensitively, so `mm`
+                        // and `Mm` differ) before giving up.
+                        val unit = UnitRegistry.parseTokens[raw]
+                        if (unit != null) UnitNode(unit) else throw ExpressionError("Unknown symbol '$raw'")
                     }
                 }
             }
@@ -335,6 +357,12 @@ class Expression private constructor(private val root: Node) {
 }
 
 // ---- Special functions shared by the AST ----
+
+/** Unwrap a [Quantity] that must be dimensionless, or fail with a clear message. */
+private fun Quantity.requireScalar(context: String): Double {
+    if (!isDimensionless) throw ExpressionError("$context requires a dimensionless value")
+    return value
+}
 
 /** Lanczos approximation of the gamma function (valid across the reals except poles). */
 private fun gamma(x: Double): Double {

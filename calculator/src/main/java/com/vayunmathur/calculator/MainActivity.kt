@@ -8,10 +8,12 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import com.vayunmathur.calculator.ui.CalculatorPage
 import com.vayunmathur.calculator.ui.GraphPage
+import com.vayunmathur.calculator.ui.UnitConverterPage
 import com.vayunmathur.calculator.util.CalculatorViewModel
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconCalculate
 import com.vayunmathur.library.ui.IconFunctions
+import com.vayunmathur.library.ui.IconRuler
 import com.vayunmathur.library.util.BottomBarItem
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.MainNavigation
@@ -40,6 +42,9 @@ sealed interface Route : NavKey {
 
     @Serializable
     data object Graph : Route
+
+    @Serializable
+    data object Units : Route
 }
 
 @Composable
@@ -54,6 +59,7 @@ fun Navigation(viewModel: CalculatorViewModel) {
                 listOf(
                     BottomBarItem("Calculator", Route.Calculator) { IconCalculate() },
                     BottomBarItem("Graph", Route.Graph) { IconFunctions() },
+                    BottomBarItem("Units", Route.Units) { IconRuler() },
                 ),
                 current,
             )
@@ -61,5 +67,6 @@ fun Navigation(viewModel: CalculatorViewModel) {
     ) {
         entry<Route.Calculator> { CalculatorPage(viewModel) }
         entry<Route.Graph> { GraphPage(viewModel) }
+        entry<Route.Units> { UnitConverterPage(viewModel) }
     }
 }
