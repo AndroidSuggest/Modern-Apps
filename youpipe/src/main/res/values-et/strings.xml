@@ -131,4 +131,7 @@
     <string name="playback_reset">Lähtesta</string>
     <string name="lock_controls">Lukusta juhtnupud</string>
     <string name="unlock_controls">Eemalda juhtnuppude lukustus</string>
+    <string name="video_stat_paid_format">Tasuline | <xliff:g id="time" example="3 päeva tagasi">%1$s</xliff:g></string>
+    <string name="video_info_paid_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | Tasuline | <xliff:g id="time" example="2 päeva tagasi">%2$s</xliff:g></string>
+    <string name="label_hide_paid">Peida tasulised videod</string>
 </resources>
