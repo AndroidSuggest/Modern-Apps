@@ -1,14 +1,23 @@
 package com.vayunmathur.fooddelivery
 
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import com.stripe.android.PaymentConfiguration
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconHome
@@ -24,6 +33,7 @@ import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.fooddelivery.api.BitesApi
 import com.vayunmathur.fooddelivery.data.CartItem
 import com.vayunmathur.fooddelivery.data.CartStore
+import com.vayunmathur.fooddelivery.notifications.OrderLiveUpdate
 import com.vayunmathur.fooddelivery.ui.AccountScreen
 import com.vayunmathur.fooddelivery.ui.CartScreen
 import com.vayunmathur.fooddelivery.ui.CheckoutScreen
@@ -48,8 +58,18 @@ sealed interface Route : NavKey {
 }
 
 class MainActivity : ComponentActivity() {
+    // The order to open on the tracking screen, set from a notification tap. Held as
+    // Compose state so onNewIntent can push a new deep link into the running UI.
+    private val trackOrderId = mutableStateOf<Int?>(null)
+
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        trackOrderId.value = intent.trackOrderIdOrNull()
+        requestNotificationPermissionIfNeeded()
         // api.deliverycollective.com is on AWS Elastic Beanstalk and serves an ACM cert
         // chaining to Amazon Root CA 1, which FIRST_PARTY (ISRG + GTS only) doesn't carry —
         // pinning to it fails the handshake before any request goes out. STANDARD adds the
@@ -70,16 +90,39 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DynamicTheme {
-                FoodDeliveryApp()
+                FoodDeliveryApp(trackOrderId)
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.trackOrderIdOrNull()?.let { trackOrderId.value = it }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!granted) requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 }
 
+private fun Intent.trackOrderIdOrNull(): Int? =
+    getIntExtra(OrderLiveUpdate.EXTRA_TRACK_ORDER_ID, -1).takeIf { it > 0 }
+
 @Composable
-private fun FoodDeliveryApp() {
+private fun FoodDeliveryApp(trackOrderId: MutableState<Int?>) {
     val context = LocalContext.current
     val backStack = rememberNavBackStack<Route>(Route.Home)
+
+    // A notification tap deep-links to that order's tracking screen.
+    LaunchedEffect(trackOrderId.value) {
+        val id = trackOrderId.value ?: return@LaunchedEffect
+        backStack.add(Route.OrderTracking(id))
+        trackOrderId.value = null
+    }
     val currentPage = backStack.backStack.last()
     val cart = remember { mutableStateListOf<CartItem>().also { it.addAll(CartStore.getAll(context)) } }
 

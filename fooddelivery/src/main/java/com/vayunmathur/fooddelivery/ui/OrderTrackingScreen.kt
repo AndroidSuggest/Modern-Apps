@@ -62,6 +62,7 @@ import com.vayunmathur.fooddelivery.R
 import com.vayunmathur.fooddelivery.api.BitesApi
 import com.vayunmathur.fooddelivery.data.Order
 import com.vayunmathur.fooddelivery.data.OrderStage
+import com.vayunmathur.fooddelivery.notifications.OrderTrackingService
 import kotlinx.coroutines.delay
 import kotlin.time.Instant
 import com.vayunmathur.library.ui.DateString
@@ -86,6 +87,9 @@ fun OrderTrackingScreen(orderId: Int, onBack: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
 
     LaunchedEffect(orderId) {
+        // Keep the background Live Update tracker running for this order too, so tracking
+        // opened from the Orders tab (or a re-opened app) is covered. Idempotent.
+        OrderTrackingService.start(context, orderId)
         while (true) {
             val found = BitesApi.getOrders().firstOrNull { it.id == orderId }
             order = found

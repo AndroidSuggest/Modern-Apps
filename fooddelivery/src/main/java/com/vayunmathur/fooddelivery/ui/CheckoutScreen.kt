@@ -59,6 +59,7 @@ import com.vayunmathur.fooddelivery.data.Customer
 import com.vayunmathur.fooddelivery.data.Deal
 import com.vayunmathur.fooddelivery.data.OrderRewards
 import com.vayunmathur.fooddelivery.data.CheckoutResponse
+import com.vayunmathur.fooddelivery.notifications.OrderTrackingService
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -210,6 +211,7 @@ fun CheckoutScreen(
         when (result) {
             is PaymentSheetResult.Completed -> {
                 orderSuccess = true
+                OrderTrackingService.start(context, checkoutResponse?.order?.id)
                 onOrderPlaced()
             }
             is PaymentSheetResult.Canceled -> {
