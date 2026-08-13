@@ -778,6 +778,52 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         viewModelScope.launch { _intents.emit(intent) }
     }
 
+    // ---- APK install ----
+    /** The APK waiting to be installed once the user grants the "install unknown apps" permission. */
+    private var pendingApkInstall: File? = null
+
+    private val _installPermissionRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    /** Emitted when an APK was tapped but Files lacks permission to install; UI opens settings. */
+    val installPermissionRequests: SharedFlow<Unit> = _installPermissionRequests.asSharedFlow()
+
+    override fun installApk(item: FileBrowserItem) {
+        val ctx = getApplication<Application>()
+        if (isZipMode()) {
+            emit(ctx.getString(R.string.zip_browse_only))
+            return
+        }
+        val file = item.realFile ?: return
+        if (ctx.packageManager.canRequestPackageInstalls()) {
+            launchApkInstall(file)
+        } else {
+            pendingApkInstall = file
+            emit(ctx.getString(R.string.install_permission_needed))
+            _installPermissionRequests.tryEmit(Unit)
+        }
+    }
+
+    /** Called by the UI after returning from the "install unknown apps" settings screen. */
+    fun onInstallPermissionResult() {
+        val ctx = getApplication<Application>()
+        val file = pendingApkInstall ?: return
+        pendingApkInstall = null
+        if (ctx.packageManager.canRequestPackageInstalls()) {
+            launchApkInstall(file)
+        } else {
+            emit(ctx.getString(R.string.install_permission_denied))
+        }
+    }
+
+    private fun launchApkInstall(file: File) {
+        val ctx = getApplication<Application>()
+        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        viewModelScope.launch { _intents.emit(intent) }
+    }
+
     fun showMessage(message: String) { emit(message) }
     private fun emit(message: String) { viewModelScope.launch { _snackbarMessages.emit(message) } }
     private fun emitMoveFailed(e: Exception) {

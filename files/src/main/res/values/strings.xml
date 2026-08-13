@@ -29,6 +29,10 @@
     <string name="no_app_found_to_open_file">No app found to open this file</string>
     <!-- Snackbar/info when user tries to open file while browsing inside zip (read-only mode) -->
     <string name="zip_browse_only">Viewing files inside zip is limited to browsing</string>
+    <!-- Snackbar shown when an APK is tapped but Files hasn't been granted permission to install apps -->
+    <string name="install_permission_needed">Allow Files to install unknown apps, then tap the APK again</string>
+    <!-- Snackbar shown when the user returns from settings without granting install permission -->
+    <string name="install_permission_denied">Permission to install apps was not granted</string>
     <!-- TextEditorActivity: Fallback title when file name is unknown. Noun -->
     <string name="file_fallback">File</string>
     <!-- Notification channel name for unzip foreground service -->

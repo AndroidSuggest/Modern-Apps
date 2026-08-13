@@ -355,6 +355,15 @@ private fun FilesDrawer(
     }
 }
 
+/**
+ * The "install unknown apps" settings screen for this package, so the user can grant Files
+ * permission to install APKs. Scoped to our package via the `package:` URI.
+ */
+private fun unknownAppSourcesSettings(context: android.content.Context): Intent =
+    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+        data = Uri.fromParts("package", context.packageName, null)
+    }
+
 private fun fileAncestors(from: File?, upTo: File?): List<File> = buildList {
     var p = from
     while (p != null) {
@@ -428,6 +437,16 @@ fun DirectoryPage(viewModel: FilesViewModel, onOpenDrawer: () -> Unit = {}) {
             } catch (_: Exception) {
                 viewModel.showMessage(resources.getString(R.string.no_app_found_to_open_file))
             }
+        }
+    }
+
+    val installPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            viewModel.onInstallPermissionResult()
+        }
+    LaunchedEffect(Unit) {
+        viewModel.installPermissionRequests.collect {
+            installPermissionLauncher.launch(unknownAppSourcesSettings(context))
         }
     }
 
@@ -961,6 +980,8 @@ fun DirectoryScreen(
                     else actions.navigateIntoZipDir(child.name)
                 } else if (child.name.endsWith(".zip", ignoreCase = true) && child.realFile != null) {
                     actions.openZipFile(child)
+                } else if (child.name.endsWith(".apk", ignoreCase = true) && child.realFile != null) {
+                    actions.installApk(child)
                 } else {
                     actions.openFile(child)
                 }
@@ -1188,6 +1209,16 @@ fun HomeScreenBinder(viewModel: FilesViewModel, onOpenDrawer: () -> Unit = {}) {
         }
     }
 
+    val installPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            viewModel.onInstallPermissionResult()
+        }
+    LaunchedEffect(Unit) {
+        viewModel.installPermissionRequests.collect {
+            installPermissionLauncher.launch(unknownAppSourcesSettings(context))
+        }
+    }
+
     HomeScreen(
         home = HomeUiState(
             rootDisplayName = Build.MODEL,
@@ -1271,7 +1302,13 @@ fun HomeScreen(
                         leading = { FileLeading(r, false, 40.dp) },
                         title = r.name,
                         subtitle = r.size?.let { Formatter.formatShortFileSize(context, it) },
-                        onClick = { actions.openFile(r) },
+                        onClick = {
+                            if (r.name.endsWith(".apk", ignoreCase = true) && r.realFile != null) {
+                                actions.installApk(r)
+                            } else {
+                                actions.openFile(r)
+                            }
+                        },
                     )
                 }
             }

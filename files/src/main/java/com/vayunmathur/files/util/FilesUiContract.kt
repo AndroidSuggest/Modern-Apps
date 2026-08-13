@@ -91,6 +91,8 @@ interface FilesActions {
     fun openZipFile(item: FileBrowserItem) {}
     fun openFile(item: FileBrowserItem) {}
     fun openWith(item: FileBrowserItem) {}
+    /** Hands an .apk to the system package installer, prompting for the install permission first. */
+    fun installApk(item: FileBrowserItem) {}
     fun shareSelection() {}
     fun archive(archiveName: String) {}
     fun saveIncomingUris() {}
