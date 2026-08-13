@@ -64,4 +64,5 @@
     <string name="cable_prompt_subtitle">Verifitseeri kinnitamaks pääsuvõtmepõhist sisselogimist</string>
     <string name="name_required">Nimi ei saa jääda tühjaks</string>
     <string name="import_csv_warning">CSV-faili importimisel sellesse rakendusse liiguvad kasutajatunnused ja salasõnad tavatekstina. Palun kindlasti kustuta ekspordifail pärast importimist.</string>
+    <string name="import_source_proton_pass">Proton Pass</string>
 </resources>
