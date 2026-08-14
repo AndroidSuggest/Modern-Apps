@@ -108,4 +108,11 @@
     <string name="chip_contains_ads">Reklamlar ehtiva edir</string>
     <string name="chip_reproducible">Təkrar istehsal oluna bilən qurğu</string>
     <string name="link_website">Veb-sayt</string>
+    <string name="link_source">Mənbə kodu</string>
+    <string name="link_privacy">Məxfilik siyasəti</string>
+    <string name="detail_install_blocked">Quraşdırma bloklandı: %1$s</string>
+    <string name="detail_checked_on_install">Quraşdırma zamanı yoxlanılıb: %1$s</string>
+    <string name="detail_installed_unverified">Təsdiqlənməmiş şəkildə quraşdırılıb: %1$s</string>
+    <string name="detail_tap_for_trust">Bu mənbənin necə yoxlanıldığını görmək üçün toxunun</string>
+    <string name="store_rule_modern_android_title">Yalnız müasir Android</string>
 </resources>
