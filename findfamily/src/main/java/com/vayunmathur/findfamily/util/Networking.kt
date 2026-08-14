@@ -29,6 +29,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.io.encoding.Base64
 import kotlin.random.Random
 import kotlin.time.Clock
@@ -165,6 +166,17 @@ object Networking {
      */
     private const val PING_INTERVAL_MS = 30_000L
 
+    /**
+     * If no frame at all (pong, location push, key response — anything) arrives
+     * within this window, the socket is treated as half-open and force-closed to
+     * trigger a reconnect. This is the crucial half-open detector: a half-open
+     * socket still accepts writes into the local TCP send buffer, so `send`/`ping`
+     * keep returning success and would otherwise never be noticed as dead. The
+     * server replies to our pings with pongs, so a healthy socket always refreshes
+     * this well within the window.
+     */
+    private const val LIVENESS_TIMEOUT_MS = 75_000L
+
     @Volatile private var wsSession: WsSession? = null
     private var liveJob: Job? = null
 
@@ -225,14 +237,23 @@ object Networking {
                         send(sub)
                         backoff = 1000L
                         Log.d(TAG, "live WS connected, subscribed+registered as ${userid.toULong()} bundleLen=${bundle.size}")
-                        // Keepalive: ping on a timer while the socket loop runs, and tear the
-                        // socket down if a ping write fails (half-open) so we reconnect and
-                        // drain instead of silently missing fan-outs. Cancelled when the
-                        // incoming loop ends (below), which ends this coroutineScope.
+                        // Keepalive + half-open detection: ping on a timer, and if no
+                        // frame (pong/push/anything) has arrived within LIVENESS_TIMEOUT_MS
+                        // treat the socket as half-open and close it to force a reconnect.
+                        // A half-open socket still accepts writes, so ping success alone
+                        // proves nothing — only inbound traffic proves the socket is live.
+                        // Cancelled when the incoming loop ends (below), ending this scope.
                         coroutineScope {
+                            val lastInboundMs = AtomicLong(System.currentTimeMillis())
                             val pinger = launch {
                                 while (isActive) {
                                     delay(PING_INTERVAL_MS)
+                                    val idle = System.currentTimeMillis() - lastInboundMs.get()
+                                    if (idle > LIVENESS_TIMEOUT_MS) {
+                                        Log.w(TAG, "no inbound for ${idle}ms; socket half-open, closing to reconnect")
+                                        runCatching { close() }
+                                        break
+                                    }
                                     runCatching { ping() }.onFailure {
                                         if (it is CancellationException) throw it
                                         Log.w(TAG, "keepalive ping failed; closing to reconnect", it)
@@ -242,6 +263,7 @@ object Networking {
                             }
                             try {
                                 incoming.collect { frame ->
+                                    lastInboundMs.set(System.currentTimeMillis())
                                     when (frame) {
                                         is WebSocketClient.WsFrame.Binary ->
                                             dispatchLiveFrame(frame.bytes, onLocations, onUwb)
