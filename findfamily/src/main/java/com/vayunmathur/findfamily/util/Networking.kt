@@ -16,8 +16,10 @@ import com.vayunmathur.library.network.webSocket
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -155,6 +157,14 @@ object Networking {
 
     private const val GETKEY_TIMEOUT_MS = 5_000L
 
+    /**
+     * Keepalive ping cadence. Mobile NATs/proxies drop idle sockets within a few
+     * minutes, and a half-open socket is otherwise only noticed on the next write;
+     * a periodic ping keeps the connection alive and surfaces breakage fast so the
+     * server's fan-outs land and queued backlog drains promptly on reconnect.
+     */
+    private const val PING_INTERVAL_MS = 30_000L
+
     @Volatile private var wsSession: WsSession? = null
     private var liveJob: Job? = null
 
@@ -215,11 +225,31 @@ object Networking {
                         send(sub)
                         backoff = 1000L
                         Log.d(TAG, "live WS connected, subscribed+registered as ${userid.toULong()} bundleLen=${bundle.size}")
-                        incoming.collect { frame ->
-                            when (frame) {
-                                is WebSocketClient.WsFrame.Binary ->
-                                    dispatchLiveFrame(frame.bytes, onLocations, onUwb)
-                                else -> Unit
+                        // Keepalive: ping on a timer while the socket loop runs, and tear the
+                        // socket down if a ping write fails (half-open) so we reconnect and
+                        // drain instead of silently missing fan-outs. Cancelled when the
+                        // incoming loop ends (below), which ends this coroutineScope.
+                        coroutineScope {
+                            val pinger = launch {
+                                while (isActive) {
+                                    delay(PING_INTERVAL_MS)
+                                    runCatching { ping() }.onFailure {
+                                        if (it is CancellationException) throw it
+                                        Log.w(TAG, "keepalive ping failed; closing to reconnect", it)
+                                        runCatching { close() }
+                                    }
+                                }
+                            }
+                            try {
+                                incoming.collect { frame ->
+                                    when (frame) {
+                                        is WebSocketClient.WsFrame.Binary ->
+                                            dispatchLiveFrame(frame.bytes, onLocations, onUwb)
+                                        else -> Unit
+                                    }
+                                }
+                            } finally {
+                                pinger.cancel()
                             }
                         }
                     }

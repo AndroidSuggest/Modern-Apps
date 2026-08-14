@@ -384,6 +384,9 @@ class WsSession internal constructor(
 
     suspend fun send(text: String) = client.send(text)
     suspend fun send(bytes: ByteArray) = client.send(bytes)
+
+    /** Sends a PING frame. Callers that need keepalive run their own timer loop over this. */
+    suspend fun ping() = client.ping()
     suspend fun close() = client.close()
 }
 
