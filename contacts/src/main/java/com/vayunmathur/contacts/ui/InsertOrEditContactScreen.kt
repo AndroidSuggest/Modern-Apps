@@ -56,7 +56,7 @@ fun InsertOrEditContactScreen(
     insertOrEditRoute: Route.InsertOrEditContact,
     onExit: () -> Unit
 ) {
-    val phone = insertOrEditRoute.phone
+    val phone = insertOrEditRoute.prefill?.primaryPhone
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -97,11 +97,7 @@ fun InsertOrEditContactScreen(
                     backStack.setLast(
                         Route.EditContact(
                             contactId = null,
-                            name = insertOrEditRoute.name,
-                            phone = phone,
-                            email = insertOrEditRoute.email,
-                            company = insertOrEditRoute.company,
-                            notes = insertOrEditRoute.notes
+                            prefill = insertOrEditRoute.prefill
                         )
                     )
                 }) {

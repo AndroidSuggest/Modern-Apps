@@ -109,11 +109,7 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
     LaunchedEffect(contactId) {
         viewModel.initEditDraft(
             contactId = contactId,
-            prefillName = editRoute.name,
-            prefillPhone = editRoute.phone,
-            prefillEmail = editRoute.email,
-            prefillCompany = editRoute.company,
-            prefillNotes = editRoute.notes,
+            prefill = editRoute.prefill,
         )
     }
     val draft by viewModel.editDraft.collectAsStateWithLifecycle()

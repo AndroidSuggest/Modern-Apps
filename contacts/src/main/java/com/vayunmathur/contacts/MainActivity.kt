@@ -1,6 +1,7 @@
 package com.vayunmathur.contacts
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Intent
 import android.content.ClipData
 import android.content.pm.PackageManager
@@ -8,6 +9,7 @@ import android.content.ContentUris
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
+import androidx.core.content.IntentCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -22,7 +24,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.contacts.data.CDKEmail
+import com.vayunmathur.contacts.data.CDKNickname
+import com.vayunmathur.contacts.data.CDKNote
+import com.vayunmathur.contacts.data.CDKOrg
 import com.vayunmathur.contacts.data.CDKPhone
+import com.vayunmathur.contacts.data.CDKSName
+import com.vayunmathur.contacts.data.CDKStructuredPostal
+import com.vayunmathur.contacts.data.ContactPrefill
+import com.vayunmathur.contacts.data.PrefillValue
 import com.vayunmathur.contacts.ui.*
 import com.vayunmathur.contacts.ui.dialogs.*
 import com.vayunmathur.contacts.util.ContactViewModel
@@ -136,34 +146,20 @@ class MainActivity : ComponentActivity() {
         ) {
             externalRoute.value = when (action) {
                 Intent.ACTION_INSERT -> {
-                    Route.EditContact(
-                        contactId = null,
-                        name = intent.getStringExtra(ContactsContract.Intents.Insert.NAME),
-                        phone = intent.getStringExtra(ContactsContract.Intents.Insert.PHONE),
-                        email = intent.getStringExtra(ContactsContract.Intents.Insert.EMAIL),
-                        company = intent.getStringExtra(ContactsContract.Intents.Insert.COMPANY),
-                        jobTitle = intent.getStringExtra(ContactsContract.Intents.Insert.JOB_TITLE),
-                        notes = intent.getStringExtra(ContactsContract.Intents.Insert.NOTES)
-                    )
+                    Route.EditContact(contactId = null, prefill = buildInsertPrefill(intent))
                 }
                 Intent.ACTION_INSERT_OR_EDIT, ContactsContract.Intents.SHOW_OR_CREATE_CONTACT -> {
-                    Route.InsertOrEditContact(
-                        phone = extractPhoneNumber(intent),
-                        name = intent.getStringExtra(ContactsContract.Intents.Insert.NAME),
-                        email = intent.getStringExtra(ContactsContract.Intents.Insert.EMAIL),
-                        company = intent.getStringExtra(ContactsContract.Intents.Insert.COMPANY),
-                        jobTitle = intent.getStringExtra(ContactsContract.Intents.Insert.JOB_TITLE),
-                        notes = intent.getStringExtra(ContactsContract.Intents.Insert.NOTES)
-                    )
+                    var prefill = buildInsertPrefill(intent)
+                    if (prefill.phones.isEmpty()) {
+                        uriPhoneNumber(intent)?.takeIf { it.isNotBlank() }?.let { number ->
+                            prefill = prefill.copy(phones = listOf(PrefillValue(number)))
+                        }
+                    }
+                    Route.InsertOrEditContact(prefill = prefill)
                 }
                 Intent.ACTION_EDIT -> {
                     val contactId = resolveContactId(intent.data)
-                    Route.EditContact(
-                        contactId = contactId,
-                        name = intent.getStringExtra(ContactsContract.Intents.Insert.NAME),
-                        phone = intent.getStringExtra(ContactsContract.Intents.Insert.PHONE),
-                        email = intent.getStringExtra(ContactsContract.Intents.Insert.EMAIL)
-                    )
+                    Route.EditContact(contactId = contactId, prefill = buildInsertPrefill(intent))
                 }
                 else -> {
                     val path = intent.data?.path ?: ""
@@ -175,8 +171,11 @@ class MainActivity : ComponentActivity() {
                         }
                         else -> {
                             resolveContactId(intent.data)?.let { id -> Route.ContactDetail(id) }
-                                ?: extractPhoneNumber(intent)?.takeIf { it.isNotBlank() }?.let { number ->
-                                    Route.EditContact(contactId = null, phone = number)
+                                ?: uriPhoneNumber(intent)?.takeIf { it.isNotBlank() }?.let { number ->
+                                    Route.EditContact(
+                                        contactId = null,
+                                        prefill = ContactPrefill(phones = listOf(PrefillValue(number)))
+                                    )
                                 }
                         }
                     }
@@ -185,8 +184,80 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun extractPhoneNumber(intent: Intent): String? {
-        intent.getStringExtra(ContactsContract.Intents.Insert.PHONE)?.let { return it }
+    /**
+     * Parses everything an ACTION_INSERT-style intent can carry into a [ContactPrefill].
+     *
+     * Reads the scalar [ContactsContract.Intents.Insert] extras via [Intent.getCharSequenceExtra]
+     * (dialers/call logs pass values as `CharSequence`/`Spannable`, so `getStringExtra` returns
+     * null for them) plus the [ContactsContract.Intents.Insert.DATA] `ArrayList<ContentValues>`.
+     */
+    private fun buildInsertPrefill(intent: Intent): ContactPrefill {
+        val insert = ContactsContract.Intents.Insert
+        fun text(key: String): String? =
+            intent.getCharSequenceExtra(key)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+
+        val phones = mutableListOf<PrefillValue>()
+        val emails = mutableListOf<PrefillValue>()
+        val postals = mutableListOf<PrefillValue>()
+
+        val (phoneType, phoneLabel) = readType(intent, insert.PHONE_TYPE)
+        text(insert.PHONE)?.let { phones += PrefillValue(it, phoneType, phoneLabel) }
+        text(insert.SECONDARY_PHONE)?.let { phones += PrefillValue(it) }
+        text(insert.TERTIARY_PHONE)?.let { phones += PrefillValue(it) }
+
+        val (emailType, emailLabel) = readType(intent, insert.EMAIL_TYPE)
+        text(insert.EMAIL)?.let { emails += PrefillValue(it, emailType, emailLabel) }
+        text(insert.SECONDARY_EMAIL)?.let { emails += PrefillValue(it) }
+        text(insert.TERTIARY_EMAIL)?.let { emails += PrefillValue(it) }
+
+        val (postalType, postalLabel) = readType(intent, insert.POSTAL_TYPE)
+        text(insert.POSTAL)?.let { postals += PrefillValue(it, postalType, postalLabel) }
+
+        var name = text(insert.NAME)
+        var company = text(insert.COMPANY)
+        var notes = text(insert.NOTES)
+        var nickname: String? = null
+
+        // Insert.DATA: caller-provided rows, one ContentValues per data kind (typed).
+        val dataRows = IntentCompat.getParcelableArrayListExtra(intent, insert.DATA, ContentValues::class.java)
+        dataRows?.forEach { cv ->
+            fun value(key: String) = cv.getAsString(key)?.trim()?.takeIf { it.isNotEmpty() }
+            when (cv.getAsString(ContactsContract.Data.MIMETYPE)) {
+                CDKPhone.CONTENT_ITEM_TYPE ->
+                    value(CDKPhone.NUMBER)?.let { phones += PrefillValue(it, cv.getAsInteger(CDKPhone.TYPE), cv.getAsString(CDKPhone.LABEL)) }
+                CDKEmail.CONTENT_ITEM_TYPE ->
+                    value(CDKEmail.ADDRESS)?.let { emails += PrefillValue(it, cv.getAsInteger(CDKEmail.TYPE), cv.getAsString(CDKEmail.LABEL)) }
+                CDKStructuredPostal.CONTENT_ITEM_TYPE ->
+                    value(CDKStructuredPostal.FORMATTED_ADDRESS)?.let { postals += PrefillValue(it, cv.getAsInteger(CDKStructuredPostal.TYPE), cv.getAsString(CDKStructuredPostal.LABEL)) }
+                CDKSName.CONTENT_ITEM_TYPE -> if (name == null) name = value(CDKSName.DISPLAY_NAME)
+                CDKOrg.CONTENT_ITEM_TYPE -> if (company == null) company = value(CDKOrg.COMPANY)
+                CDKNote.CONTENT_ITEM_TYPE -> if (notes == null) notes = value(CDKNote.NOTE)
+                CDKNickname.CONTENT_ITEM_TYPE -> if (nickname == null) nickname = value(CDKNickname.NAME)
+            }
+        }
+
+        return ContactPrefill(name, company, notes, nickname, phones, emails, postals)
+    }
+
+    /**
+     * Reads a CommonDataKinds TYPE extra that may be an Int, a numeric String, or a custom label.
+     * Returns (type, customLabel); a non-numeric String becomes TYPE_CUSTOM with that label.
+     */
+    private fun readType(intent: Intent, key: String): Pair<Int?, String?> {
+        val raw = intent.extras?.get(key) ?: return null to null
+        return when (raw) {
+            is Int -> raw to null
+            is CharSequence -> {
+                val s = raw.toString()
+                s.toIntOrNull()?.let { it to null }
+                    ?: (ContactsContract.CommonDataKinds.BaseTypes.TYPE_CUSTOM to s)
+            }
+            else -> null to null
+        }
+    }
+
+    /** Extracts a phone number from a `tel:` or `phone_lookup` data URI (not from extras). */
+    private fun uriPhoneNumber(intent: Intent): String? {
         val uri = intent.data ?: return null
         if (uri.scheme == "tel") {
             return uri.schemeSpecificPart
@@ -397,22 +468,12 @@ sealed interface Route: NavKey {
     @Serializable
     data class EditContact(
         val contactId: Long?,
-        val name: String? = null,
-        val phone: String? = null,
-        val email: String? = null,
-        val company: String? = null,
-        val jobTitle: String? = null,
-        val notes: String? = null
+        val prefill: ContactPrefill? = null
     ) : Route
 
     @Serializable
     data class InsertOrEditContact(
-        val phone: String? = null,
-        val name: String? = null,
-        val email: String? = null,
-        val company: String? = null,
-        val jobTitle: String? = null,
-        val notes: String? = null
+        val prefill: ContactPrefill? = null
     ) : Route
 
     @Serializable

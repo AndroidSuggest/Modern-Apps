@@ -17,9 +17,11 @@ import com.vayunmathur.contacts.data.CDKEmail
 import com.vayunmathur.contacts.data.CDKEvent
 import com.vayunmathur.contacts.data.CDKNickname
 import com.vayunmathur.contacts.data.CDKPhone
+import com.vayunmathur.contacts.data.CDKStructuredPostal
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.ContactDetails
 import com.vayunmathur.contacts.data.ContactGroup
+import com.vayunmathur.contacts.data.ContactPrefill
 import com.vayunmathur.contacts.data.Email
 import com.vayunmathur.contacts.data.Event
 import com.vayunmathur.contacts.data.GroupMembership
@@ -669,11 +671,7 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
 
     fun initEditDraft(
         contactId: Long?,
-        prefillName: String? = null,
-        prefillPhone: String? = null,
-        prefillEmail: String? = null,
-        prefillCompany: String? = null,
-        prefillNotes: String? = null,
+        prefill: ContactPrefill? = null,
     ) {
         if (editingInitialized && editingContactId == contactId && _editDraft.value != null) return
         val contact = contactId?.let {
@@ -689,37 +687,26 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
             if (raw == "sim") ContactDraftTarget.SIM else ContactDraftTarget.DEVICE
         } else ContactDraftTarget.DEVICE
         val defaultSubId = _simSubscriptions.value.firstOrNull()
-        val initialSimName = prefillName ?: contact?.name?.value ?: ""
-        val initialSimPhone = prefillPhone ?: details?.phoneNumbers?.firstOrNull()?.number ?: ""
-        val initialSimEmail = prefillEmail ?: details?.emails?.firstOrNull()?.address ?: ""
+        val initialSimName = prefill?.name ?: contact?.name?.value ?: ""
+        val initialSimPhone = prefill?.primaryPhone ?: details?.phoneNumbers?.firstOrNull()?.number ?: ""
+        val initialSimEmail = prefill?.primaryEmail ?: details?.emails?.firstOrNull()?.address ?: ""
         _editDraft.value = ContactDraft(
             namePrefix = contact?.name?.namePrefix ?: "",
-            firstName = contact?.name?.firstName ?: prefillName ?: "",
+            firstName = contact?.name?.firstName ?: prefill?.name ?: "",
             middleName = contact?.name?.middleName ?: "",
             lastName = contact?.name?.lastName ?: "",
             nameSuffix = contact?.name?.nameSuffix ?: "",
-            company = contact?.org?.company ?: prefillCompany ?: "",
-            noteContent = contact?.note?.content ?: prefillNotes ?: "",
-            nickname = contact?.nickname?.nickname ?: "",
+            company = contact?.org?.company ?: prefill?.company ?: "",
+            noteContent = contact?.note?.content ?: prefill?.notes ?: "",
+            nickname = contact?.nickname?.nickname ?: prefill?.nickname ?: "",
             photo = contact?.photo,
             birthday = contact?.birthday?.startDate,
             accountName = contact?.accountName ?: _lastSelectedAccount.value?.name ?: "",
             accountType = contact?.accountType ?: _lastSelectedAccount.value?.type ?: "",
-            phoneNumbers = (details?.phoneNumbers ?: emptyList()).let { list ->
-                if (prefillPhone != null) {
-                    val normalizedPrefill = normalizePhoneForCompare(prefillPhone)
-                    val exists = list.any { normalizePhoneForCompare(it.number) == normalizedPrefill }
-                    if (!exists) list + PhoneNumber(0, prefillPhone, CDKPhone.TYPE_MOBILE) else list
-                } else list
-            },
-            emails = (details?.emails ?: emptyList()).let { list ->
-                if (prefillEmail != null) {
-                    val exists = list.any { it.address.trim().equals(prefillEmail.trim(), ignoreCase = true) }
-                    if (!exists) list + Email(0, prefillEmail, CDKEmail.TYPE_HOME) else list
-                } else list
-            },
+            phoneNumbers = mergePhones(details?.phoneNumbers ?: emptyList(), prefill?.phones ?: emptyList()),
+            emails = mergeEmails(details?.emails ?: emptyList(), prefill?.emails ?: emptyList()),
             dates = details?.dates ?: emptyList(),
-            addresses = details?.addresses ?: emptyList(),
+            addresses = mergeAddresses(details?.addresses ?: emptyList(), prefill?.postals ?: emptyList()),
             groupMemberships = details?.groups ?: emptyList(),
             target = initialTarget,
             simSubscriptionId = defaultSubId,
@@ -727,6 +714,45 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
             simPhone = initialSimPhone,
             simEmail = initialSimEmail,
         )
+    }
+
+    /** Appends prefilled phones that aren't already present (compared by normalized number). */
+    private fun mergePhones(existing: List<PhoneNumber>, prefill: List<PrefillValue>): List<PhoneNumber> {
+        if (prefill.isEmpty()) return existing
+        val result = existing.toMutableList()
+        for (p in prefill) {
+            val norm = normalizePhoneForCompare(p.value)
+            if (norm.isEmpty()) continue
+            if (result.any { normalizePhoneForCompare(it.number) == norm }) continue
+            result += PhoneNumber(0, p.value, p.type ?: CDKPhone.TYPE_MOBILE, p.label ?: "")
+        }
+        return result
+    }
+
+    /** Appends prefilled emails that aren't already present (case-insensitive address match). */
+    private fun mergeEmails(existing: List<Email>, prefill: List<PrefillValue>): List<Email> {
+        if (prefill.isEmpty()) return existing
+        val result = existing.toMutableList()
+        for (e in prefill) {
+            val v = e.value.trim()
+            if (v.isEmpty()) continue
+            if (result.any { it.address.trim().equals(v, ignoreCase = true) }) continue
+            result += Email(0, e.value, e.type ?: CDKEmail.TYPE_HOME, e.label ?: "")
+        }
+        return result
+    }
+
+    /** Appends prefilled postal addresses that aren't already present (case-insensitive match). */
+    private fun mergeAddresses(existing: List<Address>, prefill: List<PrefillValue>): List<Address> {
+        if (prefill.isEmpty()) return existing
+        val result = existing.toMutableList()
+        for (a in prefill) {
+            val v = a.value.trim()
+            if (v.isEmpty()) continue
+            if (result.any { it.formattedAddress.trim().equals(v, ignoreCase = true) }) continue
+            result += Address(0, a.value, a.type ?: CDKStructuredPostal.TYPE_HOME, a.label ?: "")
+        }
+        return result
     }
 
     /**
