@@ -275,9 +275,11 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions, UnitCo
     override fun setTo(token: String) { converterToToken = token }
     override fun setConverterInput(text: String) { converterValueText = text }
     override fun swapUnits() {
+        val swappedInput = convert(UnitRegistry.categories[converterCategoryIndex])
         val from = converterFromToken
         converterFromToken = converterToToken
         converterToToken = from
+        if (swappedInput.toDoubleOrNull() != null) converterValueText = swappedInput
     }
 
     /**
