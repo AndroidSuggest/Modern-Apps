@@ -14,8 +14,9 @@ import kotlin.math.pow
  * documented on [Quantity].
  */
 
-/** The seven SI base dimensions, plus INFORMATION so bytes/bits are first-class. */
-enum class BaseDim { LENGTH, MASS, TIME, CURRENT, TEMPERATURE, AMOUNT, LUMINOUS, INFORMATION }
+/** The seven SI base dimensions, plus INFORMATION so bytes/bits are first-class, and
+ * CURRENCY for the live money converter (converter-only; never used inside equations). */
+enum class BaseDim { LENGTH, MASS, TIME, CURRENT, TEMPERATURE, AMOUNT, LUMINOUS, INFORMATION, CURRENCY }
 
 /**
  * A product of base dimensions with integer exponents (so speed is `LENGTH·TIME⁻¹`). Zero
@@ -54,6 +55,7 @@ class Dimension private constructor(val exponents: Map<BaseDim, Int>) {
         val TEMPERATURE = base(BaseDim.TEMPERATURE)
         val AMOUNT = base(BaseDim.AMOUNT)
         val INFORMATION = base(BaseDim.INFORMATION)
+        val CURRENCY = base(BaseDim.CURRENCY)
 
         // Common derived dimensions.
         val AREA = LENGTH.pow(2)
@@ -222,6 +224,53 @@ object UnitRegistry {
         val options = unitsFor(dimension)
         return options.firstOrNull { it.factorToBase == 1.0 && (it.offsetK == null || it.offsetK == 0.0) }
             ?: options.firstOrNull()
+    }
+
+    /** Widely-used currencies, surfaced at the top of the currency picker in this order. */
+    val CURRENCY_PRIORITY: List<String> =
+        listOf("USD", "EUR", "GBP", "JPY", "CNY", "INR", "CAD", "AUD", "CHF", "HKD")
+
+    /** Display names for common ISO 4217 codes; codes not listed fall back to the code itself. */
+    private val CURRENCY_NAMES: Map<String, String> = mapOf(
+        "USD" to "US Dollar", "EUR" to "Euro", "GBP" to "British Pound", "JPY" to "Japanese Yen",
+        "CNY" to "Chinese Yuan", "INR" to "Indian Rupee", "CAD" to "Canadian Dollar",
+        "AUD" to "Australian Dollar", "CHF" to "Swiss Franc", "HKD" to "Hong Kong Dollar",
+        "NZD" to "New Zealand Dollar", "SGD" to "Singapore Dollar", "SEK" to "Swedish Krona",
+        "NOK" to "Norwegian Krone", "DKK" to "Danish Krone", "KRW" to "South Korean Won",
+        "MXN" to "Mexican Peso", "BRL" to "Brazilian Real", "ZAR" to "South African Rand",
+        "RUB" to "Russian Ruble", "TRY" to "Turkish Lira", "AED" to "UAE Dirham",
+        "SAR" to "Saudi Riyal", "THB" to "Thai Baht", "IDR" to "Indonesian Rupiah",
+        "MYR" to "Malaysian Ringgit", "PHP" to "Philippine Peso", "PLN" to "Polish Zloty",
+        "CZK" to "Czech Koruna", "HUF" to "Hungarian Forint", "ILS" to "Israeli Shekel",
+        "CLP" to "Chilean Peso", "COP" to "Colombian Peso", "ARS" to "Argentine Peso",
+        "EGP" to "Egyptian Pound", "NGN" to "Nigerian Naira", "PKR" to "Pakistani Rupee",
+        "BDT" to "Bangladeshi Taka", "VND" to "Vietnamese Dong", "UAH" to "Ukrainian Hryvnia",
+        "TWD" to "Taiwan Dollar",
+    )
+
+    /**
+     * Build the converter's live "Currency" category from [rates] (units of the currency per
+     * 1 USD, so USD == 1.0). A currency's [UnitDef.factorToBase] is `1/rate` — its value in
+     * USD, the base — which makes the ordinary [UnitDef.toBase]/[UnitDef.fromBase] path convert
+     * between any two currencies. Common currencies lead the list; the rest follow
+     * alphabetically. Currencies are converter-only, so this category is never `inEquations`.
+     * Returns null when [rates] has no usable entries.
+     */
+    fun currencyCategory(rates: Map<String, Double>): UnitCategory? {
+        val usable = rates.filterValues { it.isFinite() && it > 0.0 }
+        if (usable.isEmpty()) return null
+        val priority = CURRENCY_PRIORITY.filter { it in usable }
+        val rest = usable.keys.filter { it !in priority }.sorted()
+        val units = (priority + rest).map { code ->
+            UnitDef(
+                token = code,
+                symbol = code,
+                name = CURRENCY_NAMES[code] ?: code,
+                dimension = Dimension.CURRENCY,
+                factorToBase = 1.0 / usable.getValue(code),
+            )
+        }
+        return UnitCategory("Currency", units, inEquations = false)
     }
 
     private fun buildCategories(): List<UnitCategory> {

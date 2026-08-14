@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import kotlin.math.hypot
 
 /** One plotted curve on the graph screen — Cartesian `y = f(x)` or polar `r = f(θ)`. */
@@ -243,16 +245,33 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions, UnitCo
     var converterValueText by mutableStateOf("1")
         private set
 
+    // Live currency rates power a "Currency" tab appended after the static categories. The tab
+    // is always present (so it stays reachable while loading or after a failure); its units
+    // populate once rates are fetched.
+    private var currencyCategory by mutableStateOf<UnitCategory?>(null)
+    private var currencyLoading by mutableStateOf(false)
+    private var currencyError by mutableStateOf<String?>(null)
+
+    /** Static physical-unit categories plus the (possibly still-empty) live Currency tab. */
+    private val converterCategories: List<UnitCategory>
+        get() = UnitRegistry.categories + (currencyCategory ?: EMPTY_CURRENCY_CATEGORY)
+
+    private val currencyIndex: Int get() = converterCategories.lastIndex
+
     val unitConverterUiState: UnitConverterUiState
         get() {
-            val category = UnitRegistry.categories[converterCategoryIndex]
+            val categories = converterCategories
+            val index = converterCategoryIndex.coerceIn(categories.indices)
             return UnitConverterUiState(
-                categories = UnitRegistry.categories,
-                selectedCategoryIndex = converterCategoryIndex,
+                categories = categories,
+                selectedCategoryIndex = index,
                 fromToken = converterFromToken,
                 toToken = converterToToken,
                 inputText = converterValueText,
-                outputText = convert(category),
+                outputText = convert(categories[index]),
+                currencyLoading = currencyLoading,
+                currencyError = currencyError,
+                isCurrencyCategory = index == currencyIndex,
             )
         }
 
@@ -264,22 +283,58 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions, UnitCo
     }
 
     override fun selectCategory(index: Int) {
-        if (index !in UnitRegistry.categories.indices) return
+        val categories = converterCategories
+        if (index !in categories.indices) return
         converterCategoryIndex = index
-        val units = UnitRegistry.categories[index].units
-        converterFromToken = units[0].token
-        converterToToken = units.getOrElse(1) { units[0] }.token
+        val units = categories[index].units
+        converterFromToken = units.getOrNull(0)?.token ?: ""
+        converterToToken = units.getOrElse(1) { units.getOrNull(0) }?.token ?: converterFromToken
     }
 
     override fun setFrom(token: String) { converterFromToken = token }
     override fun setTo(token: String) { converterToToken = token }
     override fun setConverterInput(text: String) { converterValueText = text }
     override fun swapUnits() {
-        val swappedInput = convert(UnitRegistry.categories[converterCategoryIndex])
+        val categories = converterCategories
+        val swappedInput = convert(categories[converterCategoryIndex.coerceIn(categories.indices)])
         val from = converterFromToken
         converterFromToken = converterToToken
         converterToToken = from
         if (swappedInput.toDoubleOrNull() != null) converterValueText = swappedInput
+    }
+
+    override fun retryCurrency() = loadCurrencyRates()
+
+    private fun loadCurrencyRates() {
+        if (currencyLoading) return
+        currencyLoading = true
+        currencyError = null
+        viewModelScope.launch {
+            runCatching { CurrencyApi.rates() }
+                .onSuccess { dto ->
+                    val category = UnitRegistry.currencyCategory(dto.rates)
+                    if (category == null) {
+                        currencyError = "No exchange rates available"
+                    } else {
+                        val wasEmpty = currencyCategory?.units.isNullOrEmpty()
+                        currencyCategory = category
+                        // If the user is already on the Currency tab with nothing picked yet,
+                        // seed sensible defaults (USD -> EUR) now that units exist.
+                        if (converterCategoryIndex == currencyIndex && wasEmpty) {
+                            val units = category.units
+                            converterFromToken = units.getOrNull(0)?.token ?: converterFromToken
+                            converterToToken =
+                                units.getOrElse(1) { units.getOrNull(0) }?.token ?: converterToToken
+                        }
+                    }
+                }
+                .onFailure { currencyError = "Couldn't load exchange rates" }
+            currencyLoading = false
+        }
+    }
+
+    init {
+        loadCurrencyRates()
     }
 
     /**
@@ -321,5 +376,9 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions, UnitCo
             Color(0xFF4285F4), Color(0xFFEA4335), Color(0xFF34A853),
             Color(0xFFFF9800), Color(0xFF9C27B0), Color(0xFF00BCD4),
         )
+
+        /** The Currency tab's stand-in before rates load: present so the tab shows, but empty. */
+        private val EMPTY_CURRENCY_CATEGORY =
+            UnitCategory("Currency", emptyList(), inEquations = false)
     }
 }

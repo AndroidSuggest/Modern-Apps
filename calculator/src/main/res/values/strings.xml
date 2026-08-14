@@ -32,4 +32,10 @@
     <string name="converter_result">Result</string>
     <!-- Converter: content description for the button that swaps the from and to units. -->
     <string name="converter_swap">Swap units</string>
+    <!-- Converter: shown while live currency exchange rates are being fetched. -->
+    <string name="currency_loading">Fetching exchange rates…</string>
+    <!-- Converter: shown when exchange rates could not be loaded. -->
+    <string name="currency_unavailable">Exchange rates are unavailable</string>
+    <!-- Converter: button to retry fetching exchange rates after a failure. -->
+    <string name="currency_retry">Retry</string>
 </resources>

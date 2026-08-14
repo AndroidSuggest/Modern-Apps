@@ -27,6 +27,8 @@ import com.vayunmathur.calculator.util.UnitConverterUiState
 import com.vayunmathur.calculator.util.UnitDef
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CenterAlignedTopAppBar
+import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.FilledTonalIconButton
@@ -68,55 +70,90 @@ fun UnitConverterScreen(state: UnitConverterUiState, actions: UnitConverterActio
                 }
             }
             if (category != null) {
-                Column(
-                    Modifier.fillMaxWidth().padding(Spacing.lg),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.md),
-                ) {
-                    OutlinedTextField(
-                        value = state.inputText,
-                        onValueChange = actions::setConverterInput,
-                        label = { Text(stringResource(R.string.converter_value)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
+                if (state.isCurrencyCategory && category.units.isEmpty()) {
+                    CurrencyStatus(
+                        loading = state.currencyLoading,
+                        error = state.currencyError,
+                        onRetry = actions::retryCurrency,
                     )
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        LabeledUnitDropdown(
-                            label = stringResource(R.string.converter_from),
-                            units = category.units,
-                            selectedToken = state.fromToken,
-                            onSelect = actions::setFrom,
-                            modifier = Modifier.weight(1f),
+                } else {
+                    Column(
+                        Modifier.fillMaxWidth().padding(Spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                    ) {
+                        OutlinedTextField(
+                            value = state.inputText,
+                            onValueChange = actions::setConverterInput,
+                            label = { Text(stringResource(R.string.converter_value)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                        FilledTonalIconButton(
-                            onClick = actions::swapUnits,
-                            modifier = Modifier.padding(horizontal = Spacing.sm),
-                        ) { IconSwapLanguages() }
-                        LabeledUnitDropdown(
-                            label = stringResource(R.string.converter_to),
-                            units = category.units,
-                            selectedToken = state.toToken,
-                            onSelect = actions::setTo,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    val toSymbol = category.units.firstOrNull { it.token == state.toToken }?.symbol.orEmpty()
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(Spacing.lg)) {
-                            Text(
-                                stringResource(R.string.converter_result),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 14.sp,
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            LabeledUnitDropdown(
+                                label = stringResource(R.string.converter_from),
+                                units = category.units,
+                                selectedToken = state.fromToken,
+                                onSelect = actions::setFrom,
+                                modifier = Modifier.weight(1f),
                             )
-                            Text(
-                                if (state.outputText.isEmpty()) "—" else "${state.outputText}\u202F$toSymbol",
-                                fontSize = 28.sp,
-                                maxLines = 1,
+                            FilledTonalIconButton(
+                                onClick = actions::swapUnits,
+                                modifier = Modifier.padding(horizontal = Spacing.sm),
+                            ) { IconSwapLanguages() }
+                            LabeledUnitDropdown(
+                                label = stringResource(R.string.converter_to),
+                                units = category.units,
+                                selectedToken = state.toToken,
+                                onSelect = actions::setTo,
+                                modifier = Modifier.weight(1f),
                             )
+                        }
+                        val toSymbol = category.units.firstOrNull { it.token == state.toToken }?.symbol.orEmpty()
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(Spacing.lg)) {
+                                Text(
+                                    stringResource(R.string.converter_result),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 14.sp,
+                                )
+                                Text(
+                                    if (state.outputText.isEmpty()) "—" else "${state.outputText}\u202F$toSymbol",
+                                    fontSize = 28.sp,
+                                    maxLines = 1,
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The Currency tab's placeholder while it has no units yet: a spinner during the fetch, or an
+ * error with a retry button if it failed.
+ */
+@Composable
+private fun CurrencyStatus(loading: Boolean, error: String?, onRetry: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(Spacing.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        if (loading) {
+            CircularProgressIndicator()
+            Text(
+                stringResource(R.string.currency_loading),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(
+                error ?: stringResource(R.string.currency_unavailable),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(onClick = onRetry) { Text(stringResource(R.string.currency_retry)) }
         }
     }
 }

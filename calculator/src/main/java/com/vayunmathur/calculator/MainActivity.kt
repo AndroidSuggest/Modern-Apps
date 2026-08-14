@@ -11,6 +11,8 @@ import com.vayunmathur.calculator.ui.GraphPage
 import com.vayunmathur.calculator.ui.UnitConverterPage
 import com.vayunmathur.calculator.util.CalculatorViewModel
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.ui.IconCalculate
 import com.vayunmathur.library.ui.IconFunctions
 import com.vayunmathur.library.ui.IconRuler
@@ -26,6 +28,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // FIRST_PARTY covers api.vayunmathur.com, where the currency-rate proxy lives.
+        NetworkClient.init(this, TrustBundle.FIRST_PARTY)
         enableEdgeToEdge()
         setContent {
             DynamicTheme {

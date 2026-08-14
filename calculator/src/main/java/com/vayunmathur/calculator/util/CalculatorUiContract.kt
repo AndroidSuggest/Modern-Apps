@@ -98,6 +98,12 @@ data class UnitConverterUiState(
     val toToken: String = "",
     val inputText: String = "",
     val outputText: String = "",
+    /** True while the live currency rates are being fetched (the Currency tab shows a spinner). */
+    val currencyLoading: Boolean = false,
+    /** Non-null when fetching currency rates failed; the Currency tab shows this with a retry. */
+    val currencyError: String? = null,
+    /** True once the selected category is the live Currency tab. */
+    val isCurrencyCategory: Boolean = false,
 )
 
 /** Unit-converter callbacks. Same no-op-default arrangement as [CalculatorActions]. */
@@ -107,6 +113,8 @@ interface UnitConverterActions {
     fun setTo(token: String) {}
     fun setConverterInput(text: String) {}
     fun swapUnits() {}
+    /** Re-fetch live currency exchange rates after a failure. */
+    fun retryCurrency() {}
 
     companion object {
         val Noop: UnitConverterActions = object : UnitConverterActions {}
