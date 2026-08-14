@@ -1,29 +1,7 @@
 package com.vayunmathur.flashcards.util
 
-import android.content.Context
-import com.vayunmathur.flashcards.data.Card
-import com.vayunmathur.flashcards.data.Deck
-import java.io.File
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-
-/** A deck plus its cards, the unit of per-deck JSON export/import. */
-@Serializable
-data class DeckExport(val deck: Deck, val cards: List<Card>)
-
-/** Per-deck JSON export (for share) and CSV import (for bulk card creation). */
+/** CSV import for bulk note creation. Per-deck sharing now uses `.apkg` (see [ApkgExport]). */
 object DeckIo {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
-
-    /** Writes [deck] + [cards] as JSON to a cache file and returns it. */
-    fun writeExport(context: Context, deck: Deck, cards: List<Card>): File {
-        val dir = File(context.cacheDir, "shared_decks").apply { mkdirs() }
-        val safeName = deck.name.ifBlank { "deck" }.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        val file = File(dir, "$safeName.json")
-        file.writeText(json.encodeToString(DeckExport(deck, cards)))
-        return file
-    }
 
     /**
      * Parses CSV text into (front, back) pairs. Accepts two columns per row; a

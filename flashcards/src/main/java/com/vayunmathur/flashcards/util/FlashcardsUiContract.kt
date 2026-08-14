@@ -1,7 +1,10 @@
 package com.vayunmathur.flashcards.util
 
-import com.vayunmathur.flashcards.data.Card
+import com.vayunmathur.flashcards.data.CardTemplate
 import com.vayunmathur.flashcards.data.Deck
+import com.vayunmathur.flashcards.data.Note
+import com.vayunmathur.flashcards.data.NoteType
+import com.vayunmathur.flashcards.data.NoteTypeField
 
 /**
  * The UI contract between [FlashcardsViewModel] plus the nav back stack and the screens.
@@ -45,55 +48,134 @@ interface DeckListActions {
 }
 
 // ---------------------------------------------------------------------------
-// Card list
+// Note list
 // ---------------------------------------------------------------------------
 
-/** Everything the card list draws for a single deck. */
-data class CardListUiState(
+/** A note plus the number of cards it currently generates, drawn on the note list. */
+data class NoteRow(
+    val note: Note,
+    val cardCount: Int = 1,
+)
+
+/** Everything the note list draws for a single deck. */
+data class NoteListUiState(
     val deckName: String = "",
-    val cards: List<Card> = emptyList(),
+    val notes: List<NoteRow> = emptyList(),
     val dueCount: Int = 0,
 )
 
-interface CardListActions {
+interface NoteListActions {
     fun back() {}
-    fun openCard(id: Long) {}
-    fun addCard() {}
-    fun deleteCard(card: Card) {}
+    fun openNote(id: Long) {}
+    fun addNote() {}
+    fun deleteNote(note: Note) {}
     fun study() {}
-    fun reorder(cards: List<Card>) {}
+    fun reorder(notes: List<Note>) {}
     fun openStats() {}
     fun share() {}
 
     companion object {
-        val Noop: CardListActions = object : CardListActions {}
+        val Noop: NoteListActions = object : NoteListActions {}
     }
 }
 
 // ---------------------------------------------------------------------------
-// Card editor
+// Note editor
 // ---------------------------------------------------------------------------
 
-/** Everything the card editor draws: the two markdown sides plus tags. */
-data class CardEditUiState(
-    val front: String = "",
-    val back: String = "",
-    val tags: String = "",
+/** A note type and its ordered field names, used to drive the note editor's fields. */
+data class NoteTypeConfig(
+    val id: Long,
+    val name: String,
+    val fieldNames: List<String>,
+)
+
+/** Everything the note editor draws: the selected note type, its fields, and tags. */
+data class NoteEditUiState(
+    val initialNoteTypeId: Long = 0,
+    val initialDeckId: Long = 0,
+    /** Field values in the selected note type's field order. */
+    val initialFieldValues: List<String> = emptyList(),
+    val initialTags: String = "",
+    val isNew: Boolean = true,
+    val noteTypes: List<NoteTypeConfig> = emptyList(),
+    val decks: List<DeckOption> = emptyList(),
+)
+
+interface NoteEditActions {
+    fun back() {}
+    fun save(noteTypeId: Long, deckId: Long, fieldValues: List<String>, tags: String) {}
+    fun deleteNote() {}
+
+    companion object {
+        val Noop: NoteEditActions = object : NoteEditActions {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Note type list + editor
+// ---------------------------------------------------------------------------
+
+/** A note type plus its counts, drawn on the note-type management list. */
+data class NoteTypeSummary(
+    val id: Long,
+    val name: String,
+    val fieldCount: Int,
+    val templateCount: Int,
+    val noteCount: Int,
+    val isCloze: Boolean,
+)
+
+data class NoteTypeListUiState(
+    val noteTypes: List<NoteTypeSummary> = emptyList(),
+)
+
+interface NoteTypeListActions {
+    fun back() {}
+    fun openNoteType(id: Long) {}
+    fun addNoteType() {}
+    fun deleteNoteType(id: Long) {}
+
+    companion object {
+        val Noop: NoteTypeListActions = object : NoteTypeListActions {}
+    }
+}
+
+/** An editable template draft in the note-type editor. */
+data class TemplateDraft(
+    val name: String,
+    val qfmt: String,
+    val afmt: String,
+)
+
+/** Everything the note-type editor draws for one note type. */
+data class NoteTypeEditUiState(
+    val id: Long = 0,
+    val name: String = "",
+    val css: String = "",
+    /** [com.vayunmathur.flashcards.data.NoteTypeKind]. Cloze note types have a fixed single template. */
+    val type: Int = 0,
+    val fields: List<String> = emptyList(),
+    val templates: List<TemplateDraft> = emptyList(),
     val isNew: Boolean = true,
 )
 
-interface CardEditActions {
+interface NoteTypeEditActions {
     fun back() {}
-    fun setFront(front: String) {}
-    fun setBack(back: String) {}
-    fun setTags(tags: String) {}
-    fun save() {}
-    fun deleteCard() {}
+    fun save(name: String, css: String, type: Int, fields: List<String>, templates: List<TemplateDraft>) {}
+    fun delete() {}
 
     companion object {
-        val Noop: CardEditActions = object : CardEditActions {}
+        val Noop: NoteTypeEditActions = object : NoteTypeEditActions {}
     }
 }
+
+/** Bundles a note type with its ordered fields and templates for in-memory caching. */
+data class NoteTypeWithConfig(
+    val noteType: NoteType,
+    val fields: List<NoteTypeField>,
+    val templates: List<CardTemplate>,
+)
 
 // ---------------------------------------------------------------------------
 // Review session
@@ -187,6 +269,8 @@ interface SettingsActions {
     fun setReminderEnabled(enabled: Boolean) {}
     fun setReminderTime(hour: Int, minute: Int) {}
     fun setThemeMode(mode: Int) {}
+    fun manageNoteTypes() {}
+    fun exportCollection() {}
 
     companion object {
         val Noop: SettingsActions = object : SettingsActions {}

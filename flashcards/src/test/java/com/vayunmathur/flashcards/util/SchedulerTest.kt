@@ -10,13 +10,13 @@ class SchedulerTest {
 
     private val now = 1_000_000_000_000L
 
-    private fun newCard() = Card(id = 1, deckId = 1, front = "q", back = "a")
+    private fun newCard() = Card(id = 1, noteId = 1, templateOrd = 0, deckId = 1)
 
     private fun reviewCard(stability: Double, difficulty: Double, daysAgo: Int) = Card(
         id = 1,
+        noteId = 1,
+        templateOrd = 0,
         deckId = 1,
-        front = "q",
-        back = "a",
         stability = stability,
         difficulty = difficulty,
         state = CardState.REVIEW,

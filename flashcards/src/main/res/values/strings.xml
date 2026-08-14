@@ -46,6 +46,37 @@
     <string name="back">Back</string>
     <string name="tags">Tags</string>
 
+    <!-- NoteEditPage: pickers. -->
+    <string name="note_type">Note type</string>
+    <string name="deck">Deck</string>
+    <!-- NoteListPage: badge showing how many cards a note generates. %1$d = count. -->
+    <string name="card_count_badge">%1$d cards</string>
+
+    <!-- Note type manager. -->
+    <string name="manage_note_types">Manage note types</string>
+    <string name="new_note_type">New note type</string>
+    <string name="edit_note_type">Edit note type</string>
+    <string name="name">Name</string>
+    <string name="fields">Fields</string>
+    <string name="templates">Templates</string>
+    <string name="add_field">Add field</string>
+    <string name="add_template">Add template</string>
+    <string name="template_name">Template name</string>
+    <string name="template_front">Front template</string>
+    <string name="template_back">Back template</string>
+    <string name="preview">Preview</string>
+    <string name="note_type_standard">Standard</string>
+    <string name="note_type_cloze">Cloze</string>
+    <!-- Note type list subtitle. %1$d = fields, %2$d = templates, %3$d = notes. -->
+    <string name="note_type_summary">%1$d fields · %2$d templates · %3$d notes</string>
+    <!-- Confirm before deleting a note type. %1$s = name, %2$d = affected notes. -->
+    <string name="delete_note_type_message">Delete \"%1$s\" and its %2$d notes?</string>
+
+    <!-- Settings: data section. -->
+    <string name="settings_data">Data</string>
+    <string name="export_collection">Export collection</string>
+    <string name="export_collection_hint">Share all decks as an Anki .apkg file</string>
+
     <!-- ReviewPage: Button that reveals the answer side of a card. -->
     <string name="show_answer">Show answer</string>
     <!-- ReviewPage: Grade buttons for spaced-repetition scoring. -->

@@ -1,6 +1,7 @@
 package com.vayunmathur.flashcards.ui
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
@@ -30,10 +31,11 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.flashcards.R
 import com.vayunmathur.flashcards.Route
-import com.vayunmathur.flashcards.data.Card
-import com.vayunmathur.flashcards.util.CardListActions
-import com.vayunmathur.flashcards.util.CardListUiState
+import com.vayunmathur.flashcards.data.Note
 import com.vayunmathur.flashcards.util.FlashcardsViewModel
+import com.vayunmathur.flashcards.util.NoteListActions
+import com.vayunmathur.flashcards.util.NoteListUiState
+import com.vayunmathur.flashcards.util.NoteRow
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CommonSearchBar
@@ -54,29 +56,41 @@ import com.vayunmathur.library.ui.reorderDragHandle
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.parseMarkdown
 
-/** Binds the deck with [deckId] to the stateless [CardListScreen]. */
+/** Binds the deck with [deckId] to the stateless [NoteListScreen]. */
 @Composable
-fun CardListPage(
+fun NoteListPage(
     backStack: NavBackStack<Route>,
     viewModel: FlashcardsViewModel,
     deckId: Long,
 ) {
     val context = LocalContext.current
     val decks by viewModel.decks.collectAsStateWithLifecycle()
+    val notes by remember(deckId) { viewModel.notesFor(deckId) }
+        .collectAsStateWithLifecycle(emptyList())
     val cards by remember(deckId) { viewModel.cardsFor(deckId) }
         .collectAsStateWithLifecycle(emptyList())
 
     val deckName = decks.firstOrNull { it.id == deckId }?.name ?: ""
     val now = System.currentTimeMillis()
+    val cardsByNote = cards.groupBy { it.noteId }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
-    ) { uri -> uri?.let { viewModel.importCsv(deckId, it) } }
+    ) { uri ->
+        uri?.let {
+            val name = queryFileName(context, it).orEmpty()
+            if (name.endsWith(".apkg", true) || isZip(context, it)) {
+                viewModel.importApkg(it)
+            } else {
+                viewModel.importCsv(deckId, it)
+            }
+        }
+    }
 
     LaunchedEffect(viewModel, deckId) {
         viewModel.shareRequests.collect { uri ->
             val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/json"
+                type = "application/octet-stream"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
@@ -85,49 +99,65 @@ fun CardListPage(
             )
         }
     }
-
-    val actions = remember(backStack, viewModel, deckId) {
-        object : CardListActions {
-            override fun back() { backStack.pop() }
-            override fun openCard(id: Long) { backStack.add(Route.CardEdit(deckId, id)) }
-            override fun addCard() { backStack.add(Route.CardEdit(deckId, 0)) }
-            override fun deleteCard(card: Card) { viewModel.deleteCard(card) }
-            override fun study() { backStack.add(Route.Review(deckId)) }
-            override fun reorder(cards: List<Card>) { viewModel.reorderCards(cards) }
-            override fun openStats() { backStack.add(Route.Stats) }
-            override fun share() { viewModel.exportDeck(deckId) }
+    LaunchedEffect(viewModel) {
+        viewModel.messages.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
 
-    CardListScreen(
-        state = CardListUiState(
+    val actions = remember(backStack, viewModel, deckId) {
+        object : NoteListActions {
+            override fun back() { backStack.pop() }
+            override fun openNote(id: Long) { backStack.add(Route.NoteEdit(deckId, id)) }
+            override fun addNote() { backStack.add(Route.NoteEdit(deckId, 0)) }
+            override fun deleteNote(note: Note) { viewModel.deleteNote(note) }
+            override fun study() { backStack.add(Route.Review(deckId)) }
+            override fun reorder(notes: List<Note>) { viewModel.reorderNotes(notes) }
+            override fun openStats() { backStack.add(Route.Stats) }
+            override fun share() { viewModel.exportApkg(deckId) }
+        }
+    }
+
+    NoteListScreen(
+        state = NoteListUiState(
             deckName = deckName,
-            cards = cards.sortedBy { it.position },
+            notes = notes.sortedBy { it.position }
+                .map { NoteRow(it, cardsByNote[it.id]?.size ?: 0) },
             dueCount = cards.count { (!it.isNew && it.dueDate <= now) || it.isNew },
         ),
         actions = actions,
-        onImport = { importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain")) },
+        onImport = {
+            importLauncher.launch(
+                arrayOf(
+                    "application/octet-stream",
+                    "application/zip",
+                    "text/csv",
+                    "text/comma-separated-values",
+                    "text/plain",
+                    "*/*",
+                ),
+            )
+        },
     )
 }
 
 /**
- * The card list for one deck, with no dependency on the ViewModel or the back stack so it
+ * The note list for one deck, with no dependency on the ViewModel or the back stack so it
  * can be rendered from a `@Preview` — see `src/screenshotTest`.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun CardListScreen(
-    state: CardListUiState,
-    actions: CardListActions,
+fun NoteListScreen(
+    state: NoteListUiState,
+    actions: NoteListActions,
     onImport: () -> Unit = {},
 ) {
     var query by remember { mutableStateOf("") }
     val filtered = if (query.isBlank()) {
-        state.cards
+        state.notes
     } else {
-        state.cards.filter {
-            it.front.contains(query, true) || it.back.contains(query, true) ||
-                it.tags.contains(query, true)
+        state.notes.filter {
+            it.note.flds.contains(query, true) || it.note.tags.contains(query, true)
         }
     }
 
@@ -139,7 +169,7 @@ fun CardListScreen(
             IconButton(onClick = { actions.share() }) { IconShare() }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { actions.addCard() }) { IconAdd() }
+            FloatingActionButton(onClick = { actions.addNote() }) { IconAdd() }
         },
     ) { paddingValues ->
         Column(Modifier.fillMaxSize().padding(paddingValues)) {
@@ -151,7 +181,7 @@ fun CardListScreen(
                     Text(stringResource(R.string.study))
                 }
             }
-            if (state.cards.isNotEmpty()) {
+            if (state.notes.isNotEmpty()) {
                 CommonSearchBar(
                     value = query,
                     onValueChange = { query = it },
@@ -160,16 +190,16 @@ fun CardListScreen(
                 )
             }
             when {
-                state.cards.isEmpty() -> EmptyState(
+                state.notes.isEmpty() -> EmptyState(
                     title = stringResource(R.string.no_cards),
                     message = stringResource(R.string.no_cards_hint),
                     icon = { IconAdd() },
                     modifier = Modifier.fillMaxSize(),
                 )
-                query.isBlank() -> ReorderableCardList(filtered, actions)
+                query.isBlank() -> ReorderableNoteList(filtered, actions)
                 else -> LazyColumn(Modifier.fillMaxSize()) {
-                    items(filtered, key = { it.id }) { card ->
-                        CardRow(card, onOpen = { actions.openCard(card.id) }, onDelete = { actions.deleteCard(card) })
+                    items(filtered, key = { it.note.id }) { row ->
+                        NoteRowItem(row, onOpen = { actions.openNote(row.note.id) }, onDelete = { actions.deleteNote(row.note) })
                     }
                 }
             }
@@ -179,9 +209,9 @@ fun CardListScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ReorderableCardList(cards: List<Card>, actions: CardListActions) {
+private fun ReorderableNoteList(rows: List<NoteRow>, actions: NoteListActions) {
     val listState = rememberLazyListState()
-    var local by remember { mutableStateOf(cards) }
+    var local by remember { mutableStateOf(rows) }
     var hasDragged by remember { mutableStateOf(false) }
     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
         if (from.index in local.indices && to.index in local.indices) {
@@ -189,30 +219,30 @@ private fun ReorderableCardList(cards: List<Card>, actions: CardListActions) {
             hasDragged = true
         }
     }
-    LaunchedEffect(cards) { if (!reorderState.isAnyItemDragging) local = cards }
+    LaunchedEffect(rows) { if (!reorderState.isAnyItemDragging) local = rows }
     LaunchedEffect(reorderState.isAnyItemDragging) {
         if (!reorderState.isAnyItemDragging && hasDragged) {
-            actions.reorder(local.mapIndexed { index, c -> c.withPosition(index.toDouble()) })
+            actions.reorder(local.mapIndexed { index, r -> r.note.withPosition(index.toDouble()) })
             hasDragged = false
         }
     }
 
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-        items(local, key = { it.id }) { card ->
-            val dragging = reorderState.draggingKey == card.id
+        items(local, key = { it.note.id }) { row ->
+            val dragging = reorderState.draggingKey == row.note.id
             val itemModifier = if (dragging) {
                 Modifier.zIndex(1f).graphicsLayer { translationY = reorderState.draggingItemTranslation }
             } else {
                 Modifier.animateItem()
             }
-            ReorderableItem(reorderState, key = card.id, modifier = itemModifier) { isDragging ->
-                val elevation by animateDpAsState(if (isDragging) 8.dp else 0.dp, label = "cardElevation")
+            ReorderableItem(reorderState, key = row.note.id, modifier = itemModifier) { isDragging ->
+                val elevation by animateDpAsState(if (isDragging) 8.dp else 0.dp, label = "noteElevation")
                 Surface(shadowElevation = elevation) {
-                    CardRow(
-                        card = card,
-                        onOpen = { actions.openCard(card.id) },
-                        onDelete = { actions.deleteCard(card) },
-                        dragHandle = Modifier.reorderDragHandle(reorderState, key = card.id),
+                    NoteRowItem(
+                        row = row,
+                        onOpen = { actions.openNote(row.note.id) },
+                        onDelete = { actions.deleteNote(row.note) },
+                        dragHandle = Modifier.reorderDragHandle(reorderState, key = row.note.id),
                     )
                 }
             }
@@ -221,21 +251,25 @@ private fun ReorderableCardList(cards: List<Card>, actions: CardListActions) {
 }
 
 @Composable
-private fun CardRow(
-    card: Card,
+private fun NoteRowItem(
+    row: NoteRow,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
     dragHandle: Modifier? = null,
 ) {
+    val fields = row.note.fieldList
     ListItem(
         headlineContent = {
-            Text(parseMarkdown(card.front.substringBefore('\n').take(60), showMarkers = false))
+            Text(parseMarkdown(row.note.sortField.substringBefore('\n').take(60), showMarkers = false))
         },
         supportingContent = {
-            Text(parseMarkdown(card.back.substringBefore('\n').take(60), showMarkers = false))
+            Text(parseMarkdown(fields.getOrNull(1).orEmpty().substringBefore('\n').take(60), showMarkers = false))
         },
         trailingContent = {
             Row {
+                if (row.cardCount != 1) {
+                    Text(stringResource(R.string.card_count_badge, row.cardCount))
+                }
                 IconButton(onClick = onDelete) { IconDelete() }
                 if (dragHandle != null) {
                     IconButton(onClick = {}, modifier = dragHandle) { IconDragHandle() }
@@ -245,3 +279,17 @@ private fun CardRow(
         modifier = Modifier.clickable { onOpen() },
     )
 }
+
+private fun queryFileName(context: android.content.Context, uri: android.net.Uri): String? =
+    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+    }
+
+private fun isZip(context: android.content.Context, uri: android.net.Uri): Boolean =
+    runCatching {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            val header = ByteArray(2)
+            input.read(header) == 2 && header[0] == 'P'.code.toByte() && header[1] == 'K'.code.toByte()
+        } ?: false
+    }.getOrDefault(false)

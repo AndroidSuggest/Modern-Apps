@@ -1,6 +1,7 @@
 package com.vayunmathur.flashcards.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.vayunmathur.library.util.ReorderableDatabaseItem
 import kotlinx.serialization.Serializable
@@ -14,24 +15,30 @@ object CardState {
 }
 
 /**
- * A single flashcard plus its FSRS spaced-repetition memory state.
+ * A single card generated from a [Note] via one of its note type's templates, plus
+ * its FSRS spaced-repetition memory state.
  *
- * [front]/[back] are treated as **markdown** (rendered via `parseMarkdown`).
- * [dueDate] is epoch millis; `0` means the card is new and always due.
+ * The displayed content is *not* stored here: it is rendered on demand from the
+ * owning [Note] and the template selected by [templateOrd] (for standard note types
+ * this is the template index; for cloze note types it is the cloze number minus one).
  *
  * FSRS bookkeeping ([stability], [difficulty], [state], [lastReview], [lapses],
  * [reps]) is updated by `Scheduler.schedule` each time the card is graded. The
  * legacy SM-2 columns ([easeFactor], [intervalDays], [repetitions]) are retained
- * across the v1 -> v2 migration for safety and are otherwise unused.
+ * for safety and are otherwise unused.
  */
 @Serializable
-@Entity
+@Entity(
+    indices = [
+        Index(value = ["noteId", "templateOrd"], unique = true),
+        Index("deckId"),
+    ],
+)
 data class Card(
     @PrimaryKey(autoGenerate = true) override val id: Long = 0,
+    val noteId: Long,
+    val templateOrd: Int,
     val deckId: Long,
-    val front: String,
-    val back: String,
-    val tags: String = "",
     val stability: Double = 0.0,
     val difficulty: Double = 0.0,
     val state: Int = CardState.NEW,

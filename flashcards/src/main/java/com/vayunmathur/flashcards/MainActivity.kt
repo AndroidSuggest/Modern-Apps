@@ -12,13 +12,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.flashcards.data.CardDao
+import com.vayunmathur.flashcards.data.CardTemplateDao
 import com.vayunmathur.flashcards.data.DB_NAME
 import com.vayunmathur.flashcards.data.DeckDao
 import com.vayunmathur.flashcards.data.FlashcardsDatabase
+import com.vayunmathur.flashcards.data.NoteDao
+import com.vayunmathur.flashcards.data.NoteTypeDao
+import com.vayunmathur.flashcards.data.NoteTypeFieldDao
 import com.vayunmathur.flashcards.data.ReviewLogDao
-import com.vayunmathur.flashcards.ui.CardEditPage
-import com.vayunmathur.flashcards.ui.CardListPage
 import com.vayunmathur.flashcards.ui.DeckListPage
+import com.vayunmathur.flashcards.ui.NoteEditPage
+import com.vayunmathur.flashcards.ui.NoteListPage
+import com.vayunmathur.flashcards.ui.NoteTypeEditPage
+import com.vayunmathur.flashcards.ui.NoteTypeListPage
 import com.vayunmathur.flashcards.ui.ReviewPage
 import com.vayunmathur.flashcards.ui.SettingsPage
 import com.vayunmathur.flashcards.ui.StatsPage
@@ -44,8 +50,15 @@ class MainActivity : ComponentActivity() {
     private lateinit var deckDao: DeckDao
     private lateinit var cardDao: CardDao
     private lateinit var reviewLogDao: ReviewLogDao
+    private lateinit var noteTypeDao: NoteTypeDao
+    private lateinit var noteTypeFieldDao: NoteTypeFieldDao
+    private lateinit var cardTemplateDao: CardTemplateDao
+    private lateinit var noteDao: NoteDao
     private val viewModel: FlashcardsViewModel by viewModels {
-        FlashcardsViewModelFactory(application, deckDao, cardDao, reviewLogDao)
+        FlashcardsViewModelFactory(
+            application, deckDao, cardDao, reviewLogDao,
+            noteTypeDao, noteTypeFieldDao, cardTemplateDao, noteDao,
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +71,10 @@ class MainActivity : ComponentActivity() {
             deckDao = db.deckDao()
             cardDao = db.cardDao()
             reviewLogDao = db.reviewLogDao()
+            noteTypeDao = db.noteTypeDao()
+            noteTypeFieldDao = db.noteTypeFieldDao()
+            cardTemplateDao = db.cardTemplateDao()
+            noteDao = db.noteDao()
             withContext(Dispatchers.Main) { ready.value = true }
         }
 
@@ -89,10 +106,16 @@ sealed interface Route : NavKey {
     data object Settings : Route
 
     @Serializable
+    data object NoteTypeList : Route
+
+    @Serializable
+    data class NoteTypeEdit(val noteTypeId: Long) : Route
+
+    @Serializable
     data class CardList(val deckId: Long) : Route
 
     @Serializable
-    data class CardEdit(val deckId: Long, val cardId: Long) : Route
+    data class NoteEdit(val deckId: Long, val noteId: Long) : Route
 
     @Serializable
     data class Review(val deckId: Long) : Route
@@ -121,8 +144,10 @@ fun Navigation(viewModel: FlashcardsViewModel) {
         entry<Route.DeckList> { DeckListPage(backStack, viewModel) }
         entry<Route.Stats> { StatsPage(backStack, viewModel) }
         entry<Route.Settings> { SettingsPage(backStack, viewModel) }
-        entry<Route.CardList> { CardListPage(backStack, viewModel, it.deckId) }
-        entry<Route.CardEdit> { CardEditPage(backStack, viewModel, it.deckId, it.cardId) }
+        entry<Route.NoteTypeList> { NoteTypeListPage(backStack, viewModel) }
+        entry<Route.NoteTypeEdit> { NoteTypeEditPage(backStack, viewModel, it.noteTypeId) }
+        entry<Route.CardList> { NoteListPage(backStack, viewModel, it.deckId) }
+        entry<Route.NoteEdit> { NoteEditPage(backStack, viewModel, it.deckId, it.noteId) }
         entry<Route.Review> { ReviewPage(backStack, viewModel, it.deckId) }
     }
 }

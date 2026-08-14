@@ -3,16 +3,21 @@ package com.vayunmathur.flashcards.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
-import com.vayunmathur.flashcards.data.Card
+import com.vayunmathur.flashcards.data.FIELD_SEPARATOR
 import com.vayunmathur.flashcards.data.Deck
-import com.vayunmathur.flashcards.util.CardListActions
-import com.vayunmathur.flashcards.util.CardListUiState
+import com.vayunmathur.flashcards.data.Note
 import com.vayunmathur.flashcards.util.DailyStat
 import com.vayunmathur.flashcards.util.DeckListActions
 import com.vayunmathur.flashcards.util.DeckListUiState
 import com.vayunmathur.flashcards.util.DeckOption
 import com.vayunmathur.flashcards.util.DeckSummary
 import com.vayunmathur.flashcards.util.Grade
+import com.vayunmathur.flashcards.util.NoteEditActions
+import com.vayunmathur.flashcards.util.NoteEditUiState
+import com.vayunmathur.flashcards.util.NoteListActions
+import com.vayunmathur.flashcards.util.NoteListUiState
+import com.vayunmathur.flashcards.util.NoteRow
+import com.vayunmathur.flashcards.util.NoteTypeConfig
 import com.vayunmathur.flashcards.util.ReviewActions
 import com.vayunmathur.flashcards.util.ReviewUiState
 import com.vayunmathur.flashcards.util.StatsActions
@@ -43,12 +48,25 @@ class MetadataPreviews {
         DeckSummary(Deck(id = 5, name = "Guitar Chords", position = 4.0), dueCount = 3, newCount = 2, totalCount = 18, mastery = 0.55f),
     )
 
-    private val cardSamples = listOf(
-        Card(id = 1, deckId = 1, front = "la **manzana**", back = "the apple"),
-        Card(id = 2, deckId = 1, front = "el perro", back = "the dog"),
-        Card(id = 3, deckId = 1, front = "la biblioteca", back = "the library"),
-        Card(id = 4, deckId = 1, front = "el aeropuerto", back = "the airport"),
-        Card(id = 5, deckId = 1, front = "la playa", back = "the beach"),
+    private fun note(id: Long, front: String, back: String, cards: Int = 1) = NoteRow(
+        note = Note(
+            id = id,
+            noteTypeId = 1,
+            deckId = 1,
+            guid = "g$id",
+            flds = "$front$FIELD_SEPARATOR$back",
+            sortField = front,
+            position = id.toDouble(),
+        ),
+        cardCount = cards,
+    )
+
+    private val noteSamples = listOf(
+        note(1, "la **manzana**", "the apple"),
+        note(2, "el perro", "the dog", cards = 2),
+        note(3, "la biblioteca", "the library"),
+        note(4, "el aeropuerto", "the airport"),
+        note(5, "la playa", "the beach"),
     )
 
     @PreviewTest
@@ -96,13 +114,13 @@ class MetadataPreviews {
     @Composable
     fun Preview3Cards() {
         DynamicTheme(darkTheme = true) {
-            CardListScreen(
-                state = CardListUiState(
+            NoteListScreen(
+                state = NoteListUiState(
                     deckName = "Spanish Vocabulary",
-                    cards = cardSamples,
+                    notes = noteSamples,
                     dueCount = 12,
                 ),
-                actions = CardListActions.Noop,
+                actions = NoteListActions.Noop,
             )
         }
     }
@@ -130,6 +148,29 @@ class MetadataPreviews {
                     totalCards = 84,
                 ),
                 actions = StatsActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-note-edit", device = PHONE, showSystemUi = true)
+    @Composable
+    fun Preview5NoteEdit() {
+        DynamicTheme(darkTheme = true) {
+            NoteEditScreen(
+                state = NoteEditUiState(
+                    initialNoteTypeId = 1,
+                    initialDeckId = 1,
+                    initialFieldValues = listOf("la biblioteca", "the library"),
+                    initialTags = "spanish nouns",
+                    isNew = false,
+                    noteTypes = listOf(
+                        NoteTypeConfig(1, "Basic", listOf("Front", "Back")),
+                        NoteTypeConfig(3, "Cloze", listOf("Text", "Back Extra")),
+                    ),
+                    decks = listOf(DeckOption(1, "Spanish Vocabulary")),
+                ),
+                actions = NoteEditActions.Noop,
             )
         }
     }

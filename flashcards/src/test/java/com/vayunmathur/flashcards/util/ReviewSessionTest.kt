@@ -13,13 +13,13 @@ class ReviewSessionTest {
     private val now = 1_000_000_000_000L
 
     private fun newCard(id: Long, position: Double) =
-        Card(id = id, deckId = 1, front = "f$id", back = "b$id", position = position)
+        Card(id = id, noteId = id, templateOrd = 0, deckId = 1, position = position)
 
     private fun dueReviewCard(id: Long) = Card(
         id = id,
+        noteId = id,
+        templateOrd = 0,
         deckId = 1,
-        front = "f$id",
-        back = "b$id",
         state = CardState.REVIEW,
         stability = 10.0,
         difficulty = 5.0,

@@ -1,9 +1,11 @@
 package com.vayunmathur.flashcards.ui
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,10 +47,24 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewModel) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {}
+
+    LaunchedEffect(viewModel) {
+        viewModel.shareRequests.collect { uri ->
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/octet-stream"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(
+                Intent.createChooser(intent, context.getString(R.string.share_deck)),
+            )
+        }
+    }
 
     val actions = object : SettingsActions {
         override fun back() { backStack.pop() }
@@ -64,6 +81,8 @@ fun SettingsPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewModel)
         override fun setReminderTime(hour: Int, minute: Int) {
             viewModel.setReminderTime(hour, minute)
         }
+        override fun manageNoteTypes() { backStack.add(Route.NoteTypeList) }
+        override fun exportCollection() { viewModel.exportApkg(null) }
     }
 
     SettingsScreen(state = settings, actions = actions)
@@ -134,6 +153,18 @@ fun SettingsScreen(state: SettingsUiState, actions: SettingsActions) {
                     ThemeChip(R.string.theme_light, ThemeMode.LIGHT, state.themeMode, actions)
                     ThemeChip(R.string.theme_dark, ThemeMode.DARK, state.themeMode, actions)
                 }
+            }
+
+            SettingsSection(title = stringResource(R.string.settings_data)) {
+                SettingsRow(
+                    title = stringResource(R.string.manage_note_types),
+                    onClick = { actions.manageNoteTypes() },
+                )
+                SettingsRow(
+                    title = stringResource(R.string.export_collection),
+                    supportingText = stringResource(R.string.export_collection_hint),
+                    onClick = { actions.exportCollection() },
+                )
             }
         }
     }
