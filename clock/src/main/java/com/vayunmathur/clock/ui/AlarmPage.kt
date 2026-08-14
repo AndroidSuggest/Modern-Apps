@@ -23,6 +23,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3ExpressiveApi
 import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Switch
 import com.vayunmathur.library.ui.Text
@@ -94,6 +95,7 @@ fun AlarmPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel, ne
                 clockViewModel.upsert(alarm)
             }
 
+            override fun setName(alarm: Alarm, name: String) = save(alarm.copy(name = name))
             override fun setTime(alarm: Alarm, time: LocalTime) = save(alarm.copy(time = time))
             override fun setDays(alarm: Alarm, days: Int) = save(alarm.copy(days = days))
 
@@ -124,17 +126,6 @@ fun AlarmPage(backStack: NavBackStack<Route>, clockViewModel: ClockViewModel, ne
             override fun setGradualVolumeSeconds(alarm: Alarm, seconds: Int) {
                 clockViewModel.upsert(alarm.copy(gradualVolumeSeconds = seconds))
             }
-        }
-    }
-
-    ResultEffect<LocalTime>("alarm_time") {
-        var daysMask = 0
-        newAlarmParams?.days?.forEach { day ->
-            daysMask = daysMask or (1 shl (day - 1))
-        }
-        val newAlarm = clockViewModel.buildDefaultAlarm(it, newAlarmParams?.message ?: "", daysMask)
-        clockViewModel.upsert(newAlarm) { id ->
-            alarmScheduler.schedule(context, newAlarm.copy(id = id))
         }
     }
 
@@ -279,6 +270,15 @@ fun AlarmCard(
                 }
             }
             if (expanded) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = alarm.name,
+                    onValueChange = { actions.setName(alarm, it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.field_label)) },
+                    placeholder = { Text(stringResource(R.string.alarm_label_hint)) },
+                    singleLine = true,
+                )
                 Spacer(Modifier.height(12.dp))
                 AlarmOptionControls(
                     ringtoneUri = alarm.ringtoneUri,

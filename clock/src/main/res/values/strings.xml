@@ -134,6 +134,7 @@
     <!-- Ringtone picker option: custom sound file selected -->
     <string name="ringtone_custom">Custom</string>
     <string name="timer_name_optional">Timer name (optional)</string>
+    <string name="alarm_label_hint">Alarm name (optional)</string>
     <string name="sound">Sound</string>
     <string name="vibrate">Vibrate</string>
     <string name="snooze_length">Snooze length</string>

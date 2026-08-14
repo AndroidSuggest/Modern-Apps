@@ -29,6 +29,7 @@ data class AlarmUiState(
 
 /** Alarm list callbacks. All of them persist the edited alarm and re-arm its schedule. */
 interface AlarmActions {
+    fun setName(alarm: Alarm, name: String) {}
     fun setTime(alarm: Alarm, time: LocalTime) {}
     fun setEnabled(alarm: Alarm, enabled: Boolean) {}
     fun setDays(alarm: Alarm, days: Int) {}

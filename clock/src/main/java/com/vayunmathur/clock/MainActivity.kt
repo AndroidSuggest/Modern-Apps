@@ -42,6 +42,7 @@ import com.vayunmathur.clock.ui.AlarmPage
 import com.vayunmathur.clock.ui.ClockPage
 import com.vayunmathur.clock.ui.StopwatchPage
 import com.vayunmathur.clock.ui.TimerPage
+import com.vayunmathur.clock.ui.dialogs.NewAlarmDialog
 import com.vayunmathur.clock.ui.dialogs.NewTimerDialog
 import com.vayunmathur.clock.ui.dialogs.SelectTimeZonesDialog
 import com.vayunmathur.clock.util.ClockViewModel
@@ -211,12 +212,14 @@ fun Navigation(
             NewTimerDialog(backStack, clockViewModel, key.lengthSeconds, key.message)
         }
         entry<Route.NewAlarmDialog>(metadata = DialogPage()) { key ->
-            val initialTime = if (key.hour != null && key.minutes != null) {
-                LocalTime(key.hour, key.minutes)
-            } else {
-                Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).time
-            }
-            TimePickerDialogContent(backStack, "alarm_time", initialTime)
+            NewAlarmDialog(
+                backStack = backStack,
+                clockViewModel = clockViewModel,
+                initialHour = key.hour,
+                initialMinutes = key.minutes,
+                initialMessage = key.message,
+                initialDays = key.days,
+            )
         }
         entry<Route.AlarmSetTimeDialog>(metadata = DialogPage()) {
             TimePickerDialogContent(backStack, "alarm_set_time_${it.id}", it.time)
