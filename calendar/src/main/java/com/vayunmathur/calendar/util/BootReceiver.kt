@@ -3,6 +3,9 @@ package com.vayunmathur.calendar.util
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import androidx.glance.appwidget.updateAll
+import com.vayunmathur.calendar.glance.CalendarGlanceWidget
+import com.vayunmathur.library.widgets.scheduleHourlyUpdate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +28,8 @@ class BootReceiver : BroadcastReceiver() {
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     try {
                         ReminderScheduler.reconcileAll(context)
+                        context.scheduleHourlyUpdate(CalendarGlanceWidget::class)
+                        CalendarGlanceWidget().updateAll(context)
                     } catch (_: Exception) {
                     } finally {
                         pendingResult.finish()

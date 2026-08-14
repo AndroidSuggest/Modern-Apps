@@ -76,9 +76,18 @@
         <!-- Glance widget receiver -->
         <receiver
             android:name=".glance.CalendarGlanceWidgetReceiver"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROVIDER_CHANGED" />
+                <data android:scheme="content" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
