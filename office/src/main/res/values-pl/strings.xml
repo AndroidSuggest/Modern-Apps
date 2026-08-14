@@ -138,7 +138,7 @@
     <string name="categories_comma_separated">Kategorie (rozdzielone przecinkami)</string>
     <!-- DocumentViews: Placeholder for empty table -->
     <string name="empty_table">(pusta tabela)</string>
-     <!-- DocumentViews: Button crop image. Verb. -->
+    <!-- DocumentViews: Button crop image. Verb. -->
     <string name="crop">Przytnij</string>
     <!-- DocumentViews: Menu header & footer dialog -->
     <string name="header_footer_1">Nagłówek i stopka</string>
@@ -404,7 +404,7 @@
     <string name="heading_3">Nagłówek 3</string>
     <!-- OfficeBottomBar: Arrange send to back. Verb phrase. -->
     <string name="send_to_back">Przesuń na spód</string>
-        <!-- OfficeBottomBar: Shape menu. Noun. -->
+    <!-- OfficeBottomBar: Shape menu. Noun. -->
     <string name="shape">Kształt</string>
     <!-- OfficeBottomBar: Text style Heading 4 -->
     <string name="heading_4">Nagłówek 4</string>
@@ -482,7 +482,7 @@
     <string name="promote_list_item">Podwyższ poziom elementu listy</string>
     <!-- OfficeBottomBar: Action italic cell. Verb phrase. -->
     <string name="italic_cell">Pochyl komórkę</string>
-        <!-- OfficeBottomBar: Menu row/column size with ellipsis -->
+    <!-- OfficeBottomBar: Menu row/column size with ellipsis -->
     <string name="row_column_size">Rozmiar wiersza/kolumny…</string>
     <!-- OfficeBottomBar: Label number format section. Noun. -->
     <string name="number_format">Format liczb</string>
@@ -494,10 +494,8 @@
     <string name="save_failed">Błąd zapisu: <xliff:g id="error" example="Permission denied">%1$s</xliff:g></string>
     <!-- OfficeViewModel: Toast saved successfully -->
     <string name="saved">Zapisano</string>
-
     <!-- MainActivity: Explanation prompting user to enable online sharing for real-time collaboration. Full sentence. -->
     <string name="turn_on_online_sharing_to_collaborate_on">Włącz udostępnianie online, aby współpracować nad dokumentami w czasie rzeczywistym. Spowoduje to wygenerowanie kluczy szyfrowania oraz identyfikatora urządzenia, a także zarejestruje urządzenie, umożliwiając innym udostępnianie plików. Nic nie zostanie utworzone ani wysłane, dopóki nie włączysz tej opcji.</string>
-
     <!-- MainActivity: Fallback author name Anonymous. Noun. -->
     <string name="anonymous">Anonimowy</string>
     <!-- MainActivity: Fallback author Unknown. Noun. -->
@@ -506,7 +504,6 @@
     <string name="annotation_author_date"><xliff:g id="author" example="Anonymous">%1$s</xliff:g><xliff:g id="date_suffix" example=" · 2024-01-01">%2$s</xliff:g></string>
     <!-- MainActivity: Tracked change line. %1$s=change type e.g. "Insertion", %2$s=author e.g. "Unknown", %3$s=date suffix " · 2024-01-01" or empty -->
     <string name="tracked_change_author_date"><xliff:g id="change_type" example="Insertion">%1$s</xliff:g> · <xliff:g id="author" example="Unknown">%2$s</xliff:g><xliff:g id="date_suffix" example=" · 2024-01-01">%3$s</xliff:g></string>
-
     <!-- DocumentViews: Toggle ON state. Adjective, uppercase. -->
     <string name="on">WŁ.</string>
     <!-- DocumentViews: Toggle OFF state. Adjective, uppercase. -->
@@ -571,4 +568,6 @@
     <string name="wide">● Szerokie</string>
     <!-- MainActivity: Wide margins radio unselected -->
     <string name="wide_1">Szerokie</string>
+    <string name="document_dark_mode">✓ Tryb ciemny dokumentu</string>
+    <string name="document_dark_mode_1">Dokument w trybie ciemnym</string>
 </resources>
