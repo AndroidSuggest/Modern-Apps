@@ -106,6 +106,21 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions, UnitCo
 
     override fun append(text: String) = updateInput(input + text)
 
+    override fun insertInstant(epochSeconds: Long) = append("#$epochSeconds")
+
+    /** Insert a duration (e.g. a picked time of day) as a re-parsable `(Hh+Mmin+Ss)` group. */
+    override fun insertDuration(seconds: Long) {
+        val h = seconds / 3600
+        val m = (seconds % 3600) / 60
+        val s = seconds % 60
+        val parts = buildList {
+            if (h != 0L) add("${h}h")
+            if (m != 0L) add("${m}min")
+            if (s != 0L) add("${s}s")
+        }
+        append(if (parts.isEmpty()) "0s" else "(" + parts.joinToString("+") + ")")
+    }
+
     override fun backspace() {
         if (input.isNotEmpty()) updateInput(input.dropLast(1))
     }
@@ -121,7 +136,12 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions, UnitCo
             return // leave input untouched; the preview already flagged the problem
         }
         if (quantity.value.isNaN()) return
-        val unit = if (quantity.isDimensionless) null else (selectedUnit ?: UnitRegistry.defaultUnitFor(quantity.dimension))
+        val isInstant = quantity.instant
+        val unit = if (quantity.isDimensionless || isInstant) {
+            null
+        } else {
+            selectedUnit ?: UnitRegistry.defaultUnitFor(quantity.dimension)
+        }
         val display = formatQuantity(quantity, unit)
         history.add(0, HistoryEntry(input, display))
         lastAnswer = quantity.value
@@ -165,6 +185,11 @@ class CalculatorViewModel : ViewModel(), CalculatorActions, GraphActions, UnitCo
             unitOptions = emptyList()
             selectedUnit = null
             preview = if (quantity == null) "" else formatResult(quantity.value)
+        } else if (quantity.instant) {
+            // A date/datetime has no unit chips; it renders as localized text.
+            unitOptions = emptyList()
+            selectedUnit = null
+            preview = formatInstant(quantity.value)
         } else {
             val options = UnitRegistry.unitsFor(quantity.dimension)
             unitOptions = options

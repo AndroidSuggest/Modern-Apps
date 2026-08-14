@@ -89,6 +89,13 @@ class Quantity(
     val value: Double,
     val dimension: Dimension,
     val tempOffsetK: Double? = null,
+    /**
+     * True when this is an absolute point in time (a date/datetime), as opposed to a duration.
+     * Only meaningful for [Dimension.TIME]: an instant holds epoch seconds in [value]. Instants
+     * combine with durations (instant ± duration = instant) and with each other only by
+     * subtraction (instant − instant = duration); every other operation is rejected.
+     */
+    val instant: Boolean = false,
 ) {
     val isDimensionless: Boolean get() = dimension.isDimensionless
     private val isTemperature: Boolean get() = dimension == Dimension.TEMPERATURE
@@ -112,10 +119,26 @@ class Quantity(
                 Quantity(value + sign * rightDelta, Dimension.TEMPERATURE, null)
             }
         }
+        if (instant || other.instant) {
+            // Both operands are TIME here (the dimension check above passed). Dates are absolute
+            // points; they combine with durations, and subtract from each other to give a span.
+            return when {
+                instant && other.instant -> {
+                    if (sign > 0) throw ExpressionError("Cannot add two dates together")
+                    Quantity(value - other.value, Dimension.TIME) // date − date = duration
+                }
+                instant -> Quantity(value + sign * other.value, Dimension.TIME, instant = true) // date ± duration
+                else -> {
+                    if (sign < 0) throw ExpressionError("Cannot subtract a date from a duration")
+                    Quantity(value + other.value, Dimension.TIME, instant = true) // duration + date
+                }
+            }
+        }
         return Quantity(value + sign * other.value, dimension, null)
     }
 
     operator fun times(other: Quantity): Quantity {
+        if (instant || other.instant) throw ExpressionError("A date only supports + or − with a duration")
         // A dimensionless scalar scales the other operand and preserves its temperature offset,
         // which is what turns `20 * celsius` into an absolute 293.15 K.
         if (isDimensionless && tempOffsetK == null) {
@@ -129,6 +152,7 @@ class Quantity(
     }
 
     operator fun div(other: Quantity): Quantity {
+        if (instant || other.instant) throw ExpressionError("A date only supports + or − with a duration")
         if (other.isDimensionless && other.tempOffsetK == null) {
             return Quantity(value / other.value, dimension, tempOffsetK)
         }
@@ -136,6 +160,7 @@ class Quantity(
     }
 
     operator fun rem(other: Quantity): Quantity {
+        if (instant || other.instant) throw ExpressionError("A date only supports + or − with a duration")
         if (!other.isDimensionless && dimension != other.dimension) {
             throw ExpressionError("Cannot take the remainder of incompatible units")
         }
@@ -143,6 +168,7 @@ class Quantity(
     }
 
     fun pow(other: Quantity): Quantity {
+        if (instant || other.instant) throw ExpressionError("A date only supports + or − with a duration")
         if (!other.isDimensionless) throw ExpressionError("Exponent must be dimensionless")
         if (isDimensionless) return Quantity(value.pow(other.value), Dimension.NONE)
         val n = other.value

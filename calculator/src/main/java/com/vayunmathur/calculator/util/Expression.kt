@@ -89,6 +89,11 @@ class Expression private constructor(private val root: Node) {
         override fun eval(ctx: EvalContext) = Quantity(unit.factorToBase, unit.dimension, unit.offsetK)
     }
 
+    /** An absolute point in time, written `#<epochSeconds>` (inserted by the date/time pickers). */
+    private class InstantLit(val epochSeconds: Double) : Node {
+        override fun eval(ctx: EvalContext) = Quantity(epochSeconds, Dimension.TIME, instant = true)
+    }
+
     private class Neg(val operand: Node) : Node {
         override fun eval(ctx: EvalContext) = -operand.eval(ctx)
     }
@@ -282,9 +287,21 @@ class Expression private constructor(private val root: Node) {
                     return Call("abs", listOf(inner))
                 }
                 c.isDigit() || c == '.' -> return parseNumber()
+                c == '#' -> return parseInstant()
                 c.isLetter() || c == '√' || c == 'π' || c == 'θ' -> return parseIdentifier()
                 else -> throw ExpressionError("Unexpected '$c'")
             }
+        }
+
+        /** Parse a `#<epochSeconds>` date literal (the `#` has been peeked, not consumed). */
+        private fun parseInstant(): Node {
+            pos++ // consume '#'
+            val start = pos
+            if (pos < src.length && src[pos] == '-') pos++
+            while (pos < src.length && (src[pos].isDigit() || src[pos] == '.')) pos++
+            val text = src.substring(start, pos)
+            val value = text.toDoubleOrNull() ?: throw ExpressionError("Invalid date literal '$text'")
+            return InstantLit(value)
         }
 
         private fun parseNumber(): Node {

@@ -30,11 +30,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import com.vayunmathur.calculator.util.AngleMode
 import com.vayunmathur.calculator.util.CalculatorActions
 import com.vayunmathur.calculator.util.CalculatorUiState
 import com.vayunmathur.calculator.util.CalculatorViewModel
 import com.vayunmathur.calculator.util.HistoryEntry
+import com.vayunmathur.calculator.util.renderInputForDisplay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AssistChip
@@ -56,6 +66,10 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 
 private enum class KeyEmphasis { Digit, Operator, Primary, Function, Toggle }
+
+/** Which date/time picker (if any) is currently open. `DtDate`/`DtTime` are the two steps of
+ * the combined date-and-time flow. */
+private enum class Picker { None, Date, Time, DtDate, DtTime }
 
 /**
  * A keypad key. [second]/[secondPress] give an alternate label+action shown when the
@@ -131,6 +145,9 @@ fun CalculatorScreen(
     var showHistory by remember { mutableStateOf(initialShowHistory) }
     var second by remember { mutableStateOf(initialSecond) }
     var showUnitPicker by remember { mutableStateOf(initialShowUnitPicker) }
+    var picker by remember { mutableStateOf(Picker.None) }
+    // The date chosen in the first step of the combined date-and-time flow (UTC midnight millis).
+    var dtDateMillis by remember { mutableStateOf<Long?>(null) }
 
     fun ins(text: String): (CalculatorActions) -> Unit = { it.append(text) }
 
@@ -214,7 +231,7 @@ fun CalculatorScreen(
                     Text("M", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
                 }
                 Text(
-                    state.input.ifEmpty { "0" }
+                    renderInputForDisplay(state.input).ifEmpty { "0" }
                         .replace("*", "×").replace("/", "÷").replace("-", "−"),
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     textAlign = TextAlign.End,
@@ -257,6 +274,11 @@ fun CalculatorScreen(
 
             // ---- Keypad ----
             Column(Modifier.fillMaxWidth().padding(4.dp)) {
+                Row(Modifier.fillMaxWidth()) {
+                    PickerKey(stringResource(R.string.key_date)) { picker = Picker.Date }
+                    PickerKey(stringResource(R.string.key_time)) { picker = Picker.Time }
+                    PickerKey(stringResource(R.string.key_datetime)) { picker = Picker.DtDate }
+                }
                 rows.forEach { row ->
                     Row(Modifier.fillMaxWidth()) {
                         row.forEach { key -> KeyButton(key, actions, second) { second = !second } }
@@ -268,7 +290,87 @@ fun CalculatorScreen(
 
     if (showHistory) HistoryDialog(state.history, actions) { showHistory = false }
     if (showUnitPicker) UnitPickerSheet(state, actions) { showUnitPicker = false }
+
+    when (picker) {
+        Picker.Date -> DatePickerModal(onDismiss = { picker = Picker.None }) { millis ->
+            actions.insertInstant(localMidnightSeconds(millis))
+            picker = Picker.None
+        }
+        Picker.DtDate -> DatePickerModal(onDismiss = { picker = Picker.None }) { millis ->
+            dtDateMillis = millis
+            picker = Picker.DtTime
+        }
+        Picker.Time -> TimePickerModal(onDismiss = { picker = Picker.None }) { hour, minute ->
+            actions.insertDuration((hour * 3600 + minute * 60).toLong())
+            picker = Picker.None
+        }
+        Picker.DtTime -> TimePickerModal(onDismiss = { picker = Picker.None }) { hour, minute ->
+            dtDateMillis?.let { actions.insertInstant(combineDateTimeSeconds(it, hour, minute)) }
+            picker = Picker.None
+        }
+        Picker.None -> {}
+    }
 }
+
+/** A keypad button that opens a picker (styled like a Function key, but driven by screen state
+ * rather than a [CalculatorActions] call, so it can toggle a dialog). */
+@Composable
+private fun RowScope.PickerKey(label: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.weight(1f).height(50.dp).padding(2.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.textButtonColors(),
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        Text(label, fontSize = if (label.length >= 4) 13.sp else 18.sp, maxLines = 1)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DatePickerModal(onDismiss: () -> Unit, onConfirm: (Long) -> Unit) {
+    val dateState = rememberDatePickerState()
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = { dateState.selectedDateMillis?.let(onConfirm) ?: onDismiss() }) {
+                Text(stringResource(R.string.ok))
+            }
+        },
+        dismissButton = { TextButton(onDismiss) { Text(stringResource(UiR.string.cancel)) } },
+    ) {
+        DatePicker(state = dateState)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickerModal(onDismiss: () -> Unit, onConfirm: (Int, Int) -> Unit) {
+    val timeState = rememberTimePickerState()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.select_time)) },
+        text = { TimePicker(state = timeState) },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(timeState.hour, timeState.minute) }) {
+                Text(stringResource(R.string.ok))
+            }
+        },
+        dismissButton = { TextButton(onDismiss) { Text(stringResource(UiR.string.cancel)) } },
+    )
+}
+
+/** The system date picker returns UTC midnight of the chosen day; reinterpret that calendar day
+ * at local midnight so the stored instant reads back as that date. */
+private fun localMidnightSeconds(utcDateMillis: Long): Long =
+    Instant.ofEpochMilli(utcDateMillis).atZone(ZoneOffset.UTC).toLocalDate()
+        .atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
+
+/** Combine a picked calendar day (UTC midnight millis) with a local time-of-day into an instant. */
+private fun combineDateTimeSeconds(utcDateMillis: Long, hour: Int, minute: Int): Long =
+    Instant.ofEpochMilli(utcDateMillis).atZone(ZoneOffset.UTC).toLocalDate()
+        .atTime(hour, minute).atZone(ZoneId.systemDefault()).toEpochSecond()
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

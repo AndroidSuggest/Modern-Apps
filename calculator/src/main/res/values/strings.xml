@@ -32,6 +32,16 @@
     <string name="converter_result">Result</string>
     <!-- Converter: content description for the button that swaps the from and to units. -->
     <string name="converter_swap">Swap units</string>
+    <!-- Keypad button that opens a calendar date picker. -->
+    <string name="key_date">Date</string>
+    <!-- Keypad button that opens a time-of-day picker. -->
+    <string name="key_time">Time</string>
+    <!-- Keypad button that opens a combined date-and-time picker. -->
+    <string name="key_datetime">Date &amp; time</string>
+    <!-- Title of the time picker dialog. -->
+    <string name="select_time">Select time</string>
+    <!-- Generic confirm button. -->
+    <string name="ok">OK</string>
     <!-- Converter: shown while live currency exchange rates are being fetched. -->
     <string name="currency_loading">Fetching exchange rates…</string>
     <!-- Converter: shown when exchange rates could not be loaded. -->

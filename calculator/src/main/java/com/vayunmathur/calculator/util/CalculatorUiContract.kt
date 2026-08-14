@@ -48,6 +48,10 @@ data class GraphUiState(
  */
 interface CalculatorActions {
     fun append(text: String) {}
+    /** Insert an absolute date/datetime (epoch seconds) chosen from a picker. */
+    fun insertInstant(epochSeconds: Long) {}
+    /** Insert a duration in seconds (e.g. a time-of-day) chosen from a picker. */
+    fun insertDuration(seconds: Long) {}
     fun clear() {}
     fun backspace() {}
     fun evaluate() {}

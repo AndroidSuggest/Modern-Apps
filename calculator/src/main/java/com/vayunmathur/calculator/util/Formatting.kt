@@ -2,6 +2,10 @@ package com.vayunmathur.calculator.util
 
 import java.math.BigDecimal
 import java.math.MathContext
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlin.math.abs
 
 /**
@@ -43,8 +47,33 @@ fun displayValueIn(q: Quantity, unit: UnitDef): Double =
  * otherwise the pretty [UnitDef.symbol] and a thin space are used for display.
  */
 fun formatQuantity(q: Quantity, unit: UnitDef?, useToken: Boolean = false): String {
+    if (q.instant) return formatInstant(q.value, useToken)
     if (q.isDimensionless || unit == null) return formatResult(q.value)
     val label = if (useToken) unit.token else unit.symbol
     val separator = if (useToken) " " else "\u202F"
     return formatResult(displayValueIn(q, unit)) + separator + label
 }
+
+/**
+ * Renders an absolute instant (epoch seconds). [useToken] gives the re-parsable `#<epoch>` form;
+ * otherwise a localized string — a date alone at midnight, or a date-and-time otherwise. The
+ * midnight check is what makes `date + duration` show a time only once one is actually present.
+ */
+fun formatInstant(epochSeconds: Double, useToken: Boolean = false): String {
+    if (useToken) return "#" + epochSeconds.toLong()
+    val zoned = Instant.ofEpochSecond(epochSeconds.toLong()).atZone(ZoneId.systemDefault())
+    val atMidnight = zoned.hour == 0 && zoned.minute == 0 && zoned.second == 0
+    val formatter = if (atMidnight) {
+        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+    } else {
+        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+    }
+    return zoned.format(formatter)
+}
+
+private val INSTANT_TOKEN = Regex("#(-?\\d+)")
+
+/** Replaces raw `#<epoch>` date tokens in an expression string with their localized text, for
+ * showing the input line. Non-date parts are left untouched. */
+fun renderInputForDisplay(input: String): String =
+    INSTANT_TOKEN.replace(input) { formatInstant(it.groupValues[1].toDouble()) }
