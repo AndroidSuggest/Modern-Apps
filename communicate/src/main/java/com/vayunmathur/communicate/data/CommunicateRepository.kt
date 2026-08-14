@@ -22,12 +22,19 @@ import com.vayunmathur.communicate.data.googlevoice.GvCall
 import com.vayunmathur.communicate.data.googlevoice.GvCallType
 import com.vayunmathur.communicate.data.googlevoice.GvMessage
 import com.vayunmathur.communicate.data.googlevoice.GvThread
+import com.vayunmathur.communicate.data.signal.SignalCachedMessage
+import com.vayunmathur.communicate.data.signal.SignalClient
+import com.vayunmathur.communicate.data.signal.SignalConversation
+import com.vayunmathur.communicate.data.signal.SignalDatabase
+import com.vayunmathur.communicate.data.signal.SignalFeature
+import com.vayunmathur.communicate.data.signal.SignalLineSession
+import com.vayunmathur.communicate.data.signal.SignalServiceData
+import com.vayunmathur.communicate.data.whatsapp.WhatsAppCachedMessage
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppClient
+import com.vayunmathur.communicate.data.whatsapp.WhatsAppConversation
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppDatabase
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppServiceData
-import com.vayunmathur.communicate.data.whatsapp.WhatsAppCachedMessage
-import com.vayunmathur.communicate.data.whatsapp.WhatsAppConversation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.ui.ExternalIntents
@@ -485,15 +492,16 @@ object CommunicateRepository {
     // Dispatchers.IO in produceState. GV failures are swallowed so the SIM inbox still loads.
     // ------------------------------------------------------------------
 
-    /** Merged thread list: SIM threads + Google Voice threads, newest first. */
+    /** Merged thread list: SIM threads + Google Voice threads + WhatsApp + Signal, newest first. */
     suspend fun loadSmsThreadsMerged(context: Context): List<SmsThread> {
         val sim = loadSmsThreads(context)
         val gv = loadGoogleVoiceThreads(context)
         val wa = loadWhatsAppThreads(context)
-        return (sim + gv + wa).sortedByDescending { it.timestampMillis }
+        val signal = loadSignalThreads(context)
+        return (sim + gv + wa + signal).sortedByDescending { it.timestampMillis }
     }
 
-    /** Route by line: SIM threads read the provider; GV threads hit `api2thread/get`. */
+    /** Route by line: SIM threads read the provider; GV threads hit `api2thread/get`; WA/Signal read Room. */
     suspend fun loadSmsMessagesMerged(context: Context, thread: SmsThread): List<SmsMessage> =
         when (thread.line) {
             CommunicateLine.Sim -> (loadSmsMessages(context, thread.threadId) +
@@ -512,9 +520,14 @@ object CommunicateRepository {
                 val jid = thread.remoteId?.takeIf { it.isNotBlank() } ?: toWhatsAppJid(context, thread.address)
                 loadWhatsAppMessages(context, jid)
             }
+            CommunicateLine.Signal -> {
+                // New Signal conversations have no remoteId yet — derive recipient from address.
+                val recipient = thread.remoteId?.takeIf { it.isNotBlank() } ?: toSignalRecipient(context, thread.address)
+                loadSignalMessages(context, recipient)
+            }
         }
 
-    /** Merged call history: device call log + Google Voice calls, newest first. */
+    /** Merged call history: device call log + Google Voice calls, newest first. Signal calling out of scope. */
     suspend fun loadCallLogsMerged(context: Context): List<CommunicateCallLogEntry> {
         val device = loadCallLogs(context)
         val gv = loadGoogleVoiceCalls(context)
@@ -577,6 +590,22 @@ object CommunicateRepository {
                 // WA message id so delivery/read receipts can advance its status ticks.
                 if (sentId != null && body.isNotBlank()) {
                     cacheOutgoingWhatsApp(context, jid, body, sentId.ifBlank { "local-${java.util.UUID.randomUUID()}" })
+                }
+                sentId != null
+            }.getOrDefault(false)
+        }
+        LineChoice.Signal -> withContext(Dispatchers.IO) {
+            runCatching {
+                val recipient = threadRemoteId ?: toSignalRecipient(context, address)
+                // Media path delegates to sendMedia; text via sendMessage. Attachments handled via Signal delegates below.
+                val sentId = if (attachments.isEmpty()) {
+                    if (body.isBlank()) null else SignalClient.get(context).sendMessage(recipient, body)
+                } else {
+                    // For media messages, send caption text if any; actual media via sendSignalMedia.
+                    if (body.isNotBlank()) SignalClient.get(context).sendMessage(recipient, body) else ""
+                }
+                if (sentId != null && body.isNotBlank()) {
+                    cacheOutgoingSignal(context, recipient, body, sentId.ifBlank { "local-${java.util.UUID.randomUUID()}" })
                 }
                 sentId != null
             }.getOrDefault(false)
@@ -734,7 +763,7 @@ object CommunicateRepository {
     // ------------------------------------------------------------------
 
     /** Virtual (network-backed) lines that don't map to a physical SIM subscription. */
-    val isVirtualLine = setOf(CommunicateLine.GoogleVoice, CommunicateLine.WhatsApp)
+    val isVirtualLine = setOf(CommunicateLine.GoogleVoice, CommunicateLine.WhatsApp, CommunicateLine.Signal)
 
     private suspend fun loadWhatsAppThreads(context: Context): List<SmsThread> {
         if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return emptyList()
@@ -1090,6 +1119,204 @@ object CommunicateRepository {
             val existing = db.conversationDao().getConversation(jid)
             db.conversationDao().upsert(
                 (existing ?: WhatsAppConversation(chatJid = jid)).copy(lastMessageTimestamp = now),
+            )
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Signal primary line: threads/messages from Room (daemon writes),
+    // rich actions delegate to SignalClient — mirrors WhatsApp section.
+    // ------------------------------------------------------------------
+
+    private suspend fun loadSignalThreads(context: Context): List<SmsThread> {
+        if (!SignalFeature.enabled) return emptyList()
+        if (!SignalLineSession.get(context).isSignedIn()) return emptyList()
+        return runCatching {
+            val db = SignalDatabase.getDatabase(context)
+            db.cachedMessageDao().getLatestPerConversation().map { m ->
+                val sd = SignalServiceData.parse(m.serviceData)
+                val cid = m.conversationId
+                val conv = db.conversationDao().getConversation(cid)
+                val isGroup = conv?.isGroup ?: sd?.isGroup ?: false
+                val unread = conv?.unreadCount ?: 0
+                val participants = parseParticipantsCsv(conv?.participants)
+                val groupTitle = conv?.name?.takeIf { it.isNotBlank() }
+                SmsThread(
+                    threadId = stableThreadId(cid),
+                    address = signalJidToDisplayAddress(cid),
+                    displayName = if (isGroup) (groupTitle ?: signalDisplayName(context, cid, sd))
+                        else signalDisplayName(context, cid, sd),
+                    snippet = if (m.isRevoked) "This message was deleted" else m.body,
+                    timestampMillis = m.timestamp,
+                    unreadCount = unread,
+                    line = CommunicateLine.Signal,
+                    remoteId = cid,
+                    isGroup = isGroup,
+                    avatarUrl = null,
+                    participants = participants,
+                    groupTitle = groupTitle,
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private suspend fun loadSignalMessages(context: Context, conversationId: String): List<SmsMessage> =
+        runCatching {
+            val db = SignalDatabase.getDatabase(context)
+            db.cachedMessageDao().getForConversation(conversationId).map { m ->
+                SmsMessage(
+                    id = (m.messageId.hashCode().toLong() and 0xFFFFFFFFL),
+                    threadId = stableThreadId(conversationId),
+                    address = signalJidToDisplayAddress(conversationId),
+                    body = if (m.isRevoked) "" else m.body,
+                    timestampMillis = m.timestamp,
+                    outgoing = m.outgoing,
+                    read = true,
+                    line = CommunicateLine.Signal,
+                    remoteId = m.messageId,
+                    serviceData = m.serviceData,
+                    senderAddress = m.senderId.takeIf { it.isNotBlank() && !m.outgoing },
+                    status = m.status.let { s ->
+                        MessageStatus.entries.getOrElse(s) { MessageStatus.None }
+                    },
+                )
+            }
+        }.getOrDefault(emptyList())
+
+    // -- Signal rich actions (pass-through delegates) --
+
+    suspend fun sendSignalReaction(
+        conversationId: String,
+        messageId: String,
+        emoji: String,
+    ): Boolean = withContext(Dispatchers.IO) {
+        SignalClient.sendReaction(conversationId, messageId, emoji)
+    }
+
+    suspend fun editSignalMessage(
+        conversationId: String,
+        messageId: String,
+        newBody: String,
+    ): Boolean = withContext(Dispatchers.IO) { SignalClient.editMessage(conversationId, messageId, newBody) }
+
+    suspend fun revokeSignalMessage(
+        conversationId: String,
+        messageId: String,
+    ): Boolean = withContext(Dispatchers.IO) { SignalClient.revoke(conversationId, messageId) }
+
+    suspend fun sendSignalPoll(
+        conversationId: String,
+        question: String,
+        options: List<String>,
+    ): String? = withContext(Dispatchers.IO) { SignalClient.poll(conversationId, question, options) }
+
+    suspend fun sendSignalPollVote(
+        conversationId: String,
+        pollMessageId: String,
+        selectedOptions: List<String>,
+    ): Boolean = withContext(Dispatchers.IO) { SignalClient.sendPollVote(conversationId, pollMessageId, selectedOptions) }
+
+    suspend fun sendSignalMedia(
+        conversationId: String,
+        bytes: ByteArray,
+        mimeType: String,
+    ): String? = withContext(Dispatchers.IO) { SignalClient.sendMedia(conversationId, bytes, mimeType) }
+
+    suspend fun sendSignalReadReceipt(
+        conversationId: String,
+        lastMessageId: String?,
+        lastTimestamp: Long,
+    ): Boolean = withContext(Dispatchers.IO) { SignalClient.readReceipt(conversationId, lastMessageId, lastTimestamp) }
+
+    suspend fun markSignalRead(
+        context: Context,
+        remoteId: String?,
+        address: String,
+        alreadyReadId: String?,
+    ): String? = withContext(Dispatchers.IO) {
+        val cid = remoteId?.takeIf { it.isNotBlank() } ?: toSignalRecipient(context, address)
+        val db = SignalDatabase.getDatabase(context)
+        runCatching {
+            db.conversationDao().getConversation(cid)?.let {
+                if (it.unreadCount != 0) db.conversationDao().upsert(it.copy(unreadCount = 0))
+            }
+        }
+        val lastInbound = runCatching {
+            db.cachedMessageDao().getForConversation(cid).lastOrNull { !it.outgoing }
+        }.getOrNull() ?: return@withContext alreadyReadId
+        if (lastInbound.messageId == alreadyReadId) return@withContext alreadyReadId
+        runCatching { SignalClient.readReceipt(cid, lastInbound.messageId, lastInbound.timestamp) }
+        lastInbound.messageId
+    }
+
+    suspend fun createSignalGroup(
+        context: Context,
+        subject: String,
+        contacts: List<String>,
+    ): String? = withContext(Dispatchers.IO) {
+        val ids = contacts.map { toSignalRecipient(context, it) }.filter { it.isNotBlank() }.distinct()
+        if (ids.isEmpty()) return@withContext null
+        SignalClient.createGroup(subject, ids)
+    }
+
+    fun isSignalConnected(): Boolean = SignalClient.isConnected()
+
+    /**
+     * Build a Signal recipient id from a phone number / address / ACI.
+     * Already-qualified identifiers (contain @ or look like a UUID ACI/PNI) pass through.
+     * Otherwise the phone number is normalized to E.164 via libphonenumber.
+     */
+    private fun toSignalRecipient(context: Context, address: String): String {
+        if (address.isBlank()) return ""
+        // Group or already-qualified identifier.
+        if (address.contains("@")) return address
+        // UUID-shaped ACI/PNI.
+        if (address.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) return address
+        val region = runCatching {
+            val tm = context.getSystemService(TelephonyManager::class.java)
+            (tm?.simCountryIso?.takeIf { it.isNotBlank() } ?: tm?.networkCountryIso)?.uppercase()
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: context.resources.configuration.locales[0].country.ifEmpty { "US" }
+        val e164 = runCatching {
+            val util = com.google.i18n.phonenumbers.PhoneNumberUtil.getInstance()
+            val parsed = util.parse(address, region)
+            util.format(parsed, com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat.E164)
+        }.getOrNull()
+        return e164 ?: address
+    }
+
+    private fun signalJidToDisplayAddress(conversationId: String): String {
+        // Group ids contain ':' or look like UUIDs — keep as-is for group rendering.
+        if (conversationId.contains(":") || conversationId.contains("group")) return conversationId
+        // ACI/PNI UUIDs are not phone numbers — keep as-is; UI will resolve via contacts.
+        if (conversationId.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) return conversationId
+        return conversationId
+    }
+
+    private fun signalDisplayName(context: Context, conversationId: String, sd: SignalServiceData?): String? {
+        // Group name from conversation metadata already handled; use senderName or contact lookup.
+        if (conversationId.matches(Regex("[0-9a-fA-F]{8}-.*"))) return sd?.senderName
+        return findContactName(context, conversationId) ?: sd?.senderName ?: conversationId
+    }
+
+    /** Insert an outgoing Signal message into the local cache so it shows in our own thread. */
+    private suspend fun cacheOutgoingSignal(context: Context, conversationId: String, body: String, messageId: String) {
+        runCatching {
+            val db = SignalDatabase.getDatabase(context)
+            val now = System.currentTimeMillis()
+            db.cachedMessageDao().upsert(
+                SignalCachedMessage(
+                    messageId = messageId,
+                    conversationId = conversationId,
+                    body = body,
+                    timestamp = now,
+                    outgoing = true,
+                    status = 1,
+                ),
+            )
+            val existing = db.conversationDao().getConversation(conversationId)
+            db.conversationDao().upsert(
+                (existing ?: SignalConversation(chatId = conversationId)).copy(lastMessageTimestamp = now),
             )
         }
     }

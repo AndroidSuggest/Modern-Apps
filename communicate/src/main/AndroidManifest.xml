@@ -163,6 +163,11 @@
             android:foregroundServiceType="remoteMessaging" />
 
         <service
+            android:name=".telephony.SignalSyncService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
+
+        <service
             android:name=".telephony.GoogleVoiceCallForegroundService"
             android:exported="false"
             android:foregroundServiceType="phoneCall" />

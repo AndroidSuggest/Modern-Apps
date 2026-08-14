@@ -139,6 +139,30 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                                 )
                             }
                         }
+                        CommunicateLine.Signal -> {
+                            val groupId = withContext(Dispatchers.IO) {
+                                CommunicateRepository.createSignalGroup(context, subject, contacts)
+                            }
+                            if (groupId == null) {
+                                AppMessages.show("Couldn't create the Signal group (server rejected it)")
+                            } else {
+                                onOpenThread(
+                                    SmsThread(
+                                        threadId = CommunicateRepository.stableThreadId(groupId),
+                                        address = groupId,
+                                        displayName = subject.ifBlank { null },
+                                        snippet = "",
+                                        timestampMillis = System.currentTimeMillis(),
+                                        unreadCount = 0,
+                                        line = CommunicateLine.Signal,
+                                        remoteId = groupId,
+                                        isGroup = true,
+                                        participants = contacts,
+                                        groupTitle = subject.ifBlank { null },
+                                    ),
+                                )
+                            }
+                        }
                         CommunicateLine.Sim -> {
                             val sim = choice as? com.vayunmathur.communicate.data.LineChoice.Sim
                             val groupThreadId = withContext(Dispatchers.IO) {
@@ -344,10 +368,12 @@ private fun NewMessagePicker(
     var groupName by remember { mutableStateOf("") }
     // Selected recipients for group mode, keyed by phone number (value = display label).
     val selectedContacts = remember { mutableStateListOf<Pair<String, String>>() }
-    // Lines that support group chats: WhatsApp and SIM (MMS). GV is 1:1 only.
+    // Lines that support group chats: WhatsApp, Signal, and SIM (MMS). GV is 1:1 only.
     val groupChoices = remember(choices) {
         choices.filter {
-            it.category == CommunicateLine.WhatsApp || it.category == CommunicateLine.Sim
+            it.category == CommunicateLine.WhatsApp ||
+                it.category == CommunicateLine.Signal ||
+                it.category == CommunicateLine.Sim
         }
     }
     var selected by remember(choices) { mutableStateOf(choices.firstOrNull()) }

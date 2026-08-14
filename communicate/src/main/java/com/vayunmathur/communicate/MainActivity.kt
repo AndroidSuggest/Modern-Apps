@@ -38,6 +38,10 @@ import com.vayunmathur.communicate.ui.googlevoice.GoogleVoiceSignInScreen
 import com.vayunmathur.communicate.ui.whatsapp.WhatsAppRegistrationScreen
 import com.vayunmathur.communicate.telephony.WhatsAppSyncService
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession
+import com.vayunmathur.communicate.data.signal.SignalFeature
+import com.vayunmathur.communicate.data.signal.SignalLineSession
+import com.vayunmathur.communicate.telephony.SignalSyncService
+import com.vayunmathur.communicate.ui.signal.SignalRegistrationScreen
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.serialization.Serializable
 
@@ -49,6 +53,7 @@ sealed interface Route : NavKey {
     @Serializable data object GoogleVoiceSignIn : Route
     @Serializable data object WhatsAppRegistration : Route
     @Serializable data object WhatsAppBackupImport : Route
+    @Serializable data object SignalRegistration : Route
 
     @Serializable
     data class Conversation(
@@ -94,12 +99,20 @@ private fun CommunicateApp() {
     val gvSignedIn by session.signedInFlow.collectAsState(initial = false)
     val waSession = remember { WhatsAppLineSession.get(context) }
     val waSignedIn by waSession.signedInFlow.collectAsState(initial = false)
+    val sigSession = remember { SignalLineSession.get(context) }
+    val sigSignedIn by sigSession.signedInFlow.collectAsState(initial = false)
     val callState by GoogleVoiceCallManager.state.collectAsState()
 
     // Own the WhatsApp always-on receive state via its foreground sync service (dev-only).
     LaunchedEffect(waSignedIn) {
         if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@LaunchedEffect
         if (waSignedIn) WhatsAppSyncService.start(context) else WhatsAppSyncService.stop(context)
+    }
+
+    // Own the Signal always-on receive state via its foreground sync service (dev-only).
+    LaunchedEffect(sigSignedIn) {
+        if (!SignalFeature.enabled) return@LaunchedEffect
+        if (sigSignedIn) SignalSyncService.start(context) else SignalSyncService.stop(context)
     }
 
     // Keep the Telecom account fresh, but let the foreground service own always-on receive state.
@@ -122,6 +135,7 @@ private fun CommunicateApp() {
         is Route.Accounts, is Route.GoogleVoiceSignIn -> Route.Messages
         is Route.WhatsAppRegistration -> Route.Messages
         is Route.WhatsAppBackupImport -> Route.Messages
+        is Route.SignalRegistration -> Route.Messages
         else -> currentPage
     }
     val pages = listOf(
@@ -177,6 +191,11 @@ private fun CommunicateApp() {
                         backStack.add(Route.WhatsAppBackupImport)
                     }
                 },
+                onRegisterSignal = {
+                    if (SignalFeature.enabled) {
+                        backStack.add(Route.SignalRegistration)
+                    }
+                },
             )
         }
         entry<Route.GoogleVoiceSignIn> {
@@ -194,6 +213,12 @@ private fun CommunicateApp() {
         entry<Route.WhatsAppBackupImport> {
             com.vayunmathur.communicate.ui.whatsapp.WhatsAppBackupImportScreen(
                 onBack = { backStack.pop() },
+            )
+        }
+        entry<Route.SignalRegistration> {
+            SignalRegistrationScreen(
+                onBack = { backStack.pop() },
+                onRegistered = { backStack.pop() },
             )
         }
         entry<Route.Conversation> { route ->

@@ -94,6 +94,7 @@ fun ConversationScreen(
         when (line) {
             CommunicateLine.GoogleVoice -> LineChoice.GoogleVoice
             CommunicateLine.WhatsApp -> LineChoice.WhatsApp
+            CommunicateLine.Signal -> LineChoice.Signal
             CommunicateLine.Sim -> lineChoices
                 .filterIsInstance<LineChoice.Sim>()
                 .firstOrNull { subscriptionId == null || it.subscriptionId == subscriptionId }
@@ -181,6 +182,27 @@ fun ConversationScreen(
     androidx.compose.runtime.LaunchedEffect(line, remoteId, refresh) {
         if (line == CommunicateLine.WhatsApp) {
             waLastReadId = CommunicateRepository.markWhatsAppRead(context, remoteId, address, waLastReadId)
+        }
+    }
+    // Signal messages land in local Room via the socket→event-processor; poll so inbound
+    // (and our own outgoing echo) appear live while the conversation is open.
+    androidx.compose.runtime.LaunchedEffect(line) {
+        if (line == CommunicateLine.Signal) {
+            while (true) {
+                kotlinx.coroutines.delay(2_000)
+                refresh++
+            }
+        }
+    }
+    // Send Signal read receipts for the open conversation (mirrors WhatsApp).
+    var sigLastReadId by remember(remoteId, address) { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(line, remoteId, refresh) {
+        if (line == CommunicateLine.Signal) {
+            sigLastReadId = try {
+                CommunicateRepository.markSignalRead(context, remoteId, address, sigLastReadId)
+            } catch (_: Throwable) {
+                sigLastReadId
+            }
         }
     }
 
@@ -528,13 +550,26 @@ private fun MessageBubble(message: SmsMessage) {
         bottomEnd = if (message.outgoing) 4.dp else 20.dp,
     )
 
-    val sd = if (message.line == CommunicateLine.WhatsApp) {
+    val waSd = if (message.line == CommunicateLine.WhatsApp) {
         com.vayunmathur.communicate.data.whatsapp.WhatsAppServiceData.parse(message.serviceData)
     } else {
         null
     }
+    val sigSd = if (message.line == CommunicateLine.Signal) {
+        com.vayunmathur.communicate.data.signal.SignalServiceData.parse(message.serviceData)
+    } else {
+        null
+    }
+    // Canonical name used for bubble extras.
+    val sd: Any? = waSd ?: sigSd
+    val sdIsRevoked: Boolean = waSd?.isRevoked == true || sigSd?.isRevoked == true
+    val sdIsEdited: Boolean = waSd?.isEdited == true || sigSd?.isEdited == true
+    val sdQuotedBody: String? = waSd?.quotedBody ?: sigSd?.quotedBody
+    val sdQuotedSender: String? = waSd?.quotedSender ?: sigSd?.quotedSender
+    val sdPollQuestion: String? = waSd?.pollQuestion ?: sigSd?.pollQuestion
+    val sdSenderName: String? = waSd?.senderName ?: sigSd?.senderName
     val bodyText = when {
-        sd?.isRevoked == true -> "🚫 This message was deleted"
+        sdIsRevoked -> "🚫 This message was deleted"
         else -> message.body
     }
 
@@ -544,10 +579,10 @@ private fun MessageBubble(message: SmsMessage) {
     ) {
         // Group sender name (incoming group messages). WhatsApp carries it in serviceData;
         // other lines (SIM/GV groups) resolve it from the per-message sender address.
-        val senderLabel = produceState<String?>(initialValue = null, message.id, sd?.senderName, message.senderAddress) {
+        val senderLabel = produceState<String?>(initialValue = null, message.id, sdSenderName, message.senderAddress) {
             value = when {
                 message.outgoing -> null
-                sd?.senderName != null -> sd.senderName
+                sdSenderName != null -> sdSenderName
                 message.senderAddress != null -> withContext(Dispatchers.IO) {
                     CommunicateRepository.findContactName(context, message.senderAddress) ?: message.senderAddress
                 }
@@ -563,14 +598,14 @@ private fun MessageBubble(message: SmsMessage) {
             )
         }
         // Quoted reply preview.
-        if (sd?.quotedBody != null) {
+        if (sdQuotedBody != null) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.widthIn(max = 320.dp).padding(horizontal = 14.dp, vertical = 2.dp),
             ) {
                 Text(
-                    (sd.quotedSender?.let { "$it: " } ?: "") + sd.quotedBody,
+                    (sdQuotedSender?.let { "$it: " } ?: "") + sdQuotedBody,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 2,
@@ -588,14 +623,17 @@ private fun MessageBubble(message: SmsMessage) {
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text(bodyText, fontSize = 15.sp)
                     // Poll rendering.
-                    if (sd?.pollQuestion != null) {
+                    if (sdPollQuestion != null) {
                         Spacer(Modifier.size(4.dp))
-                        Text("📊 ${sd.pollQuestion}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        sd.pollOptions.forEach { opt ->
+                        Text("📊 $sdPollQuestion", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        (waSd?.pollOptions ?: emptyList()).forEach { opt ->
+                            Text("• ${opt.name} (${opt.voteCount})", fontSize = 13.sp)
+                        }
+                        (sigSd?.pollOptions ?: emptyList()).forEach { opt ->
                             Text("• ${opt.name} (${opt.voteCount})", fontSize = 13.sp)
                         }
                     }
-                    if (sd?.isEdited == true) {
+                    if (sdIsEdited) {
                         Text(
                             "edited",
                             style = MaterialTheme.typography.labelSmall,
@@ -605,19 +643,24 @@ private fun MessageBubble(message: SmsMessage) {
                 }
             }
         }
-        // Reaction chips.
-        if (sd != null && sd.reactions.isNotEmpty()) {
+        // Reaction chips (WhatsApp + Signal).
+        val reactions: List<Pair<String, Int>> = when {
+            waSd != null && waSd.reactions.isNotEmpty() -> waSd.reactions.map { it.emoji to it.count }
+            sigSd != null && sigSd.reactions.isNotEmpty() -> sigSd.reactions.map { it.emoji to it.count }
+            else -> emptyList()
+        }
+        if (reactions.isNotEmpty()) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                sd.reactions.forEach { r ->
+                reactions.forEach { (emoji, count) ->
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(50),
                     ) {
                         Text(
-                            if (r.count > 1) "${r.emoji} ${r.count}" else r.emoji,
+                            if (count > 1) "$emoji $count" else emoji,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             fontSize = 12.sp,
                         )

@@ -20,6 +20,7 @@ pub mod crypto;
 pub mod group;
 pub mod session;
 pub mod wire;
+pub mod signal;
 
 #[cfg(target_os = "android")]
 mod jni_bridge;

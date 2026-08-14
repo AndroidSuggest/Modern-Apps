@@ -42,6 +42,7 @@ fun AccountsScreen(
     onSignIn: () -> Unit,
     onRegisterWhatsApp: () -> Unit = {},
     onImportBackup: () -> Unit = {},
+    onRegisterSignal: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val session = remember { GoogleVoiceSession.get(context) }
@@ -132,6 +133,44 @@ fun AccountsScreen(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            // Signal primary line (dev-only; hidden in the release variant).
+            if (com.vayunmathur.communicate.data.signal.SignalFeature.enabled) {
+                val sigSession = remember { com.vayunmathur.communicate.data.signal.SignalLineSession.get(context) }
+                val sigSignedIn by sigSession.signedInFlow.collectAsState(initial = false)
+                val sigNumber by sigSession.phoneNumberFlow.collectAsState(initial = null)
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                        ListItem(
+                            leadingContent = { IconPerson() },
+                            content = { Text("Signal", fontWeight = FontWeight.SemiBold) },
+                            supportingContent = {
+                                Text(if (sigSignedIn) (sigNumber ?: "Registered") else "Not registered")
+                            },
+                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (sigSignedIn) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            sigSession.signOut(context)
+                                            AppMessages.show("Signed out of Signal")
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("Sign out") }
+                            } else {
+                                Button(onClick = onRegisterSignal, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Register")
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // WhatsApp primary line (dev-only; hidden in the release variant).

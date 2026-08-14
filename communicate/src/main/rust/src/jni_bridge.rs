@@ -4,6 +4,7 @@
 use crate::crypto::{self, CryptoError};
 use crate::group;
 use crate::session::{self, PreKeyBundle};
+use crate::signal;
 use crate::wire::{PreKeySignalMessage, SenderKeyDistributionMessage, SignalMessage};
 use crate::OsRng;
 use jni::objects::{JByteArray, JClass, JObject};
@@ -950,5 +951,89 @@ pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWh
             );
             std::ptr::null_mut()
         }
+    }
+}
+
+// -- Signal sealed sender (same Rust primitives, Signal JNI class) --
+
+fn sealed_sender_encrypt_inner<'a>(
+    env: &mut JNIEnv<'a>,
+    plaintext: JByteArray<'a>,
+    recipient_aci: jni::objects::JString<'a>,
+) -> jbyteArray {
+    let pt = match bytes_in(env, &plaintext) {
+        Some(b) => b,
+        None => { throw_runtime(env, "plaintext null"); return std::ptr::null_mut(); }
+    };
+    let aci: String = match env.get_string(&recipient_aci) {
+        Ok(s) => s.into(),
+        Err(_) => { throw_runtime(env, "recipientAci null"); return std::ptr::null_mut(); }
+    };
+    let sealed = signal::sealed_sender_encrypt(&pt, &aci);
+    bytes_out(env, &sealed)
+}
+
+fn sealed_sender_decrypt_inner<'a>(
+    env: &mut JNIEnv<'a>,
+    ciphertext: JByteArray<'a>,
+) -> jbyteArray {
+    let ct = match bytes_in(env, &ciphertext) {
+        Some(b) => b,
+        None => { throw_runtime(env, "ciphertext null"); return std::ptr::null_mut(); }
+    };
+    // Try empty-key path (Kotlin supplies ACI out-of-band; Rust stub uses empty for round-trip tests)
+    let pt = match signal::sealed_sender_decrypt_any(&ct) {
+        Ok(p) => p,
+        Err(CryptoError(e)) => { throw_runtime(env, e); return std::ptr::null_mut(); }
+    };
+    bytes_out(env, &pt)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_communicate_data_signal_e2e_RustSignalCrypto_sealedSenderEncrypt<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    plaintext: JByteArray<'local>,
+    recipient_aci: jni::objects::JString<'local>,
+    _recipient_device_id: jint,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| sealed_sender_encrypt_inner(&mut env, plaintext, recipient_aci))) {
+        Ok(v) => v, Err(_) => { let _ = env.exception_clear(); let _ = env.throw_new("java/lang/RuntimeException", "Native panic in sealedSenderEncrypt"); std::ptr::null_mut() }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_communicate_data_signal_e2e_RustSignalCrypto_sealedSenderDecrypt<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ciphertext: JByteArray<'local>,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| sealed_sender_decrypt_inner(&mut env, ciphertext))) {
+        Ok(v) => v, Err(_) => { let _ = env.exception_clear(); let _ = env.throw_new("java/lang/RuntimeException", "Native panic in sealedSenderDecrypt"); std::ptr::null_mut() }
+    }
+}
+
+// Also expose the same symbols under RustWhatsAppCrypto so a single .so serves both clients
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_sealedSenderEncrypt<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    plaintext: JByteArray<'local>,
+    recipient_aci: jni::objects::JString<'local>,
+    recipient_device_id: jint,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| sealed_sender_encrypt_inner(&mut env, plaintext, recipient_aci))) {
+        Ok(v) => v, Err(_) => { let _ = env.exception_clear(); let _ = env.throw_new("java/lang/RuntimeException", "Native panic in sealedSenderEncrypt"); std::ptr::null_mut() }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_communicate_data_whatsapp_e2e_RustWhatsAppCrypto_sealedSenderDecrypt<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    ciphertext: JByteArray<'local>,
+) -> jbyteArray {
+    match catch_unwind(AssertUnwindSafe(|| sealed_sender_decrypt_inner(&mut env, ciphertext))) {
+        Ok(v) => v, Err(_) => { let _ = env.exception_clear(); let _ = env.throw_new("java/lang/RuntimeException", "Native panic in sealedSenderDecrypt"); std::ptr::null_mut() }
     }
 }

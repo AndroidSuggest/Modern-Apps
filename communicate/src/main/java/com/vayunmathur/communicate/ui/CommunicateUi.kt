@@ -200,6 +200,7 @@ fun lineLabel(line: CommunicateLine, subscriptionId: Int?, alwaysShowSim: Boolea
     return when (line) {
         CommunicateLine.GoogleVoice -> stringResource(R.string.line_gv)
         CommunicateLine.WhatsApp -> "WhatsApp"
+        CommunicateLine.Signal -> "Signal"
         CommunicateLine.Sim -> {
             val sims = remember { SimManager.activeSims(context) }
             // Only label SIM rows when there's more than one SIM (or explicitly requested).
@@ -223,13 +224,16 @@ fun rememberLineChoices(): List<LineChoice> {
     val gv by session.signedInFlow.collectAsState(initial = false)
     val waSession = remember { com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession.get(context) }
     val wa by waSession.signedInFlow.collectAsState(initial = false)
-    // WhatsApp is a dev-only feature (unofficial primary client, ToS/ban risk) — never offer it in
-    // the release variant.
+    val sigSession = remember { com.vayunmathur.communicate.data.signal.SignalLineSession.get(context) }
+    val sig by sigSession.signedInFlow.collectAsState(initial = false)
+    // WhatsApp/Signal are dev-only features (unofficial primary clients) — never offer in release.
     val waEnabled = wa && com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled
-    return remember(gv, waEnabled) {
+    val sigEnabled = sig && com.vayunmathur.communicate.data.signal.SignalFeature.enabled
+    return remember(gv, waEnabled, sigEnabled) {
         SimManager.simLineChoices(context) +
             (if (gv) listOf(LineChoice.GoogleVoice) else emptyList()) +
-            (if (waEnabled) listOf(LineChoice.WhatsApp) else emptyList())
+            (if (waEnabled) listOf(LineChoice.WhatsApp) else emptyList()) +
+            (if (sigEnabled) listOf(LineChoice.Signal) else emptyList())
     }
 }
 

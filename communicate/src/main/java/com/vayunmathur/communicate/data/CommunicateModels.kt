@@ -9,6 +9,7 @@ enum class CommunicateLine {
     Sim,
     GoogleVoice,
     WhatsApp,
+    Signal,
 }
 
 /**
@@ -31,6 +32,11 @@ sealed interface LineChoice {
     data object WhatsApp : LineChoice {
         override val label = "WhatsApp"
         override val category get() = CommunicateLine.WhatsApp
+    }
+
+    data object Signal : LineChoice {
+        override val label = "Signal"
+        override val category get() = CommunicateLine.Signal
     }
 }
 

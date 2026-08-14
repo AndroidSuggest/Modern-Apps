@@ -90,4 +90,16 @@
     <string name="regular_call_channel_desc">Call controls for regular phone calls.</string>
     <string name="regular_call_incoming">Incoming call</string>
     <string name="regular_call_ongoing">Ongoing call</string>
+
+    <!-- Signal line -->
+    <string name="signal_not_signed_in">Not signed in to Signal</string>
+    <string name="signal_sign_in">Sign in to Signal</string>
+    <string name="signal_signed_in">Signal connected</string>
+    <string name="signal_sign_out">Sign out of Signal</string>
+    <string name="signal_sign_in_failed">Signal sign-in failed</string>
+    <string name="signal_import_backup">Import Signal backup</string>
+    <string name="line_signal">Signal</string>
+    <string name="account_signal">Signal</string>
+    <string name="signal_send_failed">Couldn\'t send via Signal</string>
+    <string name="signal_action_failed">Signal action failed</string>
 </resources>
