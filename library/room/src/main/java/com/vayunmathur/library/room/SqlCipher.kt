@@ -84,6 +84,15 @@ inline fun <reified T : RoomDatabase> Context.buildDatabase(
 
         builder.openHelperFactory(SupportOpenHelperFactory(password.toByteArray(Charsets.UTF_8)))
 
+        // Force TRUNCATE (rollback-journal) mode instead of the default WAL. With the
+        // net.zetetic SQLCipher SupportSQLiteOpenHelper, WAL breaks Room's
+        // InvalidationTracker: a write marks the table dirty but the change
+        // notification isn't dispatched until a *later* write forces a refresh, so
+        // Flow-backed queries only update on the next unrelated DB write (observed as
+        // list UIs lagging until the next background write). TRUNCATE restores prompt,
+        // per-write invalidation for every RoomDatabase built through this helper.
+        builder.setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
+
         val db = builder.build()
         databases[T::class] = db
         return db
