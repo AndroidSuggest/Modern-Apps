@@ -47,6 +47,36 @@ class RegistrationHttpClient(
 
     data class ExistResult(val status: String, val reason: String?, val raw: String)
 
+    /** `/v2/consent` — over-18 self-declare / DOB / parent-verification consent (§3.12). */
+    data class ConsentResult(
+        val status: String, val reason: String?, val pending: String?, val url: String?, val raw: String,
+    ) { val ok: Boolean get() = status == "ok" }
+
+    /** `/v2/autoconf` — request the autoconf verifier / attribute list (§3.8). */
+    data class AutoconfResult(
+        val status: String, val reason: String?, val registerStartMessage: String?, val raw: String,
+    ) { val ok: Boolean get() = status == "ok" || status == "sent" }
+
+    /** `/v2/autoconf_verifier` — submit the encrypted verifier data (§3.9). */
+    data class AutoconfVerifierResult(val status: String, val reason: String?, val raw: String) {
+        val ok: Boolean get() = status == "ok"
+    }
+
+    /** `/v2/captcha_verify` — fraud-checkpoint code verification (§3.10). */
+    data class CaptchaVerifyResult(
+        val status: String, val reason: String?, val violationType: String?, val appealToken: String?, val raw: String,
+    ) { val ok: Boolean get() = status == "verified" }
+
+    /** `/v2/challenge` — email/oauth challenge step (§3.14). */
+    data class ChallengeResult(val status: String, val reason: String?, val raw: String) {
+        val ok: Boolean get() = status == "ok"
+    }
+
+    /** `/v2/client_log` — fire-and-forget onboarding funnel log (§3.6). */
+    data class ClientLogResult(val status: String, val raw: String) {
+        val ok: Boolean get() = status == "ok"
+    }
+
     // ------------------------------------------------------------------ endpoints
 
     /** POST `/v2/code` — request an OTP. Generates + persists fresh key material first. */
@@ -129,6 +159,177 @@ class RegistrationHttpClient(
         val body = send("exist", p)
         val j = parse(body)
         return ExistResult(j.optString("status", "error"), j.optStringOrNull("reason"), body)
+    }
+
+    /**
+     * POST `/v2/consent` (§3.12). Records the age/consent decision. Needs the E2E encryption bundle
+     * (`/v2/consent` is in the proto-2.0 encryption list, §2.1). [consentContext] is one of
+     * `app_store_age|dob|parent_verification|consent`.
+     */
+    suspend fun consent(
+        cc: String,
+        number: String,
+        consentContext: String,
+        dob: String? = null,
+        ageLowerBound: Int? = null,
+        consentDecision: String? = null,
+        consentId: String? = null,
+        consentVersion: String? = null,
+        securityCode: String? = null,
+    ): ConsentResult {
+        val auth = WhatsAppAuthData.load(context)
+        val p = RegParams()
+        p.a01("cc", cc)
+        p.a01("in", number)
+        p.addCommon()
+        p.addDevice()
+        if (auth != null) p.bundle(RegistrationKeys.bundleFields(auth))
+        p.a01("context", consentContext)
+        p.a02("dob", dob)
+        if (ageLowerBound != null) p.a01("age_lower_bound", ageLowerBound.toString())
+        p.a02("consent_decision", consentDecision)
+        p.a02("consent_id", consentId)
+        p.a02("consent_version", consentVersion)
+        p.a02("security_code", securityCode)
+        val body = send("consent", p)
+        val j = parse(body)
+        return ConsentResult(
+            status = j.optString("status", "error"),
+            reason = j.optStringOrNull("reason"),
+            pending = j.optStringOrNull("pending"),
+            url = j.optStringOrNull("url"),
+            raw = body,
+        )
+    }
+
+    /**
+     * POST `/v2/autoconf` (§3.8). Requests the autoconf verifier / attribute list. No E2E bundle
+     * (autoconf is not in the §2.1 encryption list). [consent] is `1` or `2`.
+     */
+    suspend fun autoconf(
+        cc: String,
+        number: String,
+        consent: Int,
+        clientCapabilities: String? = null,
+        consentShown: Boolean,
+        createVerifier: Boolean,
+    ): AutoconfResult {
+        val p = RegParams()
+        p.a01("cc", cc)
+        p.a01("in", number)
+        p.addCommon()
+        p.addDevice()
+        p.a01("consent", consent.toString())
+        p.a02("client_capabilities", clientCapabilities)
+        p.a00("consent_shown", consentShown)
+        p.a00("create_verifier", createVerifier)
+        val body = send("autoconf", p)
+        val j = parse(body)
+        return AutoconfResult(
+            status = j.optString("status", "error"),
+            reason = j.optStringOrNull("reason"),
+            registerStartMessage = j.optStringOrNull("register_start_message"),
+            raw = body,
+        )
+    }
+
+    /**
+     * POST `/v2/autoconf_verifier` (§3.9). Submits the encrypted verifier data.
+     * [registrationMethod]: 0 token, 2 wa_old, 3 email, 4 flash, 5 sms.
+     */
+    suspend fun autoconfVerifier(
+        cc: String,
+        number: String,
+        code: String,
+        encryptedVerifierData: String,
+        registrationMethod: Int,
+    ): AutoconfVerifierResult {
+        val p = RegParams()
+        p.a01("cc", cc)
+        p.a01("in", number)
+        p.addCommon()
+        p.addDevice()
+        p.a01("code", code.filter { it.isDigit() })
+        p.a01("encrypted_verifier_data", encryptedVerifierData)
+        p.a01("registration_method", registrationMethod.toString())
+        val body = send("autoconf_verifier", p)
+        val j = parse(body)
+        return AutoconfVerifierResult(j.optString("status", "error"), j.optStringOrNull("reason"), body)
+    }
+
+    /**
+     * POST `/v2/captcha_verify` (§3.10). Verifies a fraud-checkpoint code. Needs only `authkey` from
+     * the E2E bundle (per §3.10), not the full `e_*` set.
+     */
+    suspend fun captchaVerify(cc: String, number: String, fraudCheckpointCode: String): CaptchaVerifyResult {
+        val auth = WhatsAppAuthData.load(context)
+        val p = RegParams()
+        p.a01("cc", cc)
+        p.a01("in", number)
+        p.addCommon()
+        p.addDevice()
+        if (auth != null) {
+            RegistrationKeys.bundleFields(auth)["authkey"]?.let { p.bundle(mapOf("authkey" to it)) }
+        }
+        p.a01("fraud_checkpoint_code", fraudCheckpointCode)
+        val body = send("captcha_verify", p)
+        val j = parse(body)
+        return CaptchaVerifyResult(
+            status = j.optString("status", "error"),
+            reason = j.optStringOrNull("reason"),
+            violationType = j.optStringOrNull("violation_type"),
+            appealToken = j.optStringOrNull("appeal_token"),
+            raw = body,
+        )
+    }
+
+    /**
+     * POST `/v2/challenge` (§3.14). Email/OAuth challenge step. No E2E bundle.
+     * [challengeType]: `email_enter|email_verify`.
+     */
+    suspend fun challenge(
+        cc: String,
+        number: String,
+        challengeType: String,
+        email: String? = null,
+        oauthToken: String? = null,
+        code: String? = null,
+    ): ChallengeResult {
+        val p = RegParams()
+        p.a01("cc", cc)
+        p.a01("in", number)
+        p.addCommon()
+        p.addDevice()
+        p.a01("challenge_type", challengeType)
+        p.a02("email", email)
+        p.a02("oauth_token", oauthToken)
+        p.a02("code", code)
+        val body = send("challenge", p)
+        val j = parse(body)
+        return ChallengeResult(j.optString("status", "error"), j.optStringOrNull("reason"), body)
+    }
+
+    /**
+     * POST `/v2/client_log` (§3.6). Fire-and-forget onboarding funnel log; no encryption/integrity,
+     * only `lg,lc,rc` + `cc?/in?` + the error context/type. Always returns `ok` server-side.
+     */
+    suspend fun clientLog(
+        errorContext: String,
+        errorType: String,
+        cc: String? = null,
+        number: String? = null,
+    ): ClientLogResult {
+        val p = RegParams()
+        p.a02("cc", cc)
+        p.a02("in", number)
+        p.a01("lg", context.resources.configuration.locales[0].language.ifEmpty { "en" })
+        p.a01("lc", context.resources.configuration.locales[0].country.ifEmpty { "US" })
+        p.a01("rc", "0")
+        p.a01("client_error_context", errorContext)
+        p.a01("client_error_type", errorType)
+        val body = send("client_log", p)
+        val j = parse(body)
+        return ClientLogResult(j.optString("status", "error"), body)
     }
 
     // ------------------------------------------------------------------ internals

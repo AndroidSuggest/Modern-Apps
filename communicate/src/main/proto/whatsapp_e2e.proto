@@ -49,6 +49,11 @@ message Message {
     optional DeviceSentMessage deviceSentMessage = 31;
     optional MessageContextInfo messageContextInfo = 35;
     optional FutureProofMessage editedMessage = 58;
+    // View-once wrappers (media that can be opened once). Ref WAWebProtobufsE2E.Message
+    // viewOnceMessage / viewOnceMessageV2 / viewOnceMessageV2Extension.
+    optional FutureProofMessage viewOnceMessage = 28;
+    optional FutureProofMessage viewOnceMessageV2 = 78;
+    optional FutureProofMessage viewOnceMessageV2Extension = 79;
 }
 
 message ExtendedTextMessage {

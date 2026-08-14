@@ -48,4 +48,36 @@ object WhatsAppDiag {
         }
         return "${data.size}B[${hex}${if (data.size > max) "…" else ""}]"
     }
+
+    /**
+     * Group sender-key (`skmsg`) self-loopback diagnostic (Phase A 1d). Exercises the exact Rust
+     * sender-key wire that [WhatsAppE2E.encryptGroup]/[buildEncryptedGroupMessageNode] produce:
+     *
+     *   1. sender: create sender key → (state, SKDM)
+     *   2. receiver: processSenderKey(SKDM) → receiver state
+     *   3. sender: encryptGroup(state, padded) → skmsg ciphertext
+     *   4. receiver: decryptGroup(receiverState, ciphertext) → plaintext
+     *   5. assert plaintext == padded
+     *
+     * This validates the SKDM + skmsg round-trips through [RustWhatsAppCrypto] end-to-end on-device
+     * (it requires the native `libcommunicate_signal` .so, so it is a dev diagnostic, NOT a JVM
+     * unit test). Live peer interop still can't be validated because the test number is banned.
+     * Returns true on a successful round-trip.
+     */
+    fun verifyGroupSenderKeyRoundTrip(): Boolean {
+        return try {
+            val plaintext = WhatsAppProtocol.padMessage("skmsg loopback probe".toByteArray(Charsets.UTF_8))
+            val created = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.createSenderKeySplit()
+            val receiverState = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.processSenderKey(created.skdm)
+                ?: throw RuntimeException("processSenderKey returned null")
+            val enc = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.encryptGroupSplit(created.state, plaintext)
+            val dec = com.vayunmathur.communicate.data.whatsapp.e2e.RustWhatsAppCrypto.decryptGroupSplit(receiverState, enc.data)
+            val ok = dec.data.contentEquals(plaintext)
+            log("WA-SKMSG", "sender-key loopback ${if (ok) "PASS" else "FAIL"} skdm=${preview(created.skdm)} ct=${preview(enc.data)}")
+            ok
+        } catch (e: Exception) {
+            log("WA-SKMSG", "sender-key loopback ERROR ${e.message}")
+            false
+        }
+    }
 }

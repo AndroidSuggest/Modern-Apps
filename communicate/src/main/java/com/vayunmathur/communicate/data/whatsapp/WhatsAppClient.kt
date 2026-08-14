@@ -361,6 +361,46 @@ object WhatsAppClient {
     }
 
     /**
+     * Perform a MEX (`w:mex`) GraphQL call over the existing Noise/XMPP socket (w2.md §5.2). Resolves
+     * the persisted-query [operationName] → doc_id via [MexPersistedQueryProvider]; when the id isn't
+     * in the bundled JSON returns a typed `no_persisted_id:<op>` transport failure (never crashes,
+     * unlike the official debug client). Builds the `{"queryId":…,"variables":…}` envelope, sends the
+     * `<iq xmlns="w:mex">`, waits (32s per §1.5), then extracts the `<result>` node's
+     * `{"data":…,"errors":…}` envelope into a [MexResult].
+     *
+     * Dev-only: guarded by [WhatsAppFeature.enabled] at the repository layer; requires an active
+     * connection (use [com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMex] to fall back to WWW
+     * HTTP when disconnected).
+     */
+    suspend fun mexCall(
+        operationName: String,
+        variablesJson: String,
+        type: String = "get",
+    ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult {
+        val docId = com.vayunmathur.communicate.data.whatsapp.mex.MexPersistedQueryProvider
+            .docIdFor(appContext, operationName)
+            ?: run {
+                WhatsAppDiag.log(TAG, "mex[$operationName]: no persisted doc_id (add it to mex_persist_ids.json)")
+                return com.vayunmathur.communicate.data.whatsapp.mex.MexResult.transport("no_persisted_id:$operationName")
+            }
+        val id = generateMessageId()
+        val queryJson = com.vayunmathur.communicate.data.whatsapp.mex.MexEnvelope.buildQueryJson(docId, variablesJson)
+        val node = WhatsAppProtocol.buildMexQuery(docId, queryJson, id, type)
+        val resp = sendIqAndWait(node, timeoutMs = 32_000)
+            ?: return com.vayunmathur.communicate.data.whatsapp.mex.MexResult.transport("timeout")
+        if (resp.attrs["type"] == "error") {
+            val code = resp.getChildByTag("error")?.attrs?.get("code")
+            WhatsAppDiag.log(TAG, "mex[$operationName]: iq error code=${code ?: "unknown"}")
+            return com.vayunmathur.communicate.data.whatsapp.mex.MexResult.transport("iq_error:${code ?: "unknown"}")
+        }
+        val envelope = resp.getChildByTag("result")?.data?.toString(Charsets.UTF_8)
+            ?: return com.vayunmathur.communicate.data.whatsapp.mex.MexResult.transport("no_result")
+        val out = com.vayunmathur.communicate.data.whatsapp.mex.MexResult.fromEnvelope(envelope)
+        WhatsAppDiag.log(TAG, "mex[$operationName]: success=${out.isSuccess} errors=${out.errors.size}")
+        return out
+    }
+
+    /**
      * Upload one-time + signed prekeys to the server.
      * Ref whatsmeow prekeys.go uploadPreKeys. [initialUpload] uploads a large batch after pair.
      */
@@ -2013,6 +2053,39 @@ object WhatsAppClient {
         return if (sent) id else null
     }
 
+    /**
+     * Send a text message with optional rich content: @mentions, a quoted reply, and/or a URL
+     * link-preview. When none are provided this is equivalent to [sendMessage] (a plain
+     * `conversation` proto). Rich content is carried in an ExtendedTextMessage with ContextInfo so
+     * the peer renders mentions/quote/preview. Routed through the normal Signal fan-out (1:1) or
+     * group sender-key path. Ref whatsmeow ExtendedTextMessage / ContextInfo.
+     */
+    suspend fun sendMessageAdvanced(
+        conversationId: String,
+        body: String,
+        mentionedJids: List<String> = emptyList(),
+        quoted: WhatsAppProtocol.QuotedContext? = null,
+        linkPreview: WhatsAppProtocol.LinkPreview? = null,
+    ): String? {
+        if (_state.value !is State.Connected) { WhatsAppDiag.log(TAG, "sendAdv: not connected"); return null }
+        val ws = webSocket ?: return null
+        val to = extractJid(conversationId) ?: return null
+        val id = WhatsAppProtocol.generateMessageId(authData?.wid)
+
+        val proto = WhatsAppProtocol.buildTextProto(body, mentionedJids, quoted, linkPreview)
+        val node = if (to.contains("@g.us")) {
+            buildEncryptedGroupMessageNode(to, id, proto, type = "text")
+        } else {
+            buildEncryptedMessageNode(to, id, proto, "text")
+        } ?: run { WhatsAppDiag.log(TAG, "sendAdv: build FAILED (no enc) for $to"); return null }
+
+        pendingMessageIDs.add(id)
+        val sent = ws.send(WhatsAppProtocol.encodeNode(node))
+        if (!sent) pendingMessageIDs.remove(id)
+        WhatsAppDiag.log(TAG, "sendAdv: sent=$sent id=$id mentions=${mentionedJids.size} quoted=${quoted != null} preview=${linkPreview != null}")
+        return if (sent) id else null
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Phase 10a — call signaling spike (media/VoIP engine is native-only, out of scope this pass).
     // ---------------------------------------------------------------------------------------------
@@ -2072,6 +2145,7 @@ object WhatsAppClient {
         msg: WhatsAppE2EProto.Message,
         type: String,
         extraEncAttrs: Map<String, String> = emptyMap(),
+        messageAttrs: Map<String, String> = emptyMap(),
     ): WhatsAppProtocol.Node? {
         val auth = authData ?: return null
         val crypto = ensureE2E(auth) ?: return null
@@ -2106,6 +2180,7 @@ object WhatsAppClient {
             includeDeviceIdentity = includeIdentity,
             deviceIdentity = deviceIdentity,
             extraEncAttrs = extraEncAttrs,
+            messageAttrs = messageAttrs,
         )
     }
 
@@ -2119,9 +2194,12 @@ object WhatsAppClient {
     /**
      * Build an arbitrary group message: sender-key encrypt the content (skmsg) and 1:1 fan out the
      * SenderKeyDistributionMessage to every member device. Mirrors whatsmeow send.go sendGroup.
-     * UNVERIFIED: libsignal-client's sender-key wire format (distribution UUID + versioned
-     * SenderKeyMessage) differs from WhatsApp's legacy libsignal sender-key format, so group
-     * skmsg crypto interop is not runtime-verified.
+     *
+     * The skmsg wire is produced by the Rust `communicate_signal` sender-key implementation
+     * ([RustWhatsAppCrypto.encryptGroup]/`createSenderKey`), NOT libsignal-client. Its SKDM +
+     * skmsg round-trip is self-loopback-verified on-device via
+     * [WhatsAppDiag.verifyGroupSenderKeyRoundTrip] (encrypt→decrypt through the same Rust path).
+     * Live peer interop still cannot be validated because the test number is banned.
      */
     private suspend fun buildEncryptedGroupMessageNode(
         groupJid: String,
@@ -2129,6 +2207,7 @@ object WhatsAppClient {
         msg: WhatsAppE2EProto.Message,
         type: String = "text",
         extraEncAttrs: Map<String, String> = emptyMap(),
+        messageAttrs: Map<String, String> = emptyMap(),
     ): WhatsAppProtocol.Node? {
         val auth = authData ?: return null
         val crypto = ensureE2E(auth) ?: return null
@@ -2183,6 +2262,7 @@ object WhatsAppClient {
             deviceIdentity = deviceIdentity,
             extraEnc = skMsg,
             extraEncAttrs = extraEncAttrs,
+            messageAttrs = messageAttrs,
         )
     }
 
@@ -2546,23 +2626,41 @@ object WhatsAppClient {
     }
 
     /**
-     * Edit a previously sent message.
-     * From whatsmeow HandleMatrixEdit / BuildEdit
+     * Edit a previously sent message. Builds a MESSAGE_EDIT ProtocolMessage proto and routes it
+     * through the normal Signal encryption + multi-device fan-out (1:1 or group sender-key) with a
+     * message-level `edit="1"` attribute. Previously this sent a plaintext `<enc>` that bypassed
+     * Signal fan-out and was undeliverable.
      */
     suspend fun sendEdit(conversationId: String, targetMessageId: String, newBody: String): Boolean {
         if (_state.value !is State.Connected) return false
         val ws = webSocket ?: return false
         val chatJid = extractJid(conversationId) ?: return false
         val id = WhatsAppProtocol.generateMessageId(authData?.wid)
-        val ownJid = authData?.wid ?: ""
+        val rawTargetId = extractMessageId(targetMessageId)
 
-        val node = WhatsAppProtocol.buildEditMessage(chatJid, targetMessageId, newBody, ownJid, id)
-        return ws.send(WhatsAppProtocol.encodeNode(node))
+        val proto = WhatsAppProtocol.buildEditProto(chatJid, rawTargetId, newBody)
+        val editAttrs = mapOf("edit" to "1")
+        val node = if (chatJid.contains("@g.us")) {
+            buildEncryptedGroupMessageNode(chatJid, id, proto, type = "text", messageAttrs = editAttrs)
+        } else {
+            buildEncryptedMessageNode(chatJid, id, proto, "text", messageAttrs = editAttrs)
+        } ?: run { WhatsAppDiag.log(TAG, "edit: build FAILED (no enc) for $chatJid"); return false }
+
+        pendingMessageIDs.add(id)
+        val sent = ws.send(WhatsAppProtocol.encodeNode(node))
+        if (!sent) pendingMessageIDs.remove(id)
+        WhatsAppDiag.log(TAG, "edit to=$chatJid target=$rawTargetId sent=$sent")
+        return sent
     }
 
     /**
      * Revoke (delete) a previously sent message.
      * From whatsmeow HandleMatrixMessageRemove / BuildRevoke
+     */
+    /**
+     * Revoke (delete-for-everyone) a previously sent message. Builds a REVOKE ProtocolMessage
+     * proto and routes it through the normal Signal fan-out (1:1 or group sender-key) with the
+     * message-level `edit` attribute ("7" own / "8" other). Previously sent a plaintext `<enc>`.
      */
     suspend fun sendRevoke(conversationId: String, targetMessageId: String, senderJid: String = ""): Boolean {
         if (_state.value !is State.Connected) return false
@@ -2570,9 +2668,22 @@ object WhatsAppClient {
         val chatJid = extractJid(conversationId) ?: return false
         val id = WhatsAppProtocol.generateMessageId(authData?.wid)
         val ownJid = authData?.wid ?: ""
+        val rawTargetId = extractMessageId(targetMessageId)
 
-        val node = WhatsAppProtocol.buildRevokeMessage(chatJid, senderJid, targetMessageId, ownJid, id)
-        return ws.send(WhatsAppProtocol.encodeNode(node))
+        val proto = WhatsAppProtocol.buildRevokeProto(chatJid, senderJid, rawTargetId, ownJid)
+        val isFromMe = WhatsAppProtocol.isRevokeFromMe(senderJid, ownJid)
+        val revokeAttrs = mapOf("edit" to if (isFromMe) "7" else "8")
+        val node = if (chatJid.contains("@g.us")) {
+            buildEncryptedGroupMessageNode(chatJid, id, proto, type = "text", messageAttrs = revokeAttrs)
+        } else {
+            buildEncryptedMessageNode(chatJid, id, proto, "text", messageAttrs = revokeAttrs)
+        } ?: run { WhatsAppDiag.log(TAG, "revoke: build FAILED (no enc) for $chatJid"); return false }
+
+        pendingMessageIDs.add(id)
+        val sent = ws.send(WhatsAppProtocol.encodeNode(node))
+        if (!sent) pendingMessageIDs.remove(id)
+        WhatsAppDiag.log(TAG, "revoke to=$chatJid target=$rawTargetId sent=$sent")
+        return sent
     }
 
     /**
@@ -2735,7 +2846,8 @@ object WhatsAppClient {
     }
 
     /**
-     * Send a contact/vCard message.
+     * Send a contact/vCard message. Routed through the normal Signal encryption + multi-device
+     * fan-out (1:1 or group sender-key) — previously emitted a plaintext `<enc>` that was dropped.
      * From Go wa-contact.go convertContactMessage.
      */
     suspend fun sendContact(
@@ -2748,14 +2860,28 @@ object WhatsAppClient {
         val chatJid = extractJid(conversationId) ?: return false
         val id = WhatsAppProtocol.generateMessageId(authData?.wid)
 
-        val node = WhatsAppProtocol.buildContactMessage(chatJid, displayName, vcard, id)
-        return ws.send(WhatsAppProtocol.encodeNode(node))
+        val proto = WhatsAppProtocol.buildContactProto(displayName, vcard)
+        val node = if (chatJid.contains("@g.us")) {
+            buildEncryptedGroupMessageNode(chatJid, id, proto, type = "text")
+        } else {
+            buildEncryptedMessageNode(chatJid, id, proto, "text")
+        } ?: run { WhatsAppDiag.log(TAG, "contact: build FAILED (no enc) for $chatJid"); return false }
+
+        pendingMessageIDs.add(id)
+        val sent = ws.send(WhatsAppProtocol.encodeNode(node))
+        if (!sent) pendingMessageIDs.remove(id)
+        WhatsAppDiag.log(TAG, "contact to=$chatJid sent=$sent")
+        return sent
     }
 
     /**
      * Set disappearing messages timer.
      * From Go HandleMatrixDisappearingTimer.
      * Allowed values: 0 (off), 86400 (24h), 604800 (7d), 7776000 (90d).
+     *
+     * 1:1 chats carry the setting as an EPHEMERAL_SETTING ProtocolMessage over the normal Signal
+     * fan-out. Groups instead use a `w:g2` IQ (`<ephemeral expiration=..>` / `<not_ephemeral/>`)
+     * so the whole group is updated server-side, matching whatsmeow SetDisappearingTimer.
      */
     suspend fun setDisappearingTimer(conversationId: String, timerSeconds: Long): Boolean {
         if (_state.value !is State.Connected) return false
@@ -2769,8 +2895,31 @@ object WhatsAppClient {
         }
 
         val id = WhatsAppProtocol.generateMessageId(authData?.wid)
-        val node = WhatsAppProtocol.buildDisappearingTimerMessage(chatJid, timerSeconds, id)
-        return ws.send(WhatsAppProtocol.encodeNode(node))
+        if (chatJid.contains("@g.us")) {
+            val child = if (timerSeconds == 0L) {
+                WhatsAppProtocol.Node(tag = "not_ephemeral")
+            } else {
+                WhatsAppProtocol.Node(tag = "ephemeral", attrs = mapOf("expiration" to timerSeconds.toString()))
+            }
+            val iq = WhatsAppProtocol.Node(
+                tag = "iq",
+                attrs = mapOf("id" to id, "type" to "set", "xmlns" to "w:g2", "to" to chatJid),
+                content = listOf(child),
+            )
+            val resp = sendIqAndWait(iq, timeoutMs = 10_000)
+            val ok = resp != null && resp.attrs["type"] != "error"
+            WhatsAppDiag.log(TAG, "disappearing(group) to=$chatJid secs=$timerSeconds ok=$ok")
+            return ok
+        }
+
+        val proto = WhatsAppProtocol.buildDisappearingTimerProto(timerSeconds)
+        val node = buildEncryptedMessageNode(chatJid, id, proto, "text")
+            ?: run { WhatsAppDiag.log(TAG, "disappearing: build FAILED (no enc) for $chatJid"); return false }
+        pendingMessageIDs.add(id)
+        val sent = ws.send(WhatsAppProtocol.encodeNode(node))
+        if (!sent) pendingMessageIDs.remove(id)
+        WhatsAppDiag.log(TAG, "disappearing to=$chatJid secs=$timerSeconds sent=$sent")
+        return sent
     }
 
     /**

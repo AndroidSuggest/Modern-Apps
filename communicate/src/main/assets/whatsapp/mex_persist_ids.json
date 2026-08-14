@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "data": {
+    "QueryGroupInfo": "27462649126753603",
+    "ContactUserInfoQuery": "27056625294008854",
+    "UsernameSetMutation": "7225825540870559",
+    "GetTextStatus": "6681894428597832",
+    "NotificationNewsletterJoin": "24434120059586833",
+    "AccountSyncUsernameNotification": "25290488857205803",
+    "TextStatusUpdateNotification": "6601560246628795"
+  }
+}

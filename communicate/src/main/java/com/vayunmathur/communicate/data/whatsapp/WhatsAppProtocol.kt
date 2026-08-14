@@ -1152,6 +1152,38 @@ object WhatsAppProtocol {
             content = listOf(Node(tag = "media_conn")),
         )
     }
+
+    /**
+     * Build a MEX (`w:mex`) query IQ carrying a persisted-query GraphQL envelope. Ref w2.md §5.2
+     * (SMAX `QueryRequest.kt`): `<iq xmlns="w:mex" to="s.whatsapp.net" type=<type> id=…>` with a
+     * single `<query query_id="<docId>"[ argo_mode=…]>` child whose text/data node is the JSON
+     * envelope `{"queryId":"<docId>","variables":{…}}` (built JVM-pure by
+     * [com.vayunmathur.communicate.data.whatsapp.mex.MexEnvelope.buildQueryJson]).
+     *
+     * The envelope is attached as the `<query>` node's UTF-8 [Node.data] (like
+     * [buildGroupInfoChange]); `data` and `content` are mutually exclusive. [argoMode] is omitted
+     * when null (we send the plaintext JSON `<result>` envelope rather than Argo binary).
+     *
+     * @param docId the resolved 17-digit persisted-query id (also embedded inside [queryJson]).
+     * @param queryJson the full `{"queryId":…,"variables":…}` envelope string.
+     */
+    fun buildMexQuery(
+        docId: String,
+        queryJson: String,
+        id: String,
+        type: String = "get",
+        argoMode: Long? = null,
+    ): Node {
+        val queryAttrs = mutableMapOf("query_id" to docId)
+        if (argoMode != null) queryAttrs["argo_mode"] = argoMode.toString()
+        return Node(
+            tag = "iq",
+            attrs = mapOf("id" to id, "type" to type, "xmlns" to "w:mex", "to" to "s.whatsapp.net"),
+            content = listOf(
+                Node(tag = "query", attrs = queryAttrs, data = queryJson.toByteArray(Charsets.UTF_8)),
+            ),
+        )
+    }
     /**
      * Build a reaction as an E2E [Message] proto (ReactionMessage). Returned as a proto — NOT a
      * wire node — so the caller sends it through the normal Signal encryption + multi-device
@@ -1336,18 +1368,88 @@ object WhatsAppProtocol {
         return Node(tag = "receipt", attrs = attrs, content = children)
     }
 
+    // -- Rich send content (mentions / quoted reply / link preview) --------------------------------
+
+    /** A quoted-reply context: the stanza id of the message being replied to, the sender of that
+     *  message (participant), and (best-effort) the quoted message's proto for the preview. */
+    data class QuotedContext(
+        val stanzaId: String,
+        val participant: String,
+        val quotedMessage: com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message? = null,
+    )
+
+    /** A URL link-preview attached to an ExtendedTextMessage. */
+    data class LinkPreview(
+        val matchedText: String,
+        val canonicalUrl: String,
+        val title: String? = null,
+        val description: String? = null,
+        val jpegThumbnail: ByteArray? = null,
+    )
+
     /**
-     * Build an edit message node.
-     * From whatsmeow/send.go BuildEdit()
-     * Go wraps in EditedMessage -> FutureProofMessage -> Message -> ProtocolMessage
+     * Build a [ContextInfo] from optional mentions + quoted-reply. Returns null when neither is
+     * present so callers can send a bare `conversation` message. Ref whatsmeow ContextInfo usage.
      */
-    fun buildEditMessage(
+    fun buildContextInfo(
+        mentionedJids: List<String> = emptyList(),
+        quoted: QuotedContext? = null,
+    ): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ContextInfo? {
+        if (mentionedJids.isEmpty() && quoted == null) return null
+        val ctx = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ContextInfo.newBuilder()
+        for (jid in mentionedJids) ctx.addMentionedJid(jid)
+        if (quoted != null) {
+            ctx.stanzaId = quoted.stanzaId
+            if (quoted.participant.isNotEmpty()) ctx.participant = quoted.participant
+            quoted.quotedMessage?.let { ctx.quotedMessage = it }
+        }
+        return ctx.build()
+    }
+
+    /**
+     * Build a text message proto with optional rich content. When there are no mentions, no quoted
+     * reply and no link preview, a plain `conversation` message is produced (matching
+     * [buildConversationMessage]); otherwise the text is carried in an [ExtendedTextMessage] with
+     * the accompanying [ContextInfo] and link-preview fields so the peer renders them. Ref
+     * whatsmeow send.go ExtendedTextMessage.
+     */
+    fun buildTextProto(
+        text: String,
+        mentionedJids: List<String> = emptyList(),
+        quoted: QuotedContext? = null,
+        linkPreview: LinkPreview? = null,
+    ): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
+        val ctx = buildContextInfo(mentionedJids, quoted)
+        if (ctx == null && linkPreview == null) {
+            return buildConversationMessage(text)
+        }
+        val ext = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ExtendedTextMessage.newBuilder()
+            .setText(text)
+        if (ctx != null) ext.contextInfo = ctx
+        if (linkPreview != null) {
+            ext.matchedText = linkPreview.matchedText
+            ext.canonicalUrl = linkPreview.canonicalUrl
+            linkPreview.title?.let { ext.title = it }
+            linkPreview.description?.let { ext.description = it }
+            linkPreview.jpegThumbnail?.let { ext.jpegThumbnail = com.google.protobuf.ByteString.copyFrom(it) }
+        }
+        return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+            .setExtendedTextMessage(ext.build())
+            .build()
+    }
+
+    /**
+     * Build an edit as an E2E [Message] proto (ProtocolMessage type MESSAGE_EDIT). Returned as a
+     * proto — NOT a wire node — so the caller sends it through the normal Signal encryption +
+     * multi-device fan-out (buildEncryptedMessageNode / buildEncryptedGroupMessageNode) with a
+     * message-level `edit="1"` attribute. Previously this emitted a plaintext `<enc>` node that
+     * bypassed Signal and was therefore undeliverable. Ref whatsmeow send.go BuildEdit.
+     */
+    fun buildEditProto(
         chatJid: String,
         targetMessageId: String,
         newText: String,
-        ownJid: String,
-        id: String,
-    ): Node {
+    ): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
         val messageKey = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.MessageKey.newBuilder()
             .setFromMe(true)
             .setId(targetMessageId)
@@ -1365,50 +1467,28 @@ object WhatsAppProtocol {
             .setTimestampMs(System.currentTimeMillis())
             .build()
 
-        val innerMessage = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+        return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
             .setProtocolMessage(protocolMessage)
             .build()
-
-        val futureProof = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.FutureProofMessage.newBuilder()
-            .setMessage(innerMessage)
-            .build()
-
-        val e2eMessage = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
-            .setEditedMessage(futureProof)
-            .build()
-        val plaintext = e2eMessage.toByteArray()
-
-        return Node(
-            tag = "message",
-            attrs = mapOf(
-                "to" to chatJid,
-                "id" to id,
-                "type" to "text",
-                "edit" to "1"
-            ),
-            content = listOf(
-                Node(
-                    tag = "enc",
-                    attrs = mapOf("v" to "2", "type" to "msg", "decrypt-fail" to "hide"),
-                    data = padMessage(plaintext)
-                )
-            )
-        )
     }
 
+    /** Whether a revoke targets a message that the local user sent (empty/own sender = self). */
+    fun isRevokeFromMe(senderJid: String, ownJid: String): Boolean =
+        senderJid.isEmpty() || senderJid == ownJid ||
+            senderJid.substringBefore("@") == ownJid.substringBefore("@")
+
     /**
-     * Build a revoke (delete) message node.
-     * From whatsmeow/send.go BuildRevoke()
+     * Build a revoke (delete-for-everyone) as an E2E [Message] proto (ProtocolMessage type REVOKE).
+     * Returned as a proto for the normal fan-out path; the caller sets the message-level `edit`
+     * attribute ("7" for own messages, "8" for others'). Ref whatsmeow send.go BuildRevoke.
      */
-    fun buildRevokeMessage(
+    fun buildRevokeProto(
         chatJid: String,
         senderJid: String,
         targetMessageId: String,
         ownJid: String,
-        id: String,
-    ): Node {
-        val isFromMe = senderJid.isEmpty() || senderJid == ownJid ||
-            senderJid.substringBefore("@") == ownJid.substringBefore("@")
+    ): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
+        val isFromMe = isRevokeFromMe(senderJid, ownJid)
         val messageKey = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.MessageKey.newBuilder()
             .setFromMe(isFromMe)
             .setId(targetMessageId)
@@ -1422,27 +1502,9 @@ object WhatsAppProtocol {
             .setKey(messageKey.build())
             .build()
 
-        val e2eMessage = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+        return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
             .setProtocolMessage(protocolMessage)
             .build()
-        val plaintext = e2eMessage.toByteArray()
-
-        return Node(
-            tag = "message",
-            attrs = mapOf(
-                "to" to chatJid,
-                "id" to id,
-                "type" to "text",
-                "edit" to if (isFromMe) "7" else "8"
-            ),
-            content = listOf(
-                Node(
-                    tag = "enc",
-                    attrs = mapOf("v" to "2", "type" to "msg", "decrypt-fail" to "hide"),
-                    data = padMessage(plaintext)
-                )
-            )
-        )
     }
 
     /**
@@ -1638,61 +1700,40 @@ object WhatsAppProtocol {
     }
 
     /**
-     * Build a contact/vCard message.
-     * From whatsmeow wa-contact.go
+     * Build a contact/vCard message as an E2E [Message] proto. Returned as a proto for the normal
+     * Signal fan-out path (previously emitted a plaintext `<enc>` node that was undeliverable).
+     * Ref whatsmeow wa-contact.go.
      */
-    fun buildContactMessage(
-        chatJid: String,
+    fun buildContactProto(
         displayName: String,
         vcard: String,
-        id: String,
-    ): Node {
+    ): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
         val contactMsg = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ContactMessage.newBuilder()
             .setDisplayName(displayName)
             .setVcard(vcard)
             .build()
 
-        val e2eMessage = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+        return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
             .setContactMessage(contactMsg)
             .build()
-
-        val plaintext = e2eMessage.toByteArray()
-        return Node(
-            tag = "message",
-            attrs = mapOf("to" to chatJid, "id" to id, "type" to "text"),
-            content = listOf(
-                Node(tag = "enc", attrs = mapOf("v" to "2", "type" to "msg"), data = padMessage(plaintext))
-            )
-        )
     }
 
     /**
-     * Build a disappearing timer change message.
-     * From whatsmeow handlematrix.go HandleMatrixDisappearingTimer()
-     * Allowed values: 0 (off), 86400 (24h), 604800 (7d), 7776000 (90d)
+     * Build a disappearing-timer change as an E2E [Message] proto (ProtocolMessage type
+     * EPHEMERAL_SETTING). Returned as a proto for the normal Signal fan-out path. Allowed values:
+     * 0 (off), 86400 (24h), 604800 (7d), 7776000 (90d). Ref whatsmeow HandleMatrixDisappearingTimer.
      */
-    fun buildDisappearingTimerMessage(
-        chatJid: String,
+    fun buildDisappearingTimerProto(
         timerSeconds: Long,
-        id: String,
-    ): Node {
+    ): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message {
         val protocolMsg = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.newBuilder()
             .setType(com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.EPHEMERAL_SETTING)
             .setEphemeralExpiration(timerSeconds.toInt())
             .build()
 
-        val e2eMessage = com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
+        return com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message.newBuilder()
             .setProtocolMessage(protocolMsg)
             .build()
-
-        val plaintext = e2eMessage.toByteArray()
-        return Node(
-            tag = "message",
-            attrs = mapOf("to" to chatJid, "id" to id, "type" to "text"),
-            content = listOf(
-                Node(tag = "enc", attrs = mapOf("v" to "2", "type" to "msg"), data = padMessage(plaintext))
-            )
-        )
     }
 
     /**
@@ -2104,29 +2145,46 @@ object WhatsAppProtocol {
         else -> null
     }
 
+    /**
+     * If [m] is a view-once container (viewOnceMessage / viewOnceMessageV2 /
+     * viewOnceMessageV2Extension), return the wrapped inner [Message]; otherwise null. Used to
+     * unwrap and flag view-once media on receive. Ref WAWebProtobufsE2E.Message view-once fields.
+     */
+    fun unwrapViewOnce(
+        m: com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message,
+    ): com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message? = when {
+        m.hasViewOnceMessageV2Extension() && m.viewOnceMessageV2Extension.hasMessage() ->
+            m.viewOnceMessageV2Extension.message
+        m.hasViewOnceMessageV2() && m.viewOnceMessageV2.hasMessage() -> m.viewOnceMessageV2.message
+        m.hasViewOnceMessage() && m.viewOnceMessage.hasMessage() -> m.viewOnceMessage.message
+        else -> null
+    }
+
     fun getMessageType(e2eMessage: com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message?): String {
+        val unwrapped = if (e2eMessage != null) unwrapViewOnce(e2eMessage) else null
+        val e2e = unwrapped ?: e2eMessage
         return when {
-            e2eMessage == null -> "ignore"
-            e2eMessage.hasConversation() || e2eMessage.hasExtendedTextMessage() -> "text"
-            e2eMessage.hasImageMessage() -> "image ${e2eMessage.imageMessage.mimetype}"
-            e2eMessage.hasStickerMessage() -> "sticker ${e2eMessage.stickerMessage.mimetype}"
-            e2eMessage.hasVideoMessage() -> "video ${e2eMessage.videoMessage.mimetype}"
-            e2eMessage.hasAudioMessage() -> "audio ${e2eMessage.audioMessage.mimetype}"
-            e2eMessage.hasDocumentMessage() -> "document ${e2eMessage.documentMessage.mimetype}"
-            e2eMessage.hasContactMessage() -> "contact"
-            e2eMessage.hasLocationMessage() -> "location"
-            pollCreation(e2eMessage) != null -> "poll"
-            e2eMessage.hasReactionMessage() -> {
-                if (e2eMessage.reactionMessage.text.isNullOrEmpty()) "reaction remove" else "reaction"
+            e2e == null -> "ignore"
+            e2e.hasConversation() || e2e.hasExtendedTextMessage() -> "text"
+            e2e.hasImageMessage() -> "image ${e2e.imageMessage.mimetype}"
+            e2e.hasStickerMessage() -> "sticker ${e2e.stickerMessage.mimetype}"
+            e2e.hasVideoMessage() -> "video ${e2e.videoMessage.mimetype}"
+            e2e.hasAudioMessage() -> "audio ${e2e.audioMessage.mimetype}"
+            e2e.hasDocumentMessage() -> "document ${e2e.documentMessage.mimetype}"
+            e2e.hasContactMessage() -> "contact"
+            e2e.hasLocationMessage() -> "location"
+            pollCreation(e2e) != null -> "poll"
+            e2e.hasReactionMessage() -> {
+                if (e2e.reactionMessage.text.isNullOrEmpty()) "reaction remove" else "reaction"
             }
-            e2eMessage.hasEditedMessage() -> {
-                val inner = e2eMessage.editedMessage?.message
+            e2e.hasEditedMessage() -> {
+                val inner = e2e.editedMessage?.message
                 if (inner != null) getMessageType(inner) else "ignore"
             }
-            e2eMessage.hasProtocolMessage() -> {
-                when (e2eMessage.protocolMessage.type) {
+            e2e.hasProtocolMessage() -> {
+                when (e2e.protocolMessage.type) {
                     com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.REVOKE -> {
-                        if (e2eMessage.protocolMessage.hasKey()) "revoke" else "ignore"
+                        if (e2e.protocolMessage.hasKey()) "revoke" else "ignore"
                     }
                     com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.MESSAGE_EDIT -> "edit"
                     com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.EPHEMERAL_SETTING -> "ephemeral setting"
@@ -2137,10 +2195,10 @@ object WhatsAppProtocol {
                     com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.SHARE_PHONE_NUMBER,
                     com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.PEER_DATA_OPERATION_REQUEST_MESSAGE,
                     com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.ProtocolMessage.Type.PEER_DATA_OPERATION_REQUEST_RESPONSE_MESSAGE -> "ignore"
-                    else -> "unknown_protocol_${e2eMessage.protocolMessage.type.number}"
+                    else -> "unknown_protocol_${e2e.protocolMessage.type.number}"
                 }
             }
-            e2eMessage.hasSenderKeyDistributionMessage() -> "ignore"
+            e2e.hasSenderKeyDistributionMessage() -> "ignore"
             else -> "unknown"
         }
     }
@@ -2152,6 +2210,7 @@ object WhatsAppProtocol {
     fun extractMessageBody(m: com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppE2EProto.Message): String {
         var e2e = m
         if (e2e.hasEditedMessage() && e2e.editedMessage.hasMessage()) e2e = e2e.editedMessage.message
+        unwrapViewOnce(e2e)?.let { e2e = it }
         return when {
             e2e.hasConversation() -> e2e.conversation
             e2e.hasExtendedTextMessage() -> e2e.extendedTextMessage.text
@@ -2238,6 +2297,14 @@ object WhatsAppProtocol {
                     e2eMessage = e2eMessage.editedMessage.message
                 }
 
+                // Unwrap view-once container (Go convertMediaMessage viewOnce check) and remember
+                // it so the UI can render "opened once" media.
+                var isViewOnceMsg = false
+                val vo = unwrapViewOnce(e2eMessage)
+                if (vo != null) {
+                    isViewOnceMsg = true
+                    e2eMessage = vo
+                }
 
                 val parsedType = getMessageType(e2eMessage)
                 // A message carrying only a SenderKeyDistributionMessage types as "ignore", but we
@@ -2347,8 +2414,10 @@ object WhatsAppProtocol {
 
                 val contextInfo = extractContextInfo(e2eMessage)
 
-                // View-once detection (Go convertMediaMessage viewOnce check)
-                val isViewOnce = false
+                // View-once: set when the message arrived wrapped in a view-once container
+                // (unwrapped above). HD is not representable in this proto subset — WhatsApp's HD
+                // flag lives in fields we don't model — so it stays false (documented, not faked).
+                val isViewOnce = isViewOnceMsg
 
                 val isHD = false
 

@@ -848,6 +848,82 @@ object CommunicateRepository {
     /** True only when the WhatsApp primary client is logged in (needed for send/group ops). */
     fun isWhatsAppConnected(): Boolean = WhatsAppClient.isConnected()
 
+    // -- WhatsApp MEX / GraphQL (dev-only scaffolding, gated on WhatsAppFeature.enabled) --
+    //
+    // Thin pass-throughs to the xwa2_* operation catalog so the new MEX capabilities are
+    // callable/integrable without new UI. Every entry is gated behind WhatsAppFeature.enabled
+    // (stripped from release by R8) and runs on Dispatchers.IO. Each returns a MexResult; when the
+    // feature is off or an op's persisted doc_id isn't captured yet, callers get a typed transport
+    // failure rather than a crash.
+
+    private val mexDisabled: com.vayunmathur.communicate.data.whatsapp.mex.MexResult
+        get() = com.vayunmathur.communicate.data.whatsapp.mex.MexResult.transport("disabled")
+
+    /** MEX group metadata read (`xwa2_group_query_by_id`). */
+    suspend fun whatsAppGroupInfo(
+        context: Context,
+        groupJid: String,
+    ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
+        com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.groupQueryById(context, groupJid)
+    }
+
+    /** MEX contact discovery (`xwa2_contact_discovery`) for raw phone numbers. */
+    suspend fun whatsAppContactDiscovery(
+        context: Context,
+        rawPhoneNumbers: List<String>,
+        discoveryContext: String = "SEARCH",
+    ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
+        com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.contactDiscovery(context, rawPhoneNumbers, discoveryContext)
+    }
+
+    /** MEX username read (`xwa2_username_get`). */
+    suspend fun whatsAppUsernameGet(
+        context: Context,
+    ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
+        com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.usernameGet(context)
+    }
+
+    /** MEX username claim (`xwa2_username_set`). */
+    suspend fun whatsAppUsernameSet(
+        context: Context,
+        username: String,
+        pin: String? = null,
+        sessionId: String? = null,
+    ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
+        com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.usernameSet(context, username, pin, sessionId = sessionId)
+    }
+
+    /** MEX blocklist read (`xwa2_blocklist_get`). */
+    suspend fun whatsAppBlocklistGet(
+        context: Context,
+        dhash: String? = null,
+    ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
+        com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.blocklistGet(context, dhash)
+    }
+
+    /** MEX presence read (`xwa2_presence_data_platform_get_online_or_last_status`). */
+    suspend fun whatsAppPresence(
+        context: Context,
+        lidJids: List<String>,
+        lastActiveFilter: String? = null,
+    ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
+        com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.getOnlineOrLastStatus(context, lidJids, lastActiveFilter)
+    }
+
+    /** MEX Signal-prekey publish (`xwa2_set_messaging_keys`); mints + persists one-time prekeys. */
+    suspend fun whatsAppSetMessagingKeys(
+        context: Context,
+    ): com.vayunmathur.communicate.data.whatsapp.mex.MexResult = withContext(Dispatchers.IO) {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
+        com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.setMessagingKeys(context)
+    }
+
     /**
      * Create a WhatsApp group with [subject] and the given [contacts] (phone numbers / addresses).
      * Each contact is normalized to a full WhatsApp user JID before the create IQ is sent. Returns
