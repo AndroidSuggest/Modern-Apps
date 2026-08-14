@@ -35,6 +35,15 @@ class RegistrationKeys private constructor(
 
             val signature = WhatsAppE2E.signSignedPreKey(identity.privateKey, signedPreKey.publicKey)
 
+            // Post-quantum last-resort prekey (Phase B 2d). Best-effort: if the KEM API/native
+            // signer is unavailable the PQ fields stay empty and bundleFields omits e_pq_* entirely
+            // (all-or-none), so classic registration still works.
+            val pq = try {
+                WhatsAppPqPreKey.generate(identity.privateKey, WhatsAppRegistrationConstants.PQ_LAST_RESORT_KEY_ID)
+            } catch (t: Throwable) {
+                null
+            }
+
             val scaffold = WhatsAppAuthData(
                 phoneNumber = phoneNumber,
                 pushName = "",
@@ -49,6 +58,10 @@ class RegistrationKeys private constructor(
                 signedPreKeyPrivate = b64(signedPreKey.privateKey),
                 signedPreKeySignature = b64(signature),
                 deviceId = 0,
+                pqLastResortKeyId = pq?.keyId ?: 0,
+                pqLastResortPublic = pq?.let { b64(it.publicKey) } ?: "",
+                pqLastResortSecret = pq?.let { b64(it.secretKey) } ?: "",
+                pqLastResortSignature = pq?.let { b64(it.signature) } ?: "",
             )
             return RegistrationKeys(scaffold)
         }
@@ -60,15 +73,28 @@ class RegistrationKeys private constructor(
          * The `/v2/ endpoints` E2E key bundle, URL-safe-base64 (A04), rebuilt from persisted [WhatsAppAuthData]
          * so the same values are reused across the code→register calls.
          */
-        fun bundleFields(auth: WhatsAppAuthData): Map<String, String> = mapOf(
-            "e_regid" to RegEncoding.b64Url(intBe(auth.registrationId, 4)),
-            "e_keytype" to RegEncoding.b64Url(byteArrayOf(WhatsAppRegistrationConstants.KEY_TYPE_CURVE25519)),
-            "e_ident" to RegEncoding.b64Url(dec(auth.identityPublicKey)),
-            "e_skey_id" to RegEncoding.b64Url(intBe(auth.signedPreKeyId, 3)),
-            "e_skey_val" to RegEncoding.b64Url(dec(auth.signedPreKeyPublic)),
-            "e_skey_sig" to RegEncoding.b64Url(dec(auth.signedPreKeySignature)),
-            "authkey" to RegEncoding.b64Url(dec(auth.noisePublicKey)),
-        )
+        fun bundleFields(auth: WhatsAppAuthData): Map<String, String> {
+            val map = linkedMapOf(
+                "e_regid" to RegEncoding.b64Url(intBe(auth.registrationId, 4)),
+                "e_keytype" to RegEncoding.b64Url(byteArrayOf(WhatsAppRegistrationConstants.KEY_TYPE_CURVE25519)),
+                "e_ident" to RegEncoding.b64Url(dec(auth.identityPublicKey)),
+                "e_skey_id" to RegEncoding.b64Url(intBe(auth.signedPreKeyId, 3)),
+                "e_skey_val" to RegEncoding.b64Url(dec(auth.signedPreKeyPublic)),
+                "e_skey_sig" to RegEncoding.b64Url(dec(auth.signedPreKeySignature)),
+                "authkey" to RegEncoding.b64Url(dec(auth.noisePublicKey)),
+            )
+            // Post-quantum last-resort prekey — all-or-none (w2.md §2.1). Only emit when the full
+            // triple is present; otherwise the server returns bad_param:e_pq_last_resort_*.
+            if (auth.pqLastResortKeyId != 0 &&
+                auth.pqLastResortPublic.isNotEmpty() &&
+                auth.pqLastResortSignature.isNotEmpty()
+            ) {
+                map["e_pq_last_resort_id"] = RegEncoding.b64Url(intBe(auth.pqLastResortKeyId, 3))
+                map["e_pq_last_resort_val"] = RegEncoding.b64Url(dec(auth.pqLastResortPublic))
+                map["e_pq_last_resort_sig"] = RegEncoding.b64Url(dec(auth.pqLastResortSignature))
+            }
+            return map
+        }
 
         /** Big-endian encode [value] into [len] bytes (len ≤ 4). */
         private fun intBe(value: Int, len: Int): ByteArray {

@@ -202,6 +202,35 @@ sealed interface WhatsAppEvent {
         override val source: MessageSource = MessageSource.WHATSAPP,
         val conversations: List<WhatsAppHistoryConversation>,
     ) : WhatsAppEvent
+
+    // ---- Calling (Phase D/E) ----
+
+    /** An inbound call offer arrived (ringing). */
+    data class CallOffer(
+        override val source: MessageSource = MessageSource.WHATSAPP,
+        val callId: String,
+        val from: String,
+        val callCreator: String,
+        val isVideo: Boolean,
+        val peerName: String? = null,
+        val timestamp: Long = System.currentTimeMillis(),
+    ) : WhatsAppEvent
+
+    /** A call's lifecycle phase changed (dialing/ringing/active/…). [phase] is a WhatsAppCallPhase name. */
+    data class CallStateChanged(
+        override val source: MessageSource = MessageSource.WHATSAPP,
+        val callId: String,
+        val phase: String,
+        val isVideo: Boolean = false,
+    ) : WhatsAppEvent
+
+    /** A call ended. [reason] mirrors the terminate reason (or a local cause). */
+    data class CallEnded(
+        override val source: MessageSource = MessageSource.WHATSAPP,
+        val callId: String,
+        val reason: String,
+        val durationSeconds: Long = 0L,
+    ) : WhatsAppEvent
 }
 
 /** Transport/login lifecycle states for the primary client. */

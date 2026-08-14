@@ -50,4 +50,18 @@ object WhatsAppRegistrationConstants {
 
     /** e_keytype for Curve25519 (djb type). */
     const val KEY_TYPE_CURVE25519: Byte = 0x05
+
+    /**
+     * Key type byte for the post-quantum (Kyber1024 / ML-KEM) last-resort prekey. Mirrors the
+     * curve25519 `0x05` type-byte convention: the PQ signed-prekey signature is computed over
+     * `0x08 || pqPublicKey` (see [RegistrationKeys]/`WhatsAppPqPreKey`). Ref w2.md §2.1
+     * (`e_pq_last_resort_sig` = `Ed25519(sign(e_ident+0x08+e_pq_val))`).
+     */
+    const val KEY_TYPE_KYBER: Byte = 0x08
+
+    /** The fixed id assigned to our single PQ last-resort prekey (3B BE on the wire). */
+    const val PQ_LAST_RESORT_KEY_ID = 1
+
+    /** Expected Kyber1024 public key length in bytes (`e_pq_last_resort_val`, w2.md §2.1). */
+    const val PQ_KYBER1024_PUBLIC_LEN = 1568
 }

@@ -96,6 +96,7 @@ class RegistrationHttpClient(
         p.a00("clicked_education_link", false)
         p.a00("manage_call_permission", false)
         p.a00("call_log_permission", false)
+        p.addIntegrity(EndpointKind.CODE)
         p.bundle(RegistrationKeys.bundleFields(keys.authScaffold))
 
         val body = send("code", p)
@@ -120,6 +121,7 @@ class RegistrationHttpClient(
         p.addCommon()
         p.addDevice()
         p.a01("code", code.filter { it.isDigit() })
+        p.addIntegrity(EndpointKind.REGISTER)
         p.bundle(RegistrationKeys.bundleFields(auth))
 
         val body = send("register", p)
@@ -155,6 +157,9 @@ class RegistrationHttpClient(
         p.a01("in", number)
         p.addCommon()
         p.addDevice()
+        // Bug fix (w2.md §3.1): /v2/exist REQUIRES `token`; it was previously omitted.
+        p.a01("token", RegistrationAttestation.computeToken(context, number))
+        p.addIntegrity(EndpointKind.EXIST)
         if (auth != null) p.bundle(RegistrationKeys.bundleFields(auth))
         val body = send("exist", p)
         val j = parse(body)
@@ -419,6 +424,41 @@ class RegistrationHttpClient(
             val encoded = if (k in raw) v else URLEncoder.encode(v, "UTF-8")
             "$k=$encoded"
         }
+
+        /**
+         * Add the per-endpoint device-integrity signals (w2.md §2.3/§3.1-3.3, Phase B 2e) from
+         * [RegistrationIntegrity]. `gpia`/`_gg` (Play Integrity) and `recaptcha` are intentionally
+         * NOT sent — they are bound to the official signed WhatsApp app identity and an unofficial
+         * client cannot mint server-valid tokens (documented, not faked).
+         *
+         * Inclusion per endpoint:
+         *  - EXIST:    aid,_gi,_gp,_ge,_ga,_gs,db  (+profile_name; no t)
+         *  - CODE:     aid,_gi,_gp,_ge,_ga,_gs,t,hasav
+         *  - REGISTER: aid,_gi,_gp,_ge,_ga,_gs,t
+         */
+        fun addIntegrity(kind: EndpointKind) {
+            val s = runCatching { RegistrationIntegrity.collect(context) }.getOrNull() ?: return
+            if (s.aid.isNotEmpty()) a01("aid", s.aid)
+            a02("_gi", s.gi)
+            a01("_gp", s.gp)
+            a01("_ge", s.ge)
+            a01("_ga", s.ga)
+            a01("_gs", s.gs)
+            when (kind) {
+                EndpointKind.EXIST -> {
+                    a01("db", s.db)
+                    WhatsAppAuthData.load(context)?.profileName?.takeIf { it.isNotEmpty() }
+                        ?.let { a01("profile_name", it) }
+                }
+                EndpointKind.CODE -> {
+                    a01("t", RegistrationIntegrity.tField(s.tSeconds))
+                    a01("hasav", "0") // 0 = can't read SMS (we never read the user's SMS inbox)
+                }
+                EndpointKind.REGISTER -> {
+                    a01("t", RegistrationIntegrity.tField(s.tSeconds))
+                }
+            }
+        }
     }
 
     private suspend fun send(path: String, params: RegParams): String {
@@ -426,7 +466,7 @@ class RegistrationHttpClient(
         val body = if (useEncWrapper) {
             val encv = RegistrationAttestation.encryptQueryString(query)
             if (encv != null) {
-                val h = RegistrationAttestation.signWithAttestation(fingerprint.attestationKey, encv)
+                val h = RegistrationAttestation.signWithAttestation(encv, fingerprint.attestationKey)
                 "ENC=${URLEncoder.encode(encv, "UTF-8")}&H=${URLEncoder.encode(h, "UTF-8")}"
             } else {
                 query
@@ -474,6 +514,9 @@ class RegistrationHttpClient(
     companion object {
         private const val TAG = "WARegHttp"
     }
+
+    /** WAMSYS endpoint kinds that carry per-endpoint integrity params (w2.md §3.1-3.3). */
+    private enum class EndpointKind { EXIST, CODE, REGISTER }
 }
 
 // -- small JSONObject null-safe helpers --

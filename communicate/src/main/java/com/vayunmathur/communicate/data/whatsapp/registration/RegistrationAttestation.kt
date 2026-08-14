@@ -143,11 +143,21 @@ object RegistrationAttestation {
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * H = base64( HMAC-SHA256(key = locally-generated attestation key, msg = body) ).
+     * H = base64( HMAC-SHA256(key = attestation key, msg = body) ).
      *
-     * The official client keys this from a device key persisted in `C1DB` (AndroidKeyStore-backed).
-     * The server treats it as best-effort (the client warns + continues when it is null), so we use
-     * a locally-generated persisted key ([WhatsAppDeviceFingerprint.attestationKey]).
+     * Prefers the non-exportable AndroidKeyStore HMAC key
+     * ([WhatsAppAttestationKeyStore]); falls back to the software [softwareKey]
+     * ([WhatsAppDeviceFingerprint.attestationKey]) when the KeyStore is unavailable. The server
+     * treats `H` as best-effort (the client warns + continues when it is null).
+     */
+    fun signWithAttestation(body: String, softwareKey: ByteArray): String {
+        val mac = WhatsAppAttestationKeyStore.signWithFallback(body.toByteArray(Charsets.UTF_8), softwareKey)
+        return Base64.encodeToString(mac, Base64.NO_WRAP)
+    }
+
+    /**
+     * H over a raw software key only (no KeyStore). Retained for callers/tests that supply an
+     * explicit key; prefer the [signWithAttestation]`(body, softwareKey)` overload in production.
      */
     fun signWithAttestation(attestationKey: ByteArray, body: String): String {
         val mac = Mac.getInstance("HmacSHA256")

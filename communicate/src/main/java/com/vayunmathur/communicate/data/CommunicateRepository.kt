@@ -916,6 +916,14 @@ object CommunicateRepository {
         com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.getOnlineOrLastStatus(context, lidJids, lastActiveFilter)
     }
 
+    /**
+     * Refresh a peer's presence for an open thread and emit a [WhatsAppEvent.PresenceUpdate]
+     * (Phase F 1e enrichment). Dev-gated + best-effort.
+     */
+    suspend fun whatsAppRefreshPresence(conversationId: String) = withContext(Dispatchers.IO) {
+        WhatsAppClient.refreshPresence(conversationId)
+    }
+
     /** MEX Signal-prekey publish (`xwa2_set_messaging_keys`); mints + persists one-time prekeys. */
     suspend fun whatsAppSetMessagingKeys(
         context: Context,
@@ -923,6 +931,49 @@ object CommunicateRepository {
         if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return@withContext mexDisabled
         com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.setMessagingKeys(context)
     }
+
+    /**
+     * Sync the device address book to WhatsApp (contact discovery + primary full sync) and persist
+     * the returned LID/phone mappings. Dev-gated; requires READ_CONTACTS. Returns the sync summary.
+     */
+    suspend fun whatsAppSyncContacts(
+        context: Context,
+    ): com.vayunmathur.communicate.data.whatsapp.WhatsAppContactSync.SyncResult = withContext(Dispatchers.IO) {
+        com.vayunmathur.communicate.data.whatsapp.WhatsAppContactSync.sync(context)
+    }
+
+    // ---- WhatsApp calling (Phase D/E), dev-gated pass-throughs to the call manager ----
+
+    /** Observable call state for the WhatsApp calling UI. */
+    val whatsAppCallState: kotlinx.coroutines.flow.StateFlow<com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallState>
+        get() = com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.state
+
+    /** Place a WhatsApp audio/video call to [conversationId] (a `wa:<jid>` id or bare JID). */
+    fun whatsAppPlaceCall(conversationId: String, video: Boolean = false) {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return
+        WhatsAppClient.placeCall(conversationId, video)
+    }
+
+    fun whatsAppAnswerCall() {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return
+        com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.answer()
+    }
+
+    fun whatsAppRejectCall() {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return
+        com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.reject()
+    }
+
+    fun whatsAppHangupCall() {
+        if (!com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled) return
+        com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.hangup()
+    }
+
+    fun whatsAppSetCallMuted(muted: Boolean) =
+        com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.setMuted(muted)
+
+    fun whatsAppSetCallSpeaker(on: Boolean) =
+        com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.setSpeaker(on)
 
     /**
      * Create a WhatsApp group with [subject] and the given [contacts] (phone numbers / addresses).

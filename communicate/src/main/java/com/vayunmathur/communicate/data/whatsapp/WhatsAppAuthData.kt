@@ -52,6 +52,14 @@ data class WhatsAppAuthData(
     // Kept so the ported message engine compiles; both remain empty for a primary line.
     val lid: String = "",
     val accountSignedDeviceIdentity: String = "",
+    // ---- Post-quantum (Kyber1024 / ML-KEM) last-resort prekey (e_pq_* bundle, Phase B 2d) ----
+    // All-or-none: emitted together in RegistrationKeys.bundleFields when the id is non-zero.
+    val pqLastResortKeyId: Int = 0,
+    val pqLastResortPublic: String = "", // Base64 (raw 1568B Kyber1024 pub)
+    val pqLastResortSecret: String = "", // Base64 (serialized KEM secret key)
+    val pqLastResortSignature: String = "", // Base64 (64B XEdDSA sig over 0x08||pub)
+    // Profile name sent to /v2/* for new clients (profile_name, w2.md §2.2).
+    val profileName: String = "",
 ) {
     companion object {
         // Distinct from the companion's "whatsapp_auth" in the messages module.

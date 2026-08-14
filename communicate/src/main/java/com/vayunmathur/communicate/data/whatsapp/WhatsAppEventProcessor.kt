@@ -17,6 +17,7 @@ class WhatsAppEventProcessor(private val db: WhatsAppDatabase) {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val messages = db.cachedMessageDao()
+    private val callLog = db.callLogDao()
     private val reactions = db.cachedReactionDao()
     private val conversations = db.conversationDao()
 
@@ -180,7 +181,27 @@ class WhatsAppEventProcessor(private val db: WhatsAppDatabase) {
                 if (rows.isNotEmpty()) messages.upsertAll(rows)
             }
 
-            else -> { /* StateChanged, receipts, typing, presence, etc. — not persisted. */ }
+            is WhatsAppEvent.CallEnded -> {
+                // Persist a call-log row (Phase D 3e). Best-effort; peer/name/direction come from
+                // the live call state if still present.
+                val st = com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager.state.value
+                runCatching {
+                    callLog.upsert(
+                        WhatsAppCallLog(
+                            callId = event.callId,
+                            peerJid = st.peerJid,
+                            peerName = st.peerName,
+                            outgoing = st.phase == com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallPhase.Outgoing,
+                            video = st.isVideo,
+                            startTime = System.currentTimeMillis() - event.durationSeconds * 1000,
+                            durationSeconds = event.durationSeconds,
+                            outcome = event.reason,
+                        ),
+                    )
+                }
+            }
+
+            else -> { /* StateChanged, receipts, typing, presence, call offer/state, etc. — not persisted here. */ }
         }
     }
 

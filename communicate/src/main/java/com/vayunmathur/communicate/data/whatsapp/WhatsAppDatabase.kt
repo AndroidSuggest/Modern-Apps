@@ -46,8 +46,12 @@ import com.vayunmathur.library.util.DatabaseMigrations
         // communicate additions: message/reaction cache for the merged inbox.
         WhatsAppCachedMessage::class,
         WhatsAppCachedReaction::class,
+        // communicate v3: device-contact sync (address book → LID/phone mapping).
+        WhatsAppContact::class,
+        // communicate v4: call log.
+        WhatsAppCallLog::class,
     ],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(WhatsAppTypeConverters::class)
@@ -66,6 +70,8 @@ abstract class WhatsAppDatabase : RoomDatabase() {
     abstract fun e2eSenderKeyDao(): WhatsAppE2ESenderKeyDao
     abstract fun cachedMessageDao(): WhatsAppCachedMessageDao
     abstract fun cachedReactionDao(): WhatsAppCachedReactionDao
+    abstract fun contactDao(): WhatsAppContactDao
+    abstract fun callLogDao(): WhatsAppCallLogDao
 
     companion object : DatabaseMigrations {
         @Volatile
@@ -92,7 +98,38 @@ abstract class WhatsAppDatabase : RoomDatabase() {
             }
         }
 
-        override val migrations: List<Migration> = listOf(MIGRATION_1_2)
+        /** v2 → v3: device-contact sync table (address book → WhatsApp LID/phone mapping). */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS whatsapp_contact (" +
+                        "phoneE164 TEXT NOT NULL PRIMARY KEY, " +
+                        "lid TEXT NOT NULL DEFAULT '', " +
+                        "displayName TEXT NOT NULL DEFAULT '', " +
+                        "onWhatsApp INTEGER NOT NULL DEFAULT 0, " +
+                        "updatedAt INTEGER NOT NULL DEFAULT 0)",
+                )
+            }
+        }
+
+        /** v3 → v4: call-log table for the WhatsApp calling stack. */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS whatsapp_call_log (" +
+                        "callId TEXT NOT NULL PRIMARY KEY, " +
+                        "peerJid TEXT NOT NULL DEFAULT '', " +
+                        "peerName TEXT NOT NULL DEFAULT '', " +
+                        "outgoing INTEGER NOT NULL DEFAULT 0, " +
+                        "video INTEGER NOT NULL DEFAULT 0, " +
+                        "startTime INTEGER NOT NULL DEFAULT 0, " +
+                        "durationSeconds INTEGER NOT NULL DEFAULT 0, " +
+                        "outcome TEXT NOT NULL DEFAULT '')",
+                )
+            }
+        }
+
+        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         fun getDatabase(context: Context): WhatsAppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -514,4 +551,75 @@ interface WhatsAppCachedReactionDao {
 
     @Query("DELETE FROM whatsapp_cached_reaction WHERE messageId = :messageId")
     suspend fun clearForMessage(messageId: String)
+}
+
+// -- communicate device-contact sync (address book → WhatsApp LID/phone mapping, Phase C 2f) --
+
+/**
+ * A device address-book contact synced to WhatsApp. Keyed by the E.164 phone number; [lid] and
+ * [onWhatsApp] are filled in from `xwa2_primary_contacts_full_sync` / `xwa2_contact_discovery`
+ * results, [displayName] from the device contact name.
+ */
+@Entity(tableName = "whatsapp_contact")
+data class WhatsAppContact(
+    @PrimaryKey val phoneE164: String,
+    val lid: String = "",
+    val displayName: String = "",
+    val onWhatsApp: Boolean = false,
+    val updatedAt: Long = 0L,
+)
+
+@Dao
+interface WhatsAppContactDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(contact: WhatsAppContact)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(contacts: List<WhatsAppContact>)
+
+    @Query("SELECT * FROM whatsapp_contact WHERE phoneE164 = :phoneE164 LIMIT 1")
+    suspend fun get(phoneE164: String): WhatsAppContact?
+
+    @Query("SELECT * FROM whatsapp_contact WHERE lid = :lid LIMIT 1")
+    suspend fun getByLid(lid: String): WhatsAppContact?
+
+    @Query("SELECT * FROM whatsapp_contact WHERE onWhatsApp = 1 ORDER BY displayName COLLATE NOCASE ASC")
+    suspend fun getOnWhatsApp(): List<WhatsAppContact>
+
+    @Query("SELECT * FROM whatsapp_contact")
+    suspend fun getAll(): List<WhatsAppContact>
+
+    @Query("DELETE FROM whatsapp_contact")
+    suspend fun deleteAll()
+}
+
+// -- communicate call log (Phase D 3e) --
+
+/** A completed/attempted WhatsApp call, keyed by call id. */
+@Entity(tableName = "whatsapp_call_log")
+data class WhatsAppCallLog(
+    @PrimaryKey val callId: String,
+    val peerJid: String = "",
+    val peerName: String = "",
+    val outgoing: Boolean = false,
+    val video: Boolean = false,
+    val startTime: Long = 0L,
+    val durationSeconds: Long = 0L,
+    /** "answered" | "missed" | "rejected" | "failed" | reason string. */
+    val outcome: String = "",
+)
+
+@Dao
+interface WhatsAppCallLogDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entry: WhatsAppCallLog)
+
+    @Query("SELECT * FROM whatsapp_call_log ORDER BY startTime DESC LIMIT :limit")
+    suspend fun getRecent(limit: Int = 200): List<WhatsAppCallLog>
+
+    @Query("SELECT * FROM whatsapp_call_log WHERE callId = :callId LIMIT 1")
+    suspend fun get(callId: String): WhatsAppCallLog?
+
+    @Query("DELETE FROM whatsapp_call_log")
+    suspend fun deleteAll()
 }

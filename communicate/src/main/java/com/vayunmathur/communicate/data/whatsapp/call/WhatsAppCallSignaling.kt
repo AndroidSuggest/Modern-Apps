@@ -1,22 +1,26 @@
 package com.vayunmathur.communicate.data.whatsapp.call
 
+import android.util.Base64
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.Node
 
 /**
- * Phase 10a — WhatsApp call **signaling** (spike). Builds/parses the `<call>` XMPP stanzas that ride
- * the same Noise socket as messaging (offer/accept/reject/terminate), with per-device E2E `<enc>`
- * children carrying the call key. The media/VoIP engine itself is native-only and out of scope for
- * this pass (see plan Phase 10b / Option C).
+ * WhatsApp call **signaling** (Phase D 3a). Builds/parses the `<call>` XMPP stanzas that ride the
+ * same Noise socket as messaging (offer / preaccept / accept / reject / terminate), with per-device
+ * E2E `<enc>` children carrying the 32-byte call key (see [WhatsAppCallCrypto]).
  *
- * ⚠️ The exact child layout (`audio`/`net`/`capability`/`encopt` markers, attribute names) is
- * reconstructed from the reverse-engineering notes and `whatsmeow`; it MUST be validated live — the
- * go/no-go is whether the server accepts the offer and the target rings.
+ * Because WhatsApp's wire carries **no SDP** (its media is a proprietary native RTP engine), we
+ * transport standards-based WebRTC SDP + ICE candidates inside our **own** `<webrtc>` child of the
+ * `<call>` action. This makes calling interoperate **client-to-client (our app ↔ our app)** but NOT
+ * with official WhatsApp calling servers — an accepted, documented limitation of the dev scaffolding.
  *
  * Reference: whatsapp-documentation.md "Voice Calls And Video Calls" (SignalingXmppCallback
- * `sendCallStanza`, OutgoingSignalingHandler per-destination `enc` children).
+ * `sendCallStanza`, OutgoingSignalingHandler per-destination `enc` children) + signaling.md.
  */
 object WhatsAppCallSignaling {
+
+    /** Our WebRTC transport extension tag (not part of the official WA wire). */
+    private const val WEBRTC_TAG = "webrtc"
 
     /** A parsed inbound call stanza. */
     data class InboundCall(
@@ -25,13 +29,26 @@ object WhatsAppCallSignaling {
         val creator: String,
         val isVideo: Boolean,
         val kind: Kind,
+        /** The `<enc>` carrying the call key, targeted to our device (null on accept/reject/etc.). */
+        val enc: Enc? = null,
+        /** WebRTC offer/answer SDP carried in our `<webrtc>` extension, if present. */
+        val sdp: String? = null,
+        /** Trickle/gathered ICE candidate lines from our `<webrtc>` extension. */
+        val candidates: List<String> = emptyList(),
+        val stanzaId: String = "",
     ) {
-        enum class Kind { OFFER, ACCEPT, REJECT, TERMINATE, UNKNOWN }
+        enum class Kind { OFFER, PREACCEPT, ACCEPT, REJECT, TERMINATE, RELAY, UNKNOWN }
     }
+
+    /** A single Signal `<enc>` (type = pkmsg|msg, ciphertext). */
+    data class Enc(val type: String, val ciphertext: ByteArray)
+
+    // ------------------------------------------------------------------ builders
 
     /**
      * Build an outbound call offer.
      * @param encs per-device encrypted call-key children (dev jid, enc type, ciphertext).
+     * @param sdp / [candidates] our WebRTC offer carried in the `<webrtc>` extension.
      */
     fun buildOffer(
         to: String,
@@ -40,8 +57,9 @@ object WhatsAppCallSignaling {
         video: Boolean,
         encs: List<WhatsAppProtocol.ParticipantEnc>,
         stanzaId: String,
+        sdp: String? = null,
+        candidates: List<String> = emptyList(),
     ): Node {
-        val mediaMarker = if (video) Node(tag = "video") else Node(tag = "audio", attrs = mapOf("enc" to "opus", "rate" to "16000"))
         val destinations = encs.map { enc ->
             Node(
                 tag = "to",
@@ -55,49 +73,79 @@ object WhatsAppCallSignaling {
             tag = "offer",
             attrs = mapOf("call-id" to callId, "call-creator" to callCreator),
             content = buildList {
-                add(mediaMarker)
+                add(mediaMarker(video))
                 add(Node(tag = "net", attrs = mapOf("medium" to "3")))
                 add(Node(tag = "encopt", attrs = mapOf("keygen" to "2")))
+                webrtcChild(sdp, candidates)?.let { add(it) }
                 addAll(destinations)
             },
         )
-        return Node(
-            tag = "call",
-            attrs = mapOf("to" to to, "id" to stanzaId),
-            content = listOf(offer),
-        )
+        return call(to, stanzaId, offer)
     }
 
-    /** Ack/accept an inbound call. */
-    fun buildAccept(to: String, callId: String, callCreator: String, stanzaId: String): Node =
-        Node(
-            tag = "call",
-            attrs = mapOf("to" to to, "id" to stanzaId),
-            content = listOf(
-                Node(tag = "accept", attrs = mapOf("call-id" to callId, "call-creator" to callCreator)),
-            ),
+    /** Pre-accept (early, before the user picks up) — lets media/ICE start during ringing. */
+    fun buildPreAccept(
+        to: String,
+        callId: String,
+        callCreator: String,
+        video: Boolean,
+        stanzaId: String,
+        sdp: String? = null,
+        candidates: List<String> = emptyList(),
+    ): Node {
+        val preaccept = Node(
+            tag = "preaccept",
+            attrs = mapOf("call-id" to callId, "call-creator" to callCreator),
+            content = buildList {
+                add(mediaMarker(video))
+                webrtcChild(sdp, candidates)?.let { add(it) }
+            },
         )
+        return call(to, stanzaId, preaccept)
+    }
+
+    /** Accept an inbound call, carrying our WebRTC answer. */
+    fun buildAccept(
+        to: String,
+        callId: String,
+        callCreator: String,
+        stanzaId: String,
+        video: Boolean = false,
+        sdp: String? = null,
+        candidates: List<String> = emptyList(),
+    ): Node {
+        val accept = Node(
+            tag = "accept",
+            attrs = mapOf("call-id" to callId, "call-creator" to callCreator),
+            content = buildList {
+                add(mediaMarker(video))
+                webrtcChild(sdp, candidates)?.let { add(it) }
+            },
+        )
+        return call(to, stanzaId, accept)
+    }
 
     fun buildReject(to: String, callId: String, callCreator: String, stanzaId: String): Node =
-        Node(
-            tag = "call",
-            attrs = mapOf("to" to to, "id" to stanzaId),
-            content = listOf(
-                Node(tag = "reject", attrs = mapOf("call-id" to callId, "call-creator" to callCreator)),
+        call(to, stanzaId, Node(tag = "reject", attrs = mapOf("call-id" to callId, "call-creator" to callCreator)))
+
+    fun buildTerminate(to: String, callId: String, callCreator: String, reason: String, stanzaId: String): Node =
+        call(
+            to, stanzaId,
+            Node(tag = "terminate", attrs = mapOf("call-id" to callId, "call-creator" to callCreator, "reason" to reason)),
+        )
+
+    /** Trickle a batch of ICE candidates mid-call inside a `<transport>`-like `<webrtc>` node. */
+    fun buildIceUpdate(to: String, callId: String, callCreator: String, stanzaId: String, candidates: List<String>): Node =
+        call(
+            to, stanzaId,
+            Node(
+                tag = "relay",
+                attrs = mapOf("call-id" to callId, "call-creator" to callCreator),
+                content = listOfNotNull(webrtcChild(null, candidates)),
             ),
         )
 
-    fun buildTerminate(to: String, callId: String, callCreator: String, reason: String, stanzaId: String): Node =
-        Node(
-            tag = "call",
-            attrs = mapOf("to" to to, "id" to stanzaId),
-            content = listOf(
-                Node(
-                    tag = "terminate",
-                    attrs = mapOf("call-id" to callId, "call-creator" to callCreator, "reason" to reason),
-                ),
-            ),
-        )
+    // ------------------------------------------------------------------ parse
 
     /** Parse an inbound `<call>` stanza into a typed [InboundCall]. */
     fun parse(node: Node): InboundCall? {
@@ -106,14 +154,64 @@ object WhatsAppCallSignaling {
         val child = node.getChildren().firstOrNull() ?: return null
         val kind = when (child.tag) {
             "offer" -> InboundCall.Kind.OFFER
+            "preaccept" -> InboundCall.Kind.PREACCEPT
             "accept" -> InboundCall.Kind.ACCEPT
             "reject" -> InboundCall.Kind.REJECT
             "terminate" -> InboundCall.Kind.TERMINATE
+            "relay" -> InboundCall.Kind.RELAY
             else -> InboundCall.Kind.UNKNOWN
         }
         val callId = child.attrs["call-id"] ?: node.attrs["id"] ?: ""
         val creator = child.attrs["call-creator"] ?: from
         val isVideo = child.getChildren().any { it.tag == "video" }
-        return InboundCall(callId, from, creator, isVideo, kind)
+        val encNode = child.getChildByTag("enc")
+        val enc = encNode?.data?.let { Enc(encNode.attrs["type"] ?: "msg", it) }
+        val webrtc = child.getChildByTag(WEBRTC_TAG)
+        return InboundCall(
+            callId = callId,
+            from = from,
+            creator = creator,
+            isVideo = isVideo,
+            kind = kind,
+            enc = enc,
+            sdp = webrtc?.let { extractSdp(it) },
+            candidates = webrtc?.let { extractCandidates(it) } ?: emptyList(),
+            stanzaId = node.attrs["id"] ?: "",
+        )
     }
+
+    // ------------------------------------------------------------------ webrtc extension helpers
+
+    /**
+     * Build our `<webrtc>` transport extension: base64 SDP as the `<sdp>` node data plus one
+     * `<ice>` node per candidate. Returns null when there's nothing to carry.
+     */
+    fun webrtcChild(sdp: String?, candidates: List<String>): Node? {
+        if (sdp == null && candidates.isEmpty()) return null
+        val children = buildList {
+            if (sdp != null) {
+                add(Node(tag = "sdp", data = Base64.encode(sdp.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)))
+            }
+            candidates.forEach { c ->
+                add(Node(tag = "ice", data = Base64.encode(c.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)))
+            }
+        }
+        return Node(tag = WEBRTC_TAG, content = children)
+    }
+
+    fun extractSdp(webrtc: Node): String? =
+        webrtc.getChildByTag("sdp")?.data?.let { String(Base64.decode(it, Base64.NO_WRAP), Charsets.UTF_8) }
+
+    fun extractCandidates(webrtc: Node): List<String> =
+        webrtc.getChildren().filter { it.tag == "ice" }.mapNotNull { ice ->
+            ice.data?.let { String(Base64.decode(it, Base64.NO_WRAP), Charsets.UTF_8) }
+        }
+
+    // ------------------------------------------------------------------ small builders
+
+    private fun mediaMarker(video: Boolean): Node =
+        if (video) Node(tag = "video") else Node(tag = "audio", attrs = mapOf("enc" to "opus", "rate" to "16000"))
+
+    private fun call(to: String, stanzaId: String, action: Node): Node =
+        Node(tag = "call", attrs = mapOf("to" to to, "id" to stanzaId), content = listOf(action))
 }

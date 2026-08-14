@@ -14,6 +14,7 @@ import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
 import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
 import com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallSignaling
+import com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -162,6 +163,7 @@ object WhatsAppClient {
         if (!initialized.compareAndSet(false, true)) return
         appContext = context.applicationContext as Application
         db = WhatsAppDatabase.getDatabase(appContext)
+        WhatsAppCallManager.init(appContext, callBridge)
         Log.i(TAG, "init")
         runBlocking {
             val auth = WhatsAppAuthData.load(appContext)
@@ -571,6 +573,62 @@ object WhatsAppClient {
             isGroup = true,
             participantCount = participantJids.size,
             serviceData = serviceData,
+        ))
+        // Phase F 1e: best-effort MEX enrichment beyond the classic w:g2 path (subject/description).
+        // Dev-gated; no-ops when the op's doc_id isn't in the bundled persist map.
+        if (WhatsAppFeature.enabled && subject == null) {
+            runCatching { enrichGroupFromMex(groupJid, participantJids.size) }
+        }
+    }
+
+    /**
+     * Enrich a group thread via `xwa2_group_query_by_id` (Phase F 1e). Emits a follow-up
+     * [WhatsAppEvent.ConversationUpdate] with the MEX-reported subject when available. Best-effort:
+     * silently returns on transport error / missing doc_id.
+     */
+    private suspend fun enrichGroupFromMex(groupJid: String, participantCount: Int) {
+        val res = com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.groupQueryById(appContext, groupJid)
+        if (!res.isSuccess) return
+        val data = res.data ?: return
+        val group = data.optJSONObject("xwa2_group_query_by_id") ?: return
+        val subject = group.optJSONObject("subject")?.optString("subject")?.ifEmpty { null }
+            ?: group.optString("subject").ifEmpty { null } ?: return
+        _events.emit(WhatsAppEvent.ConversationUpdate(
+            source = MessageSource.WHATSAPP,
+            conversationId = "wa:$groupJid",
+            peerName = subject,
+            peerPhone = null,
+            avatarUrl = null,
+            lastPreview = null,
+            lastTimestamp = 0L,
+            unreadCount = 0,
+            isGroup = true,
+            participantCount = participantCount,
+        ))
+    }
+
+    /**
+     * Refresh a peer's presence via `xwa2_presence_data_platform_get_online_or_last_status` and emit
+     * [WhatsAppEvent.PresenceUpdate] (Phase F 1e). Dev-gated + best-effort. [conversationId] may be a
+     * `wa:<jid>` id or a bare JID.
+     */
+    suspend fun refreshPresence(conversationId: String) {
+        if (!WhatsAppFeature.enabled) return
+        val jid = extractJid(conversationId) ?: return
+        val res = runCatching {
+            com.vayunmathur.communicate.data.whatsapp.mex.WhatsAppMexOps.getOnlineOrLastStatus(appContext, listOf(jid), null)
+        }.getOrNull() ?: return
+        if (!res.isSuccess) return
+        val data = res.data ?: return
+        val payload = data.optJSONObject("xwa2_presence_data_platform_get_online_or_last_status") ?: return
+        val presences = payload.optJSONArray("presences") ?: return
+        if (presences.length() == 0) return
+        val p = presences.optJSONObject(0) ?: return
+        val lastSeen = p.optString("last_seen").toLongOrNull() ?: 0L
+        _events.emit(WhatsAppEvent.PresenceUpdate(
+            conversationId = "wa:$jid",
+            isOnline = lastSeen == 0L, // online payloads omit last_seen; last-status carries it
+            lastSeen = lastSeen,
         ))
     }
 
@@ -1407,6 +1465,10 @@ object WhatsAppClient {
      * From Go handleWACallStart.
      */
     private suspend fun handleCallNotification(node: WhatsAppProtocol.Node, from: String) {
+        // Route the typed stanza to the call state machine (offer/preaccept/accept/reject/
+        // terminate/relay). This drives ringing + WebRTC media (client-to-client).
+        WhatsAppCallSignaling.parse(node)?.let { WhatsAppCallManager.onInbound(it) }
+
         val offer = node.getChildByTag("offer")
         if (offer != null) {
             // Go handleWACallStart: ignore calls older than 15 minutes
@@ -2127,6 +2189,65 @@ object WhatsAppClient {
     }
 
     /**
+     * Transport bridge for [WhatsAppCallManager]: lets the call state machine send `<call>` stanzas
+     * and encrypt/decrypt the per-device call key without depending on the socket/Signal internals.
+     */
+    private val callBridge = object : WhatsAppCallManager.Bridge {
+        override val ownJid: String get() = authData?.wid ?: ""
+
+        override fun newId(): String = generateMessageId()
+
+        override suspend fun sendCallStanza(node: WhatsAppProtocol.Node): Boolean {
+            val ws = webSocket ?: return false
+            return ws.send(WhatsAppProtocol.encodeNode(node))
+        }
+
+        override suspend fun encryptCallKey(
+            toJid: String,
+            paddedCallKey: ByteArray,
+        ): List<WhatsAppProtocol.ParticipantEnc> {
+            val auth = authData ?: return emptyList()
+            val crypto = ensureE2E(auth) ?: return emptyList()
+            val ownUser = auth.wid.substringBefore("@").substringBefore(":").substringBefore(".")
+            val devices = (getUserDevices(listOf(toJid)).ifEmpty { listOf(toJid) } +
+                getUserDevices(listOf("$ownUser@s.whatsapp.net"))).distinct()
+            return encryptForDevices(crypto, devices, ownUser, auth.wid, paddedCallKey, null).first
+        }
+
+        override suspend fun decryptCallKey(
+            senderJid: String,
+            encType: String,
+            ciphertext: ByteArray,
+        ): ByteArray? {
+            val auth = authData ?: return null
+            val crypto = ensureE2E(auth) ?: return null
+            return try {
+                crypto.decryptDM(senderJid, isPreKey = encType == "pkmsg", ciphertext = ciphertext)
+            } catch (e: Exception) {
+                Log.w(TAG, "call key decrypt failed from $senderJid", e)
+                null
+            }
+        }
+
+        override fun emit(event: WhatsAppEvent) {
+            scope.launch { _events.emit(event) }
+        }
+
+        override fun resolveName(jid: String): String? {
+            // Non-suspend, best-effort: the phone form of the JID. Full name resolution happens
+            // later off the emitted event (resolveName is suspend / DB-backed).
+            val local = jid.substringBefore("@").substringBefore(":").substringBefore(".")
+            return if (local.isNotEmpty() && local.all { it.isDigit() }) "+$local" else null
+        }
+    }
+
+    /** Place a WhatsApp call (audio or video) via the call manager. */
+    fun placeCall(conversationId: String, video: Boolean = false) {
+        val to = extractJid(conversationId) ?: return
+        WhatsAppCallManager.placeCall(to, video)
+    }
+
+    /**
      * Build a Signal-encrypted text message node for a recipient, fanning out to all of the
      * recipient's devices and our own other devices (via usync), establishing sessions as needed.
      * Group recipients (@g.us) use the sender-key (skmsg) path. Returns null on failure.
@@ -2585,6 +2706,8 @@ object WhatsAppClient {
         }
         scope.launch { maybeUploadPreKeys() }
         scope.launch { refreshPrivacySettings() }
+        // Phase C 2f: best-effort device-contact sync after login (dev-gated, needs READ_CONTACTS).
+        scope.launch { runCatching { WhatsAppContactSync.sync(appContext) } }
         val pas = setPassiveActive()
         WhatsAppDiag.log(TAG, "post-success: SetPassive(active) ${if (pas) "OK" else "FAILED"}")
         sendUnavailablePresence()
