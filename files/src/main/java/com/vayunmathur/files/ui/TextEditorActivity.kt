@@ -42,9 +42,13 @@ class TextEditorActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        val uri = intent.data!!
+        val uri = intent.data
+        if (uri == null) {
+            finish()
+            return
+        }
         viewModel.load(uri)
+        enableEdgeToEdge()
         setContent {
             DynamicTheme {
                 TextEditorScreen(uri, viewModel)

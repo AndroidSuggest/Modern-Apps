@@ -238,7 +238,12 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
     override fun openWith(item: FileBrowserItem) {
         val ctx = getApplication<Application>()
         val file = item.realFile ?: return
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+        val uri = try {
+            FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+        } catch (e: Exception) {
+            emitMoveFailed(e)
+            return
+        }
         val view = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mimeFor(file))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -472,9 +477,14 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         val ctx = getApplication<Application>()
         val files = _selectedPaths.value.mapNotNull { it.realFile }.filter { it.isFile }
         if (files.isEmpty()) return
-        val uris = ArrayList(files.map {
-            FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", it)
-        })
+        val uris = try {
+            ArrayList(files.map {
+                FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", it)
+            })
+        } catch (e: Exception) {
+            emitMoveFailed(e)
+            return
+        }
         val intent = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply {
                 type = mimeFor(files.first())
@@ -754,10 +764,18 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         val uris = _incomingUris.value ?: return
         val target = _currentDirectory.value
         viewModelScope.launch(Dispatchers.IO) {
-            uris.forEach { uri -> saveUriToPath(ctx, uri, target) }
+            var lastError: Exception? = null
+            uris.forEach { uri ->
+                try {
+                    saveUriToPath(ctx, uri, target)
+                } catch (e: Exception) {
+                    lastError = e
+                }
+            }
             clearIncomingUris()
             loadDirectory()
-            _snackbarMessages.emit(ctx.getString(R.string.files_saved))
+            lastError?.let { emitMoveFailed(it) }
+                ?: viewModelScope.launch { _snackbarMessages.emit(ctx.getString(R.string.files_saved)) }
         }
     }
 
@@ -770,8 +788,13 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         val file = item.realFile ?: return
         val extension = file.extension
         val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "*/*"
+        val uri = try {
+            FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+        } catch (e: Exception) {
+            emitMoveFailed(e)
+            return
+        }
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
             setDataAndType(uri, mimeType)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         }
@@ -816,7 +839,12 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
 
     private fun launchApkInstall(file: File) {
         val ctx = getApplication<Application>()
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+        val uri = try {
+            FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+        } catch (e: Exception) {
+            emitMoveFailed(e)
+            return
+        }
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION

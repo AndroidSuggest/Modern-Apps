@@ -1085,10 +1085,14 @@ fun DirectoryItem(
                 val paths = currentOnStartDrag()
                 if (paths.isEmpty()) return@dragAndDropSource null
 
-                val uris = paths.map { path ->
-                    FileProvider.getUriForFile(
-                        context, "${context.packageName}.fileprovider", path
-                    )
+                val uris = try {
+                    paths.map { path ->
+                        FileProvider.getUriForFile(
+                            context, "${context.packageName}.fileprovider", path
+                        )
+                    }
+                } catch (_: Exception) {
+                    return@dragAndDropSource null
                 }
                 val mimeTypes = paths.map { path ->
                     val extension = path.name.substringAfterLast(

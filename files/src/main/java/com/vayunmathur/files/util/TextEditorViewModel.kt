@@ -26,9 +26,13 @@ class TextEditorViewModel(application: Application) : AndroidViewModel(applicati
     fun load(uri: Uri) {
         val ctx = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
-            val text = ctx.contentResolver.openInputStream(uri)?.use {
-                it.bufferedReader().readText()
-            } ?: ""
+            val text = try {
+                ctx.contentResolver.openInputStream(uri)?.use {
+                    it.bufferedReader().readText()
+                } ?: ""
+            } catch (_: Exception) {
+                ""
+            }
             _initialContent.value = text
         }
     }
@@ -36,8 +40,12 @@ class TextEditorViewModel(application: Application) : AndroidViewModel(applicati
     fun save(uri: Uri, content: String) {
         val ctx = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
-            ctx.contentResolver.openOutputStream(uri)?.use {
-                it.writer().use { w -> w.write(content) }
+            try {
+                ctx.contentResolver.openOutputStream(uri)?.use {
+                    it.writer().use { w -> w.write(content) }
+                }
+            } catch (_: Exception) {
+                return@launch
             }
             _initialContent.value = content
         }

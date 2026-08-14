@@ -58,9 +58,17 @@ abstract class ProgressNotificationWorker(
         val progress = (current * 100 / total).toInt()
         if (progress != lastProgress) {
             lastProgress = progress
-            notificationManager.notify(notificationId, buildNotification(progress))
+            try {
+                notificationManager.notify(notificationId, buildNotification(progress))
+            } catch (_: Exception) {
+            }
         }
     }
 
-    protected fun cancelNotification() = notificationManager.cancel(notificationId)
+    protected fun cancelNotification() {
+        try {
+            notificationManager.cancel(notificationId)
+        } catch (_: Exception) {
+        }
+    }
 }
