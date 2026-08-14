@@ -35,5 +35,9 @@
     <string name="memories">Memories</string>
     <!-- Empty state in Settings when no long-term memories have been saved yet -->
     <string name="no_memories_yet">No memories yet.</string>
+    <!-- Section header in Settings for the editable chat system prompt. Noun phrase -->
+    <string name="system_prompt">System Prompt</string>
+    <!-- Button in Settings that restores the system prompt to its built-in default value -->
+    <string name="reset_to_default">Reset to default</string>
     <string name="inference_service_label">Access Inference Service</string>
 </resources>

@@ -37,6 +37,27 @@ class InferenceService : Service() {
     companion object {
         var newTitle: String? = null
         var halt: Boolean = false
+
+        /** DataStore key holding the user-editable chat system prompt. */
+        const val KEY_SYSTEM_PROMPT = "system_prompt"
+
+        /** The system prompt used when the user has not set a custom one. */
+        val DEFAULT_SYSTEM_PROMPT = """
+            You are a helpful Android assistant.
+            On the first request the user sends to you, you MUST define a title for the conversation. You may optionally change the title if the topic of conversation changes sufficiently.
+
+            TOOL USE GUIDELINES:
+            - Only use a tool when the user's request clearly and directly relates to that tool's purpose. Do NOT guess or speculatively call tools on short or ambiguous prompts.
+            - If the user asks a general knowledge question (e.g. "what is...", "how does...", "tell me about..."), answer from your own knowledge. Do not invoke app tools unless the user explicitly asks to interact with an app.
+            - If a tool call fails because the required app is not installed, do NOT stop. Continue helping the user by answering from your own knowledge or suggesting alternatives.
+
+            MEMORY:
+            You have a memory feature. Use it aggressively to provide a personalized and consistent experience:
+            - Whenever the user shares ANY information that might conceivably be useful in future conversations (e.g., their name, preferences, family details, interests, opinions, routines, or important facts), use 'add_to_memory' to store it immediately.
+            - At the start of every conversation and whenever the user asks a question or makes a request where past context could even remotely be relevant, use 'get_memories' to retrieve stored information.
+            - If a stored memory is no longer accurate or requested to be forgotten, use 'remove_memory'.
+            - When in doubt about whether to use memory, USE IT.
+            """.trimIndent()
     }
 
     private sealed class InferenceJob {
@@ -503,23 +524,9 @@ class InferenceService : Service() {
         engine = newEngine
     }
 
-    private fun setupConversation(id: Long, history: List<Message>) {
-        val systemPrompt = """
-            You are a helpful Android assistant.
-            On the first request the user sends to you, you MUST define a title for the conversation. You may optionally change the title if the topic of conversation changes sufficiently.
-
-            TOOL USE GUIDELINES:
-            - Only use a tool when the user's request clearly and directly relates to that tool's purpose. Do NOT guess or speculatively call tools on short or ambiguous prompts.
-            - If the user asks a general knowledge question (e.g. "what is...", "how does...", "tell me about..."), answer from your own knowledge. Do not invoke app tools unless the user explicitly asks to interact with an app.
-            - If a tool call fails because the required app is not installed, do NOT stop. Continue helping the user by answering from your own knowledge or suggesting alternatives.
-
-            MEMORY:
-            You have a memory feature. Use it aggressively to provide a personalized and consistent experience:
-            - Whenever the user shares ANY information that might conceivably be useful in future conversations (e.g., their name, preferences, family details, interests, opinions, routines, or important facts), use 'add_to_memory' to store it immediately.
-            - At the start of every conversation and whenever the user asks a question or makes a request where past context could even remotely be relevant, use 'get_memories' to retrieve stored information.
-            - If a stored memory is no longer accurate or requested to be forgotten, use 'remove_memory'.
-            - When in doubt about whether to use memory, USE IT.
-            """.trimIndent()
+    private suspend fun setupConversation(id: Long, history: List<Message>) {
+        val stored = DataStoreUtils.getInstance(applicationContext).getStringAwait(KEY_SYSTEM_PROMPT)
+        val systemPrompt = if (stored.isNullOrBlank()) DEFAULT_SYSTEM_PROMPT else stored
 
         val initialMessages = history.map { msg ->
             when (msg.role) {

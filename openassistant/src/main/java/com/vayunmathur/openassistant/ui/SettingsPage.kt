@@ -16,25 +16,50 @@ import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.room.SqlCipherDbCodec
 import com.vayunmathur.library.util.DatabaseHelper
+import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.openassistant.R
 import com.vayunmathur.openassistant.Route
 import com.vayunmathur.openassistant.data.Memory
 import com.vayunmathur.openassistant.util.AssistantViewModel
+import com.vayunmathur.openassistant.util.InferenceService
 import com.vayunmathur.openassistant.util.SettingsActions
 import com.vayunmathur.openassistant.util.SettingsUiState
+import kotlinx.coroutines.launch
 
 /** Binds [AssistantViewModel] and the nav back stack to the stateless [SettingsScreen]. */
 @Composable
 fun SettingsPage(backStack: NavBackStack<Route>, viewModel: AssistantViewModel) {
     val memories by viewModel.memories.collectAsState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val ds = remember(context) { DataStoreUtils.getInstance(context) }
+
+    var systemPrompt by remember {
+        mutableStateOf(
+            ds.getString(InferenceService.KEY_SYSTEM_PROMPT)
+                ?: InferenceService.DEFAULT_SYSTEM_PROMPT
+        )
+    }
 
     SettingsScreen(
-        state = SettingsUiState(memories = memories),
+        state = SettingsUiState(memories = memories, systemPrompt = systemPrompt),
         actions = object : SettingsActions {
             override fun back() = backStack.pop()
             override fun deleteMemory(memory: Memory) = viewModel.deleteMemory(memory)
+            override fun setSystemPrompt(prompt: String) {
+                systemPrompt = prompt
+                scope.launch { ds.setString(InferenceService.KEY_SYSTEM_PROMPT, prompt) }
+            }
+            override fun resetSystemPrompt() {
+                systemPrompt = InferenceService.DEFAULT_SYSTEM_PROMPT
+                scope.launch {
+                    ds.setString(
+                        InferenceService.KEY_SYSTEM_PROMPT,
+                        InferenceService.DEFAULT_SYSTEM_PROMPT
+                    )
+                }
+            }
         },
         // Passed in rather than built inside the screen: the backup buttons need the
         // database passphrase, which only exists on a real device.
@@ -83,10 +108,41 @@ fun SettingsScreen(
         ) {
             item {
                 Text(
-                    text = stringResource(R.string.memories),
+                    text = stringResource(R.string.system_prompt),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            item {
+                OutlinedTextField(
+                    value = state.systemPrompt,
+                    onValueChange = { actions.setSystemPrompt(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.system_prompt)) },
+                    minLines = 5,
+                    maxLines = 12,
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { actions.resetSystemPrompt() },
+                        enabled = state.systemPrompt != InferenceService.DEFAULT_SYSTEM_PROMPT
+                    ) {
+                        Text(stringResource(R.string.reset_to_default))
+                    }
+                }
+            }
+            item {
+                Text(
+                    text = stringResource(R.string.memories),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                 )
             }
             if (memories.isEmpty()) {
