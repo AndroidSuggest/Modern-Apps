@@ -2,15 +2,21 @@
     <!-- App name displayed in launcher -->
     <string name="app_name">Flashcards</string>
 
+    <!-- Bottom navigation tab labels. -->
+    <string name="nav_decks">Decks</string>
+    <string name="nav_stats">Stats</string>
+    <string name="nav_settings">Settings</string>
+
     <!-- DeckListPage: FAB / dialog title to create a deck. Verb phrase. -->
     <string name="new_deck">New deck</string>
     <!-- DeckListPage: Placeholder hint for the deck name field. Noun. -->
     <string name="deck_name">Deck name</string>
-    <!-- DeckListPage: Subtitle summarising a deck's due and total card counts.
-         %1$d = cards due for review, %2$d = total cards in the deck. -->
-    <string name="deck_summary">%1$d due · %2$d cards</string>
-    <!-- DeckListPage: Content description for the button that starts a review of a deck. -->
-    <string name="review_deck">Review deck</string>
+    <!-- DeckListPage: Subtitle summarising a deck's due, new and total card counts.
+         %1$d = cards due for review, %2$d = new cards, %3$d = total cards. -->
+    <string name="deck_summary">%1$d due · %2$d new · %3$d cards</string>
+    <!-- DeckListPage: Empty state when no decks exist. -->
+    <string name="no_decks">No decks yet</string>
+    <string name="no_decks_hint">Tap + to create your first deck</string>
     <!-- DeckListPage / CardListPage: Confirm dialog title before deleting. -->
     <string name="delete">Delete</string>
     <!-- DeckListPage: Confirm dialog message before deleting a deck.
@@ -20,16 +26,25 @@
     <!-- Generic dialog buttons. -->
     <string name="add">Add</string>
     <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
 
     <!-- CardListPage: Button that starts a study session. Verb. -->
     <string name="study">Study</string>
     <!-- CardListPage: Empty state when a deck has no cards yet. -->
     <string name="no_cards">No cards yet</string>
+    <string name="no_cards_hint">Tap + to add a card, or import a CSV</string>
+    <!-- CardListPage: Search field placeholder. -->
+    <string name="search_cards">Search cards</string>
+    <!-- CardListPage: Share sheet title when exporting a deck. -->
+    <string name="share_deck">Share deck</string>
 
-    <!-- CardEditPage: Placeholder hint for the front (question) field. Noun. -->
+    <!-- CardEditPage: Titles for the editor. -->
+    <string name="new_card">New card</string>
+    <string name="edit_card">Edit card</string>
+    <!-- CardEditPage: Field labels. Nouns. -->
     <string name="front">Front</string>
-    <!-- CardEditPage: Placeholder hint for the back (answer) field. Noun. -->
     <string name="back">Back</string>
+    <string name="tags">Tags</string>
 
     <!-- ReviewPage: Button that reveals the answer side of a card. -->
     <string name="show_answer">Show answer</string>
@@ -38,6 +53,45 @@
     <string name="grade_hard">Hard</string>
     <string name="grade_good">Good</string>
     <string name="grade_easy">Easy</string>
+    <!-- ReviewPage: Top-bar counts. %1$d = new, %2$d = learning, %3$d = review. -->
+    <string name="review_counts">%1$d new · %2$d learning · %3$d review</string>
     <!-- ReviewPage: Shown when there are no more cards due in the session. -->
     <string name="review_done">All caught up!</string>
+    <string name="review_done_hint">You have finished this session</string>
+
+    <!-- StatsPage -->
+    <string name="all_decks">All decks</string>
+    <string name="no_reviews">No reviews yet</string>
+    <string name="no_reviews_hint">Study some cards to see your history</string>
+    <string name="period_week">Week</string>
+    <string name="period_month">Month</string>
+    <string name="period_year">Year</string>
+    <string name="stat_retention">Retention</string>
+    <string name="stat_reviews">Reviews</string>
+    <string name="stat_streak">Streak</string>
+    <string name="stat_mature">Mature</string>
+    <!-- %1$d = number of days. -->
+    <string name="days_value">%1$d days</string>
+
+    <!-- SettingsPage -->
+    <string name="settings_study">Study</string>
+    <string name="settings_reminders">Reminders</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="setting_retention">Desired retention</string>
+    <string name="setting_new_per_day">New cards per day</string>
+    <string name="setting_max_reviews">Max reviews per day</string>
+    <string name="setting_reminder_enabled">Daily reminder</string>
+    <string name="setting_reminder_time">Reminder time</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+
+    <!-- Reminder notification -->
+    <string name="reminder_channel_name">Review reminders</string>
+    <string name="reminder_channel_description">Daily reminder when cards are due</string>
+    <string name="reminder_title">Time to study</string>
+    <plurals name="reminder_text">
+        <item quantity="one">%d card is due for review</item>
+        <item quantity="other">%d cards are due for review</item>
+    </plurals>
 </resources>

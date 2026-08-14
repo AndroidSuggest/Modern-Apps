@@ -7,12 +7,18 @@ import com.vayunmathur.flashcards.data.Card
 import com.vayunmathur.flashcards.data.Deck
 import com.vayunmathur.flashcards.util.CardListActions
 import com.vayunmathur.flashcards.util.CardListUiState
+import com.vayunmathur.flashcards.util.DailyStat
 import com.vayunmathur.flashcards.util.DeckListActions
 import com.vayunmathur.flashcards.util.DeckListUiState
+import com.vayunmathur.flashcards.util.DeckOption
 import com.vayunmathur.flashcards.util.DeckSummary
+import com.vayunmathur.flashcards.util.Grade
 import com.vayunmathur.flashcards.util.ReviewActions
 import com.vayunmathur.flashcards.util.ReviewUiState
+import com.vayunmathur.flashcards.util.StatsActions
+import com.vayunmathur.flashcards.util.StatsUiState
 import com.vayunmathur.library.ui.DynamicTheme
+import java.time.LocalDate
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
@@ -30,15 +36,15 @@ private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 class MetadataPreviews {
 
     private val deckSamples = listOf(
-        DeckSummary(Deck(id = 1, name = "Spanish Vocabulary", position = 0.0), dueCount = 12, totalCount = 84),
-        DeckSummary(Deck(id = 2, name = "World Capitals", position = 1.0), dueCount = 5, totalCount = 50),
-        DeckSummary(Deck(id = 3, name = "Kotlin Idioms", position = 2.0), dueCount = 0, totalCount = 30),
-        DeckSummary(Deck(id = 4, name = "Anatomy 101", position = 3.0), dueCount = 23, totalCount = 120),
-        DeckSummary(Deck(id = 5, name = "Guitar Chords", position = 4.0), dueCount = 3, totalCount = 18),
+        DeckSummary(Deck(id = 1, name = "Spanish Vocabulary", position = 0.0), dueCount = 12, newCount = 8, totalCount = 84, mastery = 0.62f),
+        DeckSummary(Deck(id = 2, name = "World Capitals", position = 1.0), dueCount = 5, newCount = 0, totalCount = 50, mastery = 0.80f),
+        DeckSummary(Deck(id = 3, name = "Kotlin Idioms", position = 2.0), dueCount = 0, newCount = 0, totalCount = 30, mastery = 1.0f),
+        DeckSummary(Deck(id = 4, name = "Anatomy 101", position = 3.0), dueCount = 23, newCount = 15, totalCount = 120, mastery = 0.35f),
+        DeckSummary(Deck(id = 5, name = "Guitar Chords", position = 4.0), dueCount = 3, newCount = 2, totalCount = 18, mastery = 0.55f),
     )
 
     private val cardSamples = listOf(
-        Card(id = 1, deckId = 1, front = "la manzana", back = "the apple"),
+        Card(id = 1, deckId = 1, front = "la **manzana**", back = "the apple"),
         Card(id = 2, deckId = 1, front = "el perro", back = "the dog"),
         Card(id = 3, deckId = 1, front = "la biblioteca", back = "the library"),
         Card(id = 4, deckId = 1, front = "el aeropuerto", back = "the airport"),
@@ -68,6 +74,16 @@ class MetadataPreviews {
                     back = "the library",
                     remaining = 12,
                     done = false,
+                    newCount = 4,
+                    learningCount = 2,
+                    reviewCount = 6,
+                    progress = 0.4f,
+                    intervalLabels = mapOf(
+                        Grade.AGAIN to "1m",
+                        Grade.HARD to "10m",
+                        Grade.GOOD to "4d",
+                        Grade.EASY to "9d",
+                    ),
                 ),
                 actions = ReviewActions.Noop,
                 initialRevealed = true,
@@ -87,6 +103,33 @@ class MetadataPreviews {
                     dueCount = 12,
                 ),
                 actions = CardListActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-stats", device = PHONE, showSystemUi = true)
+    @Composable
+    fun Preview4Stats() {
+        val today = LocalDate.now().toEpochDay()
+        val counts = listOf(6, 14, 9, 21, 3, 17, 11, 25, 8, 19, 13, 22, 7, 16)
+        val daily = counts.mapIndexed { i, c -> DailyStat(today - (counts.size - 1 - i), c) }
+        DynamicTheme(darkTheme = true) {
+            StatsScreen(
+                state = StatsUiState(
+                    deckOptions = listOf(
+                        DeckOption(null, "All decks"),
+                        DeckOption(1, "Spanish Vocabulary"),
+                    ),
+                    selectedDeckId = null,
+                    daily = daily,
+                    totalReviews = 191,
+                    retentionPct = 91,
+                    streakDays = 14,
+                    matureCards = 52,
+                    totalCards = 84,
+                ),
+                actions = StatsActions.Noop,
             )
         }
     }

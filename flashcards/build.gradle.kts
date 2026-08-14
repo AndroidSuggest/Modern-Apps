@@ -19,4 +19,5 @@ android {
 dependencies {
     implementRoom(libs)
     implementation(project(":library:room"))
+    implementation(libs.androidx.work.runtime.ktx)
 }
