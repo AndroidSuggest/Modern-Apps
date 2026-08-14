@@ -1,6 +1,6 @@
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- App name displayed in launcher -->
-    <string name="app_name">MA Flashcards</string>
+    <string name="app_name">Flashcards</string>
 
     <!-- DeckListPage: FAB / dialog title to create a deck. Verb phrase. -->
     <string name="new_deck">New deck</string>
