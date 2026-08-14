@@ -19,6 +19,7 @@ members = [
   "communicate/src/main/rust",
   "youpipe/src/main/rust",
   "web/src/main/rust",
+  "share/src/main/rust",
   "third_party/om-file-format-sys",
 ]
 resolver = "2"

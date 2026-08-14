@@ -1,0 +1,33 @@
+[package]
+name = "share_nearby"
+version = "0.1.0"
+edition = "2021"
+description = "Nearby Share / Quick Share protocol (UKEY2, protobuf frames, secure messages, payload) without Play Services — Rust core exposed to Kotlin via JNI. See share/PROTOCOL_CONTRACT.md."
+license = "GPL-2.0-only"
+
+[lib]
+name = "share_nearby"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni.workspace = true
+# Workspace-pinned crypto
+sha2.workspace = true
+hmac.workspace = true
+aes.workspace = true
+rand_core.workspace = true
+getrandom.workspace = true
+# Wire / protocol
+prost = "0.13"
+bytes = "1.6"
+hkdf = "0.12"
+p256 = { version = "0.13", features = ["ecdh", "ecdsa"] }
+cbc = { version = "0.1", features = ["alloc"] }
+cipher = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

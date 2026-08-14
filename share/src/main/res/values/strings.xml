@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Share</string>
+    <string name="tab_receive">Receive</string>
+    <string name="tab_send">Send</string>
+    <string name="share_notification_channel_name">Share transfers</string>
+    <string name="share_notification_channel_desc">Ongoing Nearby Share file transfers</string>
+    <string name="share_notification_title_receiving">Share — receiving files</string>
+    <string name="share_notification_title_sending">Share — sending files</string>
+    <string name="share_notification_text">Transfer in progress</string>
+    <string name="share_notification_action_stop">Stop</string>
+    <string name="share_permission_rationale">Nearby Share needs Bluetooth, Wi-Fi, and notification permissions to discover devices and transfer files.</string>
+</resources>
