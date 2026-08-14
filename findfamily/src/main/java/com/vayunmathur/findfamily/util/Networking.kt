@@ -16,9 +16,10 @@ import com.vayunmathur.library.network.webSocket
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -177,9 +178,6 @@ object Networking {
      */
     private const val LIVENESS_TIMEOUT_MS = 75_000L
 
-    /** How often the watchdog checks liveness. Must be well under the timeout. */
-    private const val LIVENESS_CHECK_MS = 15_000L
-
     @Volatile private var wsSession: WsSession? = null
     private var liveJob: Job? = null
 
@@ -227,6 +225,12 @@ object Networking {
         liveJob = scope.launch(Dispatchers.IO) {
             var backoff = 1000L
             while (isActive) {
+                // Per-connection scope for the reader. Deliberately independent of the
+                // supervisor loop below: a blocking readFrame() — or a stuck delivery
+                // callback — that refuses to unwind must never be able to wedge reconnect,
+                // so the reader is launched here and abandoned on teardown rather than
+                // structurally awaited.
+                val connScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
                 runCatching {
                     webSocket(WS_URL) {
                         wsSession = this
@@ -240,38 +244,15 @@ object Networking {
                         send(sub)
                         backoff = 1000L
                         Log.d(TAG, "live WS connected, subscribed+registered as ${userid.toULong()} bundleLen=${bundle.size}")
-                        // Keepalive + half-open recovery. Two independent children:
-                        //  * watchdog: only ever suspends on delay + does non-blocking work.
-                        //    If no inbound frame (pong/push/anything) arrives within
-                        //    LIVENESS_TIMEOUT_MS the socket is half-open, so it calls abort()
-                        //    — a hard socket close that can't block — to force a reconnect.
-                        //  * pinger: sends pings so a healthy server keeps sending pongs,
-                        //    refreshing liveness. A ping write may block on a half-open
-                        //    socket; that's fine, the watchdog's abort() unblocks it.
-                        // Never call the graceful close() here: its close-frame write can hang
-                        // on a half-open socket, wedging teardown and blocking reconnect.
-                        coroutineScope {
-                            val lastInboundMs = AtomicLong(System.currentTimeMillis())
-                            val watchdog = launch {
-                                while (isActive) {
-                                    delay(LIVENESS_CHECK_MS)
-                                    val idle = System.currentTimeMillis() - lastInboundMs.get()
-                                    if (idle > LIVENESS_TIMEOUT_MS) {
-                                        Log.w(TAG, "no inbound for ${idle}ms; socket half-open, aborting to reconnect")
-                                        runCatching { abort() }
-                                        break
-                                    }
-                                }
-                            }
-                            val pinger = launch {
-                                while (isActive) {
-                                    delay(PING_INTERVAL_MS)
-                                    runCatching { ping() }.onFailure {
-                                        if (it is CancellationException) throw it
-                                    }
-                                }
-                            }
-                            try {
+
+                        val lastInboundMs = AtomicLong(System.currentTimeMillis())
+
+                        // Reader: decrypts and delivers inbound frames, refreshing liveness on
+                        // each one. Runs in the detached connScope and is never joined, so if it
+                        // wedges on a half-open socket the supervisor below can still reconnect.
+                        // It ends on its own once abort() closes the socket and the read errors.
+                        connScope.launch {
+                            runCatching {
                                 incoming.collect { frame ->
                                     lastInboundMs.set(System.currentTimeMillis())
                                     when (frame) {
@@ -280,16 +261,34 @@ object Networking {
                                         else -> Unit
                                     }
                                 }
-                            } finally {
-                                watchdog.cancel()
-                                pinger.cancel()
-                                // Force the socket down so a ping write blocked on a half-open
-                                // socket unblocks and the pinger can actually complete.
-                                runCatching { abort() }
                             }
+                        }
+
+                        // Supervisor: only ever suspends on delay(), so it can always make
+                        // progress to reconnect. Pings are fire-and-forget (a write blocked on a
+                        // half-open socket must not stall this loop). If no inbound frame — pong,
+                        // push, key response, anything — arrives within the timeout, the socket is
+                        // half-open, so break to abort and reconnect.
+                        try {
+                            while (isActive) {
+                                connScope.launch { runCatching { ping() } }
+                                delay(PING_INTERVAL_MS)
+                                val idle = System.currentTimeMillis() - lastInboundMs.get()
+                                if (idle > LIVENESS_TIMEOUT_MS) {
+                                    Log.w(TAG, "no inbound for ${idle}ms; socket half-open, reconnecting")
+                                    break
+                                }
+                            }
+                        } finally {
+                            // Hard, non-blocking close, then abandon the reader (never joined).
+                            // abort() sets closed first, so webSocket()'s graceful close() is a
+                            // no-op and cannot hang the block's return.
+                            runCatching { abort() }
+                            connScope.cancel()
                         }
                     }
                 }.onFailure { Log.w(TAG, "live WS loop error", it) }
+                connScope.cancel()
                 wsSession = null
                 // Fail any awaiting key lookups so their callers don't hang until timeout.
                 pendingKeyRequests.values.forEach { it.complete(null) }
