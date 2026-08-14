@@ -31,6 +31,7 @@ import com.vayunmathur.contacts.data.Note
 import com.vayunmathur.contacts.data.Organization
 import com.vayunmathur.contacts.data.PhoneNumber
 import com.vayunmathur.contacts.data.Photo
+import com.vayunmathur.contacts.data.PrefillValue
 import com.vayunmathur.contacts.data.SimContact
 import com.vayunmathur.contacts.data.SimContactsDataSource
 import com.vayunmathur.library.util.DataStoreUtils

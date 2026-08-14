@@ -9,6 +9,7 @@ import android.content.ContentUris
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
+import android.provider.ContactsContract.Intents.Insert
 import androidx.core.content.IntentCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -192,7 +193,6 @@ class MainActivity : ComponentActivity() {
      * null for them) plus the [ContactsContract.Intents.Insert.DATA] `ArrayList<ContentValues>`.
      */
     private fun buildInsertPrefill(intent: Intent): ContactPrefill {
-        val insert = ContactsContract.Intents.Insert
         fun text(key: String): String? =
             intent.getCharSequenceExtra(key)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
 
@@ -200,26 +200,26 @@ class MainActivity : ComponentActivity() {
         val emails = mutableListOf<PrefillValue>()
         val postals = mutableListOf<PrefillValue>()
 
-        val (phoneType, phoneLabel) = readType(intent, insert.PHONE_TYPE)
-        text(insert.PHONE)?.let { phones += PrefillValue(it, phoneType, phoneLabel) }
-        text(insert.SECONDARY_PHONE)?.let { phones += PrefillValue(it) }
-        text(insert.TERTIARY_PHONE)?.let { phones += PrefillValue(it) }
+        val (phoneType, phoneLabel) = readType(intent, Insert.PHONE_TYPE)
+        text(Insert.PHONE)?.let { phones += PrefillValue(it, phoneType, phoneLabel) }
+        text(Insert.SECONDARY_PHONE)?.let { phones += PrefillValue(it) }
+        text(Insert.TERTIARY_PHONE)?.let { phones += PrefillValue(it) }
 
-        val (emailType, emailLabel) = readType(intent, insert.EMAIL_TYPE)
-        text(insert.EMAIL)?.let { emails += PrefillValue(it, emailType, emailLabel) }
-        text(insert.SECONDARY_EMAIL)?.let { emails += PrefillValue(it) }
-        text(insert.TERTIARY_EMAIL)?.let { emails += PrefillValue(it) }
+        val (emailType, emailLabel) = readType(intent, Insert.EMAIL_TYPE)
+        text(Insert.EMAIL)?.let { emails += PrefillValue(it, emailType, emailLabel) }
+        text(Insert.SECONDARY_EMAIL)?.let { emails += PrefillValue(it) }
+        text(Insert.TERTIARY_EMAIL)?.let { emails += PrefillValue(it) }
 
-        val (postalType, postalLabel) = readType(intent, insert.POSTAL_TYPE)
-        text(insert.POSTAL)?.let { postals += PrefillValue(it, postalType, postalLabel) }
+        val (postalType, postalLabel) = readType(intent, Insert.POSTAL_TYPE)
+        text(Insert.POSTAL)?.let { postals += PrefillValue(it, postalType, postalLabel) }
 
-        var name = text(insert.NAME)
-        var company = text(insert.COMPANY)
-        var notes = text(insert.NOTES)
+        var name = text(Insert.NAME)
+        var company = text(Insert.COMPANY)
+        var notes = text(Insert.NOTES)
         var nickname: String? = null
 
         // Insert.DATA: caller-provided rows, one ContentValues per data kind (typed).
-        val dataRows = IntentCompat.getParcelableArrayListExtra(intent, insert.DATA, ContentValues::class.java)
+        val dataRows = IntentCompat.getParcelableArrayListExtra(intent, Insert.DATA, ContentValues::class.java)
         dataRows?.forEach { cv ->
             fun value(key: String) = cv.getAsString(key)?.trim()?.takeIf { it.isNotEmpty() }
             when (cv.getAsString(ContactsContract.Data.MIMETYPE)) {
