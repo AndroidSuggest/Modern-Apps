@@ -175,7 +175,10 @@ fun LiteRTChatUi(
 
     NavigationSuiteScaffold(layoutType = navType, navigationSuiteItems = {
         allConversations.forEach { item(it.id == conversationId, { backStack.reset(Route.ConversationPage(it.id)) }, {}, label = { Text(it.title, Modifier.fillMaxWidth()) }, badge = {
-            IconButton({ assistantViewModel.deleteConversation(it) }) {
+            IconButton({
+                assistantViewModel.deleteConversation(it)
+                if (it.id == conversationId) backStack.reset(Route.ConversationPage(0))
+            }) {
                 IconDelete()
             }
         }) }
@@ -183,7 +186,10 @@ fun LiteRTChatUi(
         ModalNavigationDrawer({
             ModalDrawerSheet {
                 allConversations.forEach { NavigationDrawerItem({ Text(it.title) }, it.id == conversationId, { backStack.reset(Route.ConversationPage(it.id)) }, Modifier.fillMaxWidth(), icon = {}, badge = {
-                    IconButton({ assistantViewModel.deleteConversation(it) }, Modifier.offset(x=15.dp)) {
+                    IconButton({
+                        assistantViewModel.deleteConversation(it)
+                        if (it.id == conversationId) backStack.reset(Route.ConversationPage(0))
+                    }, Modifier.offset(x=15.dp)) {
                         IconDelete()
                     }
                 }) }
