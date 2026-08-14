@@ -177,6 +177,9 @@ object Networking {
      */
     private const val LIVENESS_TIMEOUT_MS = 75_000L
 
+    /** How often the watchdog checks liveness. Must be well under the timeout. */
+    private const val LIVENESS_CHECK_MS = 15_000L
+
     @Volatile private var wsSession: WsSession? = null
     private var liveJob: Job? = null
 
@@ -237,27 +240,34 @@ object Networking {
                         send(sub)
                         backoff = 1000L
                         Log.d(TAG, "live WS connected, subscribed+registered as ${userid.toULong()} bundleLen=${bundle.size}")
-                        // Keepalive + half-open detection: ping on a timer, and if no
-                        // frame (pong/push/anything) has arrived within LIVENESS_TIMEOUT_MS
-                        // treat the socket as half-open and close it to force a reconnect.
-                        // A half-open socket still accepts writes, so ping success alone
-                        // proves nothing — only inbound traffic proves the socket is live.
-                        // Cancelled when the incoming loop ends (below), ending this scope.
+                        // Keepalive + half-open recovery. Two independent children:
+                        //  * watchdog: only ever suspends on delay + does non-blocking work.
+                        //    If no inbound frame (pong/push/anything) arrives within
+                        //    LIVENESS_TIMEOUT_MS the socket is half-open, so it calls abort()
+                        //    — a hard socket close that can't block — to force a reconnect.
+                        //  * pinger: sends pings so a healthy server keeps sending pongs,
+                        //    refreshing liveness. A ping write may block on a half-open
+                        //    socket; that's fine, the watchdog's abort() unblocks it.
+                        // Never call the graceful close() here: its close-frame write can hang
+                        // on a half-open socket, wedging teardown and blocking reconnect.
                         coroutineScope {
                             val lastInboundMs = AtomicLong(System.currentTimeMillis())
+                            val watchdog = launch {
+                                while (isActive) {
+                                    delay(LIVENESS_CHECK_MS)
+                                    val idle = System.currentTimeMillis() - lastInboundMs.get()
+                                    if (idle > LIVENESS_TIMEOUT_MS) {
+                                        Log.w(TAG, "no inbound for ${idle}ms; socket half-open, aborting to reconnect")
+                                        runCatching { abort() }
+                                        break
+                                    }
+                                }
+                            }
                             val pinger = launch {
                                 while (isActive) {
                                     delay(PING_INTERVAL_MS)
-                                    val idle = System.currentTimeMillis() - lastInboundMs.get()
-                                    if (idle > LIVENESS_TIMEOUT_MS) {
-                                        Log.w(TAG, "no inbound for ${idle}ms; socket half-open, closing to reconnect")
-                                        runCatching { close() }
-                                        break
-                                    }
                                     runCatching { ping() }.onFailure {
                                         if (it is CancellationException) throw it
-                                        Log.w(TAG, "keepalive ping failed; closing to reconnect", it)
-                                        runCatching { close() }
                                     }
                                 }
                             }
@@ -271,7 +281,11 @@ object Networking {
                                     }
                                 }
                             } finally {
+                                watchdog.cancel()
                                 pinger.cancel()
+                                // Force the socket down so a ping write blocked on a half-open
+                                // socket unblocks and the pinger can actually complete.
+                                runCatching { abort() }
                             }
                         }
                     }

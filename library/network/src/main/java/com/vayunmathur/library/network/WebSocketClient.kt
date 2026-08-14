@@ -126,6 +126,19 @@ class WebSocketClient private constructor(
         } catch (_: Exception) { }
     }
 
+    /**
+     * Hard, non-blocking teardown: closes the underlying socket immediately WITHOUT
+     * the graceful close-frame write. Unlike [close], this can never hang on a
+     * half-open socket (a blocking close-frame write into a full send buffer would).
+     * Closing the socket unblocks any read or write currently blocked on it, so a
+     * keepalive watchdog can use this to break a wedged connection and force a
+     * reconnect. Safe to call from any thread; idempotent.
+     */
+    fun abort() {
+        closed = true
+        runCatching { socket.close() }
+    }
+
     private fun sendPong() {
         writeFrame(opcode = 0xA, payload = ByteArray(0), mask = true)
         output.flush()
@@ -388,6 +401,9 @@ class WsSession internal constructor(
     /** Sends a PING frame. Callers that need keepalive run their own timer loop over this. */
     suspend fun ping() = client.ping()
     suspend fun close() = client.close()
+
+    /** Hard, non-blocking teardown (see [WebSocketClient.abort]); unblocks a wedged read/write. */
+    fun abort() = client.abort()
 }
 
 suspend fun webSocket(
