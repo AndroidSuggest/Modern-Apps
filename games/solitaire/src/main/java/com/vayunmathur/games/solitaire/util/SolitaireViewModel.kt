@@ -181,7 +181,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         val state = _uiState.value.klondike ?: return
         if (state.isWon || state.waste.isEmpty()) return
         val card = state.waste.last()
-        if (!canPlaceOnFoundation(card, state.foundations[foundationIndex])) return
+        if (!canPlaceOnFoundation(card, state.foundations[foundationIndex], foundationIndex)) return
         saveHistory()
         val newFoundations = state.foundations.toMutableList()
         newFoundations[foundationIndex] = newFoundations[foundationIndex] + card
@@ -201,7 +201,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         val pile = state.tableauPiles[fromColumn]
         if (pile.faceUp.isEmpty()) return
         val card = pile.faceUp.last()
-        if (!canPlaceOnFoundation(card, state.foundations[foundationIndex])) return
+        if (!canPlaceOnFoundation(card, state.foundations[foundationIndex], foundationIndex)) return
         saveHistory()
         val newPiles = state.tableauPiles.toMutableList()
         val newFaceUp = pile.faceUp.dropLast(1)
@@ -255,7 +255,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
                 if (current.waste.isNotEmpty()) {
                     val card = current.waste.last()
                     for (fi in current.foundations.indices) {
-                        if (canPlaceOnFoundation(card, current.foundations[fi])) {
+                        if (canPlaceOnFoundation(card, current.foundations[fi], fi)) {
                             val newFoundations = current.foundations.toMutableList()
                             newFoundations[fi] = newFoundations[fi] + card
                             current = current.copy(
@@ -275,7 +275,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
                     if (pile.faceUp.isNotEmpty()) {
                         val card = pile.faceUp.last()
                         for (fi in current.foundations.indices) {
-                            if (canPlaceOnFoundation(card, current.foundations[fi])) {
+                            if (canPlaceOnFoundation(card, current.foundations[fi], fi)) {
                                 val newFoundations = current.foundations.toMutableList()
                                 newFoundations[fi] = newFoundations[fi] + card
                                 val newPiles = current.tableauPiles.toMutableList()
@@ -313,8 +313,8 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         else -> pile.faceUp.last().isOneHigherThan(card) && card.alternatesColorWith(pile.faceUp.last())
     }
 
-    private fun canPlaceOnFoundation(card: Card, foundation: List<Card>): Boolean =
-        if (foundation.isEmpty()) card.rank == Rank.ACE
+    private fun canPlaceOnFoundation(card: Card, foundation: List<Card>, foundationIndex: Int): Boolean =
+        if (foundation.isEmpty()) card.rank == Rank.ACE && card.suit == Suit.entries[foundationIndex]
         else card.suit == foundation.last().suit && card.isOneHigherThan(foundation.last())
 
     private fun autoFlip(pile: TableauPile): TableauPile =
@@ -502,7 +502,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         val state = _uiState.value.freeCell ?: return
         if (state.isWon) return
         val card = state.freeCells[cellIndex] ?: return
-        if (!canPlaceOnFoundation(card, state.foundations[foundationIndex])) return
+        if (!canPlaceOnFoundation(card, state.foundations[foundationIndex], foundationIndex)) return
         saveHistory()
         val newCells = state.freeCells.toMutableList()
         newCells[cellIndex] = null
@@ -524,7 +524,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         val pile = state.tableauPiles[fromColumn]
         if (pile.isEmpty()) return
         val card = pile.last()
-        if (!canPlaceOnFoundation(card, state.foundations[foundationIndex])) return
+        if (!canPlaceOnFoundation(card, state.foundations[foundationIndex], foundationIndex)) return
         saveHistory()
         val newPiles = state.tableauPiles.toMutableList()
         newPiles[fromColumn] = pile.dropLast(1)
@@ -950,7 +950,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         // 1) Foundation — only a single top card can go up, and it is the preferred move.
         if (cards.size == 1) {
             for (fi in state.foundations.indices) {
-                if (canPlaceOnFoundation(topCard, state.foundations[fi])) {
+                if (canPlaceOnFoundation(topCard, state.foundations[fi], fi)) {
                     when {
                         sourceId == "waste" -> klondikeMoveWasteToFoundation(fi)
                         fromCol != null -> klondikeMoveTableauToFoundation(fromCol, fi)
@@ -996,7 +996,7 @@ class SolitaireViewModel(application: Application) : AndroidViewModel(applicatio
         // 1) Foundation (single card only), the preferred move.
         if (single) {
             for (fi in state.foundations.indices) {
-                if (canPlaceOnFoundation(topCard, state.foundations[fi])) {
+                if (canPlaceOnFoundation(topCard, state.foundations[fi], fi)) {
                     when {
                         fromCell != null -> freeCellMoveFreeCellToFoundation(fromCell, fi)
                         fromCol != null -> freeCellMoveTableauToFoundation(fromCol, fi)
