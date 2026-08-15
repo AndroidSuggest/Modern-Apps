@@ -57,7 +57,12 @@ data class LocationValueCompatible(
             acc = acc,
             timestamp = Instant.fromEpochMilliseconds(timestamp),
             battery = battery,
-            id = id.toLong()
+            // NOT id = id.toLong(): `id` is the *sender's* local autogenerate primary
+            // key. Reusing it here makes @Upsert collide across devices (every device's
+            // ids grow from 1 in lockstep), so peers overwrite each other's — and your
+            // own — rows by PK, leaving getLatest() with stale data. Use 0 so Room
+            // assigns a fresh local id and each received fix is stored as its own row.
+            id = 0,
         )
     }
 }
