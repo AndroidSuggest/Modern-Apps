@@ -215,6 +215,13 @@ object Networking {
      * receive already-decrypted pushes. Reconnects with 1s→15s backoff — there is no
      * HTTP fallback, so a dropped socket is simply re-established.
      */
+    // @Synchronized (with stopLive) makes the check-and-set atomic. onStartCommand can
+    // fire concurrently (START_STICKY redelivery, ServiceRestartWorker, BootReceiver),
+    // each launching startTracking()->startLive() on Dispatchers.IO. Without this, two
+    // invocations both pass the isActive check before either assigns liveJob, leaving
+    // two live WebSocket connections — one orphaned and unstoppable. Idempotent: a call
+    // while a connection is already live is a no-op.
+    @Synchronized
     fun startLive(
         scope: CoroutineScope,
         onLocations: suspend (List<LocationValue>) -> Unit,
@@ -303,6 +310,7 @@ object Networking {
         }
     }
 
+    @Synchronized
     fun stopLive() {
         liveJob?.cancel(); liveJob = null; wsSession = null
         pendingKeyRequests.values.forEach { it.complete(null) }
