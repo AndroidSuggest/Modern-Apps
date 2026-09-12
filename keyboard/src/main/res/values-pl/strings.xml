@@ -17,4 +17,15 @@
     <string name="clear_clipboard">Wyczyść wszystko</string>
     <string name="clear_clipboard_history">Wyczyść historię schowka</string>
     <string name="copied_text_shows_up_here">Skopiowany tekst i obrazy są tutaj wyświetlane</string>
+    <string name="voice_input">Wprowadzanie głosowe</string>
+    <string name="voice_listening">Słucham…</string>
+    <string name="voice_transcribing">Transkrypcja…</string>
+    <string name="voice_unavailable">Nie zainstalowano aplikacji do rozpoznawania mowy</string>
+    <string name="voice_permission_denied">Do wprowadzania głosowego wymagany jest mikrofon</string>
+    <string name="voice_permission_blocked">Zezwól na używanie mikrofonu w ustawieniach</string>
+    <string name="voice_network">Wprowadzanie głosowe wymaga połączenia z internetem</string>
+    <string name="voice_no_speech">Nie dosłyszałem tego</string>
+    <string name="voice_busy">Moduł rozpoznawania mowy jest zajęty</string>
+    <string name="voice_audio_error">Nie udało się nagrać dźwięku</string>
+    <string name="voice_failed">Wprowadzanie głosowe nie powiodło się</string>
 </resources>
