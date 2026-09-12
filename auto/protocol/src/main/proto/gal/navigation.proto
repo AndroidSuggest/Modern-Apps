@@ -1,0 +1,34 @@
+// Google Automotive Link navigation-status channel (service 10,
+// NAVIGATION_STATUS): phone -> head unit turn guidance for the cluster and
+// head-unit display. The head unit sends nothing normative back; inbound
+// ch10 traffic is observed and ignored.
+//
+// Provenance: MA sender-defined throughout -- the teardown recovered the
+// service descriptor slot (`Service.navigation_status`, control.proto field
+// 8) but never the channel message IDs. STATUS (0x8001) mirrors the
+// aasdk/openauto phone-to-HU navigation status message; if the teardown ever
+// recovers the real IDs they replace `GalMessage.NavigationStatus`. This is
+// a DHU-tolerated stub by construction: an unknown ch10 payload earns at
+// worst a bare MessageError (0xff) on ch10 while video and the bring-up
+// carry on.
+//
+// Stub phase (Phase 5): the phone posts one well-formed inactive status on
+// the grant ("no guidance") and stays quiet. Live turn updates land with
+// Phase 6 maps-dev through NavStatusCodec.encodeStatus.
+
+syntax = "proto2";
+
+package gal;
+
+option java_package = "com.vayunmathur.auto.protocol.gal";
+option java_multiple_files = true;
+
+// 0x8001, phone -> HU. All fields optional: the stub posts guidance_active
+// explicitly false (08 00 on the wire) rather than an empty payload, so the
+// "no guidance" state is stated, not implied.
+message NavigationStatus {
+  optional bool guidance_active = 1;
+  optional string next_road = 2;
+  optional int32 next_turn_distance_m = 3;
+  optional string maneuver = 4;
+}

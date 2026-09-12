@@ -1,0 +1,125 @@
+// Google Automotive Link sensor channel (service 7, SENSOR_SOURCE): the car
+// streams readings, the phone subscribes.
+//
+// Direction (auto/docs/FINDINGS.md section 2, the `rvb` endpoint): phone ->
+// HU SensorRequest (0x8001, `xnu` {1 sensor_type, 2 min_update_period},
+// synchronous with a 2000 ms timeout, -1 unsubscribes); HU -> phone
+// SensorResponse (0x8002, `xnv`), SensorBatch (0x8003, `xnr`) and SensorError
+// (0x8004, `xns`). 0x8004 here is SensorError, NOT MediaAck: scope every
+// parse by channel id (VideoSinkChannel and InputChannel already do; the 0x04
+// CONTROL frame flag never enters routing -- HANDOFF.md section 9).
+//
+// Provenance: the 26 sensor-type names and their order come from the APK's
+// `xny` enum via the `rvb.j()` dumper (FINDINGS.md section 2), numbered
+// 1-based in that order. The `xnu` field numbers (1, 2) are from the
+// teardown; every other field number below is MA sender-defined -- the
+// teardown never recovered the `xnv`/`xnr`/`xns` layouts. Exact-bytes tests
+// pin OUR numbering so an accidental renumber fails here, not at a DHU that
+// silently ignores us. If the teardown ever recovers those layouts, re-pin
+// this file against them like gal/input.proto.
+//
+// Stub phase (Phase 5): the phone subscribes to LOCATION, NIGHT_MODE, SPEED
+// and DRIVING_STATUS_DATA only -- parked, night-follows-phone, last-known
+// location, speed 0 -- and observes whatever batches come back. Full live
+// values (phone GPS feed, maps wiring) land with Phase 6 maps-dev through
+// the SensorChannel onValues seam.
+
+syntax = "proto2";
+
+package gal;
+
+option java_package = "com.vayunmathur.auto.protocol.gal";
+option java_multiple_files = true;
+
+// `xny`, in dumper order. Names are the FINDINGS.md names, not aasdk's.
+enum SensorType {
+  LOCATION = 1;
+  COMPASS = 2;
+  SPEED = 3;
+  RPM = 4;
+  ODOMETER = 5;
+  FUEL = 6;
+  PARKING_BRAKE = 7;
+  GEAR = 8;
+  OBDII_DIAGNOSTIC_CODE = 9;
+  NIGHT_MODE = 10;
+  ENVIRONMENT_DATA = 11;
+  HVAC_DATA = 12;
+  DRIVING_STATUS_DATA = 13;
+  DEAD_RECKONING_DATA = 14;
+  PASSENGER_DATA = 15;
+  DOOR_DATA = 16;
+  LIGHT_DATA = 17;
+  TIRE_PRESSURE_DATA = 18;
+  ACCELEROMETER_DATA = 19;
+  GYROSCOPE_DATA = 20;
+  GPS_SATELLITE_DATA = 21;
+  TOLL_CARD = 22;
+  VEHICLE_ENERGY_MODEL_DATA = 23;
+  TRAILER_DATA = 24;
+  RAW_VEHICLE_ENERGY_MODEL = 25;
+  RAW_EV_TRIP_SETTINGS = 26;
+}
+
+// 0x8001, phone -> HU: subscribe. `xnu` fields 1-2, from the teardown.
+// Omit the period for the head unit's default rate; -1 unsubscribes (see
+// GalMessage.Sensor.UNSUBSCRIBE_PERIOD).
+message SensorRequest {
+  required SensorType sensor_type = 1;
+  optional int64 min_update_period_ms = 2;
+}
+
+// 0x8002, HU -> phone: subscription answer. MA sender-defined: the teardown
+// recovered the id but not the `xnv` layout. Status 0 means subscribed.
+message SensorResponse {
+  required SensorType sensor_type = 1;
+  optional int32 status = 2;
+}
+
+// 0x8003, HU -> phone: streamed readings. MA sender-defined, same caveat.
+message SensorBatch {
+  repeated SensorEvent events = 1;
+}
+
+// One reading. The declared type attributes the event; the payload present
+// carries the value. An event with no payload is counted but changes no
+// value -- the owner keeps its last-known rather than clobbering it.
+message SensorEvent {
+  required SensorType sensor_type = 1;
+  optional LocationReading location = 2;
+  optional CompassReading compass = 3;
+  optional SpeedReading speed = 4;
+  optional NightReading night = 5;
+  optional DrivingStatusReading driving_status = 6;
+}
+
+message LocationReading {
+  optional int64 latitude_e7 = 1;
+  optional int64 longitude_e7 = 2;
+  optional int32 accuracy_m = 3;
+  optional int64 timestamp_ms = 4;
+}
+
+message CompassReading {
+  optional int32 heading_deg = 1;
+}
+
+message SpeedReading {
+  optional double speed_mps = 1;
+}
+
+message NightReading {
+  optional bool is_night = 1;
+}
+
+message DrivingStatusReading {
+  optional bool parked = 1;
+}
+
+// 0x8004, HU -> phone: a subscription or stream failure. MA sender-defined,
+// same caveat as SensorResponse. Observed, never fatal -- the bring-up and
+// video carry on.
+message SensorError {
+  required SensorType sensor_type = 1;
+  optional int32 status = 2;
+}
