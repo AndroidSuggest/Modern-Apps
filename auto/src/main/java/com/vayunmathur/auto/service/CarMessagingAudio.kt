@@ -3,7 +3,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.vayunmathur.auto.platform.AudioEvent
-import com.vayunmathur.auto.platform.AudioSinkChannel
 import com.vayunmathur.auto.platform.CarTts
 import com.vayunmathur.auto.platform.MessagingAudio
 import com.vayunmathur.auto.platform.MicSourceChannel
