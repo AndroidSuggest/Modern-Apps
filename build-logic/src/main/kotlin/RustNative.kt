@@ -114,6 +114,15 @@ fun Project.rustNativeLib(
 
             inputs.dir("src/main/rust/src")
             inputs.file("src/main/rust/Cargo.toml")
+            // The crate's own build script and whatever it generates from. `:library:ml`'s
+            // build.rs compiles `shaders/*.comp` to SPIR-V and `include_bytes!`s the result, so
+            // a shader edit changes the .so - but without these two the task stays up to date,
+            // cargo is never invoked, and the old SPIR-V ships. That failure is silent and it
+            // makes shader A/B measurements read as "no effect".
+            //
+            // Optional because not every Rust module here has either.
+            file("src/main/rust/build.rs").takeIf { it.isFile }?.let { inputs.file(it) }
+            file("src/main/rust/shaders").takeIf { it.isDirectory }?.let { inputs.dir(it) }
             // Root workspace unified (Cargo.toml + Cargo.lock + rust-toolchain.toml)
             inputs.file(rootProject.file("Cargo.toml"))
             inputs.file(rootProject.file("Cargo.lock"))
