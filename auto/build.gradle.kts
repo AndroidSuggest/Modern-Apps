@@ -16,4 +16,9 @@ dependencies {
     implementation(project(":auto:protocol"))
     // Media3 controller for the Phase 4 now-playing feed from the on-device media session.
     implementation(libs.androidx.media3.session)
+    // Phase 6 maps mirror: CarMapsMirror draws the :library:map basemap
+    // (SurfaceMapRenderer) into the car video path. No maps-app dependency --
+    // the mirror reads the renderer only, and guidance arrives as plain
+    // NavSnapshot data through NavGuidanceMonitor.
+    implementation(project(":library:map"))
 }

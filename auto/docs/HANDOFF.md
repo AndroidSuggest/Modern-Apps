@@ -61,6 +61,90 @@ protocol — nothing to do with the OS or with privileges.
 
 ---
 
+## 10. Phase 6 — Maps mirror + host-vs-mirror decision (maps-dev, task 9)
+
+**Decision: MIRROR. The host stays a prototype.**
+
+The head unit only ever sees our ch2 H.264, so the host path adds a second
+renderer, a service bind and a template round-trip without changing a single
+wire byte. `HostVsMirror.recommend` (pure, JVM-tested in
+`HostVsMirrorTest`) says MIRROR whenever the `:library:map` renderer loads --
+which is every arm64 build -- and only says HOST when the host is fully
+ready (maps car-app service present, projection role held, `app-projected`
+on the classpath) AND the mirror cannot draw at all (no renderer, no
+location). `GearheadHostProbe.probe` gathers those facts on device without
+hard-linking the host stack (`Class.forName`, never an import); its
+one-line verdict feeds this report and the phone debug row, not a live
+switch. Mirror is the session default regardless.
+
+Side-by-side (prototype comparison, no DHU run in this environment):
+
+| | Mirror (`CarMapsMirror`) | Host (`MapsCarAppService`) |
+|---|---|---|
+| Renderer | own `SurfaceMapRenderer`, same archive/tiles as the phone map | car-app host surface via `app-projected` |
+| Wire cost | zero new bytes: pixels ride existing ch2 H.264 | same ch2 H.264 plus service bind + template round-trip |
+| Latency | one Choreographer loop, on-demand frames | host surface callback + our encode on top |
+| Fidelity | full basemap, puck, route, POI; heading-up flat (renderer has no tilt) | `NavigationTemplate` maneuvers + ETA for free |
+| Needs role? | no (offscreen surface, no trusted display) | yes (`SYSTEM_AUTOMOTIVE_PROJECTION` for host bind) |
+| Needs Maps app? | no (renderer only, `:library:map` dep) | yes (`com.vayunmathur.maps` installed with car service) |
+| Fallback | is the fallback | mirror stays fallback even if host prototypes |
+
+What landed (all new files; no other agent's in-flight file touched):
+
+- `auto/protocol/.../MapsGuidance.kt` -- pure `NavSnapshot` shaping:
+  `snapshotFromFix` (decimal degrees to e7), `toSensorEvents` (LOCATION /
+  SPEED / DRIVING_STATUS always, NIGHT only when known so unknown keeps
+  last-known), `toNavStatus` + `encodeNavStatus` (ch10 args + wire render
+  through `NavStatusCodec`). Android-free, JVM-tested in
+  `MapsGuidanceTest` (6 tests).
+- `auto/protocol/.../HostVsMirror.kt` -- pure `HostFacts` / `MirrorFacts`
+  / `recommend` (JVM-tested in `HostVsMirrorTest`, 6 tests).
+- `platform/NavGuidanceMonitor.kt` -- GPS + network fixes into
+  `NavSnapshot`s (last-known seed, motion-heuristic parked, GPS-course
+  bearing above 1 m/s else null cone-off, phone-night read); route
+  guidance overlays through the `RouteProvider` seam (null = idle map).
+  Same "monitor owns its source" shape as `MediaPlaybackMonitor`.
+- `platform/CarMapsMirror.kt` -- `SurfaceMapRenderer` into a caller-owned
+  surface (own renderer beside the encoder's; composition is the
+  bring-up owner's work). Route pushes gated by reference identity, like
+  `NavMapScreen.pushedRoute`. Main-thread marshalled; `setDark` follows
+  the system theme.
+- `platform/GearheadHostProbe.kt` -- on-device fact gathering + one-line
+  verdict (`describe()` / `log()`), no host hard-link.
+- `auto/build.gradle.kts` -- `implementation(project(":library:map"))`
+  for the mirror only.
+
+Guidance hooks for sensors-dev (their channels, their files -- seams only):
+
+- ch7 live values: fold `MapsGuidance.toSensorEvents(snapshot)` through
+  `SensorChannel`'s `onValues` seam into `SensorSnapshot.withEvents`.
+  The monitor's night read duplicates `ProjectionService.isNightNow`
+  deliberately (that file is in-flight); pass the monitor's read in as
+  the `NightSource` so the two agree, and dedup when the tree settles.
+- ch10 turn updates: forward `MapsGuidance.toNavStatus(snapshot)` to
+  `NavStatusChannel.postStatus` as the route advances; the grant-time
+  inactive stub stays the no-guidance state.
+- ch3 TTS: `GuidanceChannel.startStream` / `stopStream` stay audio-dev's;
+  the monitor produces no audio, only the timing (guidanceActive flips)
+  a TTS owner could cue on.
+- ch8 map touches: route through `VideoSinkChannel` /
+  `CarDisplay.injectTouch` like the media card tap -- the mirror draws
+  into its own surface, so pan/zoom needs the service to forward scaled
+  ch8 frames to the mirror's gesture path (not yet wired; the mirror
+  exposes no gesture entry point on purpose until the service owns the
+  composition).
+
+Verdict status: Maps visible + pannable and the guidance stub stable are
+**not yet shown** -- no DHU/ADB in this environment by hygiene rule. The
+JVM leg is green (`:auto:protocol:testDebugUnitTest`); the live leg (DHU
+shows the mirror, ch8 pans it, ch10 posts live turns) needs a DHU + Pixel
+run and belongs to the task 4 (DHU live-verification) owner via the
+`ma-auto-parity` team channel.
+
+---
+
+## 9. Decompiler traps
+
 ## 3. The blocker, precisely — RESOLVED (Tasks 3+6)
 
 DHU *used to* answer our ServiceDiscoveryRequest (control message 5) with
