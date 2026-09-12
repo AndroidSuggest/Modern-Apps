@@ -284,6 +284,13 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
                 "META-INF/LICENSE.md",
                 "META-INF/NOTICE.md",
             )
+            // protoc copies every .proto it compiles into the jar's resources, so any app
+            // depending on a protobuf module ships its schemas plus protobuf's well-known
+            // types - on the order of 100 KB of source that nothing reads. Every protobuf
+            // module here (:appstore via grpc-protobuf-lite, :youpipe:extractor,
+            // :auto:protocol) is lite, and lite never looks at a .proto at runtime; only
+            // full-protobuf descriptor reflection would, and nothing in the repo uses it.
+            excludes += setOf("**/*.proto", "*.proto")
         }
         // Left at the AGP default (false), which stores .so and .dex uncompressed so the
         // platform can mmap them straight out of the APK. MAOS ships these same APKs as
