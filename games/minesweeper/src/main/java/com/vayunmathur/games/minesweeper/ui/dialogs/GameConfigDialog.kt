@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import com.vayunmathur.games.minesweeper.R
 import com.vayunmathur.games.minesweeper.data.BoardSize
 import com.vayunmathur.games.minesweeper.data.Difficulty
@@ -54,23 +55,39 @@ fun GameConfigDialog(
                 verticalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
                 Text(stringResource(R.string.field_size), style = MaterialTheme.typography.labelLarge)
-                SingleChoiceSegmentedButtonRow {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     BoardSize.entries.forEachIndexed { index, value ->
                         SegmentedButton(
                             shape = SegmentedButtonDefaults.itemShape(index, BoardSize.entries.size),
                             onClick = { size = value },
                             selected = size == value,
-                        ) { Text(value.displayName()) }
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(
+                                value.displayName(),
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
                 Text(stringResource(R.string.difficulty), style = MaterialTheme.typography.labelLarge)
-                SingleChoiceSegmentedButtonRow {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     Difficulty.entries.forEachIndexed { index, value ->
                         SegmentedButton(
                             shape = SegmentedButtonDefaults.itemShape(index, Difficulty.entries.size),
                             onClick = { difficulty = value },
                             selected = difficulty == value,
-                        ) { Text(value.displayName()) }
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(
+                                value.displayName(),
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
                 Text(
