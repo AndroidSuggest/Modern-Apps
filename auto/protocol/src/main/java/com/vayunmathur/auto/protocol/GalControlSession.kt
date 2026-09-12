@@ -54,8 +54,10 @@ enum class SessionState {
  */
 class GalControlSession(
     private val engine: SSLEngine,
-    private val deviceName: String,
-    private val deviceBrand: String = deviceName,
+    /** Android `Build.MODEL`, e.g. "Pixel 8". */
+    private val deviceModel: String,
+    /** Android `Build.MANUFACTURER`, e.g. "Google". Defaults for host tests. */
+    private val deviceManufacturer: String = deviceModel,
     private val supportedVersion: GalVersion = VersionNegotiation.SUPPORTED,
 ) {
     var state: SessionState = SessionState.AWAITING_VERSION
@@ -170,11 +172,20 @@ class GalControlSession(
         return listOf(
             OutboundMessage(
                 type = GalMessage.Control.SERVICE_DISCOVERY_REQUEST,
-                // Both name and brand: a head unit rejects the request outright when only
-                // one is set, which shows up as a bare MessageError with no explanation.
+                // Field 5 ONLY, composed exactly as gearhead does it in `jog.run()`:
+                // `Build.MODEL`, with `"$MANUFACTURER "` prepended unless MODEL
+                // already starts with MANUFACTURER (e.g. "Google Pixel 8").
+                // Field 5 (`xoa.g`, hasbit 16) is the only unconditional field;
+                // fields 1-3 (`izu.g/h/i`), 4 (`izu.f`) and 6 (`izu.j`) are sent
+                // only when that state is non-null, which it is not on the DHU
+                // path -- and `jog` nulls them after the first send, so repeats
+                // are field-5-only by construction. A DHU answers anything else
+                // here with a bare MessageError (0xff). Framing is unchanged:
+                // `jbj.k(5)` routes to `o(..., true, ...)` where the `true` is
+                // isEncrypted (izn.a -> 0x08), NOT the CONTROL bit, which stays
+                // clear on this message -- flags FIRST|LAST|ENCRYPTED = 0x0B.
                 payload = ServiceDiscoveryRequest.newBuilder()
-                    .setDeviceName(deviceName)
-                    .setDeviceBrand(deviceBrand)
+                    .setDeviceBrand(composeDiscoveryLabel(deviceModel, deviceManufacturer))
                     .build()
                     .toByteArray(),
                 encrypted = true,
@@ -279,3 +290,13 @@ class GalControlSession(
         return emptyList()
     }
 }
+
+/**
+ * Composes the `ServiceDiscoveryRequest` device label exactly as gearhead does.
+ *
+ * `jog.run()` reads `Build.MANUFACTURER` and `Build.MODEL` and, unless MODEL
+ * already starts with MANUFACTURER, concatenates `MANUFACTURER + " " + MODEL`
+ * (`a.bJ(model, manufacturer, " ")` returns `str2 + str3 + str`).
+ */
+internal fun composeDiscoveryLabel(model: String, manufacturer: String): String =
+    if (model.startsWith(manufacturer)) model else "$manufacturer $model"

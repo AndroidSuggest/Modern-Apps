@@ -48,7 +48,7 @@ class GalConnectionTest {
     }
 
     private fun connection(transport: FakeTransport) =
-        GalConnection(transport, TestTls.context(), deviceName = "Pixel 8")
+        GalConnection(transport, TestTls.context(), deviceModel = "Pixel 8")
 
     /** A control frame exactly as the Desktop Head Unit puts it on the wire. */
     private fun headUnitFrame(type: Int, payload: ByteArray): ByteArray =
@@ -139,7 +139,7 @@ class GalConnectionTest {
         val connection = GalConnection(
             transport,
             TestTls.context(),
-            deviceName = "Pixel 8",
+            deviceModel = "Pixel 8",
             // Named: `trace` is also a trailing lambda, so positional binding here would
             // silently attach this to the wrong parameter.
             onChannelMessage = { received += it },

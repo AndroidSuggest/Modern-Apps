@@ -80,17 +80,32 @@ it is short and not obfuscated beyond names. What it does:
 | 5 | `xoa.g` string | **always** |
 | 6 | `xoa.h` message `xgs` | only if version high enough and `izu.j != null` |
 
-Field 5 is `Build.MODEL`, with `" " + Build.MANUFACTURER` appended when MODEL does not
-already start with MANUFACTURER — e.g. `"Pixel 8 Google"`. It is the **only unconditional
-field**.
+Field 5 is composed from `Build.MANUFACTURER` and `Build.MODEL`: unless MODEL
+already starts with MANUFACTURER, gearhead sends `MANUFACTURER + " " + MODEL`
+(e.g. `"Google Pixel 8"` — manufacturer first, not `"Pixel 8 Google"`). This is
+verified Dalvik ground truth: `disasm_jog.txt` shows `bJ(MODEL, MANUFACTURER,
+" ")` and `a.bJ` returns `str2 + str3 + str`, i.e. MANUFACTURER + " " + MODEL;
+hasbit 16 = field 5 confirmed. It is the **only unconditional field** — `g/h/i`
+come from optional head-unit resource config, `f` from an optional string
+resource, `j` from a version-gated cert string, and `jog` nulls `g/h/i/f` after
+the first send, so every repeat is field-5-only by construction.
 
-It is then sent with `((jbj) obj).k(5, …)`, and `k()` routes to `o(i, msg, true, …)` — the
-`true` is what sets the CONTROL flag. So **gearhead does set `0x04` on this message**, even
-though DHU never sets it on anything it sends.
+It is then sent with `((jbj) obj).k(5, …)`, and `k()` routes to `o(i, msg, true,
+…)` — but `m()` there constructs `new izn(z, false, …)`, and `izn.a` is
+**isEncrypted**, `izn.b` is **isMediaPayload** (see `izn.toString()`:
+"isEncrypted;isMediaPayload;callbackId;maxUnackedDuration", confirmed against
+the disassembled `Lizm;-><init>` and the `Ljbe` flag assembly where
+`Lizm->h`(encrypted)→`0x08` and `Lizm->f`(isControl/canFragment)→`0x04`).
+So the `true` sets the **ENCRYPTED** bit, not CONTROL: gearhead's message-5
+frame is FIRST|LAST|ENCRYPTED = `0x0B` with the CONTROL bit **clear** — same as
+every other control-channel frame both sides send. The earlier "CONTROL on/off"
+experiments were testing a bit neither side ever sets on channel 0; no further
+flag experiments are needed.
 
-**Next thing to try:** send *only* field 5, containing `"$MODEL $MANUFACTURER"` exactly as
-gearhead composes it, with the CONTROL flag set. The current code sends field 4 = `MODEL`
-and field 5 = `MANUFACTURER` with the flag clear, which matches gearhead on neither count.
+**Fix applied (Task 3):** send *only* field 5 containing `"Google Pixel 8"`
+(composed by `composeDiscoveryLabel()` in `GalControlSession.kt`), framing
+unchanged at `0x0B`. The old code sent field 4 = `MODEL` + field 5 =
+`MANUFACTURER`, which matches gearhead on neither count.
 
 If that still fails, capture the decrypted bytes gearhead itself sends: install real Android
 Auto on a phone, point DHU at it through `dhu_relay.py`, and compare. The relay only sees

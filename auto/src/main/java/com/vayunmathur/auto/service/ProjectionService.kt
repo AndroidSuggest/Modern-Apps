@@ -61,8 +61,8 @@ class ProjectionService : Service() {
             val connection = GalConnection(
                 transport = StreamTransport(socket.getInputStream(), socket.getOutputStream()),
                 sslContext = GalCredential.fromAssets(assets),
-                deviceName = Build.MODEL,
-                deviceBrand = Build.MANUFACTURER,
+                deviceModel = Build.MODEL,
+                deviceManufacturer = Build.MANUFACTURER,
                 onChannelMessage = { message -> video?.onMessage(message.type, message.payload) },
                 trace = { Log.d(TAG, it) },
             )

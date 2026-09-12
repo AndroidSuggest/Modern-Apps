@@ -39,8 +39,8 @@ fun isChannelControlMessage(type: Int): Boolean = when (type) {
 class GalConnection(
     private val transport: GalTransport,
     sslContext: SSLContext,
-    deviceName: String,
-    deviceBrand: String = deviceName,
+    deviceModel: String,
+    deviceManufacturer: String = deviceModel,
     private val onChannelMessage: ChannelMessageHandler = ChannelMessageHandler { },
     /**
      * Traces every message and state change. A live session is otherwise opaque, and this

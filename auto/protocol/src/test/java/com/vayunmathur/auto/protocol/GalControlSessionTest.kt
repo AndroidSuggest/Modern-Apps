@@ -15,6 +15,7 @@ import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLEngineResult.HandshakeStatus
 import javax.net.ssl.SSLEngineResult.Status
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -38,7 +39,8 @@ class GalControlSessionTest {
         rootPem = File(assetDir, "root.pem").readText(),
     )
 
-    private fun session(engine: SSLEngine) = GalControlSession(engine, deviceName = "Pixel 8")
+    private fun session(engine: SSLEngine) =
+        GalControlSession(engine, deviceModel = "Pixel 8", deviceManufacturer = "Google")
 
     @Test
     fun `a full bring-up reaches ACTIVE with the head unit's services`() {
@@ -78,10 +80,10 @@ class GalControlSessionTest {
         ).single()
         assertEquals(GalMessage.Control.SERVICE_DISCOVERY_REQUEST, discovery.type)
         assertTrue(discovery.encrypted, "everything after auth is wrapped")
-        assertEquals(
-            "Pixel 8",
-            ServiceDiscoveryRequest.parseFrom(discovery.payload).deviceName,
-        )
+        // Field 5 only, composed exactly as gearhead does: MANUFACTURER + " " + MODEL.
+        val request = ServiceDiscoveryRequest.parseFrom(discovery.payload)
+        assertEquals("Google Pixel 8", request.deviceBrand)
+        assertEquals(false, request.hasDeviceName())
         assertEquals(SessionState.DISCOVERING, session.state)
 
         // 4. The head unit advertises; we consume.
@@ -147,6 +149,30 @@ class GalControlSessionTest {
 
         assertEquals(SessionState.CLOSED, session.state)
         assertTrue(session.failure!!.contains("discovery floor"))
+    }
+
+    @Test
+    fun `the discovery label matches gearhead's composition`() {
+        // `jog.run()`: MODEL with "$MANUFACTURER " prepended unless MODEL already
+        // starts with MANUFACTURER. `a.bJ(model, manufacturer, " ")` returns
+        // str2 + str3 + str, i.e. MANUFACTURER + " " + MODEL.
+        assertEquals("Google Pixel 8", composeDiscoveryLabel("Pixel 8", "Google"))
+        assertEquals("Google Pixel 8 Pro", composeDiscoveryLabel("Pixel 8 Pro", "Google"))
+        assertEquals("GooglePixel", composeDiscoveryLabel("GooglePixel", "Google"))
+    }
+
+    @Test
+    fun `the discovery request pins field 5 alone on the wire`() {
+        // Field 5 = length-delimited string: tag 0x2A, then length, then bytes.
+        // "Google Pixel 8" is 14 bytes, so the whole request is 16 bytes.
+        val expected = byteArrayOf(0x2A, 0x0E) + "Google Pixel 8".toByteArray()
+        assertContentEquals(
+            expected,
+            ServiceDiscoveryRequest.newBuilder()
+                .setDeviceBrand(composeDiscoveryLabel("Pixel 8", "Google"))
+                .build()
+                .toByteArray(),
+        )
     }
 
     @Test
