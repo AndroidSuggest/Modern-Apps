@@ -233,6 +233,22 @@ class GalControlSessionTest {
         assertNotNull(session.failure)
     }
 
+    @Test
+    fun `a message error is observed, not fatal`() {
+        // Live DHU behaviour: the head unit 0xff's a message it rejects while the
+        // transport stays healthy (pings keep flowing). gearhead's `izu` logs it
+        // and carries on; only framing errors tear down. The session must survive
+        // so the bring-up can continue on the remaining channels.
+        val session = session(GalCredential.serverEngine(context()))
+        session.onMessage(GalMessage.Control.VERSION_REQUEST, versionRequest(1, 6))
+
+        val replies = session.onMessage(GalMessage.Control.MESSAGE_ERROR, byteArrayOf())
+
+        assertTrue(replies.isEmpty())
+        assertEquals(SessionState.HANDSHAKING, session.state)
+        assertNull(session.failure)
+    }
+
     // ---- helpers ----
 
     private fun versionRequest(major: Int, minor: Int): ByteArray =

@@ -105,6 +105,15 @@ class GalControlSession(
         GalMessage.Control.PING_RESPONSE,
         -> emptyList()
 
+        // The head unit's rejection of one of our messages. Observed, not fatal:
+        // gearhead's `izu` logs it (`ai(1698)`) and carries on, and channel-level
+        // errors are per-channel (`iza` answers 0xff on the channel itself). The
+        // transport stays alive -- pings keep flowing -- so the session must too.
+        // The payload names the offending message; the trace in GalConnection
+        // prints it. Killing the session here is what turned a recoverable
+        // per-message rejection into a dead bring-up.
+        GalMessage.Control.MESSAGE_ERROR -> emptyList()
+
         else -> fail("unexpected control message type 0x${type.toString(16)}")
     }
 
