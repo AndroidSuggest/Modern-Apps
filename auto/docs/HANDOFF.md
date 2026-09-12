@@ -149,6 +149,7 @@ Protocol bring-up commits (Tasks 3+6), all pathspec-limited so other agents'
 work was never swept in:
 
 ```
+52e64a7b2 maauto: show car Presentation on main thread
 86039cc7c maauto: clear CONTROL on service-channel sends
 200b2c92b maauto: frame channel-open on its target channel
 572de7515 maauto: fail TLS wrap on zero progress, fix tests
