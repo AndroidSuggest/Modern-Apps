@@ -1,0 +1,106 @@
+package com.vayunmathur.auto.protocol
+
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+
+/** A message reassembled from one or more frames, ready for [MessageCodec.decode]. */
+class ReassembledMessage(
+    val channelId: Int,
+    val isControl: Boolean,
+    val payload: ByteArray,
+)
+
+/**
+ * Turns a byte stream into whole GAL messages.
+ *
+ * Feed it whatever the transport hands over — the boundaries are arbitrary and a single
+ * read can contain half a header or several frames — and it emits messages once their last
+ * fragment arrives.
+ *
+ * Decryption happens per frame, before reassembly, which is the order gearhead uses: the
+ * frame's length field counts ciphertext, while the reassembly buffer accumulates plaintext.
+ * Getting that backwards would size the buffer against the wrong number.
+ *
+ * @param decrypt unwraps one frame payload. The default is identity, for the plaintext
+ *   frames exchanged before the TLS handshake completes and for tests.
+ */
+class FrameReader(
+    private val decrypt: (ByteArray) -> ByteArray = { it },
+) {
+    private var pending = ByteBuffer.allocate(0)
+    private val partial = mutableMapOf<Int, ByteArrayOutputStream>()
+
+    /** Appends [count] bytes from [bytes] and returns whatever became complete. */
+    fun offer(bytes: ByteArray, offset: Int = 0, count: Int = bytes.size): List<ReassembledMessage> {
+        append(bytes, offset, count)
+        val completed = mutableListOf<ReassembledMessage>()
+        while (true) {
+            completed += takeFrame() ?: break
+        }
+        return completed
+    }
+
+    private fun append(bytes: ByteArray, offset: Int, count: Int) {
+        val combined = ByteBuffer.allocate(pending.remaining() + count)
+        combined.put(pending)
+        combined.put(bytes, offset, count)
+        combined.flip()
+        pending = combined
+    }
+
+    /**
+     * Consumes one frame if a whole one is buffered.
+     *
+     * @return the message if that frame completed one, null if more bytes are needed or the
+     *   frame was a non-final fragment.
+     */
+    private fun takeFrame(): ReassembledMessage? {
+        if (pending.remaining() < FrameHeader.SHORT_HEADER_SIZE) return null
+
+        pending.mark()
+        val header = FrameHeader.readFrom(pending)
+        if (pending.remaining() < header.payloadLength) {
+            // Not all here yet; rewind and wait for more.
+            pending.reset()
+            return null
+        }
+
+        val raw = ByteArray(header.payloadLength)
+        pending.get(raw)
+        compact()
+
+        val plaintext = if (header.isEncrypted) decrypt(raw) else raw
+
+        if (header.isFirst && header.isLast) {
+            return ReassembledMessage(header.channelId, header.isControl, plaintext)
+        }
+
+        // `totalLength` is only a capacity hint. The stream grows as needed rather than
+        // trusting it, because the field counts one of plaintext or ciphertext depending on
+        // where you read it and being wrong there would truncate a message.
+        val buffer = partial.getOrPut(header.channelId) {
+            ByteArrayOutputStream(header.totalLength ?: plaintext.size)
+        }
+        buffer.write(plaintext)
+
+        if (!header.isLast) return null
+        partial.remove(header.channelId)
+        return ReassembledMessage(header.channelId, header.isControl, buffer.toByteArray())
+    }
+
+    /** Drops consumed bytes so [pending] does not grow without bound. */
+    private fun compact() {
+        pending = if (pending.hasRemaining()) {
+            ByteBuffer.allocate(pending.remaining()).put(pending).also { it.flip() }
+        } else {
+            EMPTY
+        }
+    }
+
+    /** True when a fragmented message is still being assembled on some channel. */
+    val hasPartialMessages: Boolean get() = partial.isNotEmpty()
+
+    private companion object {
+        val EMPTY: ByteBuffer = ByteBuffer.allocate(0)
+    }
+}
