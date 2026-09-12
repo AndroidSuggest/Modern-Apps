@@ -274,6 +274,53 @@ also has a remote-provisioning path (`rvf`, fed by six phenotype flags), so the 
 could stop being accepted before that date. Keep `extract_key.py` working so it can be
 re-extracted from a newer gearhead.
 
+### Expiry surfacing (Phase 8, landed)
+
+The phone status screen shows the leaf's remaining validity, parsed at runtime so it
+stays correct across a rotation with no code change: `GalCredential.daysRemaining()`
+(`CertificateFactory`, pure JVM — `auto/protocol` stays Android-free) →
+`ProjectionService.publishCredentialExpiry()` seeds `AutoSessionState.credentialDaysLeft`
+once per service start (never reset per session; the credential outlives connections) →
+`AutoViewModel` → `SessionSnapshot.credentialDaysLeft` → `SessionCard.CredentialRow`.
+Quiet day-count while far out, escalating warnings at 90 / 30 / 7 days, expired notice
+at zero; all text in `strings.xml` (`session_credential_*`, plurals per CONTRIBUTING.md).
+
+### Renewal decision: re-extract, not rvf (Phase 8)
+
+`rvg(Context)` reads six phenotype flags (`adbo.gu()` `a`–`f`): a cert PEM, an encrypted
+key blob and a salt, each paired with a SHA-1 checksum, and builds `rvf` from them instead
+of the hardcoded `rvd` when all three validate (`rvg.java:38-54`). `rvf` itself is a trivial
+`rvh` holder — cert string, key blob, salt — decrypted by the same `rth`/`jca` path.
+
+That path is Google's own rotation channel **into the genuine gearhead app**, not something
+a third-party sender can tap: the phenotype values are delivered server-side to Google's
+package, and we have no way to fetch or inject them. So `rvf` is unusable to us by
+construction, regardless of what cert it would carry. **Recommendation: re-extract from
+each new gearhead release.** `extract_key.py` is pinned to the 17.5.663214 decompile
+(`rvg`/`rvd`/`rth` class names and array shapes); if a newer gearhead renames those
+families the script needs re-pinning to the new names, then `verify_tls.sh` re-proves the
+triple before it ships. Not yet re-run against a newer APK here — that needs a current
+gearhead pull plus `jadx` and the `openssl` CLI, none of which this environment had.
+
+### Rotation runbook
+
+1. Pull the current gearhead APK and re-run `analysis/maauto/extract_key.py`. On
+   `MATCH`, it writes `analysis/maauto/certs/` (`gal-client-cert.pem`,
+   `gal-client-key.pem`, `gal-root.pem`).
+2. Run `analysis/maauto/verify_tls.sh`: chain verifies against the GAL root, key
+   modulus equals cert modulus, TLS 1.2 mutual-auth handshake returns 0 (ok).
+3. Swap the three files under `auto/protocol/src/main/assets/gal/` — same names, same
+   PEM formats (`BEGIN CERTIFICATE` leaf + root, PKCS#8 `BEGIN PRIVATE KEY`). No code
+   change: `GalCredential.create()` parses whatever ships, and the session card reads
+   the new expiry at the next service start.
+4. Run `:auto:protocol:testDebugUnitTest` — `GalCredentialRotationTest` proves the
+   fixture-swap shape (fresh CA + leaf + key through `create()` into a mutual-auth
+   handshake), and `GalCredentialTest` re-proves the shipped triple.
+5. Live leg: full DHU handshake per §6 with the rotated PEMs in place. Needs DHU +
+   Pixel access — coordinate with the task 4 (DHU live-verification) owner via the
+   `ma-auto-parity` team channel; the JVM leg above is the most that can be shown
+   without it.
+
 ---
 
 ## 8. Suggested order from here

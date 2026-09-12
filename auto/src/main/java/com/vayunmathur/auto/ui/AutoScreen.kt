@@ -39,6 +39,7 @@ fun AutoScreen(viewModel: AutoViewModel) {
         avgEncodeLatencyUs = viewModel.avgEncodeLatencyUs.collectAsStateWithLifecycle().value,
         encoderDrains = viewModel.encoderDrains.collectAsStateWithLifecycle().value,
         surfaceValid = viewModel.surfaceValid.collectAsStateWithLifecycle().value,
+        credentialDaysLeft = viewModel.credentialDaysLeft.collectAsStateWithLifecycle().value,
         sessionStartedAt = viewModel.sessionStartedAt.collectAsStateWithLifecycle().value,
     )
     val scrollBehavior = appBarScrollBehavior()
@@ -89,6 +90,8 @@ data class SessionSnapshot(
     val encoderDrains: Long,
     /** Whether the virtual display + encoder input surface pair is up. */
     val surfaceValid: Boolean,
+    /** Whole days until the shipped GAL leaf expires; null until the service seeds it. */
+    val credentialDaysLeft: Long?,
     val sessionStartedAt: Long?,
 )
 

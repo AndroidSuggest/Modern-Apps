@@ -79,6 +79,38 @@
     <string name="session_surface_valid">Valid</string>
     <!-- Shown on the session card when the render pair is down or not yet up. -->
     <string name="session_surface_invalid">Down</string>
+    <!-- Heading of the row showing how long the GAL client certificate is still valid. -->
+    <string name="session_credential">Certificate</string>
+    <!-- Shown on the session card while the GAL leaf expiry has not been read yet,
+         for example before the projection service starts. -->
+    <string name="session_credential_unknown">Expiry unknown</string>
+    <!-- Days of GAL leaf validity left, shown while comfortably far from expiry.
+         %1$d is whole days remaining. -->
+    <plurals name="session_credential_days">
+        <item quantity="one"><xliff:g example="120" id="days">%1$d</xliff:g> day left</item>
+        <item quantity="other"><xliff:g example="120" id="days">%1$d</xliff:g> days left</item>
+    </plurals>
+    <!-- Warning shown on the session card once the GAL leaf has 90 or fewer days left.
+         %1$d is whole days remaining. -->
+    <plurals name="session_credential_warning">
+        <item quantity="one">Renew soon — <xliff:g example="45" id="days">%1$d</xliff:g> day left</item>
+        <item quantity="other">Renew soon — <xliff:g example="45" id="days">%1$d</xliff:g> days left</item>
+    </plurals>
+    <!-- Urgent warning shown on the session card once the GAL leaf has 30 or fewer
+         days left. %1$d is whole days remaining. -->
+    <plurals name="session_credential_urgent">
+        <item quantity="one">Expiring — <xliff:g example="12" id="days">%1$d</xliff:g> day left</item>
+        <item quantity="other">Expiring — <xliff:g example="12" id="days">%1$d</xliff:g> days left</item>
+    </plurals>
+    <!-- Final warning shown on the session card in the last 7 days of GAL leaf
+         validity. %1$d is whole days remaining. -->
+    <plurals name="session_credential_critical">
+        <item quantity="one">Expires in <xliff:g example="3" id="days">%1$d</xliff:g> day — re-extract the credential</item>
+        <item quantity="other">Expires in <xliff:g example="3" id="days">%1$d</xliff:g> days — re-extract the credential</item>
+    </plurals>
+    <!-- Shown on the session card once the GAL leaf has expired. Projection stops
+         working until the credential is rotated; see the handoff rotation runbook. -->
+    <string name="session_credential_expired">Expired — projection needs a new credential</string>
     <!-- Heading of the row showing how long the session has been active. -->
     <string name="session_elapsed">Session time</string>
     <!-- Shown when there is no active session to time. -->

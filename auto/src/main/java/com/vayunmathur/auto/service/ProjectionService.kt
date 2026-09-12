@@ -38,6 +38,7 @@ class ProjectionService : Service() {
         if (running) return START_STICKY
         running = true
         startForeground(NOTIFICATION_ID, notification())
+        publishCredentialExpiry()
         worker = thread(name = "ma-auto-projection") { serve() }
         return START_STICKY
     }
@@ -102,6 +103,23 @@ class ProjectionService : Service() {
     }
 
     private var video: VideoSinkChannel? = null
+
+    /**
+     * Seeds the credential-expiry flow once per service start, off the pump thread.
+     *
+     * Reads the shipped leaf through the public asset constant, so a rotation that
+     * swaps the PEMs updates the session card with no code change. On parse
+     * failure the flow stays null (unknown) instead of failing the service.
+     */
+    private fun publishCredentialExpiry() {
+        runCatching {
+            assets.open(GalCredential.CERT_ASSET).use { it.readBytes().decodeToString() }
+        }.onSuccess { certPem ->
+            AutoSessionState.onCredentialExpiry(GalCredential.daysRemaining(certPem))
+        }.onFailure {
+            Log.w(TAG, "could not read GAL leaf expiry", it)
+        }
+    }
 
     /**
      * Opens the next not-yet-attempted advertised service, in the HU's wire order.

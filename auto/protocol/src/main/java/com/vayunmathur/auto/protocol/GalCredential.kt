@@ -41,6 +41,9 @@ object GalCredential {
     /** Keystore alias for the GAL root, matching gearhead's. */
     private const val ROOT_ALIAS = "GAL"
 
+    /** Millis in a day; expiry is day-granular, so truncation, not rounding, is correct. */
+    private const val DAY_MS = 86_400_000L
+
     /**
      * Builds the TLS context from PEM text.
      *
@@ -98,6 +101,26 @@ object GalCredential {
         useClientMode = false
         needClientAuth = true
     }
+
+    /**
+     * Millis since the epoch at which the leaf in [certPem] stops being valid.
+     *
+     * Pure JVM (`CertificateFactory`, no Android), so expiry surfacing stays correct
+     * after a rotation without any code change — the UI reads whatever leaf ships.
+     */
+    fun notAfterMillis(certPem: String): Long {
+        val leaf = CertificateFactory.getInstance("X.509").generateCertificate(
+            ByteArrayInputStream(certPem.toByteArray()),
+        ) as X509Certificate
+        return leaf.notAfter.time
+    }
+
+    /**
+     * Whole days from [nowMillis] until the leaf in [certPem] expires, truncated
+     * (a cert expiring in 30 days 23 hours reports 30). Negative once expired.
+     */
+    fun daysRemaining(certPem: String, nowMillis: Long = System.currentTimeMillis()): Long =
+        (notAfterMillis(certPem) - nowMillis) / DAY_MS
 
     private fun parsePrivateKey(pem: String): PrivateKey {
         val body = pem

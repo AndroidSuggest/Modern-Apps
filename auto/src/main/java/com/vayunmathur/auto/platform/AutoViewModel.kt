@@ -59,9 +59,13 @@ class AutoViewModel : ViewModel() {
     val encoderDrains: StateFlow<Long> = AutoSessionState.encoderDrains
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), 0L)
 
-    /** Whether the virtual display + encoder input surface pair is currently up. */
+    /** Whether the virtual display + encoder input surface pair is up. */
     val surfaceValid: StateFlow<Boolean> = AutoSessionState.surfaceValid
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
+
+    /** Whole days until the shipped GAL leaf expires; null until the service seeds it. */
+    val credentialDaysLeft: StateFlow<Long?> = AutoSessionState.credentialDaysLeft
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
 
     val sessionStartedAt: StateFlow<Long?> = AutoSessionState.sessionStartedAt
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)

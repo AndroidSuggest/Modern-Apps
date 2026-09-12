@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.auto.R
 import com.vayunmathur.library.ui.Card
@@ -106,8 +107,52 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
                 },
             )
             SessionElapsedRow(sessionStartedAt = session.sessionStartedAt)
+            CredentialRow(daysLeft = session.credentialDaysLeft)
         }
     }
+}
+
+/**
+ * GAL leaf expiry: quiet count while far out, escalating warnings at 90/30/7 days,
+ * expired notice at zero. Thresholds live here next to the rows they drive so a
+ * rotation of the warning policy is one edit.
+ */
+@Composable
+private fun CredentialRow(daysLeft: Long?) {
+    if (daysLeft == null) {
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.session_credential)) },
+            supportingContent = { Text(stringResource(R.string.session_credential_unknown)) },
+        )
+        return
+    }
+    val text = when {
+        daysLeft < 0 -> stringResource(R.string.session_credential_expired)
+        daysLeft <= CRITICAL_DAYS -> pluralStringResource(
+            R.plurals.session_credential_critical,
+            daysLeft.coerceToQuantity(),
+            daysLeft,
+        )
+        daysLeft <= URGENT_DAYS -> pluralStringResource(
+            R.plurals.session_credential_urgent,
+            daysLeft.coerceToQuantity(),
+            daysLeft,
+        )
+        daysLeft <= WARNING_DAYS -> pluralStringResource(
+            R.plurals.session_credential_warning,
+            daysLeft.coerceToQuantity(),
+            daysLeft,
+        )
+        else -> pluralStringResource(
+            R.plurals.session_credential_days,
+            daysLeft.coerceToQuantity(),
+            daysLeft,
+        )
+    }
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_credential)) },
+        supportingContent = { Text(text) },
+    )
 }
 
 /**
@@ -161,3 +206,19 @@ private fun formatElapsed(millis: Long): String {
     val totalSeconds = (millis.coerceAtLeast(0) / 1000).toInt()
     return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 }
+
+/** Days of GAL leaf validity left at which the session card starts warning. */
+private const val WARNING_DAYS = 90L
+
+/** Days left at which the warning turns urgent. */
+private const val URGENT_DAYS = 30L
+
+/** Days left at which the warning names re-extraction explicitly. */
+private const val CRITICAL_DAYS = 7L
+
+/**
+ * Quantity for the day-count plurals. Count is always non-negative here (expiry
+ * is handled above) and far below [Int.MAX_VALUE]; the clamp is belt-and-braces
+ * against a raw `toInt` silently wrapping on absurd input.
+ */
+private fun Long.coerceToQuantity(): Int = coerceIn(0, Int.MAX_VALUE.toLong()).toInt()

@@ -149,6 +149,20 @@ object AutoSessionState {
     private val _sessionStartedAt = MutableStateFlow<Long?>(null)
     val sessionStartedAt: StateFlow<Long?> = _sessionStartedAt.asStateFlow()
 
+    /**
+     * Whole days until the shipped GAL leaf expires, parsed at runtime from the
+     * PEM so it stays correct across a rotation. Null until the service seeds it
+     * (or when the leaf cannot be parsed). Deliberately outside [resetTelemetry]:
+     * the credential outlives any one session.
+     */
+    private val _credentialDaysLeft = MutableStateFlow<Long?>(null)
+    val credentialDaysLeft: StateFlow<Long?> = _credentialDaysLeft.asStateFlow()
+
+    /** Records the days remaining on the shipped GAL leaf; see [credentialDaysLeft]. */
+    fun onCredentialExpiry(daysLeft: Long) {
+        _credentialDaysLeft.value = daysLeft
+    }
+
     /** A socket was accepted; version negotiation and the TLS handshake are next. */
     fun onSocketAccepted() {
         _video.value = null
