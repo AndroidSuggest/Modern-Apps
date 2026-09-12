@@ -151,4 +151,44 @@
     <string name="car_now_playing_unknown_artist">Unknown artist</string>
     <!-- Shown on the car display when no launchable apps were found on the phone. -->
     <string name="car_no_apps">No apps available — install Maps or Music to get started</string>
+
+    <!-- Heading of the session-card row showing the system sink (ch4, transient TTS/pings). -->
+    <string name="session_audio_sys">System audio</string>
+    <!-- Heading of the session-card row showing the media sink (ch5, music). -->
+    <string name="session_audio_media">Media audio</string>
+    <!-- Shown for a sink whose channel has not opened yet this session. -->
+    <string name="session_audio_sink_none">No channel yet</string>
+    <!-- Shown for a sink whose discovery cannot carry PCM (non-PCM codec or no sane
+         config); the sink is parked, never started. -->
+    <string name="session_audio_sink_unsupported">Unsupported — parked</string>
+    <!-- Shown for a sink that claimed its channel but has not started streaming. -->
+    <string name="session_audio_sink_idle">Idle</string>
+    <!-- Shown for a streaming sink. %1$s is the arbitrated gain ("Full", "Ducked"). -->
+    <string name="session_audio_sink_streaming">Streaming (<xliff:g example="Full" id="gain">%1$s</xliff:g>)</string>
+    <!-- Heading of the session-card row counting PCM bytes framed out on ch4/5. -->
+    <string name="session_audio_bytes">Audio bytes</string>
+    <!-- %1$d is PCM bytes framed out this session. -->
+    <string name="session_audio_bytes_value"><xliff:g example="48000" id="bytes">%1$d</xliff:g></string>
+    <!-- Heading of the session-card row counting ch6 mic turns and acks. -->
+    <string name="session_audio_mic">Car mic</string>
+    <!-- %1$d is mic turns that yielded PCM, %2$d is chunks acked upstream. -->
+    <string name="session_audio_mic_value"><xliff:g example="2" id="turns">%1$d</xliff:g> turns / <xliff:g example="140" id="acks">%2$d</xliff:g> acked</string>
+    <!-- Heading of the session-card row counting TTS utterances that reached the car. -->
+    <string name="session_audio_tts">Car TTS</string>
+    <!-- %1$d is utterances spoken on the car speakers this session. -->
+    <string name="session_audio_tts_value"><xliff:g example="3" id="count">%1$d</xliff:g></string>
+
+    <!-- Heading of the card gating car-mic voice retention on the microphone permission. -->
+    <string name="mic_headline">Car microphone</string>
+    <!-- Explains that the mic channel acks regardless, but keeping a voice turn
+         needs the grant; without it the phone retains nothing. -->
+    <string name="mic_body">The car microphone streams through this phone during voice replies. Allowing microphone access lets MA Auto keep a reply turn for transcription; without it, turns are acknowledged but never stored.</string>
+    <!-- Row showing the microphone permission state. -->
+    <string name="mic_permission">Microphone access</string>
+    <!-- Shown when the microphone permission is granted. -->
+    <string name="mic_permission_granted">Allowed — voice replies can be transcribed</string>
+    <!-- Shown when the microphone permission is not granted. -->
+    <string name="mic_permission_missing">Not allowed — voice replies are acknowledged but not kept</string>
+    <!-- Button requesting the microphone permission. -->
+    <string name="mic_allow">Allow</string>
 </resources>

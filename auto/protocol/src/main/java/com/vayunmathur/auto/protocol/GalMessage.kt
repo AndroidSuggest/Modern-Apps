@@ -95,6 +95,15 @@ object GalMessage {
         /** A [SENSOR_REQUEST] with this update period unsubscribes instead. */
         const val UNSUBSCRIBE_PERIOD = -1L
     }
+
+    /**
+     * Audio sink sync pulse (services 4/5). The head unit answers setup/start
+     * with a no-payload 0x800B from the shared `jdk` sink table; presumed
+     * stream sync, observed and counted but never answered.
+     */
+    object Audio {
+        const val SYNC = 0x800B
+    }
 }
 
 /**

@@ -15,6 +15,10 @@
          accessory only when one is physically attached and permission-granted, so the USB
          filter below does not satisfy it on its own. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Retaining a car-mic voice turn for transcription. The ch6 channel
+         itself needs no permission (chunks are acked and counted regardless);
+         without this grant the phone keeps no voice data (fail-closed). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- The car launcher resolves Maps / Music / dialer through PackageManager. Android 11+
          hides other apps by default, so these queries keep those lookups visible. The media
