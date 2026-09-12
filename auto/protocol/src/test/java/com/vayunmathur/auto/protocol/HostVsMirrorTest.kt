@@ -62,7 +62,7 @@ class HostVsMirrorTest {
     }
 
     @Test
-    fun `location alone keeps the mirror: last-known still draws a map`() {
+    fun `location alone keeps the mirror - last-known still draws a map`() {
         val noRendererButLocated = MirrorFacts(
             rendererPresent = false,
             locationAvailable = true,
