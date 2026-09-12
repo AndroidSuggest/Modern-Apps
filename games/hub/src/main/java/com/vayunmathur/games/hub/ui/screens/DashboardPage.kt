@@ -62,6 +62,7 @@ fun DashboardPage(
     DashboardScreen(
         state = DashboardUiState(
             playerName = profile?.displayName,
+            avatarSymbol = profile?.avatarSymbol,
             level = level,
             title = title,
             totalXp = xp,

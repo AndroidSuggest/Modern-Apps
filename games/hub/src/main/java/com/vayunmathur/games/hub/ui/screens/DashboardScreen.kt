@@ -21,8 +21,8 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.hub.R
 import com.vayunmathur.games.hub.data.entities.HubGameEntity
 import com.vayunmathur.games.hub.ui.components.ActivityItemCard
+import com.vayunmathur.games.hub.ui.components.AvatarBadge
 import com.vayunmathur.games.hub.ui.components.GameCard
-import com.vayunmathur.games.hub.ui.components.LevelBadge
 import com.vayunmathur.games.hub.ui.components.StatCard
 import com.vayunmathur.games.hub.ui.components.StreakCard
 import com.vayunmathur.games.hub.ui.components.XpProgressBar
@@ -71,7 +71,7 @@ fun DashboardScreen(
             item {
                 Card(onClick = actions::openProfile, modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        LevelBadge(level = state.level, large = true)
+                        AvatarBadge(symbol = state.avatarSymbol, large = true)
                         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(text = state.playerName ?: stringResource(R.string.player), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(text = state.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)

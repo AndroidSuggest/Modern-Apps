@@ -22,6 +22,7 @@ import com.vayunmathur.games.hub.viewmodel.CrossGameStats
 /** What the dashboard draws. `playerName` is null until the profile row loads. */
 data class DashboardUiState(
     val playerName: String? = null,
+    val avatarSymbol: String? = null,
     val level: Int = 1,
     val title: String = "Beginner",
     val totalXp: Int = 0,

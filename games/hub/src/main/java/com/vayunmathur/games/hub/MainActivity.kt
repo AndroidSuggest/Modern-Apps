@@ -14,9 +14,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.games.hub.ui.components.AvatarIcon
 import com.vayunmathur.library.ui.IconDashboard
 import com.vayunmathur.library.ui.IconEmojiEvents
-import com.vayunmathur.library.ui.IconPerson
 import com.vayunmathur.library.ui.IconSportsEsports
 import com.vayunmathur.library.ui.PagerTab
 import com.vayunmathur.library.ui.TabStyle
@@ -134,6 +135,7 @@ private fun HubTabs(
 ) {
     val pagerState = rememberPagerState(pageCount = { 4 })
     val scope = rememberCoroutineScope()
+    val profile by viewModel.profileFlow.collectAsStateWithLifecycle()
     // Home and Games are adjacent pages showing the same games (recentlyPlayed is a subset of the
     // full list), and the pager composes both while a swipe is in flight - so "hub-game-<id>" would
     // have two live origins. settledPage rather than currentPage: currentPage flips at the halfway
@@ -161,7 +163,7 @@ private fun HubTabs(
         PagerTab("Achievements", { IconEmojiEvents() }) {
             AchievementsScreen(viewModel = viewModel)
         },
-        PagerTab("Profile", { IconPerson() }) {
+        PagerTab("Profile", { AvatarIcon(symbol = profile?.avatarSymbol) }) {
             ProfilePage(viewModel = viewModel)
         },
     )

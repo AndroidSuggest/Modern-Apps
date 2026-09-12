@@ -23,7 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.hub.R
-import com.vayunmathur.games.hub.ui.components.LevelBadge
+import com.vayunmathur.games.hub.ui.components.AvatarBadge
+import com.vayunmathur.games.hub.ui.components.AvatarIcon
 import com.vayunmathur.games.hub.ui.components.StatCard
 import com.vayunmathur.games.hub.ui.components.XpProgressBar
 import com.vayunmathur.games.hub.util.ProfileActions
@@ -61,10 +62,9 @@ fun ProfileScreen(
     var editName by remember { mutableStateOf("") }
     var selectedAvatar by remember { mutableStateOf<String?>(null) }
 
-    if (showEditDialog && editName.isEmpty() && state.playerName != null) {
-        editName = state.playerName
-        selectedAvatar = state.avatarSymbol
-    }
+    // Initialised from saved state when the dialog is opened (see the edit
+    // IconButton below); while open, editName is purely local so clearing the
+    // field stays empty until save, which validates with isNotBlank().
 
     AppScaffold(
         title = {},
@@ -81,7 +81,7 @@ fun ProfileScreen(
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(24.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        LevelBadge(level = state.level, large = true)
+                        AvatarBadge(symbol = state.avatarSymbol, large = true)
                         Text(text = state.playerName ?: stringResource(R.string.player), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                         Text(text = state.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                         Text(stringResource(R.string.level_1, state.level), style = MaterialTheme.typography.labelLarge)
@@ -135,7 +135,7 @@ fun ProfileScreen(
                         Text(stringResource(R.string.avatar), style = MaterialTheme.typography.labelMedium)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(avatarOptions) { sym ->
-                                FilterChip(selected = selectedAvatar == sym, onClick = { selectedAvatar = if (selectedAvatar == sym) null else sym }, label = { Text(sym) })
+                                FilterChip(selected = selectedAvatar == sym, onClick = { selectedAvatar = if (selectedAvatar == sym) null else sym }, label = { Text(sym) }, leadingIcon = { AvatarIcon(symbol = sym) })
                             }
                         }
                     }
