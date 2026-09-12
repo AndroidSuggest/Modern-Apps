@@ -129,6 +129,10 @@ object AutoSessionState {
     private val _surfaceValid = MutableStateFlow(false)
     val surfaceValid: StateFlow<Boolean> = _surfaceValid.asStateFlow()
 
+    /** Latest now-playing snapshot from the on-device media session; null until one reports. */
+    private val _nowPlaying = MutableStateFlow<NowPlayingInfo?>(null)
+    val nowPlaying: StateFlow<NowPlayingInfo?> = _nowPlaying.asStateFlow()
+
     /**
      * Send/ack timestamps backing the fps windows. Mutated only on the
      * `ma-auto-projection` worker thread (every entry point above runs there),
@@ -167,6 +171,7 @@ object AutoSessionState {
     fun onSocketAccepted() {
         _video.value = null
         _focusMode.value = null
+        _nowPlaying.value = null
         _framesSent.value = 0
         _acksSeen.value = 0
         _ackMismatches.value = 0
@@ -191,6 +196,7 @@ object AutoSessionState {
         _connection.value = AutoConnectionState.Disconnected
         _video.value = null
         _focusMode.value = null
+        _nowPlaying.value = null
         _sessionStartedAt.value = null
         resetTelemetry()
     }
@@ -253,6 +259,13 @@ object AutoSessionState {
             }
             is VideoEvent.EncoderDrained -> _encoderDrains.value++
             is VideoEvent.SurfaceChanged -> _surfaceValid.value = event.valid
+        }
+    }
+
+    /** Records a media snapshot. Thread-safe like every other flow write here. */
+    fun onMediaEvent(event: MediaEvent) {
+        when (event) {
+            is MediaEvent.NowPlayingChanged -> _nowPlaying.value = event.info
         }
     }
 

@@ -17,7 +17,9 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
     <!-- The car launcher resolves Maps / Music / dialer through PackageManager. Android 11+
-         hides other apps by default, so these queries keep those lookups visible. -->
+         hides other apps by default, so these queries keep those lookups visible. The media
+         monitor also resolves the music browser service through getServiceInfo, which needs
+         no query entry, but the explicit package row keeps the intent clear. -->
     <queries>
         <package android:name="com.vayunmathur.maps" />
         <package android:name="com.vayunmathur.music" />

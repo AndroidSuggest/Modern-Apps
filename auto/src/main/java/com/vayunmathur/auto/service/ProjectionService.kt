@@ -12,12 +12,15 @@ import android.util.Log
 import com.vayunmathur.auto.R
 import com.vayunmathur.auto.network.HeadUnitServer
 import com.vayunmathur.auto.platform.AutoSessionState
+import com.vayunmathur.auto.platform.MediaEvent
+import com.vayunmathur.auto.platform.MediaPlaybackMonitor
 import com.vayunmathur.auto.platform.VideoSinkChannel
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalCredential
 import com.vayunmathur.auto.protocol.GalService
 import com.vayunmathur.auto.protocol.SessionState
 import com.vayunmathur.auto.protocol.StreamTransport
+import com.vayunmathur.auto.protocol.isMediaBrowserChannel
 import kotlin.concurrent.thread
 
 /**
@@ -39,6 +42,12 @@ class ProjectionService : Service() {
         running = true
         startForeground(NOTIFICATION_ID, notification())
         publishCredentialExpiry()
+        // The now-playing feed outlives any one session: the phone card shows it
+        // between connections, and the car card picks the latest up on bring-up.
+        mediaMonitor = MediaPlaybackMonitor(this) { info ->
+            AutoSessionState.onMediaEvent(MediaEvent.NowPlayingChanged(info))
+            video?.setNowPlaying(info)
+        }.also { it.start() }
         worker = thread(name = "ma-auto-projection") { serve() }
         return START_STICKY
     }
@@ -46,6 +55,8 @@ class ProjectionService : Service() {
     override fun onDestroy() {
         running = false
         worker?.interrupt()
+        mediaMonitor?.stop()
+        mediaMonitor = null
         super.onDestroy()
     }
 
@@ -68,7 +79,14 @@ class ProjectionService : Service() {
                 deviceModel = Build.MODEL,
                 deviceManufacturer = Build.MANUFACTURER,
                 onChannelMessage = { message ->
-                    video?.onMessage(message.channelId, message.type, message.payload)
+                    if (isMediaBrowserChannel(message.channelId)) {
+                        // GAL 11/12 gap: the channel message IDs are unmapped, so
+                        // these are observed and ignored, never answered. Now-playing
+                        // rides the ch2 video stream instead.
+                        Log.d(TAG, "ignoring media-browser message on ch${message.channelId}")
+                    } else {
+                        video?.onMessage(message.channelId, message.type, message.payload)
+                    }
                 },
                 trace = { Log.d(TAG, it) },
             )
@@ -103,6 +121,9 @@ class ProjectionService : Service() {
     }
 
     private var video: VideoSinkChannel? = null
+
+    /** Outlives sessions; owned by the service, not the pump thread. */
+    private var mediaMonitor: MediaPlaybackMonitor? = null
 
     /**
      * Seeds the credential-expiry flow once per service start, off the pump thread.
@@ -146,6 +167,12 @@ class ProjectionService : Service() {
         Log.i(TAG, "requesting channel open for service ${next.id}")
         if (next.id == GalService.VIDEO_SINK.id && next.hasMediaSink()) {
             video = VideoSinkChannel(this, next, connection, AutoSessionState::onVideoEvent)
+                .also { sink ->
+                    sink.setNowPlayingSource(
+                        get = { AutoSessionState.nowPlaying.value },
+                        onTap = { mediaMonitor?.toggle() },
+                    )
+                }
         }
     }
 

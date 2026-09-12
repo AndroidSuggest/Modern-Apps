@@ -48,6 +48,14 @@ class VideoSinkChannel(
     private var firstFrameSent = false
 
     /**
+     * Where the car card's now-playing comes from and where its taps go.
+     * [get] is read when the render pair comes up (plus every snapshot pushed
+     * via [setNowPlaying]); [onTap] toggles phone playback. `null` until the
+     * service wires the media monitor -- unset means the card shows empty.
+     */
+    private var nowPlayingSource: NowPlayingSource? = null
+
+    /**
      * Frames emitted since the last [pumpEncoder] call. `drain()` invokes
      * [sendFrame] synchronously, so snapshotting after it returns counts exactly
      * this pump's yield — which is what tells "encoder idle" from "flowing".
@@ -59,6 +67,21 @@ class VideoSinkChannel(
         service.mediaSink.videoConfigsList.firstOrNull()
 
     val channelId: Int get() = service.id
+
+    /** Wires the now-playing feed from the media monitor; see [nowPlayingSource]. */
+    fun setNowPlayingSource(get: () -> NowPlayingInfo?, onTap: () -> Unit) {
+        nowPlayingSource = NowPlayingSource(get, onTap)
+        nowPlayingSource?.get()?.let { display?.setNowPlaying(it) }
+    }
+
+    /**
+     * Pushes one snapshot to the car card, if the render pair is up. The
+     * service calls this on every media-monitor update so the card tracks
+     * playback without waiting for the encoder pump.
+     */
+    fun setNowPlaying(info: NowPlayingInfo) {
+        display?.setNowPlaying(info)
+    }
 
     /** Step 1. Called once the channel is open. */
     fun requestSetup() {
@@ -152,6 +175,9 @@ class VideoSinkChannel(
 
         val surface = checkNotNull(encoder.surface) { "encoder produced no input surface" }
         display = CarDisplay(context, width, height, density).also {
+            val source = nowPlayingSource
+            it.onMediaTap = source?.onTap
+            source?.get()?.let(it::setNowPlaying)
             it.show(surface)
         }
         // The render pair is up: a private virtual display compositing straight into
@@ -259,3 +285,13 @@ class VideoSinkChannel(
         const val DEFAULT_DENSITY = 160
     }
 }
+
+/**
+ * Where a video channel's car now-playing card reads from and writes to.
+ * [get] returns the latest snapshot (or null before the session reports);
+ * [onTap] toggles phone playback when the card is tapped, locally or via ch8.
+ */
+data class NowPlayingSource(
+    val get: () -> NowPlayingInfo?,
+    val onTap: () -> Unit,
+)

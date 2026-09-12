@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.auto.R
+import com.vayunmathur.auto.platform.NowPlayingInfo
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.Text
@@ -107,9 +108,38 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
                 },
             )
             SessionElapsedRow(sessionStartedAt = session.sessionStartedAt)
+            NowPlayingRow(nowPlaying = session.nowPlaying)
             CredentialRow(daysLeft = session.credentialDaysLeft)
         }
     }
+}
+
+/**
+ * What the on-device media session is playing: track, artist, playback state.
+ * Null until the session reports; kept after disconnect like the video line so
+ * the last-known state stays visible between sessions.
+ */
+@Composable
+private fun NowPlayingRow(nowPlaying: NowPlayingInfo?) {
+    if (nowPlaying == null) {
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.session_now_playing)) },
+            supportingContent = { Text(stringResource(R.string.session_now_playing_none)) },
+        )
+        return
+    }
+    val title = nowPlaying.title ?: stringResource(R.string.session_now_playing_unknown)
+    val artist = nowPlaying.artist ?: stringResource(R.string.session_now_playing_unknown_artist)
+    val state = stringResource(
+        if (nowPlaying.playing) R.string.session_now_playing_playing
+        else R.string.session_now_playing_paused,
+    )
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_now_playing)) },
+        supportingContent = {
+            Text(stringResource(R.string.session_now_playing_value, title, artist, state))
+        },
+    )
 }
 
 /**

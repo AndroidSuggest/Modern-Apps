@@ -63,6 +63,10 @@ class AutoViewModel : ViewModel() {
     val surfaceValid: StateFlow<Boolean> = AutoSessionState.surfaceValid
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
 
+    /** Latest now-playing snapshot; null until the media session reports. */
+    val nowPlaying: StateFlow<NowPlayingInfo?> = AutoSessionState.nowPlaying
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
+
     /** Whole days until the shipped GAL leaf expires; null until the service seeds it. */
     val credentialDaysLeft: StateFlow<Long?> = AutoSessionState.credentialDaysLeft
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)

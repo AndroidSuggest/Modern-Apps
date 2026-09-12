@@ -116,6 +116,22 @@
     <!-- Shown when there is no active session to time. -->
     <string name="session_elapsed_none">—</string>
 
+    <!-- Heading of the row showing what the on-device media session is playing. -->
+    <string name="session_now_playing">Now playing</string>
+    <!-- Shown on the session card before the media session has reported. -->
+    <string name="session_now_playing_none">No media yet</string>
+    <!-- Track and artist with playback state. %1$s is the track title, %2$s the
+         artist, %3$s the state ("Playing" or "Paused" below). -->
+    <string name="session_now_playing_value"><xliff:g example="Midnight City" id="title">%1$s</xliff:g> — <xliff:g example="M83" id="artist">%2$s</xliff:g> (<xliff:g example="Playing" id="state">%3$s</xliff:g>)</string>
+    <!-- Playback state shown in the now-playing row and on the car now-playing card. -->
+    <string name="session_now_playing_playing">Playing</string>
+    <!-- Playback state shown in the now-playing row and on the car now-playing card. -->
+    <string name="session_now_playing_paused">Paused</string>
+    <!-- Shown when the media session reports no title. -->
+    <string name="session_now_playing_unknown">Unknown track</string>
+    <!-- Shown when the media session reports no artist. -->
+    <string name="session_now_playing_unknown_artist">Unknown artist</string>
+
     <!-- Notification channel name for the ongoing projection session. -->
     <string name="projection_channel">Projection</string>
     <!-- Ongoing notification shown while a car is connected. -->
@@ -123,6 +139,16 @@
 
     <!-- Second line of the car status bar, under the product name. -->
     <string name="car_connected">Connected</string>
+    <!-- Heading of the single now-playing card on the car display (Phase 4 time-box). -->
+    <string name="car_now_playing">Now playing</string>
+    <!-- Shown on the car card while audio is playing. -->
+    <string name="car_now_playing_playing">Playing</string>
+    <!-- Shown on the car card while playback is paused. -->
+    <string name="car_now_playing_paused">Paused</string>
+    <!-- Shown on the car card when the media session reports no title. -->
+    <string name="car_now_playing_unknown">Unknown track</string>
+    <!-- Shown on the car card when the media session reports no artist. -->
+    <string name="car_now_playing_unknown_artist">Unknown artist</string>
     <!-- Shown on the car display when no launchable apps were found on the phone. -->
     <string name="car_no_apps">No apps available — install Maps or Music to get started</string>
 </resources>

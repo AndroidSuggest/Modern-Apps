@@ -14,6 +14,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.auto.R
 import com.vayunmathur.auto.platform.AutoConnectionState
 import com.vayunmathur.auto.platform.AutoViewModel
+import com.vayunmathur.auto.platform.NowPlayingInfo
 import com.vayunmathur.auto.platform.VideoInfo
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
@@ -41,6 +42,7 @@ fun AutoScreen(viewModel: AutoViewModel) {
         surfaceValid = viewModel.surfaceValid.collectAsStateWithLifecycle().value,
         credentialDaysLeft = viewModel.credentialDaysLeft.collectAsStateWithLifecycle().value,
         sessionStartedAt = viewModel.sessionStartedAt.collectAsStateWithLifecycle().value,
+        nowPlaying = viewModel.nowPlaying.collectAsStateWithLifecycle().value,
     )
     val scrollBehavior = appBarScrollBehavior()
     AppScaffold(
@@ -93,6 +95,8 @@ data class SessionSnapshot(
     /** Whole days until the shipped GAL leaf expires; null until the service seeds it. */
     val credentialDaysLeft: Long?,
     val sessionStartedAt: Long?,
+    /** Latest now-playing snapshot; null until the media session reports. */
+    val nowPlaying: NowPlayingInfo?,
 )
 
 @Composable
