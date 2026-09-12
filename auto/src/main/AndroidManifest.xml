@@ -15,6 +15,16 @@
          accessory only when one is physically attached and permission-granted, so the USB
          filter below does not satisfy it on its own. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- WiFi Direct discovery toward the wireless head unit, plus the Bluetooth
+         scan that finds it. Both are runtime-gated on the pairing screen
+         (NEARBY_WIFI_DEVICES covers the WiFi half on S+). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+    <!-- Restart the projection listener after a reboot; the session is bound to
+         the cable or the wireless link, not to an activity. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Retaining a car-mic voice turn for transcription. The ch6 channel
          itself needs no permission (chunks are acked and counted regardless);
          without this grant the phone keeps no voice data (fail-closed). -->
@@ -70,5 +80,41 @@
             android:name=".service.ProjectionService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Answers the USB permission round-trip and accessory detach while no
+             activity is up; both funnel into UsbConnector. The permission action
+             is app-private (setPackage on request). -->
+        <receiver
+            android:name=".platform.UsbReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.vayunmathur.auto.USB_PERMISSION" />
+                <action android:name="android.hardware.usb.action.USB_ACCESSORY_DETACHED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Re-starts the projection listener after a reboot. -->
+        <receiver
+            android:name=".platform.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Mirrors phone message notifications onto the projection session's
+             ch14 owner via MessageMirrorBus. The system binds this itself once
+             the user enables MA Auto in notification-access settings; posting
+             additionally requires the in-app consent switch (MessagingPrefs),
+             so either gate off means fail-closed silence. -->
+        <service
+            android:name=".notifications.MessageMirrorService"
+            android:exported="true"
+            android:label="@string/messaging_headline"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

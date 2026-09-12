@@ -68,58 +68,13 @@ class ScaleBleManager {
         /** Name prefixes seen for Qingniu/Renpho scales. */
         val SCALE_NAME_PREFIXES = listOf("QN-Scale", "QN-S3", "RENPHO", "Elis", "Yolanda", "QIANGNIU")
 
-        // CmdBuilder command bytes.
-        private const val CMD_CONFIG = 0x13
-        private const val CMD_OVER = 0x1F
-        private const val CMD_TIME = 0x20
-        private const val CMD_START = 0x22
-        private const val CMD_USER_SYNC = 0xA0
-        private const val CMD_IDENTIFY_WEIGHT = 0xA2
-
-        /**
-         * VA-class scales (ScaleBleUtils.isVaScale) speak a variant of the protocol: the config
-         * frame carries no user data, weight sits at bytes 5..6 of the 0x10 frame rather than
-         * 3..4, and nothing is reported at all until a user slot is synced with 0xA0.
-         */
-        private val VA_CATEGORIES = setOf(128, 129, 134, 143)
-        private const val VA_SUB_REGISTER = 1
-        private const val VA_SUB_VISIT = 2
-        private const val VA_SUB_DELETE = 4
-        private const val VA_VISITOR_INDEX = 0xFE
-        private const val VA_VISITOR_KEY_HI = 0xFF
-        private const val VA_VISITOR_KEY_LO = 0xEE
-        /** Delete takes every slot at once; bit(n-1) selects slot n, so 0xFF is all eight. */
-        private const val VA_DELETE_ALL_MASK = 0xFF
-        /** Body-fat algorithm id; we only use the scale's raw impedance, so this is inert. */
-        private const val VA_ALGORITHM = 7
-        /** 1 = Asia reference range, 2 = rest of world. */
-        private const val VA_FAT_GRADE = 1
-
-        /** BleScaleConfig defaults: kilograms, and the scale's display-light interval. */
-        private const val UNIT_KG = 1
-        private const val LIGHT_INTERVAL = 16
+        // Command bytes, VA categories and decode constants live in ScaleBleProtocol.kt.
 
         // Handshake timings lifted from QNDecoderImpl.
         private const val CONFIG_TO_TIME_MS = 300L
         private const val TIME_RETRY_MS = 250L
         private const val TIME_RETRY_LIMIT = 3
         private const val ACK_TO_START_MS = 250L
-
-        /** ScaleBleUtils.checkScaleType: eight-electrode body-composition scale. */
-        private const val CATEGORY_EIGHT_ELECTRODE = 127
-
-        /** ScaleBleUtils.checkScaleType's fallback for a plain BLE scale. */
-        private const val CATEGORY_DEFAULT = 100
-
-        /**
-         * Epoch the scale timestamps its stored measurements against. DecoderConst has a second,
-         * UTC+8-shifted constant, but getBaseTime2000YearSeconds() only returns that one for
-         * non-Renpho app IDs — the Renpho SDK init uses this value.
-         */
-        private const val BASE_TIME_2000_SECONDS = 946684800L
-
-        /** QNDecoderImpl.kRatio, fixed for every eight-electrode channel. */
-        private const val K_RATIO = 0.1
 
         /** ConnectionViewModel scans in a bounded window rather than indefinitely. */
         private const val SCAN_TIMEOUT_MS = 20_000L
@@ -129,20 +84,20 @@ class ScaleBleManager {
 
     private val bluetoothManager = DeviceController.appContext.getSystemService(BluetoothManager::class.java)
     private val adapter = bluetoothManager.adapter
-    private val scanner get() = adapter.bluetoothLeScanner
-    private var gatt: BluetoothGatt? = null
+    internal val scanner get() = adapter.bluetoothLeScanner
+    internal var gatt: BluetoothGatt? = null
 
     // See BleManager: keep connect() idempotent so repeated auto-connect calls don't stack a
     // second GATT client, and drive passive background re-establishment on an unexpected drop.
     private var currentAddress: String? = null
-    private var intentionalDisconnect = false
+    internal var intentionalDisconnect = false
     /** Address we are passively watching for, if any. */
-    private var watchAddress: String? = null
+    internal var watchAddress: String? = null
 
-    private var weightRatio = 10.0
+    internal var weightRatio = 10.0
     /** VA scales scale the weight up by this instead of dividing by [weightRatio]. */
     private var kgWeightRatio = 0.1
-    private var isVaScale = false
+    internal var isVaScale = false
     /**
      * Set once the scale has accepted us into one of its eight slots. Null means we are running
      * as the transient visitor, either before the first registration or because all slots were
@@ -151,7 +106,7 @@ class ScaleBleManager {
     private var vaUserIndex: Int? = null
     /** 0x12 byte[16] bit 5: whether the scale accepts an app-supplied reference weight. */
     private var supportsIdentifyWeight = false
-    private var scaleType = 0
+    internal var scaleType = 0
     private var notifyChar: UUID = CHAR_FFE1
     private var indicateChar: UUID? = null
     /** Config frames and per-measurement acks (FFE3, or FFF2 on Holtek). */
@@ -174,9 +129,9 @@ class ScaleBleManager {
 
     // Advertised manufacturer data per address, kept from the scan so that the scale category and
     // the resistance-encryption flag can be resolved once we know which device we are connecting to.
-    private val manufacturerData = HashMap<String, ByteArray>()
-    private var scaleCategory = 0
-    private var useResistanceEncrypt = false
+    internal val manufacturerData = HashMap<String, ByteArray>()
+    internal var scaleCategory = 0
+    internal var useResistanceEncrypt = false
 
     // For 8-electrode burst reassembly (count/cur at b[6]). burstStarted guards against emitting
     // a reading built from stale channels when the burst's first packet is dropped — BLE
@@ -188,9 +143,9 @@ class ScaleBleManager {
     private var rh20k = 0.0; private var rh100k = 0.0
     private var t20k = 0.0; private var t100k = 0.0
 
-    private val handler = Handler(Looper.getMainLooper())
+    internal val handler = Handler(Looper.getMainLooper())
 
-    private val scanTimeout = Runnable {
+    internal val scanTimeout = Runnable {
         stopScan()
         if (DeviceController.scaleConnectionState.value == SCALE_SCANNING_STATE) {
             DeviceController.scaleConnectionState.value = "Disconnected"
@@ -201,7 +156,7 @@ class ScaleBleManager {
      * The scale ignores the time frame until it is ready for it, so the reference SDK just keeps
      * re-sending until the 0x21 acknowledgement lands (or it gives up after three tries).
      */
-    private val timeRetry = object : Runnable {
+    internal val timeRetry = object : Runnable {
         override fun run() {
             if (timeRetries >= TIME_RETRY_LIMIT) return
             timeRetries++
@@ -210,56 +165,16 @@ class ScaleBleManager {
         }
     }
 
-    private val sendStart = Runnable { enqueue(bleWriteChar, buildCmd(CMD_START)) }
+    internal val sendStart = Runnable { enqueue(bleWriteChar, buildCmd(CMD_START)) }
 
-    private fun isScaleName(name: String?): Boolean {
-        if (name == null) return false
-        return SCALE_NAME_PREFIXES.any { name.startsWith(it, ignoreCase = true) }
-    }
+    // Scan, watch, GATT open and teardown live in ScaleBleConnection.kt; the callbacks below
+    // are created once and reused so repeated scans do not stack.
+    private val scanCallback: ScanCallback by lazy { makeScanCallback() }
+    private val watchCallback: ScanCallback by lazy { makeWatchCallback() }
 
-    private val scanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val name = result.device.name
-            if (!isScaleName(name)) return
-            val addr = result.device.address
-            result.scanRecord?.manufacturerSpecificData?.let { data ->
-                if (data.size() > 0) data.valueAt(0)?.let {
-                    manufacturerData[addr] = it
-                    Log.d(TAG, "scan $name company=0x${data.keyAt(0).toString(16)} mfg=${it.toHex()} " +
-                        "category=${qnScaleCategory(it)} encryptRes=${qnUsesResistanceEncrypt(qnScaleCategory(it), it)}")
-                }
-            } ?: Log.d(TAG, "scan $name (no manufacturer data)")
-            if (DeviceController.scaleDevices.none { it.address == addr }) {
-                DeviceController.scaleDevices.add(ScaleBleDevice(name ?: "Scale", addr))
-            }
-        }
+    fun startScan() = startScanNow(scanCallback)
 
-        override fun onScanFailed(errorCode: Int) {
-            DeviceController.runOnMain {
-                stopScan()
-                DeviceController.scaleConnectionState.value = "Scan failed ($errorCode)"
-            }
-        }
-    }
-
-    fun startScan() {
-        DeviceController.scaleDevices.clear()
-        manufacturerData.clear()
-        DeviceController.scaleScanning.value = true
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .build()
-        scanner?.startScan(null, settings, scanCallback)
-        DeviceController.scaleConnectionState.value = SCALE_SCANNING_STATE
-        handler.removeCallbacks(scanTimeout)
-        handler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
-    }
-
-    fun stopScan() {
-        handler.removeCallbacks(scanTimeout)
-        scanner?.stopScan(scanCallback)
-        DeviceController.scaleScanning.value = false
-    }
+    fun stopScan() = stopScanNow(scanCallback)
 
     /**
      * [passive] waits for the scale to wake up instead of trying to reach a powered-off device.
@@ -272,80 +187,13 @@ class ScaleBleManager {
         if (passive) startWatch(address) else openGatt(address)
     }
 
-    /**
-     * A body scale is powered off between weigh-ins, so rather than hold a GATT connection open we
-     * watch for its advertisement and connect the moment it appears.
-     *
-     * This deliberately does not use `connectGatt(autoConnect = true)`: the scale advertises a
-     * random static address, and [android.bluetooth.BluetoothAdapter.getRemoteDevice] can only
-     * build a public-address device, so a background connection against it never matches. The
-     * [ScanResult]'s own device carries the correct address type.
-     */
-    private fun startWatch(address: String) {
-        if (watchAddress == address) return
-        stopWatch()
-        watchAddress = address
-        val filters = listOf(ScanFilter.Builder().setDeviceAddress(address).build())
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
-            .build()
-        runCatching { scanner?.startScan(filters, settings, watchCallback) }
-            .onFailure { Log.e(TAG, "watch scan failed to start", it) }
-        Log.d(TAG, "watching for $address to wake up")
-        DeviceController.scaleLink.value = DeviceController.LinkState.Waiting
-        DeviceController.scaleConnectionState.value = SCALE_WAITING_STATE
-    }
+    private fun startWatch(address: String) = startWatchNow(address, watchCallback)
 
-    private fun stopWatch() {
-        if (watchAddress == null) return
-        watchAddress = null
-        runCatching { scanner?.stopScan(watchCallback) }
-    }
-
-    private val watchCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            if (!result.device.address.equals(watchAddress, ignoreCase = true)) return
-            result.scanRecord?.manufacturerSpecificData?.let { data ->
-                if (data.size() > 0) data.valueAt(0)?.let { manufacturerData[result.device.address] = it }
-            }
-            Log.d(TAG, "scale woke up; connecting")
-            stopWatch()
-            openGattFor(result.device)
-        }
-
-        override fun onScanFailed(errorCode: Int) {
-            Log.e(TAG, "watch scan failed error=$errorCode")
-            watchAddress = null
-            DeviceController.runOnMain {
-                DeviceController.scaleConnectionState.value = "Scan failed ($errorCode)"
-            }
-        }
-    }
+    internal fun stopWatch() = stopWatchNow(watchCallback)
 
     private fun openGatt(address: String) = openGattFor(adapter.getRemoteDevice(address))
 
-    @Suppress("DEPRECATION")
-    private fun openGattFor(device: BluetoothDevice) {
-        stopScan()
-        stopWatch()
-        val address = device.address
-        // The category and encryption flag are only ever advertised, so a reconnect that never
-        // scanned has to fall back to what the last scan learned.
-        val mfg = manufacturerData[address]
-        if (mfg != null) {
-            scaleCategory = qnScaleCategory(mfg)
-            useResistanceEncrypt = qnUsesResistanceEncrypt(scaleCategory, mfg)
-            DeviceController.saveScaleAdvertisedTraits(scaleCategory, useResistanceEncrypt)
-        } else {
-            scaleCategory = DeviceController.savedScaleCategory() ?: CATEGORY_DEFAULT
-            useResistanceEncrypt = DeviceController.savedScaleEncryptsResistance()
-        }
-        isVaScale = scaleCategory in VA_CATEGORIES
-        Log.d(TAG, "connect $address category=$scaleCategory va=$isVaScale encryptRes=$useResistanceEncrypt")
-        DeviceController.scaleLink.value = DeviceController.LinkState.Connecting
-        DeviceController.scaleConnectionState.value = "Connecting scale..."
-        gatt = device.connectGatt(DeviceController.appContext, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-    }
+    internal fun openGattFor(device: BluetoothDevice) = openGattNow(device)
 
     fun disconnect() {
         intentionalDisconnect = true
@@ -354,16 +202,7 @@ class ScaleBleManager {
         gatt?.disconnect()
     }
 
-    fun close() {
-        handler.removeCallbacks(timeRetry)
-        handler.removeCallbacks(sendStart)
-        stopWatch()
-        gatt?.let {
-            it.close()
-            refreshCache(it)
-        }
-        gatt = null
-    }
+    fun close() = closeGattNow()
 
     private fun resetPacketState() {
         handler.removeCallbacks(timeRetry)
@@ -574,28 +413,9 @@ class ScaleBleManager {
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xFF) }
 
-    /** CmdBuilder.buildCmd: `[cmd, totalLen, scaleType, ...payload, checksum]`. */
+    /** CmdBuilder.buildCmd with this connection's scale type; see ScaleBleProtocol.kt. */
     private fun buildCmd(cmd: Int, vararg payload: Int): ByteArray =
-        buildFrame(cmd, scaleType, *payload)
-
-    /** Byte 2 is the scale type for most commands, but a sub-command for 0xA0. */
-    private fun buildFrame(cmd: Int, arg: Int, vararg payload: Int): ByteArray {
-        val out = ByteArray(payload.size + 4)
-        out[0] = cmd.toByte()
-        out[1] = out.size.toByte()
-        out[2] = arg.toByte()
-        for (i in payload.indices) out[i + 3] = payload[i].toByte()
-        var sum = 0
-        for (i in 0 until out.size - 1) sum += out[i].toInt()
-        out[out.size - 1] = sum.toByte()
-        return out
-    }
-
-    /** CmdBuilder.builderTimeData: seconds since the 2000 epoch, little-endian. */
-    private fun timePayload(millis: Long): IntArray {
-        val seconds = millis / 1000 - BASE_TIME_2000_SECONDS
-        return IntArray(4) { ((seconds shr (it * 8)) and 0xFF).toInt() }
-    }
+        buildCmd(cmd, scaleType, *payload)
 
     private fun dispatch(value: ByteArray) {
         when (value[0].toInt() and 0xFF) {
@@ -926,76 +746,13 @@ class ScaleBleManager {
         )
     }
 
-    /**
-     * ScaleBleUtils.checkScaleType, narrowed to the plain BLE scales this app talks to: the
-     * category is a marker byte in the advertisement's manufacturer-specific data.
-     */
-    private fun qnScaleCategory(mfg: ByteArray?): Int {
-        if (mfg == null || mfg.size <= 11) return CATEGORY_DEFAULT
-        return when (mfg[11].toInt() and 0xFF) {
-            0x21 -> 101
-            0x30, 0x31 -> 130
-            0x50 -> CATEGORY_EIGHT_ELECTRODE
-            0x51, 0x52 -> 134
-            0x60, 0x65, 0x66 -> 128
-            0x61, 0x62 -> 129
-            0x70 -> 135
-            0x71 -> 142
-            0x80 -> 143
-            else -> CATEGORY_DEFAULT
-        }
-    }
-
-    /** ScaleBleUtils.isUseResistanceEncrypt. */
-    private fun qnUsesResistanceEncrypt(category: Int, mfg: ByteArray?): Boolean {
-        if (mfg == null) return false
-        return when (category) {
-            128, 129, 134, 143 -> mfg.size > 15 && ((mfg[15].toInt() shr 2) and 1) == 1
-            CATEGORY_DEFAULT, 127, 130, 135, 142 -> mfg.size > 12 && (mfg[12].toInt() and 1) == 1
-            else -> false
-        }
-    }
-
-    // Copy of MeasureDecoder helpers so we don't depend on the QN SDK.
-    private fun twoByteInt(hi: Byte, lo: Byte): Int =
-        ((hi.toInt() and 0xFF) shl 8) or (lo.toInt() and 0xFF)
-
-    /**
-     * MeasureDecoder.resistanceCrypt: scales that advertise the encryption bit send each
-     * impedance byte with bits 3/5 and 0/4 swapped.
-     */
-    private fun resistanceCrypt(b: Byte): Int {
-        val raw = b.toInt() and 0xFF
-        return if (useResistanceEncrypt) swapBit(0, 4, swapBit(3, 5, raw)) else raw
-    }
-
-    private fun swapBit(a: Int, b: Int, value: Int): Int {
-        val bitA = (value shr a) and 1
-        if (bitA == ((value shr b) and 1)) return value
-        return if (bitA == 0) ((1 shl a) or value) and (1 shl b).inv()
-        else ((1 shl b) or value) and (1 shl a).inv()
-    }
-
-    private fun fourResTwoByte2Int(b1: Byte, b2: Byte): Int {
-        val v = (resistanceCrypt(b1) shl 8) or resistanceCrypt(b2)
-        return if (v >= 60000) 0 else v
-    }
+    // Advertisement parsing and MeasureDecoder math live in ScaleBleProtocol.kt. The
+    // impedance helpers take the connection's encryption flag explicitly.
+    private fun fourResTwoByte2Int(b1: Byte, b2: Byte): Int =
+        fourResTwoByte2Int(b1, b2, useResistanceEncrypt)
 
     private fun eightDouble(b1: Byte, b2: Byte): Double =
-        ((resistanceCrypt(b1) shl 8) or resistanceCrypt(b2)) * K_RATIO
-
-    private fun decodeWeight(raw: Int, ratio: Double): Double {
-        var w = raw.toDouble() / ratio
-        while (w > 300.0) w /= 10.0
-        return w
-    }
-
-    /** MeasureDecoder.decodeWeightByMultiplication, used by the VA frame layout. */
-    private fun decodeWeightByMultiplication(raw: Int, ratio: Double): Double {
-        var w = raw * ratio
-        while (w > 300.0) w /= 10.0
-        return w
-    }
+        eightDouble(b1, b2, useResistanceEncrypt)
 
     private fun refreshCache(g: BluetoothGatt) {
         runCatching { g.javaClass.getMethod("refresh").invoke(g) }

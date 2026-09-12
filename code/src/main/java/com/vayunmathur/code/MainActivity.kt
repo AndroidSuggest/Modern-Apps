@@ -26,6 +26,8 @@ import com.vayunmathur.code.ui.SnippetsPage
 import com.vayunmathur.code.ui.TerminalPage
 import com.vayunmathur.code.util.EditorPrefs
 import com.vayunmathur.code.util.EditorViewModel
+import com.vayunmathur.code.util.checkExternalChanges
+import com.vayunmathur.code.util.openExternal
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconFolderOpen
 import com.vayunmathur.library.ui.PermissionWall

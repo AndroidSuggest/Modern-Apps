@@ -22,6 +22,7 @@ import com.vayunmathur.cast.platform.MirrorPhase
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconRefresh
@@ -56,11 +57,13 @@ fun CastContent(
         },
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+        // Letterboxed on expanded windows so the device list keeps a readable measure.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             // The code comes first when it is wanted: nothing else on the screen can be acted on until
             // it has been typed, so anything above it would just be in the way.
             if (state.connection == CastConnection.AwaitingCode) {
@@ -83,6 +86,7 @@ fun CastContent(
                         onClick = { actions.connect(device) },
                     )
                 }
+            }
             }
         }
     }

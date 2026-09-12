@@ -95,8 +95,12 @@ class MainActivity : ComponentActivity() {
 
     // Volume keys act as a hardware shutter: routed to the same capture action as the on-screen
     // button (the CameraScreen collects shutterEvents and picks the right action for the mode).
+    // Desktop keyboards cannot send volume keys, so Esc/space-preview also triggers the shutter
+    // without disturbing phones (phones rarely carry a hardware keyboard; onKeyDown still wins).
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        return if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+        return if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ||
+            keyCode == KeyEvent.KEYCODE_SPACE || keyCode == KeyEvent.KEYCODE_ESCAPE
+        ) {
             viewModel.triggerShutter()
             true
         } else {

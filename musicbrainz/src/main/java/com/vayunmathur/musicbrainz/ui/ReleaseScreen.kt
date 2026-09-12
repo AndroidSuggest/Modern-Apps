@@ -16,6 +16,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ErrorState
 import com.vayunmathur.library.ui.ExtendedFloatingActionButton
 import com.vayunmathur.library.ui.IconDownload
@@ -95,7 +96,8 @@ fun ReleaseScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 message = state.error,
             )
-            else -> LazyColumn(
+            else -> DesktopMaxWidthContainer {
+            LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     top = padding.calculateTopPadding(),
@@ -157,6 +159,7 @@ fun ReleaseScreen(
                         },
                     )
                 }
+            }
             }
         }
     }

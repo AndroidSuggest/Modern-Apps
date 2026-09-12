@@ -24,6 +24,10 @@ import androidx.compose.ui.unit.sp
 import com.vayunmathur.code.R
 import com.vayunmathur.code.Route
 import com.vayunmathur.code.util.EditorViewModel
+import com.vayunmathur.code.util.clearTerminal
+import com.vayunmathur.code.util.startTerminal
+import com.vayunmathur.code.util.terminalInterrupt
+import com.vayunmathur.code.util.terminalSend
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconDelete

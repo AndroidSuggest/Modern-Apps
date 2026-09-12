@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
@@ -29,12 +30,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             DynamicTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(24.dp)
-                    ) {
+                    // Letterboxed on expanded windows so the status text keeps a readable measure.
+                    DesktopMaxWidthContainer {
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(24.dp)
+                        ) {
                         Text(
                             "Network Location & Geocoder",
                             style = MaterialTheme.typography.headlineSmall,
@@ -49,6 +52,7 @@ class MainActivity : ComponentActivity() {
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         OfflineDatabaseSection(Modifier.padding(top = 24.dp))
+                        }
                     }
                 }
             }

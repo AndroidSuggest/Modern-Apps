@@ -73,12 +73,12 @@ object PoiIndex {
     private val SPATIAL_MAGIC =
         byteArrayOf('P'.code.toByte(), 'S'.code.toByte(), 'P'.code.toByte(), '1'.code.toByte())
     private const val SPATIAL_VERSION = 1
-    private const val SPATIAL_HEADER_BYTES = 32
+    internal const val SPATIAL_HEADER_BYTES = 32
 
     private val NAME_INDEX_MAGIC =
         byteArrayOf('P'.code.toByte(), 'N'.code.toByte(), 'I'.code.toByte(), '1'.code.toByte())
     private const val NAME_INDEX_VERSION = 1
-    private const val NAME_INDEX_HEADER_BYTES = 16
+    internal const val NAME_INDEX_HEADER_BYTES = 16
 
     /**
      * ASCII-only lowercase, and deliberately not [Char.lowercase].
@@ -105,15 +105,7 @@ object PoiIndex {
         return ByteArray(raw.size) { asciiLower(raw[it]).toByte() }
     }
 
-    private const val KEY_OPENING_HOURS = 1
-    private const val KEY_PHONE = 2
-    private const val KEY_WEBSITE = 3
-    private const val KEY_HOUSENUMBER = 4
-    private const val KEY_STREET = 5
-    private const val KEY_CITY = 6
-    private const val KEY_POSTCODE = 7
-    private const val KEY_CUISINE = 8
-    private const val KEY_WHEELCHAIR = 9
+    // Attribute key constants and record decoding live in PoiIndexAttrs.kt.
 
     /** A single POI resolved from the index. */
     data class PoiRecord(
@@ -178,7 +170,7 @@ object PoiIndex {
      * a query already in flight keeps using the snapshot it started with rather than seeing the
      * buffers swapped underneath it.
      */
-    private class Mapped(
+    internal class Mapped(
         val index: MappedByteBuffer,
         val names: MappedByteBuffer,
         val namesLen: Int,
@@ -188,25 +180,25 @@ object PoiIndex {
         /** Byte offset of the attribute blob, i.e. just past the offset array. */
         val attrsBlobStart: Int,
         /** The CSR spatial grid, or null when absent or mismatched. */
-        val spatial: MappedByteBuffer? = null,
-        val cellCount: Int = 0,
-        val lat0E7: Int = 0,
-        val lon0E7: Int = 0,
-        val cellE7: Int = 0,
-        val cols: Int = 0,
+        internal val spatial: MappedByteBuffer? = null,
+        internal val cellCount: Int = 0,
+        internal val lat0E7: Int = 0,
+        internal val lon0E7: Int = 0,
+        internal val cellE7: Int = 0,
+        internal val cols: Int = 0,
         /** The word index, or null when absent or mismatched. */
-        val nameIdx: MappedByteBuffer? = null,
-        val entryCount: Int = 0,
+        internal val nameIdx: MappedByteBuffer? = null,
+        internal val entryCount: Int = 0,
     ) {
-        fun latE7(i: Int): Int = index.getInt(i * RECORD_BYTES)
-        fun lonE7(i: Int): Int = index.getInt(i * RECORD_BYTES + 4)
-        fun nameOff(i: Int): Int = index.getInt(i * RECORD_BYTES + 8)
+        internal fun latE7(i: Int): Int = index.getInt(i * RECORD_BYTES)
+        internal fun lonE7(i: Int): Int = index.getInt(i * RECORD_BYTES + 4)
+        internal fun nameOff(i: Int): Int = index.getInt(i * RECORD_BYTES + 8)
         fun type(i: Int): Int = index.getShort(i * RECORD_BYTES + 12).toInt() and 0xFFFF
 
         /** The Morton key the file is sorted by, recomputed from the record's coordinate. */
         fun spatialAt(i: Int): Long = spatialFromE7(latE7(i), lonE7(i))
 
-        fun record(i: Int): PoiRecord =
+        internal fun record(i: Int): PoiRecord =
             PoiRecord(latE7(i), lonE7(i), type(i), nameAt(nameOff(i)) ?: "", i)
 
         /** Read the NUL-terminated UTF-8 name that starts at byte [off], or null. */
@@ -293,150 +285,8 @@ object PoiIndex {
             }
         }
 
-        /** Cell offset along one axis. Must match `cell_axis` in `poi_side.rs`. */
-        private fun axis(value: Int, origin: Int): Int {
-            val d = value.toLong() - origin.toLong()
-            return if (d <= 0) 0 else (d / cellE7).toInt()
-        }
-
-        private fun row(latE7: Int): Int = axis(latE7, lat0E7)
-        private fun col(lonE7: Int): Int = axis(lonE7, lon0E7).coerceAtMost(cols - 1)
-
-        /** Index of [cellId] in the ascending cell-id array, or -1 when unpopulated. */
-        private fun cellIndexOf(cellId: Int): Int {
-            val buf = spatial ?: return -1
-            var lo = 0
-            var hi = cellCount
-            while (lo < hi) {
-                val mid = (lo + hi) ushr 1
-                val v = buf.getInt(SPATIAL_HEADER_BYTES + 4 * mid)
-                if (v == cellId) return mid
-                if (v < cellId) lo = mid + 1 else hi = mid
-            }
-            return -1
-        }
-
-        /** CSR prefix entry [i], i.e. where cell `i`'s ordinals begin. */
-        private fun cellOff(i: Int): Int =
-            spatial!!.getInt(SPATIAL_HEADER_BYTES + 4 * cellCount + 4 * i)
-
-        private fun gridOrdinal(k: Int): Int =
-            spatial!!.getInt(SPATIAL_HEADER_BYTES + 4 * cellCount + 4 * (cellCount + 1) + 4 * k)
-
-        private fun forEachInCells(
-            minLatE7: Int,
-            maxLatE7: Int,
-            minLonE7: Int,
-            maxLonE7: Int,
-            onHit: (ordinal: Int, latE7: Int, lonE7: Int) -> Boolean,
-        ) {
-            val hits = ArrayList<Int>()
-            for (r in row(minLatE7)..row(maxLatE7)) {
-                for (c in col(minLonE7)..col(maxLonE7)) {
-                    val ci = cellIndexOf(r * cols + c)
-                    if (ci < 0) continue
-                    for (k in cellOff(ci) until cellOff(ci + 1)) {
-                        val ordinal = gridOrdinal(k)
-                        if (ordinal < 0 || ordinal >= count) continue
-                        if (latE7(ordinal) in minLatE7..maxLatE7 &&
-                            lonE7(ordinal) in minLonE7..maxLonE7
-                        ) {
-                            hits.add(ordinal)
-                        }
-                    }
-                }
-            }
-            hits.sort()
-            for (ordinal in hits) {
-                if (!onHit(ordinal, latE7(ordinal), lonE7(ordinal))) return
-            }
-        }
-
-        // --- Word index --------------------------------------------------------
-
-        private fun entryOrdinal(i: Int): Int =
-            nameIdx!!.getInt(NAME_INDEX_HEADER_BYTES + 4 * i)
-
-        private fun entryWordIdx(i: Int): Int =
-            nameIdx!!.get(NAME_INDEX_HEADER_BYTES + 4 * entryCount + i).toInt() and 0xFF
-
-        /**
-         * Byte range of the [wordIdx]th whitespace-separated word of the name at [off], or
-         * null when the name has fewer words. Must match `word_at` in `poi_side.rs`.
-         */
-        private fun wordRange(off: Int, wordIdx: Int): IntRange? {
-            if (off < 0 || off >= namesLen) return null
-            var i = off
-            var idx = 0
-            while (i < namesLen && names.get(i).toInt() != 0) {
-                while (i < namesLen && names.get(i).toInt() != 0 && isAsciiSpace(names.get(i))) i++
-                if (i >= namesLen || names.get(i).toInt() == 0) break
-                val start = i
-                while (i < namesLen && names.get(i).toInt() != 0 && !isAsciiSpace(names.get(i))) i++
-                if (idx == wordIdx) return start until i
-                idx++
-            }
-            return null
-        }
-
-        private fun entryWord(i: Int): IntRange? =
-            wordRange(nameOff(entryOrdinal(i)), entryWordIdx(i))
-
-        /** ASCII-lowercased byte compare of the word at [range] against [key]. */
-        private fun compareWord(range: IntRange, key: ByteArray): Int {
-            val len = range.last - range.first + 1
-            for (k in 0 until minOf(len, key.size)) {
-                val d = asciiLower(names.get(range.first + k)) - (key[k].toInt() and 0xFF)
-                if (d != 0) return d
-            }
-            return len - key.size
-        }
-
-        private fun wordStartsWith(range: IntRange, key: ByteArray): Boolean {
-            if (range.last - range.first + 1 < key.size) return false
-            for (k in key.indices) {
-                if (asciiLower(names.get(range.first + k)) != (key[k].toInt() and 0xFF)) return false
-            }
-            return true
-        }
-
-        /** First entry whose word is >= [key], or [entryCount]. */
-        private fun lowerBoundWord(key: ByteArray): Int {
-            var lo = 0
-            var hi = entryCount
-            while (lo < hi) {
-                val mid = (lo + hi) ushr 1
-                val w = entryWord(mid)
-                // A word we cannot resolve sorts first, so the search steps past it rather
-                // than stalling on a name the index disagrees with.
-                if (w == null || compareWord(w, key) < 0) lo = mid + 1 else hi = mid
-            }
-            return lo
-        }
-
-        /**
-         * Ordinals whose name has a word starting with [key], each paired with whether the
-         * match was on the name's *first* word.
-         *
-         * Binary search plus a walk of the matching range, so the cost is the number of
-         * matches rather than the size of the name pool.
-         */
-        fun wordPrefixMatches(key: ByteArray, cap: Int): List<IntArray> {
-            if (nameIdx == null || entryCount == 0) return emptyList()
-            val out = ArrayList<IntArray>()
-            val seen = HashSet<Int>()
-            var i = lowerBoundWord(key)
-            while (i < entryCount && out.size < cap) {
-                val w = entryWord(i) ?: break
-                if (!wordStartsWith(w, key)) break
-                val ordinal = entryOrdinal(i)
-                // A name can match on more than one word ("Pizza Pizza"); the better rank
-                // wins, and the index lists word 0 first within one name.
-                if (seen.add(ordinal)) out.add(intArrayOf(ordinal, entryWordIdx(i)))
-                i++
-            }
-            return out
-        }
+        // The CSR grid walk (forEachInCells and its cell helpers) lives in PoiIndexSpatial.kt,
+        // and word-index queries in PoiIndexWords.kt, both as internal extensions on this class.
     }
 
     @Volatile
@@ -712,32 +562,14 @@ object PoiIndex {
         return searchByScan(m, query, nearLat, nearLon, limit)
     }
 
+    // Indexed search lives in PoiIndexWords.kt; this delegates so searchByName is unchanged.
     private fun searchByWordIndex(
         m: Mapped,
         query: String,
         nearLat: Double,
         nearLon: Double,
         limit: Int,
-    ): List<PoiRecord> {
-        val key = queryKey(query.trim())
-        if (key.isEmpty()) return emptyList()
-        val out = ArrayList<Ranked>()
-        for (hit in m.wordPrefixMatches(key, CANDIDATE_CAP)) {
-            val (ordinal, wordIdx) = hit
-            // Matching the name's first word is the indexed equivalent of the scan's
-            // "starts with", and ranks the same way.
-            val rank = if (wordIdx == 0) 0 else 1
-            out.add(
-                Ranked(
-                    m.record(ordinal),
-                    rank,
-                    distanceSq(nearLat, nearLon, m.latE7(ordinal) / 1e7, m.lonE7(ordinal) / 1e7),
-                )
-            )
-        }
-        out.sortWith(compareBy({ it.rank }, { it.distSq }))
-        return out.take(limit).map { it.record }
-    }
+    ): List<PoiRecord> = searchByWordIndex(m, query, nearLat, nearLon, limit, CANDIDATE_CAP)
 
     private fun searchByScan(
         m: Mapped,
@@ -909,70 +741,12 @@ object PoiIndex {
         return attributesAt(match.ordinal)
     }
 
-    /**
-     * Walk one record's `u8 key, u16 len, value` fields.
-     *
-     * A key this build does not know is stepped over using its length rather than
-     * abandoning the record, which is the whole reason the values are
-     * length-prefixed: a device on an older build must still read the keys it does
-     * understand out of a newer file.
-     */
-    private fun decodeAttributes(buf: MappedByteBuffer, from: Int, to: Int): PoiAttributes? {
-        var openingHours: String? = null
-        var phone: String? = null
-        var website: String? = null
-        var houseNumber: String? = null
-        var street: String? = null
-        var city: String? = null
-        var postcode: String? = null
-        var cuisine: String? = null
-        var wheelchair: String? = null
-
-        var i = from
-        while (i + 3 <= to) {
-            val key = buf.get(i).toInt() and 0xFF
-            val len = buf.getShort(i + 1).toInt() and 0xFFFF
-            val start = i + 3
-            if (start + len > to) break
-            // Only decode the bytes of a key we are going to keep.
-            val value: String? = when (key) {
-                KEY_OPENING_HOURS, KEY_PHONE, KEY_WEBSITE, KEY_HOUSENUMBER, KEY_STREET,
-                KEY_CITY, KEY_POSTCODE, KEY_CUISINE, KEY_WHEELCHAIR ->
-                    stringAt(buf, start, len)
-                else -> null
-            }
-            when (key) {
-                KEY_OPENING_HOURS -> openingHours = value
-                KEY_PHONE -> phone = value
-                KEY_WEBSITE -> website = value
-                KEY_HOUSENUMBER -> houseNumber = value
-                KEY_STREET -> street = value
-                KEY_CITY -> city = value
-                KEY_POSTCODE -> postcode = value
-                KEY_CUISINE -> cuisine = value
-                KEY_WHEELCHAIR -> wheelchair = value
-            }
-            i = start + len
-        }
-
-        val decoded = PoiAttributes(
-            openingHours, phone, website, houseNumber, street, city, postcode, cuisine, wheelchair,
-        )
-        return decoded.takeUnless { it.isEmpty }
-    }
-
-    private fun stringAt(buf: MappedByteBuffer, off: Int, len: Int): String? {
-        if (len <= 0) return null
-        val bytes = ByteArray(len)
-        // Absolute reads via a duplicate, so the shared buffer's position is untouched.
-        val dup = buf.duplicate()
-        dup.position(off)
-        dup.get(bytes, 0, len)
-        return String(bytes, Charsets.UTF_8)
-    }
+    // Record decoding lives in PoiIndexAttrs.kt; this delegates so attributesAt is unchanged.
+    private fun decodeAttributes(buf: MappedByteBuffer, from: Int, to: Int): PoiAttributes? =
+        decodeAttrRecord(buf, from, to)
 
     /** Cheap squared planar distance (deg², lon scaled by cos lat) for ranking. */
-    private fun distanceSq(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
+    internal fun distanceSq(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
         val cosLat = Math.cos(Math.toRadians((aLat + bLat) / 2.0))
         val dLat = aLat - bLat
         val dLon = (aLon - bLon) * cosLat

@@ -34,9 +34,9 @@ import java.text.Normalizer
  * position, so two concurrent turns would interleave their tokens into the same conversation.
  * The caller must hold a lock across a whole turn, not merely across a call.
  */
-class Gemma4Handle private constructor(private val directory: File) : AutoCloseable {
+class Gemma4Handle private constructor(internal val directory: File) : AutoCloseable {
 
-    private var handle: Long = if (MlNative.isAvailable) create(directory) else 0L
+    internal var handle: Long = if (MlNative.isAvailable) create(directory) else 0L
 
     /**
      * The token ids the KV cache currently holds, or null when it holds something unmatchable.
@@ -44,21 +44,10 @@ class Gemma4Handle private constructor(private val directory: File) : AutoClosea
      * Null after a reset, after a multimodal turn, and after any failure - all the cases where
      * the next turn must not assume anything about what is in the arena.
      */
-    private var cachedIds: IntArray? = null
+    internal var cachedIds: IntArray? = null
 
-    /**
-     * Time the model once, so the log says where its time goes.
-     *
-     * Runs three passes each way and keeps the best, which costs a couple of seconds the first
-     * time a conversation starts and answers a question that guesswork has repeatedly got wrong.
-     */
-    fun benchmark() {
-        if (handle != 0L) {
-            MlNative.capabilitiesGemma4()
-            MlNative.imageProbeGemma4()
-            MlNative.benchmarkGemma4(handle)
-        }
-    }
+    // benchmark() and loadPrefix() live in Gemma4Prefix.kt and delegate back here.
+    fun benchmark() = runBenchmark()
 
     /** Whether the model came up. False leaves the assistant off rather than crashing. */
     val isAvailable: Boolean
@@ -77,54 +66,7 @@ class Gemma4Handle private constructor(private val directory: File) : AutoClosea
      *
      * A mismatch is not an error: it falls back to prefilling, which is slow and correct.
      */
-    fun loadPrefix(prefix: String): Boolean {
-        if (handle == 0L) return false
-        val file = File(directory, PREFIX_CACHE)
-        if (!file.isFile) return false
-        val tokens = encodePrompt(prefix)
-        if (tokens.isEmpty()) return false
-        val blob = runCatching { file.readBytes() }.getOrNull() ?: return false
-        if (blob.size < HEADER || String(blob, 0, 4, Charsets.US_ASCII) != "GKV1") {
-            Log.w(TAG, "$PREFIX_CACHE is not a baked cache")
-            return false
-        }
-        val positions = readInt(blob, 4)
-        // The size check stays enforced even though the digest does not: `positions` decides
-        // where the next token goes and how many ids are recorded as cached, so a wrong count
-        // corrupts the bookkeeping rather than merely the contents.
-        if (positions != tokens.size) {
-            Log.i(TAG, "$PREFIX_CACHE is $positions positions, this prefix is ${tokens.size}")
-            return false
-        }
-        // The digest is reported, not enforced.
-        //
-        // It says whether these keys and values were computed from *these* tokens, and a
-        // mismatch means the model is about to attend over a prompt it was not given. Refusing
-        // is the safe behaviour and what this did first. It is advisory while the prefix is
-        // still being iterated on, because a stale cache should slow the work down rather than
-        // stop it - but a mismatch here is a real defect, not noise, and the loud log is the
-        // only thing standing between it and a plausible wrong answer.
-        if (!digest(tokens).contentEquals(blob.copyOfRange(12, 12 + 32))) {
-            Log.w(TAG, "$PREFIX_CACHE DIGEST MISMATCH - using it anyway; replies may be wrong")
-        }
-        // The cache starts at the smallest tier and this prefix is larger than it. Growing first
-        // is not optional: `loadPrefixGemma4` refuses a prefix bigger than the cache rather than
-        // truncating it, because half a prefix is keys for a prompt nobody sent.
-        if (MlNative.capacityGemma4(handle) < positions) {
-            val grown = MlNative.growGemma4(handle, positions + 2)
-            if (grown < positions) {
-                Log.i(TAG, "a $positions-position prefix does not fit this device; prefilling")
-                return false
-            }
-        }
-        val loaded = MlNative.loadPrefixGemma4(handle, positions, blob.copyOfRange(HEADER, blob.size))
-        if (loaded != positions) return false
-        // The cache now holds exactly these tokens, so the next turn matches against them and
-        // feeds only what follows.
-        cachedIds = tokens
-        Log.i(TAG, "loaded a $positions-position prefix cache, skipping its prefill")
-        return true
-    }
+    fun loadPrefix(prefix: String): Boolean = loadBakedPrefix(prefix)
 
     /** Positions in the KV cache, which is where the next token goes. */
     val position: Int
@@ -162,7 +104,7 @@ class Gemma4Handle private constructor(private val directory: File) : AutoClosea
      *
      * Only for strings this class built. Passing user text here would let it spell a turn.
      */
-    private fun encodePrompt(text: String): IntArray {
+    internal fun encodePrompt(text: String): IntArray {
         if (handle == 0L) return IntArray(0)
         return MlNative.encodeGemma4(handle, text, MARKERS) ?: IntArray(0)
     }
@@ -551,7 +493,7 @@ class Gemma4Handle private constructor(private val directory: File) : AutoClosea
     data class ToolCall(val name: String, val arguments: Map<String, String>)
 
     companion object {
-        private const val TAG = "Gemma4Handle"
+        internal const val TAG = "Gemma4Handle"
 
         /**
          * Reply positions [generate] reserves unless a caller says otherwise.
@@ -691,122 +633,32 @@ class Gemma4Handle private constructor(private val directory: File) : AutoClosea
         /**
          * A conversation as the prompt string Gemma was trained on.
          *
-         * Ported from `chat_template.jinja` by rendering it and matching the output exactly,
-         * rather than by reading the Jinja - the macros are dense and the quoting is unusual, and
-         * a template that is nearly right degrades quality without failing. The shape is:
-         *
-         * ```text
-         * <bos><|turn>system\n{system}{tools}<turn|>\n<|turn>user\n{text}<turn|>\n<|turn>model\n
-         * ```
-         *
-         * The system turn is emitted only when there is a system prompt or a tool to declare,
-         * matching the template's own conditional.
+         * Ported from `chat_template.jinja` by rendering it and matching the output exactly.
+         * The implementation lives in [renderGemma4Prompt]; this wrapper keeps existing
+         * call sites working.
          */
         fun render(
             conversation: List<Turn>,
             system: String?,
             tools: List<ToolDeclaration> = emptyList(),
             continuation: String = "",
-        ): String = buildString {
-            append("<bos>")
-            val declared = declareTools(tools)
-            if (!system.isNullOrBlank() || declared.isNotEmpty()) {
-                append("<|turn>system\n")
-                if (!system.isNullOrBlank()) append(system)
-                append(declared)
-                append("<turn|>\n")
-            }
-            for (turn in conversation) {
-                append("<|turn>").append(turn.role.marker).append('\n')
-                append(turn.text)
-                append("<turn|>\n")
-            }
-            // The generation prompt: an open model turn for the model to complete.
-            append("<|turn>model\n")
-            // A tool call and its result belong **inside** that turn, not before it.
-            //
-            // Appending them as a finished model turn instead - `<|turn>model ... <turn|>` and
-            // then a fresh `<|turn>model` - was a real bug and a subtle one: the model saw its
-            // own turn ended and a new one beginning, which from its point of view is the start
-            // of a conversation, so it opened with a greeting instead of answering. It only
-            // showed on the first message, because that is the one the system prompt forces a
-            // tool call on.
-            append(continuation)
-        }
+        ): String = renderGemma4Prompt(conversation, system, tools, continuation)
 
         /**
-         * Tool declarations in the template's own syntax.
-         *
-         * Not JSON. Gemma's template writes `<|tool>declaration:name{...}<tool|>` with values
-         * wrapped in the `<|"|>` marker rather than in quotation marks, so that a description
-         * containing a quote cannot break the parse. Reproduced exactly, including the
-         * alphabetical ordering of parameters that `dictsort` imposes - the model saw them in
-         * that order during training.
+         * Tool declarations in the template's own syntax. Implemented in
+         * [declareGemma4Tools]; this wrapper keeps existing call sites working.
          */
-        fun declareTools(tools: List<ToolDeclaration>): String = buildString {
-            for (tool in tools) {
-                append("<|tool>declaration:").append(tool.name).append('{')
-                append("description:").append(quoted(tool.description))
-                append(",parameters:{properties:{")
-                val sorted = tool.parameters.sortedBy { it.name }
-                for ((index, parameter) in sorted.withIndex()) {
-                    if (index > 0) append(',')
-                    append(parameter.name).append(":{description:")
-                    append(quoted(parameter.description))
-                    append(",type:").append(quoted(parameter.type.uppercase()))
-                    append('}')
-                }
-                append("}")
-                val required = sorted.filter { it.required }
-                if (required.isNotEmpty()) {
-                    append(",required:[")
-                    append(required.joinToString(",") { quoted(it.name) })
-                    append(']')
-                }
-                append(",type:").append(quoted("OBJECT"))
-                append("}}<tool|>")
-            }
-        }
+        fun declareTools(tools: List<ToolDeclaration>): String = declareGemma4Tools(tools)
 
         /**
          * The tool call in [reply], or null if there is not a complete one.
-         *
-         * The model emits `<|tool_call>call:name{arg:<|"|>value<|"|>}<tool_call|>`. Parsed rather
-         * than pattern-matched loosely because a half-written call arrives during streaming and
-         * must not be acted on: this returns null until the closing marker is present.
+         * Implemented in [parseGemma4ToolCall]; this wrapper keeps existing call sites working.
          */
-        fun parseToolCall(reply: String): ToolCall? {
-            val open = reply.indexOf("<|tool_call>call:")
-            if (open < 0) return null
-            val close = reply.indexOf("<tool_call|>", open)
-            if (close < 0) return null
-            val body = reply.substring(open + "<|tool_call>call:".length, close)
-            val brace = body.indexOf('{')
-            if (brace < 0) return null
-            val name = body.substring(0, brace).trim()
-            if (name.isEmpty()) return null
-            val arguments = LinkedHashMap<String, String>()
-            var at = brace + 1
-            while (at < body.length) {
-                val colon = body.indexOf(':', at)
-                if (colon < 0) break
-                val key = body.substring(at, colon).trim().trim(',', '{', '}')
-                val valueStart = body.indexOf(QUOTE, colon)
-                if (valueStart < 0) break
-                val valueEnd = body.indexOf(QUOTE, valueStart + QUOTE.length)
-                if (valueEnd < 0) break
-                if (key.isNotEmpty()) {
-                    arguments[key] = body.substring(valueStart + QUOTE.length, valueEnd)
-                }
-                at = valueEnd + QUOTE.length
-                if (at < body.length && body[at] == ',') at++
-            }
-            return ToolCall(name, arguments)
-        }
+        fun parseToolCall(reply: String): ToolCall? = parseGemma4ToolCall(reply)
 
         /** A tool's result, in the shape the model expects to read back. */
         fun renderToolResponse(name: String, value: String): String =
-            "<|tool_response>response:$name{value:${quoted(value)}}<tool_response|>"
+            renderGemma4ToolResponse(name, value)
 
         /** Gemma's value delimiter, which is a token rather than a quotation mark. */
         private const val QUOTE = "<|\"|>"
@@ -821,110 +673,16 @@ class Gemma4Handle private constructor(private val directory: File) : AutoClosea
          */
         fun inDirectory(directory: File): Gemma4Handle = Gemma4Handle(directory)
 
-        /**
-         * Open both graphs, read the tokenizer, and hand the descriptors over.
-         *
-         * Two descriptors rather than one, so the `finally` dance is doubled. Native adopts both
-         * and closes both on every path including failure, so [handed] guards the window between
-         * detaching and native taking ownership - and both must be closed here if the call is
-         * never made.
-         */
-        private fun create(directory: File): Long {
-            val text = File(directory, TEXT)
-            val embed = File(directory, EMBED)
-            val tokenizer = File(directory, TOKENIZER)
-            for (file in listOf(text, embed, tokenizer)) {
-                if (!file.isFile) {
-                    Log.w(TAG, "${file.name} is missing from $directory")
-                    return 0L
-                }
-            }
-            val table = runCatching { tokenizer.readBytes() }.getOrElse {
-                Log.w(TAG, "cannot read $TOKENIZER: $it")
-                return 0L
-            }
-            val textFd = runCatching {
-                ParcelFileDescriptor.open(text, ParcelFileDescriptor.MODE_READ_ONLY)
-                    .use { it.detachFd() }
-            }.getOrElse {
-                Log.w(TAG, "cannot open $TEXT: $it")
-                return 0L
-            }
-            val embedFd = runCatching {
-                ParcelFileDescriptor.open(embed, ParcelFileDescriptor.MODE_READ_ONLY)
-                    .use { it.detachFd() }
-            }.getOrElse {
-                closeFd(textFd)
-                Log.w(TAG, "cannot open $EMBED: $it")
-                return 0L
-            }
-            var handed = false
-            try {
-                val live = MlNative.createGemma4(
-                    textFd, 0L, text.length(),
-                    embedFd, 0L, embed.length(),
-                    table,
-                    cacheBudget(),
-                )
-                handed = true
-                return live
-            } finally {
-                if (!handed) {
-                    closeFd(textFd)
-                    closeFd(embedFd)
-                }
-            }
-        }
-
-        /**
-         * Close a bare descriptor.
-         *
-         * Adopting it into a [ParcelFileDescriptor] is the only way to reach `close(2)` from
-         * Kotlin. Failures are swallowed because the caller is already on an error path.
-         */
-        /**
-         * Bytes this device will spend on the KV cache.
-         *
-         * # Why it is a fraction of *total* rather than available memory
-         *
-         * Available memory is whatever the rest of the system happens to be doing when the
-         * assistant starts, so sizing against it makes the conversation length depend on what
-         * else was open - and shrinks it exactly when the user has been busy. Total memory is a
-         * property of the device, which is what the tier should track.
-         *
-         * A twentieth is deliberately conservative. The weights are already ~2.9 GB of mapped
-         * file and the tower allocations sit on top, so the cache is not the only claim on the
-         * budget - and an allocation failure here is a model that will not start at all.
-         *
-         *   4 GB  ->  200 MB  ->  8,192 positions
-         *   8 GB  ->  400 MB  -> 16,384 positions
-         *  16 GB  ->  800 MB  -> 16,384 positions, the top tier
-         */
-        private fun cacheBudget(): Long {
-            // `/proc/meminfo` rather than `ActivityManager`, because this class is constructed
-            // from a directory and has no `Context` - and adding one to the signature to read a
-            // single number would push Android into an API that is otherwise platform-free.
-            val total = runCatching {
-                File("/proc/meminfo").useLines { lines ->
-                    lines.firstOrNull { it.startsWith("MemTotal:") }
-                        ?.filter(Char::isDigit)
-                        ?.toLongOrNull()
-                        ?.times(1024) ?: 0L
-                }
-            }.getOrDefault(0L)
-            // A device that will not say gets the smallest tier, which always fits, rather than
-            // an optimistic guess that fails to allocate and leaves the assistant dead.
-            if (total <= 0L) return 0L
-            return total / 20
-        }
+        // Native handle construction (create, fd close, cache budget) lives in Gemma4Prefix.kt.
+        private fun create(directory: File): Long = createGemma4Handle(directory)
 
         /** The baked prefix cache, beside the weights. Optional. */
         const val PREFIX_CACHE = "gemma4_prefix.kv"
 
         /** `GKV1` + positions + stride + a 32-byte digest. */
-        private const val HEADER = 4 + 4 + 4 + 32
+        internal const val HEADER = 4 + 4 + 4 + 32
 
-        private fun readInt(bytes: ByteArray, at: Int): Int =
+        internal fun readInt(bytes: ByteArray, at: Int): Int =
             (bytes[at].toInt() and 0xFF) or
                 ((bytes[at + 1].toInt() and 0xFF) shl 8) or
                 ((bytes[at + 2].toInt() and 0xFF) shl 16) or
@@ -937,7 +695,7 @@ class Gemma4Handle private constructor(private val directory: File) : AutoClosea
          * Not cryptographic, and does not need to be: it guards against a stale asset after
          * someone edits the prompt, not against an adversary who could replace the weights too.
          */
-        private fun digest(tokens: IntArray): ByteArray {
+        internal fun digest(tokens: IntArray): ByteArray {
             val out = ByteArray(32)
             for (lane in 0 until 4) {
                 // `0x9e3779b9`, the **32-bit** golden ratio, because that is what
@@ -958,8 +716,5 @@ class Gemma4Handle private constructor(private val directory: File) : AutoClosea
             return out
         }
 
-        private fun closeFd(fd: Int) {
-            runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
-        }
     }
 }

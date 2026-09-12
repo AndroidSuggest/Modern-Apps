@@ -2,10 +2,15 @@ package com.vayunmathur.auto.platform
 
 import android.content.Context
 import android.media.MediaCodec
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.view.Choreographer
 import android.view.Surface
 import com.vayunmathur.auto.BuildConfig
+import com.vayunmathur.auto.protocol.DisplayRouteKind
+import com.vayunmathur.auto.protocol.DisplayRoutePolicy
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalMessage
 import com.vayunmathur.auto.protocol.gal.MediaAck
@@ -41,7 +46,25 @@ class VideoSinkChannel(
      */
     private val onEvent: (VideoEvent) -> Unit = {},
 ) {
+    @Volatile
     private var display: CarDisplay? = null
+
+    /** Posts teardown and vsync control onto the main thread. */
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * The vsync source. Main thread only: armed in [startVsyncDrain], removed in
+     * [release]. Null before streaming and after teardown.
+     */
+    private var choreographer: Choreographer? = null
+
+    /**
+     * Written on the pump thread in [startStreaming], drained and torn down on the
+     * main thread by the vsync chain and [release]. Volatile for visibility; the
+     * lifecycle is ordered (start posts before any drain, teardown removes callbacks
+     * first), so no lock is needed and the pump thread never touches the codec.
+     */
+    @Volatile
     private var encoder: VideoEncoder? = null
     private var sessionId = -1
     private var configurationIndex = 0
@@ -56,9 +79,9 @@ class VideoSinkChannel(
     private var nowPlayingSource: NowPlayingSource? = null
 
     /**
-     * Frames emitted since the last [pumpEncoder] call. `drain()` invokes
-     * [sendFrame] synchronously, so snapshotting after it returns counts exactly
-     * this pump's yield — which is what tells "encoder idle" from "flowing".
+     * Frames emitted since the last vsync drain. `drain()` invokes [sendFrame]
+     * synchronously, so snapshotting after it returns counts exactly this drain's
+     * yield — which is what tells "encoder idle" from "flowing". Main thread only.
      */
     private var framesOutSinceDrain = 0
 
@@ -67,6 +90,16 @@ class VideoSinkChannel(
         service.mediaSink.videoConfigsList.firstOrNull()
 
     val channelId: Int get() = service.id
+
+    /**
+     * Current car-display size in pixels, or null before streaming starts.
+     * The input sink scales head-unit touch pixels into this space.
+     */
+    fun displaySize(): Pair<Int, Int>? {
+        val config = configuration ?: return null
+        if (display == null) return null
+        return config.codecResolution.dimensions()
+    }
 
     /** Wires the now-playing feed from the media monitor; see [nowPlayingSource]. */
     fun setNowPlayingSource(get: () -> NowPlayingInfo?, onTap: () -> Unit) {
@@ -82,6 +115,26 @@ class VideoSinkChannel(
     fun setNowPlaying(info: NowPlayingInfo) {
         display?.setNowPlaying(info)
     }
+
+    /**
+     * Injects one scaled head-unit touch frame into the car UI, if the render
+     * pair is up. The ch8 owner scales first; this only forwards. False means
+     * "no display yet", and the frame is dropped rather than queued.
+     */
+    fun injectTouch(touch: ScaledTouch): Boolean =
+        display?.injectTouch(
+            touch.action,
+            touch.pointers.map { Triple(it.x.toFloat(), it.y.toFloat(), it.pointerId) },
+            touch.actionIndex,
+        ) ?: false
+
+    /** Injects one head-unit key press or release; false with no display up. */
+    fun injectKey(keycode: Int, down: Boolean): Boolean =
+        display?.injectKey(keycode, down) ?: false
+
+    /** Injects one head-unit scroll tick; false with no display up. */
+    fun injectScroll(delta: Int): Boolean =
+        display?.injectScroll(delta) ?: false
 
     /** Step 1. Called once the channel is open. */
     fun requestSetup() {
@@ -132,7 +185,17 @@ class VideoSinkChannel(
     }
 
     private fun onFocus(payload: ByteArray) {
-        val mode = VideoFocusIndication.parseFrom(payload).mode
+        val indication = VideoFocusIndication.parseFrom(payload)
+        // The session owns arbitration: it folds the mode -- or ignores an absent
+        // one, since the lite runtime drops unknown enum values on parse -- and
+        // notifies the service, which mirrors it to the phone UI and the
+        // input/audio gates.
+        connection.session.onVideoFocusIndication(indication)
+        if (!indication.hasMode()) {
+            Log.w(TAG, "video focus indication with no mode; arbitration unchanged")
+            return
+        }
+        val mode = indication.mode
         Log.i(TAG, "video focus is now $mode")
         onEvent(VideoEvent.FocusChanged(mode.name))
         // Regaining the screen needs a fresh keyframe; the head unit has nothing to decode
@@ -174,7 +237,12 @@ class VideoSinkChannel(
         encoder.start()
 
         val surface = checkNotNull(encoder.surface) { "encoder produced no input surface" }
-        display = CarDisplay(context, width, height, density).also {
+        // Phase 9 display route: trusted only with the MAOS role (private otherwise),
+        // so the loopback path keeps working permission-free on stock phones.
+        val trusted = DisplayRoutePolicy.routeFor(
+            holdsProjectionRole = MaosRoleStatus.isProjectionRoleHeld(context),
+        ) == DisplayRouteKind.TRUSTED
+        display = CarDisplay(context, width, height, density, trusted = trusted).also {
             val source = nowPlayingSource
             it.onMediaTap = source?.onTap
             source?.get()?.let(it::setNowPlaying)
@@ -184,6 +252,11 @@ class VideoSinkChannel(
         // the encoder's input surface. Validity dump for the Phase 0 probe.
         dumpSurfaces(width, height, density, surface)
         onEvent(VideoEvent.SurfaceChanged(valid = true))
+        // The negotiated rate caps the drain, not the wire: Choreographer fires at
+        // the display's vsync (usually 60Hz) and each tick drains whatever the
+        // encoder produced, so a 30fps config sends every other vsync while a
+        // 60fps config sends every one.
+        mainHandler.post { startVsyncDrain(frameRate) }
 
         // Step 4.
         connection.send(
@@ -195,6 +268,27 @@ class VideoSinkChannel(
                 .build()
                 .toByteArray(),
         )
+    }
+
+    /**
+     * Arms the vsync drain chain on the main thread. Each tick drains whatever the
+     * encoder produced and re-arms, so frames ride out at display cadence up to the
+     * negotiated rate -- 60fps at 60Hz vsync -- instead of once per network pump.
+     *
+     * [negotiatedFps] is logged, not gated: the encoder itself paces output to its
+     * configured rate, so the drain cannot oversend.
+     */
+    private fun startVsyncDrain(negotiatedFps: Int) {
+        val choreographer = Choreographer.getInstance()
+        this.choreographer = choreographer
+        Log.i(TAG, "draining encoder at vsync cadence for ${negotiatedFps}fps video")
+        choreographer.postFrameCallback(vsyncCallback)
+    }
+
+    /** One vsync tick: drain, count, re-arm. Main thread only. */
+    private val vsyncCallback = Choreographer.FrameCallback {
+        pumpEncoder()
+        choreographer?.postFrameCallback(vsyncCallback)
     }
 
     /**
@@ -213,6 +307,10 @@ class VideoSinkChannel(
     }
 
     private fun sendFrame(buffer: ByteBuffer, info: MediaCodec.BufferInfo) {
+        // Parked stream: keep draining so the codec never stalls, but hold the frames --
+        // the car is showing its own UI. Regaining PROJECTED asks for a keyframe (see
+        // [onFocus]) and the stream restarts cleanly.
+        if (!connection.session.focus.shouldStreamVideo) return
         if (!firstFrameSent) {
             firstFrameSent = true
             onEvent(VideoEvent.FirstFrame)
@@ -241,9 +339,12 @@ class VideoSinkChannel(
     }
 
     /**
-     * Pushes any encoded frames out. Called from the connection's loop.
+     * Pushes any encoded frames out. Called on the main thread at vsync cadence (see
+     * [startVsyncDrain]), never from the connection's pump loop: the pump thread owns
+     * net/SSL while this owns media, and sends serialize under the connection's
+     * engine lock.
      *
-     * Emits a drain observation per pump so the phone UI can tell "encoder idle"
+     * Emits a drain observation per vsync so the phone UI can tell "encoder idle"
      * (drains with nothing ready) from "frames flowing" ([VideoEvent.FrameSent]).
      */
     fun pumpEncoder() {
@@ -255,12 +356,21 @@ class VideoSinkChannel(
         onEvent(VideoEvent.EncoderDrained(framesOut = framesOutSinceDrain))
     }
 
+    /**
+     * Tears the render pair down on the main thread, ordered after the vsync chain:
+     * callbacks are removed first, so no drain can run against a stopped codec, and
+     * the pump thread never touches the codec. Fire-and-forget from any thread.
+     */
     fun release() {
-        display?.release()
-        display = null
-        encoder?.stop()
-        encoder = null
-        onEvent(VideoEvent.SurfaceChanged(valid = false))
+        mainHandler.post {
+            choreographer?.removeFrameCallback(vsyncCallback)
+            choreographer = null
+            display?.release()
+            display = null
+            encoder?.stop()
+            encoder = null
+            onEvent(VideoEvent.SurfaceChanged(valid = false))
+        }
     }
 
     private fun VideoResolution?.dimensions(): Pair<Int, Int> = when (this) {

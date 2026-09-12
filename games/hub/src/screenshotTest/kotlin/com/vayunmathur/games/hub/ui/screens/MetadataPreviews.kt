@@ -1,6 +1,11 @@
 package com.vayunmathur.games.hub.ui.screens
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.games.hub.data.entities.ActivityEventEntity
@@ -16,6 +21,9 @@ import com.vayunmathur.library.ui.DynamicTheme
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 private const val HOUR = 3_600_000L
 private const val DAY = 24 * HOUR
@@ -127,6 +135,50 @@ class MetadataPreviews {
                 ),
                 actions = ProfileActions.Noop,
             )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        DynamicTheme(darkTheme = true) {
+            // Expanded windows keep the dashboard visible while the games list
+            // opens beside it instead of covering it. GameDetailScreen reads
+            // its ViewModel internally, so the previewable GamesListScreen
+            // stands in as the detail pane.
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    DashboardScreen(
+                        state = DashboardUiState(
+                            playerName = "Alex Rivera",
+                            level = 4,
+                            title = "Casual Gamer",
+                            totalXp = 1225,
+                            stats = stats,
+                            recentlyPlayed = games.take(3),
+                            recentActivity = listOf(
+                                ActivityEventEntity(id = 1, type = ActivityEventEntity.TYPE_SESSION_COMPLETED, gameId = "chess", title = "Played Chess", description = "Session 25m", timestamp = now - HOUR),
+                                ActivityEventEntity(id = 2, type = ActivityEventEntity.TYPE_ACHIEVEMENT_UNLOCKED, gameId = "solitaire", title = "Card Shark", description = "Won 10 games", timestamp = now - 2 * HOUR),
+                                ActivityEventEntity(id = 3, type = ActivityEventEntity.TYPE_LEVEL_UP, title = "Reached level 4", description = "Casual Gamer", timestamp = now - 6 * HOUR),
+                            ),
+                            achievementProgressByGame = achievementProgress,
+                            installedGameIds = games.mapTo(mutableSetOf()) { it.gameId },
+                        ),
+                        actions = DashboardActions.Noop,
+                    )
+                }
+                Box(Modifier.weight(0.6f).fillMaxHeight()) {
+                    GamesListScreen(
+                        state = GamesListUiState(
+                            games = games,
+                            achievementProgressByGame = achievementProgress,
+                            installedGameIds = games.mapTo(mutableSetOf()) { it.gameId },
+                        ),
+                        actions = GamesListActions.Noop,
+                    )
+                }
+            }
         }
     }
 }

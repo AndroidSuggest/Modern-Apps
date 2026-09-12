@@ -63,6 +63,8 @@ import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.SiblingPage
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.BottomNavBarItem
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -201,9 +203,7 @@ class MainActivity : FragmentActivity() {
                         Spacer(modifier = Modifier.padding(16.dp))
                         Button(
                             onClick = {
-                                val intent = Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA).apply {
-                                    data = "package:${context.packageName}".toUri()
-                                }
+                                val intent = Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA)
                                 context.startActivity(intent)
                             }
                         ) {
@@ -240,6 +240,17 @@ sealed interface Route: NavKey {
 
     @Serializable
     data class Wallpaper(val id: Long, val uri: String? = null) : Route
+}
+
+/**
+ * Re-tapping a photo (or swiping to another) replaces the viewer instead of stacking it.
+ *
+ * On a two-pane layout the grid stays visible beside the viewer, so opening a second photo
+ * would otherwise pile PhotoPage on PhotoPage; back would then step through stale viewers
+ * instead of returning to the grid.
+ */
+internal fun NavBackStack<Route>.pushPhoto(route: Route.PhotoPage) {
+    if (last() is Route.PhotoPage) setLast(route) else add(route)
 }
 
 @Composable
@@ -292,7 +303,9 @@ fun Navigation(
     }
 
     MainNavigation(backStack) {
-        entry<Route.Gallery>(metadata = SiblingPage()) {
+        // List role for the gallery so medium widths pair it with the viewer; Sibling motion
+        // kept so switching bottom-nav tabs still crossfades instead of sliding.
+        entry<Route.Gallery>(metadata = ListPage() + SiblingPage()) {
             GalleryPage(backStack, galleryViewModel, secureFolderViewModel)
         }
 
@@ -304,11 +317,11 @@ fun Navigation(
             PeoplePage(backStack, galleryViewModel)
         }
 
-        entry<Route.PhotoPage>(metadata = MorphPage()) {
+        entry<Route.PhotoPage>(metadata = ListDetailPage() + MorphPage()) {
             PhotoPage(galleryViewModel, photoMapViewModel, it.id, it.overridePhotosList, it.pendingUri, backStack)
         }
 
-        entry<Route.Wallpaper> {
+        entry<Route.Wallpaper>(metadata = ListDetailPage()) {
             WallpaperPage(backStack, it.id, it.uri)
         }
 

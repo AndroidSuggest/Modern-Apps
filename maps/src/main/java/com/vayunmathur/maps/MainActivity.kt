@@ -16,6 +16,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.downloadservice.InitialDownloadChecker
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.OfflineAware
 import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.util.DataStoreUtils
@@ -307,13 +309,18 @@ fun Navigation(
 ) {
     val backStack = rememberNavBackStack<Route>(Route.MapPage)
     MainNavigation(backStack) {
-        entry<Route.MapPage> {
+        // The map is the list pane and settings/saved-places are detail panes,
+        // so medium widths show them side by side automatically. The map itself
+        // never splits: its own expanded side panel is separate (see MapPage),
+        // and these entries carry no shared-element keys — there is nothing to
+        // morph between a map surface and a settings form.
+        entry<Route.MapPage>(metadata = ListPage()) {
             MapPage(backStack, viewModel, savedPlacesViewModel, searchViewModel, settingsViewModel, parkingViewModel, transitViewModel)
         }
-        entry<Route.SettingsPage> {
+        entry<Route.SettingsPage>(metadata = ListDetailPage()) {
             MapSettingsPage(backStack, settingsViewModel)
         }
-        entry<Route.SavedPlacesPage> {
+        entry<Route.SavedPlacesPage>(metadata = ListDetailPage()) {
             SavedPlacesPage(backStack, savedPlacesViewModel)
         }
     }

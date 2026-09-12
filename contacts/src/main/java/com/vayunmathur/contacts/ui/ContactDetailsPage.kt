@@ -1,58 +1,11 @@
 package com.vayunmathur.contacts.ui
 
-import android.Manifest
-import android.content.ClipData
-import android.content.ContentUris
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.media.RingtoneManager
-import android.net.Uri
-import android.provider.ContactsContract
-import android.os.Bundle
-import android.telecom.PhoneAccount
-import android.telecom.TelecomManager
-import android.telecom.VideoProfile
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import com.vayunmathur.library.ui.ExternalIntents
-import com.vayunmathur.library.ui.ListItem
-import com.vayunmathur.library.ui.ListItemDefaults
-import com.vayunmathur.library.ui.BadgedBox
-import com.vayunmathur.library.ui.CircularProgressIndicator
-import com.vayunmathur.library.ui.DropdownMenu
-import com.vayunmathur.library.ui.DropdownMenuItem
-import com.vayunmathur.library.ui.ExperimentalMaterial3Api
-import com.vayunmathur.library.ui.DetailLazyColumn
-import com.vayunmathur.library.ui.IconButton
-import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.Surface
-import com.vayunmathur.library.util.sharedContainer
-import com.vayunmathur.library.util.sharedText
-import com.vayunmathur.library.util.sharedContent
-import com.vayunmathur.library.ui.Text
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -60,73 +13,35 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.ClipEntry
-import androidx.compose.ui.platform.LocalClipboard
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
-import androidx.core.net.toUri
-import com.google.i18n.phonenumbers.NumberParseException
-import com.google.i18n.phonenumbers.PhoneNumberUtil
-import com.vayunmathur.contacts.data.CDKEvent
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.Contact
-import com.vayunmathur.contacts.data.formatDisplay
 import com.vayunmathur.contacts.data.isSimAccountType
 import com.vayunmathur.contacts.util.ContactDetailsUiState
 import com.vayunmathur.contacts.util.ContactPlatforms
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.contacts.util.ContactsActions
-import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.util.PackageUtils
-import com.vayunmathur.contacts.util.VcfUtils
-import com.vayunmathur.library.ui.IconCake
-import com.vayunmathur.library.ui.IconCall
-import com.vayunmathur.library.ui.IconChat
+import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DetailLazyColumn
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconDelete
-import com.vayunmathur.library.ui.IconDirections
 import com.vayunmathur.library.ui.IconEdit
-import com.vayunmathur.library.ui.IconEvent
-import com.vayunmathur.library.ui.IconGroup
-import com.vayunmathur.library.ui.IconLocationOn
-import com.vayunmathur.library.ui.IconMail
-import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconShare
-import com.vayunmathur.library.ui.IconSms
 import com.vayunmathur.library.ui.IconStar
 import com.vayunmathur.library.ui.IconStarBorder
-import com.vayunmathur.library.ui.IconVideoCamera
-import com.vayunmathur.library.ui.IconVolumeUp
-import com.vayunmathur.library.ui.OverflowMenu
-import com.vayunmathur.library.ui.rememberMessenger
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.ui.ringtonePickerIntent
 import com.vayunmathur.library.ui.ringtonePickerResult
-import com.vayunmathur.library.ui.ringtoneTitle
 import com.vayunmathur.library.ui.staggeredEntrance
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.vayunmathur.contacts.data.hasYear
-import kotlinx.datetime.LocalDate
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.format
-import kotlinx.datetime.toLocalDateTime
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
-import java.util.Locale
 
 /** Binds [ContactViewModel] to the stateless [ContactDetailsScreen]. */
 @Composable
@@ -224,12 +139,9 @@ fun ContactDetailsScreen(
     actions: ContactsActions,
     showBackButton: Boolean = true,
 ) {
-    val context = LocalContext.current
     val contact = state.contact
     val details = contact.details
     val platforms = state.platforms
-
-    val scope = rememberCoroutineScope()
 
     // Only what is on screen when the page arrives should stagger in. A section further down is
     // composed because the user scrolled to it, and delaying that would just feel like lag.
@@ -283,767 +195,43 @@ fun ContactDetailsScreen(
 
             if (details.phoneNumbers.isNotEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier.staggeredEntrance(index = 1, arriving = arriving),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        details.phoneNumbers.forEachIndexed { index, phone ->
-                            var showCallDropdown by remember(phone.id) { mutableStateOf(false) }
-                            var showSmsDropdown by remember(phone.id) { mutableStateOf(false) }
-
-                            DetailItem(
-                                icon = { IconCall() },
-                                data = formatPhoneNumber(phone.number),
-                                label = phone.typeString(context),
-                                trailingIcon = { IconChat() },
-                                onTrailingIconClick = {
-                                    if (platforms.hasAnyPlatform) {
-                                        showSmsDropdown = true
-                                    } else {
-                                        ExternalIntents.sendSms(context, phone.number)
-                                    }
-                                },
-                                onClick = {
-                    if (platforms.hasAnyPlatform) {
-                                        showCallDropdown = true
-                                    } else {
-                                        placeCall(context, phone.number)
-                                    }
-                                },
-                                dropdownContent = {
-                                    CommunicationDropdown(
-                                        expanded = showCallDropdown,
-                                        onDismiss = { showCallDropdown = false },
-                                        number = phone.number,
-                                        type = CommunicationType.CALL,
-                                        platforms = platforms
-                                    )
-                                },
-                                trailingDropdownContent = {
-                                    CommunicationDropdown(
-                                        expanded = showSmsDropdown,
-                                        onDismiss = { showSmsDropdown = false },
-                                        number = phone.number,
-                                        type = CommunicationType.SMS,
-                                        platforms = platforms
-                                    )
-                                },
-                                shape = groupShape(index, details.phoneNumbers.size),
-                                modifier = Modifier.sharedContainer("contact-phone-${phone.id}"),
-                                sharedTextKey = "contact-phone-${phone.id}-text",
-                            )
-                        }
-                    }
+                    PhonesSection(details, platforms, arriving)
                 }
             }
             if (details.emails.isNotEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier.staggeredEntrance(index = 2, arriving = arriving),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        details.emails.forEachIndexed { index, email ->
-                            DetailItem(
-                                icon = { IconMail() },
-                                data = email.address,
-                                label = email.typeString(context),
-                                onClick = {
-                                    ExternalIntents.sendEmail(context, email.address)
-                                },
-                                shape = groupShape(index, details.emails.size),
-                                modifier = Modifier.sharedContainer("contact-email-${email.id}"),
-                                sharedTextKey = "contact-email-${email.id}-text",
-                            )
-                        }
-                    }
+                    EmailsSection(details, arriving)
                 }
             }
             if (details.addresses.isNotEmpty()) {
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        details.addresses.forEachIndexed { index, address ->
-                            DetailItem(
-                                icon = { IconLocationOn() },
-                                data = address.formattedAddress,
-                                label = address.typeString(context),
-                                trailingIcon = { IconDirections() },
-                                onTrailingIconClick = {
-                                    ExternalIntents.openMap(context, address.formattedAddress)
-                                },
-                                shape = groupShape(index, details.addresses.size),
-                            )
-                        }
-                    }
+                    AddressesSection(details)
                 }
             }
 
-            if(details.dates.isNotEmpty()) {
+            if (details.dates.isNotEmpty()) {
                 item {
-                    val clipboard = LocalClipboard.current
-                    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
-                    GroupedSection(title = stringResource(R.string.about_name, contact.name.firstName)) {
-                        val birthday = contact.birthday
-                        if (birthday != null) {
-                            val birthdayText = birthday.startDate.formatDisplay(locale)
-                            val age = calculateAge(birthday.startDate)
-                            val displayText = if (age != null) "$birthdayText ($age)" else birthdayText
-                            ListItem(
-                                content = { Text(displayText) },
-                                supportingContent = { Text(stringResource(R.string.birthday)) },
-                                leadingContent = { IconCake() },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                modifier = Modifier.combinedClickable(
-                                    onClick = { },
-                                    onLongClick = {
-                                        scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("date", displayText))) }
-                                    }
-                                )
-                            )
-                        }
-                        for (event in details.dates.filter { it.type != CDKEvent.TYPE_BIRTHDAY }) {
-                            val eventText = event.startDate.formatDisplay(locale)
-                            ListItem(
-                                content = { Text(eventText) },
-                                supportingContent = { Text(event.typeString(context)) },
-                                leadingContent = { IconEvent() },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                modifier = Modifier.combinedClickable(
-                                    onClick = { },
-                                    onLongClick = {
-                                        scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("date", eventText))) }
-                                    }
-                                )
-                            )
-                        }
-                    }
+                    DatesSection(contact, details)
                 }
             }
-            
+
             if (contact.note.content.isNotEmpty()) {
                 item {
-                    val clipboard = LocalClipboard.current
-                    GroupedSection(title = stringResource(R.string.note)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .combinedClickable(
-                                    onClick = { },
-                                    onLongClick = {
-                                        scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("note", contact.note.content))) }
-                                    }
-                                )
-                                .padding(16.dp)
-                        ) {
-                            Text(
-                                text = com.vayunmathur.library.util.parseMarkdown(
-                                    contact.note.content,
-                                    showMarkers = false,
-                                ),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                        }
-                    }
+                    NoteSection(contact)
                 }
             }
 
             if (details.groups.isNotEmpty()) {
                 item {
-                    val contactGroups = contactGroupsOf(contact, state.groups)
-                    if (contactGroups.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            contactGroups.forEachIndexed { index, group ->
-                                DetailItem(
-                                    icon = { IconGroup() },
-                                    data = group.name,
-                                    label = stringResource(R.string.groups),
-                                    shape = groupShape(index, contactGroups.size),
-                                    modifier = Modifier.sharedContainer(
-                                        "contact-group-${contact.id}-${group.id}"
-                                    ),
-                                )
-                            }
-                        }
-                    }
+                    GroupsSection(contact, state.groups)
                 }
             }
 
             // A SIM's address book has nowhere to keep a ringtone.
             if (!isSimAccountType(contact.accountType)) {
                 item {
-                    DetailItem(
-                        icon = { IconVolumeUp() },
-                        data = ringtoneTitle(context, contact.customRingtone),
-                        label = stringResource(R.string.ringtone),
-                        onClick = { actions.pickRingtone(contact) },
-                    )
+                    RingtoneSection(contact, actions)
                 }
             }
         }
-}
-
-/**
- * How long after the page appears a section still counts as "arriving".
- *
- * Comfortably longer than the last stagger step plus its spring, so nothing is cut off, but short
- * enough that a section the user scrolls down to is composed past the window and simply appears.
- */
-private const val StaggerWindowMillis = 400L
-
-@Composable
-fun ProfileHeader(contact: Contact, decodePhoto: ((String) -> Bitmap?)? = null) {
-    Column(
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-        // No whole-block shared key. The avatar, each name part and the company pair up individually
-        // with their counterparts in the list row and in the editor, and a container morph on top of
-        // those would drag the same content to a second destination at the same time.
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp)
-    ) {
-        ContactAvatar(
-            contact = contact,
-            decodePhoto = decodePhoto,
-            modifier = Modifier
-                .size(100.dp)
-                .sharedContent("contact-avatar-${contact.id}"),
-            initialsStyle = MaterialTheme.typography.headlineLarge,
-        )
-
-        Spacer(modifier = Modifier.size(16.dp))
-
-        // Composed from the structured name rather than the joined display name, so that each part can
-        // travel to the field that owns it when this page morphs into the editor. A single Text could
-        // only ever land in one of them.
-        val name = contact.name
-        val parts = listOfNotNull(
-            name.namePrefix.takeIf { it.isNotBlank() }?.let { "nameprefix" to it },
-            name.firstName.takeIf { it.isNotBlank() }?.let { "firstname" to it },
-            name.middleName.takeIf { it.isNotBlank() }?.let { "middlename" to it },
-            name.lastName.takeIf { it.isNotBlank() }?.let { "lastname" to it },
-            name.nameSuffix.takeIf { it.isNotBlank() }?.let { "namesuffix" to it },
-        )
-        FlowRow(
-            // Full width so the arrangement always has room to centre within. Without it the row
-            // shrinks to its content and relies on the parent Column to centre it, which silently
-            // stops working once a name is wide enough to fill the width - the point at which each
-            // wrapped line needs centring most.
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(
-                6.dp,
-                androidx.compose.ui.Alignment.CenterHorizontally,
-            ),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            parts.forEach { (slot, text) ->
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.sharedText("contact-$slot-${contact.id}"),
-                )
-            }
-        }
-        if (contact.nickname.nickname.isNotBlank()) {
-            Text(
-                text = contact.nickname.nickname,
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.sharedText("contact-nickname-${contact.id}"),
-            )
-        }
-        Text(
-            text = contact.org.company,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.sharedText("contact-company-${contact.id}")
-        )
-    }
-}
-
-@Composable
-fun ActionButtonsRow(
-    number: String?,
-    email: String?,
-    platforms: ContactPlatforms,
-    isGoogleMeetInstalled: Boolean
-) {
-    val context = LocalContext.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        if (number != null) {
-            var showCallDropdown by remember { mutableStateOf(false) }
-            var showSmsDropdown by remember { mutableStateOf(false) }
-            var showVideoDropdown by remember { mutableStateOf(false) }
-
-            ActionButton(
-                icon = { IconCall() },
-                label = stringResource(R.string.action_call),
-                action = {
-                    if (platforms.hasAnyPlatform) {
-                        showCallDropdown = true
-                    } else {
-                        placeCall(context, number)
-                    }
-                },
-                dropdownContent = {
-                    DropdownMenu(expanded = showCallDropdown, onDismissRequest = { showCallDropdown = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.system_default)) },
-                            onClick = {
-                                placeCall(context, number)
-                                showCallDropdown = false
-                            }
-                        )
-                        platforms.signalCallId?.let { id ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.signal)) },
-                                onClick = { placePlatformCall(context, number, PackageUtils.SIGNAL_PACKAGE, fallbackDataRowId = id); showCallDropdown = false }
-                            )
-                        }
-                        platforms.whatsAppCallId?.let { id ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.whatsapp)) },
-                                onClick = { placePlatformCall(context, number, PackageUtils.WHATSAPP_PACKAGE, fallbackDataRowId = id); showCallDropdown = false }
-                            )
-                        }
-                        platforms.telegramCallId?.let { id ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.telegram)) },
-                                onClick = { placePlatformCall(context, number, PackageUtils.TELEGRAM_PACKAGE, fallbackDataRowId = id); showCallDropdown = false }
-                            )
-                        }
-                    }
-                }
-            )
-            ActionButton(
-                icon = { IconSms() },
-                label = stringResource(R.string.action_message),
-                action = {
-                    if (platforms.hasAnyPlatform) {
-                        showSmsDropdown = true
-                    } else {
-                        ExternalIntents.sendSms(context, number)
-                    }
-                },
-                dropdownContent = {
-                    DropdownMenu(expanded = showSmsDropdown, onDismissRequest = { showSmsDropdown = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.system_default)) },
-                            onClick = {
-                                ExternalIntents.sendSms(context, number)
-                                showSmsDropdown = false
-                            }
-                        )
-                        platforms.signalMessageId?.let { id ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.signal)) },
-                                onClick = { launchPlatformAction(context, id); showSmsDropdown = false }
-                            )
-                        }
-                        platforms.whatsAppMessageId?.let { id ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.whatsapp)) },
-                                onClick = { launchPlatformAction(context, id); showSmsDropdown = false }
-                            )
-                        }
-                        platforms.telegramMessageId?.let { id ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.telegram)) },
-                                onClick = { launchPlatformAction(context, id); showSmsDropdown = false }
-                            )
-                        }
-                    }
-                }
-            )
-
-            val hasVideoOptions = platforms.whatsAppVideoId != null ||
-                    platforms.signalVideoId != null ||
-                    platforms.telegramVideoId != null ||
-                    isGoogleMeetInstalled
-            if (hasVideoOptions) {
-                val videoOptionCount = listOf(
-                    isGoogleMeetInstalled,
-                    platforms.whatsAppVideoId != null,
-                    platforms.signalVideoId != null,
-                    platforms.telegramVideoId != null
-                ).count { it }
-
-                ActionButton(
-                    icon = { IconVideoCamera() },
-                    label = stringResource(R.string.action_video),
-                    action = {
-                        if (videoOptionCount == 1) {
-                            when {
-                                isGoogleMeetInstalled -> launchGoogleMeet(context, number)
-                                platforms.whatsAppVideoId != null -> placePlatformCall(context, number, PackageUtils.WHATSAPP_PACKAGE, isVideo = true, fallbackDataRowId = platforms.whatsAppVideoId)
-                                platforms.signalVideoId != null -> placePlatformCall(context, number, PackageUtils.SIGNAL_PACKAGE, isVideo = true, fallbackDataRowId = platforms.signalVideoId)
-                                platforms.telegramVideoId != null -> placePlatformCall(context, number, PackageUtils.TELEGRAM_PACKAGE, isVideo = true, fallbackDataRowId = platforms.telegramVideoId)
-                            }
-                        } else {
-                            showVideoDropdown = true
-                        }
-                    },
-                    dropdownContent = {
-                        DropdownMenu(expanded = showVideoDropdown, onDismissRequest = { showVideoDropdown = false }) {
-                            if (isGoogleMeetInstalled) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.google_meet)) },
-                                    onClick = { launchGoogleMeet(context, number); showVideoDropdown = false }
-                                )
-                            }
-                            platforms.whatsAppVideoId?.let { id ->
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.whatsapp)) },
-                                    onClick = { placePlatformCall(context, number, PackageUtils.WHATSAPP_PACKAGE, isVideo = true, fallbackDataRowId = id); showVideoDropdown = false }
-                                )
-                            }
-                            platforms.signalVideoId?.let { id ->
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.signal)) },
-                                    onClick = { placePlatformCall(context, number, PackageUtils.SIGNAL_PACKAGE, isVideo = true, fallbackDataRowId = id); showVideoDropdown = false }
-                                )
-                            }
-                            platforms.telegramVideoId?.let { id ->
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.telegram)) },
-                                    onClick = { placePlatformCall(context, number, PackageUtils.TELEGRAM_PACKAGE, isVideo = true, fallbackDataRowId = id); showVideoDropdown = false }
-                                )
-                            }
-                        }
-                    }
-                )
-            }
-        }
-        if (email != null) {
-            ActionButton(icon = { IconMail() }, label = stringResource(R.string.email)) {
-                val intent = Intent(Intent.ACTION_SENDTO)
-                intent.data = "mailto:$email".toUri()
-                ExternalIntents.launch(context, intent)
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ActionButton(
-    icon: @Composable () -> Unit,
-    label: String,
-    dropdownContent: (@Composable () -> Unit)? = null,
-    action: () -> Unit
-) {
-    Column(
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        BadgedBox(
-            badge = {}
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable { action() },
-                contentAlignment = androidx.compose.ui.Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier.size(24.dp),
-                    contentAlignment = androidx.compose.ui.Alignment.Center
-                ) {
-                    icon()
-                }
-                dropdownContent?.invoke()
-            }
-        }
-        Text(text = label, style = MaterialTheme.typography.labelMedium)
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun DetailItem(
-    icon: @Composable () -> Unit,
-    data: String,
-    label: String,
-    trailingIcon: (@Composable () -> Unit)? = null,
-    onTrailingIconClick: (() -> Unit)? = null,
-    onClick: (() -> Unit)? = null,
-    dropdownContent: (@Composable () -> Unit)? = null,
-    trailingDropdownContent: (@Composable () -> Unit)? = null,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
-    modifier: Modifier = Modifier,
-    /**
-     * Pairs this row's value text with the text inside the field it becomes, so the two travel together
-     * while the row's box morphs into the field's box. Without it the box morphs alone and drags this
-     * text along as cargo, crossfading it out somewhere it does not belong.
-     */
-    sharedTextKey: Any? = null,
-) {
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
-    Surface(
-        shape = shape,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onClick ?: { },
-                onLongClick = { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("detail", data))) } }
-            )
-    ) {
-        ListItem(
-            content = {
-                Box {
-                    Text(
-                        data,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = if (sharedTextKey == null) Modifier
-                        else Modifier.sharedText(sharedTextKey),
-                    )
-                    dropdownContent?.invoke()
-                }
-            },
-            supportingContent = { Text(label, style = MaterialTheme.typography.bodySmall) },
-            leadingContent = { icon() },
-            trailingContent = {
-                if (trailingIcon != null && onTrailingIconClick != null) {
-                    Box {
-                        IconButton(onClick = onTrailingIconClick) {
-                            trailingIcon()
-                        }
-                        trailingDropdownContent?.invoke()
-                    }
-                }
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent))
-    }
-}
-
-enum class CommunicationType { CALL, SMS }
-
-fun groupShape(
-    index: Int,
-    size: Int,
-    outerRadius: androidx.compose.ui.unit.Dp = 16.dp,
-    innerRadius: androidx.compose.ui.unit.Dp = 4.dp,
-    flatTop: Boolean = false,
-    flatBottom: Boolean = false,
-): androidx.compose.ui.graphics.Shape {
-    val isFirst = index == 0 && !flatTop
-    val isLast = index == size - 1 && !flatBottom
-    return RoundedCornerShape(
-        topStart = if (isFirst) outerRadius else innerRadius,
-        topEnd = if (isFirst) outerRadius else innerRadius,
-        bottomStart = if (isLast) outerRadius else innerRadius,
-        bottomEnd = if (isLast) outerRadius else innerRadius,
-    )
-}
-
-@Composable
-fun CommunicationDropdown(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    number: String,
-    type: CommunicationType,
-    platforms: ContactPlatforms
-) {
-    val context = LocalContext.current
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.system_default)) },
-            onClick = {
-                handleCommunication(context, number, type, null)
-                onDismiss()
-            }
-        )
-        if (platforms.hasSignal) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.signal)) },
-                onClick = {
-                    handleCommunication(context, number, type, PackageUtils.SIGNAL_PACKAGE)
-                    onDismiss()
-                }
-            )
-        }
-        if (platforms.hasWhatsApp) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.whatsapp)) },
-                onClick = {
-                    handleCommunication(context, number, type, PackageUtils.WHATSAPP_PACKAGE)
-                    onDismiss()
-                }
-            )
-        }
-        if (platforms.hasTelegram) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.telegram)) },
-                onClick = {
-                    handleCommunication(context, number, type, PackageUtils.TELEGRAM_PACKAGE)
-                    onDismiss()
-                }
-            )
-        }
-    }
-}
-
-private fun handleCommunication(
-    context: android.content.Context,
-    number: String,
-    type: CommunicationType,
-    packageName: String?
-) {
-    if (type == CommunicationType.CALL) {
-        if (packageName != null) placePlatformCall(context, number, packageName) else placeCall(context, number)
-        return
-    }
-    val intent = when (packageName) {
-        PackageUtils.SIGNAL_PACKAGE -> Intent(Intent.ACTION_SENDTO, "smsto:$number".toUri()).apply { setPackage(PackageUtils.SIGNAL_PACKAGE) }
-        PackageUtils.WHATSAPP_PACKAGE -> Intent(Intent.ACTION_VIEW, "https://wa.me/${number.filter { it.isDigit() }}".toUri())
-        PackageUtils.TELEGRAM_PACKAGE -> Intent(Intent.ACTION_VIEW, "https://t.me/+${number.filter { it.isDigit() || it == '+' }}".toUri())
-        else -> Intent(Intent.ACTION_SENDTO, "sms:$number".toUri())
-    }
-    try {
-        context.startActivity(intent)
-    } catch (e: Exception) {
-        if (packageName != null) {
-            handleCommunication(context, number, CommunicationType.SMS, null)
-        }
-    }
-}
-
-private fun placeCall(context: android.content.Context, number: String) {
-    val uri = Uri.fromParts("tel", number, null)
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
-        == PackageManager.PERMISSION_GRANTED
-    ) {
-        try {
-            val telecomManager = context.getSystemService(TelecomManager::class.java)
-            val extras = Bundle()
-            telecomManager.getDefaultOutgoingPhoneAccount(PhoneAccount.SCHEME_TEL)?.let {
-                extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it)
-            }
-            telecomManager.placeCall(uri, extras)
-        } catch (_: Exception) {
-            ExternalIntents.launch(context, Intent(Intent.ACTION_DIAL, uri))
-        }
-    } else {
-        ExternalIntents.launch(context, Intent(Intent.ACTION_DIAL, uri))
-    }
-}
-
-private fun placePlatformCall(
-    context: android.content.Context,
-    number: String,
-    packageName: String,
-    isVideo: Boolean = false,
-    fallbackDataRowId: Long? = null
-) {
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
-        != PackageManager.PERMISSION_GRANTED
-    ) {
-        if (fallbackDataRowId != null) launchPlatformAction(context, fallbackDataRowId)
-        return
-    }
-    try {
-        val telecomManager = context.getSystemService(TelecomManager::class.java)
-        val handle = telecomManager.callCapablePhoneAccounts.firstOrNull {
-            it.componentName.packageName == packageName
-        }
-        if (handle != null) {
-            val uri = Uri.fromParts("tel", number, null)
-            val extras = Bundle()
-            extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle)
-            if (isVideo) {
-                extras.putInt(
-                    TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE,
-                    VideoProfile.STATE_BIDIRECTIONAL
-                )
-            }
-            telecomManager.placeCall(uri, extras)
-        } else if (fallbackDataRowId != null) {
-            launchPlatformAction(context, fallbackDataRowId)
-        }
-    } catch (_: Exception) {
-        if (fallbackDataRowId != null) launchPlatformAction(context, fallbackDataRowId)
-    }
-}
-
-private fun launchPlatformAction(context: android.content.Context, dataRowId: Long) {
-    try {
-        val uri = ContentUris.withAppendedId(ContactsContract.Data.CONTENT_URI, dataRowId)
-        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-    } catch (_: Exception) {}
-}
-
-private fun launchGoogleMeet(context: android.content.Context, number: String) {
-    try {
-        val intent = Intent("com.google.android.apps.tachyon.action.CALL").apply {
-            data = "tel:$number".toUri()
-            setPackage(PackageUtils.GOOGLE_MEET_PACKAGE)
-        }
-        context.startActivity(intent)
-    } catch (_: Exception) {}
-}
-
-@Composable
-fun GroupedSection(
-    title: String,
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
-        )
-        content()
-    }
-}
-
-@OptIn(ExperimentalTime::class)
-internal fun calculateAge(birthDate: LocalDate, currentDate: LocalDate = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date): Int? {
-    if (!birthDate.hasYear) return null
-    if (currentDate < birthDate) return null
-    var age = currentDate.year - birthDate.year
-    if (currentDate.monthNumber < birthDate.monthNumber ||
-        (currentDate.monthNumber == birthDate.monthNumber && currentDate.dayOfMonth < birthDate.dayOfMonth)
-    ) {
-        age--
-    }
-    return age
-}
-
-fun formatPhoneNumber(numberString: String, defaultRegion: String = "US"): String {
-    val phoneUtil = PhoneNumberUtil.getInstance()
-
-    return try {
-        val phoneNumber = phoneUtil.parse(numberString, defaultRegion)
-        if (!phoneUtil.isValidNumber(phoneNumber)) return numberString
-        val regionOfNumber = phoneUtil.getRegionCodeForNumber(phoneNumber)
-        val formatType = if (regionOfNumber == defaultRegion) {
-            PhoneNumberUtil.PhoneNumberFormat.NATIONAL
-        } else {
-            PhoneNumberUtil.PhoneNumberFormat.INTERNATIONAL
-        }
-
-        phoneUtil.format(phoneNumber, formatType)
-
-    } catch (e: NumberParseException) {
-        numberString
-    }
 }

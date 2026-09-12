@@ -40,34 +40,6 @@ import androidx.compose.ui.text.input.VisualTransformation
  */
 
 /**
- * A titled group of form fields.
- *
- * Pass [title] as null for an untitled leading group. The section owns its
- * outer padding and the vertical gap between children, so callers put fields
- * straight inside without spacers.
- */
-@Composable
-fun FormSection(
-    modifier: Modifier = Modifier,
-    title: String? = null,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Column(
-        modifier = modifier.padding(Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md),
-    ) {
-        if (title != null) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        content()
-    }
-}
-
-/**
  * A labelled text field that fills its width.
  *
  * The default [modifier] is `fillMaxWidth`, which is what every form field

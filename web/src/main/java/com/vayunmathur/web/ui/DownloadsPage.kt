@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconDelete
@@ -56,13 +57,14 @@ fun DownloadsPage(
         },
         scrollBehavior = appBarScrollBehavior(),
     ) { paddingValues ->
+        DesktopMaxWidthContainer(modifier = Modifier.padding(paddingValues)) {
         if (downloads.isEmpty()) {
             EmptyState(
                 title = stringResource(R.string.no_downloads),
-                modifier = Modifier.fillMaxSize().padding(paddingValues),
+                modifier = Modifier.fillMaxSize(),
             )
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(paddingValues), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(downloads, key = { it.id }) { dl ->
                     ListItem(
                         headlineContent = { Text(dl.fileName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -76,6 +78,7 @@ fun DownloadsPage(
                     )
                 }
             }
+        }
         }
     }
 }

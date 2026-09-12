@@ -1,5 +1,8 @@
 package com.vayunmathur.fooddelivery.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
@@ -14,6 +17,9 @@ import com.vayunmathur.library.ui.DynamicTheme
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /**
  * Store listing images for `:fooddelivery`. See `common-conventions-preview-metadata`.
@@ -239,6 +245,24 @@ class MetadataPreviews {
     fun Preview3Cart() {
         DynamicTheme(darkTheme = true) {
             CartScreen(items = cart, onRemoveItem = {}, onCheckout = {})
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        // Medium widths pair the nearby list with the merchant detail: the menu no
+        // longer covers the list, so the listing captures both side by side.
+        DynamicTheme(darkTheme = true) {
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(0.45f)) {
+                    HomeContent(merchants = merchants)
+                }
+                Box(Modifier.weight(0.55f)) {
+                    RestaurantContent(merchant = taqueria)
+                }
+            }
         }
     }
 }

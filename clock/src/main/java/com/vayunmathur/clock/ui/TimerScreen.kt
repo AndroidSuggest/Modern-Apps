@@ -3,6 +3,8 @@ package com.vayunmathur.clock.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,6 +23,7 @@ import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.LazyListScaffold
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.util.NavBackStack
 
 /**
@@ -40,6 +43,7 @@ fun TimerScreen(
     val timers = state.timers
     var isAddingTimer by remember { mutableStateOf(initialAddingTimer) }
     val showKeypad = timers.isEmpty() || isAddingTimer
+    val expanded = isExpandedWidth()
     LazyListScaffold(
         floatingActionButton = {
             if (!showKeypad) {
@@ -63,7 +67,30 @@ fun TimerScreen(
                 }
             }
         } else {
-            items(timers, key = { it.id }) { timer -> TimerCard(timer, state.now(), actions) }
+            // On expanded widths running timers pair up in fractional columns so
+            // a single card doesn't stretch across the window; compact stays a
+            // single column. The keypad case above is untouched.
+            if (expanded && timers.size > 1) {
+                items(timers.chunked(2), key = { row -> row.first().id }) { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        row.forEach { timer ->
+                            Box(modifier = Modifier.weight(1f)) {
+                                TimerCard(timer, state.now(), actions)
+                            }
+                        }
+                        // Keep a lone card in a pair at half width so it doesn't
+                        // stretch to fill the row.
+                        if (row.size == 1) {
+                            Box(modifier = Modifier.weight(1f)) {}
+                        }
+                    }
+                }
+            } else {
+                items(timers, key = { it.id }) { timer -> TimerCard(timer, state.now(), actions) }
+            }
         }
     }
 }

@@ -39,6 +39,9 @@ import kotlin.time.Duration.Companion.minutes
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Expanded desktop window for the wide side-panel layout. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=420"
+
 /**
  * Store listing images for `:findfamily`. See `common-conventions-preview-metadata`.
  *
@@ -232,6 +235,20 @@ class MetadataPreviews {
                     )
                 ),
                 onBack = {},
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        DynamicTheme(darkTheme = true) {
+            FindFamilyWideLayout(
+                map = { StaticMapBackdrop() },
+                panel = {
+                    FamilyListSheet(sampleFamilyList(), FamilyListActions.Noop)
+                },
             )
         }
     }

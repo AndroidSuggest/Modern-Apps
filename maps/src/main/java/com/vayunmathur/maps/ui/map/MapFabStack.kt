@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
+import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.IconMyLocation
 import com.vayunmathur.library.ui.Text
@@ -21,6 +22,30 @@ import com.vayunmathur.maps.ui.LayersButton
 import com.vayunmathur.maps.ui.MapScaleBar
 import com.vayunmathur.maps.ui.theme.MapChromeMetrics
 import com.vayunmathur.maps.R as MapsR
+
+/**
+ * The scale bar bound to the live camera, scoped so a pan/zoom recomposes only this leaf.
+ *
+ * Reading `camera.position` here (rather than in `MapContentBox`, which hosts the whole map
+ * chrome) keeps drag frames from recomposing the map surface, sheets, search bar and FAB
+ * column: `CameraState` itself is a stable holder, and only this tiny leaf subscribes to its
+ * `position` snapshot state. Passing `camera` down costs no subscription; reading
+ * `camera.position` inside this body is what subscribes — deliberately isolated here.
+ */
+@Composable
+private fun BoxScope.CameraScaleBar(camera: CameraState, lift: () -> Int = { 0 }) {
+    MapScaleBar(
+        zoom = camera.position.zoom,
+        latitude = camera.position.target.latitude,
+        modifier = Modifier
+            .align(Alignment.BottomStart)
+            // Lifted like the column: the search bar spans the full width of the bottom, so
+            // anything anchored down there is behind it otherwise.
+            .offset { IntOffset(0, -lift()) }
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .padding(MapChromeMetrics.chromeMargin),
+    )
+}
 
 /**
  * The map controls: a scale bar bottom-left, a FAB stack bottom-right.
@@ -36,8 +61,7 @@ import com.vayunmathur.maps.R as MapsR
  */
 @Composable
 fun BoxScope.MapFabStack(
-    zoom: Double,
-    latitude: Double,
+    camera: CameraState,
     bearing: Double,
     /** Whether the browse-only controls are shown. Layers is drawn either way. */
     browsing: Boolean,
@@ -52,17 +76,7 @@ fun BoxScope.MapFabStack(
     onMyLocation: () -> Unit,
 ) {
     if (browsing) {
-        MapScaleBar(
-            zoom = zoom,
-            latitude = latitude,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                // Lifted like the column: the search bar spans the full width of the bottom, so
-                // anything anchored down there is behind it otherwise.
-                .offset { IntOffset(0, -lift()) }
-                .windowInsetsPadding(WindowInsets.systemBars)
-                .padding(MapChromeMetrics.chromeMargin),
-        )
+        CameraScaleBar(camera = camera, lift = lift)
     }
     Column(
         modifier = Modifier

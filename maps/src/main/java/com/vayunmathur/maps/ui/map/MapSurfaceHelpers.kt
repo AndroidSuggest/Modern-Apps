@@ -1,0 +1,230 @@
+package com.vayunmathur.maps.ui.map
+
+import android.app.Activity
+import android.content.Context
+import androidx.compose.ui.graphics.toArgb
+import com.vayunmathur.library.map.GeoBounds
+import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.MapMarker
+import com.vayunmathur.library.map.MarkerIcon
+import com.vayunmathur.library.map.TrafficColorTable
+import com.vayunmathur.maps.BuildConfig
+import com.vayunmathur.maps.data.Feature1
+import com.vayunmathur.maps.data.ParkingSpot
+import com.vayunmathur.maps.data.SavedPlace
+import com.vayunmathur.maps.ipc.FamilyMember
+import com.vayunmathur.maps.ui.FAMILY_LOCATION_LAYER_ID
+import com.vayunmathur.maps.ui.PARKING_PIN_LAYER_ID
+import com.vayunmathur.maps.ui.SAVED_PLACE_LAYER_ID
+import com.vayunmathur.maps.ui.SEARCH_RESULT_LAYER_ID
+import com.vayunmathur.maps.ui.toSelectedFamilyMember
+import com.vayunmathur.maps.ui.toSelectedSavedPlace
+import com.vayunmathur.maps.ui.toSelectedSearchResult
+import com.vayunmathur.maps.ui.theme.MapTokens
+import com.vayunmathur.maps.util.MapTileCache
+import com.vayunmathur.maps.util.OfflineRouter
+import com.vayunmathur.maps.util.PoiCategories
+import com.vayunmathur.maps.util.SearchResult
+import kotlin.math.floor
+
+/**
+ * Intent extra carrying a dev-only archive URL/path for the map renderer.
+ *
+ * DEBUG builds only (see [resolveArchivePath]): lets device-verifier point the
+ * smoke test at a locally served archive without touching the prod default.
+ */
+const val EXTRA_ARCHIVE_PATH = "maps.intent.extra.ARCHIVE_PATH"
+
+/**
+ * Which archive the renderer opens, in precedence order.
+ *
+ * 1. [EXTRA_ARCHIVE_PATH] off the host Activity's launch intent. DEBUG-only by
+ *    construction, so no launch flag (or stale intent) can redirect a release build.
+ * 2. The device's own copy, downloaded once on first launch or `adb push`ed over it —
+ *    [MapTileCache.localArchive] cannot tell the two apart, which is what makes
+ *    sideloading a freshly tiled archive a push rather than a rebuild.
+ * 3. Null, which leaves the renderer streaming the published archive by range request.
+ *    Only reachable if the download gate was somehow satisfied without the file, since
+ *    `InitialDownloadChecker` will not let the app start without it.
+ */
+internal fun resolveArchivePath(context: Context): String? {
+    val override = if (BuildConfig.DEBUG) {
+        (context as? Activity)?.intent?.getStringExtra(EXTRA_ARCHIVE_PATH)?.ifBlank { null }
+    } else {
+        null
+    }
+    return override ?: MapTileCache.localArchive(context)
+}
+
+/**
+ * OSM station-ish POI type whose taps open the departure board. Station POIs carry no
+ * stop id of their own; see `TransitStopsViewModel.openNearestStop`.
+ */
+internal const val STATION_POI_TYPE = PoiCategories.STATION_TYPE
+
+/** A pin feature tagged with the probe layer it belongs to. */
+internal data class TaggedFeature(val layerId: String, val feature: Feature1)
+
+/**
+ * How long the camera must be still before a traffic prefetch fires. Matches the browse-time
+ * debounce the POI driver uses; long enough that a fling does not fetch every square it flies
+ * over, short enough that the overlay fills in promptly once you stop.
+ */
+internal const val TRAFFIC_PREFETCH_DEBOUNCE_MS = 400L
+
+/**
+ * Below this zoom the per-component traffic overlay is neither drawn (the archive zoom-gates
+ * it) nor worth fetching — a zoomed-out viewport spans too many 1° squares to enumerate.
+ */
+internal const val TRAFFIC_MIN_ZOOM = 11.0
+
+/**
+ * Safety cap on how many 1° squares a single settle may request, so an unexpectedly wide
+ * viewport (near the antimeridian, or a viewport measured before the zoom gate applies) can
+ * never fan out into hundreds of fetches. At [TRAFFIC_MIN_ZOOM] a settled viewport is a
+ * handful of squares, well under this.
+ */
+internal const val TRAFFIC_MAX_SQUARES = 16L
+
+/**
+ * Ask the native prefetch to load traffic for every 1° square the viewport touches.
+ *
+ * [ensureTrafficLoadedNative] re-derives the packed square from the point and dedups, so
+ * passing each cell's centre is enough and repeats are free. A viewport that would span more
+ * than [TRAFFIC_MAX_SQUARES] cells (or an inverted/antimeridian box) is skipped rather than
+ * enumerated.
+ */
+internal fun prefetchTrafficSquares(bounds: GeoBounds) {
+    val lonMin = floor(bounds.west).toInt()
+    val lonMax = floor(bounds.east).toInt()
+    val latMin = floor(bounds.south).toInt()
+    val latMax = floor(bounds.north).toInt()
+    val cells = (lonMax - lonMin + 1).toLong() * (latMax - latMin + 1).toLong()
+    if (cells < 1L || cells > TRAFFIC_MAX_SQUARES) return
+    for (lat in latMin..latMax) {
+        for (lon in lonMin..lonMax) {
+            OfflineRouter.ensureTrafficLoadedNative(lat + 0.5, lon + 0.5, true)
+        }
+    }
+}
+
+/**
+ * Resolve the component-level traffic readings into an id→ARGB table for the renderer.
+ *
+ * Buckets mirror `staticColorFor` in `RouteOverlayBuilder`: `ratio < 0.5` jam, `< 0.9` slow,
+ * else free, where `ratio = ratio_pct / 100`. `ratio_pct == 0` is "no data" and is dropped — an id
+ * absent from the table draws nothing, so those segments fall back to the plain basemap road.
+ * Colours come from [tokens], which already encodes the light/dark palette, so the renderer
+ * only looks them up. Returns null when nothing is left to draw.
+ */
+internal fun buildTrafficColorTable(
+    components: OfflineRouter.TrafficComponents,
+    tokens: MapTokens,
+): TrafficColorTable? {
+    val n = components.ids.size
+    if (n == 0) return null
+    val outIds = LongArray(n)
+    val outArgb = IntArray(n)
+    var k = 0
+    for (i in 0 until n) {
+        val pct = components.ratioPct[i].toInt() and 0xFF
+        if (pct == 0) continue
+        val ratio = pct / 100.0
+        val color = when {
+            ratio < 0.5 -> tokens.traffic.jam
+            ratio < 0.9 -> tokens.traffic.slow
+            else -> tokens.traffic.free
+        }
+        outIds[k] = components.ids[i]
+        outArgb[k] = color.toArgb()
+        k++
+    }
+    if (k == 0) return null
+    return TrafficColorTable(outIds.copyOf(k), outArgb.copyOf(k))
+}
+
+/**
+ * The tappable pin set: every Compose-drawn pin as the [Feature1] its resolver
+ * (`toSelected*`) already understands, tagged for [MapFeaturePicker]'s per-layer
+ * probes. Built from the same inputs the layers draw from, so the hit-test can never
+ * disagree with what is on screen.
+ *
+ * ## Known limitation: renderer transit lines are not tappable
+ *
+ * The transit toggle now drives the renderer's own transit layer, so rail and route lines
+ * are drawn in the basemap. Those are **geometry, not pins** — they have no Compose
+ * counterpart here, and the native pick answers placed *labels* only, which is why
+ * extending [MapFeaturePicker.NATIVE_LABEL_LAYER_IDS] would not reach them either
+ * (`toFeature1` resolves admin place ids and nothing else). Tapping a rail line therefore
+ * falls through to reverse-geocode, exactly as tapping empty basemap does. Live-departure
+ * stop pins are unaffected: those are Compose-drawn and still probe normally.
+ */
+internal fun pinFeatures(
+    searchResults: List<SearchResult>,
+    savedPlaces: List<SavedPlace>,
+    parkingSpot: ParkingSpot?,
+    familyMembers: List<FamilyMember>,
+): List<TaggedFeature> = buildList {
+    if (parkingSpot != null) {
+        add(TaggedFeature(PARKING_PIN_LAYER_ID, parkingPinFeature(parkingSpot)))
+    }
+    for (result in searchResults) {
+        add(TaggedFeature(SEARCH_RESULT_LAYER_ID, searchPinFeature(result)))
+    }
+    for (place in savedPlaces) {
+        add(TaggedFeature(SAVED_PLACE_LAYER_ID, savedPinFeature(place)))
+    }
+    for (member in familyMembers) {
+        add(TaggedFeature(FAMILY_LOCATION_LAYER_ID, familyPinFeature(member)))
+    }
+}
+
+/**
+ * The renderer marker set for the app's pins, plus a map from each marker's id to the [MapHit] a
+ * tap on it means, resolved once here so the tap path is a lookup.
+ *
+ * The renderer draws these (billboarded, glued to the basemap); a tap reads back the marker's id
+ * from the id buffer and this map turns it into the same [MapHit] the old CPU picker produced. Ids
+ * are assigned per pin kind in disjoint ranges so they stay unique and never collide with the
+ * pick-buffer's `0` = "nothing". A pin whose feature does not resolve (a malformed saved place, say)
+ * is dropped rather than drawn as an untappable dot — the same outcome the CPU picker's
+ * `firstNotNullOfOrNull` gave.
+ */
+internal fun buildMarkers(
+    searchResults: List<SearchResult>,
+    savedPlaces: List<SavedPlace>,
+    parkingSpot: ParkingSpot?,
+    familyMembers: List<FamilyMember>,
+): Pair<List<MapMarker>, Map<Long, MapHit>> {
+    val markers = ArrayList<MapMarker>()
+    val hits = HashMap<Long, MapHit>()
+    // Disjoint id ranges per kind: 1 for the single parking pin, then a decade each for the lists.
+    var id = 1L
+    if (parkingSpot != null) {
+        markers.add(MapMarker(id, GeoPoint(parkingSpot.lon, parkingSpot.lat), MarkerIcon.PARKING))
+        hits[id] = MapHit.Parking
+        id++
+    }
+    id = 100_000L
+    for (result in searchResults) {
+        val place = searchPinFeature(result).toSelectedSearchResult() ?: continue
+        markers.add(MapMarker(id, GeoPoint(result.lon, result.lat), MarkerIcon.SEARCH))
+        hits[id] = MapHit.Place(place)
+        id++
+    }
+    id = 200_000L
+    for (saved in savedPlaces) {
+        val place = savedPinFeature(saved).toSelectedSavedPlace() ?: continue
+        markers.add(MapMarker(id, GeoPoint(saved.lon, saved.lat), MarkerIcon.SAVED))
+        hits[id] = MapHit.Place(place)
+        id++
+    }
+    id = 300_000L
+    for (member in familyMembers) {
+        val place = familyPinFeature(member).toSelectedFamilyMember() ?: continue
+        markers.add(MapMarker(id, GeoPoint(member.lng, member.lat), MarkerIcon.FAMILY))
+        hits[id] = MapHit.Place(place)
+        id++
+    }
+    return markers to hits
+}

@@ -155,6 +155,8 @@ import com.vayunmathur.library.ui.IconSquiggly
 import com.vayunmathur.library.ui.IconStrikethrough
 import com.vayunmathur.library.ui.IconStyle
 import com.vayunmathur.library.ui.IconTextTool
+import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.ui.IconShapeArrowFill
 import com.vayunmathur.library.ui.IconShapeArrowOutline
 import com.vayunmathur.library.ui.IconShapeDiamondFill
@@ -816,182 +818,12 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
         }
     }
 
-    PdfOutlineDrawer(
-        outline = outline,
-        drawerState = drawerState,
-        onSelectPage = { page ->
-            scope.launch {
-                if (page >= 0) listState.animateScrollToItem(page)
-                drawerState.close()
-            }
-        },
-    ) {
-    AppScaffold(
-        modifier = Modifier.fillMaxSize(),
-        title = {
-                    if (searching) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            TextField(
-                                value = query,
-                                onValueChange = { query = it },
-                                modifier = Modifier.weight(1f).focusRequester(searchFocus),
-                                placeholder = { Text(stringResource(R.string.search_label)) },
-                                singleLine = true,
-                            )
-                            Checkbox(checked = caseSensitive, onCheckedChange = { caseSensitive = it })
-                            Text(stringResource(R.string.aa), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                },
-                navigationIcon = {
-                    if (searching) {
-                        IconNavigation { searching = false; query = "" }
-                    } else if (outline.isNotEmpty()) {
-                        IconButton({ scope.launch { drawerState.open() } }) { IconMenu() }
-                    } else {
-                        IconNavigation { onBack() }
-                    }
-                },
-                actions = {
-                    if (searching) {
-                        if (matches.isNotEmpty()) {
-                            Text(
-                                "${matchIndex + 1}/${matches.size}",
-                                modifier = Modifier.padding(end = 8.dp),
-                            )
-                            IconButton({ if (matchIndex > 0) matchIndex-- }) {
-                                IconKeyboardArrowUp()
-                            }
-                            IconButton({ if (matchIndex < matches.size - 1) matchIndex++ }) {
-                                IconKeyboardArrowDown()
-                            }
-                        }
-                    } else {
-                        if (!editMode) {
-                            IconButton({ searching = true }) { IconSearch() }
-                            IconButton({ showEncrypt = true }) {
-                                IconLock()
-                            }
-                        }
-                        if (editMode) {
-                            IconButton({ undo() }, enabled = undoStack.isNotEmpty()) {
-                                IconUndo()
-                            }
-                            IconButton({ redo() }, enabled = redoStack.isNotEmpty()) {
-                                IconRedo()
-                            }
-                        }
-                        if (hasRedactions) {
-                            IconButton({
-                                val doc = document
-                                if (doc != null) scope.launch {
-                                    doc.applyRedactions(); pageMgrVersion++; nonUndoDirty = true
-                                }
-                            }) {
-                                IconRedact()
-                            }
-                        }
-                        IconButton({
-                            commitText(textSession); textSession = null
-                            commitPoly()
-                            editMode = !editMode; selected = null
-                        }) {
-                            if (editMode) IconVisible() else IconEdit()
-                        }
-                        if (undoStack.isNotEmpty() || nonUndoDirty) {
-                            Box {
-                                IconButton({ showSaveMenu = true }) { IconSave() }
-                                DropdownMenu(
-                                    expanded = showSaveMenu,
-                                    onDismissRequest = { showSaveMenu = false },
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.pdf_save)) },
-                                        onClick = { showSaveMenu = false; saveInPlace() },
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.save_as_u2026)) },
-                                        onClick = {
-                                            showSaveMenu = false
-                                            saveLauncher.launch(uri.lastPathSegment ?: "edited.pdf")
-                                        },
-                                    )
-                                }
-                            }
-                        } else {
-                            IconButton({ shareAction() }) { IconShare() }
-                        }
-                    }
-                },
-        bottomBar = {
-            if (editMode) {
-                EditToolbar(
-                    tool = tool,
-                    onTool = {
-                        // Leaving the multi-point tools finalizes any in-progress draft.
-                        if (it != EditTool.POLYLINE && it != EditTool.BEZIER) commitPoly()
-                        tool = it; selected = null
-                    },
-                    shape = shape,
-                    onShape = { shape = it; tool = EditTool.SHAPE; selected = null; commitPoly() },
-                    markup = markup,
-                    onMarkup = { markup = it; tool = EditTool.MARKUP; selected = null; commitPoly() },
-                    color = color,
-                    onColor = { color = it },
-                    onStyle = { showStyle = true },
-                    canDelete = selected != null,
-                    onDelete = {
-                        val sel = selected
-                        val doc = document
-                        if (sel != null && doc != null) {
-                            scope.launch {
-                                // Detach (not delete) so it can be undone.
-                                doc.detachAnnotation(sel.first, sel.second)
-                                undoStack.add(EditAction(sel.first, sel.second, EditKind.REMOVED))
-                                redoStack.clear()
-                                selected = null
-                                markEdited(sel.first)
-                            }
-                        }
-                    },
-                    onDuplicate = {
-                        val sel = selected
-                        val doc = document
-                        if (sel != null && doc != null) {
-                            scope.launch {
-                                val newId = doc.duplicateAnnotation(sel.first, sel.second, 14f, -14f)
-                                registerCreated(sel.first, newId)
-                                if (newId != 0L) selected = sel.first to newId
-                                markEdited(sel.first)
-                            }
-                        }
-                    },
-                )
-            }
-        },
-        floatingActionButton = {
-            val draft = polyDraft
-            if (editMode && draft != null) {
-                Column {
-                    SmallFloatingActionButton(onClick = { polyDraft = null }) {
-                        IconClose()
-                    }
-                    androidx.compose.foundation.layout.Spacer(Modifier.padding(4.dp))
-                    com.vayunmathur.library.ui.FloatingActionButton(
-                        onClick = { commitPoly() },
-                    ) { IconCheck() }
-                }
-            }
-        },
-        scrollBehavior = appBarScrollBehavior(),
-    ) { innerPadding ->
+    // Page list shared by the compact body and the Expanded viewer slot below.
+    // Local so it captures the screen's zoom/pan/search/edit state directly.
+    @Composable
+    fun PageViewer(modifier: Modifier = Modifier) {
         Box(
-            Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-        ) {
-        Box(
-            Modifier
+            modifier
                 .fillMaxSize()
                 .onSizeChanged { viewportSize = it }
                 // Track finger count in the Initial pass (before the LazyColumn's
@@ -1127,7 +959,6 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                     }
                 }
             }
-        }
         // Page-number indicator on the right edge, shown while scrolling.
         if (pageCount > 1 && showPageIndicator) {
             Box(
@@ -1144,6 +975,206 @@ fun SafePdfViewerScreen(uri: Uri, onBack: () -> Unit) {
                 )
             }
         }
+        }
+    }
+
+    // Edit toolbar shared by the compact bottom bar and the Expanded tools slot.
+    @Composable
+    fun EditToolbarPane() {
+        EditToolbar(
+            tool = tool,
+            onTool = {
+                // Leaving the multi-point tools finalizes any in-progress draft.
+                if (it != EditTool.POLYLINE && it != EditTool.BEZIER) commitPoly()
+                tool = it; selected = null
+            },
+            shape = shape,
+            onShape = { shape = it; tool = EditTool.SHAPE; selected = null; commitPoly() },
+            markup = markup,
+            onMarkup = { markup = it; tool = EditTool.MARKUP; selected = null; commitPoly() },
+            color = color,
+            onColor = { color = it },
+            onStyle = { showStyle = true },
+            canDelete = selected != null,
+            onDelete = {
+                val sel = selected
+                val doc = document
+                if (sel != null && doc != null) {
+                    scope.launch {
+                        // Detach (not delete) so it can be undone.
+                        doc.detachAnnotation(sel.first, sel.second)
+                        undoStack.add(EditAction(sel.first, sel.second, EditKind.REMOVED))
+                        redoStack.clear()
+                        selected = null
+                        markEdited(sel.first)
+                    }
+                }
+            },
+            onDuplicate = {
+                val sel = selected
+                val doc = document
+                if (sel != null && doc != null) {
+                    scope.launch {
+                        val newId = doc.duplicateAnnotation(sel.first, sel.second, 14f, -14f)
+                        registerCreated(sel.first, newId)
+                        if (newId != 0L) selected = sel.first to newId
+                        markEdited(sel.first)
+                    }
+                }
+            },
+        )
+    }
+
+    // Expanded edit mode moves the toolbar into the wide layout's side panel
+    // (and hides the compact bottom bar) so it never covers page content.
+    val expandedWide = isExpandedWidth() && editMode
+
+    PdfOutlineDrawer(
+        outline = outline,
+        drawerState = drawerState,
+        onSelectPage = { page ->
+            scope.launch {
+                if (page >= 0) listState.animateScrollToItem(page)
+                drawerState.close()
+            }
+        },
+    ) {
+    AppScaffold(
+        modifier = Modifier.fillMaxSize(),
+        title = {
+                    if (searching) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            TextField(
+                                value = query,
+                                onValueChange = { query = it },
+                                modifier = Modifier.weight(1f).focusRequester(searchFocus),
+                                placeholder = { Text(stringResource(R.string.search_label)) },
+                                singleLine = true,
+                            )
+                            Checkbox(checked = caseSensitive, onCheckedChange = { caseSensitive = it })
+                            Text(stringResource(R.string.aa), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                },
+                navigationIcon = {
+                    if (searching) {
+                        IconNavigation { searching = false; query = "" }
+                    } else if (outline.isNotEmpty()) {
+                        IconButton({ scope.launch { drawerState.open() } }) { IconMenu() }
+                    } else {
+                        IconNavigation { onBack() }
+                    }
+                },
+                actions = {
+                    if (searching) {
+                        if (matches.isNotEmpty()) {
+                            Text(
+                                "${matchIndex + 1}/${matches.size}",
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                            IconButton({ if (matchIndex > 0) matchIndex-- }) {
+                                IconKeyboardArrowUp()
+                            }
+                            IconButton({ if (matchIndex < matches.size - 1) matchIndex++ }) {
+                                IconKeyboardArrowDown()
+                            }
+                        }
+                    } else {
+                        if (!editMode) {
+                            IconButton({ searching = true }) { IconSearch() }
+                            IconButton({ showEncrypt = true }) {
+                                IconLock()
+                            }
+                        }
+                        if (editMode) {
+                            IconButton({ undo() }, enabled = undoStack.isNotEmpty()) {
+                                IconUndo()
+                            }
+                            IconButton({ redo() }, enabled = redoStack.isNotEmpty()) {
+                                IconRedo()
+                            }
+                        }
+                        if (hasRedactions) {
+                            IconButton({
+                                val doc = document
+                                if (doc != null) scope.launch {
+                                    doc.applyRedactions(); pageMgrVersion++; nonUndoDirty = true
+                                }
+                            }) {
+                                IconRedact()
+                            }
+                        }
+                        IconButton({
+                            commitText(textSession); textSession = null
+                            commitPoly()
+                            editMode = !editMode; selected = null
+                        }) {
+                            if (editMode) IconVisible() else IconEdit()
+                        }
+                        if (undoStack.isNotEmpty() || nonUndoDirty) {
+                            Box {
+                                IconButton({ showSaveMenu = true }) { IconSave() }
+                                DropdownMenu(
+                                    expanded = showSaveMenu,
+                                    onDismissRequest = { showSaveMenu = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.pdf_save)) },
+                                        onClick = { showSaveMenu = false; saveInPlace() },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.save_as_u2026)) },
+                                        onClick = {
+                                            showSaveMenu = false
+                                            saveLauncher.launch(uri.lastPathSegment ?: "edited.pdf")
+                                        },
+                                    )
+                                }
+                            }
+                        } else {
+                            IconButton({ shareAction() }) { IconShare() }
+                        }
+                    }
+                },
+        bottomBar = {
+            // Expanded edit mode hosts the toolbar in the wide layout's side
+            // panel instead, so the bottom bar is hidden there.
+            if (editMode && !expandedWide) {
+                EditToolbarPane()
+            }
+        },
+        floatingActionButton = {
+            val draft = polyDraft
+            if (editMode && draft != null) {
+                Column {
+                    SmallFloatingActionButton(onClick = { polyDraft = null }) {
+                        IconClose()
+                    }
+                    androidx.compose.foundation.layout.Spacer(Modifier.padding(4.dp))
+                    com.vayunmathur.library.ui.FloatingActionButton(
+                        onClick = { commitPoly() },
+                    ) { IconCheck() }
+                }
+            }
+        },
+        scrollBehavior = appBarScrollBehavior(),
+    ) { innerPadding ->
+        // Expanded edit mode: real pages beside the tools panel so the toolbar
+        // never covers content. Otherwise the compact full-size viewer.
+        if (expandedWide) {
+            PdfViewerWideLayout(
+                viewer = { PageViewer(Modifier.fillMaxSize()) },
+                tools = { EditToolbarPane() },
+                modifier = Modifier.padding(innerPadding),
+            )
+        } else {
+            Box(
+                Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize()
+            ) {
+                PageViewer(Modifier.fillMaxSize())
+            }
         }
     }
 

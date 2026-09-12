@@ -97,6 +97,51 @@ object GalMessage {
     }
 
     /**
+     * Navigation-status channel, service 10.
+     *
+     * MA sender-defined types: the teardown recovered the service descriptor
+     * slot but never the channel message IDs, so STATUS frames the Phase 5
+     * stub (one well-formed "no guidance" post on the grant, live turn
+     * updates with Phase 6 maps-dev). A head unit that does not speak it
+     * answers with a bare MessageError (0xff) on ch10, which is observed and
+     * non-fatal -- the bring-up and video carry on. Payloads are the
+     * `gal/navigation.proto` DTOs.
+     *
+     * Like [Sensor], this channel aliases the 0x8000 range (STATUS shares its
+     * value with the sensor request and others), so owners must scope every
+     * parse by channel id -- the 0x04 CONTROL frame flag never enters routing
+     * (HANDOFF.md section 9).
+     */
+    object NavigationStatus {
+        /** Phone -> HU: turn-guidance state (gal.NavigationStatus proto). */
+        const val STATUS = 0x8001
+    }
+
+    /**
+     * Notification (messaging) channel, service 14.
+     *
+     * MA sender-defined types: the teardown recovered the service descriptor
+     * slot but never the xjm channel message IDs, so these frame the Phase 7
+     * set (threads, body, reply, mark-read) as a DHU-tolerated stub. A head
+     * unit that does not speak them answers with a bare MessageError (0xff)
+     * on ch14, which is observed and non-fatal -- the bring-up and video
+     * carry on. Payloads are the `gal/notification.proto` DTOs.
+     */
+    object Notification {
+        /** Phone -> HU: thread-list snapshot ([MessagingThreads]). */
+        const val THREADS = 0x8001
+
+        /** Phone -> HU: one message body posted ([MessagingMessage]). */
+        const val MESSAGE = 0x8002
+
+        /** Phone -> HU: thread dismissed or read elsewhere ([MessagingDismiss]). */
+        const val DISMISS = 0x8003
+
+        /** HU -> phone: user action -- reply, mark-read, voice-reply ([MessagingAction]). */
+        const val ACTION = 0x8004
+    }
+
+    /**
      * Audio sink sync pulse (services 4/5). The head unit answers setup/start
      * with a no-payload 0x800B from the shared `jdk` sink table; presumed
      * stream sync, observed and counted but never answered.

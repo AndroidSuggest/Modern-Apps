@@ -20,6 +20,7 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.SearchBar
 import com.vayunmathur.library.ui.SearchBarDefaults
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.isExpandedWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -236,6 +237,24 @@ fun SearchScreen(
                 title = stringResource(R.string.empty_recommendations),
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
             )
+        } else if (isExpandedWidth()) {
+            FeedGrid(
+                rows = state.recommendations,
+                key = { it.videoID },
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+            ) { row ->
+                FeedVideoRow(
+                    row = row,
+                    openVideo = actions::openVideo,
+                    titleSharedKey = "youpipe-video-title-${row.videoID}",
+                    overflowActions = listOf(
+                        stringResource(R.string.action_not_interested) to { actions.notInterested(row.channelKey) },
+                        stringResource(R.string.action_more_like_this) to { actions.moreLikeThis(row.channelKey) },
+                        stringResource(R.string.action_pin_channel) to { actions.pinChannel(row.channelKey) },
+                        stringResource(R.string.action_block_channel) to { actions.blockChannel(row.channelKey) },
+                    ),
+                )
+            }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                 items(state.recommendations, key = { it.videoID }) { row ->

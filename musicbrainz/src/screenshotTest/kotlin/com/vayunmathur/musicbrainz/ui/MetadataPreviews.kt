@@ -1,6 +1,11 @@
 package com.vayunmathur.musicbrainz.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.library.ui.DynamicTheme
@@ -18,6 +23,9 @@ import com.vayunmathur.musicbrainz.platform.TrackRow
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi - comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /**
  * Store listing images for `:musicbrainz`. See `common-conventions-preview-metadata`.
@@ -186,6 +194,55 @@ class MetadataPreviews {
                 actions = MusicBrainzActions.Noop,
                 backStack = backStack,
             )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5Expanded() {
+        DynamicTheme(darkTheme = true) {
+            // Expanded windows keep the search list visible while the selected
+            // artist's discography opens beside it instead of covering it.
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    SearchScreen(
+                        state = SearchUiState(
+                            query = "the neon owls",
+                            tab = SearchTab.Releases,
+                            hasSearched = true,
+                            releaseGroups = listOf(
+                                releaseGroup("1", "After Hours", "The Neon Owls", "2024 · Album"),
+                                releaseGroup("2", "Golden Hour", "The Neon Owls", "2022 · Album"),
+                                releaseGroup("3", "Static Bloom", "The Neon Owls", "2021 · EP"),
+                                releaseGroup("4", "Neon Rain", "The Neon Owls", "2019 · Album"),
+                                releaseGroup("5", "First Light", "The Neon Owls", "2017 · Single"),
+                            ),
+                        ),
+                        actions = MusicBrainzActions.Noop,
+                        backStack = backStack,
+                    )
+                }
+                Box(Modifier.weight(0.6f).fillMaxHeight()) {
+                    ArtistScreen(
+                        state = ArtistUiState(
+                            loading = false,
+                            name = "The Neon Owls",
+                            subtitle = "Group · United Kingdom · 2015",
+                            releaseGroups = listOf(
+                                releaseGroup("1", "After Hours", "", "2024 · Album"),
+                                releaseGroup("2", "Golden Hour", "", "2022 · Album"),
+                                releaseGroup("3", "Static Bloom", "", "2021 · EP"),
+                                releaseGroup("4", "Neon Rain", "", "2019 · Album"),
+                                releaseGroup("5", "Coastlines", "", "2018 · Album"),
+                                releaseGroup("6", "First Light", "", "2017 · Single"),
+                            ),
+                        ),
+                        actions = MusicBrainzActions.Noop,
+                        backStack = backStack,
+                    )
+                }
+            }
         }
     }
 }

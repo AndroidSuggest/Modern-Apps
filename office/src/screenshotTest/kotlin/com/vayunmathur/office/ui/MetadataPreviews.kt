@@ -25,6 +25,9 @@ import com.vayunmathur.office.OfficeLightTheme
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Expanded desktop window for the wide outline+document layout. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=420"
+
 // --- Sample documents ------------------------------------------------------
 //
 // The text document is the real metadata_data/assets/sample1.docx, run through the app's own
@@ -219,6 +222,18 @@ class MetadataPreviews {
     fun Preview4Home() {
         DynamicTheme(darkTheme = true) {
             HomeScreen()
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5Expanded() {
+        Paper {
+            OfficeEditorWideLayout(
+                outline = { TextDocumentView(doc = SampleTextDocument) },
+                document = { TextDocumentView(doc = SampleTextDocument) },
+            )
         }
     }
 }

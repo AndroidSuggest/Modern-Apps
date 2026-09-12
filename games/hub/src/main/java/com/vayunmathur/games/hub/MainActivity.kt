@@ -34,6 +34,8 @@ import com.vayunmathur.games.hub.viewmodel.GameHubViewModel
 import com.vayunmathur.games.hub.viewmodel.GameHubViewModelFactory
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DatabaseHelper
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.NavBackStack
@@ -93,10 +95,10 @@ fun HubNavigation(
     val backStack = rememberNavBackStack<MainRoute>(MainRoute.Main)
 
     MainNavigation(backStack) {
-        entry<MainRoute.Main> {
+        entry<MainRoute.Main>(metadata = ListPage()) {
             HubTabs(viewModel = viewModel, backStack = backStack, dbConfigs = dbConfigs)
         }
-        entry<MainRoute.GameDetail>(metadata = MorphPage()) { route ->
+        entry<MainRoute.GameDetail>(metadata = ListDetailPage() + MorphPage()) { route ->
             GameDetailScreen(
                 gameId = route.gameId,
                 viewModel = viewModel,

@@ -14,6 +14,9 @@ import com.vayunmathur.library.ui.DynamicTheme
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Expanded desktop window for the wide tree+editor layout. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=420"
+
 /** The file in the foreground tab. Chosen to exercise every token kind the highlighter knows. */
 private val SAMPLE_KOTLIN = """
     package com.vayunmathur.code.util
@@ -134,6 +137,20 @@ class MetadataPreviews {
     fun Preview3Files() {
         DynamicTheme(darkTheme = true) {
             EditorScreen(state = state(), actions = CodeActions.Noop, initialDrawerOpen = true)
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        DynamicTheme(darkTheme = true) {
+            val uiState = state()
+            CodeWideLayout(
+                tree = { FileTreePane(state = uiState, actions = CodeActions.Noop, onOpenFolder = {}, onOpenFile = {}, onFileOpened = {}) },
+                editor = { EditorScreen(state = uiState, actions = CodeActions.Noop) },
+                terminal = {},
+            )
         }
     }
 }

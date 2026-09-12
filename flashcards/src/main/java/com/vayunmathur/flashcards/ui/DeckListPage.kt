@@ -80,7 +80,12 @@ fun DeckListPage(backStack: NavBackStack<Route>, viewModel: FlashcardsViewModel)
 
     val actions = remember(backStack, viewModel) {
         object : DeckListActions {
-            override fun openDeck(id: Long) { backStack.add(Route.CardList(id)) }
+            override fun openDeck(id: Long) {
+                val route = Route.CardList(id)
+                // Re-tapping another deck replaces the detail instead of stacking
+                // CardList on CardList.
+                if (backStack.last() is Route.CardList) backStack.setLast(route) else backStack.add(route)
+            }
             override fun addDeck(name: String) { viewModel.addDeck(name) }
             override fun deleteDeck(deck: Deck) { viewModel.deleteDeck(deck) }
             override fun startReview(deckId: Long) { backStack.add(Route.Review(deckId)) }

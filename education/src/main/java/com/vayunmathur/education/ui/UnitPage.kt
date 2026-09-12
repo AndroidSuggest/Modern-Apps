@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.education.Route
+import com.vayunmathur.education.pushChain
 import com.vayunmathur.education.content.ModuleType
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.library.ui.IconNavigation
@@ -78,7 +79,7 @@ fun UnitPage(backStack: NavBackStack<Route>, viewModel: EducationViewModel, unit
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .clickable { backStack.add(Route.LessonScreen(lesson.id)) },
+                        .clickable { backStack.pushChain(Route.LessonScreen(lesson.id)) },
                 ) {
                     Row(
                         Modifier

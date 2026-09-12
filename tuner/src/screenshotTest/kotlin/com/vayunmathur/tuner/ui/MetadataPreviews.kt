@@ -17,6 +17,9 @@ import com.vayunmathur.tuner.platform.TunerUiState
 /** Phone-shaped, roughly 1080x2340 at xxhdpi - comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Desktop-wide (1280dp >= 840dp), so the letterboxed expanded layout renders. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
+
 /**
  * Store-listing images for `:tuner`, rendered from Compose previews.
  *
@@ -123,6 +126,27 @@ class MetadataPreviews {
                         frequencyHz = 441.6,
                         cents = 2.3,
                         band = TuningBand.CLOSE,
+                    ),
+                ),
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-note-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4NoteExpanded() {
+        DynamicTheme(darkTheme = true) {
+            NoteScreen(
+                state = noteState(
+                    guitar,
+                    NoteReadout(
+                        midi = 40,
+                        letter = "E",
+                        octave = 2,
+                        frequencyHz = 82.44,
+                        cents = 0.7,
+                        band = TuningBand.IN_TUNE,
                     ),
                 ),
             )

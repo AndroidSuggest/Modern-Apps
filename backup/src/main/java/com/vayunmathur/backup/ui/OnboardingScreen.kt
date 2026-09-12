@@ -20,6 +20,7 @@ import com.vayunmathur.backup.platform.BackupUiState
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -41,14 +42,15 @@ fun OnboardingScreen(
     onDismissMessages: () -> Unit,
 ) {
     AppScaffold(title = "Set up Backup", scrollBehavior = appBarScrollBehavior()) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
+        // Letterboxed on expanded windows so the form keeps a readable measure.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
 
@@ -67,6 +69,7 @@ fun OnboardingScreen(
                 onRestoreWithCode = onRestoreWithCode,
                 onInteract = onDismissMessages,
             )
+            }
         }
     }
 }

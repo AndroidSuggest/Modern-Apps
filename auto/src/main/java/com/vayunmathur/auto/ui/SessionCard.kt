@@ -12,6 +12,8 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.auto.R
 import com.vayunmathur.auto.platform.NowPlayingInfo
+import com.vayunmathur.auto.protocol.VideoFocus
+import com.vayunmathur.auto.protocol.gal.AudioFocusState
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.Text
@@ -24,7 +26,15 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
     val videoLine = session.video?.let {
         stringResource(R.string.session_video, it.width, it.height, it.frameRate, it.configIndex)
     } ?: stringResource(R.string.session_video_none)
+    // Raw 0x8008 mode string (e.g. VIDEO_FOCUS_PROJECTED_NO_INPUT_FOCUS): the
+    // arbitrated rows below are authoritative; this names the exact wire mode
+    // for debugging. Null until the first indication.
     val focusLine = session.focusMode ?: stringResource(R.string.session_focus_none)
+    val videoFocusLine = when (session.videoFocus) {
+        VideoFocus.PROJECTED -> stringResource(R.string.session_focus_projected)
+        VideoFocus.NATIVE -> stringResource(R.string.session_focus_native)
+        VideoFocus.NONE -> stringResource(R.string.session_focus_none)
+    }
     Card(modifier.fillMaxWidth()) {
         Column {
             ListItem(
@@ -33,7 +43,26 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
             )
             ListItem(
                 headlineContent = { Text(stringResource(R.string.session_focus)) },
+                supportingContent = { Text(videoFocusLine) },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.session_focus_wire)) },
                 supportingContent = { Text(focusLine) },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.session_audio_focus)) },
+                supportingContent = { Text(session.audioFocus.name) },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.session_input_allowed)) },
+                supportingContent = {
+                    Text(
+                        stringResource(
+                            if (session.inputAllowed) R.string.session_input_allowed_yes
+                            else R.string.session_input_allowed_no,
+                        ),
+                    )
+                },
             )
             ListItem(
                 headlineContent = { Text(stringResource(R.string.session_frames)) },
@@ -109,8 +138,53 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
             )
             SessionElapsedRow(sessionStartedAt = session.sessionStartedAt)
             NowPlayingRow(nowPlaying = session.nowPlaying)
+            MessagingRow(
+                threads = session.threadsPosted,
+                messages = session.messagesPosted,
+                replies = session.repliesReceived,
+            )
+            AudioRow(
+                sinkStatus = session.sinkStatus,
+                bytesSent = session.audioBytesSent,
+                micTurns = session.micTurns,
+                micAcks = session.micAcks,
+                ttsSpoken = session.ttsSpoken,
+            )
+            InputRow(
+                touches = session.touchesInjected,
+                keys = session.keysInjected,
+                scrolls = session.scrollsInjected,
+                dropped = session.inputDropped,
+            )
             CredentialRow(daysLeft = session.credentialDaysLeft)
         }
+    }
+}
+
+/**
+ * What ch8 did this session: touch frames, keys and scrolls injected, plus
+ * reports dropped for lack of input focus. Counters reset per socket, like
+ * the frame/ack counts above.
+ */
+@Composable
+private fun InputRow(touches: Long, keys: Long, scrolls: Long, dropped: Long) {
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_input_touches)) },
+        supportingContent = { Text(stringResource(R.string.session_input_touches_value, touches)) },
+    )
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_input_keys)) },
+        supportingContent = { Text(stringResource(R.string.session_input_keys_value, keys)) },
+    )
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_input_scrolls)) },
+        supportingContent = { Text(stringResource(R.string.session_input_scrolls_value, scrolls)) },
+    )
+    if (dropped > 0) {
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.session_input_dropped)) },
+            supportingContent = { Text(stringResource(R.string.session_input_dropped_value, dropped)) },
+        )
     }
 }
 
@@ -139,6 +213,26 @@ private fun NowPlayingRow(nowPlaying: NowPlayingInfo?) {
         supportingContent = {
             Text(stringResource(R.string.session_now_playing_value, title, artist, state))
         },
+    )
+}
+
+/**
+ * What ch14 did this session: thread snapshots, message bodies, head-unit replies.
+ * Counters reset per socket, like the frame/ack counts above.
+ */
+@Composable
+private fun MessagingRow(threads: Long, messages: Long, replies: Long) {
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_messaging_threads)) },
+        supportingContent = { Text(stringResource(R.string.session_messaging_threads_value, threads)) },
+    )
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_messaging_messages)) },
+        supportingContent = { Text(stringResource(R.string.session_messaging_messages_value, messages)) },
+    )
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_messaging_replies)) },
+        supportingContent = { Text(stringResource(R.string.session_messaging_replies_value, replies)) },
     )
 }
 

@@ -274,81 +274,27 @@ fun ComposerScreen(
         },
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).padding(horizontal = 16.dp, vertical = 8.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Surface(
-                onClick = { showAccountPicker = true },
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                tonalElevation = 1.dp,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "${stringResource(R.string.from_label)}: ",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        fromAccount?.email ?: stringResource(R.string.select_account),
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconChevronRight()
-                }
-            }
-
-            if (showAccountPicker) {
-                AlertDialog(
-                    onDismissRequest = { showAccountPicker = false },
-                    confirmButton = {},
-                    title = { Text(stringResource(R.string.select_sender)) },
-                    text = {
-                        Column {
-                            accounts.forEach { acc ->
-                                ListItem(
-                                    content = { Text(acc.email) },
-                                    modifier = Modifier.clickable {
-                                        fromAccount = acc
-                                        showAccountPicker = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                )
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = to, onValueChange = { to = it },
-                    label = { Text(stringResource(R.string.to_label)) },
-                    trailingIcon = { IconButton(onClick = { pickContact(0) }) { com.vayunmathur.library.ui.IconAdd() } },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { showCcBcc = !showCcBcc }) { Text(stringResource(R.string.cc_bcc)) }
-            }
-            if (showCcBcc) {
-                OutlinedTextField(
-                    value = cc, onValueChange = { cc = it }, label = { Text(stringResource(R.string.cc)) },
-                    trailingIcon = { IconButton(onClick = { pickContact(1) }) { com.vayunmathur.library.ui.IconAdd() } },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = bcc, onValueChange = { bcc = it }, label = { Text(stringResource(R.string.bcc)) },
-                    trailingIcon = { IconButton(onClick = { pickContact(2) }) { com.vayunmathur.library.ui.IconAdd() } },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+        // Detail pane form: letterboxed on expanded windows so fields keep a
+        // readable measure on desktop.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            ComposerHeaderSection(
+                accounts = accounts,
+                fromAccount = fromAccount,
+                showAccountPicker = showAccountPicker,
+                onOpenAccountPicker = { showAccountPicker = true },
+                onDismissAccountPicker = { showAccountPicker = false },
+                onSelectAccount = { fromAccount = it; showAccountPicker = false },
+                to = to,
+                onToChange = { to = it },
+                cc = cc,
+                onCcChange = { cc = it },
+                bcc = bcc,
+                onBccChange = { bcc = it },
+                showCcBcc = showCcBcc,
+                onToggleCcBcc = { showCcBcc = !showCcBcc },
+                onPickContact = pickContact,
+            )
             // The drafts row's subject morphs into this field. Null for a fresh compose, a reply or
             // a forward, none of which came from a draft.
             LabeledTextField(
@@ -365,67 +311,13 @@ fun ComposerScreen(
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
 
-            // Inline images thumbnail row (text-based to avoid heavy deps; WYSIWYG preview already in editor)
-            if (bodyController.inlineImages.isNotEmpty()) {
-                val inlineTotal = bodyController.inlineImages.sumOf { uriSize(context, it.localUri) }
-                Text(stringResource(R.string.inline_images, bodyController.inlineImages.size, android.text.format.Formatter.formatShortFileSize(context, inlineTotal)), style = MaterialTheme.typography.labelSmall)
-                androidx.compose.foundation.lazy.LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(bodyController.inlineImages.size) { idx ->
-                        val img = bodyController.inlineImages[idx]
-                        Card(modifier = Modifier.size(96.dp)) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                    com.vayunmathur.library.ui.IconImage(modifier = Modifier.size(24.dp))
-                                    Text(img.fileName.take(16), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                }
-                                IconButton(onClick = { bodyController.removeInlineImage(img.cid) }, modifier = Modifier.align(Alignment.TopEnd).size(20.dp)) {
-                                    com.vayunmathur.library.ui.IconClose(modifier = Modifier.size(12.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (attachments.isNotEmpty() || bodyController.inlineImages.isNotEmpty()) {
-                val totalBytes = attachments.sumOf { uriSize(context, it) } + bodyController.inlineImages.sumOf { uriSize(context, it.localUri) }
-                Text(stringResource(R.string.attachments_1, android.text.format.Formatter.formatShortFileSize(context, totalBytes)), style = MaterialTheme.typography.labelLarge)
-                if (totalBytes > 25L * 1024 * 1024) {
-                    Text(
-                        stringResource(R.string.total_attachment_size_exceeds_25_mb_many),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-
-            if (attachments.isNotEmpty()) {
-                attachments.forEach { uri ->
-                    val attachmentLabel = remember(uri) {
-                        "${uriName(context, uri)} · " + android.text.format.Formatter.formatShortFileSize(context, uriSize(context, uri))
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        IconAttachment(modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            attachmentLabel,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(onClick = { attachments = attachments - uri }) {
-                            com.vayunmathur.library.ui.IconClose(modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-            }
+            ComposerAttachmentSection(
+                context = context,
+                bodyController = bodyController,
+                attachments = attachments,
+                onRemoveAttachment = { uri -> attachments = attachments - uri },
+            )
+        }
         }
     }
 }

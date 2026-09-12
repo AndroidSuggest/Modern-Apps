@@ -66,7 +66,12 @@ fun ConditionsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
             FloatingActionButton(
                 onClick = {
                     viewModel.startConditionDraft()
-                    backStack.add(Route.EditCondition())
+                    // A form already open in the detail pane is swapped, not stacked.
+                    if (backStack.last() is Route.EditCondition) {
+                        backStack.setLast(Route.EditCondition())
+                    } else {
+                        backStack.add(Route.EditCondition())
+                    }
                 }
             ) { IconAdd() }
         },
@@ -95,7 +100,11 @@ fun ConditionsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
                         viewModel.startConditionDraft(entry.id)
-                        backStack.add(Route.EditCondition(entry.id))
+                        if (backStack.last() is Route.EditCondition) {
+                            backStack.setLast(Route.EditCondition(entry.id))
+                        } else {
+                            backStack.add(Route.EditCondition(entry.id))
+                        }
                     },
                 ) {
                     ListItem(

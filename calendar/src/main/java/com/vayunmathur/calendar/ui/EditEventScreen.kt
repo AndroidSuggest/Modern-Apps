@@ -305,92 +305,30 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
                     .padding(12.dp),
             )
             HorizontalDivider(Modifier.padding(vertical = 16.dp))
-            Item(
-                { IconSchedule() },
-                {Text(stringResource(R.string.all_day))},
-                { Switch(allDay, { allDay = it }) }
+            EditEventDateTimeSection(
+                allDay = allDay,
+                onAllDay = { allDay = it },
+                startDate = startDate,
+                endDate = endDate,
+                startTime = startTime,
+                endTime = endTime,
+                timezone = timezone,
+                rruleObj = rruleObj,
+                rdateObj = rdateObj,
+                repeatSummary = repeatSummary,
+                onRecurrence = { r, d -> rruleObj = r; rdateObj = d },
+                backStack = backStack,
+                startDateKey = KEY_START_DATE,
+                endDateKey = KEY_END_DATE,
+                startTimeKey = KEY_START_TIME,
+                endTimeKey = KEY_END_TIME,
+                recurrenceKey = KEY_RECURRENCE,
+                timezoneKey = KEY_TIMEZONE,
             )
-
-            // Recurrence selector
-            val repeats = rruleObj != null || rdateObj.isNotEmpty()
-            Item(
-                { /* icon placeholder */ },
-                { Text(if (!repeats) stringResource(R.string.does_not_repeat) else repeatSummary.ifBlank { stringResource(R.string.repeats) }, Modifier.clickable {
-                    // pass initial RecurrenceParams based on existing rrule
-                    val initial = RecurrenceParams.fromRRule(rruleObj)
-                    backStack.add(Route.EditEvent.RecurrenceDialog(KEY_RECURRENCE, startDate, initial, rdateObj))
-                }) },
-                { if (repeats) Text(stringResource(UiR.string.remove), Modifier.clickable {
-                    rruleObj = null
-                    rdateObj = emptyList()
-                }) }
-            )
-
-            Item(
-                {},
-                { Text(DateString.dateWeekday(startDate), Modifier.clickable {
-                    // open date picker dialog
-                    backStack.add(Route.EditEvent.DatePickerDialog(KEY_START_DATE, startDate))
-                }) },
-                { if(!allDay) Text(DateString.time(startTime, DateFormat.is24HourFormat(context)), Modifier.clickable {
-                    // open time picker dialog
-                    // no min time for start
-                    backStack.add(Route.EditEvent.TimePickerDialog(KEY_START_TIME, startTime, null))
-                }) }
-            )
-            Item(
-                {},
-                { Text(DateString.dateWeekday(endDate), Modifier.clickable {
-                    // when opening end date, prevent selecting a date before startDate
-                    backStack.add(Route.EditEvent.DatePickerDialog(KEY_END_DATE, endDate, startDate))
-                }) },
-                { if(!allDay) Text(DateString.time(endTime, DateFormat.is24HourFormat(context)), Modifier.clickable{
-                    // when opening end time, supply minTime if endDate equals startDate
-                    val minTime = if (endDate == startDate) startTime else null
-                    backStack.add(Route.EditEvent.TimePickerDialog(KEY_END_TIME, endTime, minTime))
-                }) }
-            )
-
-            if (!allDay) {
-                Item(
-                    { Box(modifier = Modifier.size(24.dp).background(Color.Transparent)) { IconGlobe() } },
-                    { Text(timezone, Modifier.clickable { backStack.add(Route.EditEvent.TimezonePickerDialog(KEY_TIMEZONE)) }) }
-                )
-            }
 
             HorizontalDivider(Modifier.padding(vertical = 16.dp))
 
-            // Reminders
-            reminders.forEach { minutes ->
-                Item(
-                    { IconSchedule() },
-                    { Text(reminderLabel(context, minutes)) },
-                    { Text(stringResource(UiR.string.remove), Modifier.clickable { reminders = reminders - minutes }) },
-                )
-            }
-            var addReminderExpanded by remember { mutableStateOf(false) }
-            val available = REMINDER_PRESETS.filter { it !in reminders }
-            if (available.isNotEmpty()) {
-                Item(
-                    { IconSchedule() },
-                    {
-                        Box {
-                            Text(stringResource(R.string.add_reminder), Modifier.clickable { addReminderExpanded = true })
-                            DropdownMenu(addReminderExpanded, { addReminderExpanded = false }) {
-                                available.forEach { m ->
-                                    DropdownMenuItem(
-                                        text = { Text(reminderLabel(context, m)) },
-                                        onClick = {
-                                            addReminderExpanded = false
-                                            reminders = (reminders + m).sorted()
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    },
-                )
-            }
+            EditEventReminders(reminders = reminders, onReminders = { reminders = it })
 
             HorizontalDivider(Modifier.padding(vertical = 16.dp))
             // The location line on the detail screen morphs into this field. sharedTextKey, not a
@@ -406,30 +344,4 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
                 sharedTextKey = editRoute.id?.let { "calendar-event-location-$it" },
             )
     }
-}
-
-@Composable
-fun Item(icon: @Composable () -> Unit = {}, left: @Composable () -> Unit, right: @Composable () -> Unit = {}) {
-    Row(Modifier.padding(8.dp).padding(horizontal = 8.dp).height(32.dp), verticalAlignment = Alignment.CenterVertically) {
-        ProvideTextStyle(MaterialTheme.typography.bodyLarge) {
-            Box(Modifier.size(24.dp)) {
-                icon()
-            }
-            Spacer(Modifier.width(24.dp))
-            Box(Modifier.weight(1f)) {
-                left()
-            }
-            right()
-        }
-    }
-}
-
-/** Common reminder offsets, in minutes before the event start. */
-val REMINDER_PRESETS = listOf(0, 5, 10, 15, 30, 60, 120, 1440)
-
-fun reminderLabel(context: android.content.Context, minutes: Int): String = when {
-    minutes <= 0 -> context.getString(R.string.reminder_at_time_of_event)
-    minutes % 1440 == 0 -> context.resources.getQuantityString(R.plurals.reminder_days_before, minutes / 1440, minutes / 1440)
-    minutes % 60 == 0 -> context.resources.getQuantityString(R.plurals.reminder_hours_before, minutes / 60, minutes / 60)
-    else -> context.resources.getQuantityString(R.plurals.reminder_minutes_before, minutes, minutes)
 }

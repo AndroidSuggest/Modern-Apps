@@ -13,10 +13,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.util.openSettingsIfRequested
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.NavKey
+import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.rememberNavBackStack
 import com.vayunmathur.travel.data.TravelRepository
 import com.vayunmathur.travel.ui.AncillariesPage
@@ -169,24 +171,24 @@ fun MainGraph(viewModel: TravelViewModel) {
     Box(Modifier.fillMaxSize()) {
         MainNavigation(backStack) {
             entry<Route.Home> { HomePage(backStack, viewModel) }
-            entry<Route.FlightResults> { FlightResultsPage(backStack, viewModel, it) }
+            entry<Route.FlightResults>(metadata = ListPage()) { FlightResultsPage(backStack, viewModel, it) }
             entry<Route.OutboundSelect> { OutboundSelectPage(backStack, viewModel, it) }
             entry<Route.ReturnSelect> { ReturnSelectPage(backStack, viewModel, it) }
             entry<Route.FareSelect> { FareSelectPage(backStack, viewModel, it) }
-            entry<Route.OfferReview>(metadata = MorphPage()) { OfferReviewPage(backStack, viewModel, it) }
+            entry<Route.OfferReview>(metadata = ListDetailPage() + MorphPage()) { OfferReviewPage(backStack, viewModel, it) }
             entry<Route.Ancillaries> { AncillariesPage(backStack, viewModel, it) }
             entry<Route.SeatMap> { SeatMapPage(backStack, viewModel, it) }
             entry<Route.Passengers> { PassengersPage(backStack, viewModel, it) }
             entry<Route.Payment> { PaymentPage(backStack, viewModel, it) }
             entry<Route.Confirmation> { ConfirmationPage(backStack, viewModel, it) }
-            entry<Route.OrderDetail> { OrderDetailPage(backStack, viewModel, it) }
+            entry<Route.OrderDetail>(metadata = ListDetailPage()) { OrderDetailPage(backStack, viewModel, it) }
             entry<Route.Cancel> { CancellationPage(backStack, viewModel, it) }
             entry<Route.Change> { ChangePage(backStack, viewModel, it) }
             entry<Route.StayResults> { StayResultsPage(backStack, viewModel, it) }
             entry<Route.StayDetail>(metadata = MorphPage()) { StayDetailPage(backStack, viewModel, it) }
             entry<Route.StayGuests> { StayGuestsPage(backStack, viewModel) }
             entry<Route.StayConfirmation> { StayConfirmationPage(backStack, viewModel, it) }
-            entry<Route.Trips> { TripsPage(backStack, viewModel) }
+            entry<Route.Trips>(metadata = ListPage()) { TripsPage(backStack, viewModel) }
             entry<Route.Settings> { SettingsPage(backStack, viewModel) }
         }
     }

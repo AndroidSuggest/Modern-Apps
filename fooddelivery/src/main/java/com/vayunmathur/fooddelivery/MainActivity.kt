@@ -28,6 +28,8 @@ import com.vayunmathur.library.ui.IconShoppingCart
 import com.vayunmathur.library.ui.PagerTab
 import com.vayunmathur.library.ui.TabStyle
 import com.vayunmathur.library.ui.TabbedPagerScaffold
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.NavBackStack
@@ -46,6 +48,17 @@ import com.vayunmathur.fooddelivery.ui.OrderTrackingScreen
 import com.vayunmathur.fooddelivery.ui.OrdersScreen
 import com.vayunmathur.fooddelivery.ui.RestaurantScreen
 import kotlinx.serialization.Serializable
+
+/**
+ * Re-tapping into the same destination class replaces the detail instead of stacking it.
+ *
+ * On a two-pane layout the list stays visible under its detail, so tapping a second
+ * restaurant (or order) would otherwise pile Restaurant on Restaurant; back would then
+ * step through stale details instead of leaving.
+ */
+internal fun NavBackStack<Route>.pushDetail(route: Route) {
+    if (backStack.isNotEmpty() && last()::class == route::class) setLast(route) else add(route)
+}
 
 sealed interface Route : NavKey {
     @Serializable data class Main(val initialTab: Int = 0) : Route
@@ -146,14 +159,14 @@ private fun FoodDeliveryApp(trackOrderId: MutableState<Int?>, openRestaurantId: 
     }
 
     MainNavigation(backStack) {
-        entry<Route.Main> { route ->
+        entry<Route.Main>(metadata = ListPage()) { route ->
             FoodDeliveryTabs(
                 initialTab = route.initialTab,
                 backStack = backStack,
                 cart = cart,
             )
         }
-        entry<Route.Restaurant>(metadata = MorphPage()) { route ->
+        entry<Route.Restaurant>(metadata = ListDetailPage() + MorphPage()) { route ->
             RestaurantScreen(
                 merchantId = route.id,
                 onBack = { backStack.pop() },
@@ -163,7 +176,8 @@ private fun FoodDeliveryApp(trackOrderId: MutableState<Int?>, openRestaurantId: 
                 }
             )
         }
-        entry<Route.Checkout> {
+        // Checkout is a flow step, not a detail of the tab list.
+        entry<Route.Checkout>(metadata = ListDetailPage()) {
             CheckoutScreen(
                 items = cart,
                 onBack = { backStack.pop() },
@@ -174,7 +188,9 @@ private fun FoodDeliveryApp(trackOrderId: MutableState<Int?>, openRestaurantId: 
                 },
             )
         }
-        entry<Route.OrderTracking>(metadata = MorphPage()) { route ->
+        // The brief keeps order-tracking full-screen custom; metadata still marks it a detail
+        // so medium widths show it two-pane instead of covering the list.
+        entry<Route.OrderTracking>(metadata = ListDetailPage() + MorphPage()) { route ->
             OrderTrackingScreen(orderId = route.orderId, onBack = { backStack.pop() })
         }
     }
@@ -195,7 +211,7 @@ private fun FoodDeliveryTabs(
     val tabs = remember(backStack, cart, context) {
         listOf(
             PagerTab("Home", { IconHome() }) {
-                HomeScreen(onMerchantClick = { id -> backStack.add(Route.Restaurant(id)) })
+                HomeScreen(onMerchantClick = { id -> backStack.pushDetail(Route.Restaurant(id)) })
             },
             PagerTab("Cart", { IconShoppingCart() }) {
                 CartScreen(
@@ -212,10 +228,10 @@ private fun FoodDeliveryTabs(
                 )
             },
             PagerTab("Deals", { IconLocalOffer() }) {
-                DealsScreen(onMerchantClick = { id -> backStack.add(Route.Restaurant(id)) })
+                DealsScreen(onMerchantClick = { id -> backStack.pushDetail(Route.Restaurant(id)) })
             },
             PagerTab("Orders", { IconPackage() }) {
-                OrdersScreen(onTrackOrder = { id -> backStack.add(Route.OrderTracking(id)) })
+                OrdersScreen(onTrackOrder = { id -> backStack.pushDetail(Route.OrderTracking(id)) })
             },
             PagerTab("Account", { IconPerson() }) {
                 AccountScreen()

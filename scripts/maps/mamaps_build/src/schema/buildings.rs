@@ -53,14 +53,29 @@ pub const KINDS: &[&str] = &["building", "building_part"];
 /// `the_schema_floor_matches_the_styles` in the crate root is what keeps them agreeing.
 pub const MIN_ZOOM: u8 = 14;
 
+/// The smallest drawn building footprint worth carrying, in square pixels of a 256-unit tile.
+///
+/// `1.0`: a footprint smaller than one display pixel at z14. Converted by
+/// [`super::land::min_area_units`] to 256 square extent units at extent 4096 (a 16x16-unit
+/// square, ~9.5 m at z14) — a speck rather than detail, and the same floor the schema already
+/// applies to the smallest z14 `landuse` kinds (`pitch`, `playground`, `platform`). Whole-number
+/// because [`crate::store`] packs this field as a `u8` and refuses anything fractional rather
+/// than rounding a threshold silently. Carried through the existing `min_area_px` plumbing so
+/// [`crate::tiler`] needs no building branch for the drop itself.
+///
+/// The prototype at `analysis/mamaps_building_savings.py` estimates dropping the smallest ~15%
+/// of footprints; this floor is at least that aggressive, on the same z14-only layer (9.76M
+/// features, ~20% of the archive).
+pub const MIN_AREA_PX: f64 = 1.0;
+
 pub fn classify(tags: &(impl TagSource + ?Sized)) -> Option<Class> {
     // A part first: a way carrying both is a part of a larger footprint, and drawing it as a
     // footprint too would double-paint the courtyard.
     if tags.truthy("building:part") {
-        return Some(Class::area(LAYER_BUILDINGS, kind("building_part"), MIN_ZOOM));
+        return Some(Class { min_area_px: MIN_AREA_PX, ..Class::area(LAYER_BUILDINGS, kind("building_part"), MIN_ZOOM) });
     }
     if tags.truthy("building") {
-        return Some(Class::area(LAYER_BUILDINGS, kind("building"), MIN_ZOOM));
+        return Some(Class { min_area_px: MIN_AREA_PX, ..Class::area(LAYER_BUILDINGS, kind("building"), MIN_ZOOM) });
     }
     None
 }
@@ -344,6 +359,21 @@ mod tests {
         assert_eq!(MIN_ZOOM, 14);
         let class = classify_tags(&[("building", "yes")]).expect("building");
         assert_eq!(class.min_zoom, 14);
+    }
+
+    /// The densest z14 layer drops what no screen can show: below one display pixel a footprint
+    /// is a speck, not detail. Both kinds carry it — a part is still a footprint — and it is a
+    /// whole pixel because the store packs this field as a `u8` and refuses fractions rather
+    /// than rounding a threshold silently.
+    #[test]
+    fn buildings_carry_a_one_pixel_minimum_area() {
+        assert_eq!(MIN_AREA_PX, 1.0);
+        for tags in [vec![("building", "yes")], vec![("building:part", "yes")]] {
+            let class = classify_tags(&tags).expect("building");
+            assert_eq!(class.min_area_px, MIN_AREA_PX, "{tags:?}");
+        }
+        // One display pixel, expressed in a 4096-unit tile: a 16x16-unit square.
+        assert_eq!(crate::schema::land::min_area_units(MIN_AREA_PX, 4096), 256.0);
     }
 
     fn attrs_of(pairs: &[(&str, &str)]) -> BuildingAttrs {

@@ -8,6 +8,7 @@ import com.vayunmathur.everysync.ui.AddAccountScreen
 import com.vayunmathur.everysync.ui.DavLoginScreen
 import com.vayunmathur.everysync.ui.SettingsScreen
 import com.vayunmathur.library.util.DialogPage
+import com.vayunmathur.library.util.ListDetailPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
@@ -23,7 +24,7 @@ fun Navigation(viewModel: EverySyncViewModel) {
         entry<Route.Accounts>(metadata = ListPage()) { AccountsScreen(backStack, viewModel) }
         entry<Route.AddAccount>(metadata = ListPage()) { AddAccountScreen(backStack, viewModel) }
         entry<Route.DavLogin>(metadata = DialogPage()) { DavLoginScreen(backStack, viewModel, it.providerId) }
-        entry<Route.AccountDetail>(metadata = ListPage() + MorphPage()) { AccountDetailScreen(backStack, viewModel, it.accountName) }
+        entry<Route.AccountDetail>(metadata = ListDetailPage() + MorphPage()) { AccountDetailScreen(backStack, viewModel, it.accountName) }
         entry<Route.Settings>(metadata = ListPage()) { SettingsScreen(backStack, viewModel) }
     }
 }

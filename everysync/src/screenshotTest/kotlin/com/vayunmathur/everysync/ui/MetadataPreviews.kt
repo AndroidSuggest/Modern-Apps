@@ -1,6 +1,11 @@
 package com.vayunmathur.everysync.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.everysync.data.Settings
@@ -17,6 +22,9 @@ import com.vayunmathur.library.ui.DynamicTheme
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /**
  * Store listing images for `:everysync`. See `common-conventions-preview-metadata`.
@@ -108,6 +116,57 @@ class MetadataPreviews {
                 ),
                 actions = SettingsActions.Noop,
             )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5Expanded() {
+        DynamicTheme(darkTheme = true) {
+            // Expanded windows keep the accounts list visible while the selected
+            // account's detail opens beside it instead of covering it.
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    AccountsScreen(
+                        state = AccountsUiState(
+                            accounts = listOf(
+                                AccountRow(
+                                    accountName = "jane@gmail.com (Google)",
+                                    providerId = "google",
+                                    lastSyncedAt = "3/12/25 9:41 AM",
+                                ),
+                                AccountRow(
+                                    accountName = "jane@icloud.com (Apple / iCloud)",
+                                    providerId = "icloud",
+                                    syncing = true,
+                                ),
+                                AccountRow(
+                                    accountName = "jane (CalDAV server)",
+                                    providerId = "caldav",
+                                    lastSyncedAt = "3/12/25 9:05 AM",
+                                ),
+                                AccountRow(
+                                    accountName = "jane@gmail.com (Google Health)",
+                                    providerId = "google_health",
+                                    lastSyncedAt = "3/12/25 8:15 AM",
+                                ),
+                            ),
+                        ),
+                        actions = AccountsActions.Noop,
+                    )
+                }
+                Box(Modifier.weight(0.6f).fillMaxHeight()) {
+                    AccountDetailScreen(
+                        state = AccountDetailUiState(
+                            accountName = "jane@gmail.com (Google)",
+                            providerId = "google",
+                            enabledTypes = setOf(DataType.CONTACTS, DataType.CALENDAR),
+                        ),
+                        actions = AccountDetailActions.Noop,
+                    )
+                }
+            }
         }
     }
 }

@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconNavigation
@@ -69,8 +70,9 @@ fun SettingsPage(
         backStack = backStack,
         scrollBehavior = appBarScrollBehavior(),
     ) { paddingValues ->
+        DesktopMaxWidthContainer(modifier = Modifier.padding(paddingValues)) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             item {
@@ -216,6 +218,7 @@ fun SettingsPage(
                     }
                 }
             }
+        }
         }
     }
 

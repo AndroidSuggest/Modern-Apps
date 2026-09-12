@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Spacing
 import com.vayunmathur.library.ui.Text
@@ -51,10 +52,11 @@ fun ChordScreen(state: TunerUiState, onSelectInstrument: (String) -> Unit) {
         scrollBehavior = appBarScrollBehavior(),
         actions = { InstrumentMenu(state, onSelectInstrument) },
     ) { padding ->
+        // Single-pane instrument readout; letterboxed on expanded windows.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(padding)
                 .padding(Spacing.lg)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
@@ -170,6 +172,7 @@ fun ChordScreen(state: TunerUiState, onSelectInstrument: (String) -> Unit) {
                 }
                 Shapes(state, voicings, chosen)
             }
+        }
         }
     }
 }

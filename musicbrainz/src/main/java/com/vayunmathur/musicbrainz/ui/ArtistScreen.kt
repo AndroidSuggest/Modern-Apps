@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.ErrorState
 import com.vayunmathur.library.ui.ListItem
@@ -70,7 +71,8 @@ fun ArtistScreen(
                 title = stringResource(R.string.no_releases),
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
-            else -> LazyColumn(
+            else -> DesktopMaxWidthContainer {
+            LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     top = padding.calculateTopPadding(),
@@ -94,7 +96,10 @@ fun ArtistScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { backStack.add(Route.ReleaseGroup(group.id)) },
+                            .clickable {
+                                if (backStack.last() is Route.ReleaseGroup) backStack.setLast(Route.ReleaseGroup(group.id))
+                                else backStack.add(Route.ReleaseGroup(group.id))
+                            },
                         supportingContent = { SecondaryText(group.subtitle) },
                         leadingContent = {
                             CoverArtImage(
@@ -104,6 +109,7 @@ fun ArtistScreen(
                         },
                     )
                 }
+            }
             }
         }
     }

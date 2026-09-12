@@ -2,6 +2,9 @@ package com.vayunmathur.auto.platform
 
 import android.os.SystemClock
 import com.vayunmathur.auto.protocol.AckTracker
+import com.vayunmathur.auto.protocol.FocusArbitration
+import com.vayunmathur.auto.protocol.VideoFocus
+import com.vayunmathur.auto.protocol.gal.AudioFocusState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -81,6 +84,25 @@ object AutoSessionState {
     private val _focusMode = MutableStateFlow<String?>(null)
     val focusMode: StateFlow<String?> = _focusMode.asStateFlow()
 
+    /**
+     * Arbitrated video focus, mirrored from the session's [FocusArbitration].
+     * The phone status screen and the input sink gate on this, not on the raw
+     * 0x8008 mode string: transient and no-input variants fold in here.
+     */
+    private val _videoFocus = MutableStateFlow(VideoFocus.NONE)
+    val videoFocus: StateFlow<VideoFocus> = _videoFocus.asStateFlow()
+
+    /** Last audio focus state the head unit reported; INVALID until the first 0x13. */
+    private val _audioFocus = MutableStateFlow(AudioFocusState.AUDIO_FOCUS_STATE_INVALID)
+    val audioFocus: StateFlow<AudioFocusState> = _audioFocus.asStateFlow()
+
+    /**
+     * Whether head-unit input may be injected. Derived from video focus, not
+     * negotiated: projected video with input focus only.
+     */
+    private val _inputAllowed = MutableStateFlow(false)
+    val inputAllowed: StateFlow<Boolean> = _inputAllowed.asStateFlow()
+
     private val _framesSent = MutableStateFlow(0L)
     val framesSent: StateFlow<Long> = _framesSent.asStateFlow()
 
@@ -133,10 +155,101 @@ object AutoSessionState {
     private val _nowPlaying = MutableStateFlow<NowPlayingInfo?>(null)
     val nowPlaying: StateFlow<NowPlayingInfo?> = _nowPlaying.asStateFlow()
 
+    /** ch14 threads mirrored this session; reset per socket like the video counters. */
+    private val _threadsPosted = MutableStateFlow(0L)
+    val threadsPosted: StateFlow<Long> = _threadsPosted.asStateFlow()
+
+    /** ch14 message bodies posted this session. */
+    private val _messagesPosted = MutableStateFlow(0L)
+    val messagesPosted: StateFlow<Long> = _messagesPosted.asStateFlow()
+
+    /** Head-unit replies (typed or voice) received this session. */
+    private val _repliesReceived = MutableStateFlow(0L)
+    val repliesReceived: StateFlow<Long> = _repliesReceived.asStateFlow()
+
+    /** ch8 touch frames injected this session; reset per socket like the rest. */
+    private val _touchesInjected = MutableStateFlow(0L)
+    val touchesInjected: StateFlow<Long> = _touchesInjected.asStateFlow()
+
+    /** ch8 key presses/releases injected this session. */
+    private val _keysInjected = MutableStateFlow(0L)
+    val keysInjected: StateFlow<Long> = _keysInjected.asStateFlow()
+
+    /** ch8 scroll ticks injected this session. */
+    private val _scrollsInjected = MutableStateFlow(0L)
+    val scrollsInjected: StateFlow<Long> = _scrollsInjected.asStateFlow()
+
+    /** ch8 reports dropped for lack of input focus this session. */
+    private val _inputDropped = MutableStateFlow(0L)
+    val inputDropped: StateFlow<Long> = _inputDropped.asStateFlow()
+
+    /** ch7 SensorRequests sent this session; reset per socket like the rest. */
+    private val _sensorsSubscribed = MutableStateFlow(0L)
+    val sensorsSubscribed: StateFlow<Long> = _sensorsSubscribed.asStateFlow()
+
+    /** ch7 SensorBatches received this session. */
+    private val _sensorBatches = MutableStateFlow(0L)
+    val sensorBatches: StateFlow<Long> = _sensorBatches.asStateFlow()
+
+    /** ch7 SensorErrors observed this session (never fatal). */
+    private val _sensorErrors = MutableStateFlow(0L)
+    val sensorErrors: StateFlow<Long> = _sensorErrors.asStateFlow()
+
+    /** Guidance setup/config observations on ch3 this session. */
+    private val _guidanceEvents = MutableStateFlow(0L)
+    val guidanceEvents: StateFlow<Long> = _guidanceEvents.asStateFlow()
+
+    /** Nav-status posts on ch10 this session. */
+    private val _navStatusPosts = MutableStateFlow(0L)
+    val navStatusPosts: StateFlow<Long> = _navStatusPosts.asStateFlow()
+
     /**
-     * Send/ack timestamps backing the fps windows. Mutated only on the
-     * `ma-auto-projection` worker thread (every entry point above runs there),
-     * so no extra locking beyond the flows' own thread-safety.
+     * Per-role sink status (ch4 SYS, ch5 MEDIA); empty until a channel opens.
+     * Reset per socket like the rest: a new socket means a new session.
+     */
+    private val _sinkStatus = MutableStateFlow<Map<AudioSinkRole, AudioSinkStatus>>(emptyMap())
+    val sinkStatus: StateFlow<Map<AudioSinkRole, AudioSinkStatus>> = _sinkStatus.asStateFlow()
+
+    /** PCM bytes framed out on ch4/5 this session. */
+    private val _audioBytesSent = MutableStateFlow(0L)
+    val audioBytesSent: StateFlow<Long> = _audioBytesSent.asStateFlow()
+
+    /** 0x800B sync pulses answered on ch4/5 this session. */
+    private val _audioSyncs = MutableStateFlow(0L)
+    val audioSyncs: StateFlow<Long> = _audioSyncs.asStateFlow()
+
+    /** 0x8004 sink acks received this session. */
+    private val _audioAcks = MutableStateFlow(0L)
+    val audioAcks: StateFlow<Long> = _audioAcks.asStateFlow()
+
+    /** TTS utterances that reached the car this session. */
+    private val _ttsSpoken = MutableStateFlow(0L)
+    val ttsSpoken: StateFlow<Long> = _ttsSpoken.asStateFlow()
+
+    /** TTS utterances dropped (no sink, bad wav, dead engine) this session. */
+    private val _ttsDropped = MutableStateFlow(0L)
+    val ttsDropped: StateFlow<Long> = _ttsDropped.asStateFlow()
+
+    /** ch6 mic turns that yielded retained PCM this session. */
+    private val _micTurns = MutableStateFlow(0L)
+    val micTurns: StateFlow<Long> = _micTurns.asStateFlow()
+
+    /** ch6 mic chunks acked upstream this session. */
+    private val _micAcks = MutableStateFlow(0L)
+    val micAcks: StateFlow<Long> = _micAcks.asStateFlow()
+
+    /**
+     * Guards [frameTimes], [ackTimes] and [ackTracker]. Frames are observed on the
+     * main-thread vsync drain while acks arrive on the `ma-auto-projection` pump
+     * thread, so the sliding windows are shared across threads. Flow writes stay
+     * lock-free (StateFlow sets are thread-safe); only the deque/tracker math
+     * takes this lock.
+     */
+    private val telemetryLock = Any()
+
+    /**
+     * Send/ack timestamps backing the fps windows. Guarded by [telemetryLock]:
+     * frames arrive on the main-thread vsync drain, acks on the pump thread.
      */
     private val frameTimes = ArrayDeque<Long>()
     private val ackTimes = ArrayDeque<Long>()
@@ -144,8 +257,7 @@ object AutoSessionState {
     /**
      * Last unwrapped 0x8004 ack counter. The wire `ack` field is a frame counter
      * mod 256, so it wraps: an [AckTracker] folds arrivals into a monotonically
-     * non-decreasing sequence. Single-threaded owner is the `ma-auto-projection`
-     * worker thread, like the timestamp windows above.
+     * non-decreasing sequence. Guarded by [telemetryLock] with the windows above.
      */
     private val ackTracker = AckTracker()
 
@@ -171,10 +283,31 @@ object AutoSessionState {
     fun onSocketAccepted() {
         _video.value = null
         _focusMode.value = null
+        resetFocus()
         _nowPlaying.value = null
         _framesSent.value = 0
         _acksSeen.value = 0
         _ackMismatches.value = 0
+        _threadsPosted.value = 0
+        _messagesPosted.value = 0
+        _repliesReceived.value = 0
+        _touchesInjected.value = 0
+        _keysInjected.value = 0
+        _scrollsInjected.value = 0
+        _inputDropped.value = 0
+        _sensorsSubscribed.value = 0
+        _sensorBatches.value = 0
+        _sensorErrors.value = 0
+        _guidanceEvents.value = 0
+        _navStatusPosts.value = 0
+        _sinkStatus.value = emptyMap()
+        _audioBytesSent.value = 0
+        _audioSyncs.value = 0
+        _audioAcks.value = 0
+        _ttsSpoken.value = 0
+        _ttsDropped.value = 0
+        _micTurns.value = 0
+        _micAcks.value = 0
         resetTelemetry()
         _sessionStartedAt.value = null
         _connection.value = AutoConnectionState.Connecting
@@ -196,9 +329,36 @@ object AutoSessionState {
         _connection.value = AutoConnectionState.Disconnected
         _video.value = null
         _focusMode.value = null
+        resetFocus()
         _nowPlaying.value = null
         _sessionStartedAt.value = null
         resetTelemetry()
+    }
+
+    /**
+     * Mirrors the session's [FocusArbitration] into the phone-visible flows.
+     *
+     * Called from `GalControlSession.onFocusChange` on the pump thread; StateFlow
+     * sets are thread-safe, so no lock is needed. The input sink gates on
+     * [inputAllowed] and the audio sinks on [audioFocus], never on the raw
+     * 0x8008 string. The [AutoConnectionState.Projecting] snapshot carries the
+     * video focus too, so the status screen reads one source of truth.
+     */
+    fun onFocusChanged(arbitration: FocusArbitration) {
+        _videoFocus.value = arbitration.videoFocus
+        _audioFocus.value = arbitration.audioFocus
+        _inputAllowed.value = arbitration.inputAllowed
+        val current = _connection.value
+        if (current is AutoConnectionState.Projecting) {
+            _connection.value = current.copy(videoFocus = arbitration.videoFocus)
+        }
+    }
+
+    /** Clears the arbitrated focus flows; a new socket means a new session. */
+    private fun resetFocus() {
+        _videoFocus.value = VideoFocus.NONE
+        _audioFocus.value = AudioFocusState.AUDIO_FOCUS_STATE_INVALID
+        _inputAllowed.value = false
     }
 
     /**
@@ -207,9 +367,11 @@ object AutoSessionState {
      * new session, so stale fps/age/seq values must not leak across.
      */
     private fun resetTelemetry() {
-        frameTimes.clear()
-        ackTimes.clear()
-        ackTracker.reset()
+        synchronized(telemetryLock) {
+            frameTimes.clear()
+            ackTimes.clear()
+            ackTracker.reset()
+        }
         _encodedFps.value = 0.0
         _ackFps.value = 0.0
         _lastAckAgeMs.value = null
@@ -233,11 +395,14 @@ object AutoSessionState {
             is VideoEvent.FrameSent -> {
                 _framesSent.value++
                 val now = SystemClock.uptimeMillis()
-                frameTimes.addLast(now)
-                while (frameTimes.isNotEmpty() && now - frameTimes.first() > FPS_WINDOW_MS) {
-                    frameTimes.removeFirst()
+                val fps = synchronized(telemetryLock) {
+                    frameTimes.addLast(now)
+                    while (frameTimes.isNotEmpty() && now - frameTimes.first() > FPS_WINDOW_MS) {
+                        frameTimes.removeFirst()
+                    }
+                    frameTimes.size * 1_000.0 / FPS_WINDOW_MS
                 }
-                _encodedFps.value = frameTimes.size * 1_000.0 / FPS_WINDOW_MS
+                _encodedFps.value = fps
                 // Blend this frame's encode-to-send latency into the rolling mean.
                 val previous = _avgEncodeLatencyUs.value
                 _avgEncodeLatencyUs.value =
@@ -269,19 +434,80 @@ object AutoSessionState {
         }
     }
 
+    /** Records a messaging-channel observation. Thread-safe like every other flow write here. */
+    fun onMessagingEvent(event: MessagingEvent) {
+        when (event) {
+            // Absolute, not incremental: the owner posts the whole thread map per
+            // message, so its size is the session total.
+            is MessagingEvent.ThreadsPosted -> _threadsPosted.value = event.count.toLong()
+            is MessagingEvent.MessagePosted -> _messagesPosted.value++
+            is MessagingEvent.ReplyReceived -> _repliesReceived.value++
+            is MessagingEvent.MarkedRead -> Unit
+        }
+    }
+
+    /** Records an input-channel observation. Thread-safe like every other flow write here. */
+    fun onInputEvent(event: InputEvent) {
+        when (event) {
+            is InputEvent.BindingRequested -> Unit
+            is InputEvent.BindingAnswered -> Unit
+            is InputEvent.Touch -> _touchesInjected.value++
+            is InputEvent.Key -> _keysInjected.value++
+            is InputEvent.Scroll -> _scrollsInjected.value++
+            InputEvent.DroppedNoFocus -> _inputDropped.value++
+        }
+    }
+
+    /** Records an audio/mic observation. Thread-safe like every other flow write here. */
+    fun onAudioEvent(event: AudioEvent) {
+        when (event) {
+            is AudioEvent.SinkSetup -> Unit
+            is AudioEvent.SinkStatus -> _sinkStatus.value += event.status.role to event.status
+            is AudioEvent.SinkStarted -> Unit
+            is AudioEvent.SinkStopped -> Unit
+            is AudioEvent.FramesSent -> _audioBytesSent.value += event.bytes
+            is AudioEvent.SyncReceived -> _audioSyncs.value++
+            is AudioEvent.AckReceived -> _audioAcks.value++
+            is AudioEvent.TtsSpoken -> _ttsSpoken.value++
+            is AudioEvent.TtsDropped -> _ttsDropped.value++
+            is AudioEvent.MicTurn -> _micTurns.value++
+            AudioEvent.MicAcked -> _micAcks.value++
+            AudioEvent.MicIdle -> Unit
+        }
+    }
+
+    /** Records a sensor/guidance/nav-status observation. Thread-safe like every other flow write here. */
+    fun onSensorEvent(event: SensorEvent) {
+        when (event) {
+            is SensorEvent.Subscribed -> _sensorsSubscribed.value++
+            is SensorEvent.SubscriptionAnswered -> Unit
+            is SensorEvent.BatchReceived -> _sensorBatches.value++
+            is SensorEvent.SensorError -> _sensorErrors.value++
+            SensorEvent.GuidanceSetup -> _guidanceEvents.value++
+            is SensorEvent.GuidanceConfigured -> _guidanceEvents.value++
+            SensorEvent.NavStatusPosted -> _navStatusPosts.value++
+        }
+    }
+
     /** Shares the ack timestamp/rate bookkeeping between matching and mismatched acks. */
     private fun recordAck(ackSeq: Long?) {
         val nowWall = System.currentTimeMillis()
         val nowUptime = SystemClock.uptimeMillis()
         _lastAckAt.value = nowWall
         _lastAckAgeMs.value = 0
-        ackTimes.addLast(nowUptime)
-        while (ackTimes.isNotEmpty() && nowUptime - ackTimes.first() > FPS_WINDOW_MS) {
-            ackTimes.removeFirst()
+        val fps: Double
+        val unwrapped: Long?
+        synchronized(telemetryLock) {
+            ackTimes.addLast(nowUptime)
+            while (ackTimes.isNotEmpty() && nowUptime - ackTimes.first() > FPS_WINDOW_MS) {
+                ackTimes.removeFirst()
+            }
+            fps = ackTimes.size * 1_000.0 / FPS_WINDOW_MS
+            unwrapped = if (ackSeq != null) ackTracker.onAck(ackSeq) else null
         }
-        _ackFps.value = ackTimes.size * 1_000.0 / FPS_WINDOW_MS
-        if (ackSeq != null) {
-            _lastAckSeq.value = ackTracker.onAck(ackSeq)
+        _ackFps.value = fps
+        if (unwrapped != null) {
+            _lastAckSeq.value = unwrapped
         }
     }
 

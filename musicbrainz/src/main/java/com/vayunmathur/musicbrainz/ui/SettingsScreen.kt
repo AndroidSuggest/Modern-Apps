@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.IconFolder
 import com.vayunmathur.library.ui.IconRefresh
 import com.vayunmathur.library.ui.SettingsRow
@@ -60,14 +61,16 @@ fun SettingsScreen(
     onPickFolder: () -> Unit,
 ) {
     AppScaffold(title = stringResource(R.string.settings), backStack = backStack, scrollBehavior = appBarScrollBehavior()) { padding ->
-        // Resolved up front: SettingsSelectRow's label is a plain lambda, not composable.
-        val sourceLabels = DownloadSource.entries.associateWith { stringResource(it.labelRes) }
+        // Single-pane settings form; letterboxed on expanded windows so it keeps
+        // a readable measure on desktop.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
+            // Resolved up front: SettingsSelectRow's label is a plain lambda, not composable.
+            val sourceLabels = DownloadSource.entries.associateWith { stringResource(it.labelRes) }
             SettingsSection(title = stringResource(R.string.music_folder)) {
                 SettingsRow(
                     title = stringResource(R.string.choose_folder),
@@ -125,6 +128,7 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
         }
     }
 }

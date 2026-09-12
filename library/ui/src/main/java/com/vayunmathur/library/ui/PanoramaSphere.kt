@@ -24,41 +24,6 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Which part of a full equirectangular sphere a stored image actually covers.
- *
- * A full 360×180 capture is [full]. A partial pano — a phone sweep, say — stores
- * only the band it photographed, and the XMP `GPano` rectangle says where that
- * band sits inside the sphere it would have been part of. The uncovered rest of
- * the sphere renders black.
- *
- * The field order deliberately matches photos' `PanoData`, the XMP struct these
- * values are read out of. All six are `Int`, so an order of our own would make a
- * positional copy from that struct compile clean and silently transpose
- * left/top with width/height — a panorama that renders subtly wrong and traces
- * back to nothing. Keep them aligned.
- */
-data class PanoramaCrop(
-    val fullWidth: Int,
-    val fullHeight: Int,
-    val croppedWidth: Int,
-    val croppedHeight: Int,
-    val croppedLeft: Int,
-    val croppedTop: Int,
-) {
-    companion object {
-        /** An image that covers the whole sphere, so the crop is the image itself. */
-        fun full(width: Int, height: Int) = PanoramaCrop(
-            fullWidth = width,
-            fullHeight = height,
-            croppedWidth = width,
-            croppedHeight = height,
-            croppedLeft = 0,
-            croppedTop = 0,
-        )
-    }
-}
-
-/**
  * Interactive 360 viewer: projects an equirectangular image onto the inside of a
  * UV sphere (OpenGL ES 2.0). The user looks around by dragging and pinches to
  * zoom — no device motion. The initial view is centered on [crop]'s covered band,
@@ -100,77 +65,7 @@ fun PanoramaSphere(
     AndroidView(modifier = modifier, factory = { glView })
 }
 
-private class PanoramaSphereGLView(
-    context: Context,
-    crop: PanoramaCrop,
-    initialYaw: Float?,
-    private val cameraState: PanoramaCameraState?,
-    loadTexture: (Int) -> Bitmap?,
-) : GLSurfaceView(context) {
-
-    private val renderer = SphereRenderer(crop, initialYaw, loadTexture)
-    private val scaleDetector: ScaleGestureDetector
-
-    private var lastX = 0f
-    private var lastY = 0f
-    private var dragging = false
-
-    init {
-        setEGLContextClientVersion(2)
-        setRenderer(renderer)
-        renderMode = RENDERMODE_WHEN_DIRTY
-        scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            override fun onScale(detector: ScaleGestureDetector): Boolean {
-                // Pinch out (scaleFactor > 1) zooms in → narrower FOV.
-                renderer.fov = (renderer.fov / detector.scaleFactor).coerceIn(MIN_FOV, MAX_FOV)
-                publishCamera()
-                requestRender()
-                return true
-            }
-        })
-        publishCamera()
-    }
-
-    private fun publishCamera() {
-        cameraState?.publish(renderer.yaw, renderer.pitch, renderer.fov)
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        scaleDetector.onTouchEvent(event)
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                lastX = event.x; lastY = event.y
-                dragging = true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (dragging && !scaleDetector.isInProgress && event.pointerCount == 1) {
-                    val dx = event.x - lastX
-                    val dy = event.y - lastY
-                    // Drag "grabs" the scene: dragging right/down brings the
-                    // content that was to the left/above into view. Scale by FOV
-                    // so the feel is consistent across zoom levels.
-                    val speed = DRAG_SPEED * (renderer.fov / PanoramaCameraState.DEFAULT_FOV_DEG)
-                    renderer.addYaw(dx * speed)
-                    renderer.addPitch(dy * speed)
-                    lastX = event.x; lastY = event.y
-                    publishCamera()
-                    requestRender()
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
-        }
-        return true
-    }
-
-    companion object {
-        // Radians of rotation per pixel of drag at the default FOV.
-        private const val DRAG_SPEED = 0.0015f
-        private const val MIN_FOV = 30f
-        private const val MAX_FOV = 100f
-    }
-}
-
-private class SphereRenderer(
+internal class SphereRenderer(
     private val crop: PanoramaCrop,
     initialYaw: Float?,
     private val loadTexture: (Int) -> Bitmap?,

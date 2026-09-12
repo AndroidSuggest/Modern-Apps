@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.education.Route
 import com.vayunmathur.education.content.ModuleType
+import com.vayunmathur.education.pushChain
 import com.vayunmathur.education.util.EducationViewModel
 import com.vayunmathur.education.util.HomeActions
 import com.vayunmathur.education.util.HomeCourse
@@ -82,11 +83,17 @@ fun ScholarHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMode
             }
 
             override fun openCourse(courseId: String) {
-                backStack.add(Route.Course(courseId))
+                backStack.pushChain(Route.Course(courseId))
             }
 
             override fun openDeadline(deadline: HomeDeadline) {
-                navigateToModule(backStack, deadline.moduleType, deadline.moduleId)
+                val route = when (deadline.moduleType) {
+                    ModuleType.COURSE -> Route.Course(deadline.moduleId)
+                    ModuleType.UNIT -> Route.UnitScreen(deadline.moduleId)
+                    ModuleType.LESSON -> Route.LessonScreen(deadline.moduleId)
+                    null -> return
+                }
+                backStack.pushChain(route)
             }
         },
     )

@@ -73,7 +73,12 @@ fun AllergiesPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
             FloatingActionButton(
                 onClick = {
                     viewModel.startAllergyDraft()
-                    backStack.add(Route.EditAllergy())
+                    // A form already open in the detail pane is swapped, not stacked.
+                    if (backStack.last() is Route.EditAllergy) {
+                        backStack.setLast(Route.EditAllergy())
+                    } else {
+                        backStack.add(Route.EditAllergy())
+                    }
                 }
             ) { IconAdd() }
         },
@@ -102,7 +107,11 @@ fun AllergiesPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
                         viewModel.startAllergyDraft(entry.id)
-                        backStack.add(Route.EditAllergy(entry.id))
+                        if (backStack.last() is Route.EditAllergy) {
+                            backStack.setLast(Route.EditAllergy(entry.id))
+                        } else {
+                            backStack.add(Route.EditAllergy(entry.id))
+                        }
                     },
                 ) {
                     ListItem(

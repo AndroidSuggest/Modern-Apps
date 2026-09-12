@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
@@ -172,14 +173,16 @@ private fun SetupScreen() {
 @Composable
 fun SpeechSetupScreen(state: SpeechSetupUiState, actions: SpeechSetupActions) {
     Scaffold { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
+        // Letterboxed on expanded windows so the setup cards keep a readable measure.
+        // The bare Scaffold stays: this screen deliberately has no top bar (titles-only cards).
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
         // Only when something is actually wrong. Both models ship in the APK, so there is no step
         // for the user to complete here — either the assets are readable or the install is broken.
         // They were two permanently-ticked "steps" until the assets stopped being downloads.
@@ -239,6 +242,7 @@ fun SpeechSetupScreen(state: SpeechSetupUiState, actions: SpeechSetupActions) {
             languages = state.ttsVoices,
             currentLang = state.currentTestLang,
         )
+            }
         }
     }
 }

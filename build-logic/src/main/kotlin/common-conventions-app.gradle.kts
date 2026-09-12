@@ -139,6 +139,7 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
             "HardcodedText",
             // Repo rules from :lint-rules. Only the two gates below are not advisory.
             "DirectBuildDatabase",
+            "FileLength",
             "OneComposablePerFile",
             "PackageStructure",
             "RawScaffoldInApp",

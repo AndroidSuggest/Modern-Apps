@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Spacing
 import com.vayunmathur.library.ui.Text
@@ -37,10 +38,12 @@ fun NoteScreen(state: TunerUiState) {
         title = stringResource(R.string.tab_note),
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
+        // Single-pane instrument readout; letterboxed on expanded windows so the
+        // meter and status keep a readable measure on desktop.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(padding)
                 .padding(Spacing.lg)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),
@@ -108,6 +111,7 @@ fun NoteScreen(state: TunerUiState) {
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
+        }
         }
     }
 }

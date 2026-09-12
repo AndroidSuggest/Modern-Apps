@@ -39,8 +39,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app),
     HomeActions, DrawerActions, FolderActions, ItemMenuActions, WidgetPickerActions,
     SettingsActions, IconLoader {
 
-    private val ds = DataStoreUtils.getInstance(app)
-    private val repository = LauncherRepository.get(app)
+    internal val ds = DataStoreUtils.getInstance(app)
+    internal val repository = LauncherRepository.get(app)
     private val densityDpi = app.resources.displayMetrics.densityDpi
 
     val appsMonitor = LauncherAppsMonitor(app, viewModelScope)
@@ -53,7 +53,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app),
     val privilege = LauncherPrivilege(app) { bridge }
 
     val widgetHost = LauncherWidgetHost(app)
-    private val widgets = WidgetBindFlow(app, widgetHost, AppWidgetManager.getInstance(app))
+    internal val widgets = WidgetBindFlow(app, widgetHost, AppWidgetManager.getInstance(app))
 
     /**
      * Set by `MainActivity` for the whole time it exists, and cleared when it goes.
@@ -66,29 +66,29 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app),
      */
     var bridge: ActivityBridge? = null
 
-    private val _home = MutableStateFlow(HomeUiState())
+    internal val _home = MutableStateFlow(HomeUiState())
     val home: StateFlow<HomeUiState> = _home
 
-    private val _drawer = MutableStateFlow(DrawerUiState(loading = true))
+    internal val _drawer = MutableStateFlow(DrawerUiState(loading = true))
     val drawer: StateFlow<DrawerUiState> = _drawer
 
     private val _itemMenu = MutableStateFlow(ItemMenuUiState())
     val itemMenu: StateFlow<ItemMenuUiState> = _itemMenu
 
-    private val _widgetPicker = MutableStateFlow(WidgetPickerUiState())
+    internal val _widgetPicker = MutableStateFlow(WidgetPickerUiState())
     val widgetPicker: StateFlow<WidgetPickerUiState> = _widgetPicker
 
     private val _settings = MutableStateFlow(SettingsUiState())
     val settings: StateFlow<SettingsUiState> = _settings
 
     /** Kept whole so the drawer can filter without re-reading the monitor. */
-    private var allApps: List<DrawerApp> = emptyList()
+    internal var allApps: List<DrawerApp> = emptyList()
 
     /** Cache of the last committed layout, so a drop can look up its neighbours. */
     private var savedItems: List<LauncherItemEntity> = emptyList()
 
     /** Launch counts by flattened component, which is what the predictions row is ordered by. */
-    private val launchCounts = mutableMapOf<String, Long>()
+    internal val launchCounts = mutableMapOf<String, Long>()
 
     /**
      * Whether each package is a system app, cached for the life of the process.
@@ -511,69 +511,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app),
 
     override fun setQuery(query: String) = applyDrawerQuery(query)
 
-    private fun applyDrawerQuery(query: String) {
-        val trimmed = query.trim()
-        val matches = if (trimmed.isEmpty()) {
-            allApps
-        } else {
-            // Prefix match first, then anywhere: typing "ca" should offer Calendar before
-            // Vacation Planner.
-            val (prefix, contains) = allApps
-                .filter { it.label.contains(trimmed, ignoreCase = true) }
-                .partition { it.label.startsWith(trimmed, ignoreCase = true) }
-            prefix + contains
-        }
-        _drawer.value = _drawer.value.copy(
-            query = query,
-            apps = matches,
-            predictions = predictedApps(),
-            loading = false,
-        )
-    }
-
-    /**
-     * The most-launched apps, as the predictions row.
-     *
-     * A launch count kept in the DataStore rather than the platform's `AppPredictionManager`, which
-     * needs a system signature. Crude next to the real predictor, but it needs no permission, it is
-     * right about the top few apps within a day of use, and it is the same shape of answer - so the
-     * privileged predictor can replace the source without the row changing.
-     */
-    private fun predictedApps(): List<DrawerApp> {
-        if (launchCounts.isEmpty()) return emptyList()
-        val byKey = allApps.associateBy { it.key.componentName.flattenToShortString() }
-        return launchCounts.entries
-            .sortedByDescending { it.value }
-            .mapNotNull { byKey[it.key] }
-            .filterNot { it.isWorkProfile }
-            .take(PREDICTION_COUNT)
-    }
-
-    /**
-     * Counts a launch, and remembers it.
-     *
-     * Flattened into one preference string rather than a row per app: it is a handful of counters
-     * read whole and written whole, and a Room table for it would be a migration for nothing.
-     */
-    private fun countLaunch(key: ComponentKey) {
-        val flattened = key.componentName.flattenToShortString()
-        launchCounts[flattened] = (launchCounts[flattened] ?: 0) + 1
-        _drawer.value = _drawer.value.copy(predictions = predictedApps())
-        viewModelScope.launch {
-            ds.setString(
-                KEY_LAUNCH_COUNTS,
-                launchCounts.entries.joinToString("\n") { "${it.key}\t${it.value}" },
-            )
-        }
-    }
-
-    private fun loadLaunchCounts() {
-        val stored = ds.getString(KEY_LAUNCH_COUNTS).orEmpty()
-        stored.lineSequence().forEach { line ->
-            val (flattened, count) = line.split('\t').takeIf { it.size == 2 } ?: return@forEach
-            count.toLongOrNull()?.let { launchCounts[flattened] = it }
-        }
-    }
+    // Drawer filtering, predictions and launch counts live in LauncherPredictions.kt.
 
     override fun launchApp(key: ComponentKey, left: Int, top: Int, right: Int, bottom: Int) {
         val entry = appsMonitor.entryFor(key.componentName, key.profileSerial) ?: return
@@ -720,61 +658,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app),
     // WidgetPickerActions
     // ------------------------------------------------------------------
 
-    /**
-     * Enumerates every installed provider, which queries the package manager — so it happens when
-     * the picker opens rather than being kept live in the workspace state.
-     */
-    private fun loadWidgetPicker() {
-        _widgetPicker.value = _widgetPicker.value.copy(loading = true)
-        val spec = _home.value.grid
-        val groups = appsMonitor.apps.value
-            .map { it.profileSerial }
-            .distinct()
-            .flatMap { serial ->
-                widgets.providers(appsMonitor.userFor(serial)).map { info ->
-                    val (spanX, spanY) = widgets.spanFor(info, CELL_WIDTH_DP, CELL_HEIGHT_DP)
-                    val label = runCatching { info.loadLabel(getApplication<Application>().packageManager) }
-                        .getOrNull().orEmpty()
-                    val appLabel = appsMonitor.apps.value
-                        .firstOrNull { it.componentName.packageName == info.provider.packageName }
-                        ?.label
-                        ?: info.provider.packageName
-                    appLabel to WidgetEntry(
-                        provider = info.provider.flattenToString(),
-                        label = label,
-                        description = runCatching {
-                            info.loadDescription(getApplication())?.toString()
-                        }.getOrNull().orEmpty(),
-                        spanX = spanX.coerceAtMost(spec.columns),
-                        spanY = spanY.coerceAtMost(spec.rows),
-                        profileSerial = serial,
-                    )
-                }
-            }
-            .groupBy({ it.first }, { it.second })
-            .map { (appLabel, entries) -> WidgetGroup(appLabel, entries.sortedBy { it.label }) }
-            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.appLabel })
-
-        _widgetPicker.value = _widgetPicker.value.copy(loading = false)
-        applyWidgetQuery(_widgetPicker.value.query, groups)
-    }
-
-    private var allWidgetGroups: List<WidgetGroup> = emptyList()
-
-    private fun applyWidgetQuery(query: String, source: List<WidgetGroup>? = null) {
-        if (source != null) allWidgetGroups = source
-        val trimmed = query.trim()
-        val filtered = if (trimmed.isEmpty()) {
-            allWidgetGroups
-        } else {
-            allWidgetGroups.mapNotNull { group ->
-                if (group.appLabel.contains(trimmed, ignoreCase = true)) return@mapNotNull group
-                val matches = group.widgets.filter { it.label.contains(trimmed, ignoreCase = true) }
-                if (matches.isEmpty()) null else group.copy(widgets = matches)
-            }
-        }
-        _widgetPicker.value = _widgetPicker.value.copy(query = query, groups = filtered)
-    }
+    // Widget-picker loading, querying, adding and hosted views live in LauncherWidgets.kt.
+    internal var allWidgetGroups: List<WidgetGroup> = emptyList()
 
     override fun setWidgetQuery(query: String) = applyWidgetQuery(query)
 
@@ -787,50 +672,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app),
         _widgetPicker.value = _widgetPicker.value.copy(open = false)
     }
 
-    override fun addWidget(entry: WidgetEntry) {
-        val bridge = bridge ?: return
-        val component = widgets.unflatten(entry.provider) ?: return
-        val info = widgets.providers(appsMonitor.userFor(entry.profileSerial))
-            .firstOrNull { it.provider == component }
-        if (info == null) {
-            AppMessages.show("${entry.label} is no longer available")
-            return
-        }
-        // Closed before the bind flow starts, not after it finishes: the consent dialog is another
-        // activity, and a sheet still up behind it would be what the user comes back to.
-        closeWidgetPicker()
-        widgets.add(
-            provider = info,
-            bridge = bridge,
-            profileSerial = entry.profileSerial,
-            onBound = { appWidgetId ->
-                viewModelScope.launch {
-                    repository.addToFirstVacantCell(
-                        _home.value.grid,
-                        LauncherItemEntity(
-                            itemType = LauncherItemType.APPWIDGET,
-                            containerId = ContainerRef.Desktop.toRaw(),
-                            spanX = entry.spanX,
-                            spanY = entry.spanY,
-                            title = entry.label,
-                            packageName = component.packageName,
-                            className = component.className,
-                            profileSerial = entry.profileSerial,
-                            appWidgetId = appWidgetId,
-                            appWidgetProvider = entry.provider,
-                        ),
-                    )
-                }
-            },
-            onCancelled = { AppMessages.show("${entry.label} was not added") },
-        )
-    }
+    override fun addWidget(entry: WidgetEntry) = addWidgetEntry(entry)
 
     /** The hosted view for a placed widget, or null when the provider has gone away. */
-    fun widgetView(appWidgetId: Int): AppWidgetHostView? {
-        val info = widgets.providerInfo(appWidgetId) ?: return null
-        return runCatching { widgets.createView(appWidgetId, info) }.getOrNull()
-    }
+    fun widgetView(appWidgetId: Int): AppWidgetHostView? = hostedWidgetView(appWidgetId)
 
     fun updateWidgetSize(view: AppWidgetHostView, widthDp: Int, heightDp: Int) =
         widgets.updateSize(view, widthDp, heightDp)
@@ -924,10 +769,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app),
         /** Rasterisation size for cached icons, in dp. Generous so scaling up stays sharp. */
         private const val ICON_CACHE_DP = 72
 
-        /** Nominal cell size used only to turn a provider's minWidth/Height into a span. */
-        private const val CELL_WIDTH_DP = 72
-        private const val CELL_HEIGHT_DP = 88
-
         const val MIN_ICON_SCALE = 0.8f
         const val MAX_ICON_SCALE = 1.4f
 
@@ -948,10 +789,6 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app),
         private const val KEY_SHOW_LABELS = "launcher_show_labels"
         private const val KEY_ICON_SCALE = "launcher_icon_scale"
         private const val KEY_DRAWER_LIST_LAYOUT = "launcher_drawer_list_layout"
-        private const val KEY_LAUNCH_COUNTS = "launcher_launch_counts"
-
-        /** A single row of the drawer's grid, which is all a predictions row should ever be. */
-        private const val PREDICTION_COUNT = 5
 
         /** Launcher3's own all-apps blur, in pixels; density-independent enough not to be a dp. */
         private const val WALLPAPER_BLUR_PX = 60

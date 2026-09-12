@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -79,10 +80,11 @@ fun PaymentPage(
         val loading = booking is BookingState.Loading
         val allowHold = offer != null && !offer.requiresInstantPayment
         var hold by remember { mutableStateOf(false) }
+        // Single-pane payment form; letterboxed on expanded windows.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -154,6 +156,7 @@ fun PaymentPage(
                     Text(if (hold) stringResource(R.string.place_hold) else stringResource(R.string.pay_with_test_balance))
                 }
             }
+        }
         }
     }
 }

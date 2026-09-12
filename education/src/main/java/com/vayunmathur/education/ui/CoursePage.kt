@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.education.Route
+import com.vayunmathur.education.pushChain
 import com.vayunmathur.education.content.ModuleType
 import com.vayunmathur.education.util.CourseActions
 import com.vayunmathur.education.util.CourseUiState
@@ -64,7 +65,7 @@ fun ScholarCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewMo
             }
 
             override fun openUnit(unitId: String) {
-                backStack.add(Route.UnitScreen(unitId))
+                backStack.pushChain(Route.UnitScreen(unitId))
             }
 
             override fun openExercise(exerciseId: String) {

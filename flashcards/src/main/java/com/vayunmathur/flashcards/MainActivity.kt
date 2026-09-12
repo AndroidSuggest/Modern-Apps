@@ -30,6 +30,8 @@ import com.vayunmathur.library.ui.PagerTab
 import com.vayunmathur.library.ui.TabStyle
 import com.vayunmathur.library.ui.TabbedPagerScaffold
 import com.vayunmathur.library.util.FullscreenPage
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.NavBackStack
@@ -92,12 +94,12 @@ sealed interface Route : NavKey {
 fun Navigation(viewModel: FlashcardsViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Main)
     MainNavigation(backStack) {
-        entry<Route.Main> { FlashcardsTabs(backStack, viewModel) }
-        entry<Route.Stats> { StatsPage(backStack, viewModel) }
-        entry<Route.NoteTypeList> { NoteTypeListPage(backStack, viewModel) }
-        entry<Route.NoteTypeEdit> { NoteTypeEditPage(backStack, viewModel, it.noteTypeId) }
-        entry<Route.CardList>(metadata = MorphPage()) { NoteListPage(backStack, viewModel, it.deckId) }
-        entry<Route.NoteEdit> { NoteEditPage(backStack, viewModel, it.deckId, it.noteId) }
+        entry<Route.Main>(metadata = ListPage()) { FlashcardsTabs(backStack, viewModel) }
+        entry<Route.Stats>(metadata = ListDetailPage()) { StatsPage(backStack, viewModel) }
+        entry<Route.NoteTypeList>(metadata = ListDetailPage()) { NoteTypeListPage(backStack, viewModel) }
+        entry<Route.NoteTypeEdit>(metadata = ListDetailPage()) { NoteTypeEditPage(backStack, viewModel, it.noteTypeId) }
+        entry<Route.CardList>(metadata = ListDetailPage() + MorphPage()) { NoteListPage(backStack, viewModel, it.deckId) }
+        entry<Route.NoteEdit>(metadata = ListDetailPage()) { NoteEditPage(backStack, viewModel, it.deckId, it.noteId) }
         entry<Route.Review>(metadata = FullscreenPage()) { ReviewPage(backStack, viewModel, it.deckId, it.mode, it.count, it.daysAhead, it.tags) }
     }
 }

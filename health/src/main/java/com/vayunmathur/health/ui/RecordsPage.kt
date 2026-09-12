@@ -49,6 +49,19 @@ fun RecordsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
 
     LaunchedEffect(Unit) { viewModel.importFromHealthConnect() }
 
+    // The sub-lists below all render in the detail pane on a wide window, so re-tapping
+    // from one sub-list to another swaps the detail rather than stacking sub-lists.
+    fun openSubList(route: Route) {
+        val top = backStack.last()
+        if (top is Route.Vaccinations || top is Route.Allergies || top is Route.Conditions ||
+            top is Route.LabResults || top is Route.AboutYou
+        ) {
+            backStack.setLast(route)
+        } else {
+            backStack.add(route)
+        }
+    }
+
     LazyListScaffold(
         scrollBehavior = appBarScrollBehavior(),
         horizontalPadding = 16.dp,
@@ -59,7 +72,7 @@ fun RecordsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
                 title = stringResource(R.string.vaccinations),
                 entries = vaccinations.map { it.displayName },
                 icon = { IconVaccine(tint = HealthColors.Medical) },
-                onClick = { backStack.add(Route.Vaccinations) },
+                onClick = { openSubList(Route.Vaccinations) },
             )
         }
         item {
@@ -67,7 +80,7 @@ fun RecordsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
                 title = stringResource(R.string.allergies),
                 entries = allergies.map { it.displayName },
                 icon = { IconWarning(tint = HealthColors.Medical) },
-                onClick = { backStack.add(Route.Allergies) },
+                onClick = { openSubList(Route.Allergies) },
             )
         }
         item {
@@ -75,7 +88,7 @@ fun RecordsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
                 title = stringResource(R.string.conditions),
                 entries = conditions.map { it.displayName },
                 icon = { IconMonitorHeart(tint = HealthColors.Medical) },
-                onClick = { backStack.add(Route.Conditions) },
+                onClick = { openSubList(Route.Conditions) },
             )
         }
         item {
@@ -83,12 +96,12 @@ fun RecordsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) {
                 title = stringResource(R.string.lab_results),
                 entries = labResults.map { it.displayName },
                 icon = { IconScience(tint = HealthColors.Medical) },
-                onClick = { backStack.add(Route.LabResults) },
+                onClick = { openSubList(Route.LabResults) },
             )
         }
         item {
             // Not a log, so it gets a summary of the two answers rather than a count.
-            Card(modifier = Modifier.fillMaxWidth(), onClick = { backStack.add(Route.AboutYou) }) {
+            Card(modifier = Modifier.fillMaxWidth(), onClick = { openSubList(Route.AboutYou) }) {
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.about_you)) },
                     overlineContent = { Text(stringResource(R.string.about_you_overline)) },

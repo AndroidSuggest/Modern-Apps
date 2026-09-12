@@ -38,8 +38,11 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.AchievementNotification
 import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.FullscreenPage
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
+import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.coroutines.Dispatchers
@@ -116,27 +119,39 @@ fun RootNavigation(viewModel: EducationViewModel) {
     MainGraph(viewModel)
 }
 
+/**
+ * Walking deeper along the catalog chain replaces a same-class detail instead of stacking it.
+ *
+ * On a two-pane layout the list stays visible beside its detail, so tapping a second course
+ * (or unit, or lesson) would otherwise pile Course on Course; back would then step through
+ * stale details instead of unwinding.
+ */
+internal fun NavBackStack<Route>.pushChain(route: Route) {
+    if (backStack.isNotEmpty() && last()::class == route::class) setLast(route) else add(route)
+}
+
 @Composable
 fun MainGraph(viewModel: EducationViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Home)
     val badge by viewModel.newBadge.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
         MainNavigation(backStack) {
-            entry<Route.Home> { HomePage(backStack, viewModel) }
+            entry<Route.Home>(metadata = ListPage()) { HomePage(backStack, viewModel) }
             // Morph on the three levels of the title chain: a course card's title carries into the
             // course bar, a unit card's into the unit bar, a lesson card's into the lesson bar.
-            entry<Route.Course>(metadata = MorphPage()) { CoursePage(backStack, viewModel, it.courseId) }
-            entry<Route.UnitScreen>(metadata = MorphPage()) { UnitPage(backStack, viewModel, it.unitId) }
-            entry<Route.LessonScreen>(metadata = MorphPage()) { LessonPage(backStack, viewModel, it.lessonId) }
-            entry<Route.Quiz> { QuizPage(backStack, viewModel, it.exerciseId) }
+            entry<Route.Course>(metadata = ListDetailPage() + MorphPage()) { CoursePage(backStack, viewModel, it.courseId) }
+            entry<Route.UnitScreen>(metadata = ListDetailPage() + MorphPage()) { UnitPage(backStack, viewModel, it.unitId) }
+            entry<Route.LessonScreen>(metadata = ListDetailPage() + MorphPage()) { LessonPage(backStack, viewModel, it.lessonId) }
+            // Quiz/Results are exercises off a lesson, not catalog details.
+            entry<Route.Quiz>(metadata = ListDetailPage()) { QuizPage(backStack, viewModel, it.exerciseId) }
             entry<Route.VideoPlayer>(metadata = FullscreenPage()) { VideoPlayerPage(backStack, it.youtubeId, it.title) }
-            entry<Route.K2Lesson> { K2LessonPage(backStack, viewModel, it.lessonId) }
-            entry<Route.K2Quiz> { K2QuizPage(backStack, viewModel, it.exerciseId) }
-            entry<Route.K2Reward> { K2RewardPage(backStack, viewModel, it.stars) }
-            entry<Route.Results> { ResultsPage(backStack, viewModel, it.total, it.correct, it.stars) }
+            entry<Route.K2Lesson>(metadata = ListDetailPage()) { K2LessonPage(backStack, viewModel, it.lessonId) }
+            entry<Route.K2Quiz>(metadata = ListDetailPage()) { K2QuizPage(backStack, viewModel, it.exerciseId) }
+            entry<Route.K2Reward>(metadata = ListDetailPage()) { K2RewardPage(backStack, viewModel, it.stars) }
+            entry<Route.Results>(metadata = ListDetailPage()) { ResultsPage(backStack, viewModel, it.total, it.correct, it.stars) }
             entry<Route.ParentGate>(metadata = DialogPage()) { ParentGatePage(backStack, viewModel) }
-            entry<Route.Parent> { ParentPage(backStack, viewModel) }
-            entry<Route.Badges> { BadgesPage(backStack, viewModel) }
+            entry<Route.Parent>(metadata = ListDetailPage()) { ParentPage(backStack, viewModel) }
+            entry<Route.Badges>(metadata = ListDetailPage()) { BadgesPage(backStack, viewModel) }
         }
         badge?.let { AchievementNotification(it) { viewModel.dismissBadge() } }
     }

@@ -2999,21 +2999,28 @@ impl Renderer {
                         }
                         (boxes, None)
                     } else {
-                        let primary_box = placement::Obb::from_rect(placement::anchored_rect(
+                        // The anchor projects with the perspective divide (see
+                        // `placement::anchored_rect`): under tilt the box sits where the
+                        // billboarded label draws, and distant labels compress onto
+                        // overlapping boxes the placer thins by rank. A label whose anchor
+                        // is on or behind the eye has no screen position and is skipped —
+                        // it cannot be a candidate, so drawing it is unrepresentable here.
+                        let Some(primary_rect) = placement::anchored_rect(
                             label.anchor,
                             tile_clip,
                             wh,
                             &inputs,
                             primary,
-                        ));
-                        let alt = alternate.map(|second| {
-                            vec![placement::Obb::from_rect(placement::anchored_rect(
-                                label.anchor,
-                                tile_clip,
-                                wh,
-                                &inputs,
-                                second,
-                            ))]
+                        ) else {
+                            continue;
+                        };
+                        let primary_box = placement::Obb::from_rect(primary_rect);
+                        // Both anchors share the label's one anchor point, so they project
+                        // together: a primary that projected means the alternate does too,
+                        // and `and_then` only guards the impossible split.
+                        let alt = alternate.and_then(|second| {
+                            placement::anchored_rect(label.anchor, tile_clip, wh, &inputs, second)
+                                .map(|r| vec![placement::Obb::from_rect(r)])
                         });
                         (vec![primary_box], alt)
                     };
@@ -3149,13 +3156,17 @@ impl Renderer {
                 let (primary, alternate) = anchors_for(layer);
                 let anchor = if flipped { alternate.unwrap_or(primary) } else { primary };
                 let tile_clip = camera.tile_to_clip(tile.z, tile.x, tile.y);
-                let rect = placement::anchored_rect(
+                // Same pitch-aware projection as the pre-pass, so pick boxes match drawn
+                // boxes under tilt; an unprojectable anchor has no box and no hit.
+                let Some(rect) = placement::anchored_rect(
                     label.anchor,
                     tile_clip,
                     (extent.width, extent.height),
                     &box_inputs(layer, label, camera),
                     anchor,
-                );
+                ) else {
+                    continue;
+                };
                 // Anchor tile-local → world px (Dp) → lon/lat.
                 let wx = tile_wx + label.anchor.0 as f64 * span_dp;
                 let wy = tile_wy + label.anchor.1 as f64 * span_dp;

@@ -2,11 +2,14 @@ package com.vayunmathur.youpipe.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -36,6 +39,8 @@ import com.vayunmathur.library.ui.IconNavigation
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.ReorderableItem
+import com.vayunmathur.library.ui.adaptiveGridCells
+import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.ui.rememberReorderableLazyListState
 import com.vayunmathur.library.ui.reorderDragHandle
 import com.vayunmathur.library.ui.appBarScrollBehavior
@@ -151,6 +156,32 @@ fun PlaylistDetailPage(
         if (localData.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                 Text(stringResource(R.string.playlist_empty))
+            }
+        } else if (isExpandedWidth() && !isSelectionMode && !isDragging) {
+            // Desktop, settled state: the playlist fills the window with an adaptive grid
+            // of stacked cards instead of one stretched column. Drag-reorder and
+            // multiselect are pointer-ordered interactions, so while either is active the
+            // screen keeps the compact reorderable list below.
+            LazyVerticalGrid(
+                columns = adaptiveGridCells(320.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = paddingValues,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(localData, key = { it.id }) { item ->
+                    VideoItem(
+                        backStack = backStack,
+                        youPipeViewModel = youPipeViewModel,
+                        videoInfo = item.videoItem,
+                        showAuthor = true,
+                        modifier = Modifier.animateItem(),
+                        onClick = { backStack.add(Route.VideoPage(item.videoItem.videoID)) },
+                        // No shared-element key: the compact list composes the same videos
+                        // and one key needs one origin (see VideoRow's titleSharedKey note).
+                        vertical = true,
+                    )
+                }
             }
         } else {
             LazyColumn(

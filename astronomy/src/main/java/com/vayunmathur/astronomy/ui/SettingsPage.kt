@@ -65,7 +65,9 @@ fun SettingsScreen(backStack: NavBackStack<Route>, state: SettingsUiState, actio
     val linesArtLabel = stringResource(R.string.lines_art)
 
     AppScaffold(title = stringResource(R.string.settings), onNavigateBack = { backStack.pop() }, scrollBehavior = appBarScrollBehavior()) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
+        // Letterboxed on expanded windows so the form keeps a readable measure.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             SettingsSection(title = stringResource(R.string.display)) {
                 SettingsSelectRow(
                     title = stringResource(R.string.constellations),
@@ -117,6 +119,7 @@ fun SettingsScreen(backStack: NavBackStack<Route>, state: SettingsUiState, actio
                 Text(stringResource(R.string.notes_true_north_correction_via_geomagne), style = MaterialTheme.typography.labelSmall)
                 Text(stringResource(R.string.catalog_stars_constellations_dso, state.starCount, state.constellationCount, state.deepSkyCount), style = MaterialTheme.typography.labelSmall)
             }
+        }
         }
     }
 }

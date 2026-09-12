@@ -21,6 +21,9 @@ import com.vayunmathur.pdf.util.SafePdfPage
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Expanded desktop window for the wide viewer+tools layout. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=420"
+
 // --- Sample document -------------------------------------------------------
 //
 // Pages are built as literal [SafePdfPage]s. That works because a decoded page is plain
@@ -234,6 +237,28 @@ class MetadataPreviews {
     fun Preview3Home() {
         DynamicTheme(darkTheme = true) {
             InitialScreen(onOpenPdf = {}, onCapturePdf = {}, onCutGlue = {})
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        DynamicTheme(darkTheme = true) {
+            PdfViewerWideLayout(
+                viewer = {
+                    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                        items(listOf(Page1, Page2)) { SafePdfPageCanvas(it) }
+                    }
+                },
+                tools = {
+                    PdfOutlineDrawer(
+                        outline = SampleOutline,
+                        drawerState = rememberDrawerState(DrawerValue.Open),
+                        onSelectPage = {},
+                    ) {}
+                },
+            )
         }
     }
 }

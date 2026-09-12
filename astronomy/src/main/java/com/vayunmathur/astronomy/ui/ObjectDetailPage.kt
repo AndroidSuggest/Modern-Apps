@@ -27,7 +27,9 @@ fun ObjectDetailPage(backStack: NavBackStack<Route>, viewModel: AstronomyViewMod
 
     val detail = remember(objectId, visibleSky) { resolveDetail(objectId, visibleSky, viewModel) }
 
-    Box(Modifier.fillMaxSize()) {
+    // Dialog detail: already correct metadata, just letterbox the column on
+    // expanded windows so it keeps a readable measure on desktop.
+    DesktopMaxWidthContainer {
         Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (detail == null) {
                 Text(stringResource(R.string.object_not_found, objectId))

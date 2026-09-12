@@ -48,6 +48,7 @@ import com.vayunmathur.email.data.UnsubscribeMethod
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -133,7 +134,10 @@ fun MessageThreadScreen(
         onNavigateBack = onBack,
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
-        LazyColumn(modifier = Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Detail pane: letterboxed on expanded windows so message cards keep a
+        // readable measure on desktop.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(messages, key = { "${it.accountEmail}|${it.folderName}|${it.id}" }) { msg ->
                 MessageItem(msg = msg, actions = actions, onBack = onBack, onReply = onReply, onForward = onForward, onCompose = onCompose, onExportEml = { toExport ->
                     pendingExport = toExport
@@ -141,6 +145,7 @@ fun MessageThreadScreen(
                     exportLauncher.launch(fileName)
                 })
             }
+        }
         }
     }
 }

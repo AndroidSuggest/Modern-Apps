@@ -43,6 +43,7 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.VerticalFloatingToolbar
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.isExpandedWidth
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -51,7 +52,11 @@ import kotlin.time.Duration.Companion.seconds
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StopwatchScreen(backStack: com.vayunmathur.library.util.NavBackStack<com.vayunmathur.clock.Route>, state: StopwatchUiState, actions: StopwatchActions) {
+fun StopwatchScreen(
+    backStack: com.vayunmathur.library.util.NavBackStack<com.vayunmathur.clock.Route>,
+    state: StopwatchUiState,
+    actions: StopwatchActions,
+) {
     val isRunning = state.isRunning
     val countingTime = state.countingTime
     val lapTimes = state.lapTimes
@@ -62,6 +67,7 @@ fun StopwatchScreen(backStack: com.vayunmathur.library.util.NavBackStack<com.vay
             }
         }
     }
+    val expanded = isExpandedWidth()
 
     LazyListScaffold(floatingActionButton = {
         // Lap and reset are peers of start/stop, not separate decisions, so they share the
@@ -83,51 +89,91 @@ fun StopwatchScreen(backStack: com.vayunmathur.library.util.NavBackStack<com.vay
             }
         }
     }, horizontalPadding = 16.dp, scrollBehavior = appBarScrollBehavior()) {
-        item {
-            val trackColor = MaterialTheme.colorScheme.surfaceVariant
-            val progressColor = MaterialTheme.colorScheme.primary
-            Box(Modifier.fillParentMaxWidth(), contentAlignment = Alignment.Center) {
-                Box(
-                    modifier = Modifier.padding(top = 40.dp, bottom = 40.dp).size(320.dp),
-                    contentAlignment = Alignment.Center
+        // On expanded widths the dial and the laps sit side by side in fractional
+        // columns so neither stretches awkwardly wide; compact stays stacked.
+        if (expanded) {
+            item {
+                Row(
+                    modifier = Modifier.fillParentMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawCircle(color = trackColor, style = Stroke(width = 8f))
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        StopwatchDial(countingTime = countingTime)
                     }
-                    val sweepAngle = ((countingTime.inWholeMilliseconds % 60000) / 60000f) * 360f
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawArc(
-                            color = progressColor,
-                            startAngle = -90f,
-                            sweepAngle = sweepAngle,
-                            useCenter = false,
-                            style = Stroke(width = 12f, cap = StrokeCap.Round)
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        countingTime.toComponents { minutes, seconds, nanoseconds ->
-                            val centiseconds = nanoseconds / 10_000_000
-                            Text(
-                                text = stringResource(R.string.stopwatch_time_format, minutes, seconds),
-                                style = MaterialTheme.typography.displayLarge.copy(fontSize = 84.sp, fontWeight = FontWeight.Normal)
-                            )
-                            Text(
-                                text = stringResource(R.string.duration_ms_format, 0, centiseconds),
-                                style = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Light)
-                            )
-                        }
-                    }
+                    LapsCard(
+                        lapTimes = lapTimes,
+                        lapSplits = lapSplits,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
-        }
+        } else {
+            item {
+                Box(Modifier.fillParentMaxWidth(), contentAlignment = Alignment.Center) {
+                    StopwatchDial(countingTime = countingTime)
+                }
+            }
 
-        item {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainer
-            ) {
-                Column {
+            item {
+                LapsCard(lapTimes = lapTimes, lapSplits = lapSplits)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StopwatchDial(countingTime: kotlin.time.Duration) {
+    val trackColor = MaterialTheme.colorScheme.surfaceVariant
+    val progressColor = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = Modifier.padding(top = 40.dp, bottom = 40.dp).size(320.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(color = trackColor, style = Stroke(width = 8f))
+        }
+        val sweepAngle = ((countingTime.inWholeMilliseconds % 60000) / 60000f) * 360f
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawArc(
+                color = progressColor,
+                startAngle = -90f,
+                sweepAngle = sweepAngle,
+                useCenter = false,
+                style = Stroke(width = 12f, cap = StrokeCap.Round)
+            )
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            countingTime.toComponents { minutes, seconds, nanoseconds ->
+                val centiseconds = nanoseconds / 10_000_000
+                Text(
+                    text = stringResource(R.string.stopwatch_time_format, minutes, seconds),
+                    style = MaterialTheme.typography.displayLarge.copy(fontSize = 84.sp, fontWeight = FontWeight.Normal)
+                )
+                Text(
+                    text = stringResource(R.string.duration_ms_format, 0, centiseconds),
+                    style = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Light)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LapsCard(
+    lapTimes: List<kotlin.time.Duration>,
+    lapSplits: List<kotlin.time.Duration>,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        Column {
                     Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(stringResource(R.string.header_laps), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge)
                         Text(stringResource(R.string.header_split), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge)
@@ -149,7 +195,5 @@ fun StopwatchScreen(backStack: com.vayunmathur.library.util.NavBackStack<com.vay
                         }
                     }
                 }
-            }
-        }
     }
 }

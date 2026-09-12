@@ -150,7 +150,10 @@ private fun SearchResults(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { backStack.add(Route.Artist(artist.id)) },
+                        .clickable {
+                            if (backStack.last() is Route.Artist) backStack.setLast(Route.Artist(artist.id))
+                            else backStack.add(Route.Artist(artist.id))
+                        },
                     supportingContent = { SecondaryText(artist.subtitle) },
                     leadingContent = { IconPerson() },
                 )
@@ -162,7 +165,10 @@ private fun SearchResults(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { backStack.add(Route.ReleaseGroup(group.id)) },
+                        .clickable {
+                            if (backStack.last() is Route.ReleaseGroup) backStack.setLast(Route.ReleaseGroup(group.id))
+                            else backStack.add(Route.ReleaseGroup(group.id))
+                        },
                     supportingContent = {
                         SecondaryText(
                             listOfNotNull(group.artist.ifBlank { null }, group.subtitle)

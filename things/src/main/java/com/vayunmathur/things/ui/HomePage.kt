@@ -23,6 +23,7 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.Checkbox
 import com.vayunmathur.library.ui.ConfirmDialog
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.IconButton
@@ -83,10 +84,12 @@ fun HomePage(
             IconButton(onClick = onOpenDevices) { IconWidgets() }
         },
     ) { padding ->
+        // A two-card dashboard stretched across a desktop window is unreadable;
+        // cap it at a readable measure.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -149,6 +152,7 @@ fun HomePage(
                     Text(stringResource(R.string.health_connect))
                 }
             }
+        }
         }
     }
 }

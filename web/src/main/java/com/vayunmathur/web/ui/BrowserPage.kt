@@ -1,97 +1,34 @@
 package com.vayunmathur.web.ui
 
-import androidx.compose.ui.res.stringResource
-import com.vayunmathur.web.R
 import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.rememberPermissionRequest
-import com.vayunmathur.library.ui.R as UiR
-import com.vayunmathur.library.ui.AlertDialog
-import com.vayunmathur.library.ui.AppScaffold
-import com.vayunmathur.library.ui.Card
-import com.vayunmathur.library.ui.CardDefaults
-import com.vayunmathur.library.ui.CommonSearchBar
-import com.vayunmathur.library.ui.DropdownMenu
-import com.vayunmathur.library.ui.DropdownMenuItem
-import com.vayunmathur.library.ui.ExperimentalMaterial3Api
-import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.IconButton
-import com.vayunmathur.library.ui.LinearProgressIndicator
-import com.vayunmathur.library.ui.ListItem
-import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.OutlinedTextField
-import com.vayunmathur.library.ui.Scaffold
-import com.vayunmathur.library.ui.Surface
-import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TextButton
-import com.vayunmathur.library.ui.TopAppBar
-import com.vayunmathur.library.ui.TopAppBarDefaults
-import com.vayunmathur.library.ui.IconArrowForward
-import com.vayunmathur.library.ui.IconBack
-import com.vayunmathur.library.ui.IconClose
-import com.vayunmathur.library.ui.IconMoreVert
-import com.vayunmathur.library.ui.IconSearch
-import com.vayunmathur.library.ui.IconShield
-import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.web.Route
 import com.vayunmathur.library.util.NavBackStack
-import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
 import com.vayunmathur.web.platform.BrowserUtils
-import com.vayunmathur.web.platform.PwaHelper
-import com.vayunmathur.web.platform.PwaInfo
 import com.vayunmathur.web.platform.WebPermissions
 import com.vayunmathur.web.platform.WebViewModel
 import com.vayunmathur.web.platform.isNewTab
-import com.vayunmathur.web.ui.components.SiteIcon
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowserPage(
     viewModel: WebViewModel,
@@ -167,198 +104,25 @@ fun BrowserPage(
         }
     }
 
-    val currentDraft = viewModel.searchDraft
-    val filteredBookmarks = remember(currentDraft, bookmarks) {
-        if (currentDraft.isBlank()) bookmarks.take(5)
-        else bookmarks.filter { it.url.contains(currentDraft, true) || it.title.contains(currentDraft, true) }.take(8)
-    }
-    val filteredHistory = remember(currentDraft, history) {
-        if (currentDraft.isBlank()) history.take(10)
-        else history.filter { it.url.contains(currentDraft, true) || it.title.contains(currentDraft, true) }.take(15)
+    val navigateFromOmnibox: (String) -> Unit = { input ->
+        viewModel.navigateActiveTab(input)
+        focusManager.clearFocus()
+        viewModel.omniboxFocused = false
     }
 
     Box(Modifier.fillMaxSize()) {
         if (viewModel.omniboxFocused) {
-            val omniboxField: @Composable (Modifier) -> Unit = { fieldModifier ->
-                OutlinedTextField(
-                    value = viewModel.searchDraft,
-                    onValueChange = { viewModel.searchDraft = it },
-                    modifier = fieldModifier.focusRequester(searchFocusRequester),
-                    placeholder = { Text(stringResource(R.string.search_or_enter_address)) },
-                    leadingIcon = { IconSearch() },
-                    trailingIcon = if (viewModel.searchDraft.isNotEmpty()) {
-                        {
-                            IconButton(onClick = { viewModel.searchDraft = "" }) { IconClose() }
-                        }
-                    } else null,
-                    shape = RoundedCornerShape(28.dp),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {
-                        if (viewModel.searchDraft.isNotBlank()) {
-                            viewModel.navigateActiveTab(viewModel.searchDraft)
-                            focusManager.clearFocus()
-                            viewModel.omniboxFocused = false
-                        }
-                    })
-                )
-            }
-            val dismissOmnibox: @Composable () -> Unit = {
-                IconButton(onClick = {
+            OmniboxEditor(
+                viewModel = viewModel,
+                bookmarks = bookmarks,
+                history = history,
+                searchFocusRequester = searchFocusRequester,
+                onNavigate = navigateFromOmnibox,
+                onDismiss = {
                     focusManager.clearFocus()
                     viewModel.omniboxFocused = false
-                }) { IconBack() }
-            }
-            val suggestions: @Composable (PaddingValues) -> Unit = { paddingValues ->
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues),
-                    // Anchored to the omnibox, so a short list stacks up from the field
-                    // instead of hanging off the far edge of the screen. Note this is not
-                    // reverseLayout: the section headers are separate items that have to
-                    // stay above the rows they label.
-                    verticalArrangement = if (viewModel.searchBarAtBottom) {
-                        Arrangement.spacedBy(2.dp, Alignment.Bottom)
-                    } else {
-                        Arrangement.spacedBy(2.dp)
-                    },
-                    contentPadding = if (viewModel.searchBarAtBottom) {
-                        PaddingValues(top = 24.dp, bottom = 8.dp)
-                    } else {
-                        PaddingValues(top = 8.dp, bottom = 24.dp)
-                    }
-                ) {
-                    if (currentDraft.isNotBlank()) {
-                        item {
-                            ListItem(
-                                headlineContent = { Text(currentDraft, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                supportingContent = {
-                                    Text(
-                                        text = BrowserUtils.hostFromUrl(
-                                            BrowserUtils.toNavigationUrl(currentDraft, viewModel.searchEngine)
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                },
-                                leadingContent = { IconSearch() },
-                                modifier = Modifier.clickable {
-                                    viewModel.navigateActiveTab(currentDraft)
-                                    focusManager.clearFocus()
-                                    viewModel.omniboxFocused = false
-                                }
-                            )
-                        }
-                        item { HorizontalDivider(Modifier.padding(vertical = 4.dp)) }
-                    }
-
-                    if (filteredBookmarks.isNotEmpty()) {
-                        item {
-                            Text(
-                                stringResource(R.string.bookmarks),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                            )
-                        }
-                        items(filteredBookmarks, key = { "bm-${it.id}" }) { bm ->
-                            ListItem(
-                                headlineContent = {
-                                    Text(
-                                        bm.title.ifBlank { bm.url },
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                },
-                                supportingContent = {
-                                    Text(
-                                        BrowserUtils.prettyUrl(bm.url),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                },
-                                leadingContent = { IconSearch() },
-                                modifier = Modifier.clickable {
-                                    viewModel.navigateActiveTab(bm.url)
-                                    focusManager.clearFocus()
-                                    viewModel.omniboxFocused = false
-                                }
-                            )
-                        }
-                    }
-
-                    if (filteredHistory.isNotEmpty()) {
-                        item {
-                            Text(
-                                stringResource(R.string.history),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).padding(top = if (filteredBookmarks.isNotEmpty()) 12.dp else 0.dp)
-                            )
-                        }
-                        items(filteredHistory, key = { "h-${it.id}" }) { h ->
-                            ListItem(
-                                headlineContent = {
-                                    Text(
-                                        h.title.ifBlank { h.url },
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                },
-                                supportingContent = {
-                                    Text(
-                                        BrowserUtils.prettyUrl(h.url),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                },
-                                leadingContent = { IconSearch() },
-                                modifier = Modifier.clickable {
-                                    viewModel.navigateActiveTab(h.url)
-                                    focusManager.clearFocus()
-                                    viewModel.omniboxFocused = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-            if (viewModel.searchBarAtBottom) {
-                // RAW SCAFFOLD EXCEPTION: with the toolbar at the bottom the editing
-                // omnibox has no top bar at all, which AppScaffold cannot express - its
-                // top bar is mandatory and would leave an empty bar hanging above the
-                // suggestions.
-                Scaffold(
-                    bottomBar = {
-                        Surface(Modifier.fillMaxWidth()) {
-                            Row(
-                                modifier = Modifier
-                                    .navigationBarsPadding()
-                                    .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                dismissOmnibox()
-                                omniboxField(Modifier.weight(1f))
-                            }
-                        }
-                    },
-                ) { paddingValues -> suggestions(paddingValues) }
-            } else {
-                AppScaffold(
-                    title = { omniboxField(Modifier.fillMaxWidth()) },
-                    navigationIcon = dismissOmnibox,
-                    scrollBehavior = appBarScrollBehavior(),
-                ) { paddingValues -> suggestions(paddingValues) }
-            }
+                },
+            )
         } else {
             BrowserChrome(
                 omniboxText = viewModel.omniboxText,
@@ -385,516 +149,52 @@ fun BrowserPage(
                 onShieldClick = { viewModel.showShieldsPanel = true },
                 onMenuClick = { showMenu = true },
                 menu = {
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        if (!isNewTabActive) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.reload)) },
-                                onClick = {
-                                    showMenu = false
-                                    activeTab?.let {
-                                        viewModel.markFreshNavigation(it.id)
-                                        webViewPool[it.id]?.reload()
-                                    }
-                                }
-                            )
-                        }
-
-                        if (activeTab != null && !isNewTabActive) {
-                            val pwa = viewModel.getPwaInfo(activeTab.id)
-                            val pinSupported = PwaHelper.isPinSupported(context)
-                            val label = if (pwa?.hasManifest == true) "Install app" else "Add to Home screen"
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    showMenu = false
-                                    showInstallDialog = true
-                                },
-                                enabled = activeTab.url.isNotBlank() && activeTab.url.startsWith("http") && pinSupported
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text(if (isCurrentBookmarked) "Remove bookmark" else "Add bookmark") },
-                            onClick = {
-                                showMenu = false
-                                activeTab?.let { tab ->
-                                    if (tab.url.isBlank()) return@let
-                                    if (isCurrentBookmarked) {
-                                        bookmarks.find { it.url == tab.url }?.let { viewModel.removeBookmark(it) }
-                                    } else viewModel.addBookmark(tab.url, tab.title.ifBlank { tab.url })
-                                }
-                            }
-                        )
-                        DropdownMenuItem(text = { Text(stringResource(UiR.string.share)) }, onClick = {
-                            showMenu = false
-                            activeTab?.let { tab ->
-                                if (tab.url.isBlank()) return@let
-                                val sendIntent = android.content.Intent().apply {
-                                    action = android.content.Intent.ACTION_SEND
-                                    putExtra(android.content.Intent.EXTRA_TEXT, tab.url)
-                                    type = "text/plain"
-                                }
-                                ExternalIntents.launch(context, android.content.Intent.createChooser(sendIntent, context.getString(R.string.share_link)))
-                            }
-                        })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.new_tab)) }, onClick = { showMenu = false; viewModel.newTab() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.new_private_tab)) }, onClick = { showMenu = false; viewModel.newTab(isPrivate = true) })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.history)) }, onClick = { showMenu = false; backStack.add(Route.History) })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.bookmarks)) }, onClick = { showMenu = false; backStack.add(Route.Bookmarks) })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.downloads)) }, onClick = { showMenu = false; backStack.add(Route.Downloads) })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.installed_apps)) }, onClick = { showMenu = false; backStack.add(Route.InstalledSites) })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.site_data)) }, onClick = { showMenu = false; backStack.add(Route.SiteData) })
-                        DropdownMenuItem(text = { Text(stringResource(UiR.string.settings)) }, onClick = { showMenu = false; backStack.add(Route.Settings) })
-                    }
-                },
-            ) { paddingValues ->
-                Column(Modifier.fillMaxSize().padding(paddingValues)) {
-                    if (isNewTabActive) {
-                        QuickAccess(
-                            bookmarks = bookmarks.take(12),
-                            history = history.take(8),
-                            onOpenUrl = { url ->
-                                activeTab?.let {
-                                    viewModel.markFreshNavigation(it.id)
-                                    viewModel.onTabUrlChange(it.id, url)
-                                }
-                            },
-                            faviconFor = viewModel::faviconFor,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else if (activeTab != null) {
-                        Box(Modifier.fillMaxSize()) {
-                            // Force a new WebViewBrowser composition per tabId so the AndroidView
-                            // factory runs and loads the new URL immediately. Without this, the
-                            // same AndroidView instance is reused across tab switches and the old
-                            // page remains visible until an update triggers, causing topbar/content
-                            // mismatch when an external intent opens a new tab.
-                            key(activeTab.id) {
-                                WebViewBrowser(
-                                    tabId = activeTab.id,
-                                    initialUrl = activeTab.url,
-                                    viewModel = viewModel,
-                                    webViewPool = webViewPool,
-                                    onRequestNewTab = { url -> viewModel.newTab(url = url, isPrivate = activeTab.isPrivate) },
-                                    onLinkLongPress = { url -> linkContextMenuUrl = url },
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (viewModel.showTabSwitcher) {
-            TabSwitcher(
-                tabs = viewModel.tabs,
-                activeTabId = viewModel.activeTabId,
-                onSwitch = { viewModel.switchToTab(it) },
-                onClose = { viewModel.closeTab(it) },
-                onReorder = { from, to -> viewModel.moveTab(from, to) },
-                onNewTab = { viewModel.newTab(isPrivate = viewModel.incognito || viewModel.activeTab?.isPrivate == true) },
-                onNewIncognitoTab = { viewModel.newTab(isPrivate = true) },
-                onNewWindow = {
-                    viewModel.showTabSwitcher = false
-                    com.vayunmathur.web.platform.launchNewWebWindow(context, incognito = false)
-                },
-                onNewIncognitoWindow = {
-                    viewModel.showTabSwitcher = false
-                    com.vayunmathur.web.platform.launchNewWebWindow(context, incognito = true)
-                },
-                isIncognitoWindow = viewModel.incognito || viewModel.activeTab?.isPrivate == true,
-                onDismiss = { viewModel.showTabSwitcher = false },
-                modifier = Modifier.fillMaxSize(),
-                thumbnailFor = viewModel::thumbnailFor,
-                faviconFor = viewModel::faviconFor,
-            )
-        }
-
-        if (viewModel.showShieldsPanel && shieldHost != null) {
-            ShieldsPanel(
-                host = shieldHost,
-                blockedCount = activeTab?.let { viewModel.blockedCount(it.id) } ?: 0,
-                viewModel = viewModel,
-                onReload = {
-                    activeTab?.let { tab ->
-                        webViewPool[tab.id]?.let { webView ->
-                            // Re-register before reloading, not after: document-start scripts
-                            // only apply to documents that start loading after the call.
-                            (webView.webViewClient as? ShieldsWebViewClient)
-                                ?.installFarbling(webView, viewModel.farblingConfig())
-                            viewModel.markFreshNavigation(tab.id)
-                            webView.reload()
-                        }
-                    }
-                },
-                onDismiss = { viewModel.showShieldsPanel = false },
-            )
-        }
-
-        viewModel.pendingPermissionPrompt?.let { prompt ->
-            PermissionPromptSheet(
-                origin = prompt.origin,
-                types = prompt.types,
-                onGrant = { granted ->
-                    prompt.onGrant(granted)
-                    viewModel.clearPermissionPrompt()
-                },
-                onDeny = {
-                    prompt.onDeny()
-                    viewModel.clearPermissionPrompt()
-                }
-            )
-        }
-
-        viewModel.pendingGeolocationPrompt?.let { (origin, _, _) ->
-            GeolocationPromptSheet(
-                origin = origin,
-                onAllow = { viewModel.grantGeolocation(origin) },
-                onDeny = { viewModel.denyGeolocation() }
-            )
-        }
-
-        viewModel.pendingLocalNetworkHost?.let { host ->
-            LocalNetworkPromptSheet(
-                host = host,
-                // Tap-gated: rememberPermissionRequest opens system settings on a
-                // denial-without-rationale, so launching this automatically would eject a
-                // permanently-denied user out of the app on every LAN page load.
-                onAllow = { localNetworkRequest?.invoke() },
-                onDeny = { viewModel.clearLocalNetworkPrompt(denied = true) },
-            )
-        }
-
-        viewModel.pendingFileChooser?.let { (_, params) ->
-            val mimeTypes = try { params.acceptTypes.toList() } catch (_: Exception) { emptyList() }
-            val allowMultiple = try { params.mode == android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE } catch (_: Exception) { false }
-            FileChooserSheet(
-                mimeTypes = mimeTypes,
-                onFiles = { uris ->
-                    if (uris == null) viewModel.clearFileChooser() else viewModel.deliverFileChooserResult(uris)
-                },
-                onCancel = { viewModel.clearFileChooser() },
-                onTriggerPicker = {
-                    try {
-                        if (allowMultiple) {
-                            multiDocLauncher.launch(mimeTypes.filter { it.isNotBlank() }.toTypedArray().takeIf { it.isNotEmpty() } ?: arrayOf("*/*"))
-                        } else {
-                            val mt = mimeTypes.firstOrNull { it.isNotBlank() } ?: "*/*"
-                            singleDocLauncher.launch(arrayOf(mt))
-                        }
-                    } catch (_: Exception) { viewModel.clearFileChooser() }
-                }
-            )
-        }
-
-        linkContextMenuUrl?.let { linkUrl ->
-            LinkContextMenu(
-                url = linkUrl,
-                onDismiss = { linkContextMenuUrl = null },
-                onCopyLink = {
-                    com.vayunmathur.library.ui.ExternalIntents.copyToClipboard(
-                        context,
-                        linkUrl,
-                        linkUrl,
-                    )
-                    com.vayunmathur.library.util.AppMessages.show(context.getString(R.string.link_copied))
-                },
-                onShareLink = {
-                    com.vayunmathur.library.ui.ExternalIntents.shareText(
-                        context,
-                        linkUrl,
-                        context.getString(R.string.share_link),
-                    )
-                },
-                onOpenInNewTab = { viewModel.newTab(url = linkUrl, isPrivate = viewModel.activeTab?.isPrivate ?: true) },
-            )
-        }
-
-        if (showInstallDialog) {
-            val tabId = activeTab?.id
-            val url = activeTab?.url ?: ""
-            val pwa = tabId?.let { viewModel.getPwaInfo(it) }
-            val fallbackTitle = tabId?.let { viewModel.getTabTitle(it).ifBlank { activeTab?.title ?: "" } } ?: ""
-            val defaultTitle = PwaHelper.displayTitle(pwa, fallbackTitle, url)
-            var draftTitle by remember(url, defaultTitle) { mutableStateOf(defaultTitle) }
-
-            AlertDialog(
-                onDismissRequest = { showInstallDialog = false },
-                title = { Text(if (pwa?.hasManifest == true) "Install app?" else "Add to Home screen?") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            if (pwa?.hasManifest == true)
-                                "This site has a web manifest — install as standalone app."
-                            else
-                                "Create pinned shortcut that opens in standalone mode (PwaActivity). Works for any site via best icon (apple-touch-icon, 192x192).",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(BrowserUtils.prettyUrl(url), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                if (pwa?.iconUrl != null) {
-                                    Text(stringResource(R.string.icon, pwa.iconUrl.take(64)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                                if (pwa?.themeColor != null) {
-                                    Text(stringResource(R.string.theme, pwa.themeColor), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                        OutlinedTextField(
-                            value = draftTitle,
-                            onValueChange = { draftTitle = it },
-                            label = { Text(stringResource(R.string.app_name_2)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val finalTitle = draftTitle.ifBlank { defaultTitle }
-                            showInstallDialog = false
-                            if (tabId != null && url.startsWith("http")) {
-                                viewModel.installAsPwa(
-                                    tabId = tabId,
-                                    url = url,
-                                    pwaInfo = pwa?.copy(name = finalTitle) ?: PwaInfo(
-                                        name = finalTitle,
-                                        origin = BrowserUtils.originFromUrl(url),
-                                        startUrl = url
-                                    )
-                                )
+                    BrowserMenu(
+                        expanded = showMenu,
+                        onDismiss = { showMenu = false },
+                        viewModel = viewModel,
+                        backStack = backStack,
+                        isNewTabActive = isNewTabActive,
+                        isCurrentBookmarked = isCurrentBookmarked,
+                        onShowInstallDialog = { showInstallDialog = true },
+                        onReload = {
+                            activeTab?.let {
+                                viewModel.markFreshNavigation(it.id)
+                                webViewPool[it.id]?.reload()
                             }
                         },
-                        enabled = draftTitle.isNotBlank() || defaultTitle.isNotBlank()
-                    ) { Text(stringResource(UiR.string.add)) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showInstallDialog = false }) { Text(stringResource(UiR.string.cancel)) }
-                }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun BrowserChrome(
-    omniboxText: String,
-    tabCount: Int,
-    canGoBack: Boolean = false,
-    canGoForward: Boolean = false,
-    progress: Float = 0f,
-    atBottom: Boolean = false,
-    onBack: () -> Unit = {},
-    onForward: () -> Unit = {},
-    onOmniboxClick: () -> Unit = {},
-    onTabSwitcherClick: () -> Unit = {},
-    shieldHost: String? = null,
-    blockedCount: Int = 0,
-    onShieldClick: () -> Unit = {},
-    onMenuClick: () -> Unit = {},
-    menu: @Composable () -> Unit = {},
-    content: @Composable (PaddingValues) -> Unit,
-) {
-    // RAW SCAFFOLD EXCEPTION: bespoke browser toolbar chrome. The bar is a
-    // Column of a custom TopAppBar (back/forward nav row, a tappable read-only
-    // address pill as the title, and shield + tab-count + overflow-menu actions
-    // on a surface-colored bar) with a page LinearProgressIndicator drawn
-    // alongside it, and it can sit in either the top or the bottom slot. That
-    // composite bar has no equivalent in the shared scaffolds, and the content
-    // is the full-bleed WebView.
-    val bar: @Composable () -> Unit = {
-        // At the bottom, TopAppBar's hardcoded top inset would be a status bar's
-        // height of dead space, and nothing else applies the navigation bar inset.
-        // The bar's own container color stops at the padding, so the surface is
-        // painted here instead to reach the screen edge. The IME inset is left alone
-        // on purpose: MainNavigation already owns it, and navigationBarsPadding
-        // resolves to zero once the keyboard has consumed more than a navigation
-        // bar's height.
-        val barModifier = if (atBottom) {
-            Modifier
-                .background(MaterialTheme.colorScheme.surface)
-                .navigationBarsPadding()
-                .consumeWindowInsets(WindowInsets.statusBars)
-        } else {
-            Modifier
-        }
-        Column(barModifier) {
-            // The progress bar belongs against the web content, so it moves to the
-            // far side of the toolbar when the toolbar moves to the bottom.
-            if (atBottom) PageProgress(progress)
-            TopAppBar(
-                navigationIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBack, enabled = canGoBack) { IconBack() }
-                        IconButton(onClick = onForward, enabled = canGoForward) { IconArrowForward() }
-                    }
-                },
-                title = {
-                    DisplayOnlyAddressPill(
-                        fullUrl = omniboxText,
-                        onClick = onOmniboxClick,
-                        modifier = Modifier.fillMaxWidth()
                     )
                 },
-                actions = {
-                    if (shieldHost != null) {
-                        ShieldChip(blockedCount = blockedCount, onClick = onShieldClick)
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .clickable(onClick = onTabSwitcherClick)
-                    ) {
-                        Text(
-                            text = tabCount.toString(),
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    IconButton(onClick = onMenuClick) { IconMoreVert() }
-                    menu()
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-            )
-            if (!atBottom) PageProgress(progress)
-        }
-    }
-    Scaffold(
-        topBar = { if (!atBottom) bar() },
-        bottomBar = { if (atBottom) bar() },
-        content = content,
-    )
-}
-
-/** The page load indicator, drawn only while a load is actually in flight. */
-@Composable
-private fun PageProgress(progress: Float) {
-    if (progress in 0.01f..0.99f) {
-        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(2.dp))
-    }
-}
-
-/**
- * Toolbar shield. Shows the number of requests blocked on the current page, which is the
- * only feedback the user gets that shields are doing anything.
- */
-@Composable
-private fun ShieldChip(blockedCount: Int, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick),
-    ) {
-        Row(
-            Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconShield(Modifier.size(18.dp))
-            if (blockedCount > 0) {
-                Spacer(Modifier.width(4.dp))
-                Text(blockedCount.toString(), style = MaterialTheme.typography.labelLarge)
+            ) { paddingValues ->
+                BrowserContent(
+                    viewModel = viewModel,
+                    activeTab = activeTab,
+                    isNewTabActive = isNewTabActive,
+                    webViewPool = webViewPool,
+                    onOpenUrl = { tab, url ->
+                        viewModel.markFreshNavigation(tab.id)
+                        viewModel.onTabUrlChange(tab.id, url)
+                    },
+                    onRequestNewTab = { tab, url -> viewModel.newTab(url = url, isPrivate = tab.isPrivate) },
+                    onLinkLongPress = { url -> linkContextMenuUrl = url },
+                    modifier = Modifier.padding(paddingValues),
+                )
             }
         }
-    }
-}
 
-@Composable
-private fun DisplayOnlyAddressPill(
-    fullUrl: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    // Now matches CommonSearchBar visually: OutlinedTextField 28dp rounded, search icon, same padding.
-    Box(modifier = modifier) {
-        OutlinedTextField(
-            value = fullUrl,
-            onValueChange = {},
-            readOnly = true,
-            placeholder = { Text(stringResource(R.string.search_or_enter_address)) },
-            leadingIcon = { IconSearch() },
-            singleLine = true,
-            shape = RoundedCornerShape(28.dp),
-            modifier = Modifier.fillMaxWidth()
+        BrowserOverlays(
+            viewModel = viewModel,
+            backStack = backStack,
+            activeTab = activeTab,
+            shieldHost = shieldHost,
+            webViewPool = webViewPool,
+            linkContextMenuUrl = linkContextMenuUrl,
+            onLinkMenuDismiss = { linkContextMenuUrl = null },
+            showInstallDialog = showInstallDialog,
+            onInstallDialogDismiss = { showInstallDialog = false },
+            multiDocLauncher = multiDocLauncher,
+            singleDocLauncher = singleDocLauncher,
+            localNetworkRequest = localNetworkRequest,
         )
-        // Overlay to handle tap without focusing the field
-        Box(
-            Modifier
-                .matchParentSize()
-                .clip(RoundedCornerShape(28.dp))
-                .clickable(onClick = onClick)
-        )
-    }
-}
-
-@Composable
-internal fun QuickAccess(
-    bookmarks: List<com.vayunmathur.web.data.Bookmark>,
-    history: List<com.vayunmathur.web.data.HistoryEntry>,
-    onOpenUrl: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    faviconFor: (String) -> android.graphics.Bitmap? = { null },
-) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        if (bookmarks.isNotEmpty()) {
-            item { Text(stringResource(R.string.bookmarks), style = MaterialTheme.typography.titleMedium) }
-            item {
-                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(end = 16.dp)) {
-                    items(bookmarks, key = { it.id }) { bm ->
-                        Card(
-                            modifier = Modifier.width(140.dp).clickable { onOpenUrl(bm.url) },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                        ) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                SiteIcon(
-                                    icon = faviconFor(bm.url),
-                                    label = bm.title.ifBlank { BrowserUtils.hostFromUrl(bm.url) },
-                                    modifier = Modifier.size(28.dp),
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                )
-                                Text(bm.title.ifBlank { BrowserUtils.hostFromUrl(bm.url) }, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if (history.isNotEmpty()) {
-            item { Text(stringResource(R.string.recent), style = MaterialTheme.typography.titleMedium) }
-            items(history, key = { it.id }) { entry ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onOpenUrl(entry.url) }.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SiteIcon(
-                        icon = faviconFor(entry.url),
-                        label = entry.title.ifBlank { BrowserUtils.hostFromUrl(entry.url) },
-                        modifier = Modifier.size(36.dp),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(entry.title.ifBlank { entry.url }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                        Text(BrowserUtils.prettyUrl(entry.url), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        item {
-            Text(
-                stringResource(R.string.blank_new_tab_tap_the_address_pill_to_se),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 16.dp)
-            )
-        }
     }
 }

@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.education.Route
+import com.vayunmathur.education.pushChain
 import com.vayunmathur.education.content.Course
 import com.vayunmathur.education.content.Subject
 import com.vayunmathur.education.util.EducationViewModel
@@ -134,7 +135,7 @@ fun ExplorerHomePage(backStack: NavBackStack<Route>, viewModel: EducationViewMod
             if (subjectCourses.isNotEmpty()) {
                 item { SectionHeader(stringResource(subject.displayNameRes)) }
                 items(subjectCourses, key = { it.id }) { course ->
-                    ExplorerCourseCard(course) { backStack.add(Route.Course(course.id)) }
+                    ExplorerCourseCard(course) { backStack.pushChain(Route.Course(course.id)) }
                 }
             }
         }

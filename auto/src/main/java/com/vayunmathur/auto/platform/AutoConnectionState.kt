@@ -1,5 +1,7 @@
 package com.vayunmathur.auto.platform
 
+import com.vayunmathur.auto.protocol.VideoFocus
+
 /** What the phone is currently doing about a car, as the status screen needs to render it. */
 sealed interface AutoConnectionState {
     /** No head unit attached, over either transport. */
@@ -8,8 +10,14 @@ sealed interface AutoConnectionState {
     /** A transport is up; version negotiation and the TLS handshake are in progress. */
     data object Connecting : AutoConnectionState
 
-    /** Authenticated and projecting. [carName] is whatever the head unit reported. */
-    data class Projecting(val carName: String) : AutoConnectionState
+    /**
+     * Authenticated and projecting. [carName] is whatever the head unit reported;
+     * [videoFocus] mirrors the session's arbitration (NONE until the first 0x8008).
+     */
+    data class Projecting(
+        val carName: String,
+        val videoFocus: VideoFocus = VideoFocus.NONE,
+    ) : AutoConnectionState
 
     /** The head unit refused our certificate, or auth otherwise failed. */
     data object Rejected : AutoConnectionState

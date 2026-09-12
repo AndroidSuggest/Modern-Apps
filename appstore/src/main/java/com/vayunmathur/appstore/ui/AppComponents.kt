@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,10 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -38,14 +34,11 @@ import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp
 import com.vayunmathur.appstore.data.installer.InstallStage
 import com.vayunmathur.library.image.compose.AsyncImage
-import com.vayunmathur.library.ui.Card
-import com.vayunmathur.library.ui.CardDefaults
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconStar
 import com.vayunmathur.library.ui.LinearProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.util.sharedContainer
 import com.vayunmathur.library.util.sharedCrop
 import java.util.Locale
 
@@ -222,71 +215,6 @@ fun AppRow(
     }
 }
 
-/**
- * A carousel tile: icon over name over rating, in a fixed-width column.
- *
- * Fixed width rather than intrinsic so that the tiles in a row line up regardless of how
- * long each app's name is — a carousel of ragged columns reads as broken.
- */
-@Composable
-fun AppTile(
-    app: UnifiedApp,
-    modifier: Modifier = Modifier,
-    isInstalled: Boolean = false,
-    stage: InstallStage? = null,
-    installedIcon: Drawable? = null,
-    /** As [AppRow]: null for a tile whose app is already an origin elsewhere on screen. */
-    sharedKey: Any? = null,
-    onClick: () -> Unit = {},
-) {
-    Column(
-        modifier
-            // Deliberately [sharedContainer] where [AppRow] uses [sharedCrop]: a tile centres its
-            // icon in 96dp and the detail header puts it hard left in a full-width row, so the two
-            // ends are not congruent at their top-left and a crop would jump the icon across. A
-            // reflow absorbs that. Do not "tidy" this into matching AppRow.
-            .then(if (sharedKey == null) Modifier else Modifier.sharedContainer(sharedKey))
-            .width(96.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        AppIcon(app, installedIcon, size = 72.dp, corner = 18.dp)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            app.name,
-            style = MaterialTheme.typography.labelMedium,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            // Two lines' worth whatever the name's length, so tiles stay aligned.
-            modifier = Modifier.heightIn(min = 32.dp),
-        )
-        // An in-flight install replaces the rating line rather than adding a third one, so a
-        // tile mid-install stays roughly the height of its neighbours. The slot holds a label
-        // line even when it has nothing to say, because most catalogue entries carry no rating
-        // and RatingLabel then draws nothing at all — an installed tile would be a whole line
-        // taller than the ones either side of it, and a LazyRow takes the height of its tallest
-        // visible child, so the carousel and everything below it would move as those tiles
-        // scrolled in.
-        val statusHeight = with(LocalDensity.current) {
-            MaterialTheme.typography.labelSmall.lineHeight.toDp()
-        }
-        Box(Modifier.heightIn(min = statusHeight), contentAlignment = Alignment.Center) {
-            when {
-                stage != null -> StageProgress(stage)
-                isInstalled -> Text(
-                    stringResource(R.string.installed),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                else -> RatingLabel(app)
-            }
-        }
-    }
-}
-
 /** Heading above a section of the home screen. */
 @Composable
 fun SectionHeader(title: String, subtitle: String?, modifier: Modifier = Modifier) {
@@ -371,71 +299,4 @@ fun stageLabel(stage: InstallStage): String = when (stage) {
     InstallStage.Verifying -> stringResource(R.string.stage_verifying)
     InstallStage.Installing -> stringResource(R.string.stage_installing)
     is InstallStage.Failed -> stringResource(R.string.stage_failed, stage.reason)
-}
-
-/** A labelled value in the facts grid on the detail page. */
-@Composable
-fun StatCell(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            value,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
-    }
-}
-
-/** A read-only chip, for categories and anti-features. */
-@Composable
-fun InfoChip(
-    text: String,
-    modifier: Modifier = Modifier,
-    emphasise: Boolean = false,
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = if (emphasise) {
-                MaterialTheme.colorScheme.errorContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-            contentColor = if (emphasise) {
-                MaterialTheme.colorScheme.onErrorContainer
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        ),
-    ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-        )
-    }
-}
-
-/** "12 MB", "980 kB" — SI units, because that is what stores quote. */
-fun formatSize(bytes: Long): String = when {
-    bytes <= 0L -> ""
-    bytes < 1_000L -> "$bytes B"
-    bytes < 1_000_000L -> String.format(Locale.US, "%.0f kB", bytes / 1_000.0)
-    bytes < 1_000_000_000L -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
-    else -> String.format(Locale.US, "%.2f GB", bytes / 1_000_000_000.0)
-}
-
-/** "1.2M+", "50K+" — the rounded form an install count is meaningful at. */
-fun formatCount(count: Long): String = when {
-    count <= 0L -> ""
-    count < 1_000L -> count.toString()
-    count < 1_000_000L -> "${count / 1_000}K+"
-    count < 1_000_000_000L -> String.format(Locale.US, "%.1fM+", count / 1_000_000.0)
-    else -> String.format(Locale.US, "%.1fB+", count / 1_000_000_000.0)
 }

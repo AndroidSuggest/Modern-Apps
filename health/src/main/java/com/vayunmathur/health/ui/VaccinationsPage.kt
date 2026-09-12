@@ -83,7 +83,13 @@ fun VaccinationsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel
             FloatingActionButton(
                 onClick = {
                     viewModel.startVaccinationDraft()
-                    backStack.add(Route.EditVaccination())
+                    // A form already open in the detail pane is swapped, not stacked, so
+                    // Back still returns to this list rather than to the previous form.
+                    if (backStack.last() is Route.EditVaccination) {
+                        backStack.setLast(Route.EditVaccination())
+                    } else {
+                        backStack.add(Route.EditVaccination())
+                    }
                 }
             ) { IconAdd() }
         },
@@ -114,7 +120,11 @@ fun VaccinationsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel
                     context = context,
                     onClick = {
                         viewModel.startVaccinationDraft(entry.id)
-                        backStack.add(Route.EditVaccination(entry.id))
+                        if (backStack.last() is Route.EditVaccination) {
+                            backStack.setLast(Route.EditVaccination(entry.id))
+                        } else {
+                            backStack.add(Route.EditVaccination(entry.id))
+                        }
                     },
                 )
             }

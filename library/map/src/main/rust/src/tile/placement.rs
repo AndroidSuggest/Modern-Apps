@@ -11,6 +11,11 @@
 //! (computed from the anchor's clip position + the frame's text size). This keeps
 //! the module free of camera math and testable with literal boxes.
 //!
+//! Projection is pitch-aware ([`project_to_screen`]): at pitch 0 it is the linear
+//! map, and under tilt it carries the perspective divide the billboard shader
+//! applies — so a box sits where its label draws, and distant POIs compress onto
+//! overlapping boxes the rank-ordered placer thins by importance.
+//!
 //! # Rank
 //!
 //! Lower is more important: country (0) > region (1) > locality (2) > subplace
@@ -153,7 +158,7 @@ pub fn screen_rect(
     text_px: f32,
     total_advance: f32,
     pad_px: f32,
-) -> (f32, f32, f32, f32) {
+) -> Option<(f32, f32, f32, f32)> {
     anchored_rect(
         anchor,
         tile_clip,
@@ -190,6 +195,37 @@ pub struct BoxInputs {
     pub pad_px: f32,
 }
 
+/// Project a tile-local 0..1 point to screen px through the tile's clip matrix, **with**
+/// the perspective divide — the one derivation collision shares with the GPU billboard path.
+///
+/// [`anchored_rect`] and [`curved_boxes`] used to apply only the matrix's linear part, which
+/// is the whole transform at pitch 0 (`w == 1`) but drops the foreshortening under tilt: boxes
+/// were built around a pre-divide position while `symbol_billboard.vert` draws each anchor
+/// post-divide, so collision tested boxes that sat nowhere near the drawn labels. A tilted view
+/// additionally compresses distant ground toward the horizon, which is exactly the declutter
+/// case — with the divide, far POIs land close together on screen, their screen-constant boxes
+/// overlap, and the rank-ordered placer culls them, so declutter follows the projected density
+/// rather than the zoom alone.
+///
+/// Returns `None` when the point is on or behind the eye (`w <= 0`): there is no screen position
+/// to collide at, so the label cannot be a candidate. Callers skip the label (point path) or the
+/// glyph (curved path) — a box for an unprojectable label is unrepresentable rather than garbage.
+/// The `!(w > 0.0)` form also catches NaN, which would otherwise build a box that collides with
+/// nothing and always draws.
+pub fn project_to_screen(
+    tile_clip: [f32; 16],
+    point: (f32, f32),
+    extent_wh: (u32, u32),
+) -> Option<(f32, f32)> {
+    let cx = tile_clip[0] * point.0 + tile_clip[4] * point.1 + tile_clip[12];
+    let cy = tile_clip[1] * point.0 + tile_clip[5] * point.1 + tile_clip[13];
+    let w = tile_clip[3] * point.0 + tile_clip[7] * point.1 + tile_clip[15];
+    if !(w > 0.0) {
+        return None;
+    }
+    Some(((cx / w * 0.5 + 0.5) * extent_wh.0 as f32, (cy / w * 0.5 + 0.5) * extent_wh.1 as f32))
+}
+
 /// The screen box a label would occupy if drawn at `anchor`.
 ///
 /// The union of the text block and the icon, which is where this departs from MapLibre:
@@ -198,17 +234,20 @@ pub struct BoxInputs {
 /// then a collision on either box rejects the pair anyway. A union is looser only in the
 /// gap the `text-offset` opens between icon and text, which is 1.1 em of empty space that
 /// nothing would have been placed in.
+///
+/// The box is centred on [`project_to_screen`]'s pitch-aware projection of `point`, so under
+/// tilt it sits where the billboarded label draws; its width and height are screen-constant
+/// (text advance at `text_px`, icon size in device px), matching the screen-constant size the
+/// billboard path draws at. Returns `None` when the anchor is on or behind the eye — such a
+/// label cannot be a candidate, so no box exists for it.
 pub fn anchored_rect(
     point: (f32, f32),
     tile_clip: [f32; 16],
     extent_wh: (u32, u32),
     inputs: &BoxInputs,
     anchor: Anchor,
-) -> (f32, f32, f32, f32) {
-    let cx = tile_clip[0] * point.0 + tile_clip[4] * point.1 + tile_clip[12];
-    let cy = tile_clip[1] * point.0 + tile_clip[5] * point.1 + tile_clip[13];
-    let sx = (cx * 0.5 + 0.5) * extent_wh.0 as f32;
-    let sy = (cy * 0.5 + 0.5) * extent_wh.1 as f32;
+) -> Option<(f32, f32, f32, f32)> {
+    let (sx, sy) = project_to_screen(tile_clip, point, extent_wh)?;
 
     let w = inputs.text_px * inputs.advance / crate::tile::glyph::UP_EM as f32;
     // Lines stack at 1.2 em, so a two-line block is 2.2 em tall, not 2.4: the first line
@@ -230,7 +269,7 @@ pub fn anchored_rect(
         y0 = y0.min(sy - icon_h * 0.5);
         y1 = y1.max(sy + icon_h * 0.5);
     }
-    (x0 - inputs.pad_px, y0 - inputs.pad_px, x1 + inputs.pad_px, y1 + inputs.pad_px)
+    Some((x0 - inputs.pad_px, y0 - inputs.pad_px, x1 + inputs.pad_px, y1 + inputs.pad_px))
 }
 
 // --- oriented / segmented collision (curved labels) -------------------------
@@ -359,8 +398,8 @@ pub fn place_segmented(candidates: &[SegmentedCandidate]) -> Vec<Placed> {
 /// Build a curved label's per-glyph screen collision boxes from its tile-local layout.
 ///
 /// The segmented analogue of [`anchored_rect`]: each [`CurvedGlyph`](crate::tess::text::CurvedGlyph)
-/// pen point is projected to screen px through `tile_clip` (the same linear projection the point
-/// box uses, so the two agree at pitch 0), and the glyph becomes an [`Obb`] oriented to the
+/// pen point is projected to screen px through `tile_clip` (the same pitch-aware projection the
+/// point box uses, so the two agree at every pitch), and the glyph becomes an [`Obb`] oriented to
 /// screen-space tangent, sized by its own advance and the cap height at `text_px`, and inflated by
 /// `pad_px`. The result feeds [`place_segmented`] as a [`SegmentedCandidate`]'s `boxes`.
 pub fn curved_boxes(
@@ -370,12 +409,11 @@ pub fn curved_boxes(
     text_px: f32,
     pad_px: f32,
 ) -> Vec<Obb> {
+    // Pens project with the perspective divide like the point boxes, so a curved label and a
+    // point label collide where they draw under tilt. The tangent below stays the linear-part
+    // approximation: exact only at pitch 0, but a glyph-scale segment is short enough that the
+    // divide varies negligibly across it.
     let (w, h) = (extent_wh.0 as f32, extent_wh.1 as f32);
-    let to_screen = |p: (f32, f32)| {
-        let cx = tile_clip[0] * p.0 + tile_clip[4] * p.1 + tile_clip[12];
-        let cy = tile_clip[1] * p.0 + tile_clip[5] * p.1 + tile_clip[13];
-        ((cx * 0.5 + 0.5) * w, (cy * 0.5 + 0.5) * h)
-    };
     let em = crate::tile::glyph::UP_EM as f32;
     let cap_px = crate::tess::text::CAP_HEIGHT_EM * text_px;
     let mut out = Vec::with_capacity(placements.len());
@@ -384,6 +422,9 @@ pub fn curved_boxes(
         if advance_px <= 0.0 {
             continue;
         }
+        // The pen projects with the perspective divide like a point anchor; a glyph on or
+        // behind the eye has no screen position and is skipped rather than boxed.
+        let Some((sx, sy)) = project_to_screen(tile_clip, cg.pen, extent_wh) else { continue };
         // Screen-space tangent: the tile-local tangent through the clip matrix's linear part, then
         // clip → px scaling, normalised. Falls back to axis-aligned if it degenerates.
         let dcx = tile_clip[0] * cg.tangent.0 + tile_clip[4] * cg.tangent.1;
@@ -398,7 +439,6 @@ pub fn curved_boxes(
             ty = 0.0;
         }
         // Box centre is half an advance along the tangent from the pen origin.
-        let (sx, sy) = to_screen(cg.pen);
         out.push(Obb {
             cx: sx + tx * advance_px * 0.5,
             cy: sy + ty * advance_px * 0.5,
@@ -507,7 +547,8 @@ mod tests {
         // Half an em of advance, expressed against UP_EM so the fixture stays a
         // half em if the bundled font's units change: 7px wide at 14px text.
         let half_em = crate::tile::glyph::UP_EM as f32 / 2.0;
-        let (x0, y0, x1, y1) = screen_rect((0.5, 0.5), tile_clip, (256, 256), 14.0, half_em, 0.0);
+        let (x0, y0, x1, y1) = screen_rect((0.5, 0.5), tile_clip, (256, 256), 14.0, half_em, 0.0)
+            .expect("a pitch-0 anchor always projects");
         assert!((x0 - 124.5).abs() < 1e-3, "{x0}");
         assert!((x1 - 131.5).abs() < 1e-3, "{x1}");
         assert!((y0 - 121.0).abs() < 1e-3, "{y0}");
@@ -523,8 +564,10 @@ mod tests {
             -1.0, -1.0, 0.0, 1.0,
         ];
         let half_em = crate::tile::glyph::UP_EM as f32 / 2.0;
-        let plain = screen_rect((0.5, 0.5), tile_clip, (256, 256), 14.0, half_em, 0.0);
-        let padded = screen_rect((0.5, 0.5), tile_clip, (256, 256), 14.0, half_em, 6.0);
+        let plain = screen_rect((0.5, 0.5), tile_clip, (256, 256), 14.0, half_em, 0.0)
+            .expect("a pitch-0 anchor always projects");
+        let padded = screen_rect((0.5, 0.5), tile_clip, (256, 256), 14.0, half_em, 6.0)
+            .expect("a pitch-0 anchor always projects");
         assert!((padded.0 - (plain.0 - 6.0)).abs() < 1e-3);
         assert!((padded.1 - (plain.1 - 6.0)).abs() < 1e-3);
         assert!((padded.2 - (plain.2 + 6.0)).abs() < 1e-3);
@@ -684,11 +727,15 @@ mod tests {
             pad_px: 0.0,
         };
         // Text runs 11px..51px right of the point; the icon spans -9.5..+9.5.
-        let left = anchored_rect((0.5, 0.5), full_viewport(), (256, 256), &inputs, Anchor::Left);
+        let left =
+            anchored_rect((0.5, 0.5), full_viewport(), (256, 256), &inputs, Anchor::Left)
+                .expect("a pitch-0 anchor always projects");
         assert!((left.0 - (128.0 - 9.5)).abs() < 1e-3, "left edge {} is not the icon's", left.0);
         assert!((left.2 - (128.0 + 51.0)).abs() < 1e-3, "right edge {} is not the text's", left.2);
         // Flipping the anchor mirrors it exactly, because both parts are symmetric.
-        let right = anchored_rect((0.5, 0.5), full_viewport(), (256, 256), &inputs, Anchor::Right);
+        let right =
+            anchored_rect((0.5, 0.5), full_viewport(), (256, 256), &inputs, Anchor::Right)
+                .expect("a pitch-0 anchor always projects");
         assert!((right.0 - (128.0 - 51.0)).abs() < 1e-3, "{}", right.0);
         assert!((right.2 - (128.0 + 9.5)).abs() < 1e-3, "{}", right.2);
         // The icon is taller than one 10px line, so it sets the height either way.
@@ -712,8 +759,8 @@ mod tests {
             pad_px: 0.0,
         };
         let height = |lines: usize| {
-            let r =
-                anchored_rect((0.5, 0.5), full_viewport(), (256, 256), &inputs(lines), Anchor::Center);
+            let r = anchored_rect((0.5, 0.5), full_viewport(), (256, 256), &inputs(lines), Anchor::Center)
+                .expect("a pitch-0 anchor always projects");
             r.3 - r.1
         };
         assert!((height(1) - 10.0).abs() < 1e-3, "{}", height(1));
@@ -852,5 +899,166 @@ mod tests {
         // Centre is half an advance down-right of the pen's screen point (100, 100).
         assert!((b.cx - (100.0 + inv * 10.0)).abs() < 1e-2, "cx {}", b.cx);
         assert!((b.cy - (100.0 + inv * 10.0)).abs() < 1e-2, "cy {}", b.cy);
+    }
+
+    // --- pitch-aware projection (tilt declutter) ----------------------------
+
+    use crate::camera::Camera;
+
+    /// A phone viewport over SF at z14, at the given tilt.
+    fn tilted_camera(pitch_deg: f64) -> Camera {
+        Camera {
+            center_lon: -122.4194,
+            center_lat: 37.7749,
+            zoom: 14.0,
+            width_dp: 411.0,
+            height_dp: 891.0,
+            density: 2.0,
+            bearing_deg: 0.0,
+            pitch_deg,
+            time_seconds: 0.0,
+        }
+    }
+
+    /// POI-scale collision inputs in device px: 12 Dp text at density 2 with a 19 Dp icon,
+    /// no offset, no padding.
+    fn poi_inputs() -> BoxInputs {
+        BoxInputs {
+            text_px: 24.0,
+            advance: crate::tile::glyph::UP_EM as f32,
+            line_count: 1,
+            offset_em: (0.0, 0.0),
+            icon_px: Some((38.0, 38.0)),
+            pad_px: 0.0,
+        }
+    }
+
+    /// **The tilt-declutter contract.** A collision box is centred where the billboarded label
+    /// draws — the anchor's post-divide screen position — not where the tile matrix's linear part
+    /// puts it pre-divide. Checked against [`Camera::world_to_screen`], which derives the same
+    /// screen point from the camera model independently of `tile_to_clip`, so reverting the divide
+    /// fails here instead of testing boxes that sit nowhere near the drawn labels.
+    #[test]
+    fn a_tilted_box_is_centred_where_the_billboard_draws_its_anchor() {
+        let cam = tilted_camera(55.0);
+        // A ground point 200 Dp above the screen centre: up-map, where foreshortening bites.
+        // Starting from a screen point keeps the fixture on-screen by construction.
+        let ground = cam.screen_to_world(205.5, 245.5).expect("below the horizon under the cap");
+        let z = 14u8;
+        let span = cam.tile_span_dp(z);
+        let tx = (ground.x / span).floor() as u32;
+        let ty = (ground.y / span).floor() as u32;
+        let anchor = (
+            ((ground.x - tx as f64 * span) / span) as f32,
+            ((ground.y - ty as f64 * span) / span) as f32,
+        );
+        assert!((0.0..=1.0).contains(&anchor.0) && (0.0..=1.0).contains(&anchor.1));
+        let m = cam.tile_to_clip(z, tx, ty);
+        let extent = ((cam.width_dp * cam.density) as u32, (cam.height_dp * cam.density) as u32);
+        let rect = anchored_rect(anchor, m, extent, &poi_inputs(), Anchor::Center)
+            .expect("the anchor is on-screen, so it projects");
+        let centre = ((rect.0 + rect.2) * 0.5, (rect.1 + rect.3) * 0.5);
+        let want = (205.5f32 * cam.density, 245.5f32 * cam.density);
+        assert!((centre.0 - want.0).abs() < 0.05, "x centre {centre:?} vs drawn {want:?}");
+        assert!((centre.1 - want.1).abs() < 0.05, "y centre {centre:?} vs drawn {want:?}");
+    }
+
+    /// **Invalid collision is unrepresentable.** A label on or behind the eye has no screen
+    /// position, so it has no box: the projection returns `None` and the caller skips the label
+    /// rather than colliding a garbage box. The old code always returned a box; a revert fails here.
+    #[test]
+    fn a_label_on_or_behind_the_eye_has_no_collision_box() {
+        let extent = (822u32, 1782u32);
+        let inputs = poi_inputs();
+        // w = -1 everywhere: every anchor is behind the eye.
+        let behind = [
+            2.0, 0.0, 0.0, 0.0, //
+            0.0, 2.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            -1.0, -1.0, 0.0, -1.0,
+        ];
+        assert!(project_to_screen(behind, (0.5, 0.5), extent).is_none());
+        assert!(anchored_rect((0.5, 0.5), behind, extent, &inputs, Anchor::Center).is_none());
+        // w = 0 at the anchor: exactly on the eye — no finite screen position either.
+        // (w = m[3]*x + m[7]*y + m[15] = -0.5 - 0.5 + 1.0.)
+        let on_eye = [
+            2.0, 0.0, 0.0, -1.0, //
+            0.0, 2.0, 0.0, -1.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            -1.0, -1.0, 0.0, 1.0,
+        ];
+        assert!(project_to_screen(on_eye, (0.5, 0.5), extent).is_none());
+        assert!(anchored_rect((0.5, 0.5), on_eye, extent, &inputs, Anchor::Center).is_none());
+        // NaN poisons the comparison the same way: `!(w > 0.0)` catches it, so a NaN matrix
+        // builds no box that collides with nothing and always draws.
+        let nan = [
+            2.0, 0.0, 0.0, 0.0, //
+            0.0, 2.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            -1.0, -1.0, 0.0, f32::NAN,
+        ];
+        assert!(anchored_rect((0.5, 0.5), nan, extent, &inputs, Anchor::Center).is_none());
+    }
+
+    /// **Declutter follows projected density, not zoom.** Two POI-scale boxes at different ground
+    /// depths share one tile; flat they are far apart and both place, tilted the far one compresses
+    /// onto the near one and rank decides. Same camera zoom throughout — the zoom-only gate cannot
+    /// tell the two views apart, the projected boxes can.
+    #[test]
+    fn tilt_compresses_distant_poi_boxes_onto_each_other_so_rank_decides() {
+        let flat = tilted_camera(0.0);
+        let tilted = tilted_camera(55.0);
+        let (z, x, y) = (14u8, 2620u32, 6332u32);
+        let extent = (822u32, 1782u32);
+        // Depth-separated anchors in the centred tile: the tile-local point under the camera
+        // centre is (0.6, 0.4), so (0.6, 0.35) is nearer and (0.6, 0.27) is farther up-map.
+        // Measured: the pair sits ~82 device px apart flat (disjoint 38px POI boxes) and
+        // ~36 device px apart at pitch 55 (overlapping), at the same camera zoom.
+        let (near, far) = ((0.6f32, 0.35f32), (0.6f32, 0.27f32));
+        let gap = |cam: &Camera| {
+            let m = cam.tile_to_clip(z, x, y);
+            let a = project_to_screen(m, near, extent).expect("on-screen");
+            let b = project_to_screen(m, far, extent).expect("on-screen");
+            (a.1 - b.1).abs()
+        };
+        let flat_gap = gap(&flat);
+        let tilted_gap = gap(&tilted);
+        assert!(
+            tilted_gap < flat_gap,
+            "tilt must compress depth: tilted gap {tilted_gap} vs flat gap {flat_gap}",
+        );
+        // At POI scale the compressed boxes overlap, so one candidate survives the placer;
+        // flat they are disjoint and both draw.
+        let boxes = |cam: &Camera| {
+            let m = cam.tile_to_clip(z, x, y);
+            [near, far]
+                .iter()
+                .map(|a| {
+                    Obb::from_rect(
+                        anchored_rect(*a, m, extent, &poi_inputs(), Anchor::Center)
+                            .expect("on-screen"),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let candidates = |cam: &Camera| {
+            boxes(cam)
+                .into_iter()
+                .enumerate()
+                .map(|(i, b)| SegmentedCandidate {
+                    id: i as u64,
+                    rank: 4,
+                    pop: 0,
+                    boxes: vec![b],
+                    alternate: None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(place_segmented(&candidates(&flat)).len(), 2, "flat: both POIs draw");
+        assert_eq!(
+            place_segmented(&candidates(&tilted)).len(),
+            1,
+            "tilted: the far POI compresses onto the near one",
+        );
     }
 }

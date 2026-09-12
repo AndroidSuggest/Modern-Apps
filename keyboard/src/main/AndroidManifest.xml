@@ -38,6 +38,7 @@
              Deliberately not android:noHistory, which would finish it under the dialog. -->
         <activity
             android:name=".platform.VoicePermissionActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleTop"

@@ -103,7 +103,7 @@ use std::sync::Mutex;
 
 use rayon::prelude::*;
 use tile_build::boolean;
-use tile_build::geom::{self, Geometry, IntGeometry, SigPt};
+use tile_build::geom::{self, Geometry, IntGeometry, SigPt, Vertex};
 use tile_build::par;
 use tile_build::subdivide;
 use tile_build::progress::Progress;
@@ -125,6 +125,25 @@ pub const EXTENT: u32 = 4096;
 
 /// How aggressively to simplify, as a multiple of `tile_build`'s per-zoom tolerance.
 pub const DEFAULT_SIMPLIFICATION: f64 = 1.0;
+
+/// The simplification floor for the `buildings` layer, in extent units.
+///
+/// Buildings live only at z14 and up, where [`simplify::tolerance_for`] is 0.0 at max zoom
+/// (full detail). Half a unit is ~0.3 m at z14 — sub-pixel on any screen the style draws at —
+/// and only drops exactly-collinear midpoints (significance 0) and sub-pixel jaggies. Applied
+/// as a floor in [`tolerance_for_layer`], so a coarser global tolerance still wins. The
+/// prototype at `analysis/mamaps_building_savings.py` estimates ~2% of building-tile bytes.
+pub const BUILDING_TOLERANCE: f64 = 0.5;
+
+/// The orthogonal-snap tolerance for building rings, in extent units.
+///
+/// Edges within half a unit of axis-aligned are snapped exactly so (see
+/// [`snap_building_ring`]), turning hand-digitised near-rectangles into rectangles whose
+/// varint deltas encode cheaply. Same magnitude as [`BUILDING_TOLERANCE`]: sub-pixel, visually
+/// lossless. Runs after the filter on survivors only, so the significance [`simplify::annotate`]
+/// measured is never stale; a pure function of the ring, so the archive stays independent of
+/// thread count and chunk boundaries like everything else in [`tile_chunk`].
+pub const BUILDING_SNAP: f64 = 0.5;
 
 /// Input vertices per chunk handed to one worker.
 ///
@@ -868,7 +887,20 @@ fn tile_chunk(features: &[Feature], z: u8, tolerance: f64, buffer: f64) -> (Chun
         // Significance first, then filter: computed on the whole geometry so a vertex's fate
         // does not depend on which tile it lands in.
         simplify::annotate(&mut projected);
-        let thinned = simplify::filter(&projected, tolerance);
+        // Buildings live only at z14, where the policy tolerance is 0.0; the floor below
+        // keeps only collinear midpoints and sub-pixel jaggies — see `tolerance_for_layer`.
+        let layer_tolerance = tolerance_for_layer(feature.class.layer, z, tolerance);
+        let thinned = simplify::filter(&projected, layer_tolerance);
+        // Near-rectangles digitised by hand gain a cheap varint delta when their edges snap
+        // exactly axis-aligned — see `snap_building_rings`. Survivors only, so the measured
+        // significance above is never stale; a pure function of the feature, so the archive
+        // stays independent of thread count and chunk boundaries. Gated to the one layer that
+        // pays for it, so every other layer's filtered geometry moves without another copy.
+        let thinned = if feature.class.layer == tilecodec::mamaps::dict::LAYER_BUILDINGS {
+            snap_building_rings(&thinned, feature.class.layer)
+        } else {
+            thinned
+        };
         if is_empty(&thinned) {
             tally.dropped += 1;
             continue;
@@ -889,6 +921,99 @@ fn tile_chunk(features: &[Feature], z: u8, tolerance: f64, buffer: f64) -> (Chun
         });
     }
     (tiles, tally)
+}
+
+/// The tolerance to simplify a layer at: the per-zoom policy, with a floor for buildings.
+///
+/// Buildings live only at z14 and up, where [`simplify::tolerance_for`] returns 0.0 — full
+/// detail. Half an extent unit there is ~0.3 m on the ground, sub-pixel on any screen the style
+/// draws at, and only drops what is invisible anyway: exactly-collinear midpoints, whose
+/// significance is 0 and which any non-zero threshold already removes, plus sub-pixel jaggies.
+/// Every other layer keeps the policy tolerance untouched. A coarser global tolerance still wins
+/// (`max`, not replace), and a zero/negative policy for a non-building layer is unchanged.
+///
+/// The prototype at `analysis/mamaps_building_savings.py` estimates this plus the snap below at
+/// ~2% + ~4% of building-tile bytes; buildings are z14-only, 9.76M features, ~20% of the archive.
+fn tolerance_for_layer(layer: u8, z: u8, tolerance: f64) -> f64 {
+    if layer == tilecodec::mamaps::dict::LAYER_BUILDINGS
+        && z >= crate::schema::buildings::MIN_ZOOM
+    {
+        tolerance.max(BUILDING_TOLERANCE)
+    } else {
+        tolerance
+    }
+}
+
+/// Snap a building geometry's near-axis-aligned edges to exactly axis-aligned.
+///
+/// Hand-digitised footprints are near-rectangles: edges within [`BUILDING_SNAP`] of horizontal
+/// or vertical snap flat, turning an 8-delta wobble into a repeated constant the varint arena
+/// encodes cheaply. Runs on `SigPt` survivors **after** [`simplify::filter`], via
+/// [`Vertex::moved`] so significance rides along untouched — nothing downstream re-measures.
+/// Only ever called for the buildings layer (the caller gates it); strictly per-edge — never
+/// a corner merge, never a vertex invented or removed — so winding, closure and hole
+/// containment are exactly what the filter left.
+///
+/// Deterministic by construction: a pure function of the ring's coordinates, so two runs tile
+/// identically however features are chunked or threaded — the property
+/// `the_archive_is_identical_however_the_features_are_chunked` defends.
+fn snap_building_rings(geometry: &Geometry<SigPt>, layer: u8) -> Geometry<SigPt> {
+    debug_assert_eq!(layer, tilecodec::mamaps::dict::LAYER_BUILDINGS);
+    match geometry {
+        Geometry::Points(_) | Geometry::Lines(_) => geometry.clone(),
+        Geometry::Polygons(polygons) => Geometry::Polygons(
+            polygons
+                .iter()
+                .map(|rings| rings.iter().map(|ring| snap_building_ring(ring)).collect())
+                .collect(),
+        ),
+    }
+}
+
+/// Snap one ring's near-axis-aligned edges flat, preserving length, order, closure and winding.
+fn snap_building_ring(ring: &[SigPt]) -> Vec<SigPt> {
+    if ring.len() < 2 {
+        return ring.to_vec();
+    }
+    // The explicit close duplicates the first vertex; snapping the closing edge in the same
+    // pass as the rest would compare the duplicate against its twin and average the corner
+    // away. Snap the distinct vertices, then re-close with the surviving first.
+    let closed = ring.len() > 1 && ring.first().map(|v| v.xy()) == ring.last().map(|v| v.xy());
+    let open_len = ring.len() - usize::from(closed);
+    if open_len < 2 {
+        return ring.to_vec();
+    }
+    let open = &ring[..open_len];
+    let mut snapped: Vec<(f64, f64)> = open.iter().map(|v| v.xy()).collect();
+    // Forward pass: each edge votes its dominant direction; a near-horizontal edge levels both
+    // endpoints to their mean y, a near-vertical one to their mean x. Means, not first-wins, so
+    // a shared corner snapped from either side lands identically — the seam property the
+    // annotate-then-filter design exists for.
+    for i in 0..open_len {
+        let j = (i + 1) % open_len;
+        let ((x0, y0), (x1, y1)) = (snapped[i], snapped[j]);
+        let (dx, dy) = ((x1 - x0).abs(), (y1 - y0).abs());
+        if dx <= BUILDING_SNAP && dy > BUILDING_SNAP {
+            // Near-vertical: level x.
+            let x = (x0 + x1) / 2.0;
+            snapped[i].0 = x;
+            snapped[j].0 = x;
+        } else if dy <= BUILDING_SNAP && dx > BUILDING_SNAP {
+            // Near-horizontal: level y.
+            let y = (y0 + y1) / 2.0;
+            snapped[i].1 = y;
+            snapped[j].1 = y;
+        }
+    }
+    let mut out: Vec<SigPt> = open
+        .iter()
+        .zip(snapped)
+        .map(|(v, (x, y))| v.moved((x, y)))
+        .collect();
+    if closed {
+        out.push(out[0]);
+    }
+    out
 }
 
 /// Input vertices in a geometry, for chunking. Counted rather than estimated, because it is the
@@ -1764,6 +1889,121 @@ mod tests {
             building: None,
             carriageway: tilecodec::mamaps::body::Carriageway::default(),
         }
+    }
+
+    fn shed(lon: f64, lat: f64, size: f64) -> Feature {
+        Feature {
+            class: Class {
+                min_area_px: crate::schema::buildings::MIN_AREA_PX,
+                ..Class::area(dict::LAYER_BUILDINGS, crate::schema::kind("building"), 14)
+            },
+            geometry: square(lon, lat, size),
+            name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        }
+    }
+
+    fn buildings_in_archive(bytes: &[u8]) -> usize {
+        tilecodec::mamaps::read::read_all(bytes)
+            .expect("read")
+            .iter()
+            .map(|(_, _, body)| {
+                Body::parse(body)
+                    .expect("parse")
+                    .layer(dict::LAYER_BUILDINGS)
+                    .map(|layer| layer.features.len())
+                    .unwrap_or(0)
+            })
+            .sum()
+    }
+
+    /// **The sub-pixel drop.** A footprint under one display pixel at z14 is a speck, not detail:
+    /// dropped by the `min_area_px` floor, while a house-sized one on the same build survives.
+    #[test]
+    fn a_speck_sized_footprint_is_dropped_but_a_house_survives() {
+        // A degree at z14 is ~186k extent units at this latitude, so 0.00005 deg is ~9
+        // units a side (area ~85 < the 256-unit floor) and 0.0005 deg is ~93 units a side
+        // (area ~8700, well above it). Both sit inside one 0.022-deg tile; one build, because
+        // a speck alone would leave zero tiles and the writer refuses an empty archive.
+        let speck = shed(-120.001, 35.001, 0.00005);
+        let house = shed(-120.01, 35.01, 0.0005);
+        let (bytes, stats) = build(&spilled(&[speck, house]), &settings(14, 14)).expect("build");
+        assert_eq!(buildings_in_archive(&bytes), 1, "the house survives, the speck does not");
+        assert_eq!(stats.iter().find(|s| s.zoom == 14).expect("z14").features, 1);
+    }
+
+    /// **The z14 tolerance floor.** A wobble under half an extent unit (~0.3 m) is sub-pixel: the
+    /// midpoint goes on the buildings layer, while the same geometry on a non-building layer
+    /// keeps every vertex at a zero tolerance.
+    #[test]
+    fn sub_pixel_jaggies_simplify_on_buildings_only() {
+        // A 100x10-unit wall with a 0.4-unit bump: under BUILDING_TOLERANCE, over zero.
+        let ring: Vec<SigPt> =
+            [(0.0, 0.0), (50.0, 0.4), (100.0, 0.0), (100.0, 10.0), (0.0, 10.0), (0.0, 0.0)]
+                .iter()
+                .map(|&(x, y)| SigPt::new(x, y))
+                .collect();
+        let mut g = Geometry::Polygons(vec![vec![ring]]);
+        simplify::annotate(&mut g);
+        let tol = tolerance_for_layer(dict::LAYER_BUILDINGS, 14, 0.0);
+        assert_eq!(tol, BUILDING_TOLERANCE);
+        let Geometry::Polygons(out) = simplify::filter(&g, tol) else { panic!() };
+        assert_eq!(out[0][0].len(), 5, "the 0.4-unit bump goes: {out:?}");
+        // The same shape on water at a zero tolerance keeps it.
+        let water_tol = tolerance_for_layer(dict::LAYER_WATER, 14, 0.0);
+        assert_eq!(water_tol, 0.0, "other layers keep the policy tolerance");
+        let Geometry::Polygons(kept) = simplify::filter(&g, water_tol) else { panic!() };
+        assert_eq!(kept[0][0].len(), 6, "at zero tolerance nothing moves");
+        // A coarser global tolerance still wins over the floor.
+        assert_eq!(tolerance_for_layer(dict::LAYER_BUILDINGS, 14, 2.0), 2.0);
+        // And below the buildings floor the policy stands: z13 keeps 1.0, not 0.5.
+        assert_eq!(tolerance_for_layer(dict::LAYER_BUILDINGS, 13, 1.0), 1.0);
+        assert_eq!(tolerance_for_layer(dict::LAYER_WATER, 13, 1.0), 1.0);
+    }
+
+    /// **The orthogonal snap.** A hand-digitised near-rectangle snaps exactly axis-aligned;
+    /// anything further off stays where it was, and closure, order and count are untouched.
+    #[test]
+    fn near_rectangles_snap_flat_and_true_shapes_do_not_move() {
+        let ring_of = |pts: &[(f64, f64)]| -> Vec<SigPt> {
+            pts.iter().map(|&(x, y)| SigPt::new(x, y)).collect()
+        };
+        // A 100x50 rectangle with a 0.3-unit wobble on each side.
+        let wonky = ring_of(&[
+            (0.0, 0.2),
+            (100.3, 0.0),
+            (100.0, 50.1),
+            (49.8, 50.0),
+            (0.0, 50.0),
+            (0.0, 0.2),
+        ]);
+        let snapped = snap_building_ring(&wonky);
+        assert_eq!(snapped.len(), wonky.len(), "no vertex added or removed");
+        assert_eq!(snapped.first().map(|v| v.xy()), snapped.last().map(|v| v.xy()), "still closed");
+        let pts: Vec<(f64, f64)> = snapped.iter().map(|v| v.xy()).collect();
+        // Long edges are exactly flat now: y constant along the bottom, x along the sides.
+        assert!((pts[0].1 - pts[1].1).abs() == 0.0, "bottom edge flat: {pts:?}");
+        assert!((pts[1].0 - pts[2].0).abs() == 0.0, "right edge flat: {pts:?}");
+        // A genuinely diagonal edge is out of snap range and untouched.
+        let diag = ring_of(&[(0.0, 0.0), (100.0, 40.0), (100.0, 100.0), (0.0, 100.0), (0.0, 0.0)]);
+        assert_eq!(
+            snap_building_ring(&diag).iter().map(|v| v.xy()).collect::<Vec<_>>(),
+            diag.iter().map(|v| v.xy()).collect::<Vec<_>>(),
+            "a 40-unit lean is not a wobble",
+        );
+        // Significance rides along: the snap moves coordinates, never re-measures them.
+        let mut g = Geometry::Polygons(vec![vec![wonky.clone()]]);
+        simplify::annotate(&mut g);
+        let Geometry::Polygons(annotated) = &g else { panic!() };
+        let before: Vec<f64> = annotated[0][0].iter().map(|v| v.sig).collect();
+        let Geometry::Polygons(after) = snap_building_rings(&g, dict::LAYER_BUILDINGS) else {
+            panic!()
+        };
+        let kept: Vec<f64> = after[0][0].iter().map(|v| v.sig).collect();
+        assert_eq!(before, kept, "snapping must not touch significance");
     }
 
     /// **The end of the id path.** A `poi` node's OSM id survives classification, the spill, the

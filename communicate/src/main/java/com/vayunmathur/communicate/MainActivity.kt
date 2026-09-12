@@ -26,6 +26,8 @@ import com.vayunmathur.library.ui.IconSms
 import com.vayunmathur.library.ui.PagerTab
 import com.vayunmathur.library.ui.TabStyle
 import com.vayunmathur.library.ui.TabbedPagerScaffold
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.NavBackStack
@@ -216,10 +218,10 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
     }
 
     MainNavigation(backStack) {
-        entry<Route.Main> {
+        entry<Route.Main>(metadata = ListPage()) {
             CommunicateTabs(backStack)
         }
-        entry<Route.Accounts> {
+        entry<Route.Accounts>(metadata = ListDetailPage()) {
             AccountsScreen(
                 onBack = { backStack.pop() },
                 onSignIn = { backStack.add(Route.GoogleVoiceSignIn) },
@@ -240,30 +242,30 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
                 },
             )
         }
-        entry<Route.GoogleVoiceSignIn> {
+        entry<Route.GoogleVoiceSignIn>(metadata = ListDetailPage()) {
             GoogleVoiceSignInScreen(
                 onBack = { backStack.pop() },
                 onSignedIn = { backStack.pop() },
             )
         }
-        entry<Route.WhatsAppRegistration> {
+        entry<Route.WhatsAppRegistration>(metadata = ListDetailPage()) {
             WhatsAppRegistrationScreen(
                 onBack = { backStack.pop() },
                 onRegistered = { backStack.pop() },
             )
         }
-        entry<Route.WhatsAppBackupImport> {
+        entry<Route.WhatsAppBackupImport>(metadata = ListDetailPage()) {
             com.vayunmathur.communicate.ui.whatsapp.WhatsAppBackupImportScreen(
                 onBack = { backStack.pop() },
             )
         }
-        entry<Route.SignalRegistration> {
+        entry<Route.SignalRegistration>(metadata = ListDetailPage()) {
             SignalRegistrationScreen(
                 onBack = { backStack.pop() },
                 onRegistered = { backStack.pop() },
             )
         }
-        entry<Route.Conversation>(metadata = MorphPage()) { route ->
+        entry<Route.Conversation>(metadata = ListDetailPage() + MorphPage()) { route ->
             ConversationScreen(
                 threadId = route.threadId,
                 address = route.address,
@@ -292,18 +294,20 @@ private fun CommunicateTabs(backStack: NavBackStack<Route>) {
         PagerTab(stringResource(R.string.nav_messages), { IconSms() }) {
             MessagesScreen(
                 onOpenThread = { thread ->
-                    backStack.add(
-                        Route.Conversation(
-                            threadId = thread.threadId,
-                            address = thread.address,
-                            line = thread.line,
-                            remoteId = thread.remoteId,
-                            subscriptionId = thread.subscriptionId,
-                            isGroup = thread.isGroup,
-                            participants = thread.participants,
-                            groupTitle = thread.groupTitle,
-                        ),
+                    val route = Route.Conversation(
+                        threadId = thread.threadId,
+                        address = thread.address,
+                        line = thread.line,
+                        remoteId = thread.remoteId,
+                        subscriptionId = thread.subscriptionId,
+                        isGroup = thread.isGroup,
+                        participants = thread.participants,
+                        groupTitle = thread.groupTitle,
                     )
+                    // Re-tapping another thread replaces the detail instead of stacking
+                    // Conversation on Conversation.
+                    if (backStack.last() is Route.Conversation) backStack.setLast(route)
+                    else backStack.add(route)
                 },
                 onOpenAccounts = { backStack.add(Route.Accounts) },
             )

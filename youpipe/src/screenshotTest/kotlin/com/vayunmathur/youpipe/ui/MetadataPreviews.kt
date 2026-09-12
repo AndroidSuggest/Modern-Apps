@@ -23,6 +23,9 @@ import com.vayunmathur.youpipe.util.VideoRowState
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Desktop-shaped: exercises the Expanded two-pane and adaptive feed grids. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
+
 /**
  * Store listing images for `:youpipe`, rendered from Compose previews instead of from an
  * instrumented test on a device. See `common-conventions-preview-metadata`.
@@ -166,6 +169,106 @@ class MetadataPreviews {
                             author = "Ben Eater",
                             stats = "1.1M views | 4 days ago",
                             percentWatched = 0.08f,
+                        ),
+                    ),
+                ),
+                actions = SubscriptionFeedActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-expanded-home", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5ExpandedHome() {
+        DynamicTheme(darkTheme = true) {
+            SearchScreen(
+                backStack = rememberNavBackStack<Route>(Route.Main(0)),
+                state = SearchUiState(
+                    recommendations = listOf(
+                        VideoRowState(
+                            videoID = 1,
+                            title = "The Absurd Engineering Inside a Modern Camera Sensor",
+                            author = "Veritasium",
+                            stats = "4.1M views | 2 weeks ago",
+                            reason = "you watch a lot of optics",
+                            percentWatched = 0.42f,
+                        ),
+                        VideoRowState(
+                            videoID = 2,
+                            title = "I Rebuilt My Home Server Rack (Again)",
+                            author = "Linus Tech Tips",
+                            stats = "1.2M views | 3 days ago",
+                            reason = "from a channel you follow",
+                        ),
+                        VideoRowState(
+                            videoID = 3,
+                            title = "Why Bridges Don't Fall Down",
+                            author = "Practical Engineering",
+                            stats = "873K views | 1 month ago",
+                            reason = "similar to Structural Failures Explained",
+                            percentWatched = 1f,
+                        ),
+                        VideoRowState(
+                            videoID = 4,
+                            title = "Making Sourdough With No Starter",
+                            author = "Adam Ragusea",
+                            stats = "612K views | 5 days ago",
+                            reason = "new upload",
+                        ),
+                    ),
+                ),
+                actions = SearchActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "6-expanded-video", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview6ExpandedVideo() {
+        DynamicTheme(darkTheme = true) {
+            VideoDetailScreen(
+                state = SampleVideo,
+                actions = VideoDetailActions.Noop,
+                player = { PlayerPlaceholder() },
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "7-expanded-subscriptions", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview7ExpandedSubscriptions() {
+        DynamicTheme(darkTheme = true) {
+            SubscriptionVideosScreen(
+                backStack = rememberNavBackStack<Route>(Route.Main(1)),
+                state = SubscriptionFeedUiState(
+                    videos = listOf(
+                        VideoRowState(
+                            videoID = 11,
+                            title = "Rewiring a 1970s Synthesizer, Part 4",
+                            author = "Look Mum No Computer",
+                            stats = "94K views | 6 hours ago",
+                        ),
+                        VideoRowState(
+                            videoID = 12,
+                            title = "The Fastest Way to Sort a Million Integers",
+                            author = "Creel",
+                            stats = "137K views | 1 day ago",
+                            percentWatched = 0.63f,
+                        ),
+                        VideoRowState(
+                            videoID = 13,
+                            title = "Restoring a Water-Damaged ThinkPad",
+                            author = "Rossmann Repair",
+                            stats = "421K views | 2 days ago",
+                        ),
+                        VideoRowState(
+                            videoID = 14,
+                            title = "A Field Guide to the Birds of the Cairngorms",
+                            author = "Slow Nature",
+                            stats = "38K views | 3 days ago",
                         ),
                     ),
                 ),

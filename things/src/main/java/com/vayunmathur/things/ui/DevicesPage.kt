@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
@@ -58,10 +59,11 @@ fun DevicesPage(
         onNavigateBack = onNavigateBack,
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
+        // Two buttons; cap them at a readable measure on desktop.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(horizontal = 16.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -87,6 +89,7 @@ fun DevicesPage(
             ) {
                 Text(stringResource(R.string.connect_new_scale), style = MaterialTheme.typography.titleMedium)
             }
+        }
         }
     }
 

@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.SettingsDivider
 import com.vayunmathur.library.ui.SettingsRow
 import com.vayunmathur.library.ui.SettingsSection
@@ -33,10 +34,12 @@ fun SettingsContent(
         onNavigateBack = onBack,
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
+        // Single-pane settings form; letterboxed on expanded windows.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
             // The list is taller than the dialog on most phones; without this the
             // advanced section at the bottom is simply unreachable.
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         ) {
             SettingsSection(title = stringResource(R.string.settings_section_units)) {
                 SettingsSwitchRow(
@@ -114,6 +117,7 @@ fun SettingsContent(
                     )
                 }
             }
+        }
         }
     }
 }

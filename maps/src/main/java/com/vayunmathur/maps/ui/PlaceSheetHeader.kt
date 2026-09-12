@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,12 +35,16 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Tab
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.maps.R
+import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.data.google.GooglePoiInfo
 import com.vayunmathur.maps.data.google.PoiSection
 import com.vayunmathur.maps.ipc.rememberOrderDeepLink
+import com.vayunmathur.maps.util.PlacePanelActions
+import com.vayunmathur.maps.util.PlacePanelState
 import com.vayunmathur.maps.util.SavedPlacesViewModel
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
+import com.vayunmathur.maps.util.rememberPlacePanelState
 
 /**
  * The fixed part of a place sheet: name, category · price, rating, open-now, the
@@ -65,10 +70,12 @@ fun PlaceSheetHeader(
     feature: SpecificFeature.Restaurant,
     modifier: Modifier = Modifier,
     requestDirections: () -> Unit,
-) = PlaceSheetHeaderContent(
-    viewModel, savedPlacesViewModel, inactiveNavigation, feature, modifier,
-    phone = feature.phone, website = feature.website, requestDirections = requestDirections,
-)
+) {
+    PlaceSheetHeaderContent(
+        viewModel, savedPlacesViewModel, inactiveNavigation, feature, modifier,
+        phone = feature.phone, website = feature.website, requestDirections = requestDirections,
+    )
+}
 
 @Composable
 fun PlaceSheetHeader(
@@ -78,8 +85,48 @@ fun PlaceSheetHeader(
     feature: SpecificFeature.GenericPlace,
     modifier: Modifier = Modifier,
     requestDirections: () -> Unit,
+) {
+    PlaceSheetHeaderContent(
+        viewModel, savedPlacesViewModel, inactiveNavigation, feature, modifier,
+        phone = feature.phone, website = feature.website, requestDirections = requestDirections,
+    )
+}
+
+/**
+ * Stateless header: the same fixed part as [PlaceSheetHeader], driven by
+ * [PlacePanelState] instead of the ViewModels, so previews can render it with
+ * literal state. The ViewModel overloads above are the only callers that bind
+ * real state; everything else passes through untouched.
+ */
+@Composable
+fun PlaceSheetHeader(
+    panelState: PlacePanelState,
+    panelActions: PlacePanelActions,
+    inactiveNavigation: SpecificFeature.Route?,
+    feature: SpecificFeature.Restaurant,
+    modifier: Modifier = Modifier,
+    requestDirections: () -> Unit,
 ) = PlaceSheetHeaderContent(
-    viewModel, savedPlacesViewModel, inactiveNavigation, feature, modifier,
+    panelState, panelActions, inactiveNavigation, feature, modifier,
+    phone = feature.phone, website = feature.website, requestDirections = requestDirections,
+)
+
+/**
+ * Stateless header: the same fixed part as [PlaceSheetHeader], driven by
+ * [PlacePanelState] instead of the ViewModels, so previews can render it with
+ * literal state. The ViewModel overloads above are the only callers that bind
+ * real state; everything else passes through untouched.
+ */
+@Composable
+fun PlaceSheetHeader(
+    panelState: PlacePanelState,
+    panelActions: PlacePanelActions,
+    inactiveNavigation: SpecificFeature.Route?,
+    feature: SpecificFeature.GenericPlace,
+    modifier: Modifier = Modifier,
+    requestDirections: () -> Unit,
+) = PlaceSheetHeaderContent(
+    panelState, panelActions, inactiveNavigation, feature, modifier,
     phone = feature.phone, website = feature.website, requestDirections = requestDirections,
 )
 
@@ -94,8 +141,45 @@ private fun PlaceSheetHeaderContent(
     website: String?,
     requestDirections: () -> Unit,
 ) {
-    val poi by viewModel.currentPoiInfo.collectAsState()
-    val selectedSection by viewModel.poiSection.collectAsState()
+    val panelState = rememberPlacePanelState(viewModel, savedPlacesViewModel)
+    val panelActions = remember(feature) {
+        object : PlacePanelActions {
+            override fun setPoiSection(section: PoiSection) {
+                viewModel.setPoiSection(section)
+            }
+            override fun addSaved() {
+                savedPlacesViewModel.addSaved(feature)
+            }
+            override fun removeSaved(place: SavedPlace) {
+                savedPlacesViewModel.removeSaved(place)
+            }
+        }
+    }
+    PlaceSheetHeaderContent(
+        panelState = panelState,
+        panelActions = panelActions,
+        inactiveNavigation = inactiveNavigation,
+        feature = feature,
+        modifier = modifier,
+        phone = phone,
+        website = website,
+        requestDirections = requestDirections,
+    )
+}
+
+@Composable
+private fun PlaceSheetHeaderContent(
+    panelState: PlacePanelState,
+    panelActions: PlacePanelActions,
+    inactiveNavigation: SpecificFeature.Route?,
+    feature: SpecificFeature.RoutableFeature,
+    modifier: Modifier,
+    phone: String?,
+    website: String?,
+    requestDirections: () -> Unit,
+) {
+    val poi = panelState.poi
+    val selectedSection = panelState.poiSection
     val context = LocalContext.current
     // If this is a restaurant/food place, ask fooddelivery whether it's orderable
     // (off the main thread, null-safe). Absent/not-orderable → null → no Order button.
@@ -111,7 +195,10 @@ private fun PlaceSheetHeaderContent(
             phone = phone ?: poi?.phone,
             website = website ?: poi?.website,
             inactiveNavigation = inactiveNavigation,
-            savedPlacesViewModel = savedPlacesViewModel,
+            isSaved = panelState.isSaved(feature),
+            savedMatch = panelState.savedMatch(feature),
+            onAddSaved = { panelActions.addSaved() },
+            onRemoveSaved = { panelActions.removeSaved(it) },
             requestDirections = requestDirections,
             orderDeepLink = orderDeepLink,
         )
@@ -128,7 +215,7 @@ private fun PlaceSheetHeaderContent(
                 tabs.forEach { tab ->
                     Tab(
                         selected = tab == section,
-                        onClick = { viewModel.setPoiSection(tab) },
+                        onClick = { panelActions.setPoiSection(tab) },
                         text = {
                             Text(
                                 stringResource(
@@ -204,96 +291,4 @@ private fun PlaceHeader(name: String, poi: GooglePoiInfo?, modifier: Modifier = 
 }
 
 @Composable
-private fun PlaceActionRow(
-    feature: SpecificFeature.RoutableFeature,
-    phone: String?,
-    website: String?,
-    inactiveNavigation: SpecificFeature.Route?,
-    savedPlacesViewModel: SavedPlacesViewModel,
-    requestDirections: () -> Unit,
-    orderDeepLink: String?,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val saved by savedPlacesViewModel.saved.collectAsState()
-    val isSaved = saved.any { it.matches(feature) }
-
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        PlaceAction(
-            Modifier.weight(1f),
-            { IconDirections() },
-            stringResource(if (inactiveNavigation == null) R.string.directions else R.string.add_stop_to_route),
-            onClick = requestDirections,
-        )
-        phone?.let {
-            PlaceAction(Modifier.weight(1f), { IconCall() }, stringResource(R.string.place_action_call)) {
-                goto(context, "tel:$it")
-            }
-        }
-        website?.let {
-            PlaceAction(Modifier.weight(1f), { IconGlobe() }, stringResource(R.string.place_action_website)) {
-                goto(context, it)
-            }
-        }
-        // Order (P19): only present when fooddelivery reports this place orderable.
-        orderDeepLink?.let { uri ->
-            PlaceAction(Modifier.weight(1f), { IconShoppingCart() }, stringResource(R.string.place_action_order)) {
-                goto(context, uri)
-            }
-        }
-        PlaceAction(Modifier.weight(1f), { IconShare() }, stringResource(R.string.place_action_share)) {
-            sharePlace(context, feature)
-        }
-        PlaceAction(
-            Modifier.weight(1f),
-            { IconSave(tint = if (isSaved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
-            stringResource(if (isSaved) R.string.place_action_saved else R.string.place_action_save),
-        ) {
-            if (isSaved) {
-                saved.firstOrNull { it.matches(feature) }?.let { savedPlacesViewModel.removeSaved(it) }
-            } else {
-                savedPlacesViewModel.addSaved(feature)
-            }
-        }
-    }
-}
-
-@Composable
-private fun PlaceAction(
-    modifier: Modifier = Modifier,
-    icon: @Composable () -> Unit,
-    label: String,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(44.dp)) {
-            Box(contentAlignment = Alignment.Center) { icon() }
-        }
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-private fun sharePlace(context: Context, feature: SpecificFeature.RoutableFeature) {
-    val pos = feature.position
-    val url = "https://maps.google.com/?q=${pos.latitude},${pos.longitude}"
-    val body = context.getString(R.string.place_share_text, feature.name, url)
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, body)
-    }
-    val chooser = Intent.createChooser(send, feature.name).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    ExternalIntents.launch(context, chooser)
-}
+private fun PlaceHeader(name: String, poi: GooglePoiInfo?, modifier: Modifier = Modifier) {

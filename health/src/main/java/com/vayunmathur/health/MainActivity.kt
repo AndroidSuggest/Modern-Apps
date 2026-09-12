@@ -93,6 +93,8 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
 import com.vayunmathur.library.ui.dialog.TimePickerDialogContent
 import com.vayunmathur.library.util.DialogPage
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.SiblingPage
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -376,43 +378,47 @@ fun Navigation(viewModel: HealthViewModel, medicalViewModel: MedicalViewModel) {
         entry<Route.ExerciseDetails>(metadata = MorphPage()) {
             ExerciseDetailsPage(backStack, viewModel)
         }
-        entry<Route.Records>(metadata = SiblingPage()) {
+        entry<Route.Records>(metadata = SiblingPage() + ListPage()) {
             RecordsPage(backStack, medicalViewModel)
         }
-        entry<Route.Medication>(metadata = SiblingPage()) {
-            MedicationPage(backStack, medicalViewModel)
-        }
-        entry<Route.Vaccinations> {
+        // Records is an index, not a tab peer: on a wide window its sub-lists sit in the
+        // detail pane, so the Records row stays put while vaccinations/allergies swap beside it.
+        entry<Route.Vaccinations>(metadata = ListDetailPage()) {
             VaccinationsPage(backStack, medicalViewModel)
         }
-        entry<Route.Allergies> {
+        entry<Route.Allergies>(metadata = ListDetailPage()) {
             AllergiesPage(backStack, medicalViewModel)
         }
-        entry<Route.Conditions> {
+        entry<Route.Conditions>(metadata = ListDetailPage()) {
             ConditionsPage(backStack, medicalViewModel)
         }
-        entry<Route.LabResults> {
+        entry<Route.LabResults>(metadata = ListDetailPage()) {
             LabResultsPage(backStack, medicalViewModel)
         }
-        entry<Route.AboutYou> {
+        entry<Route.AboutYou>(metadata = ListDetailPage()) {
             AboutYouPage(backStack, medicalViewModel)
         }
-        entry<Route.EditVaccination> {
+        // Medication is a bottom-bar tab, but its editor is a form over the list: detail pane
+        // keeps the two side by side on desktop rather than covering the log.
+        entry<Route.Medication>(metadata = SiblingPage() + ListPage()) {
+            MedicationPage(backStack, medicalViewModel)
+        }
+        entry<Route.EditVaccination>(metadata = ListDetailPage()) {
             AddVaccinationPage(backStack, medicalViewModel)
         }
-        entry<Route.EditMedication> {
+        entry<Route.EditMedication>(metadata = ListDetailPage()) {
             AddMedicationPage(backStack, medicalViewModel)
         }
-        entry<Route.EditAllergy> {
+        entry<Route.EditAllergy>(metadata = ListDetailPage()) {
             AddAllergyPage(backStack, medicalViewModel)
         }
-        entry<Route.EditCondition> {
+        entry<Route.EditCondition>(metadata = ListDetailPage()) {
             AddConditionPage(backStack, medicalViewModel)
         }
-        entry<Route.EditLabResult> {
+        entry<Route.EditLabResult>(metadata = ListDetailPage()) {
             AddLabResultPage(backStack, medicalViewModel)
         }
-        entry<Route.CatalogPicker> {
+        entry<Route.CatalogPicker>(metadata = ListDetailPage()) {
             CatalogPickerPage(backStack, medicalViewModel, it)
         }
         entry<Route.MedicalDatePicker>(metadata = DialogPage()) {

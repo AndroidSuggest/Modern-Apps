@@ -14,6 +14,8 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.util.NavigationProgress
 import com.vayunmathur.maps.util.NavigationSessionManager
+import com.vayunmathur.maps.util.PlacePanelActions
+import com.vayunmathur.maps.util.PlacePanelState
 import com.vayunmathur.maps.util.RouteService
 import com.vayunmathur.maps.util.SearchActions
 import com.vayunmathur.maps.util.SearchResult
@@ -24,6 +26,9 @@ import kotlin.time.Duration.Companion.seconds
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Desktop-shaped: exercises the side panel at a width where map and panel sit side by side. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /**
  * Store listing images for `:maps`. See `common-conventions-preview-metadata`.
@@ -181,6 +186,108 @@ class MetadataPreviews {
                     onDismissArrival = {},
                 )
             }
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded-search", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4ExpandedSearch() {
+        // The expanded side panel with search open: the results MapSidePanel
+        // shows next to the map instead of in a bottom sheet. The map pane is
+        // a flat surface here — Layoutlib has no Vulkan renderer — so the
+        // listing image shows the panel at its fractional width against one.
+        DynamicTheme(darkTheme = true) {
+            MapWideLayout(
+                mapContent = { modifier ->
+                    Surface(modifier, color = MaterialTheme.colorScheme.surfaceVariant) {}
+                },
+                panelContent = { modifier ->
+                    MapSidePanel(
+                        searchOpen = true,
+                        searchState = SearchUiState(
+                            query = "ferry",
+                            results = listOf(
+                                SearchResult("1", "Ferry Building Marketplace", "1 Ferry Building, San Francisco", 37.7955, -122.3933, "Marketplace"),
+                                SearchResult("2", "Ferry Plaza Farmers Market", "1 Ferry Building, San Francisco", 37.7959, -122.3937, "Farmers market"),
+                                SearchResult("3", "Golden Gate Ferry Terminal", "Pier 1, San Francisco", 37.7936, -122.3927, "Ferry terminal"),
+                                SearchResult("4", "Oakland Ferry Dock", "Clay St, Oakland", 37.7947, -122.2783, "Ferry terminal"),
+                            ),
+                            searching = false,
+                        ),
+                        searchActions = SearchActions.Noop,
+                        panelState = PlacePanelState(),
+                        panelActions = PlacePanelActions.Noop,
+                        selectedFeature = null,
+                        onSelectFeature = {},
+                        route = null,
+                        selectedRouteType = RouteService.TravelMode.DRIVE,
+                        onSelectedRouteType = {},
+                        inactiveNavigation = null,
+                        navState = NavigationSessionManager.NavState.Idle,
+                        onClosePanel = {},
+                        modifier = modifier,
+                    )
+                },
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-expanded-route", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5ExpandedRoute() {
+        // The expanded side panel with a route selected: the directions panel
+        // MapSidePanel shows next to the map instead of in a bottom sheet.
+        DynamicTheme(darkTheme = true) {
+            MapWideLayout(
+                mapContent = { modifier ->
+                    Surface(modifier, color = MaterialTheme.colorScheme.surfaceVariant) {}
+                },
+                panelContent = { modifier ->
+                    MapSidePanel(
+                        searchOpen = false,
+                        searchState = SearchUiState(),
+                        searchActions = SearchActions.Noop,
+                        panelState = PlacePanelState(),
+                        panelActions = PlacePanelActions.Noop,
+                        selectedFeature = SpecificFeature.Route(listOf(null, ferryBuilding)),
+                        onSelectFeature = {},
+                        route = mapOf(
+                            RouteService.TravelMode.DRIVE to RouteService.Route(
+                                duration = 18.minutes,
+                                distanceMeters = 6350.0,
+                                polyline = emptyList(),
+                                step = driveSteps,
+                            ),
+                            RouteService.TravelMode.TRANSIT to RouteService.Route(
+                                duration = 31.minutes,
+                                distanceMeters = 7100.0,
+                                polyline = emptyList(),
+                                step = driveSteps,
+                            ),
+                            RouteService.TravelMode.WALK to RouteService.Route(
+                                duration = 82.minutes,
+                                distanceMeters = 5900.0,
+                                polyline = emptyList(),
+                                step = driveSteps,
+                            ),
+                            RouteService.TravelMode.BICYCLE to RouteService.Route(
+                                duration = 24.minutes,
+                                distanceMeters = 6100.0,
+                                polyline = emptyList(),
+                                step = driveSteps,
+                            ),
+                        ),
+                        selectedRouteType = RouteService.TravelMode.DRIVE,
+                        onSelectedRouteType = {},
+                        inactiveNavigation = null,
+                        navState = NavigationSessionManager.NavState.Idle,
+                        onClosePanel = {},
+                        modifier = modifier,
+                    )
+                },
+            )
         }
     }
 }

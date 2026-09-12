@@ -49,6 +49,7 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.photos.NavigationBar
 import com.vayunmathur.photos.R
 import com.vayunmathur.photos.Route
+import com.vayunmathur.photos.pushPhoto
 import com.vayunmathur.photos.util.FaceCropTransformation
 import com.vayunmathur.photos.util.FaceRecognizer
 import com.vayunmathur.photos.util.GalleryViewModel
@@ -180,7 +181,7 @@ fun PeopleScreen(
                             faceThumbnail = faceThumbnail,
                             onNameClick = onNameClick,
                         ) { person ->
-                            backStack.add(Route.PhotoPage(person.coverPhoto.id, person.photos))
+                            backStack.pushPhoto(Route.PhotoPage(person.coverPhoto.id, person.photos))
                         }
                     } else {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

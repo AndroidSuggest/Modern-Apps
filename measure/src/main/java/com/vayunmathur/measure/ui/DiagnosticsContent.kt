@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.SettingsDivider
 import com.vayunmathur.library.ui.SettingsRow
@@ -34,8 +35,10 @@ fun DiagnosticsContent(
         onNavigateBack = onBack,
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
+        // Single-pane diagnostics list; letterboxed on expanded windows.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding)
+            modifier = Modifier.fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
             SettingsSection(title = stringResource(R.string.diagnostics_section_engine)) {
@@ -97,6 +100,7 @@ fun DiagnosticsContent(
                 title = stringResource(R.string.diagnostics_reset_tracking),
                 onClick = actions::resetTracking,
             )
+        }
         }
     }
 }

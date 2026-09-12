@@ -22,6 +22,9 @@ import com.vayunmathur.weather.platform.WeatherActions
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
+
 /** London's UTC offset on the sample date (BST). */
 private const val UTC_OFFSET_SEC = 3600
 
@@ -329,6 +332,67 @@ class MetadataPreviews {
                     activeLocationId = LONDON.id,
                 ),
                 actions = WeatherActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        DynamicTheme(darkTheme = true) {
+            // Expanded windows pin the locations list as a permanent side panel
+            // next to the forecast instead of hiding it in a modal drawer.
+            HomeScreen(
+                state = LocationUiState(
+                    location = LONDON,
+                    forecast = SAMPLE_FORECAST,
+                    airQuality = SAMPLE_AIR_QUALITY,
+                ),
+                units = DisplayUnits(),
+                actions = WeatherActions.Noop,
+                precipitationNowcast = stringResource(R.string.precip_no_rain_next_2h),
+                nowEpochSec = NOW_EPOCH_SEC,
+                drawerContent = {
+                    LocationsScreen(
+                        state = LocationsUiState(
+                            rows = listOf(
+                                LocationRow(
+                                    location = LONDON,
+                                    description = "Last updated just now",
+                                    weatherCode = 2,
+                                ),
+                                LocationRow(
+                                    location = SavedLocation(
+                                        id = 2,
+                                        name = "Tokyo",
+                                        country = "Japan",
+                                        latitude = 35.6762,
+                                        longitude = 139.6503,
+                                        displayOrder = 1,
+                                    ),
+                                    description = "Last updated 12m ago",
+                                    weatherCode = 61,
+                                    isDay = false,
+                                ),
+                                LocationRow(
+                                    location = SavedLocation(
+                                        id = 3,
+                                        name = "Reykjavík",
+                                        country = "Iceland",
+                                        latitude = 64.1466,
+                                        longitude = -21.9426,
+                                        displayOrder = 2,
+                                    ),
+                                    description = "Last updated 1h ago",
+                                    weatherCode = 71,
+                                ),
+                            ),
+                            activeLocationId = LONDON.id,
+                        ),
+                        actions = WeatherActions.Noop,
+                    )
+                },
             )
         }
     }

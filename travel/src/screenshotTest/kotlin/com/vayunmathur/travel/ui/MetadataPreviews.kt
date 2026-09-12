@@ -1,6 +1,11 @@
 package com.vayunmathur.travel.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.library.ui.DynamicTheme
@@ -27,6 +32,9 @@ import com.vayunmathur.travel.util.StaySearchState
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /** The segment the seat map belongs to; seat selections are keyed by `"segmentId|designator"`. */
 private const val SEGMENT = "seg_0000AaBbCc"
@@ -331,6 +339,109 @@ class MetadataPreviews {
                 ),
                 actions = StayResultsActions.Noop,
             )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5Expanded() {
+        DynamicTheme(darkTheme = true) {
+            // Expanded windows keep the flight results visible while the selected
+            // booking's order detail opens beside them instead of covering them.
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    FlightResultsScreen(
+                        title = "SFO → JFK",
+                        state = FlightResultsState(
+                            hasSearched = true,
+                            offerRequestId = "orq_0000AaBbCc",
+                            allOffers = listOf(
+                                offer(
+                                    id = "0001", airline = "Alaska Airlines", iata = "AS", flightNumber = "AS 6",
+                                    departureAt = "2026-06-24T07:15:00", arrivalAt = "2026-06-24T15:50:00",
+                                    durationMinutes = 335, stops = 0, fareBrand = "Main", amount = "412.30",
+                                ),
+                                offer(
+                                    id = "0002", airline = "JetBlue", iata = "B6", flightNumber = "B6 916",
+                                    departureAt = "2026-06-24T08:40:00", arrivalAt = "2026-06-24T17:19:00",
+                                    durationMinutes = 339, stops = 0, fareBrand = "Blue", amount = "438.00",
+                                ),
+                                offer(
+                                    id = "0003", airline = "Delta", iata = "DL", flightNumber = "DL 410",
+                                    departureAt = "2026-06-24T11:05:00", arrivalAt = "2026-06-24T19:35:00",
+                                    durationMinutes = 330, stops = 0, fareBrand = "Main", amount = "466.80",
+                                    refundable = true,
+                                ),
+                                offer(
+                                    id = "0004", airline = "United", iata = "UA", flightNumber = "UA 2118",
+                                    departureAt = "2026-06-24T06:00:00", arrivalAt = "2026-06-24T17:24:00",
+                                    durationMinutes = 444, stops = 1, fareBrand = "Basic", amount = "329.20",
+                                ),
+                            ),
+                        ),
+                        actions = FlightResultsActions.Noop,
+                    )
+                }
+                Box(Modifier.weight(0.6f).fillMaxHeight()) {
+                    OrderDetailScreen(
+                        state = OrderDetailUiState(
+                            order = OrderDetailDto(
+                                orderId = "ord_0000AaBbCc",
+                                bookingReference = "K7QZ4M",
+                                totalAmount = "824.60",
+                                currency = "USD",
+                                status = "confirmed",
+                                paymentStatus = "paid",
+                                passengerNames = listOf("Jane Ashworth", "Tom Ashworth"),
+                                slices = listOf(
+                                    SliceDto(
+                                        id = "sli_out",
+                                        origin = "SFO",
+                                        destination = "JFK",
+                                        departureAt = "2026-06-24T07:15:00",
+                                        arrivalAt = "2026-06-24T15:50:00",
+                                        durationMinutes = 335,
+                                        segments = listOf(
+                                            SegmentDto(
+                                                id = "seg_out",
+                                                carrier = "Alaska Airlines",
+                                                carrierIata = "AS",
+                                                flightNumber = "AS 6",
+                                                origin = "SFO",
+                                                destination = "JFK",
+                                                departureAt = "2026-06-24T07:15:00",
+                                                arrivalAt = "2026-06-24T15:50:00",
+                                            ),
+                                        ),
+                                    ),
+                                    SliceDto(
+                                        id = "sli_ret",
+                                        origin = "JFK",
+                                        destination = "SFO",
+                                        departureAt = "2026-07-02T17:30:00",
+                                        arrivalAt = "2026-07-02T21:05:00",
+                                        durationMinutes = 395,
+                                        segments = listOf(
+                                            SegmentDto(
+                                                id = "seg_ret",
+                                                carrier = "Alaska Airlines",
+                                                carrierIata = "AS",
+                                                flightNumber = "AS 15",
+                                                origin = "JFK",
+                                                destination = "SFO",
+                                                departureAt = "2026-07-02T17:30:00",
+                                                arrivalAt = "2026-07-02T21:05:00",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        actions = OrderDetailActions.Noop,
+                    )
+                }
+            }
         }
     }
 }

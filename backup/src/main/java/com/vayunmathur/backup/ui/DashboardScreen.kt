@@ -17,6 +17,7 @@ import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
@@ -39,14 +40,15 @@ fun DashboardScreen(
     onDismissMessages: () -> Unit,
 ) {
     AppScaffold(title = "Backup", scrollBehavior = appBarScrollBehavior()) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
+        // Letterboxed on expanded windows so the form keeps a readable measure.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             if (state.busy) {
@@ -106,6 +108,7 @@ fun DashboardScreen(
             ) { Text("Restore files") }
 
             BackendSection(state.settings, onPickFolder, onSetWebDav)
+            }
         }
     }
 }

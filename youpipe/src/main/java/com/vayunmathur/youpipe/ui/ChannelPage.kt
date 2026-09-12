@@ -2,6 +2,7 @@ package com.vayunmathur.youpipe.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +31,8 @@ import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.adaptiveGridCells
+import com.vayunmathur.library.ui.isExpandedWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -85,6 +90,9 @@ fun ChannelPage(
         youPipeViewModel.loadChannel(channelID)
     }
 
+    // RAW SCAFFOLD EXCEPTION: the header (identity + subscribe button) scrolls with the
+    // feed on compact windows but pins above an adaptive video grid on expanded widths.
+    // No shared scaffold models a collapsing header over a column/grid switch.
     Scaffold { paddingValues ->
         Column(Modifier.padding(paddingValues)) {
             channelInfo?.let { info ->
@@ -106,216 +114,29 @@ fun ChannelPage(
                 Spacer(Modifier.height(4.dp))
                 HorizontalDivider()
             }
-            LazyColumn {
-                items(videos, {it.videoID}) {
-                    VideoItem(backStack, youPipeViewModel, it, false)
-                }
-            }
-        }
-    }
-}
-
-/**
- * Resolve [videoInfo] into the display state [VideoRow] draws.
- *
- * Deliberately not a `@Composable`: the two counts it formats need a Context, not a
- * composition, and a screen that maps a whole list at once should not have to do it inside
- * a composable loop.
- */
-fun videoRowState(
-    context: android.content.Context,
-    videoInfo: VideoInfo,
-    showAuthor: Boolean,
-    reason: String? = null,
-    percentWatched: Float = 0f,
-    deArrowTitle: String? = null,
-    deArrowThumbnailURL: String? = null,
-): VideoRowState = VideoRowState(
-    videoID = videoInfo.videoID,
-    title = (deArrowTitle ?: videoInfo.name).decodeHtml(),
-    thumbnailURL = deArrowThumbnailURL ?: videoInfo.thumbnailURL,
-    author = videoInfo.author.decodeHtml().takeIf { showAuthor },
-    stats = if (videoInfo.isPaid || videoInfo.views < 0) {
-        context.getString(
-            R.string.video_stat_paid_format,
-            uploadTimeAgo(context, videoInfo.uploadDate),
-        )
-    } else {
-        context.getString(
-            R.string.video_stat_format,
-            countString(context, videoInfo.views),
-            uploadTimeAgo(context, videoInfo.uploadDate),
-        )
-    },
-    reason = reason,
-    channelKey = videoInfo.author.lowercase(),
-    percentWatched = percentWatched,
-    deArrowThumbnail = deArrowThumbnailURL != null,
-)
-
-/**
- * ViewModel-backed binder in front of [VideoRow], for the screens that still hand a whole
- * ViewModel down to their list rows.
- */
-@Composable
-fun VideoItem(
-    backStack: NavBackStack<Route>,
-    youPipeViewModel: YouPipeViewModel,
-    videoInfo: VideoInfo,
-    showAuthor: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null,
-    backupOnClick: Boolean = true,
-    trailingContent: @Composable (() -> Unit)? = null,
-    reason: String? = null,
-    overflowActions: List<Pair<String, () -> Unit>> = emptyList(),
-    /** Forwarded to [VideoRow]; see the parameter there for why it is per call site. */
-    titleSharedKey: Any? = null,
-) {
-    val context = LocalContext.current
-    val historyFlow = remember(videoInfo.videoID) { youPipeViewModel.historyById(videoInfo.videoID) }
-    val historyItem by historyFlow.collectAsState(initial = null)
-    val timeWatched = historyItem?.progress ?: 0
-    val percentWatched = if (videoInfo.duration > 0) timeWatched.toDouble() / videoInfo.duration.toDouble() else 0.0
-
-    val deArrowEnabled by youPipeViewModel.deArrowEnabled.collectAsState()
-    val deArrowCache by youPipeViewModel.deArrowCache.collectAsState()
-    val deArrowData = if (deArrowEnabled) deArrowCache[videoInfo.videoID] else null
-
-    val itemModifier = if (onClick != null) {
-        modifier.clickable(onClick = onClick)
-    } else if(backupOnClick) {
-        modifier.invisibleClickable {
-            backStack.add(Route.VideoPage(videoInfo.videoID))
-        }
-    } else {
-        modifier
-    }
-
-    VideoRow(
-        row = videoRowState(
-            context = context,
-            videoInfo = videoInfo,
-            showAuthor = showAuthor,
-            reason = reason,
-            percentWatched = percentWatched.toFloat(),
-            deArrowTitle = deArrowData?.title,
-            deArrowThumbnailURL = deArrowData?.thumbnailUrl,
-        ),
-        modifier = itemModifier,
-        trailingContent = trailingContent,
-        overflowActions = overflowActions,
-        titleSharedKey = titleSharedKey,
-    )
-}
-
-/**
- * One video row: thumbnail with a resume bar on the left, title and stats on the right.
- *
- * Stateless — every value it draws is already a string, which is what lets the store listing
- * previews render it. The click target arrives through [modifier] so the caller keeps the
- * choice between a rippled and a rippleless tap.
- */
-@Composable
-fun VideoRow(
-    row: VideoRowState,
-    modifier: Modifier = Modifier,
-    trailingContent: @Composable (() -> Unit)? = null,
-    overflowActions: List<Pair<String, () -> Unit>> = emptyList(),
-    /**
-     * Morphs this row's title into the title on the video screen. Passed in per call site rather
-     * than derived from [row] here, because a row is drawn by eight of them: the home feed and the
-     * search overlay are on screen together, and the tab pager has two feeds composed mid-swipe, so
-     * keying every row would put the same video under one key twice with no single origin to travel
-     * from. Null on any list that shares a composition with another keyed one.
-     */
-    titleSharedKey: Any? = null,
-) {
-    val effectiveTrailing: (@Composable () -> Unit)? = when {
-        overflowActions.isNotEmpty() -> {
-            { VideoOverflowMenu(overflowActions) }
-        }
-        else -> trailingContent
-    }
-
-    Row(modifier) {
-        Box(Modifier.weight(1f)) {
-            Box(Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp).clip(RoundedCornerShape(12.dp))) {
-                // Block behind the thumbnail: what the row shows while the image is still in
-                // flight, and all a preview can show at all — Layoutlib has no network.
-                Box(
-                    Modifier.fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                )
-                if (row.thumbnailURL.isNotEmpty()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(row.thumbnailURL)
-                            .memoryCacheKey("video-thumb-${row.videoID}-${if (row.deArrowThumbnail) "da" else "yt"}")
-                            .build(),
-                        contentDescription = null,
-                        Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                    )
-                }
-                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(6.dp).clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))) {
-                    if(row.percentWatched > 0f)
-                        Surface(Modifier.weight(row.percentWatched).height(6.dp), color = Color.Red.copy(alpha = 0.6f)) {}
-                    if(row.percentWatched < 1f)
-                        Surface(Modifier.weight(1f - row.percentWatched).height(6.dp), color = Color.Black.copy(alpha = 0.8f)) {}
-                }
-            }
-        }
-        Box(Modifier.weight(1.5f)) {
-            ListItem(modifier = Modifier, overlineContent = {
-
-            }, supportingContent = {
-                Column {
-                    val author = row.author
-                    if(author != null) {
-                        Text(author, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text(row.stats, style = MaterialTheme.typography.bodySmall)
-                    val reason = row.reason
-                    if (reason != null) {
-                        Text(
-                            stringResource(R.string.recommendation_reason, reason),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+            if (isExpandedWidth()) {
+                LazyVerticalGrid(
+                    columns = adaptiveGridCells(320.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(videos, { it.videoID }) {
+                        VideoItem(backStack, youPipeViewModel, it, false, vertical = true)
                     }
                 }
-            }, trailingContent = effectiveTrailing?.let { { it() } }, colors = ListItemDefaults.colors(containerColor = Color.Transparent)) {
-                Text(
-                    row.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = if (titleSharedKey == null) Modifier else Modifier.sharedText(titleSharedKey),
-                )
-            }
-        }
+            } else {
+                LazyColumn {
+                    items(videos, { it.videoID }) {
+interface ItemInfo
+@Serializable
+data class ChannelInfo(val name: String, val channelID: String, val subscribers: Long, val videos: Int, val avatar: String): ItemInfo {
+    fun toSubscription(): Subscription {
+        return Subscription(name = name, channelID = channelID, avatarURL = avatar)
     }
 }
 
-@Composable
-private fun VideoOverflowMenu(actions: List<Pair<String, () -> Unit>>) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            IconMoreVert()
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            actions.forEach { (label, onClick) ->
-                DropdownMenuItem(
-                    text = { Text(label) },
-                    onClick = {
-                        expanded = false
-                        onClick()
-                    },
-                )
-            }
-        }
-    }
-}
+@Serializable
+data class VideoInfo(val name: String, val videoID: Long, val duration: Long, val views: Long, val uploadDate: Instant, val thumbnailURL: String, val author: String, val isPaid: Boolean = false): ItemInfo
 
 /**
  * The channel's identity block, and the far end of the morph that starts at a subscription row.

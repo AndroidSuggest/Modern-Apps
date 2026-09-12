@@ -88,7 +88,12 @@ fun MapSettingsPage(backStack: NavBackStack<Route>, viewModel: MapSettingsViewMo
             SettingsSection(title = stringResource(R.string.settings_section_places)) {
                 com.vayunmathur.library.ui.SettingsRow(
                     title = stringResource(R.string.saved_places_title),
-                    onClick = { backStack.add(Route.SavedPlacesPage) },
+                    onClick = {
+                        // Re-tap replaces the detail instead of stacking it, so the
+                        // saved-places entry never piles up in two-pane layouts.
+                        if (backStack.last() is Route.SavedPlacesPage) backStack.setLast(Route.SavedPlacesPage)
+                        else backStack.add(Route.SavedPlacesPage)
+                    },
                     leadingContent = { IconStar() },
                 )
             }

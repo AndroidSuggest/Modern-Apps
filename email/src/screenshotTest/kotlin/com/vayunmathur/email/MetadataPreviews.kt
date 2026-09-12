@@ -14,6 +14,9 @@ import com.vayunmathur.library.ui.DynamicTheme
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
+
 /**
  * Store listing images for `:email`, rendered from Compose previews instead of from an
  * instrumented test on a device.
@@ -92,6 +95,19 @@ class MetadataPreviews {
     fun Preview4AddAccount() {
         DynamicTheme(darkTheme = true) {
             AddAccountScreen(onBack = {}, onAccountAdded = {})
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-conversation-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5ConversationExpanded() {
+        DynamicTheme(darkTheme = true) {
+            MessageThreadScreen(
+                messages = THREAD,
+                actions = MessageThreadActions.Noop,
+                threadId = "thread-review",
+            )
         }
     }
 }

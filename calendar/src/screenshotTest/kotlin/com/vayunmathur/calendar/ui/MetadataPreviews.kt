@@ -24,6 +24,9 @@ import kotlinx.datetime.toInstant
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Desktop-shaped: exercises the detail pane at a width where list and detail sit side by side. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
+
 /** A fixed Monday in March 2026. Never "today" — the images must not change per run. */
 private val TODAY = LocalDate(2026, 3, 9)
 
@@ -192,6 +195,23 @@ class MetadataPreviews {
                     themeMode = CalendarViewModel.ThemeMode.Dark,
                 ),
                 actions = SettingsActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        // The detail pane at desktop width: the event the month grid selection opens.
+        DynamicTheme(darkTheme = true) {
+            EventScreen(
+                state = EventUiState(
+                    event = TEAM_STANDUP,
+                    calendar = WORK,
+                    instance = instance(TEAM_STANDUP),
+                ),
+                actions = EventActions.Noop,
             )
         }
     }

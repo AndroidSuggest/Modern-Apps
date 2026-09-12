@@ -125,7 +125,10 @@ fun ReleaseGroupScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { backStack.add(Route.Release(release.id)) },
+                            .clickable {
+                                if (backStack.last() is Route.Release) backStack.setLast(Route.Release(release.id))
+                                else backStack.add(Route.Release(release.id))
+                            },
                         supportingContent = { SecondaryText(release.subtitle) },
                         leadingContent = {
                             CoverArtImage(

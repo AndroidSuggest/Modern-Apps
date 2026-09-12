@@ -13,148 +13,14 @@ import org.xmlpull.v1.XmlPullParser
  */
 internal object OoxmlDocx {
 
-    // ---- Run / paragraph property holders (for style inheritance) ----
+    // ---- Style model: see OoxmlDocxStyles (split for file length; behavior identical) ----
 
-    private class RPr(
-        var bold: Boolean? = null,
-        var italic: Boolean? = null,
-        var underline: String? = null,       // ODF underline style, or "none"
-        var underlineColor: Long? = null,
-        var strike: Boolean? = null,
-        var color: Long? = null,
-        var sizeHalfPt: Int? = null,
-        var font: String? = null,
-        var vertAlign: String? = null,        // "superscript"/"subscript"
-        var caps: Boolean? = null,
-        var smallCaps: Boolean? = null,
-        var spacingTwips: Int? = null,
-        var highlight: Long? = null,
-        var shdFill: Long? = null,
-        var vanish: Boolean? = null,
-        var lang: String? = null,
-        var styleId: String? = null           // w:rStyle reference (character style)
-    ) {
-        /** Returns a new RPr with [o]'s non-null values overriding this one's. */
-        fun overlay(o: RPr) = RPr(
-            o.bold ?: bold, o.italic ?: italic, o.underline ?: underline, o.underlineColor ?: underlineColor,
-            o.strike ?: strike, o.color ?: color, o.sizeHalfPt ?: sizeHalfPt, o.font ?: font,
-            o.vertAlign ?: vertAlign, o.caps ?: caps, o.smallCaps ?: smallCaps, o.spacingTwips ?: spacingTwips,
-            o.highlight ?: highlight, o.shdFill ?: shdFill, o.vanish ?: vanish, o.lang ?: lang,
-            o.styleId ?: styleId
-        )
-    }
-
-    private class PPr(
-        var styleId: String? = null,
-        var jc: String? = null,
-        var indLeft: Int? = null,
-        var indRight: Int? = null,
-        var indFirstLine: Int? = null,
-        var indHanging: Int? = null,
-        var spacingBefore: Int? = null,
-        var spacingAfter: Int? = null,
-        var lineRule: String? = null,
-        var line: Int? = null,
-        var bidi: Boolean? = null,
-        var shdFill: Long? = null,
-        var borders: OdfBorders? = null,
-        var keepNext: Boolean? = null,
-        var keepLines: Boolean? = null,
-        var widowControl: Boolean? = null,
-        var pageBreakBefore: Boolean? = null,
-        var tabs: List<OdfTabStop>? = null,
-        var numId: Int? = null,
-        var ilvl: Int? = null,
-        var outlineLvl: Int? = null,
-        var dropCapLines: Int? = null,
-        var rPr: RPr? = null
-    ) {
-        fun overlay(o: PPr) = PPr(
-            o.styleId ?: styleId, o.jc ?: jc, o.indLeft ?: indLeft, o.indRight ?: indRight,
-            o.indFirstLine ?: indFirstLine, o.indHanging ?: indHanging, o.spacingBefore ?: spacingBefore,
-            o.spacingAfter ?: spacingAfter, o.lineRule ?: lineRule, o.line ?: line, o.bidi ?: bidi,
-            o.shdFill ?: shdFill, o.borders ?: borders, o.keepNext ?: keepNext, o.keepLines ?: keepLines,
-            o.widowControl ?: widowControl, o.pageBreakBefore ?: pageBreakBefore, o.tabs ?: tabs,
-            o.numId ?: numId, o.ilvl ?: ilvl, o.outlineLvl ?: outlineLvl, o.dropCapLines ?: dropCapLines,
-            (rPr ?: RPr()).let { base -> o.rPr?.let { base.overlay(it) } ?: base }
-        )
-    }
-
-    private class StyleDef(
-        val id: String, val type: String?, val basedOn: String?,
-        val rpr: RPr, val ppr: PPr, val outlineLvl: Int?, val name: String?
-    )
-
-    private class Styles(
-        val byId: Map<String, StyleDef>,
-        val docDefaultRPr: RPr,
-        val docDefaultPPr: PPr,
-        val defaultParaStyle: String?
-    ) {
-        private val rprCache = HashMap<String, RPr>()
-        private val pprCache = HashMap<String, PPr>()
-
-        fun resolvedRPr(id: String?): RPr {
-            if (id == null) return docDefaultRPr
-            rprCache[id]?.let { return it }
-            val chain = chain(id)
-            var acc = docDefaultRPr
-            for (s in chain) acc = acc.overlay(s.rpr)
-            rprCache[id] = acc
-            return acc
-        }
-
-        /** RPr contributed by a character style's basedOn chain only (no docDefaults). */
-        fun charStyleRPr(id: String?): RPr {
-            if (id == null) return RPr()
-            var acc = RPr()
-            for (s in chain(id)) acc = acc.overlay(s.rpr)
-            return acc
-        }
-
-        fun resolvedPPr(id: String?): PPr {
-            if (id == null) return docDefaultPPr
-            pprCache[id]?.let { return it }
-            val chain = chain(id)
-            var acc = docDefaultPPr
-            for (s in chain) acc = acc.overlay(s.ppr)
-            pprCache[id] = acc
-            return acc
-        }
-
-        fun outlineLvl(id: String?): Int? {
-            var cur = id?.let { byId[it] }
-            val seen = HashSet<String>()
-            while (cur != null && seen.add(cur.id)) {
-                cur.outlineLvl?.let { return it }
-                cur = cur.basedOn?.let { byId[it] }
-            }
-            return null
-        }
-
-        /** basedOn chain from root ancestor down to [id]. */
-        private fun chain(id: String): List<StyleDef> {
-            val out = ArrayDeque<StyleDef>()
-            var cur = byId[id]
-            val seen = HashSet<String>()
-            while (cur != null && seen.add(cur.id)) {
-                out.addFirst(cur)
-                cur = cur.basedOn?.let { byId[it] }
-            }
-            return out.toList()
-        }
-    }
-
-    // ---- Numbering ----
-
-    private class NumLevel(val numFmt: String, val lvlText: String, val start: Int)
-    private class Numbering(
-        private val numToAbstract: Map<Int, Int>,
-        private val abstractLevels: Map<Int, Map<Int, NumLevel>>
-    ) {
-        fun level(numId: Int, ilvl: Int): NumLevel? =
-            numToAbstract[numId]?.let { abstractLevels[it]?.get(ilvl) }
-    }
+    internal typealias RPr = OoxmlDocxStyles.RPr
+    internal typealias PPr = OoxmlDocxStyles.PPr
+    internal typealias StyleDef = OoxmlDocxStyles.StyleDef
+    internal typealias Styles = OoxmlDocxStyles.Styles
+    internal typealias NumLevel = OoxmlDocxStyles.NumLevel
+    internal typealias Numbering = OoxmlDocxStyles.Numbering
 
     // ---- Entry point ----
 
@@ -162,9 +28,9 @@ internal object OoxmlDocx {
         val docPart = "word/document.xml"
         val xml = pkg.entries[docPart] ?: return OdfDocument.TextDocument(fileName, emptyList())
         val theme = OoxmlTheme.parse(pkg.entries["word/theme/theme1.xml"])
-        val styles = pkg.entries["word/styles.xml"]?.let { parseStyles(it, theme) }
+        val styles = pkg.entries["word/styles.xml"]?.let { OoxmlDocxStyles.parseStyles(it, theme) }
             ?: Styles(emptyMap(), RPr(), PPr(), null)
-        val numbering = pkg.entries["word/numbering.xml"]?.let { parseNumbering(it) }
+        val numbering = pkg.entries["word/numbering.xml"]?.let { OoxmlDocxStyles.parseNumbering(it) }
             ?: Numbering(emptyMap(), emptyMap())
         val rels = pkg.relsFor(docPart)
 
@@ -196,7 +62,7 @@ internal object OoxmlDocx {
         )
     }
 
-    private class DocxCtx(
+    internal class DocxCtx(
         val pkg: OoxmlPackage,
         val part: String,
         val theme: OoxmlTheme,
@@ -268,7 +134,7 @@ internal object OoxmlDocx {
         while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "p")) {
             if (e == XmlPullParser.END_DOCUMENT) break
             if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "pPr" -> ppr = parsePPr(parser, ctx.theme)
+                "pPr" -> ppr = OoxmlDocxStyles.parsePPr(parser, ctx.theme)
                 "r" -> parseRun(parser, ctx, ppr, spans, fieldState, null, null)
                 "hyperlink" -> parseHyperlink(parser, ctx, ppr, spans)
                 "ins" -> parseChangeWrapper(parser, ctx, ppr, spans, "insertion")
@@ -323,10 +189,10 @@ internal object OoxmlDocx {
                 listLevel = ilvl
                 if (lvl.numFmt == "bullet") {
                     listType = ListType.BULLET
-                    bulletChar = mapBullet(lvl.lvlText)
+                    bulletChar = OoxmlDocxStyles.mapBullet(lvl.lvlText)
                 } else {
                     listType = ListType.NUMBERED
-                    numFmt = mapNumFmt(lvl.numFmt)
+                    numFmt = OoxmlDocxStyles.mapNumFmt(lvl.numFmt)
                     val markers = Regex("%\\d+").findAll(lvl.lvlText).toList()
                     if (markers.isNotEmpty()) {
                         prefix = lvl.lvlText.substring(0, markers.first().range.first)
@@ -376,7 +242,7 @@ internal object OoxmlDocx {
 
     // ---- Runs ----
 
-    private class FieldState {
+    internal class FieldState {
         var capturing = false          // between fldChar begin..separate: capturing instr
         var inResult = false           // between separate..end: capturing display text
         var instr = StringBuilder()
@@ -397,7 +263,7 @@ internal object OoxmlDocx {
         while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "r")) {
             if (e == XmlPullParser.END_DOCUMENT) break
             if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "rPr" -> rpr = parseRPr(parser, ctx.theme)
+                "rPr" -> rpr = OoxmlDocxStyles.parseRPr(parser, ctx.theme)
                 "t" -> sb.append(OoxmlXml.readElementText(parser, "t"))
                 "tab" -> sb.append("\t")
                 "br", "cr" -> sb.append("\n")
@@ -557,280 +423,7 @@ internal object OoxmlDocx {
         return note.citation
     }
 
-    // ---- Property parsers ----
-
-    private fun parseRPr(parser: XmlPullParser, theme: OoxmlTheme): RPr {
-        val depth = parser.depth
-        val r = RPr()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && (parser.name == "rPr" || parser.name == "defRPr"))) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "rStyle" -> r.styleId = OoxmlXml.attr(parser, "val")
-                "b" -> r.bold = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "i" -> r.italic = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "strike" -> r.strike = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "dstrike" -> if (OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))) r.strike = true
-                "u" -> {
-                    val v = OoxmlXml.attr(parser, "val")
-                    r.underline = mapUnderline(v)
-                    r.underlineColor = OoxmlUnits.hexColor(OoxmlXml.attr(parser, "color"))
-                }
-                "color" -> r.color = resolveWColor(parser, theme)
-                "sz" -> r.sizeHalfPt = OoxmlXml.attr(parser, "val")?.toIntOrNull()
-                "rFonts" -> r.font = OoxmlXml.attr(parser, "ascii") ?: OoxmlXml.attr(parser, "hAnsi") ?: OoxmlXml.attr(parser, "cs")
-                "vertAlign" -> r.vertAlign = when (OoxmlXml.attr(parser, "val")) { "superscript" -> "superscript"; "subscript" -> "subscript"; else -> null }
-                "caps" -> r.caps = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "smallCaps" -> r.smallCaps = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "spacing" -> r.spacingTwips = OoxmlXml.attr(parser, "val")?.toIntOrNull()
-                "highlight" -> r.highlight = OoxmlUnits.highlightColor(OoxmlXml.attr(parser, "val"))
-                "shd" -> r.shdFill = OoxmlUnits.hexColor(OoxmlXml.attr(parser, "fill"))
-                "vanish" -> r.vanish = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "lang" -> r.lang = OoxmlXml.attr(parser, "val")
-            }
-            e = parser.next()
-        }
-        return r
-    }
-
-    private fun resolveWColor(parser: XmlPullParser, theme: OoxmlTheme): Long? {
-        OoxmlUnits.hexColor(OoxmlXml.attr(parser, "val"))?.let { return it }
-        val themeColor = OoxmlXml.attr(parser, "themeColor") ?: return null
-        val base = theme.schemeColor(mapWordTheme(themeColor)) ?: return null
-        val tint = OoxmlXml.attr(parser, "themeTint")?.toIntOrNull(16)
-        val shade = OoxmlXml.attr(parser, "themeShade")?.toIntOrNull(16)
-        return when {
-            tint != null -> OoxmlUnits.applyTransforms(base, tint = (tint / 255f * 100000).toInt())
-            shade != null -> OoxmlUnits.applyTransforms(base, shade = (shade / 255f * 100000).toInt())
-            else -> base
-        }
-    }
-
-    private fun parsePPr(parser: XmlPullParser, theme: OoxmlTheme): PPr {
-        val depth = parser.depth
-        val p = PPr()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "pPr")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "pStyle" -> p.styleId = OoxmlXml.attr(parser, "val")
-                "jc" -> p.jc = OoxmlXml.attr(parser, "val")
-                "bidi" -> p.bidi = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "keepNext" -> p.keepNext = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "keepLines" -> p.keepLines = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "widowControl" -> p.widowControl = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "pageBreakBefore" -> p.pageBreakBefore = OoxmlXml.boolAttr(OoxmlXml.attr(parser, "val"))
-                "outlineLvl" -> p.outlineLvl = OoxmlXml.attr(parser, "val")?.toIntOrNull()
-                "ind" -> {
-                    p.indLeft = (OoxmlXml.attr(parser, "left") ?: OoxmlXml.attr(parser, "start"))?.toIntOrNull()
-                    p.indRight = (OoxmlXml.attr(parser, "right") ?: OoxmlXml.attr(parser, "end"))?.toIntOrNull()
-                    p.indFirstLine = OoxmlXml.attr(parser, "firstLine")?.toIntOrNull()
-                    p.indHanging = OoxmlXml.attr(parser, "hanging")?.toIntOrNull()
-                }
-                "spacing" -> {
-                    p.spacingBefore = OoxmlXml.attr(parser, "before")?.toIntOrNull()
-                    p.spacingAfter = OoxmlXml.attr(parser, "after")?.toIntOrNull()
-                    p.line = OoxmlXml.attr(parser, "line")?.toIntOrNull()
-                    p.lineRule = OoxmlXml.attr(parser, "lineRule")
-                }
-                "shd" -> p.shdFill = OoxmlUnits.hexColor(OoxmlXml.attr(parser, "fill"))
-                "pBdr" -> p.borders = parseBorders(parser, "pBdr")
-                "numPr" -> parseNumPr(parser, p)
-                "tabs" -> p.tabs = parseTabs(parser)
-                "framePr" -> OoxmlXml.attr(parser, "dropCap")?.let { if (it != "none") p.dropCapLines = OoxmlXml.attr(parser, "lines")?.toIntOrNull() ?: 3 }
-                "rPr" -> p.rPr = parseRPr(parser, theme)
-            }
-            e = parser.next()
-        }
-        return p
-    }
-
-    private fun parseNumPr(parser: XmlPullParser, p: PPr) {
-        val depth = parser.depth
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "numPr")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "ilvl" -> p.ilvl = OoxmlXml.attr(parser, "val")?.toIntOrNull()
-                "numId" -> p.numId = OoxmlXml.attr(parser, "val")?.toIntOrNull()
-            }
-            e = parser.next()
-        }
-    }
-
-    private fun parseTabs(parser: XmlPullParser): List<OdfTabStop> {
-        val depth = parser.depth
-        val tabs = mutableListOf<OdfTabStop>()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "tabs")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG && parser.name == "tab") {
-                val pos = OoxmlXml.attr(parser, "pos")?.toIntOrNull()
-                val valType = OoxmlXml.attr(parser, "val")
-                if (pos != null && valType != "clear") {
-                    tabs.add(OdfTabStop(
-                        position = OoxmlUnits.twipsToPx(pos),
-                        type = when (valType) { "center" -> "center"; "right", "end" -> "right"; "decimal" -> "char"; else -> "left" },
-                        leaderChar = when (OoxmlXml.attr(parser, "leader")) { "dot" -> "."; "hyphen" -> "-"; "underscore" -> "_"; else -> null }
-                    ))
-                }
-            }
-            e = parser.next()
-        }
-        return tabs
-    }
-
-    private fun parseBorders(parser: XmlPullParser, endTag: String): OdfBorders {
-        val depth = parser.depth
-        var top: String? = null; var right: String? = null; var bottom: String? = null; var left: String? = null
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == endTag)) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) {
-                val edge = when (parser.name) { "top" -> "top"; "bottom" -> "bottom"; "left", "start" -> "left"; "right", "end" -> "right"; else -> null }
-                if (edge != null) {
-                    val v = borderValue(parser)
-                    when (edge) { "top" -> top = v; "bottom" -> bottom = v; "left" -> left = v; "right" -> right = v }
-                }
-            }
-            e = parser.next()
-        }
-        return OdfBorders(top, right, bottom, left)
-    }
-
-    private fun borderValue(parser: XmlPullParser): String? {
-        val style = OoxmlXml.attr(parser, "val") ?: return null
-        if (style == "nil" || style == "none") return null
-        val szEighthPt = OoxmlXml.attr(parser, "sz")?.toIntOrNull() ?: 4
-        val pt = szEighthPt / 8f
-        val color = OoxmlXml.attr(parser, "color")?.takeIf { !it.equals("auto", true) }?.let { "#$it" } ?: "#000000"
-        val odfStyle = when (style) { "single" -> "solid"; "double" -> "double"; "dotted" -> "dotted"; "dashed" -> "dashed"; else -> "solid" }
-        // Force a dot decimal separator; a locale-formatted "0,50pt" is an invalid fo:border value.
-        return "%.2fpt %s %s".format(java.util.Locale.ROOT, pt, odfStyle, color)
-    }
-
-    // ---- Styles / numbering parsing ----
-
-    private fun parseStyles(xml: String, theme: OoxmlTheme): Styles {
-        val parser = OoxmlXml.newParser(xml)
-        val byId = LinkedHashMap<String, StyleDef>()
-        var docRPr = RPr(); var docPPr = PPr(); var defaultPara: String? = null
-        var e = parser.eventType
-        while (e != XmlPullParser.END_DOCUMENT) {
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "docDefaults" -> { val d = parseDocDefaults(parser, theme); docRPr = d.first; docPPr = d.second }
-                "style" -> {
-                    val isDefault = OoxmlXml.attr(parser, "default") == "1"
-                    val styleType = OoxmlXml.attr(parser, "type")
-                    val def = parseStyle(parser, theme)
-                    byId[def.id] = def
-                    if (isDefault && styleType == "paragraph") defaultPara = def.id
-                }
-            }
-            e = parser.next()
-        }
-        return Styles(byId, docRPr, docPPr, defaultPara)
-    }
-
-    private fun parseDocDefaults(parser: XmlPullParser, theme: OoxmlTheme): Pair<RPr, PPr> {
-        val depth = parser.depth
-        var rpr = RPr(); var ppr = PPr()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "docDefaults")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "rPr" -> rpr = parseRPr(parser, theme)
-                "pPr" -> ppr = parsePPr(parser, theme)
-            }
-            e = parser.next()
-        }
-        return rpr to ppr
-    }
-
-    private fun parseStyle(parser: XmlPullParser, theme: OoxmlTheme): StyleDef {
-        val depth = parser.depth
-        val type = OoxmlXml.attr(parser, "type")
-        val id = OoxmlXml.attr(parser, "styleId") ?: ""
-        var basedOn: String? = null; var name: String? = null; var outline: Int? = null
-        var rpr = RPr(); var ppr = PPr()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "style")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "basedOn" -> basedOn = OoxmlXml.attr(parser, "val")
-                "name" -> name = OoxmlXml.attr(parser, "val")
-                "rPr" -> rpr = parseRPr(parser, theme)
-                "pPr" -> { ppr = parsePPr(parser, theme); outline = ppr.outlineLvl }
-            }
-            e = parser.next()
-        }
-        return StyleDef(id, type, basedOn, rpr, ppr, outline, name)
-    }
-
-    private fun parseNumbering(xml: String): Numbering {
-        val parser = OoxmlXml.newParser(xml)
-        val numToAbstract = HashMap<Int, Int>()
-        val abstractLevels = HashMap<Int, MutableMap<Int, NumLevel>>()
-        var e = parser.eventType
-        while (e != XmlPullParser.END_DOCUMENT) {
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "abstractNum" -> {
-                    val aid = OoxmlXml.attr(parser, "abstractNumId")?.toIntOrNull()
-                    if (aid != null) abstractLevels[aid] = parseAbstractNum(parser)
-                }
-                "num" -> {
-                    val numId = OoxmlXml.attr(parser, "numId")?.toIntOrNull()
-                    val aid = readAbstractNumId(parser)
-                    if (numId != null && aid != null) numToAbstract[numId] = aid
-                }
-            }
-            e = parser.next()
-        }
-        return Numbering(numToAbstract, abstractLevels)
-    }
-
-    private fun readAbstractNumId(parser: XmlPullParser): Int? {
-        val depth = parser.depth
-        var aid: Int? = null
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "num")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG && parser.name == "abstractNumId") aid = OoxmlXml.attr(parser, "val")?.toIntOrNull()
-            e = parser.next()
-        }
-        return aid
-    }
-
-    private fun parseAbstractNum(parser: XmlPullParser): MutableMap<Int, NumLevel> {
-        val depth = parser.depth
-        val levels = HashMap<Int, NumLevel>()
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "abstractNum")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG && parser.name == "lvl") {
-                val ilvl = OoxmlXml.attr(parser, "ilvl")?.toIntOrNull() ?: 0
-                levels[ilvl] = parseLvl(parser)
-            }
-            e = parser.next()
-        }
-        return levels
-    }
-
-    private fun parseLvl(parser: XmlPullParser): NumLevel {
-        val depth = parser.depth
-        var numFmt = "decimal"; var lvlText = "%1."; var start = 1
-        var e = parser.next()
-        while (!(e == XmlPullParser.END_TAG && parser.depth == depth && parser.name == "lvl")) {
-            if (e == XmlPullParser.END_DOCUMENT) break
-            if (e == XmlPullParser.START_TAG) when (parser.name) {
-                "numFmt" -> numFmt = OoxmlXml.attr(parser, "val") ?: numFmt
-                "lvlText" -> lvlText = OoxmlXml.attr(parser, "val") ?: lvlText
-                "start" -> start = OoxmlXml.attr(parser, "val")?.toIntOrNull() ?: start
-            }
-            e = parser.next()
-        }
-        return NumLevel(numFmt, lvlText, start)
-    }
+    // ---- Property parsers/styles/numbering: see OoxmlDocxStyles (split for file length) ----
 
     // ---- Tables ----
 
@@ -847,7 +440,7 @@ internal object OoxmlDocx {
             if (e == XmlPullParser.END_DOCUMENT) break
             if (e == XmlPullParser.START_TAG) when (parser.name) {
                 "gridCol" -> OoxmlXml.attr(parser, "w")?.toIntOrNull()?.let { columns.add(OdfTableColumn(OoxmlUnits.twipsToPx(it))) }
-                "tblBorders" -> tblBorders = parseBorders(parser, "tblBorders")
+                "tblBorders" -> tblBorders = OoxmlDocxStyles.parseBorders(parser, "tblBorders")
                 "tr" -> if (parseRow(parser, ctx, grid, vAnchors)) headerRows = grid.size
             }
             e = parser.next()
@@ -931,7 +524,7 @@ internal object OoxmlDocx {
             if (e == XmlPullParser.START_TAG) when (parser.name) {
                 "gridSpan" -> colSpan = OoxmlXml.attr(parser, "val")?.toIntOrNull() ?: 1
                 "shd" -> bg = OoxmlUnits.hexColor(OoxmlXml.attr(parser, "fill")) ?: bg
-                "tcBorders" -> borders = parseBorders(parser, "tcBorders")
+                "tcBorders" -> borders = OoxmlDocxStyles.parseBorders(parser, "tcBorders")
                 "vAlign" -> vAlign = when (OoxmlXml.attr(parser, "val")) { "center" -> "middle"; "bottom" -> "bottom"; else -> "top" }
                 "vMerge" -> { val v = OoxmlXml.attr(parser, "val"); if (v == null || v == "continue") vMergeContinue = true else vMergeRestart = true }
                 "p" -> { val before = dummy.size; parseParagraph(parser, ctx, dummy); for (i in before until dummy.size) (dummy[i] as? OdfContentBlock.Paragraph)?.let { paras.add(it.paragraph) } }
@@ -1156,48 +749,7 @@ internal object OoxmlDocx {
         }
     }
 
-    private fun mapUnderline(v: String?): String? = when (v) {
-        null -> "solid"
-        "none" -> "none"
-        "single", "words" -> "solid"
-        "double" -> "double"
-        "dotted", "dottedHeavy" -> "dotted"
-        "dash", "dashLong", "dashedHeavy" -> "dash"
-        "wave", "wavyHeavy", "wavyDouble" -> "wave"
-        else -> "solid"
-    }
-
-    private fun mapNumFmt(fmt: String): String = when (fmt) {
-        "decimal", "decimalZero" -> "1"
-        "lowerLetter" -> "a"
-        "upperLetter" -> "A"
-        "lowerRoman" -> "i"
-        "upperRoman" -> "I"
-        else -> "1"
-    }
-
-    private fun mapBullet(lvlText: String): String {
-        val ch = lvlText.firstOrNull() ?: return "\u2022"
-        return when (ch.code) {
-            0xF0B7, 0x2022 -> "\u2022"
-            0xF0A7, 0x25AA -> "\u25AA"
-            0xF06F, 0x006F -> "\u25E6"
-            0xF0D8 -> "\u27A2"
-            else -> if (ch.isLetterOrDigit() || ch.code < 0x20) "\u2022" else ch.toString()
-        }
-    }
-
-    private fun mapWordTheme(name: String): String = when (name.lowercase()) {
-        "text1", "dark1" -> "dk1"
-        "background1", "light1" -> "lt1"
-        "text2", "dark2" -> "dk2"
-        "background2", "light2" -> "lt2"
-        "hyperlink" -> "hlink"
-        "followedhyperlink" -> "folhlink"
-        else -> name
-    }
-
-    private fun symChar(code: String?): String {
+    private fun symChar(
         val v = code?.removePrefix("F0")?.toIntOrNull(16) ?: code?.toIntOrNull(16) ?: return ""
         // Common Wingdings/Symbol mappings; fall back to the raw code point.
         return when (v) {

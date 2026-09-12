@@ -2,124 +2,34 @@ package com.vayunmathur.cast.platform
 
 import android.content.Context
 import android.hardware.display.DisplayManager
-import android.media.projection.MediaProjection
-import android.os.ParcelFileDescriptor
-import android.util.Log
-import android.view.Display
-import android.view.Surface
 import com.vayunmathur.cast.R
 import com.vayunmathur.cast.domain.CastDevice
-import com.vayunmathur.cast.domain.ClientFailure
 import com.vayunmathur.cast.domain.ClientPhase
 import com.vayunmathur.cast.domain.ClientState
 import com.vayunmathur.cast.network.ControlSocket
 import com.vayunmathur.cast.platform.discovery.CastDiscoveryManager
 import com.vayunmathur.cast.platform.mirror.CaptureGeometry
-import com.vayunmathur.cast.platform.mirror.EncoderSupport
-import com.vayunmathur.cast.platform.mirror.MirrorConsentActivity
 import com.vayunmathur.cast.platform.mirror.MirrorDegradation
 import com.vayunmathur.cast.platform.mirror.MirrorEngine
-import com.vayunmathur.cast.platform.mirror.MirrorGeometry
 import com.vayunmathur.cast.platform.mirror.MirrorPreferences
 import com.vayunmathur.cast.platform.mirror.MirrorSource
 import com.vayunmathur.cast.platform.mirror.MirrorStopReason
-import com.vayunmathur.cast.protocol.ByeReason
-import com.vayunmathur.cast.protocol.CodecNegotiation
-import com.vayunmathur.cast.protocol.CodecSelection
-import com.vayunmathur.cast.protocol.DecoderLimits
-import com.vayunmathur.cast.protocol.MediaResourceResolver
-import com.vayunmathur.cast.protocol.NowPlaying
-import com.vayunmathur.cast.protocol.PING_INTERVAL_MS
-import com.vayunmathur.cast.protocol.PROTOCOL_VERSION
-import com.vayunmathur.cast.protocol.PlayMedia
 import com.vayunmathur.cast.protocol.PlaybackCommand
 import com.vayunmathur.cast.protocol.PlaybackState
-import com.vayunmathur.cast.protocol.StreamConstants
-import com.vayunmathur.cast.protocol.StreamingSession
 import com.vayunmathur.cast.protocol.VideoCodec
 import com.vayunmathur.cast.service.CastService
-import com.vayunmathur.library.ui.ExternalIntents
-import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.sdk.cast.CastContract
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import kotlin.math.abs
-import kotlin.math.roundToInt
-
-private const val TAG = "CastController"
-
-/**
- * How far apart two frame rates may be and still be the same mode.
- *
- * The framework reports a declared mode's rate back as the float it was given, and the panel's own
- * numbers are 59.94006 and 23.976025, so exact equality is not something to compare on. Small
- * enough that 59.94 and 60 stay distinct.
- */
-private const val MODE_RATE_TOLERANCE = 0.2f
-
-/** What [CastController.startContentSession] managed. */
-sealed interface ContentSessionResult {
-
-    /**
-     * Live. [surface] is the encoder's input surface and [audioWriteEnd] the PCM pipe, both of which
-     * are the caller's to hand to the SDK client - and [audioWriteEnd] is the caller's to close once it
-     * has been sent.
-     *
-     * The geometry is what the TV and this phone's encoder actually agreed, not what was asked for.
-     */
-    class Started(
-        val surface: Surface,
-        val audioWriteEnd: ParcelFileDescriptor?,
-        val width: Int,
-        val height: Int,
-        val frameRate: Int,
-        val receiverName: String,
-    ) : ContentSessionResult
-
-    /** [reason] is one of `CastContract`'s `REASON_` values, ready to send straight back. */
-    class Failed(val reason: Int) : ContentSessionResult
-
-    /**
-     * Live, and served rather than encoded.
-     *
-     * No surface and no pipe, because nothing is being encoded: the TV fetches byte ranges of the
-     * app's own media from the proxy and decodes them itself. No geometry either - the TV plays the
-     * media at its own size, which is what stops this phone having to choose a frame it can encode.
-     */
-    class Serving(
-        val receiverName: String,
-        val hasVideo: Boolean,
-    ) : ContentSessionResult
-}
-
-/**
- * The codec a session will use, or why it will not run.
- *
- * A two-case result rather than a nullable codec, because the refusal carries a sentence the user has
- * to read: with no H.264 fallback, "this phone cannot encode H.265 or AV1" is the whole answer and
- * there is nothing else to try.
- */
-private sealed interface CodecOutcome {
-
-    /** Everything the geometry and the bitrate are computed from. */
-    data class Chosen(val selection: CodecSelection.Chosen) : CodecOutcome {
-        val codec: VideoCodec get() = selection.codec
-    }
-
-    data class Refused(val message: String) : CodecOutcome
-}
 
 /**
  * The single owner of the live session.
@@ -140,12 +50,12 @@ private sealed interface CodecOutcome {
  */
 object CastController {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val mutex = Mutex()
+    internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    internal val mutex = Mutex()
 
-    private var socket: ControlSocket? = null
-    private var client: MirrorClient? = null
-    private var watchJob: Job? = null
+    internal var socket: ControlSocket? = null
+    internal var client: MirrorClient? = null
+    internal var watchJob: Job? = null
 
     /**
      * The keep-alive on a served session's control channel.
@@ -153,10 +63,10 @@ object CastController {
      * Its own job rather than part of [watchJob], because that one is parked in a blocking read for
      * the whole session and has nowhere to run a timer.
      */
-    private var pingJob: Job? = null
+    internal var pingJob: Job? = null
 
     /** The running mirror. Its retransmit buffers live per-stream inside it. */
-    private var engine: MirrorEngine? = null
+    internal var engine: MirrorEngine? = null
 
     /**
      * The HTTPS listener serving a content session, or null when there is not one.
@@ -165,7 +75,7 @@ object CastController {
      * starts no encoder at all. Torn down through the same paths, so a session that ends leaves no
      * open port behind.
      */
-    private var proxy: MediaProxyServer? = null
+    internal var proxy: MediaProxyServer? = null
 
     /**
      * The codec the running engine is encoding with.
@@ -174,14 +84,14 @@ object CastController {
      * a cause rather than a codec, and by the time it arrives the geometry that chose the codec is
      * gone.
      */
-    private var activeCodec: VideoCodec? = null
+    internal var activeCodec: VideoCodec? = null
 
     /**
      * The desktop session's source, kept because its display outlives every [engine] built for it.
      *
      * Null for a mirroring or content session, which have no display of their own to preserve.
      */
-    private var desktopSource: MirrorSource.SystemDisplay? = null
+    internal var desktopSource: MirrorSource.SystemDisplay? = null
 
     /**
      * Watches the desktop display for the user choosing a different mode in Settings.
@@ -190,10 +100,10 @@ object CastController {
      * and the owner is expected to notice. Nothing did, which is why the stream used to carry on
      * at whatever geometry the session started with no matter what was selected.
      */
-    private var displayListener: DisplayManager.DisplayListener? = null
+    internal var displayListener: DisplayManager.DisplayListener? = null
 
     /** Held alongside [displayListener], because unregistering needs the same service instance. */
-    private var displayManager: DisplayManager? = null
+    internal var displayManager: DisplayManager? = null
 
     /**
      * The geometry the running engine was built for, so a display change can be told from an echo.
@@ -201,31 +111,31 @@ object CastController {
      * Our own re-negotiation resizes the display, which fires the very listener that started it.
      * Without something to compare against, that is a loop.
      */
-    private var activeGeometry: CaptureGeometry? = null
+    internal var activeGeometry: CaptureGeometry? = null
 
     /** Serialises re-negotiations so two mode changes in quick succession cannot interleave. */
-    private var renegotiateJob: Job? = null
+    internal var renegotiateJob: Job? = null
 
-    private val _mirrorPhase = MutableStateFlow(MirrorPhase.Idle)
+    internal val _mirrorPhase = MutableStateFlow(MirrorPhase.Idle)
     val mirrorPhase: StateFlow<MirrorPhase> = _mirrorPhase.asStateFlow()
 
-    private val _degradation = MutableStateFlow(MirrorDegradation())
+    internal val _degradation = MutableStateFlow(MirrorDegradation())
     val degradation: StateFlow<MirrorDegradation> = _degradation.asStateFlow()
 
     /** Why mirroring failed, already a user-facing sentence. */
-    private val _failure = MutableStateFlow<String?>(null)
+    internal val _failure = MutableStateFlow<String?>(null)
     val mirrorFailure: StateFlow<String?> = _failure.asStateFlow()
 
     private var discoveryManager: CastDiscoveryManager? = null
 
-    private val _device = MutableStateFlow<CastDevice?>(null)
+    internal val _device = MutableStateFlow<CastDevice?>(null)
     val device: StateFlow<CastDevice?> = _device.asStateFlow()
 
-    private val _sessionState = MutableStateFlow(ClientState())
+    internal val _sessionState = MutableStateFlow<ClientState>()
     val sessionState: StateFlow<ClientState> = _sessionState.asStateFlow()
 
     /** True from the moment a device is tapped until it is paired or refuses. */
-    private val _isConnecting = MutableStateFlow(false)
+    internal val _isConnecting = MutableStateFlow(false)
     val isConnecting: StateFlow<Boolean> = _isConnecting.asStateFlow()
 
     /**
@@ -235,7 +145,7 @@ object CastController {
      * [submitPairCode], which would otherwise have to assume - and assuming "yes" is what would put the
      * screen-capture dialog in front of an app that launched the picker to send its own content.
      */
-    private var pendingMirror: Boolean = true
+    internal var pendingMirror: Boolean = true
 
     /**
      * Notified when an SDK session ends for a reason the app did not ask for.
@@ -289,667 +199,6 @@ object CastController {
      */
     var verboseStreamLogging: Boolean = false
 
-    /**
-     * Open a control channel to [device] and pair with it.
-     *
-     * Connecting and mirroring are one action because there is nothing else this app does. A paired TV
-     * that is not mirroring is a dead state - it is sitting on its idle screen - so a successful pair
-     * goes straight on to asking for capture consent.
-     *
-     * A no-op for the device already connected to; switching TVs tears the old session down first, since
-     * a phone holds one session at a time. A [ClientPhase.Failed] session is *not* treated as live, so
-     * tapping the same device again retries rather than doing nothing.
-     */
-    fun connect(context: Context, device: CastDevice, thenMirror: Boolean = true) {
-        val phase = _sessionState.value.phase
-        val live = phase != ClientPhase.Idle && phase != ClientPhase.Failed
-        if (_device.value?.id == device.id && live) return
-        val appContext = context.applicationContext
-        pendingMirror = thenMirror
-        scope.launch {
-            teardown()
-            _device.value = device
-            _isConnecting.value = true
-            _sessionState.value = ClientState(phase = ClientPhase.Connecting)
-
-            if (device.protocolVersion != 0 && device.protocolVersion != PROTOCOL_VERSION) {
-                // Said before connecting rather than after a failed handshake: the TXT record already
-                // told us, and a clear message beats a socket that opens and then gives up.
-                fail(appContext, ClientFailure.VersionMismatch)
-                return@launch
-            }
-
-            val newSocket = ControlSocket(device.host, device.port)
-            try {
-                newSocket.connect()
-            } catch (e: Exception) {
-                Log.w(TAG, "could not open a control channel to ${device.host}:${device.port}", e)
-                _isConnecting.value = false
-                _device.value = null
-                _sessionState.value = ClientState()
-                AppMessages.show(
-                    appContext.getString(R.string.cast_connect_failed, device.friendlyName),
-                )
-                return@launch
-            }
-            socket = newSocket
-            // Whatever the user last tapped is the tile's target from now on.
-            MirrorPreferences.setTarget(appContext, device)
-
-            val senderId = MirrorPreferences.senderId(appContext)
-            val storedKey = MirrorPreferences.deviceKey(appContext, device.id)
-            val newClient = MirrorClient(
-                socket = newSocket,
-                senderId = senderId,
-                storedDeviceKey = storedKey,
-            )
-            client = newClient
-            // Started only once a channel is actually open, so a failed connection does not leave a
-            // notification behind.
-            CastService.start(appContext)
-
-            when (val outcome = mutex.withLock { newClient.begin() }) {
-                is HandshakeOutcome.Paired -> {
-                    onPaired(appContext, device, newClient, outcome.deviceKey, thenMirror)
-                }
-                is HandshakeOutcome.NeedsCode -> {
-                    _sessionState.value = ClientState(
-                        phase = ClientPhase.AwaitingCode,
-                        receiverName = newClient.receiverName,
-                        attemptsLeft = outcome.attemptsLeft,
-                    )
-                    _isConnecting.value = false
-                }
-                is HandshakeOutcome.Failed -> fail(appContext, outcome.reason)
-                is HandshakeOutcome.Ready -> Unit // begin() cannot produce this.
-            }
-        }
-    }
-
-    /**
-     * Submit the six digits the user read off the TV.
-     *
-     * A wrong code is a routine outcome and leaves the session open, so the user can simply try again -
-     * which is also why this reports [ClientState.attemptsLeft] rather than just failing.
-     */
-    fun submitPairCode(context: Context, code: String) {
-        val appContext = context.applicationContext
-        scope.launch {
-            val activeClient = client ?: return@launch
-            val device = _device.value ?: return@launch
-            when (val outcome = mutex.withLock { activeClient.enterCode(code) }) {
-                is HandshakeOutcome.Paired ->
-                    onPaired(appContext, device, activeClient, outcome.deviceKey, pendingMirror)
-                is HandshakeOutcome.NeedsCode -> _sessionState.update {
-                    it.copy(
-                        phase = ClientPhase.AwaitingCode,
-                        // -1 means "that was not even six digits", so the allowance is unchanged.
-                        attemptsLeft = if (outcome.attemptsLeft < 0) it.attemptsLeft else outcome.attemptsLeft,
-                        codeChanged = outcome.codeChanged,
-                    )
-                }
-                is HandshakeOutcome.Failed -> fail(appContext, outcome.reason)
-                is HandshakeOutcome.Ready -> Unit
-            }
-        }
-    }
-
-    private suspend fun onPaired(
-        context: Context,
-        device: CastDevice,
-        activeClient: MirrorClient,
-        deviceKey: ByteArray?,
-        thenMirror: Boolean,
-    ) {
-        // Persisted against the TV's own id rather than the mDNS instance name, so renaming the TV does
-        // not make the phone ask for a code again.
-        if (deviceKey != null) {
-            val receiverId = activeClient.receiverId ?: device.id
-            MirrorPreferences.rememberDeviceKey(context, receiverId, deviceKey)
-            // A code pairing is a fresh start with this TV - it has been reset, or reinstalled, or is
-            // simply a different box on the same name - so a codec remembered as broken against the old
-            // one has nothing to say about this one. It is also the only reset a user can reach, which
-            // is why the refusal message tells them to re-pair.
-            MirrorPreferences.clearDemotedCodecs(context, receiverId)
-        }
-        _sessionState.value = ClientState(
-            phase = ClientPhase.Paired,
-            receiverName = activeClient.receiverName,
-        )
-        _isConnecting.value = false
-        // **No watch loop yet.** `awaitEnd` reads the socket, and `configureStream` still has a
-        // request/response to do on it - a second reader would consume the STREAM_READY that
-        // negotiation is waiting for. The watch starts once the exchange is finished; until then a dead
-        // TV surfaces as a failed configureStream, which is just as prompt.
-        if (!thenMirror) return
-        // Consent is asked for only now: there is no point recording the screen for a TV that was going
-        // to reject the code.
-        ExternalIntents.launch(context, MirrorConsentActivity.intent(context))
-    }
-
-    /** Say goodbye, close the channel and drop the session. */
-    fun disconnect(context: Context) {
-        val appContext = context.applicationContext
-        scope.launch {
-            client?.let { mutex.withLock { it.sayGoodbye("user disconnected") } }
-            teardown()
-            CastService.stop(appContext)
-        }
-    }
-
-    /**
-     * Begin mirroring with an already-granted projection.
-     *
-     * Called from [CastService] rather than from the UI, because the projection may only be obtained
-     * after the service is in the foreground - see `MirrorConsentActivity` for the full ordering
-     * constraint.
-     */
-    fun startMirroring(context: Context, projection: MediaProjection) =
-        startSession(context, MirrorSource.Screen(projection), projection)
-
-    /**
-     * Cast a SYSTEM-OWNED display instead of a mirror of the phone - "desktop mode".
-     *
-     * The difference from [startMirroring] is what the TV receives. That one takes a
-     * `MediaProjection` and sends a copy of the phone's screen; this creates a separate display
-     * that the window manager can place activities on, so the TV becomes a second desktop. Whether
-     * it ends up mirroring or extending is then the SYSTEM's choice, not ours: the display carries
-     * `ALLOWS_CONTENT_MODE_SWITCH` and Settings already draws the switch for it, which is why this
-     * app offers no chooser.
-     *
-     * No consent Activity, because nothing here captures the screen. It needs `ADD_TRUSTED_DISPLAY`
-     * instead, held via the SYSTEM_AUTOMOTIVE_PROJECTION role pinned in `MaosFrameworkResRRO`. On a
-     * build without that role `createVirtualDisplay` throws and the session fails at
-     * [MirrorEngine.start], which is the honest place for a packaging problem to surface.
-     *
-     * [onDisplayId] fires once the display exists, with the framework display id, so a caller that
-     * published a route can hand the id to `RemoteDisplay.setPresentationDisplayId`.
-     */
-    fun startDesktopMode(context: Context, onDisplayId: (Int) -> Unit = {}) =
-        startSession(context, MirrorSource.SystemDisplay(), projection = null, onDisplayId)
-
-    /**
-     * Shared body of [startMirroring] and [startDesktopMode].
-     *
-     * [projection] is non-null only for the screen path, and exists solely so the failure routes
-     * can stop it; the desktop path has nothing to release but its own display, which
-     * [MirrorEngine] owns.
-     */
-    private fun startSession(
-        context: Context,
-        source: MirrorSource,
-        projection: MediaProjection?,
-        onDisplayId: (Int) -> Unit = {},
-    ) {
-        val appContext = context.applicationContext
-        scope.launch {
-            val activeClient = client
-            val device = _device.value
-            if (activeClient == null || device == null) {
-                Log.w(TAG, "asked to mirror with no session")
-                projection?.stop()
-                return@launch
-            }
-            // The screen and an app's content are mutually exclusive - there is one session, one
-            // encoder and one socket - so whichever was running loses, with the SDK client told why
-            // rather than left drawing into a dead surface.
-            endContentSession(CastContract.REASON_PREEMPTED)
-            stopEngine()
-            _mirrorPhase.value = MirrorPhase.Negotiating
-            _degradation.value = MirrorDegradation()
-            _failure.value = null
-
-            // The codec comes first, because everything else is chosen against it: the frame size fits
-            // *that* codec's envelope on the TV, and the bitrate is that codec's efficiency applied to
-            // the H.264 reference. There is no H.264 fallback behind this - a phone or a TV without one
-            // of the two hardware codecs is told which were missing and mirroring stops here.
-            val (screenWidth, screenHeight) = MirrorGeometry.screenSize(appContext)
-            // Mirroring encodes the phone's screen, so the codec is chosen for that size. A desktop
-            // is composed at the TV's panel resolution, so choose the codec for the TV's largest
-            // mode instead: at 4K that excludes this phone's AV1 encoder (capped well below 4K) and
-            // selects H.265 (which reaches it), which is what lets the real panel resolutions reach
-            // the picker rather than an encoder-clamped one. Falls back to the screen size if
-            // nothing can encode the TV's largest, so a lower real mode still works.
-            val desktopMax = (source as? MirrorSource.SystemDisplay)?.let {
-                activeClient.displayModes.maxByOrNull { m -> m.width.toLong() * m.height }
-            }
-            val codec = when (
-                val choice = chooseCodec(
-                    appContext, device, activeClient,
-                    desktopMax?.width ?: screenWidth,
-                    desktopMax?.height ?: screenHeight,
-                )
-            ) {
-                is CodecOutcome.Chosen -> choice
-                is CodecOutcome.Refused -> {
-                    val retry = if (desktopMax != null) {
-                        chooseCodec(appContext, device, activeClient, screenWidth, screenHeight)
-                    } else {
-                        choice
-                    }
-                    when (retry) {
-                        is CodecOutcome.Chosen -> retry
-                        is CodecOutcome.Refused -> {
-                            Log.w(TAG, "refusing to mirror: ${retry.message}")
-                            abandonMirroring(appContext, projection, retry.message)
-                            return@launch
-                        }
-                    }
-                }
-            }
-
-            if (source is MirrorSource.SystemDisplay) {
-                // Before the engine builds the display: the unique id is fixed at creation and is
-                // what every persisted preference for this television is keyed on.
-                source.receiverId = activeClient.receiverId ?: device.id
-            }
-            // The frame size is chosen from the TV's own reported limits. For mirroring it is the
-            // phone's real aspect ratio - the receiver letterboxes, so none of the encoded frame is
-            // wasted on bars. A desktop is composed for the television instead, because the system
-            // lays it out for whatever size the display was created at rather than reproducing the
-            // phone.
-            val geometry = if (source is MirrorSource.SystemDisplay) {
-                val desktopModes =
-                    MirrorGeometry.desktopModes(appContext, codec.selection, activeClient.displayModes)
-                source.supportedModes = desktopModes
-                desktopModes.first()
-            } else {
-                MirrorGeometry.forDisplay(appContext, codec.selection)
-            }
-            val frameRate = geometry.frameRate
-            val outcome = mutex.withLock {
-                activeClient.configureStream(
-                    width = geometry.width,
-                    height = geometry.height,
-                    frameRate = frameRate,
-                    bitRate = geometry.bitRate,
-                    videoCodec = codec.codec,
-                    audio = true,
-                    video = true,
-                )
-            }
-            val ready = outcome as? HandshakeOutcome.Ready
-            if (ready == null) {
-                Log.w(TAG, "the TV would not agree a stream: $outcome")
-                abandonMirroring(
-                    appContext,
-                    projection,
-                    appContext.getString(R.string.cast_mirror_negotiation_failed),
-                )
-                return@launch
-            }
-
-            val newEngine = MirrorEngine(
-                context = appContext,
-                source = source,
-                receiverHost = device.host,
-                negotiation = ready.negotiation,
-                geometry = geometry,
-                videoCodec = codec.codec,
-                frameRate = frameRate,
-                onDegraded = { _degradation.value = it },
-                onStopped = { reason -> onEngineStopped(appContext, reason) },
-                onCodecConfig = { csd -> sendCodecConfig(activeClient, csd) },
-            ).apply { hexDump = verboseStreamLogging }
-            engine = newEngine
-            activeCodec = codec.codec
-            activeGeometry = geometry
-            if (newEngine.start()) {
-                // The framework never discovers this display on its own - MediaRouterService
-                // only reads back an id the provider published. See CastSystemDisplay.
-                if (source is MirrorSource.SystemDisplay) {
-                    desktopSource = source
-                    onDisplayId(source.displayId)
-                    watchDisplay(appContext, source)
-                }
-                _mirrorPhase.value = MirrorPhase.Mirroring
-                _sessionState.update {
-                    it.copy(phase = ClientPhase.Streaming, negotiation = ready.negotiation)
-                }
-                // A mirror or desktop session has no inbound control traffic at all, so without a
-                // heartbeat the socket's read deadline is what ends it. See [startWatch].
-                startWatch(appContext, activeClient, device, codec.codec, keepAlive = true)
-            } else {
-                // start() already called onStopped, which set the message and the phase; all that is
-                // left is to make sure nothing keeps holding the screen.
-                engine = null
-                activeCodec = null
-                runCatching { projection?.stop() }
-            }
-        }
-    }
-
-    /**
-     * Stream another app's content instead of the screen.
-     *
-     * The second entry point beside [startMirroring], and the only one `:sdk:cast` reaches. Requires a
-     * TV already connected and paired - which is what `CastPickerActivity` is for - because there is
-     * nothing an SDK caller could do about a pair code, and the picker is also what establishes the
-     * [appLabel] the TV displays.
-     *
-     * Suspends until the stream is live or has failed, so the service can answer
-     * `MSG_SESSION_READY` with real numbers rather than a promise. Screen mirroring and this remain
-     * mutually exclusive; the single [engine] is what enforces it.
-     */
-    suspend fun startContentSession(
-        context: Context,
-        width: Int,
-        height: Int,
-        wantAudio: Boolean,
-        appLabel: String,
-        wantVideo: Boolean = true,
-        resources: MediaResourceResolver? = null,
-    ): ContentSessionResult = withContext(Dispatchers.IO) {
-        val appContext = context.applicationContext
-        val activeClient = client
-        val device = _device.value
-        val phase = _sessionState.value.phase
-        if (activeClient == null || device == null ||
-            (phase != ClientPhase.Paired && phase != ClientPhase.Streaming)
-        ) {
-            Log.w(TAG, "asked for an app-content session with no paired TV")
-            return@withContext ContentSessionResult.Failed(CastContract.REASON_NO_SESSION)
-        }
-        endContentSession(CastContract.REASON_PREEMPTED)
-        stopEngine()
-        _mirrorPhase.value = MirrorPhase.Negotiating
-        _degradation.value = MirrorDegradation()
-        _failure.value = null
-
-        if (resources != null) {
-            return@withContext startServedSession(
-                context = appContext,
-                device = device,
-                activeClient = activeClient,
-                resources = resources,
-                wantVideo = wantVideo,
-                appLabel = appLabel,
-            )
-        }
-
-        val codec = when (val choice = chooseCodec(appContext, device, activeClient, width, height)) {
-            is CodecOutcome.Refused -> {
-                Log.w(TAG, "refusing an app-content session: ${choice.message}")
-                _mirrorPhase.value = MirrorPhase.Failed
-                _failure.value = choice.message
-                return@withContext ContentSessionResult.Failed(CastContract.REASON_FAILED)
-            }
-            is CodecOutcome.Chosen -> choice
-        }
-        val geometry = MirrorGeometry.forContent(width, height, codec.selection)
-        val frameRate = geometry.frameRate
-        val outcome = mutex.withLock {
-            activeClient.configureStream(
-                width = geometry.width,
-                height = geometry.height,
-                frameRate = frameRate,
-                bitRate = geometry.bitRate,
-                videoCodec = codec.codec,
-                audio = wantAudio,
-                video = true,
-                appLabel = appLabel,
-            )
-        }
-        val ready = outcome as? HandshakeOutcome.Ready
-        if (ready == null) {
-            Log.w(TAG, "the TV would not agree an app-content stream: $outcome")
-            _mirrorPhase.value = MirrorPhase.Failed
-            _failure.value = appContext.getString(R.string.cast_mirror_negotiation_failed)
-            return@withContext ContentSessionResult.Failed(CastContract.REASON_FAILED)
-        }
-
-        val newEngine = MirrorEngine(
-            context = appContext,
-            source = MirrorSource.Content(appLabel = appLabel, wantAudio = wantAudio),
-            receiverHost = device.host,
-            negotiation = ready.negotiation,
-            geometry = geometry,
-            videoCodec = codec.codec,
-            frameRate = frameRate,
-            onDegraded = { _degradation.value = it },
-            onStopped = { reason -> onEngineStopped(appContext, reason) },
-            onCodecConfig = { csd -> sendCodecConfig(activeClient, csd) },
-        ).apply { hexDump = verboseStreamLogging }
-        engine = newEngine
-        activeCodec = codec.codec
-        // No surface means there is nowhere for the app to draw, which for an SDK session is the whole
-        // point - unlike mirroring, it cannot usefully degrade to audio only.
-        val surface = if (newEngine.start()) newEngine.contentSurface else null
-        if (surface == null) {
-            newEngine.stop()
-            engine = null
-            activeCodec = null
-            _mirrorPhase.value = MirrorPhase.Failed
-            return@withContext ContentSessionResult.Failed(CastContract.REASON_FAILED)
-        }
-        _mirrorPhase.value = MirrorPhase.Mirroring
-        _sessionState.update {
-            it.copy(phase = ClientPhase.Streaming, negotiation = ready.negotiation)
-        }
-        startWatch(appContext, activeClient, device, codec.codec, transportControls = true, keepAlive = true)
-        ContentSessionResult.Started(
-            surface = surface,
-            audioWriteEnd = newEngine.audioWriteEnd,
-            width = geometry.width,
-            height = geometry.height,
-            // Rounded, because `CastContract.KEY_GRANTED_FRAME_RATE` is an `Int` in a Bundle read
-            // by third-party SDK callers. The wire rate is a float so it can name one of the TV's
-            // panel modes exactly; an app drawing into a surface only needs the whole number.
-            frameRate = frameRate.roundToInt(),
-            receiverName = activeClient.receiverName ?: device.friendlyName,
-        )
-    }
-
-    /**
-     * Become the control socket's single reader, now the exchange is finished.
-     *
-     * **Not started any earlier.** [MirrorClient.awaitEnd] reads the socket, and `configureStream` has
-     * a request/response to do on it - a second reader would consume the `STREAM_READY` that
-     * negotiation is waiting for. Until this starts, a dead TV surfaces as a failed `configureStream`,
-     * which is just as prompt.
-     *
-     * [transportControls] is what gates the remote to app content. Screen mirroring has no transport
-     * to control, so it is not merely that the overlay should not appear on the TV - there is nothing
-     * a command could be applied to on this end either.
-     */
-    /**
-     * Start serving app content instead of encoding it.
-     *
-     * This is the whole architectural change on this end. The proxy binds an ephemeral HTTPS port,
-     * the fingerprint of its throwaway certificate goes to the TV over the already-encrypted control
-     * channel, and the TV fetches byte ranges from it. No encoder is created, no codec is negotiated
-     * and no geometry is chosen: the file is already encoded, and the TV can decode it.
-     *
-     * The audio decoder *is* checked, before anything is started. A TV with no Opus decoder used to
-     * accept an audio-only session and then play silence with nothing to explain it, and that is the
-     * one refusal worth making early.
-     */
-    private suspend fun startServedSession(
-        context: Context,
-        device: CastDevice,
-        activeClient: MirrorClient,
-        resources: MediaResourceResolver,
-        wantVideo: Boolean,
-        appLabel: String,
-    ): ContentSessionResult {
-        val limits = activeClient.limits ?: DecoderLimits()
-        if (!CodecNegotiation.canPlayAudio(limits)) {
-            Log.w(TAG, "refusing a served session: '${device.friendlyName}' advertised no Opus decoder")
-            _failure.value = context.getString(R.string.cast_mirror_tv_no_audio)
-            _mirrorPhase.value = MirrorPhase.Failed
-            return ContentSessionResult.Failed(CastContract.REASON_FAILED)
-        }
-
-        // The address the kernel chose to reach this TV, not whichever interface happens to be first:
-        // a phone can be on Wi-Fi, a VPN and a tethering bridge at once, and only one of those is
-        // reachable back from the television.
-        val host = socket?.localAddress
-        if (host == null || host.hostAddress == null) {
-            Log.w(TAG, "no local address on the control channel; nothing could be served")
-            _mirrorPhase.value = MirrorPhase.Failed
-            return ContentSessionResult.Failed(CastContract.REASON_FAILED)
-        }
-
-        val token = MediaProxyServer.randomToken()
-        val server = MediaProxyServer(token, resources)
-        val endpoint = server.start(listOf(host))
-        if (endpoint == null) {
-            _mirrorPhase.value = MirrorPhase.Failed
-            return ContentSessionResult.Failed(CastContract.REASON_FAILED)
-        }
-        proxy = server
-
-        val outcome = mutex.withLock {
-            activeClient.openContentSession(
-                host = host.hostAddress!!,
-                port = endpoint.port,
-                certificateFingerprint = endpoint.certificateFingerprint,
-                token = token,
-                video = wantVideo,
-                appLabel = appLabel,
-            )
-        }
-        if (outcome is ContentOutcome.Refused) {
-            // Nothing is going to fetch from it, and an open port outlives the session that needed it.
-            server.stop()
-            proxy = null
-            _failure.value = outcome.detail.ifBlank { context.getString(R.string.cast_mirror_tv_no_audio) }
-            _mirrorPhase.value = MirrorPhase.Failed
-            return ContentSessionResult.Failed(CastContract.REASON_FAILED)
-        }
-
-        _mirrorPhase.value = MirrorPhase.Mirroring
-        _sessionState.update { it.copy(phase = ClientPhase.Streaming) }
-        startWatch(context, activeClient, device, codec = null, transportControls = true, keepAlive = true)
-        return ContentSessionResult.Serving(
-            receiverName = activeClient.receiverName ?: device.friendlyName,
-            hasVideo = wantVideo,
-        )
-    }
-
-    /** Tell the TV to play a resource the app will be asked for. */
-    fun playMedia(media: PlayMedia) {
-        val activeClient = client ?: return
-        scope.launch { mutex.withLock { activeClient.playMedia(media) } }
-    }
-
-    /**
-     * Tell the TV what the item it is playing actually is.
-     *
-     * Under [mutex] like [playMedia] and for the same reason. Silent with no session: this is
-     * enrichment, and a snapshot that arrives a moment after a cast ended has nothing to enrich.
-     */
-    fun setNowPlaying(nowPlaying: NowPlaying) {
-        val activeClient = client ?: return
-        scope.launch { mutex.withLock { activeClient.sendNowPlaying(nowPlaying) } }
-    }
-
-    /**
-     * Ask the TV to do something, in a served session.
-     *
-     * Under [mutex] like [playMedia] and for the same reason: one socket, several writers. Silently
-     * does nothing with no session, because the caller is an app's transport and a session that has
-     * just ended is the ordinary reason for a press to go nowhere.
-     */
-    fun sendPlaybackCommand(command: PlaybackCommand) {
-        val activeClient = client ?: return
-        scope.launch { mutex.withLock { activeClient.sendPlaybackCommand(command) } }
-    }
-
-    private fun startWatch(
-        appContext: Context,
-        activeClient: MirrorClient,
-        device: CastDevice,
-        /** Null for a served session, where nothing was encoded and there is no codec to demote. */
-        codec: VideoCodec?,
-        transportControls: Boolean = false,
-        /**
-         * Whether to keep the control channel warm, which every session needs.
-         *
-         * This once defaulted off for screen mirroring on the grounds that its traffic is RTP.
-         * That was wrong: RTP is a separate [java.nio.channels.DatagramChannel], and nothing it
-         * carries can reset a read deadline on the TCP control socket. A mirror or desktop
-         * session gets no inbound control frames at all, so the read parked in
-         * [MirrorClient.awaitEnd] always expired and killed the session after exactly
-         * `ControlSocket.READ_TIMEOUT_MS`.
-         */
-        keepAlive: Boolean = false,
-    ) {
-        if (keepAlive) startKeepAlive(activeClient)
-        watchJob = scope.launch {
-            // Read late rather than captured: `ContentCastService` registers its callback only after
-            // `startContentSession` returns, which is after this job has already started - the same
-            // ordering `onContentSessionEnded` has.
-            val dispatch: ((PlaybackCommand) -> Unit)? = if (transportControls) {
-                { command -> onPlaybackCommand?.invoke(command) }
-            } else {
-                null
-            }
-            val states: ((PlaybackState) -> Unit)? = if (transportControls) {
-                { state -> onTvPlaybackState?.invoke(state) }
-            } else {
-                null
-            }
-            val reason = activeClient.awaitEnd(dispatch, states)
-            // **Another path may already own this teardown.** Closing the socket is what unblocks the
-            // read above, and [endCodecConfigFailure] closes it deliberately - so a return from
-            // `awaitEnd` is not proof that the TV ended the session. Whoever cancelled this job is
-            // publishing its own failure, and a second teardown here would clear it.
-            if (!isActive) return@launch
-            Log.i(TAG, "the control channel closed")
-            val receiverId = activeClient.receiverId ?: device.id
-            // Read before the teardown clears it, so a failure already on screen survives a socket that
-            // then closed without a reason of its own - otherwise the message a user has to read would
-            // be replaced by a blank idle state.
-            val standing = _failure.value
-            // Cleared first: teardown cancels watchJob, and this coroutine *is* watchJob.
-            watchJob = null
-            teardown()
-            // Published *after* the teardown, which resets the phase and clears the failure - the
-            // order matters, and setting either first would only have it wiped.
-            val message = if (reason == ByeReason.MISSING_CODEC_CONFIG && codec != null) {
-                Log.w(TAG, "'${device.friendlyName}' never got ${codec.label}'s codec config")
-                MirrorPreferences.demoteCodec(appContext, receiverId, codec)
-                appContext.getString(R.string.cast_mirror_codec_config_failed)
-            } else {
-                standing
-            }
-            if (message != null) {
-                _failure.value = message
-                _mirrorPhase.value = MirrorPhase.Failed
-            }
-            CastService.stop(appContext)
-        }
-    }
-
-    /**
-     * Sends a keep-alive every [PING_INTERVAL_MS] for as long as a content session is live.
-     *
-     * A content session is the case where the control channel can go completely silent while
-     * everything is working: the TV fetches the media over HTTPS and owns its own clock, so unless
-     * one end volunteers playback snapshots there is nothing to say. Both ends give a read 60 seconds,
-     * so silence used to end the session on whichever side read first - which is what tore a session
-     * down a minute in while a track was still being encoded.
-     *
-     * **Stopped when the session is, even though `ContentEnded` hands the channel back rather than
-     * closing it.** Keeping it running would hold that channel open indefinitely - and a second
-     * content session on a channel whose [watchJob] is still parked in a blocking read has two readers
-     * of one socket, so the reply to its `CONTENT_SESSION` goes to the wrong one. Letting the idle
-     * channel lapse at the read timeout is what bounds that window to a minute rather than for ever.
-     *
-     * Under [mutex] like every other writer, because this is one more thread writing one socket.
-     */
-    private fun startKeepAlive(activeClient: MirrorClient) {
-        pingJob?.cancel()
-        pingJob = scope.launch {
-            while (isActive) {
-                delay(PING_INTERVAL_MS)
-                if (!isActive) return@launch
-                mutex.withLock { activeClient.sendPing() }
-            }
-        }
-    }
-
     fun stopMirroring(context: Context) {
         val appContext = context.applicationContext
         scope.launch {
@@ -968,26 +217,7 @@ object CastController {
         }
     }
 
-    private suspend fun fail(context: Context, reason: ClientFailure) {
-        _sessionState.value = ClientState(
-            phase = ClientPhase.Failed,
-            receiverName = client?.receiverName,
-            failure = reason,
-        )
-        _isConnecting.value = false
-        teardown(keepFailure = true)
-        CastService.stop(context)
-    }
-
-    /** Give up on mirroring, and make sure the screen stops being captured. */
-    private fun abandonMirroring(context: Context, projection: MediaProjection?, message: String) {
-        _mirrorPhase.value = MirrorPhase.Failed
-        _failure.value = message
-        runCatching { projection?.stop() }
-        CastService.stopMirroring(context)
-    }
-
-    private fun onEngineStopped(context: Context, reason: MirrorStopReason) {
+    internal fun onEngineStopped(context: Context, reason: MirrorStopReason) {
         val codec = activeCodec
         _failure.value = when (reason) {
             MirrorStopReason.Udp -> context.getString(R.string.cast_mirror_udp_failed)
@@ -1018,7 +248,7 @@ object CastController {
      * Launched rather than run inline because this is called from the engine's own video coroutine, and
      * [stopEngine] joins that coroutine - doing it here would be waiting on ourselves.
      */
-    private fun endCodecConfigFailure(context: Context, codec: VideoCodec) {
+    internal fun endCodecConfigFailure(context: Context, codec: VideoCodec) {
         val receiverId = client?.receiverId ?: _device.value?.id
         val message = context.getString(R.string.cast_mirror_codec_config_failed)
         scope.launch {
@@ -1033,230 +263,16 @@ object CastController {
     }
 
     /**
-     * Which codec this session will use, or the sentence explaining why there is none.
-     *
-     * Both ends' hardware is intersected by [CodecNegotiation], which is a pure function so the rule
-     * can be unit-tested; everything device-specific is in the two lists handed to it. [width] and
-     * [height] are the *unfitted* frame, because a codec is only viable if it takes the frame after the
-     * TV's own envelope has scaled it - and because this phone's own sustainable frame rate is only
-     * meaningful for a stated geometry, which is what [EncoderSupport.videoCodecs] needs them for.
-     */
-    private suspend fun chooseCodec(
-        context: Context,
-        device: CastDevice,
-        activeClient: MirrorClient,
-        width: Int,
-        height: Int,
-    ): CodecOutcome {
-        val receiverId = activeClient.receiverId ?: device.id
-        val demoted = MirrorPreferences.demotedCodecs(context, receiverId)
-        if (demoted.isNotEmpty()) {
-            Log.i(
-                TAG,
-                "skipping ${demoted.joinToString { it.label }} - it has already failed on this TV",
-            )
-        }
-        val selection = CodecNegotiation.choose(
-            senderCodecs = EncoderSupport.videoCodecs(width, height),
-            receiver = activeClient.limits ?: DecoderLimits(),
-            width = width,
-            height = height,
-            // The rate is a floor, not a target: a codec that cannot hold it is excluded rather than
-            // accepted at whatever it manages. Resolution is what yields. Deliberately the floor and
-            // not the ceiling - selecting against 60 would refuse H.265 at 4K on a phone whose
-            // encoder tops out below that, leaving no codec at all rather than a 30fps session.
-            frameRate = StreamConstants.VIDEO_MIN_FRAME_RATE,
-            demoted = demoted,
-        )
-        return when (selection) {
-            is CodecSelection.Chosen -> {
-                Log.i(TAG, "chose ${selection.codec.label} for '${device.friendlyName}'")
-                CodecOutcome.Chosen(selection)
-            }
-            is CodecSelection.None -> CodecOutcome.Refused(refusal(context, selection))
-        }
-    }
-
-    /**
-     * Which end was short, named.
-     *
-     * The reason there is no H.264 fallback is the reason this has to be specific: "mirroring failed"
-     * would leave a user with a device that will never work and no way to find out why. The demotion
-     * case gets its own sentence for the same reason - the two ends *do* share a codec there, and a
-     * message built from the offers alone would deny it.
-     */
-    private fun refusal(context: Context, none: CodecSelection.None): String {
-        val labels = { codecs: Collection<VideoCodec> -> codecs.joinToString(" or ") { it.label } }
-        val both = labels(CodecNegotiation.PREFERENCE)
-        val blockedByDemotion = none.demoted.filter {
-            it in none.senderOffered && it in none.receiverOffered
-        }
-        return when {
-            blockedByDemotion.isNotEmpty() ->
-                context.getString(R.string.cast_mirror_codec_demoted, labels(blockedByDemotion))
-            none.senderOffered.isEmpty() ->
-                context.getString(R.string.cast_mirror_phone_no_codec, both)
-            none.receiverOffered.isEmpty() ->
-                context.getString(R.string.cast_mirror_tv_no_codec, both)
-            else -> context.getString(
-                R.string.cast_mirror_no_common_codec,
-                labels(none.senderOffered),
-                labels(none.receiverOffered),
-            )
-        }
-    }
-
-    /**
      * Put the codec configuration on the control channel.
      *
      * Under [mutex] because the encoder loop and the RTCP loop both call this while [startWatch] is
      * reading the same socket, and two writers interleaving would corrupt a frame.
      */
-    private fun sendCodecConfig(activeClient: MirrorClient, csd: ByteArray) {
+    internal fun sendCodecConfig(activeClient: MirrorClient, csd: ByteArray) {
         scope.launch { mutex.withLock { activeClient.sendCodecConfig(csd) } }
     }
 
-    /**
-     * Put a playback snapshot on the control channel, so the TV can draw a seek bar.
-     *
-     * Under [mutex] for exactly the reason [sendCodecConfig] is, with one more writer to serialise
-     * against than before: the encoder loop, the RTCP loop and now a twice-a-second heartbeat all write
-     * to the one socket.
-     *
-     * Silently does nothing with no session, rather than reporting it. The caller is a poll loop that
-     * cannot know precisely when the session ended, and there is nothing for it to do about the answer.
-     */
-    fun reportPlaybackState(state: PlaybackState) {
-        val activeClient = client ?: return
-        scope.launch { mutex.withLock { activeClient.sendPlaybackState(state) } }
-    }
-
-    /**
-     * Follow the desktop display's mode, because the user changes it from Settings and not here.
-     *
-     * Android's external-display resolution picker calls straight into the framework: the display
-     * is resized and its mode replaced, and the app that owns it is told only through the ordinary
-     * `DisplayListener`. Nothing was listening, so the encoder and the TV kept running the
-     * geometry the session started at while the framework composed the desktop at the new one -
-     * the picker appeared to work and changed nothing that could be seen.
-     */
-    private fun watchDisplay(context: Context, source: MirrorSource.SystemDisplay) {
-        stopWatchingDisplay()
-        val displays = context.getSystemService(DisplayManager::class.java) ?: return
-        val listener = object : DisplayManager.DisplayListener {
-            override fun onDisplayAdded(displayId: Int) = Unit
-            override fun onDisplayRemoved(displayId: Int) = Unit
-            override fun onDisplayChanged(displayId: Int) {
-                if (displayId != source.displayId) return
-                val mode = displays.getDisplay(displayId)?.mode ?: return
-                onDesktopModeChanged(context, source, mode)
-            }
-        }
-        displays.registerDisplayListener(listener, null)
-        displayListener = listener
-        displayManager = displays
-    }
-
-    private fun stopWatchingDisplay() {
-        renegotiateJob?.cancel()
-        renegotiateJob = null
-        val listener = displayListener ?: return
-        displayListener = null
-        runCatching { displayManager?.unregisterDisplayListener(listener) }
-        displayManager = null
-    }
-
-    /**
-     * Re-negotiate the stream around a mode the user picked.
-     *
-     * **Everything except the display is rebuilt.** A `MediaCodec` cannot be resized, so the
-     * encoder and the RTP session have to go; the display cannot be, because it is the desktop -
-     * recreating it would destroy every window on it and hand out a new `displayId` that the
-     * Settings page the user is standing on no longer refers to. So the new encoder's surface is
-     * attached to the display that is already there.
-     *
-     * Ignores anything that is not actually a change, which is not an optimisation: our own resize
-     * fires this same listener, and without the guard each change would trigger the next.
-     */
-    private fun onDesktopModeChanged(
-        context: Context,
-        source: MirrorSource.SystemDisplay,
-        mode: Display.Mode,
-    ) {
-        val running = activeGeometry ?: return
-        val target = source.supportedModes.firstOrNull {
-            it.width == mode.physicalWidth &&
-                it.height == mode.physicalHeight &&
-                abs(it.frameRate - mode.refreshRate) <= MODE_RATE_TOLERANCE
-        } ?: return
-        if (target.width == running.width &&
-            target.height == running.height &&
-            abs(target.frameRate - running.frameRate) <= MODE_RATE_TOLERANCE
-        ) {
-            return
-        }
-        if (renegotiateJob?.isActive == true) return
-        renegotiateJob = scope.launch {
-            val activeClient = client ?: return@launch
-            val device = _device.value ?: return@launch
-            val codec = activeCodec ?: return@launch
-            Log.i(
-                TAG,
-                "the user chose ${target.width}x${target.height}@${target.frameRate}; " +
-                    "re-negotiating from ${running.width}x${running.height}@${running.frameRate}",
-            )
-            // Only the engine, so the display - and the desktop on it - stays exactly where it is.
-            engine?.stop()
-            engine = null
-            // `reconfigureStream`, not `configureStream`: the watch job is parked in a blocking
-            // read on this socket and would swallow the reply. See MirrorClient for the hand-off.
-            val outcome = mutex.withLock {
-                activeClient.reconfigureStream(
-                    width = target.width,
-                    height = target.height,
-                    frameRate = target.frameRate,
-                    bitRate = target.bitRate,
-                    videoCodec = codec,
-                    audio = true,
-                    video = true,
-                )
-            }
-            val ready = outcome as? HandshakeOutcome.Ready
-            if (ready == null) {
-                Log.w(TAG, "the TV would not agree the new mode: $outcome")
-                abandonMirroring(
-                    context,
-                    null,
-                    context.getString(R.string.cast_mirror_negotiation_failed),
-                )
-                return@launch
-            }
-            val newEngine = MirrorEngine(
-                context = context,
-                source = source,
-                receiverHost = device.host,
-                negotiation = ready.negotiation,
-                geometry = target,
-                videoCodec = codec,
-                frameRate = target.frameRate,
-                onDegraded = { _degradation.value = it },
-                onStopped = { reason -> onEngineStopped(context, reason) },
-                onCodecConfig = { csd -> sendCodecConfig(activeClient, csd) },
-            ).apply { hexDump = verboseStreamLogging }
-            engine = newEngine
-            activeGeometry = target
-            if (!newEngine.start()) {
-                engine = null
-                activeGeometry = null
-                return@launch
-            }
-            _sessionState.update {
-                it.copy(phase = ClientPhase.Streaming, negotiation = ready.negotiation)
-            }
-        }
-    }
-
-    private fun stopEngine() {
+    internal fun stopEngine() {
         stopWatchingDisplay()
         desktopSource?.let {
             it.display?.release()
@@ -1285,7 +301,7 @@ object CastController {
      * Cleared as it fires, so the client hears exactly one reason: a teardown runs through several of
      * these paths and a client told twice would react to the second after it had already cleaned up.
      */
-    private fun endContentSession(reason: Int) {
+    internal fun endContentSession(reason: Int) {
         val notify = onContentSessionEnded ?: return
         onContentSessionEnded = null
         onPlaybackCommand = null
@@ -1304,7 +320,7 @@ object CastController {
      * [keepFailure] is for the path that has just set a failure it wants the user to read; everything
      * else clears back to idle.
      */
-    private suspend fun teardown(keepFailure: Boolean = false) {
+    internal suspend fun teardown(keepFailure: Boolean = false) {
         watchJob?.cancel()
         endContentSession(CastContract.REASON_RECEIVER_GONE)
         stopEngine()

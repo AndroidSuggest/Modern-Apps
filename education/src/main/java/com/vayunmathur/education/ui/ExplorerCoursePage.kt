@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.education.Route
+import com.vayunmathur.education.pushChain
 import com.vayunmathur.education.content.CourseUnit
 import com.vayunmathur.education.content.ModuleType
 import com.vayunmathur.education.util.EducationViewModel
@@ -90,7 +91,7 @@ fun ExplorerCoursePage(backStack: NavBackStack<Route>, viewModel: EducationViewM
                     accent = accent,
                     isNext = unit.id == nextUnitId,
                     dueEpochDay = deadline?.dueEpochDay,
-                    onClick = { backStack.add(Route.UnitScreen(unit.id)) },
+                    onClick = { backStack.pushChain(Route.UnitScreen(unit.id)) },
                 )
             }
             course.challenge?.let { challenge ->

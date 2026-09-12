@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.MaterialTheme
@@ -37,9 +38,12 @@ fun SavedMeasurementsContent(
         onNavigateBack = onBack,
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
+        // Single-pane list; letterboxed on expanded windows so rows keep a
+        // readable measure on desktop.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         if (state.measurements.isEmpty()) {
             Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
+                modifier = Modifier.fillMaxSize().padding(32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -54,7 +58,7 @@ fun SavedMeasurementsContent(
                 )
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(state.measurements, key = { it.id }) { m ->
                     SettingsRow(
                         title = m.label,
@@ -65,6 +69,7 @@ fun SavedMeasurementsContent(
                     )
                 }
             }
+        }
         }
     }
 }

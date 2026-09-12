@@ -27,17 +27,25 @@ import java.util.concurrent.FutureTask
 /**
  * The car's screen, as a virtual display rendered into the encoder's input surface.
  *
- * Deliberately a *private* virtual display for now: a trusted one needs
- * `ADD_TRUSTED_DISPLAY`, which arrives with the role work, and is only required to launch
- * other apps' activities onto the display. A [Presentation] owned by this app renders onto a
- * private display perfectly well, which is enough to get pixels onto a head unit and prove
- * the video path end to end.
+ * Private by default, trusted with the role: a trusted display needs
+ * `ADD_TRUSTED_DISPLAY`, which arrives with `SYSTEM_AUTOMOTIVE_PROJECTION`, and is
+ * only required to launch other apps' activities onto the display. A [Presentation]
+ * owned by this app renders onto a private display perfectly well, which is enough to
+ * get pixels onto a head unit and prove the video path end to end — so the DHU
+ * loopback path never needs the flag.
  */
 class CarDisplay(
     private val context: Context,
     private val width: Int,
     private val height: Int,
     private val densityDpi: Int,
+    /**
+     * Phase 9 display-route hook: true requests `VIRTUAL_DISPLAY_FLAG_TRUSTED` so
+     * other apps' activities may be launched onto the car screen. Driven by
+     * [DisplayRoutePolicy] from the MAOS role (see `VideoSinkChannel`); defaults
+     * off so stock phones and the loopback path keep working permission-free.
+     */
+    private val trusted: Boolean = false,
 ) {
     private var virtualDisplay: VirtualDisplay? = null
     private var presentation: CarPresentation? = null
@@ -59,6 +67,12 @@ class CarDisplay(
     /** Last-known now-playing card bounds in display pixels; null until laid out. */
     @Volatile private var mediaCardBounds: TapBounds? = null
 
+    /**
+     * `downTime` of the gesture in progress, for the synthesized touch stream.
+     * Main thread only: written and read inside the posted [dispatchTouch].
+     */
+    private var gestureDownTime: Long = 0
+
     private val isMainThread get() = Looper.myLooper() == Looper.getMainLooper()
 
     /**
@@ -72,13 +86,18 @@ class CarDisplay(
      */
     fun show(surface: Surface) {
         val displayManager = context.getSystemService(DisplayManager::class.java)
+        // PRESENTATION alone is a private display: no permission needed. TRUSTED
+        // additionally requires ADD_TRUSTED_DISPLAY (the MAOS role); requesting it
+        // without the permission throws, so it rides only on the trusted route.
+        var flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
+        if (trusted) flags = flags or DisplayManager.VIRTUAL_DISPLAY_FLAG_TRUSTED
         val display = displayManager.createVirtualDisplay(
             DISPLAY_NAME,
             width,
             height,
             densityDpi,
             surface,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION,
+            flags,
         ) ?: error("could not create the car virtual display")
         virtualDisplay = display
 
@@ -116,6 +135,110 @@ class CarDisplay(
         if (!bounds.contains(x, y)) return false
         mainHandler.post { onMediaTap?.invoke() }
         return true
+    }
+
+    /**
+     * Injects one head-unit touch frame into the car UI. Safe from any thread.
+     *
+     * [pointers] are display pixels (what ch8 scales to): (x, y, pointer id).
+     * [action] is the `MotionEvent` action verbatim -- the head unit numbers
+     * touch actions exactly as `MotionEvent` does -- with the pointer index
+     * for POINTER_DOWN/UP shifted in at build time. Posts to the main thread
+     * because views may only be touched there; order is preserved (one FIFO
+     * queue, posted in arrival order), so down/move/up stay a gesture. Returns
+     * false when the presentation is not up yet.
+     */
+    fun injectTouch(action: Int, pointers: List<Triple<Float, Float, Int>>, actionIndex: Int): Boolean {
+        if (presentation == null) return false
+        mainHandler.post { dispatchTouch(action, pointers, actionIndex) }
+        return true
+    }
+
+    /**
+     * Injects one head-unit key press or release. Safe from any thread; the
+     * dispatch hops to main like [injectTouch]. Returns false with no UI up.
+     */
+    fun injectKey(keycode: Int, down: Boolean): Boolean {
+        if (presentation == null) return false
+        mainHandler.post {
+            val event = android.view.KeyEvent(
+                if (down) android.view.KeyEvent.ACTION_DOWN else android.view.KeyEvent.ACTION_UP,
+                keycode,
+            )
+            presentation?.window?.decorView?.dispatchKeyEvent(event)
+        }
+        return true
+    }
+
+    /**
+     * Injects one head-unit scroll tick. Safe from any thread; the dispatch
+     * hops to main like [injectTouch]. Returns false with no UI up.
+     */
+    fun injectScroll(delta: Int): Boolean {
+        if (presentation == null) return false
+        mainHandler.post {
+            val now = android.os.SystemClock.uptimeMillis()
+            val coords = android.view.MotionEvent.PointerCoords().apply {
+                setAxisValue(android.view.MotionEvent.AXIS_VSCROLL, delta.toFloat())
+            }
+            val event = android.view.MotionEvent.obtain(
+                now, now,
+                android.view.MotionEvent.ACTION_SCROLL,
+                1,
+                arrayOf(android.view.MotionEvent.PointerProperties().apply { id = 0 }),
+                arrayOf(coords),
+                0, 0, 1f, 1f, 0, 0,
+                android.view.InputDevice.SOURCE_MOUSE, 0,
+            )
+            presentation?.window?.decorView?.dispatchTouchEvent(event)
+            event.recycle()
+        }
+        return true
+    }
+
+    /** Main thread only: builds one multi-pointer event and dispatches it. */
+    private fun dispatchTouch(
+        action: Int,
+        pointers: List<Triple<Float, Float, Int>>,
+        actionIndex: Int,
+    ) {
+        val view = presentation?.window?.decorView ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        val downTime = if (action == android.view.MotionEvent.ACTION_DOWN) {
+            gestureDownTime = now
+            now
+        } else {
+            gestureDownTime
+        }
+        val fullAction = when (action) {
+            android.view.MotionEvent.ACTION_POINTER_DOWN,
+            android.view.MotionEvent.ACTION_POINTER_UP,
+            -> action or (actionIndex.coerceIn(0, pointers.size - 1) shl
+                android.view.MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+            else -> action
+        }
+        val props = pointers.map { (_, _, id) ->
+            android.view.MotionEvent.PointerProperties().apply { this.id = id }
+        }.toTypedArray()
+        val coords = pointers.map { (x, y, _) ->
+            android.view.MotionEvent.PointerCoords().apply {
+                this.x = x
+                this.y = y
+                pressure = 1f
+            }
+        }.toTypedArray()
+        val event = android.view.MotionEvent.obtain(
+            downTime, now, fullAction, pointers.size, props, coords,
+            0, 0, 1f, 1f, 0, 0,
+            android.view.InputDevice.SOURCE_TOUCHSCREEN, 0,
+        )
+        view.dispatchTouchEvent(event)
+        event.recycle()
+        if (action == android.view.MotionEvent.ACTION_UP ||
+            action == android.view.MotionEvent.ACTION_CANCEL
+        ) {
+            gestureDownTime = 0
+        }
     }
 
     /**

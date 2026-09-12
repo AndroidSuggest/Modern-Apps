@@ -50,6 +50,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".ui.EditActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:exported="true"
             android:theme="@style/Theme.General">
             <intent-filter android:label="@string/edit_with_label">
@@ -59,6 +60,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".ui.VideoEditActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:exported="true"
             android:theme="@style/Theme.General">
             <intent-filter android:label="@string/video_edit_with_label">

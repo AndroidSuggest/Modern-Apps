@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.ConfirmDialog
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.DropdownMenu
@@ -112,7 +113,8 @@ internal fun BookmarksScreen(
         },
         scrollBehavior = appBarScrollBehavior(),
     ) { paddingValues ->
-        Column(Modifier.fillMaxSize().padding(paddingValues)) {
+        DesktopMaxWidthContainer(modifier = Modifier.padding(paddingValues)) {
+        Column(Modifier.fillMaxSize()) {
             if (folders.isNotEmpty()) {
                 androidx.compose.foundation.lazy.LazyRow(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -197,6 +199,7 @@ internal fun BookmarksScreen(
                     }
                 }
             }
+        }
         }
     }
 

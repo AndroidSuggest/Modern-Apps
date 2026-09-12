@@ -1,19 +1,17 @@
 package com.vayunmathur.youpipe.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.LazyListScaffold
 import com.vayunmathur.library.ui.ListItem
-import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.ui.appBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,8 +42,11 @@ fun SubscriptionsPage(
     val fetchProgress by youPipeViewModel.fetchProgress.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    Scaffold { paddingValues ->
-        LazyColumn(Modifier.padding(paddingValues)) {
+    // A plain scrolling list with no top bar: LazyListScaffold with no title draws none,
+    // and owns the list insets the raw Scaffold + LazyColumn pair was deriving by hand.
+    LazyListScaffold(
+        scrollBehavior = appBarScrollBehavior(),
+    ) {
             if (fetchProgress in 0f..1f) {
                 item {
                     ListItem(
@@ -115,6 +116,5 @@ fun SubscriptionsPage(
                     Text(it.name.decodeHtml())
                 }
             }
-        }
     }
 }

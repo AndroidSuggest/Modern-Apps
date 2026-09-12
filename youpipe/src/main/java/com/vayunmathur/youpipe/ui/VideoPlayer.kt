@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -101,6 +102,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -126,13 +129,22 @@ fun VideoPlayer(
     isFullscreen: Boolean,
     onFullscreenChange: (Boolean) -> Unit,
 ) {
+    if (videoStreams.isEmpty()) return
+
+    // State lives in VideoPlayerPlaybackState.kt (playback) + VideoPlayerViewState.kt (view);
+    // the UI below reads both through `with`, so no call site changes.
+    val pb = rememberVideoPlayerPlaybackState(ypvm, videoInfo, videoStreams, audioStreams, subtitles)
+    val vs = rememberVideoPlayerViewState(
+        ypvm, videoInfo, pb.currentVideoStream, pb.aspectRatio, pb.controller, pb.isPlaying,
+        pb.isDragging, pb.playbackSpeed,
+    )
+    with(pb) {
+    with(vs) {
     val context = LocalContext.current
     val sponsorBlockEnabled by ypvm.sponsorBlockEnabled.collectAsState()
     val sponsorBlockCategories by ypvm.sponsorBlockCategories.collectAsState()
     val videoState by ypvm.videoState.collectAsState()
     val sponsorSegments = videoState.sponsorSegments.filter { it.category in sponsorBlockCategories }
-
-    if (videoStreams.isEmpty()) return
 
     val hasAudio = audioStreams.isNotEmpty()
     // Use displayName for language UI when available (audioTrackName like "English", "Original"), fallback to language code
@@ -224,6 +236,11 @@ fun VideoPlayer(
     // Lock hides all controls (and disables seek/speed gestures) so a fullscreen video can't be
     // disturbed by accidental touches, until the user taps the on-screen unlock button.
     var isLocked by remember { mutableStateOf(false) }
+
+    // Desktop: hovering the player with a mouse keeps the controls up the way a finger
+    // tap does on touch — the auto-hide timer below stands down while hovered.
+    val hoverSource = remember { MutableInteractionSource() }
+    val isHovered by hoverSource.collectIsHoveredAsState()
 
     var selectedSubtitle by remember { mutableStateOf<SubtitleTrack?>(null) }
     var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
@@ -551,7 +568,7 @@ fun VideoPlayer(
         isControlsVisible, isPlaying, keepControlsVisible, isLocked, isDragging,
         isVideoMenuExpanded, isLanguageMenuExpanded, isCaptionMenuExpanded,
         isSpeedMenuExpanded, isChapterMenuVisible, isPipMode, controlsInteractionTick,
-        isCasting
+        isCasting, isHovered
     ) {
         if (!isControlsVisible) return@LaunchedEffect
         if (keepControlsVisible) return@LaunchedEffect
@@ -563,6 +580,8 @@ fun VideoPlayer(
         // While casting there is no picture here to get out of the way of, and the only way to stop is
         // a button in these controls.
         if (isCasting) return@LaunchedEffect
+        // A hovering mouse is an engaged viewer: keep the controls up while it is over the player.
+        if (isHovered) return@LaunchedEffect
         delay(CONTROLS_AUTO_HIDE_DELAY_MS)
         isControlsVisible = false
     }
@@ -577,11 +596,12 @@ fun VideoPlayer(
         }
     }
 
-    val modifier = if(isFullscreen) Modifier.fillMaxHeight() else Modifier.aspectRatio(16f / 9f)
+    val modifier = if(isFullscreen) Modifier.fillMaxHeight() else Modifier.aspectRatio(aspectRatio)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .hoverable(hoverSource)
             .pointerInput(isLocked, keepControlsVisible) {
                 detectTapGestures(
                     onTap = {
@@ -686,86 +706,39 @@ fun VideoPlayer(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box {
-                        Surface(
-                            onClick = { isVideoMenuExpanded = true },
-                            color = Color.Black.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                // Per user request: button shows only quality, codec only in dropdown
-                                Text(text = currentVideoStream.quality, color = Color.White, style = MaterialTheme.typography.labelMedium)
-                                IconArrowDropDown(tint = Color.White)
-                            }
-                        }
-                        DropdownMenu(expanded = isVideoMenuExpanded, onDismissRequest = { isVideoMenuExpanded = false }) {
-                            videoStreams.forEach { stream ->
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.video_quality_fps_codec, stream.quality, stream.fps, getVideoCodecName(stream.codec))) },
-                                    onClick = { currentVideoStream = stream; isVideoMenuExpanded = false }
-                                )
-                            }
-                        }
-                    }
-
-                    if (hasAudio) {
-                        if (languages.size > 1) {
-                            Box {
-                                Surface(
-                                    onClick = { isLanguageMenuExpanded = true },
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        val displayLabel = languageEntries.find { it.first == language }?.second ?: language
-                                        Text(text = displayLabel, color = Color.White, style = MaterialTheme.typography.labelMedium)
-                                        IconArrowDropDown(tint = Color.White)
-                                    }
-                                }
-                                DropdownMenu(expanded = isLanguageMenuExpanded, onDismissRequest = { isLanguageMenuExpanded = false }) {
-                                    languageEntries.forEach { (code, display) ->
-                                        DropdownMenuItem(
-                                            text = { Text(display) },
-                                            onClick = { language = code; isLanguageMenuExpanded = false }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                    }
-
-                    if (subtitles.isNotEmpty()) {
-                        Box {
-                            Surface(
-                                onClick = { isCaptionMenuExpanded = true },
-                                color = Color.Black.copy(alpha = 0.5f),
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(text = selectedSubtitle?.languageTag?.ifEmpty { stringResource(R.string.cc) } ?: stringResource(R.string.cc), color = Color.White, style = MaterialTheme.typography.labelMedium)
-                                    IconArrowDropDown(tint = Color.White)
-                                }
-                            }
-                            DropdownMenu(expanded = isCaptionMenuExpanded, onDismissRequest = { isCaptionMenuExpanded = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.off)) },
-                                    onClick = { selectedSubtitle = null; isCaptionMenuExpanded = false }
-                                )
-                                subtitles.forEach { sub ->
-                                    DropdownMenuItem(
-                                        text = { Text(sub.displayName) },
-                                        onClick = { selectedSubtitle = sub; isCaptionMenuExpanded = false }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Always visible, whether or not Cast is installed: an icon that appears only when
-                    // it would work is an icon nobody discovers.
-                    IconButton(
-                        onClick = {
+                    VideoPlayerTopControls(
+                        hasAudio = hasAudio,
+                        languages = languages,
+                        languageEntries = languageEntries,
+                        language = language,
+                        onLanguageChange = { language = it },
+                        isVideoMenuExpanded = isVideoMenuExpanded,
+                        onVideoMenuExpandedChange = { isVideoMenuExpanded = it },
+                        isLanguageMenuExpanded = isLanguageMenuExpanded,
+                        onLanguageMenuExpandedChange = { isLanguageMenuExpanded = it },
+                        isCaptionMenuExpanded = isCaptionMenuExpanded,
+                        onCaptionMenuExpandedChange = { isCaptionMenuExpanded = it },
+                        isSpeedMenuExpanded = isSpeedMenuExpanded,
+                        onSpeedMenuExpandedChange = { isSpeedMenuExpanded = it },
+                        currentVideoStream = currentVideoStream,
+                        onVideoStreamChange = { currentVideoStream = it },
+                        videoStreams = videoStreams,
+                        subtitles = subtitles,
+                        selectedSubtitle = selectedSubtitle,
+                        onSubtitleChange = { selectedSubtitle = it },
+                        segments = segments,
+                        onChapterMenuVisibleChange = { isChapterMenuVisible = it },
+                        playbackSpeed = playbackSpeed,
+                        onSpeedChange = { CastPlayback.update { state -> state.copy(speed = it) } },
+                        playbackPitch = playbackPitch,
+                        onPitchChange = { playbackPitch = it },
+                        unhookPitch = unhookPitch,
+                        onUnhookPitchChange = {
+                            unhookPitch = it
+                            if (!it) playbackPitch = playbackSpeed
+                        },
+                        isCasting = isCasting,
+                        onCastClick = {
                             controlsInteractionTick++
                             when (CastPlayback.support(context)) {
                                 CastClient.Support.NOT_INSTALLED -> {
@@ -785,105 +758,7 @@ fun VideoPlayer(
                                     }
                             }
                         },
-                        modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp)).size(32.dp)
-                    ) {
-                        if (isCasting) {
-                            IconCastConnected(tint = Color.White, modifier = Modifier.size(20.dp))
-                        } else {
-                            IconCast(tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
-                    }
-
-                    if (segments.isNotEmpty()) {
-                        IconButton(
-                            onClick = { isChapterMenuVisible = true },
-                            modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp)).size(32.dp)
-                        ) {
-                            IconList(tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
-                    }
-
-                    Box {
-                        Surface(
-                            onClick = { isSpeedMenuExpanded = true },
-                            color = Color.Black.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = stringResource(R.string.playback_tempo_value, formatTempo(playbackSpeed)),
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                                IconArrowDropDown(tint = Color.White)
-                            }
-                        }
-                        DropdownMenu(expanded = isSpeedMenuExpanded, onDismissRequest = { isSpeedMenuExpanded = false }) {
-                            Column(modifier = Modifier.width(280.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = stringResource(R.string.playback_tempo), style = MaterialTheme.typography.titleSmall)
-                                    Text(
-                                        text = stringResource(R.string.playback_tempo_value, formatTempo(playbackSpeed)),
-                                        style = MaterialTheme.typography.labelLarge
-                                    )
-                                }
-                                Slider(
-                                    value = playbackSpeed,
-                                    onValueChange = {
-                                        CastPlayback.update { state -> state.copy(speed = it) }
-                                    },
-                                    valueRange = 0.25f..2f,
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = stringResource(R.string.playback_pitch), style = MaterialTheme.typography.titleSmall)
-                                    Text(
-                                        text = stringResource(R.string.playback_pitch_value, (playbackPitch * 100).toInt()),
-                                        style = MaterialTheme.typography.labelLarge
-                                    )
-                                }
-                                Slider(
-                                    value = playbackPitch,
-                                    onValueChange = { playbackPitch = it },
-                                    valueRange = 0.5f..2f,
-                                    enabled = unhookPitch,
-                                )
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            unhookPitch = !unhookPitch
-                                            if (!unhookPitch) playbackPitch = playbackSpeed
-                                        },
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Checkbox(
-                                        checked = unhookPitch,
-                                        onCheckedChange = {
-                                            unhookPitch = it
-                                            if (!it) playbackPitch = playbackSpeed
-                                        },
-                                    )
-                                    Text(text = stringResource(R.string.playback_unhook_pitch), style = MaterialTheme.typography.bodyMedium)
-                                }
-                                HorizontalDivider()
-                                TextButton(
-                                    onClick = {
-                                        CastPlayback.update { it.copy(speed = 1f) }
-                                        unhookPitch = false
-                                    },
-                                    modifier = Modifier.align(Alignment.End)
-                                ) { Text(stringResource(R.string.playback_reset)) }
-                            }
-                        }
-                    }
+                    )
                 }
 
                 controller?.let { player ->
@@ -899,80 +774,28 @@ fun VideoPlayer(
                         color = Color.White
                     )
                 }
-                Row(Modifier.align(Alignment.BottomCenter).padding(16.dp), verticalAlignment = Alignment.Bottom) {
-                    Column(Modifier.weight(1f)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = DateUtils.formatElapsedTime(currentPosition / 1000),
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                            Text(
-                                text = DateUtils.formatElapsedTime(duration / 1000),
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelSmall
-                            )
+                VideoPlayerSeekRow(
+                    currentPosition = currentPosition,
+                    bufferedPosition = bufferedPosition,
+                    duration = duration,
+                    sponsorSegments = sponsorSegments,
+                    onSeekChange = { position ->
+                        CastPlayback.update { state ->
+                            state.copy(dragging = true, positionMs = position)
                         }
-                        Box(contentAlignment = Alignment.CenterStart) {
-                            Slider(
-                                value = if (duration > 0) bufferedPosition.toFloat() else 0f,
-                                onValueChange = { },
-                                valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.Transparent,
-                                    activeTrackColor = Color.White.copy(alpha = 0.3f),
-                                    inactiveTrackColor = Color.Transparent
-                                )
-                            )
-                            if (duration > 0) {
-                                Canvas(modifier = Modifier.fillMaxWidth().height(4.dp).padding(horizontal = 20.dp)) {
-                                    sponsorSegments.forEach { segment ->
-                                        val startX = (segment.start.toFloat() / duration) * size.width
-                                        val endX = (segment.end.toFloat() / duration) * size.width
-                                        drawRect(
-                                            color = Color.Yellow.copy(alpha = 0.7f),
-                                            topLeft = Offset(startX, 0f),
-                                            size = Size(endX - startX, size.height)
-                                        )
-                                    }
-                                }
-                            }
-                            Slider(
-                                value = if (duration > 0) currentPosition.toFloat() else 0f,
-                                onValueChange = {
-                                    CastPlayback.update { state ->
-                                        state.copy(dragging = true, positionMs = it.toLong())
-                                    }
-                                },
-                                onValueChangeFinished = {
-                                    controller?.seekTo(currentPosition)
-                                    CastPlayback.update { it.copy(dragging = false) }
-                                },
-                                valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = MaterialTheme.colorScheme.primary,
-                                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                                )
-                            )
-                        }
-                    }
-                    Spacer(Modifier.padding(4.dp))
-                    if (isFullscreen) {
-                        IconButton(onClick = {
-                            isLocked = true
-                            isControlsVisible = false
-                        }) {
-                            IconLock(tint = Color.White)
-                        }
-                    }
-                    IconButton({onFullscreenChange(!isFullscreen)}) {
-                        if(isFullscreen) IconFullscreenExit() else IconFullscreen()
-                    }
-                }
+                    },
+                    onSeekFinished = {
+                        controller?.seekTo(currentPosition)
+                        CastPlayback.update { it.copy(dragging = false) }
+                    },
+                    isFullscreen = isFullscreen,
+                    onLock = {
+                        isLocked = true
+                        isControlsVisible = false
+                    },
+                    onFullscreenChange = onFullscreenChange,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                )
             }
         }
 
@@ -994,124 +817,15 @@ fun VideoPlayer(
         }
 
         FadeVisibility(visible = isChapterMenuVisible && !isPipMode) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)).clickable(enabled = true, onClick = {})) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = stringResource(R.string.chapter), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        IconButton(onClick = { isChapterMenuVisible = false }) {
-                            IconClose(tint = Color.White)
-                        }
-                    }
-
-                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
-                        items(segments, key = { it.time }) { chapter ->
-                            val isCurrent = currentPosition >= chapter.time &&
-                                    (segments.getOrNull(segments.indexOf(chapter) + 1)?.time?.let { currentPosition < it } ?: true)
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        controller?.seekTo(chapter.time.toLong())
-                                        isChapterMenuVisible = false
-                                    }
-                                    .background(if (isCurrent) Color.White.copy(alpha = 0.1f) else Color.Transparent)
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(context)
-                                        .data(chapter.previewURL)
-                                        .memoryCacheKey("chapter-${chapter.time}")
-                                        .build(),
-                                    contentDescription = null,
-                                    modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(4.dp)).background(Color.DarkGray),
-                                    contentScale = ContentScale.Crop
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = chapter.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 2)
-                                    Text(text = DateUtils.formatElapsedTime(chapter.time.toLong() / 1000), color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            VideoPlayerChapterSheet(
+                segments = segments,
+                currentPosition = currentPosition,
+                onSeekTo = { controller?.seekTo(it) },
+                onDismiss = { isChapterMenuVisible = false },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
 
-private const val HISTORY_UPSERT_INTERVAL_MS = 5000L
-private const val CONTROLS_AUTO_HIDE_DELAY_MS = 2000L
-
-/**
- * The fallback frame height asked of Cast, used only when the stream does not report its own size.
- *
- * A request, not a decision: Cast clamps it to what the TV reported it can decode and to what this
- * phone's encoder will take, and answers with the real numbers.
- */
-private const val CAST_REQUEST_HEIGHT = 1080
-
-/**
- * The frame size to ask Cast for, taken from the stream that is actually playing.
- *
- * **This used to be `CAST_REQUEST_HEIGHT * aspectRatio` by `CAST_REQUEST_HEIGHT`, which asked for
- * 1920x1080 for every video ever cast.** `aspectRatio` is a ratio: it carries shape and no magnitude,
- * so a 360p stream was asked to fill 1080 lines and a 4K one was thrown away on the way out. The real
- * numbers were in scope at the call site the whole time, and YouPipe deliberately does not filter
- * streams above 1080p, so there was nothing to gain from the cap.
- *
- * **Both dimensions are rounded down to even.** 4:2:0 chroma cannot represent an odd width or height,
- * and several encoders refuse such a size outright rather than rounding it themselves.
- *
- * A stream that reports no size falls back to the old fixed height in the measured aspect ratio -
- * that path is a guess either way, and the receiver letterboxes, so the shape is ours to choose.
- */
-private fun castRequestSize(stream: VideoStream, aspectRatio: Float): Pair<Int, Int> {
-    if (stream.width > 0 && stream.height > 0) return stream.width.evenDown() to stream.height.evenDown()
-    return (CAST_REQUEST_HEIGHT * aspectRatio).toInt().evenDown() to CAST_REQUEST_HEIGHT
-}
-
-private fun Int.evenDown(): Int = (this - (this and 1)).coerceAtLeast(2)
-
-/**
- * What the player shows once the video is on the TV.
- *
- * There is one video output and it is now the TV, so there is nothing to draw here - and this is also
- * what the user expects to see after casting something, rather than the same video twice.
- */
-@Composable
-private fun CastingPanel(
-    receiverName: String,
-    onStop: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.background(Color.Black),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        IconCastConnected(tint = Color.White, modifier = Modifier.size(48.dp))
-        Text(
-            text = stringResource(R.string.cast_playing_on, receiverName),
-            color = Color.White,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(top = 12.dp),
-        )
-        Button(onClick = onStop, modifier = Modifier.padding(top = 16.dp)) {
-            Text(stringResource(R.string.cast_stop))
-        }
-    }
-}
-
-/** Formats a tempo multiplier for display: whole values as "2", fractional as "1.5". */
-private fun formatTempo(speed: Float): String {
-    val rounded = Math.round(speed * 100f) / 100f
-    return if (rounded % 1f == 0f) rounded.toInt().toString()
-    else rounded.toString().trimEnd('0').trimEnd('.')
-}
+/** Cast-request sizing, the casting panel and tempo formatting live in VideoPlayerCasting.kt. */

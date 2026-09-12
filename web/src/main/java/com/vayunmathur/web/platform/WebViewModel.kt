@@ -57,16 +57,8 @@ private const val P_SHIELD_HTTPS = "web_shield_https"
 private const val P_LOCAL_NETWORK_DENIED = "web_local_network_denied"
 private const val P_SEARCH_BAR_BOTTOM = "web_search_bar_bottom"
 
-data class PermissionPrompt(
-    val id: String = Uuid.random().toString(),
-    val origin: String,
-    val types: List<SitePermissionType>,
-    val onGrant: (List<SitePermissionType>) -> Unit,
-    val onDeny: () -> Unit,
-)
-
 class WebViewModel(
-    private val repository: WebRepository,
+    internal val repository: WebRepository,
     private val context: Context,
     /** Identifies this window's independent tab set; the default window keeps the legacy pref keys. */
     private val windowId: String = DEFAULT_WINDOW_ID,
@@ -96,7 +88,7 @@ class WebViewModel(
 
     val tabs = mutableStateListOf<BrowserTab>()
     var activeTabId by mutableStateOf<String?>(null)
-        private set
+        internal set
 
     var omniboxText by mutableStateOf("")
     var omniboxFocused by mutableStateOf(false)
@@ -115,7 +107,7 @@ class WebViewModel(
 
     /** Global Brave Shields defaults; per-site overrides live in [shieldSettings]. */
     var shields by mutableStateOf(ShieldsSettings.AGGRESSIVE_DEFAULTS)
-        private set
+        internal set
 
     private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
     val bookmarks: StateFlow<List<Bookmark>> = _bookmarks
@@ -162,10 +154,10 @@ class WebViewModel(
     var showShieldsPanel by mutableStateOf(false)
 
     var pendingPermissionPrompt by mutableStateOf<PermissionPrompt?>(null)
-        private set
+        internal set
 
     var pendingGeolocationPrompt by mutableStateOf<Triple<String, () -> Unit, () -> Unit>?>(null)
-        private set
+        internal set
 
     /** The LAN host whose page needs [WebPermissions.LOCAL_NETWORK] before it can load. */
     var pendingLocalNetworkHost by mutableStateOf<String?>(null)
@@ -175,7 +167,7 @@ class WebViewModel(
     private var localNetworkDenied = false
 
     var pendingFileChooser by mutableStateOf<Pair<android.webkit.ValueCallback<Array<Uri>>, android.webkit.WebChromeClient.FileChooserParams>?>(null)
-        private set
+        internal set
 
     var showTabSwitcher by mutableStateOf(false)
 
@@ -720,199 +712,6 @@ class WebViewModel(
         viewModelScope.launch { repository.deleteInstalledSiteById(id) }
     }
 
-    // ---- Site permissions ----
-    fun requestWebPermission(
-        origin: String,
-        types: List<SitePermissionType>,
-        grant: (List<SitePermissionType>) -> Unit,
-        deny: () -> Unit
-    ) {
-        viewModelScope.launch {
-            val saved = repository.sitePermissionByOrigin(origin)
-            val (toAsk, preGranted) = if (saved != null) {
-                val determined = types.mapNotNull { t ->
-                    when (t) {
-                        SitePermissionType.CAMERA -> saved.cameraAllowed?.let { t to it }
-                        SitePermissionType.MICROPHONE -> saved.microphoneAllowed?.let { t to it }
-                        SitePermissionType.LOCATION -> saved.locationAllowed?.let { t to it }
-                        SitePermissionType.NOTIFICATIONS -> saved.notificationsAllowed?.let { t to it }
-                    }
-                }
-                val grantedFromSaved = determined.filter { it.second }.map { it.first }
-                val remaining = types.filter { type -> determined.none { it.first == type } }
-                remaining to grantedFromSaved
-            } else {
-                types to emptyList()
-            }
-
-            if (toAsk.isEmpty()) {
-                if (preGranted.isNotEmpty()) {
-                    withContext(Dispatchers.Main) { grant(preGranted) }
-                } else {
-                    withContext(Dispatchers.Main) { deny() }
-                }
-                return@launch
-            }
-
-            withContext(Dispatchers.Main) {
-                pendingPermissionPrompt = PermissionPrompt(
-                    origin = origin,
-                    types = toAsk,
-                    onGrant = { grantedNow ->
-                        persistPermission(origin, grantedNow, toAsk)
-                        grant(preGranted + grantedNow)
-                    },
-                    onDeny = {
-                        persistPermission(origin, emptyList(), toAsk)
-                        if (preGranted.isNotEmpty()) grant(preGranted) else deny()
-                    }
-                )
-            }
-        }
-    }
-
-    private fun persistPermission(origin: String, granted: List<SitePermissionType>, requested: List<SitePermissionType>) {
-        viewModelScope.launch {
-            val existing = repository.sitePermissionByOrigin(origin) ?: SitePermission(origin = origin)
-            var updated = existing
-            requested.forEach { t ->
-                val isGranted = t in granted
-                updated = when (t) {
-                    SitePermissionType.CAMERA -> updated.copy(cameraAllowed = isGranted)
-                    SitePermissionType.MICROPHONE -> updated.copy(microphoneAllowed = isGranted)
-                    SitePermissionType.LOCATION -> updated.copy(locationAllowed = isGranted)
-                    SitePermissionType.NOTIFICATIONS -> updated.copy(notificationsAllowed = isGranted)
-                }
-            }
-            repository.upsertSitePermission(updated.copy(updatedAt = System.currentTimeMillis()))
-        }
-    }
-
-    fun clearPermissionPrompt() { pendingPermissionPrompt = null }
-
-    fun requestGeolocation(origin: String, onAllow: () -> Unit, onDeny: () -> Unit) {
-        viewModelScope.launch {
-            val saved = repository.sitePermissionByOrigin(origin)
-            when (saved?.locationAllowed) {
-                true -> { withContext(Dispatchers.Main) { onAllow() }; return@launch }
-                false -> { withContext(Dispatchers.Main) { onDeny() }; return@launch }
-                null -> {}
-            }
-            withContext(Dispatchers.Main) {
-                pendingGeolocationPrompt = Triple(origin, onAllow, onDeny)
-            }
-        }
-    }
-
-    fun grantGeolocation(origin: String) {
-        pendingGeolocationPrompt?.let { (orig, allow, _) ->
-            persistPermission(orig, listOf(SitePermissionType.LOCATION), listOf(SitePermissionType.LOCATION))
-            allow()
-        }
-        pendingGeolocationPrompt = null
-    }
-
-    fun denyGeolocation() {
-        pendingGeolocationPrompt?.let { (orig, _, deny) ->
-            persistPermission(orig, emptyList(), listOf(SitePermissionType.LOCATION))
-            deny()
-        }
-        pendingGeolocationPrompt = null
-    }
-
-    fun requestFileChooser(
-        callback: android.webkit.ValueCallback<Array<Uri>>,
-        params: android.webkit.WebChromeClient.FileChooserParams
-    ) {
-        pendingFileChooser = callback to params
-    }
-
-    fun clearFileChooser() {
-        pendingFileChooser?.first?.onReceiveValue(null)
-        pendingFileChooser = null
-    }
-
-    fun deliverFileChooserResult(uris: Array<Uri>?) {
-        pendingFileChooser?.first?.onReceiveValue(uris)
-        pendingFileChooser = null
-    }
-
-    fun updateStorageFootprint(
-        origin: String,
-        cookieCount: Int,
-        hasLocalStorage: Boolean,
-        hasIndexedDb: Boolean,
-        hasServiceWorker: Boolean,
-        estBytes: Long
-    ) {
-        viewModelScope.launch {
-            val existing = repository.storageInfoByOrigin(origin)
-            val info = if (existing != null) {
-                existing.copy(
-                    cookieCount = cookieCount,
-                    hasLocalStorage = hasLocalStorage || existing.hasLocalStorage,
-                    hasIndexedDb = hasIndexedDb || existing.hasIndexedDb,
-                    hasServiceWorker = hasServiceWorker || existing.hasServiceWorker,
-                    estimatedBytes = if (estBytes > 0) estBytes else existing.estimatedBytes,
-                    lastSeen = System.currentTimeMillis()
-                )
-            } else {
-                StorageInfo(
-                    origin = origin,
-                    host = BrowserUtils.hostFromUrl(origin),
-                    cookieCount = cookieCount,
-                    hasLocalStorage = hasLocalStorage,
-                    hasIndexedDb = hasIndexedDb,
-                    hasServiceWorker = hasServiceWorker,
-                    estimatedBytes = estBytes,
-                    lastSeen = System.currentTimeMillis()
-                )
-            }
-            repository.upsertStorageInfo(info)
-        }
-    }
-
-    fun clearSiteData(origin: String) {
-        viewModelScope.launch {
-            repository.deleteStorageInfoOrigin(origin)
-            repository.deleteSitePermissionOrigin(origin)
-        }
-    }
-
-    fun clearAllSiteData() {
-        viewModelScope.launch {
-            repository.clearAllStorageInfos()
-            repository.clearAllSitePermissions()
-        }
-    }
-
-    fun revokePermission(origin: String, type: SitePermissionType) {
-        viewModelScope.launch {
-            val existing = repository.sitePermissionByOrigin(origin) ?: return@launch
-            val updated = when (type) {
-                SitePermissionType.CAMERA -> existing.copy(cameraAllowed = null)
-                SitePermissionType.MICROPHONE -> existing.copy(microphoneAllowed = null)
-                SitePermissionType.LOCATION -> existing.copy(locationAllowed = null)
-                SitePermissionType.NOTIFICATIONS -> existing.copy(notificationsAllowed = null)
-            }
-            if (updated.cameraAllowed == null && updated.microphoneAllowed == null && updated.locationAllowed == null && updated.notificationsAllowed == null) {
-                repository.deleteSitePermission(updated)
-            } else {
-                repository.upsertSitePermission(updated.copy(updatedAt = System.currentTimeMillis()))
-            }
-        }
-    }
-
-    fun addDownload(url: String, fileName: String, mime: String?, length: Long) {
-        viewModelScope.launch {
-            repository.upsertDownload(DownloadEntry(url = url, fileName = fileName, mimeType = mime, contentLength = length))
-        }
-    }
-
-    fun clearAllDownloads() {
-        viewModelScope.launch { repository.clearAllDownloads() }
-    }
-
     fun onClearedPersist() { persistTabsSync() }
 
     override fun onCleared() {
@@ -961,21 +760,5 @@ class WebViewModel(
     fun externalIntentUrl(url: String) {
         // Per product requirement: external links from other apps always open a new tab.
         newTab(url = url, makeActive = true)
-    }
-}
-
-class WebViewModelFactory(
-    private val repository: WebRepository,
-    private val context: Context,
-    private val windowId: String = WebViewModel.DEFAULT_WINDOW_ID,
-    private val incognito: Boolean = false,
-    private val initialShieldSettings: List<ShieldSetting> = emptyList(),
-) : androidx.lifecycle.ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(WebViewModel::class.java)) {
-            return WebViewModel(repository, context, windowId, incognito, initialShieldSettings) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel $modelClass")
     }
 }

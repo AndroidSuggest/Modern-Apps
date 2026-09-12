@@ -25,6 +25,7 @@ import com.vayunmathur.games.sudoku.ui.dialogs.GameConfigDialog
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Spacing
 import com.vayunmathur.library.ui.Text
@@ -50,10 +51,12 @@ fun HomeScreen(
         },
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
+        // Menu column; letterboxed on expanded windows so buttons and stat
+        // cards keep a readable measure on desktop.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(Spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -82,6 +85,7 @@ fun HomeScreen(
                     SizeStatsCard(size, viewModel, Modifier.weight(1f))
                 }
             }
+        }
         }
     }
 

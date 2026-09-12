@@ -1,6 +1,7 @@
 package com.vayunmathur.translate
 
 import androidx.compose.runtime.Composable
+import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.FullscreenPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -32,7 +33,7 @@ fun Navigation(viewModel: TranslateViewModel, initialText: String) {
                 },
             )
         }
-        entry<Route.LanguagePicker> { route ->
+        entry<Route.LanguagePicker>(metadata = DialogPage()) { route ->
             LanguagePickerPage(
                 viewModel = viewModel,
                 forSource = route.forSource,

@@ -7,12 +7,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -24,34 +22,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.library.image.compose.AsyncImage
-import com.vayunmathur.library.map.CameraPosition
-import com.vayunmathur.library.map.GeoPoint
-import com.vayunmathur.library.map.VectorMap
-import com.vayunmathur.library.map.rememberCameraState
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.ExternalIntents
-import com.vayunmathur.library.ui.IconHome
-import com.vayunmathur.library.ui.IconMyLocation
-import com.vayunmathur.library.ui.IconNavigationArrow
-import com.vayunmathur.library.ui.IconPerson
-import com.vayunmathur.library.ui.IconStar
-import com.vayunmathur.library.ui.LinearProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
@@ -60,15 +39,11 @@ import com.vayunmathur.taxi.R
 import com.vayunmathur.taxi.data.ActiveRide
 import com.vayunmathur.taxi.data.CancelResult
 import com.vayunmathur.taxi.data.DriverLocation
-import com.vayunmathur.taxi.data.RideStatus
 import com.vayunmathur.taxi.data.RideStatusResult
-import com.vayunmathur.taxi.data.RideStopInfo
 import com.vayunmathur.taxi.network.lyft.LyftProvider
 import com.vayunmathur.taxi.notifications.RideTrackingService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.max
-import kotlin.math.min
 
 /**
  * Live tracking for one ride: the driver's position against the pickup and destination, the
@@ -238,232 +213,4 @@ fun RideTrackingScreen(rideId: String) {
             },
         )
     }
-}
-
-/**
- * Pickup, destination and the live driver on a raster map. Markers are absolutely positioned from
- * the camera projection; the view auto-frames whatever points are known.
- */
-@Composable
-private fun TrackingMap(ride: ActiveRide?, driverLoc: DriverLocation?, modifier: Modifier = Modifier) {
-    val stops = ride?.stops ?: emptyList()
-    val pickup = stops.firstOrNull { it.isPickup }?.geoPoint() ?: stops.firstOrNull()?.geoPoint()
-    val dropoff = stops.firstOrNull { it.isDropoff }?.geoPoint() ?: stops.lastOrNull()?.geoPoint()
-    val driver = driverLoc?.let { GeoPoint(it.longitude, it.latitude) }
-    val points = listOfNotNull(pickup, dropoff, driver)
-
-    if (points.isEmpty()) {
-        Surface(modifier = modifier, color = MaterialTheme.colorScheme.surfaceContainer) {
-            Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-            }
-        }
-        return
-    }
-
-    val centre = GeoPoint(
-        longitude = points.sumOf { it.longitude } / points.size,
-        latitude = points.sumOf { it.latitude } / points.size,
-    )
-    val spread = max(
-        points.maxOf { it.longitude } - points.minOf { it.longitude },
-        points.maxOf { it.latitude } - points.minOf { it.latitude },
-    )
-    val zoom = when {
-        spread <= 0.0 -> 15.0
-        else -> min(16.0, max(10.0, Math.log(360.0 / spread) / Math.log(2.0)))
-    }
-    val camera = rememberCameraState(CameraPosition(target = centre, zoom = zoom))
-    LaunchedEffect(centre, zoom) {
-        camera.position = CameraPosition(target = centre, zoom = zoom)
-    }
-
-    Box(modifier) {
-        VectorMap(cameraState = camera) {
-            pickup?.let {
-                MapMarker(it) {
-                    PinChrome(MaterialTheme.colorScheme.tertiary) { IconMyLocation(tint = Color.White) }
-                }
-            }
-            dropoff?.let {
-                MapMarker(it) {
-                    PinChrome(MaterialTheme.colorScheme.primary) { IconHome(tint = Color.White) }
-                }
-            }
-            driver?.let {
-                MapMarker(it) {
-                    PinChrome(MaterialTheme.colorScheme.secondary) {
-                        IconNavigationArrow(
-                            tint = Color.White,
-                            modifier = Modifier.rotate((driverLoc.bearing ?: 0.0).toFloat()),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun RideStopInfo.geoPoint(): GeoPoint? =
-    location?.let { GeoPoint(it.longitude, it.latitude) }
-
-/**
- * The circular disc a pin's icon sits on. Stays app-side rather than moving into
- * `:library:map` with the positioning: it reads `colorScheme`, and that module has no
- * material3.
- */
-@Composable
-private fun PinChrome(color: Color, icon: @Composable () -> Unit) {
-    Surface(color = color, shape = CircleShape, modifier = Modifier.size(32.dp)) {
-        Box(contentAlignment = Alignment.Center) { icon() }
-    }
-}
-
-@Composable
-private fun StatusHeader(ride: ActiveRide, ended: Boolean) {
-    val over = ended || ride.status.isTerminal
-    Column {
-        Text(
-            stringResource(statusLabel(ride.status, ended)),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-        )
-
-        if (!over) {
-            val etaSeconds = ride.pickupEtaSeconds
-            val etaText = when {
-                ride.status == RideStatus.ARRIVED -> stringResource(R.string.status_arrived)
-                ride.status == RideStatus.PICKED_UP -> stringResource(R.string.status_on_trip)
-                etaSeconds != null && etaSeconds > 0 ->
-                    stringResource(R.string.eta_minutes, (etaSeconds + 59) / 60)
-                ride.status.isPrePickup -> stringResource(R.string.driver_arriving_now)
-                else -> null
-            }
-            if (etaText != null) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    etaText,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-        LinearProgressIndicator(
-            progress = { statusProgress(ride.status, over) },
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
-        )
-    }
-}
-
-@Composable
-private fun DriverCard(ride: ActiveRide, onCall: (String) -> Unit) {
-    val driver = ride.driver
-    val vehicle = ride.vehicle
-    if (driver == null && vehicle == null) return
-
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val image = driver?.imageUrl?.takeIf { it.isNotBlank() }
-                if (image != null) {
-                    AsyncImage(
-                        model = image,
-                        contentDescription = driver.displayName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(44.dp).clip(CircleShape),
-                    )
-                } else {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        shape = CircleShape,
-                        modifier = Modifier.size(44.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) { IconPerson() }
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.your_driver),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    val name = driver?.displayName?.takeIf { it.isNotBlank() }
-                        ?: stringResource(R.string.driver_label)
-                    Text(
-                        name,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    driver?.rating?.let { rating ->
-                        Spacer(Modifier.height(2.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconStar(Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                "%.1f".format(rating),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-                driver?.phoneNumber?.takeIf { it.isNotBlank() }?.let { phone ->
-                    OutlinedButton(onClick = { onCall(phone) }) {
-                        Text(stringResource(R.string.call))
-                    }
-                }
-            }
-
-            vehicle?.let { v ->
-                val desc = v.description
-                if (desc.isNotBlank() || v.licensePlate != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            if (desc.isNotBlank()) {
-                                Text(desc, style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-                        v.licensePlate?.let { plate ->
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                shape = RoundedCornerShape(6.dp),
-                            ) {
-                                Text(
-                                    plate,
-                                    Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun statusLabel(status: RideStatus, ended: Boolean): Int = when {
-    ended && status != RideStatus.CANCELED && !status.isTerminal -> R.string.ride_ended
-    status == RideStatus.CANCELED -> R.string.ride_ended
-    status.isTerminal -> R.string.ride_complete
-    status == RideStatus.ARRIVED -> R.string.status_arrived
-    status == RideStatus.PICKED_UP -> R.string.status_on_trip
-    status == RideStatus.ACCEPTED || status == RideStatus.APPROACHING -> R.string.status_en_route
-    else -> R.string.status_finding_driver
-}
-
-private fun statusProgress(status: RideStatus, over: Boolean): Float = when {
-    over -> 1f
-    status == RideStatus.PENDING -> 0.15f
-    status == RideStatus.ACCEPTED -> 0.35f
-    status == RideStatus.APPROACHING -> 0.55f
-    status == RideStatus.ARRIVED -> 0.7f
-    status == RideStatus.PICKED_UP -> 0.9f
-    else -> 0.1f
 }

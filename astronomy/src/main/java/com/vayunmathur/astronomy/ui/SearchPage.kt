@@ -40,7 +40,9 @@ fun SearchScreen(
     var query by remember { mutableStateOf(initialQuery) }
     var results by remember { mutableStateOf(actions.search(initialQuery)) }
 
-    Box(Modifier.fillMaxSize()) {
+    // Letterbox the single results column on expanded windows; the sky map
+    // itself stays full-bleed by design.
+    DesktopMaxWidthContainer {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 56.dp).padding(12.dp)) {
             OutlinedTextField(value = query, onValueChange = { query = it; results = actions.search(it) }, label = { Text(stringResource(R.string.search_stars_planets_messier)) }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))

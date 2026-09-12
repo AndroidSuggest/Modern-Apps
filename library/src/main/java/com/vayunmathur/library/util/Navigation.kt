@@ -25,23 +25,18 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.captionBar
+import androidx.compose.foundation.layout.captionBarPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ShortNavigationBar
-import androidx.compose.material3.ShortNavigationBarDefaults
-import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
@@ -68,37 +63,13 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.scene.DialogSceneStrategy
-import androidx.navigation3.scene.Scene
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
 import androidx.window.core.layout.WindowSizeClass
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 
-// The Registry that holds the events
-class NavResultRegistry {
-    // Use a SharedFlow with some extra buffer capacity so events are not dropped
-    private val _results = MutableSharedFlow<Pair<String, Any>>(extraBufferCapacity = 64)
-    val results = _results.asSharedFlow()
-
-    suspend fun dispatchResult(key: String, result: Any) {
-        // emit is suspend and will suspend until the value is delivered or buffer accepts it
-        _results.emit(key to result)
-    }
-}
-
-// The Composable helper (The "ResultEffect" you saw)
-@Composable
-inline fun <reified T> ResultEffect(key: String, crossinline onResult: suspend (T) -> Unit) {
-    val registry = LocalNavResultRegistry.current
-    LaunchedEffect(registry) {
-        registry.results.collect { (k, result) ->
-            if (k == key && result is T) {
-                onResult(result)
-            }
-        }
-    }
-}
+// Result delivery (NavResultRegistry, ResultEffect, LocalNavResultRegistry) lives in
+// NavigationResults.kt; the bottom bar lives in NavigationBottomBar.kt. This file keeps
+// the back stack, motion, transitions, shared-element helpers and MainNavigation.
 
 interface NavKey
 class NavBackStack<T: NavKey>(initial: Array<out T>) {
@@ -135,10 +106,7 @@ class NavBackStack<T: NavKey>(initial: Array<out T>) {
     }
 }
 
-// Make it available everywhere via CompositionLocal
-val LocalNavResultRegistry = staticCompositionLocalOf<NavResultRegistry> {
-    error("No NavResultRegistry provided")
-}
+// LocalNavResultRegistry lives in NavigationResults.kt.
 
 val LocalSnackbarHostState = compositionLocalOf<SnackbarHostState?> { null }
 
@@ -160,80 +128,8 @@ class EntryProviderScope<T: NavKey>(val obj: T) {
     }
 }
 
-/**
- * How a destination arrives and leaves.
- *
- * nav3's default is a slow crossfade for everything, and the app-wide slide that replaced it was no
- * better at saying *where* the user went: opening a photo, switching a tab and descending into
- * settings are different journeys that were all animated identically.
- *
- * Apps choose per destination with the `*Page()` helpers rather than by building transitions
- * themselves - nav3 and compose-animation are `implementation` dependencies of this module, so an
- * app module cannot name a [ContentTransform] even if it wanted to.
- */
-enum class NavMotion {
-    /** Descending a hierarchy - a list to its detail, a screen to its settings. */
-    Detail,
-
-    /** Content opening out of the thing that was tapped. */
-    Zoom,
-
-    /** Immersive content taking over the window - a viewer, a player, a game board. */
-    Fullscreen,
-
-    /** Moving between peers - bottom-bar destinations, tabs. */
-    Sibling,
-
-    /**
-     * A component on the previous screen morphs into its counterpart on this one, via
-     * [sharedContainer], [sharedCrop], [sharedText] or [sharedContent].
-     *
-     * The screen itself only crossfades. That is the whole point: if the destination also slid or
-     * scaled, the morphing element would be travelling towards a target that is itself still
-     * moving, and the two animations visibly fight. Pairing a morph with [Zoom] looks broken.
-     */
-    Morph,
-}
-
-private const val NavMotionKey = "com.vayunmathur.library.util.navMotion"
-
-/** [NavMotion.Detail], the default, so this only needs stating for contrast with its siblings. */
-fun DetailPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Detail)
-
-/**
- * [NavMotion.Zoom]: grows out of the tapped item rather than sliding in from the side, which would
- * imply the destination was always over to the right instead of somewhere the user just pointed at.
- */
-fun ZoomPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Zoom)
-
-/**
- * [NavMotion.Fullscreen]: no horizontal travel at all. Sliding a full-bleed media surface in from
- * the side draws attention to the edges of a frame meant to be the whole screen, and on a dark
- * viewer it reads as a flicker.
- */
-fun FullscreenPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Fullscreen)
-
-/**
- * [NavMotion.Sibling]: deliberately directionless. Peers have no hierarchy, and apps here switch
- * tabs with `backStack.reset(...)`, which nav3 sees as a forward push - so the hierarchical slide
- * would send a tab in from the right even when the user moved *left* along the bar.
- */
-fun SiblingPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Sibling)
-
-/**
- * [NavMotion.Morph]: crossfades the screen so that a [sharedContainer], [sharedCrop], [sharedText]
- * or [sharedContent] element is the only thing that appears to move.
- *
- * Use this, never [ZoomPage], on a destination that morphs a component out of the previous screen.
- */
-fun MorphPage(): Map<String, Any> = mapOf(NavMotionKey to NavMotion.Morph)
-
-/** The motion the destination asked for, defaulting to [NavMotion.Detail]. */
-private fun Scene<*>.navMotion(): NavMotion = navMotionIn(entries.lastOrNull()?.metadata)
-
-/** The motion declared in a destination's metadata, defaulting to [NavMotion.Detail]. */
-private fun navMotionIn(metadata: Map<String, Any>?): NavMotion =
-    metadata?.get(NavMotionKey) as? NavMotion ?: NavMotion.Detail
+// The motion enum and *Page() helpers live in NavigationMotion.kt; navMotion()/navMotionIn()
+// are internal there so Navigation.kt's transition specs can keep reading them.
 
 /**
  * Which screen edge the back gesture started from, mirroring `BackEventCompat.EDGE_LEFT`. A plain
@@ -568,9 +464,17 @@ fun <T: NavKey> MainNavigation(
                         // present it has already shifted itself up, and that shows up
                         // in paddingValues. Without consuming it the content would be
                         // pushed up by the keyboard twice.
+                        //
+                        // captionBarPadding first: on desktop windowing (freeform,
+                        // ChromeOS) the system caption bar overlays the top of the
+                        // window, and nothing else in the inset chain accounts for
+                        // it — without this, top bars render underneath it. Zero on
+                        // phones, so phone layout is unchanged.
                         modifier = Modifier
+                            .captionBarPadding()
                             .padding(paddingValues)
                             .consumeWindowInsets(paddingValues)
+                            .consumeWindowInsets(WindowInsets.captionBar)
                             .imePadding(),
                         sceneStrategies = listOf(DialogSceneStrategy(), sceneStrategy),
                         // The destination decides: the motion is read off the entry the user is
@@ -591,6 +495,7 @@ fun <T: NavKey> MainNavigation(
         }
     }
 }
+
 /**
  * Keeps a [NavBackStack] alive while the Activity around it is destroyed and recreated.
  *
@@ -872,101 +777,4 @@ fun ListDetailPage() = ListDetailSceneStrategy.detailPane()
 @Composable
 inline fun <reified T: NavKey> rememberNavBackStack(elements: List<T>): NavBackStack<T> {
     return rememberNavBackStack(*elements.toTypedArray())
-}
-
-data class BottomBarItem<Route: NavKey>(
-    val name: String,
-    val route: Route,
-    val icon: @Composable () -> Unit
-)
-
-/**
- * Height of the bar's items, excluding the system navigation inset beneath it.
- *
- * Exposed so a screen that draws its own floating content above the bar can
- * reserve the right amount of room. Do not use it to build a second kind of
- * bottom bar - the point of [BottomNavBar] is that every app has exactly one
- * shape and one height.
- */
-val BottomNavBarHeight = 64.dp
-
-/**
- * The bottom navigation bar, shared by every app.
- *
- * Built on the short navigation bar so the height is the same everywhere; the
- * apps previously used a mix of `FlexibleBottomAppBar` (deliberately
- * variable), the 80dp `NavigationBar`, and this, so bars visibly changed
- * height from app to app.
- *
- * Rides above the keyboard, which is handled here rather than at each call
- * site because the bar has to work in both the places apps put it: some pass
- * it to [MainNavigation]'s `bottomBar` slot, which sits outside the content
- * and gets no inset handling of its own, and others render it inside a page.
- * That slot is why the app store's bar stayed behind the keyboard while the
- * contacts one, drawn inside the page, moved with it.
- *
- * The inset is the union of the bar's normal one and the keyboard rather than
- * the two added together. A visible keyboard already covers the navigation
- * bar, so padding for both would leave the bar floating a navigation bar's
- * height above the keyboard.
- *
- * Takes a content slot rather than a fixed item model because the apps
- * navigate in genuinely different ways - a route back stack, a tab enum, a
- * selected index. Use [BottomNavBarItem] for each entry; there is a
- * [BottomNavBar] overload below for the common back-stack case.
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun BottomNavBar(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    ShortNavigationBar(
-        modifier = modifier,
-        windowInsets = ShortNavigationBarDefaults.windowInsets.union(WindowInsets.ime),
-        content = content,
-    )
-}
-
-/** One entry in a [BottomNavBar]. Pass a null [label] for an icon-only item. */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun BottomNavBarItem(
-    selected: Boolean,
-    onClick: () -> Unit,
-    icon: @Composable () -> Unit,
-    label: String? = null,
-    enabled: Boolean = true,
-) {
-    ShortNavigationBarItem(
-        selected = selected,
-        onClick = onClick,
-        icon = icon,
-        label = label?.let { { Text(it) } },
-        enabled = enabled,
-    )
-}
-
-/**
- * [BottomNavBar] for the common case: one item per destination in a back stack.
- *
- * [onSelect] defaults to resetting the stack to the tapped route, which is what
- * a tab bar usually wants. Apps that need different semantics - pushing rather
- * than replacing, or collapsing an intermediate screen first - pass their own.
- */
-@Composable
-fun <Route : NavKey> BottomNavBar(
-    backStack: NavBackStack<Route>,
-    pages: List<BottomBarItem<out Route>>,
-    currentPage: Route,
-    modifier: Modifier = Modifier,
-    onSelect: (Route) -> Unit = { if (backStack.last() != it) backStack.reset(it) },
-) {
-    BottomNavBar(modifier) {
-        pages.forEach { page ->
-            BottomNavBarItem(
-                selected = currentPage == page.route,
-                onClick = { onSelect(page.route) },
-                icon = page.icon,
-                label = page.name,
-            )
-        }
-    }
 }

@@ -1,16 +1,26 @@
 package com.vayunmathur.euicc.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
+import com.vayunmathur.euicc.Route
 import com.vayunmathur.euicc.data.EuiccInfo
 import com.vayunmathur.euicc.data.Notification
 import com.vayunmathur.euicc.data.Profile
 import com.vayunmathur.euicc.platform.EuiccScreenState
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.util.NavBackStack
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /**
  * Store-listing images for `:euicc`, rendered from Compose previews instead of an
@@ -58,7 +68,7 @@ class MetadataPreviews {
     @Composable
     fun Preview1Profiles() {
         DynamicTheme(darkTheme = true) {
-            EuiccScreen(
+            EuiccHomeScreen(
                 state = EuiccScreenState(
                     loading = false,
                     eid = "89044000001234567890123456789012",
@@ -66,13 +76,9 @@ class MetadataPreviews {
                     profiles = sampleProfiles,
                     notifications = sampleNotifications,
                 ),
+                backStack = NavBackStack(arrayOf(Route.Home)),
                 onReload = {},
-                onDownload = {},
-                onEnable = {},
-                onDisable = {},
-                onRename = { _, _ -> },
-                onDelete = {},
-                onRemoveNotification = {},
+                onAddSim = {},
             )
         }
     }
@@ -82,7 +88,7 @@ class MetadataPreviews {
     @Composable
     fun Preview2Empty() {
         DynamicTheme(darkTheme = true) {
-            EuiccScreen(
+            EuiccHomeScreen(
                 state = EuiccScreenState(
                     loading = false,
                     eid = "89044000001234567890123456789012",
@@ -90,14 +96,48 @@ class MetadataPreviews {
                     profiles = emptyList(),
                     notifications = emptyList(),
                 ),
+                backStack = NavBackStack(arrayOf(Route.Home)),
                 onReload = {},
-                onDownload = {},
-                onEnable = {},
-                onDisable = {},
-                onRename = { _, _ -> },
-                onDelete = {},
-                onRemoveNotification = {},
+                onAddSim = {},
             )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "3-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview3Expanded() {
+        DynamicTheme(darkTheme = true) {
+            // Expanded windows keep the profile list visible while the selected
+            // profile's detail opens beside it instead of covering it.
+            val state = EuiccScreenState(
+                loading = false,
+                eid = "89044000001234567890123456789012",
+                info = sampleInfo,
+                profiles = sampleProfiles,
+                notifications = sampleNotifications,
+            )
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    EuiccHomeScreen(
+                        state = state,
+                        backStack = NavBackStack(arrayOf(Route.Home)),
+                        onReload = {},
+                        onAddSim = {},
+                    )
+                }
+                Box(Modifier.weight(0.6f).fillMaxHeight()) {
+                    ProfileDetailScreen(
+                        iccid = sampleProfiles.first().iccid,
+                        state = state,
+                        backStack = NavBackStack(arrayOf(Route.Home)),
+                        onEnable = {},
+                        onDisable = {},
+                        onErase = {},
+                        onRename = { _, _ -> },
+                    )
+                }
+            }
         }
     }
 }

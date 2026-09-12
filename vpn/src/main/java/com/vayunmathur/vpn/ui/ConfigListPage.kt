@@ -60,7 +60,10 @@ fun ConfigListPage(backStack: NavBackStack<Route>, vm: VpnViewModel) {
                 }
             }
         },
-        onOpen = { cfg -> backStack.add(Route.Detail(cfg.id)) },
+        onOpen = { cfg ->
+            if (backStack.last() is Route.Detail) backStack.setLast(Route.Detail(cfg.id))
+            else backStack.add(Route.Detail(cfg.id))
+        },
         onDelete = { cfg -> vm.delete(cfg) },
     )
 }

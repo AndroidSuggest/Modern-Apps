@@ -137,6 +137,7 @@ import com.vayunmathur.library.ui.IconRestore
 import com.vayunmathur.library.ui.IconVerify
 import com.vayunmathur.library.ui.IconSave
 import com.vayunmathur.library.ui.IconAdd
+import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.util.ResultEffect
 import com.vayunmathur.library.util.formatSpeed
 import kotlin.time.Duration.Companion.minutes
@@ -434,6 +435,8 @@ fun MainPageContent(
     // so animation/offset-driven effects either no-op or hang the render. Skip them in
     // inspection mode; the page still lays out (peeked sheet + top bar + FAB) statically.
     val inPreview = LocalInspectionMode.current
+    // Expanded windows use the side-panel layout below instead of the bottom sheet.
+    val expanded = isExpandedWidth() && !inPreview
 
     // In history mode the sheet is effectively gone - the name moves to the app bar, the drag
     // handle is removed and swiping is disabled - but the peek must stay NON-ZERO.
@@ -492,6 +495,20 @@ fun MainPageContent(
                 }
             }
         }
+    }
+
+    if (expanded) {
+        FindFamilyWideLayout(
+            map = { map() },
+            panel = {
+                if (state.nothingSelected) {
+                    FamilyListSheet(state.familyList, familyActions)
+                } else if (!state.historyMode && state.selectedUserId != null) {
+                    state.person?.let { PersonDetailSheet(it, personActions) }
+                }
+            },
+        )
+        return
     }
 
     BottomSheetScaffold(

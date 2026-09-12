@@ -23,6 +23,7 @@ import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.LinearProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
@@ -49,10 +50,13 @@ fun ShareSendPage(viewModel: ShareViewModel) {
         title = stringResource(R.string.app_name),
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
-        ShareSendScreen(
-            viewModel = viewModel,
-            modifier = Modifier.fillMaxSize().padding(padding),
-        )
+        // Letterboxed on expanded windows so the cards keep a readable measure.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
+            ShareSendScreen(
+                viewModel = viewModel,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 

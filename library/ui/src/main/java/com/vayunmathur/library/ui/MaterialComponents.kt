@@ -971,6 +971,37 @@ fun ModalDrawerSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) = androidx.compose.material3.ModalDrawerSheet(modifier = modifier, drawerContainerColor = drawerContainerColor, content = content)
 
+// --- Navigation rail ---
+/**
+ * A vertical navigation rail for expanded windows: the wide-screen
+ * counterpart of [BottomNavBar].
+ *
+ * [TabbedPagerScaffold] renders this automatically on [WindowWidthClass.Expanded]
+ * instead of the bottom bar, so tabbed apps get desktop chrome without touching
+ * their own code. Prefer that over calling this directly; reach for it only for
+ * a screen with its own tab model that cannot use the shared host.
+ */
+@Composable
+fun NavigationRail(
+    modifier: Modifier = Modifier,
+    header: @Composable (ColumnScope.() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) = androidx.compose.material3.NavigationRail(modifier = modifier, header = header, content = content)
+
+@Composable
+fun ColumnScope.NavigationRailItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    label: (@Composable () -> Unit)? = null,
+    alwaysShowLabel: Boolean = true,
+) = androidx.compose.material3.NavigationRailItem(
+    selected = selected, onClick = onClick, icon = icon, modifier = modifier,
+    enabled = enabled, label = label, alwaysShowLabel = alwaysShowLabel,
+)
+
 // --- Navigation bar ---
 @Composable
 fun NavigationBar(

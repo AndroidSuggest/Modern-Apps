@@ -17,6 +17,9 @@ import kotlinx.datetime.LocalDate
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Desktop-shaped: exercises the detail screens at a width where list and detail sit side by side. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
+
 /**
  * A fixed Saturday. Every date the chart screen derives — the week range in the header,
  * whether the "next period" arrow is enabled — hangs off this, so pinning it is what keeps
@@ -169,6 +172,51 @@ class MetadataPreviews {
                         },
                         primaryRange = 52.0..141.0,
                         totalBarCount = hourly.size,
+                    ),
+                ),
+                actions = MetricDetailsActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5Expanded() {
+        // The detail screen at desktop width: the week-of-steps chart a metric row opens.
+        // The medical lists take the ViewModel directly and cannot render here, so the
+        // preview-splittable chart screen stands in for the detail pane.
+        val days = listOf(
+            "Sun" to 6_240.0,
+            "Mon" to 11_820.0,
+            "Tue" to 9_450.0,
+            "Wed" to 13_100.0,
+            "Thu" to 8_760.0,
+            "Fri" to 12_340.0,
+            "Sat" to 10_580.0,
+        )
+        val fullNames = listOf(
+            "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+        )
+        DynamicTheme(darkTheme = true) {
+            BarChartDetailsScreen(
+                state = MetricDetailsUiState(
+                    config = HealthMetricConfig.STEPS,
+                    today = TODAY,
+                    data = MetricDashboardData(
+                        totalValue = 72_290.0,
+                        dailyAverage = 10_327.14,
+                        chartData = days,
+                        historyItems = days.mapIndexed { index, (_, value) ->
+                            HistoryItem(
+                                label = fullNames[index],
+                                value = value,
+                                unit = HealthMetricConfig.STEPS.unit,
+                                isGoalMet = value >= HealthMetricConfig.STEPS.dailyGoal,
+                                useDecimals = false,
+                            )
+                        }.reversed(),
+                        totalBarCount = days.size,
                     ),
                 ),
                 actions = MetricDetailsActions.Noop,

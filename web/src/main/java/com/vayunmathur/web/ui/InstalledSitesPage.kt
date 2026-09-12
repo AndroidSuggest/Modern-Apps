@@ -29,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.CardDefaults
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconClose
@@ -60,11 +61,11 @@ fun InstalledSitesPage(
         backStack = backStack,
         scrollBehavior = appBarScrollBehavior(),
     ) { paddingValues ->
+        DesktopMaxWidthContainer(modifier = Modifier.padding(paddingValues)) {
         if (installed.isEmpty()) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
                     .padding(24.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -79,7 +80,7 @@ fun InstalledSitesPage(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(paddingValues),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -127,6 +128,7 @@ fun InstalledSitesPage(
                     )
                 }
             }
+        }
         }
     }
 }

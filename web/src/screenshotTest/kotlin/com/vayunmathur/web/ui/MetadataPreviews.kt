@@ -1,6 +1,9 @@
 package com.vayunmathur.web.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -15,6 +18,9 @@ import com.vayunmathur.web.platform.BrowserTab
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /** Fixed so the images are byte-identical from a clean checkout; neither screen shows a date. */
 private const val JUL_2026 = 1_753_900_000_000L
@@ -109,6 +115,33 @@ class MetadataPreviews {
     fun Preview3Bookmarks() {
         DynamicTheme(darkTheme = true) {
             BookmarksScreen(bookmarks = bookmarks, folders = folders)
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        DynamicTheme(darkTheme = true) {
+            // Expanded windows keep the browser visible while the detail pane
+            // (bookmarks here) opens beside it instead of covering it.
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    BrowserChrome(omniboxText = "", tabCount = tabs.size) { padding ->
+                        Column(Modifier.fillMaxSize().padding(padding)) {
+                            QuickAccess(
+                                bookmarks = bookmarks,
+                                history = history,
+                                onOpenUrl = {},
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                }
+                Box(Modifier.weight(0.4f).fillMaxHeight()) {
+                    BookmarksScreen(bookmarks = bookmarks, folders = folders)
+                }
+            }
         }
     }
 }

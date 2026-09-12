@@ -1,6 +1,8 @@
 package com.vayunmathur.musicbrainz
 
 import androidx.compose.runtime.Composable
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -17,12 +19,12 @@ import com.vayunmathur.musicbrainz.ui.TidalLoginPage
 fun Navigation(viewModel: MusicBrainzViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Search)
     MainNavigation(backStack) {
-        entry<Route.Search> { SearchPage(backStack, viewModel) }
-        entry<Route.Artist>(metadata = MorphPage()) { ArtistPage(backStack, viewModel, it.artistId) }
-        entry<Route.ReleaseGroup>(metadata = MorphPage()) { ReleaseGroupPage(backStack, viewModel, it.releaseGroupId) }
-        entry<Route.Release>(metadata = MorphPage()) { ReleasePage(backStack, viewModel, it.releaseId) }
-        entry<Route.Downloads> { DownloadsPage(backStack, viewModel) }
-        entry<Route.Settings> { SettingsPage(backStack, viewModel) }
-        entry<Route.TidalLogin> { TidalLoginPage(backStack, viewModel) }
+        entry<Route.Search>(metadata = ListPage()) { SearchPage(backStack, viewModel) }
+        entry<Route.Artist>(metadata = ListDetailPage() + MorphPage()) { ArtistPage(backStack, viewModel, it.artistId) }
+        entry<Route.ReleaseGroup>(metadata = ListDetailPage() + MorphPage()) { ReleaseGroupPage(backStack, viewModel, it.releaseGroupId) }
+        entry<Route.Release>(metadata = ListDetailPage() + MorphPage()) { ReleasePage(backStack, viewModel, it.releaseId) }
+        entry<Route.Downloads>(metadata = ListDetailPage()) { DownloadsPage(backStack, viewModel) }
+        entry<Route.Settings>(metadata = ListDetailPage()) { SettingsPage(backStack, viewModel) }
+        entry<Route.TidalLogin>(metadata = ListDetailPage()) { TidalLoginPage(backStack, viewModel) }
     }
 }

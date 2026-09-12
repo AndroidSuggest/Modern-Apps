@@ -14,6 +14,9 @@ import com.vayunmathur.openassistant.util.SettingsUiState
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Desktop-shaped: exercises the settings detail pane beside the permanent history drawer. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
+
 /**
  * Store listing images for `:openassistant`. See `common-conventions-preview-metadata`.
  *
@@ -104,6 +107,26 @@ class MetadataPreviews {
     @Preview(name = "3-memories", device = PHONE, showSystemUi = true)
     @Composable
     fun Preview3Memories() {
+        DynamicTheme(darkTheme = true) {
+            SettingsScreen(
+                state = SettingsUiState(
+                    memories = listOf(
+                        Memory(content = "Vegetarian, but eats fish.", id = 1),
+                        Memory(content = "Lives in Lisbon; commutes by bike.", id = 2),
+                        Memory(content = "Prefers metric units and 24-hour time.", id = 3),
+                        Memory(content = "Is learning Portuguese — likes short practice prompts.", id = 4),
+                    ),
+                ),
+                actions = SettingsActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        // The settings detail pane at desktop width, beside the permanent history drawer.
         DynamicTheme(darkTheme = true) {
             SettingsScreen(
                 state = SettingsUiState(

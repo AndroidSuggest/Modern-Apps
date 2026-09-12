@@ -72,7 +72,12 @@ fun LabResultsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
             FloatingActionButton(
                 onClick = {
                     viewModel.startLabDraft()
-                    backStack.add(Route.EditLabResult())
+                    // A form already open in the detail pane is swapped, not stacked.
+                    if (backStack.last() is Route.EditLabResult) {
+                        backStack.setLast(Route.EditLabResult())
+                    } else {
+                        backStack.add(Route.EditLabResult())
+                    }
                 }
             ) { IconAdd() }
         },
@@ -101,7 +106,11 @@ fun LabResultsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
                         viewModel.startLabDraft(entry.id)
-                        backStack.add(Route.EditLabResult(entry.id))
+                        if (backStack.last() is Route.EditLabResult) {
+                            backStack.setLast(Route.EditLabResult(entry.id))
+                        } else {
+                            backStack.add(Route.EditLabResult(entry.id))
+                        }
                     },
                 ) {
                     ListItem(

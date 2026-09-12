@@ -28,6 +28,9 @@ import com.vayunmathur.photos.util.PersonCluster
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Expanded desktop window for the wide viewer+filmstrip layout. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=420"
+
 /**
  * Store listing images for `:photos`, rendered from Compose previews instead of from an
  * instrumented test on a device.
@@ -89,6 +92,18 @@ class MetadataPreviews {
                     indexing = true,
                 ),
                 faceThumbnail = { person, modifier -> PlaceholderFace(person, modifier) },
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        DynamicTheme(darkTheme = true) {
+            PhotoViewerWideLayout(
+                viewer = { GalleryPreview(GalleryUiState(photos = samplePhotos())) },
+                filmstrip = { GalleryPreview(GalleryUiState(photos = samplePhotos().take(4))) },
             )
         }
     }

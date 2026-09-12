@@ -1,6 +1,10 @@
 package com.vayunmathur.education.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.education.content.Choice
@@ -22,6 +26,9 @@ import com.vayunmathur.library.ui.DynamicTheme
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /**
  * Store listing images for `:education`, rendered from Compose previews instead of from an
@@ -192,6 +199,62 @@ class MetadataPreviews {
                 ),
                 actions = QuizActions.Noop,
             )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5Expanded() {
+        // Medium widths pair the catalog with the course: the units no longer cover
+        // the course list, so the listing captures both side by side.
+        DynamicTheme(darkTheme = true) {
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(0.45f)) {
+                    ScholarHomeScreen(
+                        state = HomeUiState(
+                            learnerName = "Ava",
+                            streakCount = 12,
+                            totalStars = 48,
+                            sections = listOf(
+                                HomeSection(
+                                    subject = Subject.MATH,
+                                    courses = listOf(
+                                        HomeCourse("course.grade3-math", "3rd grade math", 6),
+                                        HomeCourse("course.algebra-basics", "Algebra basics", 5),
+                                    ),
+                                ),
+                                HomeSection(
+                                    subject = Subject.SCIENCE,
+                                    courses = listOf(
+                                        HomeCourse("course.biology", "Biology", 7),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        actions = HomeActions.Noop,
+                    )
+                }
+                Box(Modifier.weight(0.55f)) {
+                    ScholarCourseScreen(
+                        state = CourseUiState(
+                            title = "3rd grade math",
+                            description = "Multiplication, division and fractions.",
+                            units = listOf(
+                                CourseUnitRow("unit.multiplication", "Multiplication", lessonCount = 4, stars = 3),
+                                CourseUnitRow("unit.division", "Division", lessonCount = 3, stars = 3),
+                                CourseUnitRow("unit.fractions", "Fractions", lessonCount = 5, stars = 2),
+                            ),
+                            challenge = Exercise(
+                                id = "ex.grade3-challenge",
+                                title = "Course challenge",
+                                questionIds = emptyList(),
+                            ),
+                        ),
+                        actions = CourseActions.Noop,
+                    )
+                }
+            }
         }
     }
 }

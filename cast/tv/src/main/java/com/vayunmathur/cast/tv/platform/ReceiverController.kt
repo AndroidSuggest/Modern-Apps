@@ -64,52 +64,8 @@ import java.security.SecureRandom
 
 private const val TAG = "ReceiverController"
 
-/** How often the receiver's own throughput line goes out, paired with the sender's. */
-private const val STATS_LOG_INTERVAL_MS = 1_000L
-
-/** Feedback cadence. Well inside the target playout delay, so a NACK can still be played. */
-private const val FEEDBACK_INTERVAL_MS = 50L
-
-/**
- * The most often a decode failure may demand a key frame.
- *
- * Asking is not free: it discards every partial frame the assembler holds, so one request per refused
- * frame turns a burst of refusals into a stall it would otherwise have recovered from.
- */
-private const val RESYNC_INTERVAL_MS = 500L
-
-/**
- * How long the media loop waits for a codec configuration that has to arrive out of band.
- *
- * The wait itself is not new: `decoder == null` is already an unbounded state gated on the Surface,
- * and in practice this overlaps that wait entirely - the phone's encoder emits its configuration at
- * `start()`, long before `MirrorActivity` has produced anything to draw on. What is new is that it can
- * now fail, and it has to: a decoder that never starts is a black screen, and a black screen that
- * reports [ReceiverFailure.NoDecoder] would send the next hour of debugging to the wrong place.
- */
-private const val CODEC_CONFIG_TIMEOUT_MS = 5_000L
-
-/**
- * How much the receive socket may hold while the loop is busy decoding.
- *
- * An IDR at native resolution and ~24 Mbit/s is a few hundred packets arriving back to back once a
- * second, and the loop is single-threaded: it is inside `MediaCodec` when the burst lands. Nothing
- * set this before, so the default buffer overflowed and the loss looked like Wi-Fi. The kernel may
- * grant less than this, which is why it is read back and logged.
- */
-private const val RECEIVE_BUFFER_BYTES = 2 * 1024 * 1024
-
 /** One press of the remote's volume key. Sixteen steps end to end, which is what a TV usually offers. */
 private const val VOLUME_STEP = 1f / 16f
-
-/**
- * How often a served session's playback goes to the phone even when nothing changed.
- *
- * Matches the cadence the phone used to report at, and for the same reason: every message is an
- * absolute snapshot, so this is the longest anything can be stale for, and the receiving end
- * interpolates position between them precisely so it does not need them faster.
- */
-private const val REPORT_HEARTBEAT_MS = 500L
 
 /**
  * The single owner of the live receiving session.
@@ -125,16 +81,16 @@ private const val REPORT_HEARTBEAT_MS = 500L
  */
 object ReceiverController {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val _state = MutableStateFlow(ReceiverUiState())
+    internal val _state = MutableStateFlow(ReceiverUiState())
     val state: StateFlow<ReceiverUiState> = _state.asStateFlow()
 
-    private var advertiser: ReceiverAdvertiser? = null
-    private var serverSocket: ServerSocket? = null
-    private var acceptJob: Job? = null
-    private var sessionJob: Job? = null
-    private var mediaJob: Job? = null
+    internal var advertiser: ReceiverAdvertiser? = null
+    internal var serverSocket: ServerSocket? = null
+    internal var acceptJob: Job? = null
+    internal var sessionJob: Job? = null
+    internal var mediaJob: Job? = null
 
     /**
      * The surface `MirrorActivity` owns, when it has one.
@@ -144,7 +100,7 @@ object ReceiverController {
      * Activity's callbacks write it.
      */
     @Volatile
-    private var surface: Surface? = null
+    internal var surface: Surface? = null
 
     /**
      * The player for a served content session, or null when there is not one.
@@ -154,16 +110,16 @@ object ReceiverController {
      * decoder and no playout queue, so there is nothing for that loop to do.
      */
     @Volatile
-    private var contentPlayer: ContentPlayer? = null
+    internal var contentPlayer: ContentPlayer? = null
 
     /** The frame size the phone said it would send, so the Activity can letterbox to it. */
     @Volatile
     var frameWidth: Int = 0
-        private set
+        internal set
 
     @Volatile
     var frameHeight: Int = 0
-        private set
+        internal set
 
     /**
      * The video codec configuration the phone sent, for a codec that cannot carry it in-band.
@@ -175,7 +131,7 @@ object ReceiverController {
      * session for good.
      */
     @Volatile
-    private var videoCodecConfig: ByteArray? = null
+    internal var videoCodecConfig: ByteArray? = null
 
     /**
      * The output gain the phone last asked for, 0..1.
@@ -185,9 +141,9 @@ object ReceiverController {
      * timeout away and imperceptible for a volume change.
      */
     @Volatile
-    private var castVolume: Float = 1f
+    internal var castVolume: Float = 1f
 
-    private val pairingGate = PairingGate()
+    internal val pairingGate = PairingGate()
 
     /**
      * The live control channel, for sending back up it.
@@ -198,7 +154,7 @@ object ReceiverController {
      * Volatile because the UI thread reads it while the session coroutine writes it.
      */
     @Volatile
-    private var channel: ControlChannel? = null
+    internal var channel: ControlChannel? = null
 
     /**
      * Do what the remote asked, wherever the player for it happens to be.
@@ -284,7 +240,7 @@ object ReceiverController {
      * The metadata goes with them, and has to: it is not merely stale but wrong, and a cover left on
      * screen over the next session's audio would look deliberate.
      */
-    private fun forgetPlayback() {
+    internal fun forgetPlayback() {
         castVolume = 1f
         _state.update {
             it.copy(
@@ -559,185 +515,6 @@ object ReceiverController {
     }
 
     /**
-     * Serve a content session: the phone has the bytes, this end has the player.
-     *
-     * The whole of the new arrangement on this side. Nothing is decoded from RTP, nothing waits for a
-     * key frame, and there is no picture-loss indicator to send because there are no lost pictures.
-     * What is left is a URL, a pinned certificate and a player that owns its own clock.
-     *
-     * **And because it owns the clock, it owns the truth.** A reporting coroutine puts this player's
-     * state on the channel - immediately when something changes, and otherwise at
-     * [REPORT_HEARTBEAT_MS] - which is what lets every surface on the phone show what is actually
-     * playing. `PLAYBACK_COMMAND` arrives here rather than leaving, for the same reason.
-     *
-     * ExoPlayer must be built and driven from the thread whose looper it took, so every call into it
-     * hops to the main thread. The control channel stays on this coroutine, because it is the same
-     * blocking read it always was.
-     *
-     * Returns true when the phone ended the *session* and wants to keep the connection, so the caller
-     * can go back to waiting for the next configuration.
-     */
-    private suspend fun serveContent(
-        context: Context,
-        channel: ControlChannel,
-        session: ContentSession,
-        senderName: String,
-    ): Boolean {
-        if (!session.video && AudioPlayer.limits().isEmpty()) {
-            // The failure that used to be silence. A TV with no Opus decoder and no picture to fall
-            // back on has to say so, and the phone has to be told rather than left streaming into it.
-            Log.w(TAG, "refusing an audio-only session: this TV has no Opus decoder")
-            channel.send(ContentReady(accepted = false, detail = "this TV has no Opus decoder"))
-            _state.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.NoAudioDecoder)) }
-            return false
-        }
-
-        val player = withContext(Dispatchers.Main) { ContentPlayer(context, session) }
-        val started = withContext(Dispatchers.Main) {
-            player.start { detail -> Log.w(TAG, "the served stream failed: $detail") }
-        }
-        if (!started) {
-            channel.send(ContentReady(accepted = false, detail = "the player could not be built"))
-            _state.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.Handshake)) }
-            withContext(NonCancellable + Dispatchers.Main) { player.release() }
-            return false
-        }
-
-        contentPlayer = player
-        // A surface may already exist from a previous session's Activity; an audio-only session wants
-        // none, and handing it one would put a black rectangle over the now-playing screen.
-        if (session.video) surface?.let { withContext(Dispatchers.Main) { player.setSurface(it) } }
-        channel.send(ContentReady(accepted = true))
-        // Built outside the update, because `update` may retry its lambda under contention and
-        // allocating a fetcher per attempt would be one object per lost race.
-        val artworkFetcher = ArtworkFetcher(session)
-        _state.update {
-            it.copy(
-                phase = ReceiverPhase.Mirroring(
-                    senderName = senderName,
-                    // No frame size to letterbox to: the TV plays the media at its own size, which is
-                    // the point of not squeezing it through an encoder first.
-                    width = 0,
-                    height = 0,
-                    appLabel = session.appLabel,
-                    hasVideo = session.video,
-                ),
-                // In the state rather than a field of this object, because the now-playing screen
-                // reads it during composition and a plain field is not something composition
-                // observes - the same trap the `overlayPinned` comment in `MirrorActivity` names.
-                artwork = artworkFetcher,
-            )
-        }
-        Log.i(TAG, "serving content from ${session.host}:${session.port} for '${session.appLabel}'")
-
-        // A third writer on this channel, alongside the ping echo and this coroutine's own sends.
-        // Nothing guards it here because nothing needs to: `ControlChannel.send` encodes and writes
-        // under one lock, so a frame cannot interleave with another and the cipher's nonce cannot
-        // advance twice for one message. What a mutex would add is ordering between *sequences*, and
-        // there are none here - every send is a single message.
-        val reporting = scope.launch { report(player, channel) }
-        try {
-            while (true) {
-                val next = channel.receive() ?: return false
-                when (val message = next.message) {
-                    is Bye -> {
-                        Log.i(TAG, "'$senderName' said goodbye")
-                        return false
-                    }
-                    // The phone is done casting but not done with us. Distinct from a `Bye`, and the
-                    // difference is the pairing: this leaves the TV connected and ready for the next
-                    // cast rather than back at its idle screen waiting to be picked again.
-                    is ContentEnded -> {
-                        Log.i(TAG, "'$senderName' ended the content session")
-                        return true
-                    }
-                    is PlayMedia -> {
-                        withContext(Dispatchers.Main) { player.play(message) }
-                        // Published rather than only held on the player, because it is half of the
-                        // comparison `nowPlayingForCurrentItem` makes and the UI has to recompose on it.
-                        _state.update { it.copy(playingResourceId = message.resourceId) }
-                    }
-                    // What the item *is*, as opposed to which bytes it is. Stored whatever it names:
-                    // the gate is at read time, so a snapshot arriving before or after the play it
-                    // describes both work, and one for a track already skipped past is simply never
-                    // shown. See `ReceiverUiState.nowPlayingForCurrentItem`.
-                    is NowPlaying -> _state.update { it.copy(nowPlaying = message) }
-                    // The phone's transport, wherever it was pressed - its own screen, a notification,
-                    // a headset button, a car. Applied to the player that is actually making the
-                    // sound. `Next` and `Previous` are refused by the player and arrive as a fresh
-                    // `PLAY_MEDIA` instead, because only the phone can see the queue.
-                    is PlaybackCommand -> withContext(Dispatchers.Main) { player.apply(message) }
-                    // Echoed straight back, which is the whole of the keep-alive. Reading it has
-                    // already pushed this end's deadline out; replying is what pushes the phone's,
-                    // since a read timeout is not reset by anything that end sends.
-                    is Ping -> runCatching { channel.send(Ping) }
-                    else -> Unit
-                }
-            }
-        } finally {
-            // Cancelled **and joined**, under NonCancellable because this runs on the teardown path a
-            // cancelled session takes. A publish already past its last suspension point would
-            // otherwise land after the caller has cleared the overlay, putting a stale 0:00 snapshot
-            // back on the idle screen and making `nudgeVolume` answer for a session that has gone.
-            withContext(NonCancellable) { reporting.cancelAndJoin() }
-            contentPlayer = null
-            // NonCancellable because this is the teardown path a cancelled session takes, and an
-            // ExoPlayer left unreleased holds a codec the next session will ask for.
-            withContext(NonCancellable + Dispatchers.Main) { player.release() }
-        }
-    }
-
-    /**
-     * Keep the phone's copy of this player current, for as long as the session lasts.
-     *
-     * Two cadences, because they answer different needs. Anything the phone *renders* differently goes
-     * out the instant it changes - a pause that took half a second to reach a notification reads as a
-     * dropped button press. Position is deliberately excluded from that test: it moves constantly, so
-     * "changed" would mean "always", and the phone interpolates between snapshots precisely so it does
-     * not need them faster.
-     *
-     * The heartbeat underneath is what makes the whole thing self-repairing: every message is an
-     * absolute snapshot, so a lost one costs at most one interval of staleness and needs no
-     * acknowledgement, no sequence number and no retry.
-     *
-     * Each snapshot is also published locally, because this box draws its own overlay from the same
-     * numbers - it is the source of them now, so there is nothing else to draw from.
-     */
-    private suspend fun report(player: ContentPlayer, channel: ControlChannel) {
-        // Built on the main thread, because every getter behind `snapshot` asserts the player's own
-        // looper - reading them from this coroutine would throw rather than report a stale number.
-        val latest = withContext(Dispatchers.Main) {
-            MutableStateFlow(player.snapshot()).also { flow ->
-                player.onChanged = { flow.value = player.snapshot() }
-            }
-        }
-        try {
-            coroutineScope {
-                launch {
-                    latest
-                        .map { it.copy(positionMs = 0) }
-                        .distinctUntilChanged()
-                        .collect { publish(latest.value, channel) }
-                }
-                while (isActive) {
-                    delay(REPORT_HEARTBEAT_MS)
-                    latest.value = withContext(Dispatchers.Main) { player.snapshot() }
-                    publish(latest.value, channel)
-                }
-            }
-        } finally {
-            withContext(NonCancellable + Dispatchers.Main) { player.onChanged = null }
-        }
-    }
-
-    /** One snapshot, to this box's own overlay and to the phone. */
-    private fun publish(snapshot: PlaybackState, channel: ControlChannel) {
-        onPlaybackState(snapshot)
-        runCatching { channel.send(snapshot) }
-            .onFailure { Log.w(TAG, "could not report playback", it) }
-    }
-
-    /**
      * Take a playback snapshot, and stamp it with the moment it became true.
      *
      * The timestamp is taken here rather than in the UI because this is the closest thing to "when it
@@ -750,7 +527,7 @@ object ReceiverController {
      * Not logged. Two of these a second would drown the once-a-second throughput line that everything
      * else about a session is diagnosed from.
      */
-    private fun onPlaybackState(message: PlaybackState) {
+    internal fun onPlaybackState(message: PlaybackState) {
         castVolume = message.volume
         _state.update {
             it.copy(
@@ -771,7 +548,7 @@ object ReceiverController {
      * has to be readable from the one hardware session where it can be answered. `0x81` leads an `av1C`
      * record (marker 1, version 1); `0x0a` leads a sequence header OBU with a size field.
      */
-    private fun onVideoCodecConfig(message: VideoCodecConfig, config: StreamConfig) {
+    internal fun onVideoCodecConfig(message: VideoCodecConfig, config: StreamConfig) {
         val codec = config.videoCodec
         if (codec == null) {
             // An audio-only session has no decoder to configure. Ignored rather than treated as a
@@ -799,351 +576,6 @@ object ReceiverController {
     }
 
     /**
-     * Pair, or prove a phone we already trust.
-     *
-     * The attempt loop stays open on a wrong code so the user can simply type it again; the socket's
-     * read timeout is what ends a session nobody is completing.
-     */
-    private suspend fun authenticate(
-        channel: ControlChannel,
-        store: PairingStore,
-        keys: SessionKeys,
-        transcript: ByteArray,
-        greeting: Hello,
-    ): Boolean {
-        val remembered = if (greeting.paired) store.deviceKey(greeting.senderId) else null
-        if (remembered != null) {
-            // Exactly one message either way, so the phone never has to guess whether a code is
-            // coming. `code = false` is what tells it to prove the key it holds.
-            channel.send(PairRequired(code = false))
-            val proof = channel.receive()?.message as? PairProof ?: return false
-            val bytes = ProtocolBase64.decode(proof.proof) ?: return false
-            if (pairingGate.verifyDevice(keys, transcript, remembered, bytes) is PairResult.Ok) {
-                channel.send(PairOk())
-                Log.i(TAG, "'${greeting.senderName}' authenticated with a remembered device key")
-                return true
-            }
-            // Not the phone we remember. The honest cause is a reinstall, so fall through to the code
-            // rather than refusing. Deliberately **no PairFailed here**: the PairRequired below is the
-            // one reply to that proof, and sending both would leave a message in the phone's buffer
-            // that its next read would mistake for the answer to its code.
-            Log.i(TAG, "'${greeting.senderName}' failed its device proof; asking for a code")
-        }
-
-        pairingGate.reset()
-        channel.send(PairRequired(code = true, attemptsLeft = pairingGate.attemptsLeft))
-        _state.update {
-            it.copy(
-                phase = ReceiverPhase.Pairing(
-                    senderName = greeting.senderName,
-                    code = pairingGate.code,
-                    attemptsLeft = pairingGate.attemptsLeft,
-                ),
-            )
-        }
-        while (true) {
-            val proof = channel.receive()?.message as? PairProof ?: return false
-            val bytes = ProtocolBase64.decode(proof.proof) ?: return false
-            when (val result = pairingGate.verifyCode(keys, transcript, bytes)) {
-                is PairResult.Ok -> {
-                    val deviceKey = result.deviceKey ?: return false
-                    store.remember(greeting.senderId, deviceKey)
-                    channel.send(PairOk(deviceKey = ProtocolBase64.encode(deviceKey)))
-                    Log.i(TAG, "'${greeting.senderName}' paired; it will connect silently from now on")
-                    return true
-                }
-                is PairResult.Wrong -> {
-                    channel.send(
-                        PairFailed(
-                            attemptsLeft = result.attemptsLeft,
-                            codeChanged = result.codeChanged,
-                        ),
-                    )
-                    _state.update {
-                        it.copy(
-                            phase = ReceiverPhase.Pairing(
-                                senderName = greeting.senderName,
-                                code = pairingGate.code,
-                                attemptsLeft = result.attemptsLeft,
-                                codeChanged = result.codeChanged,
-                            ),
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    // ---- media ----
-
-    private fun startStreaming(
-        channel: ControlChannel,
-        keys: SessionKeys,
-        config: StreamConfig,
-        senderName: String,
-    ) {
-        frameWidth = config.width
-        frameHeight = config.height
-        // A new session's codec configuration has not arrived yet, and the previous session's would be
-        // for a different encoder. This is the *only* place it is cleared - see the field's own note on
-        // why a decoder release must not.
-        videoCodecConfig = null
-        // The socket is bound first, because the port it lands on is what STREAM_READY has to name -
-        // filling in a port we hoped to get and then binding is how a sender ends up talking to nothing.
-        val socket = try {
-            DatagramSocket(0).apply {
-                // Best effort: the kernel clamps to its own maximum and reports what it gave, so the
-                // request is made and then the result is logged rather than assumed.
-                runCatching { receiveBufferSize = RECEIVE_BUFFER_BYTES }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "could not bind a udp socket", e)
-            channel.send(Bye(reason = "no udp socket"))
-            _state.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.StreamEnded)) }
-            return
-        }
-        val random = SecureRandom()
-        val ready = StreamReady(
-            udpPort = socket.localPort,
-            audioSsrc = random.ssrc(StreamConstants.AUDIO_SSRC_MIN, StreamConstants.AUDIO_SSRC_MAX),
-            videoSsrc = random.ssrc(StreamConstants.VIDEO_SSRC_MIN, StreamConstants.VIDEO_SSRC_MAX),
-        )
-        val negotiation = Negotiation.of(config, ready, keys)
-        try {
-            channel.send(ready)
-        } catch (e: Exception) {
-            // Nothing owns the socket yet, so a failure here would leak it for the life of the process.
-            Log.w(TAG, "could not send STREAM_READY", e)
-            runCatching { socket.close() }
-            _state.update { it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.StreamEnded)) }
-            return
-        }
-        _state.update {
-            it.copy(
-                phase = ReceiverPhase.Mirroring(
-                    senderName = senderName,
-                    width = config.width,
-                    height = config.height,
-                    appLabel = config.appLabel,
-                    frameRate = config.frameRate,
-                ),
-            )
-        }
-        Log.i(
-            TAG,
-            "receiving ${config.videoCodec?.label ?: "audio only"} ${config.width}x${config.height} @ " +
-                "${config.frameRate}fps (${config.bitRate / 1_000_000.0} Mbit/s) on udp " +
-                "${socket.localPort}, " +
-                "rcvbuf=${runCatching { socket.receiveBufferSize }.getOrDefault(0)}B, " +
-                "playout=${StreamConstants.TARGET_DELAY_MS}ms" +
-                if (config.videoCodec?.needsCodecConfig == true) "; waiting for its codec config" else "",
-        )
-        mediaJob = scope.launch { pump(socket, negotiation, config, channel) }
-    }
-
-    /**
-     * The receive loop: datagrams in, frames out at their scheduled time, feedback out, and one log
-     * line a second.
-     *
-     * **This coroutine owns the decoder and the audio track outright** - they are locals, not fields.
-     * `MediaCodec` or `AudioTrack` released underneath a thread parked inside it is a native crash
-     * rather than a catchable exception, so nothing outside this loop may touch them: [detachSurface]
-     * only clears the surface reference, and the loop does the release on its next pass. [endMedia]
-     * cancels *and joins* this job before anything else is dismantled.
-     *
-     * Decode stays **on this thread**, even though a playout queue now separates arrival from
-     * presentation. A second thread would buy nothing - the queue is what decouples the two - and
-     * would reintroduce exactly the native-crash surface the paragraph above exists to avoid.
-     *
-     * The decoder is started from inside the loop rather than before it because the surface arrives
-     * asynchronously from `MirrorActivity`, and it is torn down and rebuilt the same way, which is what
-     * makes a rotation mid-stream survivable.
-     */
-    private suspend fun pump(
-        socket: DatagramSocket,
-        negotiation: Negotiation,
-        config: StreamConfig,
-        channel: ControlChannel,
-    ) {
-        var decoder: VideoDecoder? = null
-        // The surface [decoder] was built against, so a *replacement* surface can be told from the
-        // same one. Compared by identity: a new Surface for the same SurfaceView is a different
-        // object, and that is exactly the case this exists to catch.
-        var decoderSurface: Surface? = null
-        // Hoisted into a local because the property comes from another module, where Kotlin will not
-        // smart-cast it - and every use below is inside a branch that has already established there
-        // is video.
-        val videoCodec = config.videoCodec
-        val player = if (config.audio) AudioPlayer().takeIf { it.start() } else null
-        val playout = PlayoutQueue(
-            targetDelayMs = StreamConstants.TARGET_DELAY_MS.toLong(),
-            timebase = StreamConstants.VIDEO_TIMEBASE,
-        )
-        // Audio is held for the same interval as video, or the buffer below would put the sound
-        // 150 ms ahead of the picture - which is worse than the judder it exists to remove.
-        val audioPlayout = PlayoutQueue(
-            targetDelayMs = StreamConstants.TARGET_DELAY_MS.toLong(),
-            timebase = StreamConstants.AUDIO_TIMEBASE,
-        )
-        val media = MediaReceiver(
-            socket = socket,
-            negotiation = negotiation,
-            // Queued, not decoded: the loop below decides when this frame is due.
-            onVideo = { frame -> playout.add(frame, System.currentTimeMillis()) },
-            // Not queued when there is no player to drain it into, or the queue would only grow.
-            onAudio = { frame ->
-                if (player != null) audioPlayout.add(frame, System.currentTimeMillis())
-            },
-            videoReady = { decoder != null },
-        )
-        var lastFeedback = 0L
-        var lastStatsLog = 0L
-        var lastResync = 0L
-        // The gain currently on the track, so it is written only when the phone actually changes it.
-        var appliedVolume = Float.NaN
-        // When the wait for a codec configuration began, or 0 while nothing is waiting. Started from
-        // the moment the decoder *could* otherwise have been built, so it does not run down while the
-        // Activity is still producing a surface.
-        var codecConfigWaitStartedAt = 0L
-        try {
-            while (currentCoroutineContext().isActive) {
-                val activeSurface = surface
-                // **Identity, not nullity.** A panel mode switch destroys the `SurfaceView`'s
-                // surface and hands back a *different* one, frequently with no null in between -
-                // `MirrorActivity.surfaceChanged` says as much, and re-attaches for that reason.
-                // Testing only for null left the decoder drawing into a surface that had already
-                // been torn down: the picture froze, the television asked for key frame after key
-                // frame, and nothing recovered until a re-negotiation rebuilt this whole loop.
-                // Switching the panel to match the stream made that the common case rather than a
-                // rotation-only curiosity.
-                val stale = decoder
-                if (stale != null && activeSurface !== decoderSurface) {
-                    stale.release()
-                    decoder = null
-                    decoderSurface = null
-                    // Whatever is queued was scheduled for a decoder that no longer exists, and
-                    // its replacement can decode nothing until it has been given a key frame.
-                    playout.clear()
-                    media.requestKeyFrame(StreamKind.Video)
-                }
-                if (activeSurface == null) {
-                    // Nothing to draw on yet, or the surface has just gone. Either way the decoder
-                    // above is already released and there is nothing to build against.
-                } else if (decoder == null && negotiation.hasVideo && videoCodec != null) {
-                    // Only consulted for a codec that needs it. An H.265 session finds its parameter
-                    // sets in the stream, and installing a `csd-0` it was not expecting would fail the
-                    // configure - so the field is read through the codec's own contract rather than
-                    // passed on because it happened to be set.
-                    val codecConfig = videoCodecConfig.takeIf { videoCodec.needsCodecConfig }
-                    if (videoCodec.needsCodecConfig && codecConfig == null) {
-                        // **The one genuinely new wait.** This widens the entry condition of a state
-                        // the pipeline already survives - `decoder == null`, which `MediaReceiver`'s
-                        // pre-session video drop, `ReceiverSession.synchronised` and PLI already make
-                        // recoverable - rather than adding a new one.
-                        val waiting = System.currentTimeMillis()
-                        if (codecConfigWaitStartedAt == 0L) {
-                            codecConfigWaitStartedAt = waiting
-                            Log.i(
-                                TAG,
-                                "surface ready; waiting for ${videoCodec.label}'s codec config",
-                            )
-                        } else if (waiting - codecConfigWaitStartedAt >= CODEC_CONFIG_TIMEOUT_MS) {
-                            Log.w(
-                                TAG,
-                                "no ${videoCodec.label} codec config after " +
-                                    "${CODEC_CONFIG_TIMEOUT_MS}ms; nothing can be decoded",
-                            )
-                            // Named so the phone can remember it and start the next session on the
-                            // other codec - a black screen it could not attribute would just repeat.
-                            runCatching {
-                                channel.send(Bye(reason = ByeReason.MISSING_CODEC_CONFIG))
-                            }
-                            _state.update {
-                                it.copy(
-                                    phase = ReceiverPhase.Failed(
-                                        ReceiverFailure.MissingCodecConfig,
-                                    ),
-                                )
-                            }
-                            return
-                        }
-                    } else {
-                        val started = VideoDecoder(activeSurface, videoCodec)
-                        if (started.start(config.width, config.height, codecConfig)) {
-                            decoder = started
-                            decoderSurface = activeSurface
-                            Log.i(TAG, "decoder up; the picture starts at the next key frame")
-                        } else {
-                            _state.update {
-                                it.copy(phase = ReceiverPhase.Failed(ReceiverFailure.NoDecoder))
-                            }
-                            return
-                        }
-                    }
-                }
-                media.pump()
-                val now = System.currentTimeMillis()
-                val active = decoder
-                if (active != null) {
-                    while (true) {
-                        val frame = playout.due(now) ?: break
-                        val queued = active.decode(
-                            frame.payload,
-                            rtpToMicros(frame.rtpTimestamp),
-                            frame.isKeyFrame,
-                        )
-                        if (!queued && now - lastResync >= RESYNC_INTERVAL_MS && !senderIdle()) {
-                            // The session counted this frame as delivered, so its checkpoint has
-                            // moved past a frame the decoder never got: every delta frame behind it
-                            // now references something that does not exist. Only a key frame
-                            // recovers, and nothing else in the pipeline can know to ask for one.
-                            //
-                            // **Rate-limited, because asking costs the assembler's partial frames.**
-                            // A decoder whose input buffers are briefly full refuses several frames
-                            // in a row - measured at 55 in the first seconds of a session - and one
-                            // resync per refusal wipes the very packets retransmission was about to
-                            // repair, turning a hiccup into a stall.
-                            lastResync = now
-                            media.requestKeyFrame(StreamKind.Video)
-                        }
-                    }
-                    active.render()
-                }
-                if (player != null) {
-                    if (castVolume != appliedVolume) {
-                        appliedVolume = castVolume
-                        player.setVolume(appliedVolume)
-                    }
-                    while (true) {
-                        val frame = audioPlayout.due(now) ?: break
-                        player.play(frame.payload, audioRtpToMicros(frame.rtpTimestamp))
-                    }
-                }
-                if (now - lastFeedback >= FEEDBACK_INTERVAL_MS) {
-                    lastFeedback = now
-                    media.sendFeedback(senderIdle = senderIdle())
-                }
-                if (now - lastStatsLog >= STATS_LOG_INTERVAL_MS) {
-                    lastStatsLog = now
-                    // Paired with MirrorEngine's line on the phone. Two logs reporting at the same
-                    // cadence from both ends is what five rounds of hardware debugging never had.
-                    Log.i(
-                        TAG,
-                        media.throughputSummary() +
-                            " playout=${playout.depth}f/rebased=${playout.rebases}" +
-                            " dropped=${active?.framesDropped ?: 0}" +
-                            audioHealth(player),
-                    )
-                }
-            }
-        } finally {
-            decoder?.release()
-            player?.release()
-            media.close()
-        }
-    }
-
-    /**
      * Whether the phone has told us it is deliberately not producing frames.
      *
      * The one thing that distinguishes "paused" from "broken", and the pipeline had no way to know it
@@ -1151,7 +583,7 @@ object ReceiverController {
      * here - no frames arriving - and every recovery mechanism is built for the second. False for screen
      * mirroring, which never reports playback and can never be paused, so its behaviour is unchanged.
      */
-    private fun senderIdle(): Boolean =
+    internal fun senderIdle(): Boolean =
         _state.value.playback?.state?.let { !it.playing && !it.buffering } == true
 
     /**
@@ -1167,7 +599,7 @@ object ReceiverController {
      * clearing it could otherwise land *after* [listen] had stored the next session's job, leaving the
      * field null and letting a third phone in alongside a running one.
      */
-    private fun endMedia() {
+    internal fun endMedia() {
         val media = mediaJob
         mediaJob = null
         if (media != null) {
@@ -1183,7 +615,7 @@ object ReceiverController {
     }
 
     /** Video RTP timestamps are 90 kHz; `MediaCodec` wants microseconds. */
-    private fun rtpToMicros(rtpTimestamp: Long): Long =
+    internal fun rtpToMicros(rtpTimestamp: Long): Long =
         rtpTimestamp * 1_000_000L / StreamConstants.VIDEO_TIMEBASE
 
     /**
@@ -1193,7 +625,7 @@ object ReceiverController {
      * that will happen again, and a session that reports nothing looks identical to one that never had
      * a problem.
      */
-    private fun audioHealth(player: AudioPlayer?): String = when {
+    internal fun audioHealth(player: AudioPlayer?): String = when {
         player == null -> ""
         player.failed -> " audio=failed after ${player.restarts} rebuilds"
         player.restarts > 0 -> " audio=recovered/${player.restarts} rebuilds"
@@ -1201,7 +633,7 @@ object ReceiverController {
     }
 
     /** Audio is timestamped in samples, so its divisor is the sample rate. */
-    private fun audioRtpToMicros(rtpTimestamp: Long): Long =
+    internal fun audioRtpToMicros(rtpTimestamp: Long): Long =
         rtpTimestamp * 1_000_000L / StreamConstants.AUDIO_TIMEBASE
 
     private fun SecureRandom.ssrc(min: Int, max: Int): Long = (min + nextInt(max - min + 1)).toLong()
@@ -1211,73 +643,4 @@ object ReceiverController {
         listOf(Build.MODEL, Build.DEVICE)
             .firstOrNull { !it.isNullOrBlank() }
             ?: "MA Cast TV"
-}
-
-/**
- * Encoded frames waiting for their turn on screen, or in the speakers.
- *
- * The receiver advertised a target playout delay in every RTCP report and implemented none of it:
- * each frame was rendered the moment it arrived, so Wi-Fi jitter mapped one-to-one onto visible
- * judder and the NACK machinery had no window to repair into. This is that window.
- *
- * Scheduling is by **RTP-timestamp delta from the first frame**, which is what makes playout follow
- * capture spacing rather than arrival spacing. Encoded frames are kilobytes, so the ~5 frames a
- * 150 ms buffer holds at 30 fps cost nothing to keep.
- *
- * [timebase] is the stream's own, because audio is timestamped in samples and video at 90 kHz - both
- * halves have to be held for the same *wall-clock* interval or the sound leads the picture.
- *
- * Not thread-safe, and does not need to be: it is filled from `MediaReceiver.pump`'s callback and
- * drained by the loop that calls it, both on the one media coroutine.
- */
-private class PlayoutQueue(private val targetDelayMs: Long, private val timebase: Int) {
-
-    private val frames = ArrayDeque<DecodableFrame>()
-
-    /** The sender's RTP clock mapped onto ours, established by the first frame after each reset. */
-    private var baseRtp = -1L
-    private var baseWallMs = 0L
-
-    /** Times the mapping had to be re-established, each of which resets the buffer's depth. */
-    var rebases: Long = 0
-        private set
-
-    val depth: Int get() = frames.size
-
-    fun add(frame: DecodableFrame, nowMs: Long) {
-        if (baseRtp < 0) rebase(frame.rtpTimestamp, nowMs)
-        frames.addLast(frame)
-        // **Corrected in both directions.** Each frame should land [targetDelayMs] after it arrives;
-        // how far from that it actually lands is how far the mapping has drifted. Correcting only
-        // lateness lets the buffer deepen without limit - measured at 7-8 frames, some 600 ms of
-        // latency, on a mapping established during a slow patch and never revisited. Re-basing on the
-        // *newest* frame keeps the deque ordered for free: playout time is monotonic in the RTP
-        // timestamp, so pulling the schedule in makes older frames due sooner, never out of order.
-        val drift = scheduleFor(frame.rtpTimestamp) - (nowMs + targetDelayMs)
-        if (drift > targetDelayMs || drift < -targetDelayMs) {
-            rebases++
-            rebase(frame.rtpTimestamp, nowMs)
-        }
-    }
-
-    /** The next frame whose time has come, or null while the buffer is still filling. */
-    fun due(nowMs: Long): DecodableFrame? {
-        val head = frames.firstOrNull() ?: return null
-        if (scheduleFor(head.rtpTimestamp) > nowMs) return null
-        return frames.removeFirst()
-    }
-
-    /** Dropped rather than played out: the decoder these were scheduled for has gone. */
-    fun clear() {
-        frames.clear()
-        baseRtp = -1
-    }
-
-    private fun rebase(rtpTimestamp: Long, nowMs: Long) {
-        baseRtp = rtpTimestamp
-        baseWallMs = nowMs + targetDelayMs
-    }
-
-    private fun scheduleFor(rtpTimestamp: Long): Long =
-        baseWallMs + (rtpTimestamp - baseRtp) * 1_000L / timebase
 }

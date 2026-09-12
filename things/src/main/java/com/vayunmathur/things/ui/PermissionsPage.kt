@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconBluetooth
 import com.vayunmathur.library.ui.IconHealth
@@ -62,10 +63,11 @@ fun PermissionsPage(
         title = stringResource(R.string.app_name),
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
+        // First-run gate; letterboxed on expanded windows like the rest of the app.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -95,6 +97,7 @@ fun PermissionsPage(
                 onResolve = onResolveHealthConnect,
                 icon = { IconHealth() },
             )
+        }
         }
     }
 }

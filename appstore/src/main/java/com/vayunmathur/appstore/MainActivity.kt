@@ -29,6 +29,9 @@ import com.vayunmathur.appstore.ui.TrustPage
 import com.vayunmathur.appstore.ui.UpdatesPage
 import com.vayunmathur.appstore.util.AppStoreViewModel
 import com.vayunmathur.appstore.util.AppStoreViewModelFactory
+import com.vayunmathur.appstore.util.clearSelection
+import com.vayunmathur.appstore.util.selectApp
+import com.vayunmathur.appstore.util.selectPackage
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.ui.DynamicTheme

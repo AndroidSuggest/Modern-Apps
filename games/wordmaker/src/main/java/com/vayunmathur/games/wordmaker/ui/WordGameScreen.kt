@@ -13,13 +13,11 @@ import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,30 +52,19 @@ import com.vayunmathur.games.wordmaker.data.GameMode
 import com.vayunmathur.games.wordmaker.platform.WordGameActions
 import com.vayunmathur.games.wordmaker.platform.WordGameUiState
 import com.vayunmathur.games.wordmaker.ui.components.AnimatedLetter
-import com.vayunmathur.games.wordmaker.ui.components.SurfaceText
 import com.vayunmathur.games.wordmaker.ui.components.WordToAnimate
-import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AppBarAlignment
 import com.vayunmathur.library.ui.AppScaffold
-import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
-import com.vayunmathur.library.ui.FilledIconButton
-import com.vayunmathur.library.ui.Icon
-import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconSettings
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.ui.game.GameTopBarActions
 import com.vayunmathur.library.util.AchievementsManager
-import com.vayunmathur.games.wordmaker.ui.components.CompetitiveStatusBar
 import com.vayunmathur.games.wordmaker.ui.components.CrosswordBoard
-import com.vayunmathur.games.wordmaker.ui.components.DailyStatusBar
-import com.vayunmathur.games.wordmaker.ui.components.LetterChooser
 import com.vayunmathur.games.wordmaker.ui.components.WordMakerModeChooser
-import com.vayunmathur.games.wordmaker.ui.dialogs.BonusWordsDialog
-import com.vayunmathur.games.wordmaker.ui.dialogs.DefinitionDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -229,9 +216,13 @@ fun WordGameScreen(
         alignment = AppBarAlignment.Center,
         scrollBehavior = appBarScrollBehavior(),
     ) { innerPadding ->
+        // Wide windows letterbox the whole play area at a readable measure
+        // instead of stretching the crossword across the window; the board
+        // itself never splits. Bars stay full-bleed — only the body is capped.
+        DesktopMaxWidthContainer(modifier = Modifier.padding(innerPadding)) {
         Box(
             modifier = Modifier
-                .padding(innerPadding).padding(bottom = 32.dp)
+                .padding(bottom = 32.dp)
                 .fillMaxSize()
                 .onGloballyPositioned {
                     rootOffset = it.localToRoot(Offset.Zero)
@@ -271,198 +262,78 @@ fun WordGameScreen(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (isCompetitive) {
-                    CompetitiveStatusBar(
-                        score = competitiveScore,
-                        remainingTimeMs = remainingTime
-                    )
-                } else if (isDaily) {
-                    DailyStatusBar(streak = state.dailyStreak)
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                Box(
-                    modifier = Modifier.height(wheelHeight),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isWon && isDaily) {
-                        Text(
-                            stringResource(R.string.daily_come_back_tomorrow),
-                            fontWeight = FontWeight.Bold
-                        )
-                    } else if (isWon && !isCompetitive) {
-                        Button(onClick = { actions.saveLevel(currentLevel + 1) }) {
-                            Text(stringResource(R.string.next_level))
+                WordGameWheel(
+                    isCompetitive = isCompetitive,
+                    isDaily = isDaily,
+                    competitiveScore = competitiveScore,
+                    remainingTimeMs = remainingTime,
+                    dailyStreak = state.dailyStreak,
+                    wheelHeight = wheelHeight,
+                    isWon = isWon,
+                    timedOut = timedOut,
+                    currentLevel = currentLevel,
+                    actions = actions,
+                    shuffledLetters = shuffledLetters,
+                    onShuffle = {
+                        var nextLetters = shuffledLetters.shuffled()
+                        while (nextLetters == shuffledLetters && shuffledLetters.size > 1) {
+                            nextLetters = shuffledLetters.shuffled()
                         }
-                    } else if (isCompetitive && (isWon || timedOut)) {
-                        // Level finished ΓÇö the between-levels lobby (WordMakerGameLoader) takes over.
-                    } else {
-                        LetterChooser(
-                            letters = shuffledLetters,
-                            tapToSpell = tapToSpell,
-                            wheelSpacing = wheelSpacing,
-                            onShuffle = {
-                                var nextLetters = shuffledLetters.shuffled()
-                                while (nextLetters == shuffledLetters && shuffledLetters.size > 1) {
-                                    nextLetters = shuffledLetters.shuffled()
-                                }
-                                shuffledLetters = nextLetters
-                            },
-                            onWordSubmitted = { word, ids ->
-                                suspend fun shakeAnim(anim: Animatable<Float, AnimationVector1D>, duration: Int = 40) {
-                                    for (o in listOf(-16f, 12f, -8f, 6f, -3f, 0f)) {
-                                        anim.animateTo(with(density) { o.dp.toPx() }, tween(duration))
-                                    }
-                                }
-
-                                val isSolution = word in crosswordData.solutionWords
-                                val isBonus = !isSolution && word.length >= 3 && actions.isInDictionary(word)
-
-                                // #543 — re-entering an already-found/bonus word must not
-                                // replay the board/bonus animation. Check for duplicates
-                                // first, including words that are mid-animation (not yet
-                                // flushed to DataStore + foundWords/bonusWords flow).
-                                val alreadyFound = word in foundWords || word == wordToAnimate?.word
-                                val alreadyBonus = word in bonusWords || word == animatedWord
-                                when {
-                                    isSolution && alreadyFound -> shakeAnim(wordShakeAnim)
-                                    isBonus && alreadyBonus -> {
-                                        val j = launch { shakeAnim(bonusShakeAnim, 60) }
-                                        shakeAnim(wordShakeAnim)
-                                        j.join()
-                                    }
-                                    isSolution && word !in foundWords -> {
-                                        wordToAnimate = WordToAnimate(word, ids)
-                                        actions.onSolutionWordFound(word)
-                                    }
-                                    isBonus && word !in bonusWords -> {
-                                        coroutineScope.launch {
-                                            animatedWord = word
-                                            animationProgress.snapTo(0f)
-                                            animationProgress.animateTo(1f, tween(800))
-                                            actions.addBonusWord(word)
-                                            animatedWord = null
-                                        }
-                                    }
-                                    else -> shakeAnim(wordShakeAnim)
-                                }
-                            },
-                            onWordBoxPositioned = { wordBoxOffset = it },
-                            onLetterPositioned = { id, offset ->
-                                if (letterChooserPositions[id] != offset) {
-                                    letterChooserPositions =
-                                        letterChooserPositions + (id to offset)
-                                }
-                            },
-                            wordShakeTranslation = wordShakeAnim.value
-                        )
-                    }
-                }
-            }
-
-            FilledIconButton(
-                onClick = { showBonusWordsDialog = true },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(16.dp)
-                    .padding(bottom = 32.dp)
-                    .onGloballyPositioned { bonusButtonOffset = it.localToRoot(Offset.Zero) }
-                    .graphicsLayer {
-                        translationX = bonusShakeAnim.value
+                        shuffledLetters = nextLetters
                     },
-                enabled = bonusWords.isNotEmpty()
-            ) {
-                Icon(painterResource(R.drawable.outline_book_2_24), null)
-            }
-
-            if (!isWon && !isCompetitive) {
-                val hintEnabled = remainingCooldown <= 0L
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp)
-                ) {
-                    FilledIconButton(
-                        onClick = { showHintDialog = true },
-                        enabled = hintEnabled
-                    ) {
-                        Icon(
-                            painterResource(android.R.drawable.ic_menu_help),
-                            contentDescription = stringResource(R.string.cd_hint),
-                            modifier = Modifier.graphicsLayer { alpha = if (hintEnabled) 1f else 0.5f }
-                        )
-                    }
-                    if (!hintEnabled) {
-                        CircularProgressIndicator(
-                            progress = { 1f - (remainingCooldown / 30_000f) },
-                            modifier = Modifier.size(48.dp).align(Alignment.Center),
-                            strokeWidth = 3.dp
-                        )
-                    }
-                }
-            }
-
-            if (showHintDialog) {
-                AlertDialog(
-                    onDismissRequest = { showHintDialog = false },
-                    title = { Text(stringResource(R.string.hint_confirmation)) },
-                    confirmButton = {
-                        Button(onClick = {
-                            actions.revealHint(crosswordData, foundWords, revealedHints)
-                            showHintDialog = false
-                        }) {
-                            Text(stringResource(R.string.yes))
-                        }
+                    tapToSpell = tapToSpell,
+                    wheelSpacing = wheelSpacing,
+                    crosswordData = crosswordData,
+                    foundWords = foundWords,
+                    bonusWords = bonusWords,
+                    wordToAnimate = wordToAnimate,
+                    animatedWord = animatedWord,
+                    scope = coroutineScope,
+                    animationProgress = animationProgress,
+                    density = density,
+                    wordShakeAnim = wordShakeAnim,
+                    bonusShakeAnim = bonusShakeAnim,
+                    onAnimateSolution = { wordToAnimate = it },
+                    onAnimateBonus = { animatedWord = it },
+                    onWordBoxPositioned = { wordBoxOffset = it },
+                    letterChooserPositions = letterChooserPositions,
+                    onLetterPositioned = { id, offset ->
+                        letterChooserPositions = letterChooserPositions + (id to offset)
                     },
-                    dismissButton = {
-                        Button(onClick = { showHintDialog = false }) {
-                            Text(stringResource(R.string.no))
-                        }
-                    }
                 )
             }
 
-            if (showBonusWordsDialog) {
-                BonusWordsDialog(bonusWords = bonusWords, getDefinition = actions::getDefinition) {
-                    showBonusWordsDialog = false
-                }
-            }
+            WordGameCornerButtons(
+                isWon = isWon,
+                isCompetitive = isCompetitive,
+                bonusWords = bonusWords,
+                bonusShake = bonusShakeAnim.value,
+                onOpenBonusWords = { showBonusWordsDialog = true },
+                onBonusButtonPositioned = { bonusButtonOffset = it },
+                remainingCooldownMs = remainingCooldown,
+                onOpenHint = { showHintDialog = true },
+            )
 
-            wordWithDefinition?.let { (word, definition) ->
-                DefinitionDialog(word, definition) {
-                    wordWithDefinition = null
-                }
-            }
-
-            animatedWord?.let { word ->
-                val progress = animationProgress.value
-                val currentOffset = lerp(wordBoxOffset, bonusButtonOffset, progress)
-                val alpha = 1f - progress
-                val scale = 1f - (progress * 0.5f)
-
-                Text(
-                    text = word,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 32.sp,
-                    modifier = Modifier
-                        .offset { IntOffset(currentOffset.x.toInt(), currentOffset.y.toInt()) }
-                        .graphicsLayer(
-                            scaleX = scale,
-                            scaleY = scale,
-                            alpha = alpha
-                        )
-                )
-            }
-            val (size, fontSize) = Pair(35.dp * scale, 18.sp * scale)
-            animatedLetters.forEach { letter ->
-                val progress = letter.progress.value
-                val offset = lerp(letter.startOffset, letter.endOffset, progress)
-
-                SurfaceText(Modifier.offset { IntOffset(offset.x.toInt(), offset.y.toInt()) },
-                    RoundedCornerShape(4.dp * scale),
-                    MaterialTheme.colorScheme.primary, letter.char.toString(),
-                    Modifier, FontWeight.Bold, fontSize, size,
-                    textColor = MaterialTheme.colorScheme.onPrimary)
-            }
+            WordGameOverlays(
+                showHintDialog = showHintDialog,
+                onDismissHint = { showHintDialog = false },
+                crosswordData = crosswordData,
+                foundWords = foundWords,
+                revealedHints = revealedHints,
+                actions = actions,
+                showBonusWordsDialog = showBonusWordsDialog,
+                onDismissBonusWords = { showBonusWordsDialog = false },
+                bonusWords = bonusWords,
+                wordWithDefinition = wordWithDefinition,
+                onDismissDefinition = { wordWithDefinition = null },
+                animatedWord = animatedWord,
+                animationProgress = animationProgress,
+                wordBoxOffset = wordBoxOffset,
+                bonusButtonOffset = bonusButtonOffset,
+                animatedLetters = animatedLetters,
+                scale = scale,
+            )
+        }
         }
     }
 }

@@ -62,7 +62,10 @@ fun AccountsScreen(backStack: NavBackStack<Route>, viewModel: EverySyncViewModel
         val actions = remember(viewModel, backStack) {
             object : AccountsActions {
                 override fun syncNow(accountName: String) = viewModel.syncNow(accountName)
-                override fun openAccount(accountName: String) = backStack.add(Route.AccountDetail(accountName))
+                override fun openAccount(accountName: String) {
+                    if (backStack.last() is Route.AccountDetail) backStack.setLast(Route.AccountDetail(accountName))
+                    else backStack.add(Route.AccountDetail(accountName))
+                }
                 override fun openAddAccount() = backStack.add(Route.AddAccount)
                 override fun openSettings() = backStack.add(Route.Settings)
             }

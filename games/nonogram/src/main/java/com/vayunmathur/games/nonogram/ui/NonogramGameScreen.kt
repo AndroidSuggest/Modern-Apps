@@ -3,9 +3,12 @@ package com.vayunmathur.games.nonogram.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -16,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.games.nonogram.R
 import com.vayunmathur.games.nonogram.data.GameMode
 import com.vayunmathur.games.nonogram.data.MarkMode
+import com.vayunmathur.games.nonogram.data.NonogramGameState
 import com.vayunmathur.games.nonogram.data.STARTING_HEARTS
 import com.vayunmathur.games.nonogram.platform.NonogramGameActions
 import com.vayunmathur.games.nonogram.platform.NonogramUiState
@@ -37,9 +41,13 @@ import com.vayunmathur.library.ui.game.DailyStreakText
 import com.vayunmathur.library.ui.game.GameModeChooser
 import com.vayunmathur.library.ui.game.GameTopBarActions
 import com.vayunmathur.library.ui.game.HeartsRow
+import com.vayunmathur.library.ui.isExpandedWidth
 
 /** Caps the board on tablets, where a full-width grid would give absurdly large cells. */
 private val BoardMaxWidth = 460.dp
+
+/** Width of the hearts-and-controls panel beside the board on expanded windows. */
+private val NonogramSidePanelWidth = 280.dp
 
 /**
  * Chooses what a plain tap does.
@@ -70,6 +78,7 @@ private fun MarkModeToggle(mode: MarkMode, onSelect: (MarkMode) -> Unit) {
  * The board, with no dependency on the ViewModel so it can be rendered from a `@Preview` — see
  * `src/screenshotTest`.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NonogramGameScreen(
     state: NonogramUiState,
@@ -78,6 +87,9 @@ fun NonogramGameScreen(
     onOpenGameCenter: () -> Unit,
 ) {
     val daily = state.mode == GameMode.DAILY
+    // Wide windows put the hearts and controls beside the board instead of
+    // stretching the grid across the window; the board itself never splits.
+    val expanded = isExpandedWidth()
     AppScaffold(
         title = {
             GameModeChooser(
@@ -144,6 +156,44 @@ fun NonogramGameScreen(
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
 
+                expanded -> {
+                    Row(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.lg),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier.weight(1f).fillMaxHeight(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            NonogramBoard(
+                                game = game,
+                                onTap = actions::tapCell,
+                                onLongPress = actions::crossCell,
+                                modifier = Modifier
+                                    .widthIn(max = BoardMaxWidth)
+                                    .fillMaxWidth(),
+                            )
+                        }
+                        Column(
+                            Modifier.width(NonogramSidePanelWidth).fillMaxHeight(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(
+                                Spacing.md,
+                                Alignment.CenterVertically,
+                            ),
+                        ) {
+                            HeartsRow(remaining = game.hearts, total = STARTING_HEARTS)
+                            NonogramControls(
+                                game = game,
+                                markMode = state.markMode,
+                                daily = daily,
+                                actions = actions,
+                            )
+                        }
+                    }
+                }
+
                 else -> {
                     HeartsRow(remaining = game.hearts, total = STARTING_HEARTS)
 
@@ -156,57 +206,78 @@ fun NonogramGameScreen(
                             .fillMaxWidth(),
                     )
 
-                    when {
-                        game.isWon -> {
-                            Text(
-                                stringResource(R.string.solved),
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            if (daily) {
-                                Text(
-                                    stringResource(R.string.daily_come_back_tomorrow),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    textAlign = TextAlign.Center,
-                                )
-                            } else {
-                                Button(
-                                    onClick = { actions.nextLevel() },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text(stringResource(R.string.next_level)) }
-                            }
-                        }
-
-                        game.isFailed -> {
-                            Text(
-                                stringResource(R.string.out_of_hearts),
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                            Button(
-                                onClick = { actions.restartLevel() },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text(stringResource(R.string.try_again)) }
-                        }
-
-                        else -> {
-                            MarkModeToggle(state.markMode, actions::setMarkMode)
-                            if (game.filled.isEmpty() && game.crossed.isEmpty() &&
-                                game.revealedBlanks.isEmpty()
-                            ) {
-                                Text(
-                                    stringResource(R.string.how_to_play),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
-                                )
-                            }
-                            OutlinedButton(onClick = { actions.restartLevel() }) {
-                                Text(stringResource(R.string.restart))
-                            }
-                        }
-                    }
+                    NonogramControls(
+                        game = game,
+                        markMode = state.markMode,
+                        daily = daily,
+                        actions = actions,
+                    )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Win/lose banner plus the mark-mode toggle, restart and next-level buttons.
+ *
+ * Shared by the stacked phone layout and the expanded side panel so the two
+ * never drift apart; emits items directly into the caller's column.
+ */
+@Composable
+private fun NonogramControls(
+    game: NonogramGameState,
+    markMode: MarkMode,
+    daily: Boolean,
+    actions: NonogramGameActions,
+) {
+    when {
+        game.isWon -> {
+            Text(
+                stringResource(R.string.solved),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (daily) {
+                Text(
+                    stringResource(R.string.daily_come_back_tomorrow),
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                Button(
+                    onClick = { actions.nextLevel() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.next_level)) }
+            }
+        }
+
+        game.isFailed -> {
+            Text(
+                stringResource(R.string.out_of_hearts),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.error,
+            )
+            Button(
+                onClick = { actions.restartLevel() },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.try_again)) }
+        }
+
+        else -> {
+            MarkModeToggle(markMode, actions::setMarkMode)
+            if (game.filled.isEmpty() && game.crossed.isEmpty() &&
+                game.revealedBlanks.isEmpty()
+            ) {
+                Text(
+                    stringResource(R.string.how_to_play),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            OutlinedButton(onClick = { actions.restartLevel() }) {
+                Text(stringResource(R.string.restart))
             }
         }
     }

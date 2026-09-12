@@ -42,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.ConfirmDialog
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -85,16 +86,17 @@ fun HistoryPage(
         },
         scrollBehavior = appBarScrollBehavior(),
     ) { paddingValues ->
-        if (history.isEmpty()) {
-            EmptyState(
-                title = stringResource(R.string.no_history_yet),
-                modifier = Modifier.fillMaxSize().padding(paddingValues),
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(paddingValues),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
+        DesktopMaxWidthContainer(modifier = Modifier.padding(paddingValues)) {
+            if (history.isEmpty()) {
+                EmptyState(
+                    title = stringResource(R.string.no_history_yet),
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
                 grouped.forEach { (dateLabel, entries) ->
                     stickyHeader {
                         Text(
@@ -116,6 +118,7 @@ fun HistoryPage(
                             }
                         )
                     }
+                }
                 }
             }
         }

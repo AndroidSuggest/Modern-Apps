@@ -1,21 +1,16 @@
 package com.vayunmathur.fooddelivery.ui
 
-import androidx.compose.ui.res.stringResource
-import com.vayunmathur.fooddelivery.R
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,46 +18,37 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.stripe.android.PaymentConfiguration
 import com.stripe.android.Stripe
 import com.stripe.android.paymentsheet.PaymentSheet
 import com.stripe.android.paymentsheet.PaymentSheetResult
 import com.stripe.android.paymentsheet.rememberPaymentSheet
-import com.vayunmathur.library.ui.AppScaffold
-import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.Card
-import com.vayunmathur.library.ui.CircularProgressIndicator
-import com.vayunmathur.library.ui.FilterChip
-import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.IconCheck
-import com.vayunmathur.library.ui.IconLocationOn
-import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.OutlinedTextField
-import com.vayunmathur.library.ui.SegmentedButtonDefaults
-import com.vayunmathur.library.ui.SegmentedButton
-import com.vayunmathur.library.ui.SingleChoiceSegmentedButtonRow
-import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.appBarScrollBehavior
-import com.vayunmathur.fooddelivery.api.BitesApi
 import com.vayunmathur.fooddelivery.BuildConfig
+import com.vayunmathur.fooddelivery.R
+import com.vayunmathur.fooddelivery.api.BitesApi
 import com.vayunmathur.fooddelivery.data.AddressStore
 import com.vayunmathur.fooddelivery.data.CartItem
 import com.vayunmathur.fooddelivery.data.CheckoutAddress
 import com.vayunmathur.fooddelivery.data.CheckoutCartItem
 import com.vayunmathur.fooddelivery.data.CheckoutRequest
+import com.vayunmathur.fooddelivery.data.CheckoutResponse
 import com.vayunmathur.fooddelivery.data.Customer
 import com.vayunmathur.fooddelivery.data.Deal
 import com.vayunmathur.fooddelivery.data.OrderRewards
 import com.vayunmathur.fooddelivery.data.SavedAddress
-import com.vayunmathur.fooddelivery.data.CheckoutResponse
 import com.vayunmathur.fooddelivery.notifications.OrderTrackingService
 import com.vayunmathur.fooddelivery.platform.AppInit
-import android.util.Log
+import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.appBarScrollBehavior
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -250,23 +236,7 @@ fun CheckoutScreen(
     }
 
     if (orderSuccess) {
-        AppScaffold(
-            title = stringResource(R.string.order_confirmed),
-            scrollBehavior = appBarScrollBehavior(),
-        ) { padding ->
-            Column(
-                Modifier.fillMaxSize().padding(padding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                IconCheck(modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(16.dp))
-                Text(stringResource(R.string.order_placed), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                Text(stringResource(R.string.your_order_is_being_prepared), style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        CheckoutSuccess()
         return
     }
 
@@ -281,232 +251,51 @@ fun CheckoutScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                item {
-                    Text(stringResource(R.string.order_summary), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                itemsIndexed(items, key = { _, item -> item.lineId }) { _, item ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(Modifier.weight(1f)) {
-                            Text("${item.quantity}x ${item.menuItem.name}",
-                                style = MaterialTheme.typography.bodyMedium)
-                            if (item.selectedModifiers.isNotEmpty()) {
-                                Text(item.selectedModifiers.joinToString(", ") { it.name },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        Text("$%.2f".format(item.totalPrice), style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-
-                item {
-                    Spacer(Modifier.height(4.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(12.dp))
-
-                    Text(stringResource(R.string.order_type), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        SegmentedButton(
-                            selected = !isPickup,
-                            onClick = { isPickup = false },
-                            shape = SegmentedButtonDefaults.itemShape(0, 2),
-                            label = { Text(stringResource(R.string.delivery)) }
-                        )
-                        SegmentedButton(
-                            selected = isPickup,
-                            onClick = { isPickup = true },
-                            shape = SegmentedButtonDefaults.itemShape(1, 2),
-                            label = { Text(stringResource(R.string.pickup)) }
-                        )
-                    }
-                }
+                item { CheckoutOrderSummary(items) }
+                item { CheckoutOrderTypePicker(isPickup) { isPickup = it } }
 
                 if (!isPickup) {
                     item {
-                        Spacer(Modifier.height(4.dp))
-                        Text(stringResource(R.string.delivery_address), style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(8.dp))
-
-                        if (addresses.isEmpty()) {
-                            if (addressesLoaded) {
-                                Text(stringResource(R.string.no_saved_addresses_add_one_in_account_se),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        } else {
-                            addresses.forEach { addr ->
-                                val isSelected = selectedAddress?.id == addr.id
-                                Card(
-                                    onClick = {
-                                        selectedAddress = addr
-                                        if (addr.deliveryInstructions.isNotEmpty()) {
-                                            deliveryInstructions = addr.deliveryInstructions
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Row(Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically) {
-                                        IconLocationOn(
-                                            modifier = Modifier.size(20.dp),
-                                            tint = if (isSelected) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(addr.label.ifEmpty { "Address" },
-                                                fontWeight = FontWeight.Medium,
-                                                style = MaterialTheme.typography.bodyMedium)
-                                            Text(addr.addressStreet,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            val cityStateZip = listOfNotNull(
-                                                addr.addressCity.ifEmpty { null },
-                                                addr.addressState.ifEmpty { null },
-                                                addr.addressZip.ifEmpty { null },
-                                            ).joinToString(", ")
-                                            if (cityStateZip.isNotEmpty()) {
-                                                Text(cityStateZip,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-                                            if (addr.aptUnit.isNotEmpty()) {
-                                                Text(stringResource(R.string.apt_unit_2, addr.aptUnit),
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-                                            if (addr.gateCode.isNotEmpty()) {
-                                                Text(stringResource(R.string.gate, addr.gateCode),
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-                                        }
-                                        if (isSelected) {
-                                            IconCheck(modifier = Modifier.size(20.dp),
-                                                tint = MaterialTheme.colorScheme.primary)
-                                        }
-                                    }
+                        CheckoutAddressPicker(
+                            addresses = addresses,
+                            addressesLoaded = addressesLoaded,
+                            selectedAddress = selectedAddress,
+                            onSelect = {
+                                selectedAddress = it
+                                if (it.deliveryInstructions.isNotEmpty()) {
+                                    deliveryInstructions = it.deliveryInstructions
                                 }
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = deliveryInstructions,
-                            onValueChange = { deliveryInstructions = it },
-                            label = { Text(stringResource(R.string.delivery_instructions_optional)) },
-                            modifier = Modifier.fillMaxWidth()
+                            },
+                            deliveryInstructions = deliveryInstructions,
+                            onInstructionsChange = { deliveryInstructions = it },
                         )
                     }
                 }
 
-                item {
-                    Spacer(Modifier.height(4.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(12.dp))
-
-                    Text(stringResource(R.string.tip), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(0, 200, 300, 500).forEach { cents ->
-                            val label = if (cents == 0) "None" else "$%.2f".format(cents / 100.0)
-                            FilterChip(
-                                selected = tipCents == cents,
-                                onClick = { tipCents = cents },
-                                label = { Text(label) }
-                            )
-                        }
-                    }
-                }
+                item { CheckoutTipPicker(tipCents) { tipCents = it } }
 
                 item {
-                    Spacer(Modifier.height(4.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(12.dp))
-
-                    if (deals.isNotEmpty()) {
-                        Text(stringResource(R.string.deals), style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(8.dp))
-                        deals.forEach { deal ->
-                            val chosen = selectedDealId == deal.id
-                            Card(
-                                // Tapping a chosen deal clears it, so a deal can be removed.
-                                onClick = { selectedDealId = if (chosen) null else deal.id },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                shape = RoundedCornerShape(12.dp),
-                            ) {
-                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(deal.title, fontWeight = FontWeight.Medium,
-                                            style = MaterialTheme.typography.bodyMedium)
-                                        if (deal.description.isNotEmpty()) {
-                                            Text(deal.description, style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                    if (chosen) {
-                                        IconCheck(modifier = Modifier.size(20.dp),
-                                            tint = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                    }
-
-                    Text(stringResource(R.string.promo_code), style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = promoCode,
-                        onValueChange = { promoCode = it },
-                        label = { Text(stringResource(R.string.promo_code_optional)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    CheckoutDealsPicker(
+                        deals = deals,
+                        selectedDealId = selectedDealId,
+                        onSelect = { selectedDealId = it },
+                        promoCode = promoCode,
+                        onPromoChange = { promoCode = it },
                     )
                 }
 
                 item {
-                    Spacer(Modifier.height(4.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(12.dp))
-
-                    PriceRow("Subtotal", subtotal)
-                    if (fetchingPrices) {
-                        Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.calculating_tax_fees),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    } else if (confirmedOrder != null) {
-                        PriceRow("Tax", confirmedOrder.taxesDollars)
-                        if (confirmedOrder.deliveryFee > 0) PriceRow("Delivery fee", confirmedOrder.deliveryFeeDollars)
-                        if (confirmedOrder.fees != null && confirmedOrder.fees > 0) PriceRow("Service fees", confirmedOrder.fees / 100.0)
-                        if (confirmedOrder.tips > 0) PriceRow("Tip", confirmedOrder.tipsDollars)
-                        // Whatever the charge nets out below the component sum is a discount
-                        // (rewards / deal / promo / referral) — show it instead of silently
-                        // letting the total disagree with the components above it.
-                        if (rewardsApplied > 0.005) PriceRow("Rewards", -rewardsApplied)
-                        Spacer(Modifier.height(8.dp))
-                        HorizontalDivider()
-                        Spacer(Modifier.height(8.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(stringResource(R.string.total), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                            Text("$%.2f".format(payTotal ?: confirmedOrder.displayTotal), fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium)
-                        }
-                    }
+                    CheckoutTotals(
+                        subtotal = subtotal,
+                        fetchingPrices = fetchingPrices,
+                        taxesDollars = confirmedOrder?.taxesDollars,
+                        deliveryFeeDollars = confirmedOrder?.deliveryFeeDollars,
+                        feesDollars = confirmedOrder?.fees?.div(100.0),
+                        tipsDollars = confirmedOrder?.tipsDollars,
+                        rewardsApplied = rewardsApplied,
+                        payTotal = payTotal,
+                        displayTotal = confirmedOrder?.displayTotal,
+                    )
                 }
 
                 if (error != null) {
@@ -546,15 +335,5 @@ fun CheckoutScreen(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PriceRow(label: String, amount: Double) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("$%.2f".format(amount), style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

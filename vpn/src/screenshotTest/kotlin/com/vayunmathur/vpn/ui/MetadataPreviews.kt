@@ -1,6 +1,11 @@
 package com.vayunmathur.vpn.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.library.ui.DynamicTheme
@@ -11,6 +16,9 @@ import com.vayunmathur.vpn.data.VpnConfig
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /**
  * Store listing images for `:vpn`. See `common-conventions-preview-metadata`.
@@ -121,6 +129,34 @@ class MetadataPreviews {
                 domainsByBytes = domainsByBytes,
                 initialTab = 2,
             )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4Expanded() {
+        DynamicTheme(darkTheme = true) {
+            // Expanded windows keep the tunnel list visible while the traffic
+            // detail opens beside it instead of covering it. ConfigDetailPage
+            // reads its ViewModel internally, so the previewable LoggingContent
+            // stands in as the detail pane.
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    ConfigListContent(
+                        configs = tunnels,
+                        connectingId = 1L,
+                        activeId = 1L,
+                    )
+                }
+                Box(Modifier.weight(0.6f).fillMaxHeight()) {
+                    LoggingContent(
+                        topApps = topApps,
+                        domainsByCount = domainsByCount,
+                        domainsByBytes = domainsByBytes,
+                    )
+                }
+            }
         }
     }
 }

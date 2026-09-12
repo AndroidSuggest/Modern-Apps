@@ -2,7 +2,10 @@ package com.vayunmathur.library.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -11,6 +14,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import com.vayunmathur.library.util.BottomNavBar
 import com.vayunmathur.library.util.BottomNavBarItem
 import kotlinx.coroutines.launch
@@ -43,6 +47,12 @@ enum class TabStyle {
  *
  * [leadingBottomBar] sits above the tab bar in [TabStyle.BottomNav] (music's
  * now-playing controls) and is the plain bottom bar in [TabStyle.PrimaryTabRow].
+ *
+ * In [TabStyle.BottomNav] the tab bar itself is width-aware: on expanded
+ * windows ([WindowWidthClass.Expanded] — large tablets, ChromeOS, desktop)
+ * tabs move into a [NavigationRail] on the left and only [leadingBottomBar]
+ * stays at the bottom, so tabbed apps get desktop chrome without touching
+ * their own code. Compact and medium windows keep the bottom bar.
  */
 @Composable
 fun TabbedPagerScaffold(
@@ -59,38 +69,72 @@ fun TabbedPagerScaffold(
     }
 
     when (tabStyle) {
-        TabStyle.BottomNav -> Scaffold(
-            modifier = modifier,
-            topBar = topBar,
-            bottomBar = {
-                Column(Modifier.fillMaxWidth()) {
-                    leadingBottomBar()
-                    BottomNavBar {
-                        tabs.forEachIndexed { index, tab ->
-                            BottomNavBarItem(
-                                selected = pagerState.currentPage == index,
-                                onClick = { select(index) },
-                                icon = tab.icon ?: {},
-                                label = tab.label,
-                            )
+        TabStyle.BottomNav -> {
+            if (isExpandedWidth()) {
+                Scaffold(
+                    modifier = modifier,
+                    topBar = topBar,
+                    bottomBar = leadingBottomBar,
+                ) { padding ->
+                    // Rail owns the start inset; the pager consumes the rest. The
+                    // forwarded space is consumed for the same reason as below:
+                    // the rail already covers the navigation bar, so a page's own
+                    // scaffold would otherwise inset for it again.
+                    Row(Modifier.padding(padding)) {
+                        NavigationRail(Modifier.fillMaxHeight()) {
+                            tabs.forEachIndexed { index, tab ->
+                                NavigationRailItem(
+                                    selected = pagerState.currentPage == index,
+                                    onClick = { select(index) },
+                                    icon = tab.icon ?: {},
+                                    label = { Text(tab.label) },
+                                )
+                            }
                         }
+                        val start = padding.calculateStartPadding(LocalLayoutDirection.current)
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .consumeWindowInsets(PaddingValues(start = start)),
+                        ) { page -> tabs[page].content() }
                     }
                 }
-            },
-        ) { padding ->
-            // Inner pages own their top bar and consume the top inset, so only
-            // the bottom space this scaffold's bars take is forwarded - adding
-            // the full padding here would inset the status bar twice. The
-            // forwarded space has to be consumed too: the bars already cover
-            // the navigation bar, so a page's own scaffold would otherwise
-            // inset for it again and leave a gap above the tab bar.
-            val bottom = padding.calculateBottomPadding()
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .padding(bottom = bottom)
-                    .consumeWindowInsets(PaddingValues(bottom = bottom)),
-            ) { page -> tabs[page].content() }
+            } else {
+                Scaffold(
+                    modifier = modifier,
+                    topBar = topBar,
+                    bottomBar = {
+                        Column(Modifier.fillMaxWidth()) {
+                            leadingBottomBar()
+                            BottomNavBar {
+                                tabs.forEachIndexed { index, tab ->
+                                    BottomNavBarItem(
+                                        selected = pagerState.currentPage == index,
+                                        onClick = { select(index) },
+                                        icon = tab.icon ?: {},
+                                        label = tab.label,
+                                    )
+                                }
+                            }
+                        }
+                    },
+                ) { padding ->
+                    // Inner pages own their top bar and consume the top inset, so only
+                    // the bottom space this scaffold's bars take is forwarded - adding
+                    // the full padding here would inset the status bar twice. The
+                    // forwarded space has to be consumed too: the bars already cover
+                    // the navigation bar, so a page's own scaffold would otherwise
+                    // inset for it again and leave a gap above the tab bar.
+                    val bottom = padding.calculateBottomPadding()
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier
+                            .padding(bottom = bottom)
+                            .consumeWindowInsets(PaddingValues(bottom = bottom)),
+                    ) { page -> tabs[page].content() }
+                }
+            }
         }
 
         TabStyle.PrimaryTabRow -> Scaffold(

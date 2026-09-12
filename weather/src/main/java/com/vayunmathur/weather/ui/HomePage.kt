@@ -1,14 +1,16 @@
 package com.vayunmathur.weather.ui
 
 import androidx.activity.compose.BackHandler
-import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.ExpandVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -19,6 +21,7 @@ import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.DrawerState
 import com.vayunmathur.library.ui.DrawerValue
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.ui.LoadingIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.ModalDrawerSheet
@@ -29,6 +32,7 @@ import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.rememberDrawerState
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.isExpandedWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -197,6 +201,31 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
 
+    // Expanded windows (large tablets, desktop) pin the locations list as a
+    // permanent side panel next to the forecast instead of hiding it in a modal
+    // drawer — there is room for both, and picking another location without
+    // losing the current forecast is the point of the wide layout. The panel
+    // fills a fraction of the window rather than a fixed dp so it scales from
+    // an 840dp tablet to a full desktop window.
+    if (isExpandedWidth()) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxWidth(0.35f).fillMaxHeight()) {
+                drawerContent()
+            }
+            ForecastScaffold(
+                state = state,
+                units = units,
+                actions = actions,
+                drawerState = drawerState,
+                precipitationNowcast = precipitationNowcast,
+                nowEpochSec = nowEpochSec,
+                onOpenMap = onOpenMap,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        }
+        return
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -207,178 +236,53 @@ fun HomeScreen(
             }
         },
     ) {
-        Scaffold(
-            // RAW SCAFFOLD EXCEPTION: bespoke full-bleed home. The forecast
-            // scrolls under a floating in-content MainSearchBar (there is no top
-            // app bar), inside a ModalNavigationDrawer + PullToRefreshBox, and the
-            // body consumes the scaffold insets itself. No shared scaffold fits.
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ) { paddingValues ->
-            ForecastColumn(
-                state = state,
-                units = units,
-                actions = actions,
-                drawerState = drawerState,
-                paddingValues = paddingValues,
-                precipitationNowcast = precipitationNowcast,
-                nowEpochSec = nowEpochSec,
-                onOpenMap = onOpenMap,
-            )
-        }
+        ForecastScaffold(
+            state = state,
+            units = units,
+            actions = actions,
+            drawerState = drawerState,
+            precipitationNowcast = precipitationNowcast,
+            nowEpochSec = nowEpochSec,
+            onOpenMap = onOpenMap,
+        )
     }
 }
 
+/**
+ * The forecast body under its floating in-content search bar. Shared by the
+ * modal-drawer layout (compact) and the permanent side-panel layout (expanded)
+ * above, so the two widths cannot drift apart.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ForecastColumn(
+private fun ForecastScaffold(
     state: LocationUiState,
     units: DisplayUnits,
     actions: WeatherActions,
     drawerState: DrawerState,
-    paddingValues: PaddingValues,
     precipitationNowcast: String?,
     nowEpochSec: Long,
     onOpenMap: (WeatherMetric, String?) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    var graphMetric by remember { mutableStateOf<WeatherMetric?>(null) }
-
-    val forecast = state.forecast
-    val selected = state.selected
-    val scrollState = rememberScrollState()
-
-    PullToRefreshBox(
-        isRefreshing = state.refreshing,
-        onRefresh = { actions.refreshAll(force = true) },
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState)) {
-            MainSearchBar(
-                paddingValues = paddingValues,
-                drawerState = drawerState,
-                activeLocation = state.location,
-            )
-
-            if (forecast == null) {
-                Box(modifier = Modifier.fillMaxSize().padding(top = 64.dp), contentAlignment = Alignment.TopCenter) {
-                    val error = state.error
-                    if (error != null) {
-                        Text(error, color = MaterialTheme.colorScheme.error)
-                    } else {
-                        LoadingIndicator()
-                    }
-                }
-                return@Column
-            }
-
-            val current = forecast.current
-            val daily = forecast.daily
-            val resolved = resolveConditions(forecast, selected)
-
-            var lastSelection by remember { mutableStateOf(selected) }
-            LaunchedEffect(selected) { if (selected != null) lastSelection = selected }
-            ExpandVisibility(visible = selected != null) {
-                (selected ?: lastSelection)?.let { sel ->
-                    SelectedDateTimeHeader(
-                        selection = sel,
-                        forecast = forecast,
-                        use24Hour = units.use24Hour,
-                        onClear = { actions.clearSelection() },
-                    )
-                }
-            }
-
-            if (current != null && resolved != null) {
-                CurrentWeatherCard(
-                    weatherCode = resolved.weatherCode,
-                    isDay = resolved.isDay,
-                    temperature = resolved.temperature,
-                    apparentTemperature = resolved.apparentTemperature,
-                    high = resolved.high,
-                    low = resolved.low,
-                    tempUnit = units.temperature,
-                )
-            }
-            Column(
-                // Include the navigation-bar inset so the last cards (Air quality /
-                // Pollen) clear the system nav bar and can scroll fully into view.
-                modifier = Modifier.padding(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = 24.dp,
-                    bottom = paddingValues.calculateBottomPadding(),
-                ),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                if (selected == null) {
-                    SummaryCard(forecast = forecast, tempUnit = units.temperature)
-                }
-                if (forecast.hourly != null) {
-                    HourlyCard(
-                        hourly = forecast.hourly,
-                        tempUnit = units.temperature,
-                        utcOffsetSeconds = forecast.utcOffsetSeconds,
-                        use24Hour = units.use24Hour,
-                        selectedIsoTime = (selected as? SelectedDateOrTime.Time)?.isoTime,
-                        onHourSelected = { actions.toggleTime(it) },
-                        scrollToIsoDate = (selected as? SelectedDateOrTime.Day)?.isoDate,
-                        nowEpochSec = nowEpochSec,
-                    )
-                }
-                if (daily != null) {
-                    DailyCard(
-                        daily = daily,
-                        tempUnit = units.temperature,
-                        selectedIsoDate = (selected as? SelectedDateOrTime.Day)?.isoDate,
-                        onDaySelected = { actions.toggleDay(it) },
-                    )
-                }
-                if (current != null && resolved != null) {
-                    val sunriseEpoch = resolved.sunriseIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
-                    val sunsetEpoch = resolved.sunsetIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
-                    val moonriseEpoch = resolved.moonriseIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
-                    val moonsetEpoch = resolved.moonsetIso?.let { parseLocalIsoToEpochSec(it, forecast.utcOffsetSeconds) }
-                    WeatherBlocks(
-                        current = resolved.blockCurrent,
-                        uvIndex = resolved.uvIndexMax,
-                        air = state.airQuality,
-                        sunriseEpochSec = sunriseEpoch,
-                        sunsetEpochSec = sunsetEpoch,
-                        precipitationMm = resolved.precipitationSum,
-                        precipitationNowcast = precipitationNowcast,
-                        daylightDurationSec = resolved.daylightDurationSec,
-                        moonPhase = resolved.moonPhase,
-                        moonriseEpochSec = moonriseEpoch,
-                        moonsetEpochSec = moonsetEpoch,
-                        onMetricSelected = { graphMetric = it },
-                        tempUnit = units.temperature,
-                        windUnit = units.wind,
-                        pressureUnit = units.pressure,
-                        use24Hour = units.use24Hour,
-                        nowEpochSec = nowEpochSec,
-                    )
-                }
-            }
-        }
-
-        val gm = graphMetric
-        if (gm != null && forecast != null) {
-            MetricGraphSheet(
-                title = stringResource(gm.title),
-                points = metricSeries(forecast, gm, selected),
-                valueLabel = metricValueFormatter(gm, units.temperature, units.wind, units.pressure),
-                timeLabel = { epoch -> formatHourAxisLabel(epoch, units.use24Hour) },
-                onOpenMap = {
-                    val iso = when (val s = selected) {
-                        is SelectedDateOrTime.Time -> s.isoTime
-                        is SelectedDateOrTime.Day -> "${s.isoDate}T00:00"
-                        null -> null
-                    }
-                    onOpenMap(gm, iso)
-                    graphMetric = null
-                },
-                onDismiss = { graphMetric = null },
-            )
-        }
+    Scaffold(
+        // RAW SCAFFOLD EXCEPTION: bespoke full-bleed home. The forecast
+        // scrolls under a floating in-content MainSearchBar (there is no top
+        // app bar), inside a ModalNavigationDrawer + PullToRefreshBox, and the
+        // body consumes the scaffold insets itself. No shared scaffold fits.
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) { paddingValues ->
+        ForecastColumn(
+            state = state,
+            units = units,
+            actions = actions,
+            drawerState = drawerState,
+            paddingValues = paddingValues,
+            precipitationNowcast = precipitationNowcast,
+            nowEpochSec = nowEpochSec,
+            onOpenMap = onOpenMap,
+        )
     }
 }
 

@@ -3,11 +3,16 @@ package com.vayunmathur.logviewer.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,9 +22,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.ErrorState
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconDescription
@@ -27,11 +34,14 @@ import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.IconTune
 import com.vayunmathur.library.ui.LoadingState
+import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OverflowMenu
 import com.vayunmathur.library.ui.SnackbarHost
 import com.vayunmathur.library.ui.SnackbarHostState
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.logviewer.R
 import com.vayunmathur.logviewer.domain.LogDocument
@@ -60,6 +70,10 @@ internal fun LogViewerScreen(state: LogViewerUiState, actions: LogViewerActions)
     val scrollBehavior = appBarScrollBehavior()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+    // True on large tablets, ChromeOS and desktop windows: the "unable to save"
+    // stack trace renders as a side panel next to the log instead of a modal
+    // dialog over it (see the scaffold content below).
+    val expanded = isExpandedWidth()
 
     var showDescription by remember { mutableStateOf(false) }
     var showFilter by remember { mutableStateOf(false) }
@@ -144,6 +158,31 @@ internal fun LogViewerScreen(state: LogViewerUiState, actions: LogViewerActions)
                 }
             }
 
+            // Expanded windows (large tablets, desktop) put the log lines and the
+            // "unable to save" stack trace side by side instead of stacking a
+            // modal dialog over the log — there is room for both, and the trace
+            // explains the log the user is already looking at.
+            expanded && state.stackTrace != null -> Row(modifier = Modifier.fillMaxSize().padding(padding)) {
+                LogLineList(
+                    lines = state.lines,
+                    kind = state.kind,
+                    fontSizeSp = state.fontSizeSp,
+                    listState = listState,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    onZoom = actions::zoom,
+                    // The 16dp gutter the app being replaced put around its whole layout. It stays on
+                    // the list rather than the window so the top bar and the snackbar still go
+                    // edge to edge.
+                    modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 16.dp),
+                )
+                StackTraceSidePanel(
+                    stackTrace = state.stackTrace,
+                    onCopy = actions::copyStackTrace,
+                    onDismiss = actions::dismissStackTrace,
+                    modifier = Modifier.fillMaxWidth(0.4f).fillMaxHeight(),
+                )
+            }
+
             else -> LogLineList(
                 lines = state.lines,
                 kind = state.kind,
@@ -211,12 +250,50 @@ internal fun LogViewerScreen(state: LogViewerUiState, actions: LogViewerActions)
     }
 
     val stackTrace = state.stackTrace
-    if (stackTrace != null) {
+    // On expanded widths the trace is already showing in the side panel next to
+    // the log; the dialog is only for compact windows where there is no room.
+    if (stackTrace != null && !expanded) {
         StackTraceDialog(
             stackTrace = stackTrace,
             onCopy = actions::copyStackTrace,
             onDismiss = actions::dismissStackTrace,
         )
+    }
+}
+
+/**
+ * The "unable to save" stack trace as a permanent side panel on expanded
+ * windows, instead of the modal [StackTraceDialog] compact windows use. Same
+ * content (monospaced trace, copy + dismiss), different chrome: a card pinned
+ * next to the log so both stay visible together.
+ */
+@Composable
+private fun StackTraceSidePanel(
+    stackTrace: String,
+    onCopy: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(modifier = modifier.padding(12.dp)) {
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Text(
+                stringResource(R.string.unable_to_save_file),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = stackTrace,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+                Button(onClick = { onCopy(); onDismiss() }) { Text(stringResource(R.string.action_copy)) }
+            }
+        }
     }
 }
 

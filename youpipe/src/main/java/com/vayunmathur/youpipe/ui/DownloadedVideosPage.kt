@@ -5,10 +5,13 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -23,7 +26,9 @@ import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.ui.adaptiveGridCells
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.isExpandedWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -56,6 +61,17 @@ fun DownloadedVideosPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPi
     val isSelectionMode = selectedIds.isNotEmpty() || selectedActiveIds.isNotEmpty()
 
     val context = androidx.compose.ui.platform.LocalContext.current
+    if (isExpandedWidth() && !isSelectionMode) {
+        // Desktop: completed downloads fill the window with an adaptive grid instead
+        // of stretching one column across it. Active downloads and selection mode
+        // keep the compact list below.
+        DownloadedGrid(
+            backStack = backStack,
+            youPipeViewModel = youPipeViewModel,
+            downloads = downloads,
+        )
+        return
+    }
     LazyListScaffold(
         topBar = {
             TopAppBar(
@@ -180,6 +196,52 @@ fun DownloadedVideosPage(backStack: NavBackStack<Route>, youPipeViewModel: YouPi
                     )
                 }
             }
+    }
+}
+
+// RAW SCAFFOLD EXCEPTION: an adaptive video grid (LazyVerticalGrid of adaptiveGridCells)
+// under the downloads top bar. No shared scaffold hosts a grid body; selection mode and
+// active downloads keep the compact LazyListScaffold list in DownloadedVideosPage.
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun DownloadedGrid(
+    backStack: NavBackStack<Route>,
+    youPipeViewModel: YouPipeViewModel,
+    downloads: List<com.vayunmathur.youpipe.data.DownloadedVideo>,
+) {
+    com.vayunmathur.library.ui.Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.title_downloads)) },
+                navigationIcon = { IconNavigation(backStack) },
+            )
+        },
+    ) { paddingValues ->
+        LazyVerticalGrid(
+            columns = adaptiveGridCells(320.dp),
+            modifier = Modifier.padding(paddingValues),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(downloads, key = { it.id }) { downloadItem ->
+                VideoItem(
+                    backStack = backStack,
+                    youPipeViewModel = youPipeViewModel,
+                    videoInfo = downloadItem.videoItem,
+                    showAuthor = true,
+                    modifier = Modifier.combinedClickable(
+                        onClick = { backStack.add(Route.VideoPage(downloadItem.id)) },
+                        // Long-press is a no-op here: multiselect lives in the compact list.
+                        onLongClick = {},
+                    ),
+                    onClick = null,
+                    backupOnClick = false,
+                    // No shared-element key: the compact list composes the same videos and
+                    // one key needs one origin (see VideoRow's titleSharedKey note).
+                    vertical = true,
+                )
+            }
+        }
     }
 }
 

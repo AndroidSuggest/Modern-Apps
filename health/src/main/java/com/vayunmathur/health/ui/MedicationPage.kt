@@ -70,7 +70,12 @@ fun MedicationPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
 
     fun openEditor(entry: MedicationEntry) {
         viewModel.startMedicationDraft(entry.id)
-        backStack.add(Route.EditMedication(entry.id))
+        // A form already open in the detail pane is swapped, not stacked.
+        if (backStack.last() is Route.EditMedication) {
+            backStack.setLast(Route.EditMedication(entry.id))
+        } else {
+            backStack.add(Route.EditMedication(entry.id))
+        }
     }
 
     pendingDelete?.let { entry ->
@@ -94,7 +99,11 @@ fun MedicationPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
             FloatingActionButton(
                 onClick = {
                     viewModel.startMedicationDraft()
-                    backStack.add(Route.EditMedication())
+                    if (backStack.last() is Route.EditMedication) {
+                        backStack.setLast(Route.EditMedication())
+                    } else {
+                        backStack.add(Route.EditMedication())
+                    }
                 }
             ) { IconAdd() }
         },

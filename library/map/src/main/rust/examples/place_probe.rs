@@ -105,7 +105,7 @@ fn main() {
                     continue;
                 }
                 let id = placement::candidate_id(tile.z, tile.x, tile.y, index, label_idx);
-                let rect = placement::screen_rect(label.anchor, tile_clip, extent, text_px, label.total_advance, 24.0);
+                let Some(rect) = placement::screen_rect(label.anchor, tile_clip, extent, text_px, label.total_advance, 24.0) else { continue };
                 candidates.push(placement::Candidate {
                     id,
                     rank: label.rank,

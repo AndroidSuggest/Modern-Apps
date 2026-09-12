@@ -16,98 +16,11 @@ import com.vayunmathur.code.syntax.Language
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.charset.Charset
-import kotlin.coroutines.coroutineContext
-
-/** One expandable row in the file-tree pane; the tree is stored as a flat, ordered list. */
-class TreeNode(val entry: FileEntry, val depth: Int) {
-    var expanded by mutableStateOf(false)
-    var loading by mutableStateOf(false)
-}
-
-/**
- * One open file. Editor content lives in [value]; [savedText] is the last persisted text so
- * [isDirty] can drive the unsaved-dot. Undo/redo are plain deques (not observed directly);
- * [canUndo]/[canRedo] mirror their emptiness as state so the toolbar buttons stay reactive.
- *
- * Most tabs are backed by a real [file]. Files opened through a VIEW/EDIT intent from another
- * app arrive as a `content://` [externalUri] instead and are [readOnly] (no `save` target).
- */
-class OpenTab(
-    file: File?,
-    externalUri: Uri? = null,
-    val readOnly: Boolean = false,
-    initialName: String,
-    initialText: String,
-    language: Language,
-) {
-    var file by mutableStateOf(file)
-    var externalUri by mutableStateOf(externalUri)
-    var name by mutableStateOf(initialName)
-    var language by mutableStateOf(language)
-    var value by mutableStateOf(TextFieldValue(initialText))
-    var savedText by mutableStateOf(initialText)
-
-    /** Fold header lines currently collapsed in this tab (persisted per file path). */
-    var foldedHeaders by mutableStateOf<Set<Int>>(emptySet())
-    var canUndo by mutableStateOf(false)
-        private set
-    var canRedo by mutableStateOf(false)
-        private set
-
-    // Fidelity metadata so a save round-trips the file byte-for-byte (see [TextEncoding]).
-    var charset: Charset = Charsets.UTF_8
-    var lineEnding: LineEnding = LineEnding.LF
-    var hadBom: Boolean = false
-
-    // Snapshot of the file on disk when it was last opened/saved, for external-change detection.
-    var diskModified: Long = 0L
-    var diskLength: Long = 0L
-
-    /** Set when the file changed on disk while this tab held unsaved edits (drives the banner). */
-    var changedOnDisk by mutableStateOf(false)
-
-    private val undoStack = ArrayDeque<TextFieldValue>()
-    private val redoStack = ArrayDeque<TextFieldValue>()
-
-    /** Stable identity used to dedup tabs: the file path, or the external URI string. */
-    val key: String get() = file?.absolutePath ?: externalUri.toString()
-
-    val isDirty: Boolean get() = value.text != savedText
-
-    fun pushUndo(previous: TextFieldValue) {
-        undoStack.addLast(previous)
-        if (undoStack.size > UNDO_LIMIT) undoStack.removeFirst()
-        redoStack.clear()
-        canUndo = true
-        canRedo = false
-    }
-
-    fun undo() {
-        val previous = undoStack.removeLastOrNull() ?: return
-        redoStack.addLast(value)
-        value = previous
-        canUndo = undoStack.isNotEmpty()
-        canRedo = true
-    }
-
-    fun redo() {
-        val next = redoStack.removeLastOrNull() ?: return
-        undoStack.addLast(value)
-        value = next
-        canRedo = redoStack.isNotEmpty()
-        canUndo = true
-    }
-
-    private companion object {
-        const val UNDO_LIMIT = 100
-    }
-}
 
 /**
  * Activity-scoped state for the editor: the open folder tree, the set of open tabs and the
@@ -123,32 +36,32 @@ class OpenTab(
  */
 class EditorViewModel(application: Application) : AndroidViewModel(application), CodeActions {
 
-    private val context get() = getApplication<Application>()
-    private val prefs = EditorPrefs(context)
+    internal val context get() = getApplication<Application>()
+    internal val prefs = EditorPrefs(context)
 
     // ---- File tree ----
     var rootDir by mutableStateOf<File?>(null)
-        private set
+        internal set
     var rootName by mutableStateOf<String?>(null)
-        private set
+        internal set
     val nodes = mutableStateListOf<TreeNode>()
 
     // ---- Tabs ----
     val tabs = mutableStateListOf<OpenTab>()
     var currentIndex by mutableStateOf(-1)
-        private set
+        internal set
     val currentTab: OpenTab? get() = tabs.getOrNull(currentIndex)
 
     /** When set, a second pane shows this tab beside the current one (split view). */
     var secondaryIndex by mutableStateOf<Int?>(null)
-        private set
+        internal set
 
     /** True when the secondary split pane holds focus, so shared actions target it instead. */
     var focusedSecondary by mutableStateOf(false)
-        private set
+        internal set
 
     /** The tab shared toolbar/find/navigation actions target: the focused pane's tab. */
-    private val activeTab: OpenTab?
+    internal val activeTab: OpenTab?
         get() = if (focusedSecondary) secondaryIndex?.let { tabs.getOrNull(it) } else currentTab
 
     // ---- Preferences ----
@@ -185,65 +98,65 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     val showIndentGuides: Boolean get() = _showIndentGuides.value
     private val _showMinimap = mutableStateOf(false)
     val showMinimap: Boolean get() = _showMinimap.value
-    private var autoSaveJob: Job? = null
+    internal var autoSaveJob: Job? = null
 
     // ---- Project search ----
     val searchResults = mutableStateListOf<SearchResult>()
     var isSearching by mutableStateOf(false)
-        private set
-    private var searchJob: Job? = null
+        internal set
+    internal var searchJob: Job? = null
 
     // ---- Autocomplete ----
     val completions = mutableStateListOf<Completion>()
     var showCompletions by mutableStateOf(false)
-        private set
-    private var completionsJob: Job? = null
+        internal set
+    internal var completionsJob: Job? = null
 
     // ---- Diagnostics ----
     val diagnostics = mutableStateListOf<Diagnostic>()
-    private var diagnosticsJob: Job? = null
+    internal var diagnosticsJob: Job? = null
 
     // ---- User snippets ----
     val userSnippets = mutableStateListOf<UserSnippet>()
 
     /** Persisted per-file collapsed fold headers (absolute path -> header lines). */
-    private val foldStateByPath = HashMap<String, Set<Int>>()
+    internal val foldStateByPath = HashMap<String, Set<Int>>()
 
     // ---- Git ----
     var gitIsRepo by mutableStateOf(false)
-        private set
+        internal set
     var gitStatus by mutableStateOf<GitStatus?>(null)
-        private set
+        internal set
     val gitLog = mutableStateListOf<GitCommitInfo>()
     val gitBranches = mutableStateListOf<String>()
     var gitBusy by mutableStateOf(false)
-        private set
+        internal set
     var gitMessage by mutableStateOf<String?>(null)
-        private set
+        internal set
     var gitDiff by mutableStateOf<String?>(null)
-        private set
+        internal set
     var gitDiffRows by mutableStateOf<List<DiffRow>?>(null)
-        private set
+        internal set
 
-    private val _gitUsername = mutableStateOf("")
+    internal val _gitUsername = mutableStateOf("")
     val gitUsername: String get() = _gitUsername.value
-    private val _gitToken = mutableStateOf("")
+    internal val _gitToken = mutableStateOf("")
     val gitToken: String get() = _gitToken.value
-    private val _gitAuthorName = mutableStateOf("")
+    internal val _gitAuthorName = mutableStateOf("")
     val gitAuthorName: String get() = _gitAuthorName.value
-    private val _gitAuthorEmail = mutableStateOf("")
+    internal val _gitAuthorEmail = mutableStateOf("")
     val gitAuthorEmail: String get() = _gitAuthorEmail.value
 
     // ---- Terminal ----
     val terminalLines = mutableStateListOf<String>()
     var terminalRunning by mutableStateOf(false)
-        private set
-    private var terminal: TerminalSession? = null
+        internal set
+    internal var terminal: TerminalSession? = null
 
     // ---- Quick-open ----
     val projectFiles = mutableStateListOf<ProjectFileEntry>()
-    private val recentPaths = mutableStateListOf<String>()
-    private var projectFilesJob: Job? = null
+    internal val recentPaths = mutableStateListOf<String>()
+    internal var projectFilesJob: Job? = null
 
     /** Snapshot of everything the screens draw; rebuilt on every read, as Compose expects. */
     val uiState: CodeUiState
@@ -352,38 +265,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     /** Persists the current set of file-backed tabs and the foreground tab for session restore. */
-    private fun saveSession() {
+    internal fun saveSession() {
         val paths = tabs.mapNotNull { it.file?.absolutePath }
         val current = currentTab?.file?.absolutePath
         viewModelScope.launch { prefs.setSession(paths, current) }
     }
 
     // ---- Folder handling ----
-
-    /** Opens [dir] as the project root and loads its top level, persisting it for relaunch. */
-    fun openFolder(dir: File) {
-        viewModelScope.launch {
-            prefs.setFolderPath(dir.absolutePath)
-            runCatching { loadFolder(dir) }
-        }
-    }
-
-    fun closeFolder() {
-        rootDir = null
-        rootName = null
-        nodes.clear()
-        viewModelScope.launch { prefs.clearFolderPath() }
-    }
-
-    private suspend fun loadFolder(dir: File) {
-        require(dir.isDirectory) { "Not a directory: $dir" }
-        val children = withContext(Dispatchers.IO) { FileFiles.listChildren(dir) }
-        rootDir = dir
-        rootName = dir.name
-        nodes.clear()
-        nodes.addAll(children.map { TreeNode(it, depth = 0) })
-        refreshGit()
-    }
+    // Implementations live in EditorFileTreeOps.kt; these overrides keep CodeActions conformance.
 
     /** Expands/collapses a directory row, or opens a file row in a tab. */
     override fun toggleNode(index: Int) {
@@ -412,255 +301,32 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     // ---- File operations ----
-
-    /** Removes the rows that are descendants of the row at [index] (depth strictly greater). */
-    private fun removeDescendants(index: Int) {
-        val depth = nodes[index].depth
-        while (index + 1 < nodes.size && nodes[index + 1].depth > depth) {
-            nodes.removeAt(index + 1)
-        }
-    }
+    // Helpers live in EditorFileTreeOps.kt; these overrides keep CodeActions conformance.
 
     /**
      * Re-lists the children of a folder and rebuilds that subtree in [nodes]. Expansion state
      * and already-loaded descendant rows of immediate child folders are preserved by path.
      * [parentIndex] null refreshes the tree root.
      */
-    private suspend fun refreshChildren(parentIndex: Int?) {
-        val parentFile = if (parentIndex == null) rootDir ?: return
-        else nodes.getOrNull(parentIndex)?.entry?.file ?: return
-        val parentDepth = if (parentIndex == null) -1 else nodes[parentIndex].depth
-        val childDepth = parentDepth + 1
+    // Implemented in EditorFileTreeOps.kt as an internal extension.
 
-        val blockStart = (parentIndex ?: -1) + 1
-        var blockEnd = blockStart
-        while (blockEnd < nodes.size && nodes[blockEnd].depth > parentDepth) blockEnd++
+    override fun createFile(parentIndex: Int?, name: String) = createFileImpl(parentIndex, name)
 
-        // Preserve existing immediate children (and their loaded subtrees) by path.
-        val preservedNode = HashMap<String, TreeNode>()
-        val preservedSubtree = HashMap<String, List<TreeNode>>()
-        var i = blockStart
-        while (i < blockEnd) {
-            val child = nodes[i]
-            if (child.depth == childDepth) {
-                var j = i + 1
-                while (j < blockEnd && nodes[j].depth > childDepth) j++
-                val key = child.entry.file.absolutePath
-                preservedNode[key] = child
-                preservedSubtree[key] = nodes.subList(i + 1, j).toList()
-                i = j
-            } else {
-                i++
-            }
-        }
+    override fun createFolder(parentIndex: Int?, name: String) = createFolderImpl(parentIndex, name)
 
-        val entries = withContext(Dispatchers.IO) { FileFiles.listChildren(parentFile) }
+    override fun renameNode(index: Int, newName: String) = renameNodeImpl(index, newName)
 
-        val rebuilt = ArrayList<TreeNode>()
-        for (entry in entries) {
-            val key = entry.file.absolutePath
-            val existing = preservedNode[key]
-            if (existing != null) {
-                rebuilt.add(existing)
-                rebuilt.addAll(preservedSubtree[key].orEmpty())
-            } else {
-                rebuilt.add(TreeNode(entry, childDepth))
-            }
-        }
-
-        for (k in blockEnd - 1 downTo blockStart) nodes.removeAt(k)
-        nodes.addAll(blockStart, rebuilt)
-    }
-
-    /** Resolves the create target directory: the tree root, or a directory row. */
-    private fun parentFileFor(parentIndex: Int?): File? =
-        if (parentIndex == null) rootDir else nodes.getOrNull(parentIndex)?.entry?.file
-
-    override fun createFile(parentIndex: Int?, name: String) {
-        val parent = parentFileFor(parentIndex) ?: return
-        viewModelScope.launch {
-            val file = withContext(Dispatchers.IO) { FileFiles.createFile(parent, name) } ?: return@launch
-            nodes.getOrNull(parentIndex ?: -1)?.expanded = true
-            refreshChildren(parentIndex)
-            openFile(file)
-        }
-    }
-
-    override fun createFolder(parentIndex: Int?, name: String) {
-        val parent = parentFileFor(parentIndex) ?: return
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) { FileFiles.createDirectory(parent, name) } ?: return@launch
-            nodes.getOrNull(parentIndex ?: -1)?.expanded = true
-            refreshChildren(parentIndex)
-        }
-    }
-
-    override fun renameNode(index: Int, newName: String) {
-        val node = nodes.getOrNull(index) ?: return
-        val oldFile = node.entry.file
-        viewModelScope.launch {
-            val newFile = withContext(Dispatchers.IO) { FileFiles.rename(oldFile, newName) } ?: return@launch
-            val at = nodes.indexOf(node)
-            if (at >= 0) {
-                // A renamed directory's descendant paths shift; drop them so a re-expand re-lists.
-                if (node.entry.isDirectory) removeDescendants(at)
-                nodes[at] = TreeNode(FileEntry(newFile, newName, node.entry.isDirectory), node.depth)
-            }
-            // Repoint open tabs backed by the renamed file (or living under a renamed directory).
-            val oldPath = oldFile.absolutePath
-            val newPath = newFile.absolutePath
-            for (tab in tabs) {
-                val p = tab.file?.absolutePath ?: continue
-                if (p == oldPath) {
-                    tab.file = newFile
-                    tab.name = newName
-                    tab.language = Language.fromFileName(newName)
-                } else if (p.startsWith(oldPath + File.separator)) {
-                    tab.file = File(newPath + p.substring(oldPath.length))
-                }
-            }
-            saveSession()
-        }
-    }
-
-    override fun deleteNode(index: Int) {
-        val node = nodes.getOrNull(index) ?: return
-        val file = node.entry.file
-        viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) { FileFiles.delete(file) }
-            if (!ok) return@launch
-            val at = nodes.indexOf(node)
-            if (at >= 0) {
-                removeDescendants(at)
-                nodes.removeAt(at)
-            }
-            closeTabsUnder(file)
-        }
-    }
+    override fun deleteNode(index: Int) = deleteNodeImpl(index)
 
     /** Closes any open tab whose file is [file] or lives beneath it (for a deleted directory). */
-    private fun closeTabsUnder(file: File) {
-        val target = file.absolutePath
-        val prefix = target + File.separator
-        for (i in tabs.indices.reversed()) {
-            val p = tabs[i].file?.absolutePath ?: continue
-            if (p == target || p.startsWith(prefix)) closeTab(i)
-        }
-    }
+    // Implemented in EditorFileTreeOps.kt as an internal extension.
 
     // ---- Tab handling ----
+    // selectTab/closeTab overrides stay here (CodeActions); open helpers live in EditorFileTreeOps.kt.
 
-    /** Opens [file] in a tab (focusing it if already open), reading its text off the main thread. */
-    fun openFile(file: File) {
-        addRecentFile(file.absolutePath)
-        val key = file.absolutePath
-        val existing = tabs.indexOfFirst { it.key == key }
-        if (existing >= 0) {
-            currentIndex = existing
-            scheduleDiagnostics()
-            return
-        }
-        viewModelScope.launch {
-            tabs.add(makeFileTab(file))
-            currentIndex = tabs.lastIndex
-            saveSession()
-            scheduleDiagnostics()
-        }
-    }
-    fun openExternal(uri: Uri) {
-        if (uri.scheme == "file") {
-            uri.path?.let { openFile(File(it)) }
-            return
-        }
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        val key = uri.toString()
-        val existing = tabs.indexOfFirst { it.key == key }
-        if (existing >= 0) {
-            currentIndex = existing
-            return
-        }
-        viewModelScope.launch {
-            val displayName = withContext(Dispatchers.IO) { FileFiles.queryDisplayName(context, uri) } ?: "untitled"
-            val text = withContext(Dispatchers.IO) {
-                runCatching { FileFiles.readTextFromUri(context, uri) }.getOrDefault("")
-            }
-            tabs.add(
-                OpenTab(
-                    file = null,
-                    externalUri = uri,
-                    readOnly = true,
-                    initialName = displayName,
-                    initialText = text,
-                    language = Language.fromFileName(displayName),
-                )
-            )
-            currentIndex = tabs.lastIndex
-            saveSession()
-        }
-    }
+    override fun selectTab(index: Int) = selectTabImpl(index)
 
-    /** Reads + decodes [file] off the main thread into a fully-populated tab (empty on failure). */
-    private suspend fun makeFileTab(file: File, name: String = file.name): OpenTab {
-        val loaded = loadFile(file)
-        return OpenTab(
-            file = file,
-            initialName = name,
-            initialText = loaded.decoded.text,
-            language = Language.fromFileName(name),
-        ).apply {
-            charset = loaded.decoded.charset
-            lineEnding = loaded.decoded.lineEnding
-            hadBom = loaded.decoded.hadBom
-            diskModified = loaded.modified
-            diskLength = loaded.length
-            foldStateByPath[file.absolutePath]?.let { foldedHeaders = it }
-        }
-    }
-
-    /** Reads [file]'s bytes and decodes them, capturing the on-disk snapshot; safe on failure. */
-    private suspend fun loadFile(file: File): LoadedFile = withContext(Dispatchers.IO) {
-        runCatching {
-            LoadedFile(TextEncoding.decode(FileFiles.readBytes(file)), file.lastModified(), file.length())
-        }.getOrDefault(
-            LoadedFile(DecodedText("", Charsets.UTF_8, false, LineEnding.LF), file.lastModified(), file.length()),
-        )
-    }
-
-    private class LoadedFile(val decoded: DecodedText, val modified: Long, val length: Long)
-
-    override fun selectTab(index: Int) {
-        if (index in tabs.indices) {
-            currentIndex = index
-            if (secondaryIndex == index) secondaryIndex = null // never show the same tab in both panes
-            focusedSecondary = false
-            dismissCompletions()
-            saveSession()
-            scheduleDiagnostics()
-        }
-    }
-
-    override fun closeTab(index: Int) {
-        if (index !in tabs.indices) return
-        val removingCurrent = index == currentIndex
-        tabs.removeAt(index)
-        currentIndex = when {
-            tabs.isEmpty() -> -1
-            index < currentIndex -> currentIndex - 1
-            removingCurrent -> index.coerceAtMost(tabs.lastIndex)
-            else -> currentIndex
-        }
-        secondaryIndex = secondaryIndex?.let { s ->
-            when {
-                s == index -> null
-                s > index -> s - 1
-                else -> s
-            }
-        }?.takeIf { it in tabs.indices && it != currentIndex }
-        if (secondaryIndex == null) focusedSecondary = false
-        saveSession()
-    }
+    override fun closeTab(index: Int) = closeTabImpl(index)
 
     // ---- Editing ----
 
@@ -784,187 +450,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     // ---- Git ----
-
-    /** Re-reads repo status, log and branches for the open folder (no-op if none is open). */
-    fun refreshGit() {
-        val dir = rootDir
-        if (dir == null) {
-            gitIsRepo = false
-            gitStatus = null
-            gitLog.clear()
-            gitBranches.clear()
-            return
-        }
-        viewModelScope.launch {
-            gitIsRepo = withContext(Dispatchers.IO) { GitRepo.isRepo(dir) }
-            if (gitIsRepo) {
-                runCatching { loadGitState(dir) }.onFailure { gitMessage = it.message ?: it.toString() }
-            } else {
-                gitStatus = null
-                gitLog.clear()
-                gitBranches.clear()
-            }
-        }
-    }
-
-    private suspend fun loadGitState(dir: File) {
-        val status = withContext(Dispatchers.IO) { GitRepo.status(dir) }
-        val log = withContext(Dispatchers.IO) { GitRepo.log(dir, GIT_LOG_LIMIT) }
-        val branches = withContext(Dispatchers.IO) { GitRepo.branches(dir) }
-        gitStatus = status
-        gitLog.clear(); gitLog.addAll(log)
-        gitBranches.clear(); gitBranches.addAll(branches)
-    }
-
-    /** Runs a git mutation off-main, surfacing failures in [gitMessage], then refreshes status. */
-    private fun gitOp(block: suspend (File) -> Unit) {
-        val dir = rootDir ?: return
-        viewModelScope.launch {
-            gitBusy = true
-            gitMessage = null
-            runCatching { withContext(Dispatchers.IO) { block(dir) } }
-                .onFailure { gitMessage = it.message ?: it.toString() }
-            gitIsRepo = withContext(Dispatchers.IO) { GitRepo.isRepo(dir) }
-            if (gitIsRepo) runCatching { loadGitState(dir) }
-            gitBusy = false
-            checkExternalChanges()
-        }
-    }
-
-    fun gitInit() = gitOp { GitRepo.init(it) }
-    fun gitStage(path: String) = gitOp { GitRepo.stage(it, path) }
-    fun gitUnstage(path: String) = gitOp { GitRepo.unstage(it, path) }
-    fun gitPull() = gitOp { GitRepo.pull(it, gitUsername, gitToken) }
-    fun gitPush() = gitOp { GitRepo.push(it, gitUsername, gitToken) }
-    fun gitCheckout(name: String) = gitOp { GitRepo.checkout(it, name) }
-
-    fun gitCreateBranch(name: String) = gitOp {
-        GitRepo.createBranch(it, name)
-        GitRepo.checkout(it, name)
-    }
-
-    fun gitCommit(message: String) = gitOp { dir ->
-        val name = gitAuthorName.ifBlank { "Code" }
-        val email = gitAuthorEmail.ifBlank { "code@localhost" }
-        GitRepo.commit(dir, message, name, email)
-    }
-
-    /** Clones [url] into [into] and, on success, opens it as the project. */
-    fun gitClone(url: String, into: File) {
-        viewModelScope.launch {
-            gitBusy = true
-            gitMessage = null
-            val result = runCatching {
-                withContext(Dispatchers.IO) { GitRepo.clone(url, into, gitUsername, gitToken) }
-            }
-            gitBusy = false
-            result.onSuccess { openFolder(into) }
-                .onFailure { gitMessage = it.message ?: it.toString() }
-        }
-    }
-
-    fun loadGitDiff(path: String, staged: Boolean) {
-        val dir = rootDir ?: return
-        viewModelScope.launch {
-            gitDiff = runCatching {
-                withContext(Dispatchers.IO) { GitRepo.diff(dir, path, staged) }
-            }.getOrDefault("")
-        }
-    }
-
-    /** Loads the side-by-side (aligned rows) diff for [path] into [gitDiffRows]. */
-    fun loadSideBySideDiff(path: String, staged: Boolean) {
-        val dir = rootDir ?: return
-        viewModelScope.launch {
-            gitDiffRows = runCatching {
-                withContext(Dispatchers.IO) { GitRepo.structuredDiff(dir, path, staged) }
-            }.getOrDefault(emptyList())
-        }
-    }
-
-    fun clearDiffRows() {
-        gitDiffRows = null
-    }
-
-    fun clearGitDiff() {
-        gitDiff = null
-    }
-
-    fun clearGitMessage() {
-        gitMessage = null
-    }
-
-    fun setGitUsername(value: String) {
-        _gitUsername.value = value
-        viewModelScope.launch { prefs.setGitUsername(value) }
-    }
-
-    fun setGitToken(value: String) {
-        _gitToken.value = value
-        viewModelScope.launch { prefs.setGitToken(value) }
-    }
-
-    fun setGitAuthorName(value: String) {
-        _gitAuthorName.value = value
-        viewModelScope.launch { prefs.setGitAuthorName(value) }
-    }
-
-    fun setGitAuthorEmail(value: String) {
-        _gitAuthorEmail.value = value
-        viewModelScope.launch { prefs.setGitAuthorEmail(value) }
-    }
+    // Operations live in EditorGitOps.kt as extensions.
 
     // ---- Terminal ----
-
-    /** Starts a shell in the open project directory if one isn't already running. */
-    fun startTerminal() {
-        if (terminal != null) return
-        val dir = rootDir ?: return
-        terminal = TerminalSession(
-            dir = dir,
-            onLine = { line -> appendTerminalLine(line) },
-            onExit = { terminalRunning = false },
-        )
-        terminalRunning = true
-    }
-
-    fun terminalSend(command: String) {
-        if (terminal == null) startTerminal()
-        appendTerminalLine("$ $command")
-        terminal?.send(command)
-    }
-
-    /** Line-based shells can't deliver a real SIGINT, so "stop" kills and restarts the shell. */
-    fun terminalInterrupt() {
-        terminal?.close()
-        terminal = null
-        terminalRunning = false
-        appendTerminalLine("^C")
-        startTerminal()
-    }
-
-    fun clearTerminal() {
-        terminalLines.clear()
-    }
-
-    private fun appendTerminalLine(line: String) {
-        terminalLines.add(line)
-        while (terminalLines.size > TERMINAL_SCROLLBACK) terminalLines.removeAt(0)
-    }
+    // Operations live in EditorTerminalOps.kt as extensions.
 
     override fun onCleared() {
         super.onCleared()
         terminal?.close()
-    }
-
-    /** Debounced auto-save: writes the current tab a short idle period after the last edit. */
-    private fun scheduleAutoSave() {
-        autoSaveJob?.cancel()
-        autoSaveJob = viewModelScope.launch {
-            delay(AUTO_SAVE_DELAY_MS)
-            val tab = activeTab ?: return@launch
-            if (tab.isDirty) saveTab(tab)
-        }
     }
 
     /** Commits a find/replace edit to [tab] as one undo step, bypassing smart input. */
@@ -976,7 +469,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     /** Debounced off-main recompute of diagnostics for the current tab. */
-    private fun scheduleDiagnostics() {
+    internal fun scheduleDiagnostics() {
         diagnosticsJob?.cancel()
         val tab = currentTab
         if (tab == null) {
@@ -1101,54 +594,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
         for (tab in tabs) if (tab.file != null && tab.isDirty) saveTab(tab)
     }
 
-    /** Encodes [tab] with its stored charset/BOM/line-ending and writes it, refreshing the snapshot. */
-    private fun saveTab(tab: OpenTab) {
-        val file = tab.file ?: return // external read-only tabs have no save target
-        var textToSave = tab.value.text
-        if (trimTrailingOnSave) textToSave = trimTrailingWhitespace(textToSave)
-        if (finalNewlineOnSave) textToSave = ensureFinalNewline(textToSave)
-        // Reflect the transformed text back into the buffer so the tab isn't left "dirty".
-        if (textToSave != tab.value.text) {
-            val sel = tab.value.selection
-            val clamped = TextRange(
-                sel.start.coerceAtMost(textToSave.length),
-                sel.end.coerceAtMost(textToSave.length),
-            )
-            tab.value = TextFieldValue(textToSave, clamped)
-        }
-        val bytes = TextEncoding.encode(textToSave, tab.charset, tab.lineEnding, tab.hadBom)
-        viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching { FileFiles.writeBytes(file, bytes) }.isSuccess
-            }
-            if (ok) {
-                tab.savedText = textToSave
-                tab.changedOnDisk = false
-                val (modified, length) = withContext(Dispatchers.IO) { file.lastModified() to file.length() }
-                tab.diskModified = modified
-                tab.diskLength = length
-                if (gitIsRepo) refreshGit()
-            }
-        }
-    }
-
-    /**
-     * Compares each open file-backed tab against its on-disk snapshot (called on ON_RESUME and after
-     * git actions). A clean tab is silently reloaded; a dirty tab raises its "changed on disk" banner.
-     */
-    fun checkExternalChanges() {
-        if (tabs.isEmpty()) return
-        viewModelScope.launch {
-            for (tab in tabs) {
-                val file = tab.file ?: continue
-                val snapshot = withContext(Dispatchers.IO) {
-                    if (file.exists()) file.lastModified() to file.length() else null
-                } ?: continue
-                if (snapshot.first == tab.diskModified && snapshot.second == tab.diskLength) continue
-                if (tab.isDirty) tab.changedOnDisk = true else applyReload(tab)
-            }
-        }
-    }
+    // Save/reload/external-change handling lives in EditorSaveOps.kt as extensions.
 
     override fun reloadFromDisk() {
         val tab = currentTab ?: return
@@ -1164,21 +610,6 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
             tab.diskLength = length
             tab.changedOnDisk = false
         }
-    }
-
-    /** Replaces [tab]'s buffer with the current disk contents and refreshes its snapshot. */
-    private suspend fun applyReload(tab: OpenTab) {
-        val file = tab.file ?: return
-        val loaded = loadFile(file)
-        tab.value = TextFieldValue(loaded.decoded.text)
-        tab.savedText = loaded.decoded.text
-        tab.charset = loaded.decoded.charset
-        tab.lineEnding = loaded.decoded.lineEnding
-        tab.hadBom = loaded.decoded.hadBom
-        tab.diskModified = loaded.modified
-        tab.diskLength = loaded.length
-        tab.changedOnDisk = false
-        scheduleDiagnostics()
     }
 
     /** Inserts [insert] at the caret, replacing any current selection (used by the Tab button). */
@@ -1311,155 +742,27 @@ class EditorViewModel(application: Application) : AndroidViewModel(application),
     }
 
     // ---- Project search ----
+    // Implementations live in EditorSearchOps.kt; these overrides keep CodeActions conformance.
 
-    override fun searchProject(query: String, caseSensitive: Boolean, useRegex: Boolean) {
-        val root = rootDir ?: return
-        searchJob?.cancel()
-        if (query.isBlank()) {
-            searchResults.clear()
-            isSearching = false
-            return
-        }
-        isSearching = true
-        searchResults.clear()
-        searchJob = viewModelScope.launch {
-            val collected = withContext(Dispatchers.IO) {
-                val out = ArrayList<SearchResult>()
-                val ignore = loadGitIgnore(root)
-                val stack = ArrayDeque<File>()
-                stack.addLast(root)
-                while (stack.isNotEmpty() && out.size < MAX_SEARCH_RESULTS) {
-                    coroutineContext.ensureActive()
-                    val dir = stack.removeLast()
-                    val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
-                    for (child in children) {
-                        if (out.size >= MAX_SEARCH_RESULTS) break
-                        val rel = relativeTo(root, child.file)
-                        if (child.isDirectory) {
-                            if (child.name !in SKIP_DIRS && !ignore.isIgnored(rel, true)) stack.addLast(child.file)
-                            continue
-                        }
-                        if (ignore.isIgnored(rel, false)) continue
-                        if (Language.fromFileName(child.name) == Language.PLAINTEXT) continue
-                        if (child.file.length() > MAX_SEARCH_FILE_SIZE) continue
-                        val text = runCatching { FileFiles.readText(child.file) }.getOrNull() ?: continue
-                        val matches = findLineMatches(text, query, caseSensitive, useRegex, MAX_MATCHES_PER_FILE)
-                        for (m in matches) {
-                            out.add(SearchResult(child.file.absolutePath, child.name, m.line, m.preview))
-                            if (out.size >= MAX_SEARCH_RESULTS) break
-                        }
-                    }
-                }
-                out
-            }
-            searchResults.clear()
-            searchResults.addAll(collected)
-            isSearching = false
-        }
-    }
+    override fun searchProject(query: String, caseSensitive: Boolean, useRegex: Boolean) =
+        searchProjectImpl(query, caseSensitive, useRegex)
 
-    override fun openSearchResult(result: SearchResult) {
-        addRecentFile(result.path)
-        val existing = tabs.indexOfFirst { it.key == result.path }
-        if (existing >= 0) {
-            currentIndex = existing
-            goToLine(result.line)
-            return
-        }
-        val file = File(result.path)
-        viewModelScope.launch {
-            tabs.add(makeFileTab(file, result.name))
-            currentIndex = tabs.lastIndex
-            goToLine(result.line)
-            saveSession()
-        }
-    }
+    override fun openSearchResult(result: SearchResult) = openSearchResultImpl(result)
 
     // ---- Quick-open ----
+    // Implementations live in EditorSearchOps.kt.
 
     override fun openPath(path: String) = openFile(File(path))
 
-    /** Rebuilds the cached project-file list by walking the open folder off the main thread. */
-    override fun refreshProjectFiles() {
-        val root = rootDir ?: return
-        projectFilesJob?.cancel()
-        projectFilesJob = viewModelScope.launch {
-            val collected = withContext(Dispatchers.IO) {
-                val out = ArrayList<ProjectFileEntry>()
-                val ignore = loadGitIgnore(root)
-                val stack = ArrayDeque<File>()
-                stack.addLast(root)
-                while (stack.isNotEmpty() && out.size < MAX_PROJECT_FILES) {
-                    coroutineContext.ensureActive()
-                    val dir = stack.removeLast()
-                    val children = runCatching { FileFiles.listChildren(dir) }.getOrDefault(emptyList())
-                    for (child in children) {
-                        if (out.size >= MAX_PROJECT_FILES) break
-                        val rel = relativeTo(root, child.file)
-                        if (child.isDirectory) {
-                            if (child.name !in SKIP_DIRS && !ignore.isIgnored(rel, true)) stack.addLast(child.file)
-                            continue
-                        }
-                        if (ignore.isIgnored(rel, false)) continue
-                        out.add(toProjectEntry(child.file))
-                    }
-                }
-                out.sortedBy { it.relativePath.lowercase() }
-            }
-            projectFiles.clear()
-            projectFiles.addAll(collected)
-        }
-    }
-
-    /** Reads and parses the project root `.gitignore`, or returns an empty matcher. */
-    private fun loadGitIgnore(root: File): GitIgnore = runCatching {
-        val f = File(root, ".gitignore")
-        if (f.isFile) parseGitIgnore(f.readText()) else GitIgnore.EMPTY
-    }.getOrDefault(GitIgnore.EMPTY)
-
-    /** Path of [file] relative to [root] (falling back to the bare name when not under root). */
-    private fun relativeTo(root: File, file: File): String {
-        val rp = root.absolutePath
-        val ap = file.absolutePath
-        return if (ap.startsWith(rp + File.separator)) ap.substring(rp.length + 1) else file.name
-    }
-
-    /** Builds the display entry for [file], with a path relative to the open root when possible. */
-    private fun toProjectEntry(file: File): ProjectFileEntry {
-        val abs = file.absolutePath
-        val rootPath = rootDir?.absolutePath
-        val rel = if (rootPath != null && abs.startsWith(rootPath + File.separator)) {
-            abs.substring(rootPath.length + 1)
-        } else {
-            abs
-        }
-        return ProjectFileEntry(abs, file.name, rel)
-    }
-
-    /** Records [path] as the most-recently-opened file and persists the capped list. */
-    private fun addRecentFile(path: String) {
-        recentPaths.remove(path)
-        recentPaths.add(0, path)
-        while (recentPaths.size > MAX_RECENT_FILES) recentPaths.removeAt(recentPaths.lastIndex)
-        viewModelScope.launch { prefs.setRecentFiles(recentPaths.toList()) }
-    }
+    override fun refreshProjectFiles() = refreshProjectFilesImpl()
 
     private companion object {
-        const val AUTO_SAVE_DELAY_MS = 1500L
-        const val DIAGNOSTICS_DELAY_MS = 400L
+        internal const val DIAGNOSTICS_DELAY_MS = 400L
         const val COMPLETIONS_DELAY_MS = 150L
         const val MIN_COMPLETION_PREFIX = 1
         const val MAX_COMPLETIONS = 50
         // Buffers larger than this are left out of the identifier scan. A multi-megabyte file has
         // no useful completions in it anyway, and scanning it on every keystroke burns a core.
         const val MAX_COMPLETION_BUFFER_CHARS = 1_000_000
-        const val GIT_LOG_LIMIT = 30
-        const val TERMINAL_SCROLLBACK = 2000
-        const val MAX_SEARCH_RESULTS = 500
-        const val MAX_MATCHES_PER_FILE = 50
-        const val MAX_SEARCH_FILE_SIZE = 500_000
-        const val MAX_PROJECT_FILES = 5000
-        const val MAX_RECENT_FILES = 15
-        val SKIP_DIRS = setOf(".git", "node_modules", "build", ".gradle", ".idea")
     }
 }

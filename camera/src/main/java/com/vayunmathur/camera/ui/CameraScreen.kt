@@ -84,6 +84,7 @@ import com.vayunmathur.library.ui.IconTimer
 import com.vayunmathur.library.ui.IconToolsLevel
 import com.vayunmathur.library.ui.IconVideoCamera
 import com.vayunmathur.library.ui.IconSettings
+import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Motion
@@ -509,9 +510,17 @@ fun CameraScreen(
     Scaffold(
         containerColor = Color.Black
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Fractional overlay offsets so pills scale with window height on
+            // wide/short desktop windows instead of fixed dp (was 280/60/100dp).
+            val qrBottomPadding = maxHeight * 0.3f
+            val indicatorTopPadding = maxHeight * 0.07f
+            val focusTopPadding = maxHeight * 0.12f
+            // Expanded windows place the shutter and mode controls side by side
+            // below the preview; short windows keep the phone stack.
+            val expandedSide = isExpandedWidth()
             Column(modifier = Modifier.fillMaxSize()) {
-                TopBar(
+                CameraTopBar(
                     flashMode = flashMode,
                     torchEnabled = torchEnabled,
                     gridEnabled = gridEnabled,
@@ -836,6 +845,8 @@ fun CameraScreen(
                     }
                 }
 
+                @Composable
+                fun ShutterPane() {
                 ShutterRow(
                     cameraMode = cameraMode,
                     isRecording = isRecording,
@@ -891,7 +902,10 @@ fun CameraScreen(
                     iconRotation = animatedRotation,
                     flipEnabled = !isSloMo
                 )
+                }
 
+                @Composable
+                fun ModesPane() {
                 ModeSelector(
                     cameraMode = cameraMode,
                     isPhotoType = isPhotoType,
@@ -912,6 +926,13 @@ fun CameraScreen(
                     },
                     onSettingsClick = { backStack.add(Route.Settings) }
                 )
+                }
+
+                CameraWideLayout(
+                    shutter = { ShutterPane() },
+                    modes = { ModesPane() },
+                    sideBySide = expandedSide,
+                )
             }
 
             qrResult?.let { qr ->
@@ -921,14 +942,14 @@ fun CameraScreen(
                     context = context,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 280.dp)
+                        .padding(bottom = qrBottomPadding)
                 )
             }
 
             if (isRecording) {
                 RecordingIndicator(
                     durationSec = recordingDuration,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp)
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = indicatorTopPadding)
                 )
             }
 
@@ -936,7 +957,7 @@ fun CameraScreen(
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 60.dp)
+                        .padding(top = indicatorTopPadding)
                         .background(Color(0xCC000000), RoundedCornerShape(20.dp))
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -959,7 +980,7 @@ fun CameraScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 100.dp)
+                        .padding(top = focusTopPadding)
                         .background(Color(0xCC000000), RoundedCornerShape(12.dp))
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 )
@@ -968,354 +989,14 @@ fun CameraScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun TopBar(
-    flashMode: FlashMode,
-    torchEnabled: Boolean,
-    gridEnabled: Boolean,
-    levelEnabled: Boolean,
-    aspectRatio: AspectRatioOption,
-    isPhotoType: Boolean,
-    isVideoType: Boolean,
-    micMuted: Boolean,
-    timerDuration: TimerDuration,
-    onFlashToggle: () -> Unit,
-    onTorchToggle: () -> Unit,
-    onGridToggle: () -> Unit,
-    onLevelToggle: () -> Unit,
-    onAspectCycle: () -> Unit,
-    onMicToggle: () -> Unit,
-    onTimerCycle: () -> Unit,
-    iconRotation: Float
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        // Centred rather than packed left: the control count changes with the mode (level in photo,
-        // mic in video), so a left-aligned row shifts its contents around as you switch modes.
-        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val flashBg = if (torchEnabled || flashMode != FlashMode.OFF) Color(0xFF3C3C3C) else Color.Transparent
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(flashBg, CircleShape)
-                .combinedClickable(
-                    onClick = onFlashToggle,
-                    onLongClick = onTorchToggle
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            val flashIconModifier = Modifier.size(22.dp).rotate(iconRotation)
-            if (torchEnabled) {
-                IconFlashlight(flashIconModifier, Color.White)
-            } else {
-                when (flashMode) {
-                    FlashMode.ON -> IconFlashOn(flashIconModifier, Color.White)
-                    FlashMode.OFF -> IconFlashOff(flashIconModifier, Color.White)
-                    FlashMode.AUTO -> IconFlashAuto(flashIconModifier, Color.White)
-                }
-            }
-        }
+// Top bar lives in CameraTopBar.kt.
 
-        val gridBg = if (gridEnabled) Color(0xFF3C3C3C) else Color.Transparent
-        IconButton(
-            onClick = onGridToggle,
-            modifier = Modifier
-                .size(40.dp)
-                .background(gridBg, CircleShape)
-        ) {
-            IconGrid(Modifier.size(22.dp).rotate(iconRotation), Color.White)
-        }
+// Preview overlays live in CameraOverlays.kt.
 
-        // The ratio as text: an icon of three nested rectangles does not tell you which one is
-        // active, and the enum already carries "16:9" / "4:3" / "1:1".
-        val aspectLabel = stringResource(R.string.settings_aspect_ratio)
-        IconButton(
-            onClick = onAspectCycle,
-            modifier = Modifier.height(40.dp).widthIn(min = 40.dp)
-        ) {
-            Text(
-                aspectRatio.label,
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .rotate(iconRotation)
-                    .semantics { contentDescription = aspectLabel },
-            )
-        }
-
-        if (isPhotoType) {
-            val levelBg = if (levelEnabled) Color(0xFF3C3C3C) else Color.Transparent
-            IconButton(
-                onClick = onLevelToggle,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(levelBg, CircleShape)
-            ) {
-                IconToolsLevel(
-                    Modifier.size(22.dp).rotate(iconRotation),
-                    Color.White
-                )
-            }
-        }
-
-        val timerBg = if (timerDuration != TimerDuration.NONE) Color(0xFF3C3C3C) else Color.Transparent
-        IconButton(
-            onClick = onTimerCycle,
-            modifier = Modifier
-                .size(40.dp)
-                .background(timerBg, CircleShape)
-        ) {
-            if (timerDuration == TimerDuration.NONE) {
-                IconTimer(Modifier.size(22.dp).rotate(iconRotation), Color.White)
-            } else {
-                val timerLabel = when (timerDuration) {
-                    TimerDuration.NONE -> ""
-                    TimerDuration.THREE -> "3"
-                    TimerDuration.FIVE -> "5"
-                    TimerDuration.TEN -> "10"
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IconTimer(Modifier.size(14.dp).rotate(iconRotation), Color.White)
-                    Text(timerLabel, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp)
-                }
-            }
-        }
-
-        if (isVideoType) {
-            val micBg = if (micMuted) Color(0xFF3C3C3C) else Color.Transparent
-            IconButton(
-                onClick = onMicToggle,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(micBg, CircleShape)
-            ) {
-                if (micMuted) IconMicOff(Modifier.size(22.dp).rotate(iconRotation), Color.White)
-                else IconMic(Modifier.size(22.dp).rotate(iconRotation), Color.White)
-            }
-        }
-    }
-}
+// Settings bars live in CameraSettingsBars.kt.
 
 @Composable
-private fun GridOverlay(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val strokeWidth = 1.dp.toPx()
-        val color = Color.White.copy(alpha = 0.3f)
-        val thirdW = size.width / 3f
-        val thirdH = size.height / 3f
-
-        for (i in 1..2) {
-            drawLine(color, Offset(thirdW * i, 0f), Offset(thirdW * i, size.height), strokeWidth)
-            drawLine(color, Offset(0f, thirdH * i), Offset(size.width, thirdH * i), strokeWidth)
-        }
-    }
-}
-
-/**
- * Horizon indicator: a fixed horizontal reference plus a line that rotates with the device roll.
- * Both turn green when the device is within ±1.5° of level.
- */
-@Composable
-private fun LevelOverlay(roll: Float, modifier: Modifier = Modifier) {
-    val isLevel = kotlin.math.abs(roll) <= 1.5f
-    val color = if (isLevel) Color(0xFF4CAF50) else Color.White
-    Canvas(modifier = modifier) {
-        val cx = size.width / 2f
-        val cy = size.height / 2f
-        val half = size.width * 0.18f
-        val stroke = 2.dp.toPx()
-        val gap = 10.dp.toPx()
-
-        // Fixed reference ticks either side of centre.
-        val refColor = Color.White.copy(alpha = 0.5f)
-        drawLine(refColor, Offset(cx - half - gap, cy), Offset(cx - half, cy), stroke)
-        drawLine(refColor, Offset(cx + half, cy), Offset(cx + half + gap, cy), stroke)
-
-        // Rolling line rotated by -roll (screen rotates opposite to device tilt).
-        val rad = Math.toRadians(-roll.toDouble())
-        val dx = (half * kotlin.math.cos(rad)).toFloat()
-        val dy = (half * kotlin.math.sin(rad)).toFloat()
-        drawLine(color, Offset(cx - dx, cy - dy), Offset(cx + dx, cy + dy), stroke)
-        drawCircle(color, 2.dp.toPx(), Offset(cx, cy))
-    }
-}
-
-@Composable
-private fun HorizontalSettingSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    icon: @Composable (Modifier, Color) -> Unit,
-    label: String,
-    modifier: Modifier = Modifier,
-    valueRange: ClosedFloatingPointRange<Float> = -1f..1f,
-    activeWhen: (Float) -> Boolean = { it != 0f },
-    displayValue: (Float) -> String = { if (it == 0f) "0" else "%+.1f".format(it) }
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .background(
-                    if (activeWhen(value)) Color(0xFF3C3C3C) else Color.Transparent,
-                    CircleShape
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            icon(Modifier.size(20.dp), Color.White)
-        }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = Color.White,
-                inactiveTrackColor = Color(0xFF666666)
-            )
-        )
-        Text(
-            text = displayValue(value),
-            color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(40.dp),
-            textAlign = TextAlign.End
-        )
-    }
-}
-
-@Composable
-private fun NightModeButton(
-    active: Boolean,
-    onClick: () -> Unit,
-    iconRotation: Float,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .background(Color(0x99000000), RoundedCornerShape(24.dp))
-            .selectedPill(active, RoundedCornerShape(24.dp))
-            .clip(RoundedCornerShape(24.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconBedtime(Modifier.size(20.dp).rotate(iconRotation), if (active) Color.White else Color(0xFFBBBBBB))
-        Text(
-            text = stringResource(R.string.night),
-            color = if (active) Color.White else Color(0xFFBBBBBB),
-            fontSize = 13.sp,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
-        )
-    }
-}
-
-@Composable
-private fun SettingsButtonRow(
-    activeSetting: CameraSetting?,
-    cameraMode: CameraMode,
-    onSelect: (CameraSetting?) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .background(Color(0x99000000), RoundedCornerShape(24.dp))
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val settings = buildList<Pair<CameraSetting, @Composable (Modifier, Color) -> Unit>> {
-            add(CameraSetting.BRIGHTNESS to { m, c -> IconSunny(m, c) })
-            add(CameraSetting.SHADOWS to { m, c -> IconContrast(m, c) })
-            add(CameraSetting.WARMTH to { m, c -> IconLightbulb(m, c) })
-            add(CameraSetting.EXPOSURE_TIME to { m, c -> IconTimer(m, c) })
-            if (cameraMode == CameraMode.PHOTO) {
-                add(CameraSetting.ISO to { m, c -> IconIso(m, c) })
-            }
-            if (cameraMode == CameraMode.PORTRAIT) {
-                add(CameraSetting.PORTRAIT_BLUR to { m, c -> IconBlur(m, c) })
-            }
-        }
-        settings.forEach { (setting, icon) ->
-            val isActive = activeSetting == setting
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .selectedPill(isActive, CircleShape)
-                    .clip(CircleShape)
-                    .clickable { onSelect(if (isActive) null else setting) },
-                contentAlignment = Alignment.Center
-            ) {
-                icon(Modifier.size(20.dp), if (isActive) Color.White else Color(0xFFBBBBBB))
-            }
-        }
-    }
-}
-
-@Composable
-private fun ZoomBar(
-    currentZoom: Float,
-    zoomLevels: List<Pair<String, Float>>,
-    onZoomSelected: (Float) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    // Insert the live zoom ratio between the two fixed levels it falls between,
-    // unless it already matches one of the listed options.
-    val displayLevels = remember(zoomLevels, currentZoom) {
-        if (zoomLevels.any { kotlin.math.abs(it.second - currentZoom) < 0.05f }) {
-            zoomLevels
-        } else {
-            val entry = formatZoomLabel(currentZoom) to currentZoom
-            val insertAt = zoomLevels.indexOfFirst { it.second > currentZoom }
-            if (insertAt < 0) zoomLevels + entry
-            else zoomLevels.toMutableList().apply { add(insertAt, entry) }
-        }
-    }
-    Row(
-        modifier = modifier
-            .background(Color(0x99000000), RoundedCornerShape(24.dp))
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        displayLevels.forEach { (label, ratio) ->
-            val isSelected = kotlin.math.abs(currentZoom - ratio) < 0.05f
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .selectedPill(isSelected, CircleShape)
-                    .clip(CircleShape)
-                    .clickable { onZoomSelected(ratio) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    label,
-                    color = if (isSelected) Color.White else Color(0xFFBBBBBB),
-                    fontSize = 13.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ShutterRow(
+internal fun ShutterRow(
     cameraMode: CameraMode,
     isRecording: Boolean,
     isCapturing: Boolean,
@@ -1563,124 +1244,14 @@ private fun BottomBar(
     }
 }
 
-@Composable
-private fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Context, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .padding(16.dp)
-            .background(
-                MaterialTheme.colorScheme.surfaceContainer,
-                RoundedCornerShape(16.dp)
-            )
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            stringResource(R.string.qr_result),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 8.dp)
-        )
-        // Passkey (FIDO hybrid/caBLE) QR codes decode to a "FIDO:/..." URI. Treat it as an
-        // openable URL alongside normal web links. Intent-filter scheme matching is case-SENSITIVE,
-        // so the "FIDO" scheme must be lowercased (normalizeScheme) or nothing will handle it.
-        val isFidoUri = text.startsWith("FIDO:", ignoreCase = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (isFidoUri || Patterns.WEB_URL.matcher(text).matches()) {
-                Button(onClick = {
-                    val url = if (!isFidoUri && !text.startsWith("http")) "https://$text" else text
-                    val uri = url.toUri().normalizeScheme()
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                    } catch (e: ActivityNotFoundException) {
-                        AppMessages.show(context.getString(R.string.no_app_to_open_url))
-                    }
-                }) {
-                    Text(stringResource(R.string.open_url))
-                }
-            }
-            FilledTonalButton(onClick = {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("QR", text))
-            }) {
-                Text(stringResource(R.string.copy_text))
-            }
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        }
-    }
-}
+// QrResultOverlay lives in CameraOverlays.kt.
+
+// RecordingIndicator lives in CameraOverlays.kt.
+
+// LongExposureOverlay lives in CameraOverlays.kt.
 
 @Composable
-private fun RecordingIndicator(durationSec: Long, modifier: Modifier = Modifier) {
-    val dotAlpha = animatedFloat(
-        target = if ((durationSec % 2) == 0L) 1f else 0.3f,
-        spec = Motion.over(500)
-    )
-
-    val minutes = durationSec / 60
-    val seconds = durationSec % 60
-    val timeText = "%d:%02d".format(minutes, seconds)
-
-    Row(
-        modifier = modifier
-            .background(Color(0xCC000000), RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .graphicsLayer { alpha = dotAlpha }
-                .background(Color.Red, CircleShape)
-        )
-        Text(
-            text = timeText,
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
-private fun LongExposureOverlay(
-    progress: Float,
-    remainingText: String,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.size(80.dp),
-                color = Color.White,
-                trackColor = Color.White.copy(alpha = 0.2f),
-                strokeWidth = 4.dp
-            )
-            Text(
-                text = remainingText,
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-private fun ExposureTimeBar(
+internal fun ExposureTimeBar(
     selectedIndex: Int,
     onIndexChange: (Int) -> Unit,
     modifier: Modifier = Modifier

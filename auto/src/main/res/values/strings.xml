@@ -30,6 +30,20 @@
     <string name="session_focus">Focus</string>
     <!-- Shown when no focus indication has arrived yet. -->
     <string name="session_focus_none">Unknown</string>
+    <!-- Arbitrated video focus: the phone holds the screen and streams. -->
+    <string name="session_focus_projected">Projected</string>
+    <!-- Arbitrated video focus: the car holds the screen; the stream is parked. -->
+    <string name="session_focus_native">Native</string>
+    <!-- Heading of the row showing the raw 0x8008 wire mode for debugging. -->
+    <string name="session_focus_wire">Wire focus</string>
+    <!-- Heading of the row showing the last audio focus state the head unit reported. -->
+    <string name="session_audio_focus">Audio focus</string>
+    <!-- Heading of the row showing whether head-unit input may be injected. -->
+    <string name="session_input_allowed">Input</string>
+    <!-- Shown when head-unit touches and keys are injected into the car UI. -->
+    <string name="session_input_allowed_yes">Allowed</string>
+    <!-- Shown when head-unit input is held (native video, or projected without input focus). -->
+    <string name="session_input_allowed_no">Held</string>
     <!-- Heading of the row showing encoded frames sent and head-unit acks seen. -->
     <string name="session_frames">Frames / acks</string>
     <!-- %1$d is frames sent, %2$d is acks seen. -->
@@ -116,6 +130,58 @@
     <!-- Shown when there is no active session to time. -->
     <string name="session_elapsed_none">—</string>
 
+    <!-- Heading of the card gating message mirroring. Both switches must be on
+         before a notification reaches the car: the system listener binding and
+         the in-app consent below. -->
+    <string name="messaging_headline">Messages in the car</string>
+    <!-- Explains what the card gates: which notifications leave the phone, and
+         that replies typed or spoken in the car go back through the phone. -->
+    <string name="messaging_body">Mirror message notifications to the car display and read them aloud. Replies you type or dictate in the car are sent from this phone.</string>
+    <!-- Row toggling the in-app mirror switch. Mirroring stays off until this
+         is on AND the system listener binding below is granted. -->
+    <string name="messaging_consent">Mirror messages</string>
+    <!-- Supporting text under the consent switch while mirroring is on. -->
+    <string name="messaging_consent_on">Message notifications appear on the car display</string>
+    <!-- Supporting text under the consent switch while mirroring is off. -->
+    <string name="messaging_consent_off">Nothing leaves the phone until this is on</string>
+    <!-- Row opening the system notification-access settings. -->
+    <string name="messaging_listener">Notification access</string>
+    <!-- Shown when the system listener binding is granted. -->
+    <string name="messaging_listener_granted">Allowed — MA Auto can read message notifications</string>
+    <!-- Shown when the system listener binding is not granted. -->
+    <string name="messaging_listener_missing">Not allowed — open settings to let MA Auto read message notifications</string>
+    <!-- Button opening the system notification-access settings. -->
+    <string name="messaging_open_settings">Open settings</string>
+    <!-- Heading of the row counting ch14 thread snapshots posted this session. -->
+    <string name="session_messaging_threads">Message threads</string>
+    <!-- %1$d is the count of thread snapshots posted. -->
+    <string name="session_messaging_threads_value"><xliff:g example="3" id="count">%1$d</xliff:g></string>
+    <!-- Heading of the row counting ch14 message bodies posted this session. -->
+    <string name="session_messaging_messages">Messages posted</string>
+    <!-- %1$d is the count of message bodies posted. -->
+    <string name="session_messaging_messages_value"><xliff:g example="5" id="count">%1$d</xliff:g></string>
+    <!-- Heading of the row counting head-unit replies received this session. -->
+    <string name="session_messaging_replies">Car replies</string>
+    <!-- %1$d is the count of replies received. -->
+    <string name="session_messaging_replies_value"><xliff:g example="1" id="count">%1$d</xliff:g></string>
+
+    <!-- Heading of the row counting ch8 touch frames injected this session. -->
+    <string name="session_input_touches">Car touches</string>
+    <!-- %1$d is the count of touch frames injected. -->
+    <string name="session_input_touches_value"><xliff:g example="40" id="count">%1$d</xliff:g></string>
+    <!-- Heading of the row counting ch8 key presses/releases injected this session. -->
+    <string name="session_input_keys">Car keys</string>
+    <!-- %1$d is the count of keys injected. -->
+    <string name="session_input_keys_value"><xliff:g example="7" id="count">%1$d</xliff:g></string>
+    <!-- Heading of the row counting ch8 scroll ticks injected this session. -->
+    <string name="session_input_scrolls">Car scrolls</string>
+    <!-- %1$d is the count of scroll ticks injected. -->
+    <string name="session_input_scrolls_value"><xliff:g example="3" id="count">%1$d</xliff:g></string>
+    <!-- Heading of the row counting ch8 reports dropped for lack of input focus. -->
+    <string name="session_input_dropped">Input dropped</string>
+    <!-- %1$d is the count of reports dropped without input focus. -->
+    <string name="session_input_dropped_value"><xliff:g example="2" id="count">%1$d</xliff:g></string>
+
     <!-- Heading of the row showing what the on-device media session is playing. -->
     <string name="session_now_playing">Now playing</string>
     <!-- Shown on the session card before the media session has reported. -->
@@ -131,6 +197,60 @@
     <string name="session_now_playing_unknown">Unknown track</string>
     <!-- Shown when the media session reports no artist. -->
     <string name="session_now_playing_unknown_artist">Unknown artist</string>
+
+    <!-- Pairing screen: how the phone attaches to a car. -->
+    <!-- Title of the pairing screen. -->
+    <string name="pairing_title">Connect a car</string>
+    <!-- Text on the button opening the pairing screen from the status card. -->
+    <string name="pairing_open">Pairing</string>
+    <!-- Explains that USB is plug-and-play and wireless needs the car screen. -->
+    <string name="pairing_hint">Plug in with USB for the fastest setup, or look for cars to connect wirelessly. Wireless cars must support Android Auto over WiFi.</string>
+    <!-- Heading of the row showing the USB cable state. -->
+    <string name="pairing_usb">USB cable</string>
+    <!-- Shown when no USB accessory is attached. -->
+    <string name="pairing_usb_detached">No cable connected</string>
+    <!-- Shown while waiting on the USB permission grant. %1$s is the accessory label. -->
+    <string name="pairing_usb_permission">Waiting for permission %1$s</string>
+    <!-- Shown when the USB permission was denied. -->
+    <string name="pairing_usb_denied">Permission denied — the cable cannot be used</string>
+    <!-- Button retrying the USB permission without replugging. -->
+    <string name="pairing_usb_retry">Ask again</string>
+    <!-- Shown once the USB accessory is open. %1$s is the accessory label. -->
+    <string name="pairing_usb_connected">Connected %1$s</string>
+    <!-- Shown when the USB accessory went away after having been seen. -->
+    <string name="pairing_usb_lost">Cable disconnected</string>
+    <!-- Heading of the row showing the wireless bring-up state. -->
+    <string name="pairing_wireless">Wireless</string>
+    <!-- Shown before wireless discovery starts. -->
+    <string name="pairing_wireless_idle">Not looking for cars</string>
+    <!-- Button starting WiFi Direct discovery. -->
+    <string name="pairing_wireless_search">Look for cars</string>
+    <!-- Shown while WiFi Direct discovery runs. -->
+    <string name="pairing_wireless_searching">Looking for cars…</string>
+    <!-- Shown once WiFi is negotiated and the socket is being opened. -->
+    <string name="pairing_wireless_ready">Car found — connecting…</string>
+    <!-- Button cancelling wireless discovery. -->
+    <string name="pairing_wireless_cancel">Stop</string>
+    <!-- Shown once the wireless socket is connected. -->
+    <string name="pairing_wireless_connected">Connected wirelessly</string>
+    <!-- Shown when wireless setup failed or the link dropped. -->
+    <string name="pairing_wireless_lost">Wireless connection lost</string>
+    <!-- Heading of the row showing which transport the session would use. -->
+    <string name="pairing_transport">Active transport</string>
+    <!-- Shown when USB won the transport selection. -->
+    <string name="pairing_transport_usb">USB</string>
+    <!-- Shown when wireless won the transport selection. -->
+    <string name="pairing_transport_wireless">Wireless</string>
+    <!-- Shown in dev builds when nothing else is up; never in release. -->
+    <string name="pairing_transport_loopback">Developer loopback</string>
+    <!-- Shown when no transport may be used yet. -->
+    <string name="pairing_transport_none">None yet</string>
+    <!-- Heading of the row showing the MAOS projection role. -->
+    <string name="pairing_role">System role</string>
+    <!-- Shown when this package holds SYSTEM_AUTOMOTIVE_PROJECTION. -->
+    <string name="pairing_role_held">Projection role held — trusted display and input available</string>
+    <!-- Shown on installs without the role; projection still works degraded. -->
+    <string name="pairing_role_missing">No projection role — mirroring only, no trusted display</string>
 
     <!-- Notification channel name for the ongoing projection session. -->
     <string name="projection_channel">Projection</string>

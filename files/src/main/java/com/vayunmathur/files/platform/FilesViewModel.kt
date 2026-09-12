@@ -7,7 +7,6 @@ import android.net.Uri
 import android.os.Environment
 import android.os.FileObserver
 import android.os.StatFs
-import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.text.format.Formatter
 import android.webkit.MimeTypeMap
@@ -31,7 +30,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.zip.ZipFile
 
 /**
  * Migrated from okio FileSystem/Path/openZip to java.io.File + java.util.zip.ZipFile.
@@ -331,13 +329,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         _bookmarks.value = loadBookmarks()
     }
 
-    private fun loadBookmarks(): List<FileBrowserItem> {
-        val saved = prefs.getStringSet("bookmarks", emptySet()) ?: emptySet()
-        return saved.map { File(it) }
-            .filter { it.exists() }
-            .sortedBy { it.name.lowercase() }
-            .map { it.toItem() }
-    }
+    private fun loadBookmarks(): List<FileBrowserItem> = loadBookmarkItems(prefs)
 
     private fun readStorage(): StorageInfo = try {
         val stat = StatFs(rootDirectory.absolutePath)
@@ -354,174 +346,39 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         FileCategory.DOWNLOADS -> R.string.cat_downloads
     }
 
-    private fun queryCategory(category: FileCategory): List<FileBrowserItem> = when (category) {
-        FileCategory.IMAGES -> queryMedia(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, null, null, 2000)
-        FileCategory.VIDEOS -> queryMedia(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, null, null, 2000)
-        FileCategory.AUDIO -> queryMedia(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, null, null, 2000)
-        FileCategory.DOCUMENTS -> {
-            val mimes = arrayOf(
-                "application/pdf", "application/msword",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/vnd.ms-excel",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "application/vnd.ms-powerpoint",
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                "text/plain", "text/markdown", "text/csv", "application/rtf",
-            )
-            val selection = mimes.joinToString(" OR ") { "${MediaStore.Files.FileColumns.MIME_TYPE}=?" }
-            queryMedia(MediaStore.Files.getContentUri("external"), selection, mimes, 2000)
-        }
-        FileCategory.DOWNLOADS -> emptyList()
-    }
+    private fun queryCategory(category: FileCategory): List<FileBrowserItem> =
+        queryCategoryItems(getApplication(), category)
 
     private fun queryRecents(): List<FileBrowserItem> =
-        queryMedia(MediaStore.Files.getContentUri("external"), null, null, 40)
+        queryRecentItems(getApplication())
 
-    private fun queryMedia(
-        uri: Uri,
-        selection: String?,
-        args: Array<String>?,
-        limit: Int,
-    ): List<FileBrowserItem> {
-        val ctx = getApplication<Application>()
-        val projection = arrayOf(MediaStore.MediaColumns.DATA)
-        val sort = "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
-        val out = mutableListOf<FileBrowserItem>()
-        try {
-            ctx.contentResolver.query(uri, projection, selection, args, sort)?.use { c ->
-                val idx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
-                while (c.moveToNext() && out.size < limit) {
-                    val path = c.getString(idx) ?: continue
-                    val f = File(path)
-                    if (f.isFile) out.add(f.toItem())
-                }
-            }
-        } catch (_: Exception) {
-        }
-        return out
-    }
+    private fun File.toItem() = toBrowserItem()
 
-    private fun File.toItem() = FileBrowserItem(
-        name = name,
-        isDirectory = isDirectory,
-        size = if (isFile) length() else null,
-        realFile = this,
-        zipInnerPath = null,
-        key = absolutePath,
-        lastModified = lastModified(),
-    )
-
-    // ---- Clipboard (copy/cut/paste) ----
-    private val _clipboard = MutableStateFlow<List<File>>(emptyList())
+    // ---- Clipboard (copy/cut/paste), share and archive live in FilesClipboard.kt. ----
+    internal val _clipboard = MutableStateFlow<List<File>>(emptyList())
     val clipboard: StateFlow<List<File>> = _clipboard.asStateFlow()
 
-    private val _clipboardIsCut = MutableStateFlow(false)
+    internal val _clipboardIsCut = MutableStateFlow(false)
     val clipboardIsCut: StateFlow<Boolean> = _clipboardIsCut.asStateFlow()
 
-    override fun copySelection() {
-        if (isZipMode()) return
-        val files = _selectedPaths.value.mapNotNull { it.realFile }
-        if (files.isEmpty()) return
-        _clipboard.value = files
-        _clipboardIsCut.value = false
-        clearSelection()
-        emit(getApplication<Application>().getString(R.string.copied_n, files.size))
-    }
+    override fun copySelection() = copyFilesToClipboard()
 
-    override fun cutSelection() {
-        if (isZipMode()) return
-        val files = _selectedPaths.value.mapNotNull { it.realFile }
-        if (files.isEmpty()) return
-        _clipboard.value = files
-        _clipboardIsCut.value = true
-        clearSelection()
-        emit(getApplication<Application>().getString(R.string.cut_n, files.size))
-    }
+    override fun cutSelection() = cutFilesToClipboard()
 
     override fun clearClipboard() {
         _clipboard.value = emptyList()
         _clipboardIsCut.value = false
     }
 
-    override fun pasteHere() {
-        if (isZipMode()) return
-        val sources = _clipboard.value
-        if (sources.isEmpty()) return
-        val target = _currentDirectory.value
-        val isCut = _clipboardIsCut.value
-        viewModelScope.launch(Dispatchers.IO) {
-            var lastError: Exception? = null
-            sources.forEach { source ->
-                try {
-                    if (!source.exists()) return@forEach
-                    // Don't paste a folder into itself or a descendant.
-                    if (target.absolutePath == source.absolutePath ||
-                        target.absolutePath.startsWith(source.absolutePath + "/")
-                    ) return@forEach
-                    val dest = uniqueDestination(target, source.name)
-                    if (isCut) {
-                        source.atomicMoveTo(dest)
-                    } else if (source.isDirectory) {
-                        source.copyRecursively(dest, overwrite = false)
-                    } else {
-                        source.copyTo(dest, overwrite = false)
-                    }
-                } catch (e: Exception) {
-                    lastError = e
-                }
-            }
-            if (isCut) clearClipboard()
-            loadDirectory()
-            lastError?.let { emitMoveFailed(it) }
-        }
-    }
+    override fun pasteHere() = pasteClipboardHere()
 
-    override fun shareSelection() {
-        val ctx = getApplication<Application>()
-        val files = _selectedPaths.value.mapNotNull { it.realFile }.filter { it.isFile }
-        if (files.isEmpty()) return
-        val uris = try {
-            ArrayList(files.map {
-                FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", it)
-            })
-        } catch (e: Exception) {
-            emitMoveFailed(e)
-            return
-        }
-        val intent = if (uris.size == 1) {
-            Intent(Intent.ACTION_SEND).apply {
-                type = mimeFor(files.first())
-                putExtra(Intent.EXTRA_STREAM, uris.first())
-            }
-        } else {
-            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                type = "*/*"
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-            }
-        }.apply { addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK) }
-        clearSelection()
-        viewModelScope.launch {
-            _intents.emit(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
-    }
+    override fun shareSelection() = shareSelectedFiles()
 
-    private fun mimeFor(file: File): String =
-        MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension) ?: "*/*"
+    internal fun mimeFor(file: File): String = mimeForFile(file)
 
     /** A destination in [dir] named [name], suffixed with " (n)" if that already exists. */
-    private fun uniqueDestination(dir: File, name: String): File {
-        var candidate = File(dir, name)
-        if (!candidate.exists()) return candidate
-        val dot = name.lastIndexOf('.')
-        val base = if (dot > 0) name.substring(0, dot) else name
-        val ext = if (dot > 0) name.substring(dot) else ""
-        var n = 1
-        while (candidate.exists()) {
-            candidate = File(dir, "$base ($n)$ext")
-            n++
-        }
-        return candidate
-    }
+    private fun uniqueDestination(dir: File, name: String): File =
+        com.vayunmathur.files.platform.uniqueDestination(dir, name)
 
     // ---- Share URIs ----
     private val _incomingUris = MutableStateFlow<List<Uri>?>(null)
@@ -728,20 +585,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         restartObserver()
     }
 
-    override fun archive(archiveName: String) {
-        if (isZipMode()) return
-        val ctx = getApplication<Application>()
-        val sources = _selectedPaths.value.mapNotNull { it.realFile?.absolutePath }.toTypedArray()
-        val destFileName = if (archiveName.endsWith(".zip")) archiveName else "$archiveName.zip"
-        val destFile = File(_currentDirectory.value, destFileName)
-        if (sources.isEmpty()) return
-        val zipWork = OneTimeWorkRequestBuilder<ZipWorker>().setInputData(
-            workDataOf("source_paths" to sources, "dest_path" to destFile.absolutePath)
-        ).build()
-        WorkManager.getInstance(ctx).enqueue(zipWork)
-        clearSelection()
-        emit(ctx.getString(R.string.archiving_started))
-    }
+    override fun archive(archiveName: String) = archiveSelection(archiveName)
 
     fun unzip(zipItem: FileBrowserItem, destPath: File) {
         val zipFile = zipItem.realFile ?: return
@@ -905,79 +749,11 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         return uri.path?.substringAfterLast('/')
     }
 
-    private fun listRealDir(dir: File): Pair<List<FileBrowserItem>, List<FileBrowserItem>> {
-        val all = dir.listFiles()?.toList() ?: emptyList()
-        val visible = if (_showHidden.value) all else all.filterNot { it.name.startsWith(".") }
-        val items = visible.map { it.toItem() }
-        return items.partition { it.isDirectory }
-    }
+    private fun listRealDir(dir: File): Pair<List<FileBrowserItem>, List<FileBrowserItem>> =
+        listRealDirItems(dir, _showHidden.value)
 
-    private fun listZipDir(zipFile: File, internalDir: String): Pair<List<FileBrowserItem>, List<FileBrowserItem>> {
-        return try {
-            ZipFile(zipFile).use { zf ->
-                val prefix = if (internalDir.isEmpty()) "" else "$internalDir/"
-                val dirMap = mutableMapOf<String, FileBrowserItem>()
-                // Keyed, not a list: ZIP allows two entries with the same name, and the key ends up as
-                // a Compose item key, where a duplicate crashes the browser.
-                val fileMap = mutableMapOf<String, FileBrowserItem>()
-                for (entry in zf.entries()) {
-                    val rawName = entry.name
-                    val normalized = rawName.trimEnd('/')
-                    if (normalized.isEmpty()) continue
-                    if (normalized == internalDir) continue
-                    if (internalDir.isNotEmpty() && !rawName.startsWith(prefix) && !normalized.startsWith(prefix)) continue
-                    val remainder = if (prefix.isEmpty()) normalized else {
-                        if (normalized.length <= prefix.length) continue
-                        normalized.substring(prefix.length)
-                    }
-                    if (remainder.isEmpty()) continue
-                    val slashIdx = remainder.indexOf('/')
-                    if (slashIdx != -1) {
-                        val first = remainder.substring(0, slashIdx)
-                        if (first.isEmpty()) continue
-                        if (!dirMap.containsKey(first)) {
-                            val fullInner = if (internalDir.isEmpty()) first else "$internalDir/$first"
-                            dirMap[first] = FileBrowserItem(
-                                name = first,
-                                isDirectory = true,
-                                size = null,
-                                realFile = null,
-                                zipInnerPath = fullInner,
-                                key = "zip:$fullInner"
-                            )
-                        }
-                    } else {
-                        if (entry.isDirectory) {
-                            if (!dirMap.containsKey(remainder)) {
-                                val fullInner = if (internalDir.isEmpty()) remainder else "$internalDir/$remainder"
-                                dirMap[remainder] = FileBrowserItem(
-                                    name = remainder,
-                                    isDirectory = true,
-                                    size = null,
-                                    realFile = null,
-                                    zipInnerPath = fullInner,
-                                    key = "zip:$fullInner"
-                                )
-                            }
-                        } else {
-                            val fullInner = if (internalDir.isEmpty()) remainder else "$internalDir/$remainder"
-                            fileMap[remainder] = FileBrowserItem(
-                                name = remainder,
-                                isDirectory = false,
-                                size = entry.size.takeIf { it >= 0 },
-                                realFile = null,
-                                zipInnerPath = fullInner,
-                                key = "zip:$fullInner"
-                            )
-                        }
-                    }
-                }
-                dirMap.values.toList() to fileMap.values.toList()
-            }
-        } catch (_: Exception) {
-            emptyList<FileBrowserItem>() to emptyList()
-        }
-    }
+    private fun listZipDir(zipFile: File, internalDir: String): Pair<List<FileBrowserItem>, List<FileBrowserItem>> =
+        listZipDirItems(zipFile, internalDir)
 
     private fun File.atomicMoveTo(target: File) {
         try {

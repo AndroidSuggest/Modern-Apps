@@ -16,6 +16,8 @@ import com.vayunmathur.library.downloadservice.InitialModelDownloadChecker
 import com.vayunmathur.library.downloadservice.ModelUrls
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.IntentLauncher
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
@@ -89,10 +91,12 @@ sealed interface Route: NavKey {
 fun Navigation(assistantViewModel: AssistantViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.ConversationPage(0))
     MainNavigation(backStack) {
-        entry<Route.ConversationPage> {
+        // The chat column is the list pane: its NavigationSuite drawer is permanent on
+        // Expanded, and settings renders beside it as the detail pane.
+        entry<Route.ConversationPage>(metadata = ListPage()) {
             AssistantChatUi(backStack, it.id, assistantViewModel)
         }
-        entry<Route.SettingsPage> {
+        entry<Route.SettingsPage>(metadata = ListDetailPage()) {
             SettingsPage(backStack, assistantViewModel)
         }
     }

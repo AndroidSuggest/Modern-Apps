@@ -23,6 +23,9 @@ import com.vayunmathur.library.ui.DynamicTheme
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Desktop-wide (1280dp >= 840dp), so isExpandedWidth() side-by-side branches render. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
+
 /**
  * Store listing images for `:calculator`, rendered from Compose previews instead of from
  * an instrumented test on a device.
@@ -135,6 +138,22 @@ class MetadataPreviews {
                     outputText = "212",
                 ),
                 actions = UnitConverterActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "5-keypad-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview5KeypadExpanded() {
+        DynamicTheme(darkTheme = true) {
+            CalculatorScreen(
+                state = CalculatorUiState(
+                    input = "sin(45) + 2^10",
+                    preview = "1024.707",
+                    angleMode = AngleMode.DEGREES,
+                ),
+                actions = CalculatorActions.Noop,
             )
         }
     }

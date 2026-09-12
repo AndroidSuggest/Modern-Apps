@@ -78,6 +78,14 @@ class LyftProvider(private val context: Context) : RideProvider {
         SSLContext.getInstance("TLS").apply { init(null, tmf.trustManagers, null) }.socketFactory
     }
 
+    private val cardTokenizer: LyftCardTokenizer by lazy {
+        LyftCardTokenizer(json, systemTrustFactory, ::authJsonHeaders)
+    }
+
+    private val rideParser: LyftRideParser by lazy { LyftRideParser(json) }
+
+    private val offersParser: LyftOffersParser by lazy { LyftOffersParser(json) }
+
     override suspend fun isSignedIn(): Boolean = tokens.isSignedIn()
 
     override suspend fun quotes(pickup: Place, dropoff: Place): QuoteResult {
@@ -152,12 +160,12 @@ class LyftProvider(private val context: Context) : RideProvider {
 
         val isProto = contentType.contains("protobuf") || contentType.contains("octet-stream")
         var parsed = runCatching {
-            if (isProto) parseOfferingsProto(resp.bytes) else parseOfferingsJson(resp.text)
+            if (isProto) offersParser.parseProto(resp.bytes) else offersParser.parseJson(resp.text)
         }.onFailure { Log.w(TAG, "primary parse failed (proto=$isProto)", it) }.getOrDefault(ParsedOffers.EMPTY)
         // Content-Type can lie or be absent; fall back to the other codec before giving up.
         if (parsed.quotes.isEmpty()) {
             parsed = runCatching {
-                if (isProto) parseOfferingsJson(resp.text) else parseOfferingsProto(resp.bytes)
+                if (isProto) offersParser.parseJson(resp.text) else offersParser.parseProto(resp.bytes)
             }.getOrDefault(ParsedOffers.EMPTY)
         }
 
@@ -272,9 +280,9 @@ class LyftProvider(private val context: Context) : RideProvider {
         val token = accessToken() ?: return AddCardResult.Failed("Not signed in to Lyft")
 
         // No retrievable processor config → native add-card is blocked for this session.
-        val config = fetchTokenizerConfig(token, card) ?: return AddCardResult.Unsupported
+        val config = cardTokenizer.fetchConfig(token, card) ?: return AddCardResult.Unsupported
 
-        val tokenized = when (val r = tokenizeCard(config, card)) {
+        val tokenized = when (val r = cardTokenizer.tokenize(config, card)) {
             is TokenizeResult.Err -> return AddCardResult.Failed(r.message)
             is TokenizeResult.Ok -> r
         }
@@ -323,304 +331,6 @@ class LyftProvider(private val context: Context) : RideProvider {
         val accounts = runCatching { parseChargeAccounts(resp) }.getOrDefault(emptyList())
         return AddCardResult.Success(accounts.ifEmpty { null })
     }
-
-    /**
-     * Resolves which processor to tokenize the card with by calling PostTokenizationStrategies.
-     * The response (`o1z`) lists per-provider strategies (`sbe0`); the card ones carry the
-     * processor's client key under `api_key`. Stripe is preferred, then Braintree; providers we
-     * don't implement (Adyen etc.) yield null → caller reports Unsupported. Logs the resolved
-     * provider and a redacted key so the residual "where does the key live" unknown is closed.
-     */
-    private suspend fun fetchTokenizerConfig(token: String, card: NewCard): TokenizerConfig? {
-        // `n1z`: purpose(1, enum) = PAYIN, card_request(11) = { bin(1), last_four(2) }.
-        val body = buildJsonObject {
-            put("purpose", "PAYIN")
-            putJsonObject("card_request") {
-                put("bin", card.bin)
-                put("last_four", card.last4)
-            }
-        }.toString()
-        val resp = runCatching {
-            NetworkClient.execute(
-                url = "${LyftAuth.BASE}/v1/tokenization_strategies",
-                method = "POST",
-                headers = authJsonHeaders(token),
-                body = body,
-            )
-        }.getOrElse {
-            Log.w(TAG, "tokenization_strategies request failed", it)
-            return null
-        }
-        Log.d(TAG, "POST /v1/tokenization_strategies -> ${resp.status} (${resp.bytes.size} bytes)")
-        if (!resp.isSuccess) {
-            Log.w(TAG, "tokenization_strategies failed: ${resp.text.take(200)}")
-            return null
-        }
-        val config = parseTokenizerConfig(resp)
-        if (config == null) {
-            Log.w(TAG, "No supported tokenizer strategy in response")
-        } else {
-            Log.d(TAG, "Tokenizer resolved: provider=${config.provider} key=${redactKey(config.key)}")
-        }
-        return config
-    }
-
-    /**
-     * `PostTokenizationStrategiesResponse` (`o1z`): strategies(1, repeated `sbe0`). Each `sbe0`
-     * has stripe_card_data(10)→api_key(1) and braintree_card_data(11)→api_key(1). Tries JSON then
-     * protobuf, matching the codec negotiation the rest of this class uses.
-     */
-    private fun parseTokenizerConfig(resp: RawResponse): TokenizerConfig? {
-        val contentType = resp.header("Content-Type")?.lowercase().orEmpty()
-        val isProto = contentType.contains("protobuf") || contentType.contains("octet-stream")
-        return if (isProto) {
-            parseTokenizerConfigProto(resp.bytes) ?: parseTokenizerConfigJson(resp.text)
-        } else {
-            parseTokenizerConfigJson(resp.text) ?: parseTokenizerConfigProto(resp.bytes)
-        }
-    }
-
-    /**
-     * `PostTokenizationStrategiesResponse` (`o1z`): strategies(1, repeated `sbe0`). The real client
-     * prioritises the modern SCA strategy `stripe_card_setup_intent_data` (tag 22, `uhc0`) far above
-     * legacy `stripe_card_data` (tag 10) — a 2026 build returns the SetupIntent one for cards, which
-     * is why only recognising the legacy strategies made add-card fail (no config → Unsupported).
-     * Order here mirrors that: SetupIntent → legacy Stripe token → Braintree.
-     */
-    private fun parseTokenizerConfigJson(raw: String): TokenizerConfig? {
-        val root = runCatching { json.parseToJsonElement(raw) }.getOrNull() as? JsonObject
-            ?: return null
-        val strategies = root["strategies"]?.jsonArray?.mapNotNull { it as? JsonObject }
-            ?: return null
-        strategies.firstNotNullOfOrNull { s ->
-            (s["stripe_card_setup_intent_data"] as? JsonObject)?.let { d ->
-                d.str("api_key")?.let { apiKey ->
-                    TokenizerConfig(
-                        provider = "stripe_setup_intent",
-                        key = apiKey,
-                        clientSecret = d.str("client_secret"),
-                        setupIntentId = d.str("setup_intent_id"),
-                        stripeApiVersion = d.str("stripe_api_version"),
-                    )
-                }
-            }
-        }?.let { return it }
-        strategies.firstNotNullOfOrNull { s ->
-            (s["stripe_card_data"] as? JsonObject)?.str("api_key")
-                ?.let { TokenizerConfig("stripe", it) }
-        }?.let { return it }
-        return strategies.firstNotNullOfOrNull { s ->
-            (s["braintree_card_data"] as? JsonObject)?.str("api_key")
-                ?.let { TokenizerConfig("braintree", it) }
-        }
-    }
-
-    private fun parseTokenizerConfigProto(bytes: ByteArray): TokenizerConfig? {
-        val strategies = runCatching { ProtoMessage(bytes, 0, bytes.size).messages(1) }
-            .getOrDefault(emptyList())
-        // stripe_card_setup_intent_data (tag 22): api_key(1), client_secret(2), setup_intent_id(3),
-        // stripe_api_version(4).
-        strategies.firstNotNullOfOrNull { s ->
-            s.message(22)?.let { d ->
-                d.string(1)?.let { apiKey ->
-                    TokenizerConfig(
-                        provider = "stripe_setup_intent",
-                        key = apiKey,
-                        clientSecret = d.string(2),
-                        setupIntentId = d.string(3),
-                        stripeApiVersion = d.string(4),
-                    )
-                }
-            }
-        }?.let { return it }
-        strategies.firstNotNullOfOrNull { it.message(10)?.string(1) }
-            ?.let { return TokenizerConfig("stripe", it) }
-        return strategies.firstNotNullOfOrNull { it.message(11)?.string(1) }
-            ?.let { TokenizerConfig("braintree", it) }
-    }
-
-    private suspend fun tokenizeCard(config: TokenizerConfig, card: NewCard): TokenizeResult =
-        when (config.provider) {
-            "stripe_setup_intent" -> tokenizeStripeSetupIntent(config, card)
-            "stripe" -> tokenizeStripe(config.key, card)
-            "braintree" -> tokenizeBraintree(config.key, card)
-            else -> TokenizeResult.Err("Unsupported card processor: ${config.provider}")
-        }
-
-    /**
-     * Modern SCA-compliant Stripe path (`sbe0` tag 22 `StripeCardSetupIntentDataDTO`, tokenized in
-     * `ol6.c` case 2 via `qic0`). The server pre-creates a SetupIntent; we confirm it with the raw
-     * card inline:
-     *   POST https://api.stripe.com/v1/setup_intents/{setup_intent_id}/confirm
-     *   Authorization: Bearer <api_key>;  Stripe-Version: <stripe_api_version>; form-encoded
-     *   client_secret + payment_method_data[type|card[...]|billing_details[address][postal_code]]
-     * The confirm response's `payment_method` (`pm_…`, `mna.payment_method`) is the token, sent on
-     * as `mt00.token` with version `STRIPE_SETUP_INTENT` (`it00`).
-     */
-    private suspend fun tokenizeStripeSetupIntent(
-        config: TokenizerConfig,
-        card: NewCard,
-    ): TokenizeResult {
-        val setupIntentId = config.setupIntentId
-            ?: return TokenizeResult.Err("Stripe SetupIntent strategy missing setup_intent_id")
-        val clientSecret = config.clientSecret
-            ?: return TokenizeResult.Err("Stripe SetupIntent strategy missing client_secret")
-        val form = buildString {
-            append("client_secret=").append(Uri.encode(clientSecret))
-            append("&payment_method_data[type]=card")
-            append("&payment_method_data[card][number]=").append(Uri.encode(card.number))
-            append("&payment_method_data[card][exp_month]=").append(card.expMonth)
-            append("&payment_method_data[card][exp_year]=").append(card.expYear)
-            append("&payment_method_data[card][cvc]=").append(Uri.encode(card.cvc))
-            if (card.postalCode.isNotBlank()) {
-                append("&payment_method_data[billing_details][address][postal_code]=")
-                append(Uri.encode(card.postalCode))
-            }
-        }
-        val headers = buildMap {
-            put("Authorization", "Bearer ${config.key}")
-            put("Content-Type", "application/x-www-form-urlencoded")
-            put("Accept", "application/json")
-            config.stripeApiVersion?.takeIf { it.isNotBlank() }?.let { put("Stripe-Version", it) }
-        }
-        val resp = runCatching {
-            NetworkClient.execute(
-                url = "https://api.stripe.com/v1/setup_intents/${Uri.encode(setupIntentId)}/confirm",
-                method = "POST",
-                headers = headers,
-                body = form,
-                sslSocketFactory = systemTrustFactory,
-            )
-        }.getOrElse { return TokenizeResult.Err("Stripe SetupIntent request failed: ${it.message}") }
-        val root = runCatching { json.parseToJsonElement(resp.text) as? JsonObject }.getOrNull()
-        if (!resp.isSuccess) {
-            val msg = root?.get("error")?.jsonObject?.str("message")
-                ?: "Stripe HTTP ${resp.status}: ${resp.text.take(200)}"
-            return TokenizeResult.Err(msg)
-        }
-        val pm = root?.str("payment_method")
-            ?: return TokenizeResult.Err("Stripe returned no payment_method")
-        Log.d(TAG, "Stripe SetupIntent confirmed ••${card.last4} -> ${pm.take(8)}…")
-        // mt00.provider for a Stripe card is jju.h(qbe0.STRIPE.name()) = "stripe".
-        return TokenizeResult.Ok("stripe", token = pm, nonce = null, version = "STRIPE_SETUP_INTENT")
-    }
-
-    /**
-     * Stripe card token: `POST https://api.stripe.com/v1/tokens`, form-encoded, publishable key
-     * as Bearer (mirrors `ol6` case STRIPE_CARD_DATA). Returns a `tok_…` used as `mt00.token`.
-     */
-    private suspend fun tokenizeStripe(publishableKey: String, card: NewCard): TokenizeResult {
-        val form = buildString {
-            append("card[number]=").append(Uri.encode(card.number))
-            append("&card[exp_month]=").append(card.expMonth)
-            append("&card[exp_year]=").append(card.expYear)
-            append("&card[cvc]=").append(Uri.encode(card.cvc))
-        }
-        // External host: force system CAs via an explicit factory. (NetworkClient's own
-        // useSystemTrust flag falls back to the Lyft-only bundle, which rejects Stripe.) Guard
-        // the call so a transport/TLS failure surfaces as an error rather than crashing.
-        val resp = runCatching {
-            NetworkClient.execute(
-                url = "https://api.stripe.com/v1/tokens",
-                method = "POST",
-                headers = mapOf(
-                    "Authorization" to "Bearer $publishableKey",
-                    "Content-Type" to "application/x-www-form-urlencoded",
-                    "Accept" to "application/json",
-                    "Stripe-Version" to "2015-10-12",
-                ),
-                body = form,
-                sslSocketFactory = systemTrustFactory,
-            )
-        }.getOrElse { return TokenizeResult.Err("Stripe request failed: ${it.message}") }
-        val root = runCatching { json.parseToJsonElement(resp.text) as? JsonObject }.getOrNull()
-        if (!resp.isSuccess) {
-            val msg = root?.get("error")?.jsonObject?.str("message")
-                ?: "Stripe HTTP ${resp.status}: ${resp.text.take(200)}"
-            return TokenizeResult.Err(msg)
-        }
-        val tok = root?.str("id") ?: return TokenizeResult.Err("Stripe returned no token")
-        Log.d(TAG, "Stripe tokenized ••${card.last4} -> ${tok.take(8)}…")
-        return TokenizeResult.Ok("stripe", token = tok, nonce = null, version = "STRIPE_TOKEN")
-    }
-
-    /**
-     * Braintree card nonce. The Braintree `card` SDK module isn't bundled in the Lyft APK, so the
-     * flow is hand-built: parse the client token (`av7` → `authorizationFingerprint` + GraphQL
-     * url), then run the `tokenizeCreditCard` mutation against the GraphQL endpoint. Returns a
-     * nonce used as `mt00.nonce`.
-     */
-    private suspend fun tokenizeBraintree(clientToken: String, card: NewCard): TokenizeResult {
-        val parsed = parseBraintreeClientToken(clientToken)
-            ?: return TokenizeResult.Err("Couldn't parse Braintree client token")
-        val (graphQlUrl, fingerprint) = parsed
-        val query = "mutation TokenizeCard(\$input: TokenizeCreditCardInput!) { " +
-            "tokenizeCreditCard(input: \$input) { token } }"
-        val reqBody = buildJsonObject {
-            put("query", query)
-            putJsonObject("variables") {
-                putJsonObject("input") {
-                    putJsonObject("creditCard") {
-                        put("number", card.number)
-                        put("expirationMonth", card.expMonth.toString())
-                        put("expirationYear", card.expYear.toString())
-                        put("cvv", card.cvc)
-                    }
-                }
-            }
-        }.toString()
-        val resp = runCatching {
-            NetworkClient.execute(
-                url = graphQlUrl,
-                method = "POST",
-                headers = mapOf(
-                    "Authorization" to "Bearer $fingerprint",
-                    "Content-Type" to "application/json",
-                    "Accept" to "application/json",
-                    "Braintree-Version" to "2024-08-23",
-                ),
-                body = reqBody,
-                sslSocketFactory = systemTrustFactory,
-            )
-        }.getOrElse { return TokenizeResult.Err("Braintree request failed: ${it.message}") }
-        val root = runCatching { json.parseToJsonElement(resp.text) as? JsonObject }.getOrNull()
-        // Braintree GraphQL returns 200 with a non-empty `errors` array on failure.
-        val errors = root?.get("errors")?.jsonArray
-        if (!resp.isSuccess || !errors.isNullOrEmpty()) {
-            val msg = errors?.firstOrNull()?.jsonObject?.str("message")
-                ?: "Braintree HTTP ${resp.status}: ${resp.text.take(200)}"
-            return TokenizeResult.Err(msg)
-        }
-        val nonce = root?.get("data")?.jsonObject
-            ?.get("tokenizeCreditCard")?.jsonObject
-            ?.str("token")
-            ?: return TokenizeResult.Err("Braintree returned no nonce")
-        Log.d(TAG, "Braintree tokenized ••${card.last4} -> nonce ${nonce.take(6)}…")
-        return TokenizeResult.Ok("braintree", token = null, nonce = nonce)
-    }
-
-    /**
-     * A Braintree client token is either raw JSON or base64-encoded JSON (`av7` base64-decodes
-     * when it matches). We need `authorizationFingerprint` and the GraphQL url (`graphQL.url`,
-     * defaulting to the public endpoint).
-     */
-    private fun parseBraintreeClientToken(clientToken: String): Pair<String, String>? {
-        val raw = if (clientToken.trimStart().startsWith("{")) {
-            clientToken
-        } else {
-            runCatching { String(Base64.decode(clientToken, Base64.DEFAULT), Charsets.UTF_8) }
-                .getOrNull() ?: return null
-        }
-        val obj = runCatching { json.parseToJsonElement(raw) as? JsonObject }.getOrNull()
-            ?: return null
-        val fingerprint = obj.str("authorizationFingerprint") ?: return null
-        val url = obj["graphQL"]?.jsonObject?.str("url")
-            ?: "https://payments.braintree-api.com/graphql"
-        return url to fingerprint
-    }
-
-    private fun redactKey(key: String): String =
-        if (key.length <= 8) "***" else "${key.take(8)}…(len ${key.length})"
 
     override suspend fun createRide(
         quote: RideQuote,
@@ -705,7 +415,7 @@ class LyftProvider(private val context: Context) : RideProvider {
         Log.d(TAG, "GET /v1/activeride -> ${resp.status} (${resp.bytes.size} bytes)")
         if (resp.status == 404) return RideStatusResult.None
         if (!resp.isSuccess) return RideStatusResult.Failed(httpError(resp))
-        val ride = parseActiveRide(resp)
+        val ride = rideParser.parseActiveRide(resp)
         return if (ride == null || !ride.hasContent) RideStatusResult.None else RideStatusResult.Active(ride)
     }
 
@@ -718,7 +428,7 @@ class LyftProvider(private val context: Context) : RideProvider {
         )
         Log.d(TAG, "GET /v1/rides/{id}/driver-location -> ${resp.status}")
         if (!resp.isSuccess) return null
-        return parseDriverLocation(resp)
+        return rideParser.parseDriverLocation(resp)
     }
 
     override suspend fun cancelRide(rideId: String): CancelResult {
@@ -761,7 +471,7 @@ class LyftProvider(private val context: Context) : RideProvider {
         Log.d(TAG, "GET /v1/rides/{id} -> ${resp.status}")
         if (resp.status == 404) return RideStatusResult.None
         if (!resp.isSuccess) return RideStatusResult.Failed(httpError(resp))
-        val ride = parseActiveRide(resp)
+        val ride = rideParser.parseActiveRide(resp)
         return if (ride == null || !ride.hasContent) RideStatusResult.None else RideStatusResult.Active(ride)
     }
 
@@ -827,162 +537,8 @@ class LyftProvider(private val context: Context) : RideProvider {
     }
 
     // ----------------------------------------------------------------------------------------
-    // Active-ride / driver-location parsing (PassengerRide, ReadDriverLocationResponse).
-    // Field tags mirror the DTOs in api-notes §4; both JSON and binary protobuf are accepted,
-    // matching the codec negotiation the rest of this class uses.
-    //
-    //   PassengerRide: ride_id(1), status(2), driver(6), vehicle(8), stops(9 repeated),
-    //                  location(11 = live DriverLocation)
-    //   DriverLocation: lat(1 double), lng(2 double), bearing(3 double)
-    //   Driver:  first_name(5), last_name(6), image_url(7), phone_number(8), rating(9)
-    //   RideVehicle: make(1), model(2), license_plate(3), image_url(4), color(6)
-    //   RideStop: location(2 PlaceDTO), kind(3), completed(4), eta_seconds(6), location_v2(7)
-    //   PlaceDTO: lat(1 double), lng(2 double), address(3), place_name(5)
+    // Active-ride / driver-location parsing lives in LyftRideParser.
     // ----------------------------------------------------------------------------------------
-
-    private fun parseActiveRide(resp: RawResponse): ActiveRide? {
-        val contentType = resp.header("Content-Type")?.lowercase().orEmpty()
-        val isProto = contentType.contains("protobuf") || contentType.contains("octet-stream")
-        fun proto() = runCatching { toActiveRideProto(resp.bytes) }.getOrNull()
-        fun asJson() = runCatching { toActiveRideJson(resp.text) }.getOrNull()
-        val primary = if (isProto) proto() else asJson()
-        if (primary != null && primary.hasContent) return primary
-        return (if (isProto) asJson() else proto())?.takeIf { it.hasContent } ?: primary
-    }
-
-    private fun toActiveRideJson(raw: String): ActiveRide? {
-        val ride = firstRideObject(raw) ?: return null
-        val statusRaw = ride.str("status") ?: ride.str("ride_status")
-        val driver = (ride["driver"] as? JsonObject)?.let { d ->
-            DriverInfo(
-                firstName = d.str("first_name") ?: d.str("firstName"),
-                lastName = d.str("last_name") ?: d.str("lastName"),
-                imageUrl = d.str("image_url") ?: d.str("imageUrl"),
-                phoneNumber = d.str("phone_number") ?: d.str("phoneNumber"),
-                rating = d.dbl("rating"),
-            )
-        }
-        val vehicle = (ride["vehicle"] as? JsonObject)?.let { v ->
-            VehicleInfo(
-                make = v.str("make"),
-                model = v.str("model"),
-                color = v.str("color"),
-                licensePlate = v.str("license_plate") ?: v.str("licensePlate"),
-                imageUrl = v.str("image_url") ?: v.str("imageUrl"),
-            )
-        }
-        val driverLocation = (ride["location"] as? JsonObject)?.let(::toDriverLocationJson)
-        val stops = ride["stops"]?.jsonArray
-            ?.mapNotNull { (it as? JsonObject)?.let(::toStopJson) }
-            ?: emptyList()
-        return ActiveRide(
-            rideId = ride.str("ride_id") ?: ride.str("id"),
-            status = RideStatus.fromWire(statusRaw),
-            statusRaw = statusRaw,
-            driver = driver,
-            vehicle = vehicle,
-            driverLocation = driverLocation,
-            stops = stops,
-            raw = raw.take(2000),
-        )
-    }
-
-    private fun toActiveRideProto(bytes: ByteArray): ActiveRide {
-        val m = ProtoMessage(bytes, 0, bytes.size)
-        val statusRaw = m.string(2)
-        val driver = m.message(6)?.let { d ->
-            DriverInfo(
-                firstName = d.string(5),
-                lastName = d.string(6),
-                imageUrl = d.string(7),
-                phoneNumber = d.string(8),
-                rating = d.double(9) ?: d.wrappedDouble(9),
-            )
-        }
-        val vehicle = m.message(8)?.let { v ->
-            VehicleInfo(
-                make = v.string(1),
-                model = v.string(2),
-                color = v.string(6),
-                licensePlate = v.string(3),
-                imageUrl = v.string(4),
-            )
-        }
-        val driverLocation = m.message(11)?.let(::toDriverLocationProto)
-        val stops = m.messages(9).map(::toStopProto)
-        return ActiveRide(
-            rideId = m.string(1),
-            status = RideStatus.fromWire(statusRaw),
-            statusRaw = statusRaw,
-            driver = driver,
-            vehicle = vehicle,
-            driverLocation = driverLocation,
-            stops = stops,
-            raw = "<protobuf ${bytes.size} bytes>",
-        )
-    }
-
-    private fun parseDriverLocation(resp: RawResponse): DriverLocation? {
-        val contentType = resp.header("Content-Type")?.lowercase().orEmpty()
-        val isProto = contentType.contains("protobuf") || contentType.contains("octet-stream")
-        fun proto(): DriverLocation? {
-            val root = ProtoMessage(resp.bytes, 0, resp.bytes.size)
-            // ReadDriverLocationResponse.location = 1; tolerate a bare DriverLocation too.
-            return root.message(1)?.let(::toDriverLocationProto) ?: toDriverLocationProto(root)
-        }
-        fun asJson(): DriverLocation? {
-            val root = runCatching { json.parseToJsonElement(resp.text) as? JsonObject }.getOrNull()
-                ?: return null
-            val loc = (root["location"] as? JsonObject) ?: root
-            return toDriverLocationJson(loc)
-        }
-        return if (isProto) (proto() ?: asJson()) else (asJson() ?: proto())
-    }
-
-    private fun toDriverLocationJson(o: JsonObject): DriverLocation? {
-        val lat = o.dbl("lat") ?: o.dbl("latitude") ?: return null
-        val lng = o.dbl("lng") ?: o.dbl("longitude") ?: return null
-        return DriverLocation(lat, lng, o.dbl("bearing"))
-    }
-
-    private fun toDriverLocationProto(m: ProtoMessage): DriverLocation? {
-        val lat = m.double(1) ?: return null
-        val lng = m.double(2) ?: return null
-        return DriverLocation(lat, lng, m.double(3))
-    }
-
-    private fun toStopJson(o: JsonObject): RideStopInfo {
-        val place = (o["location"] as? JsonObject) ?: (o["location_v2"] as? JsonObject)
-        val latLng = place?.let { p ->
-            val lat = p.dbl("lat") ?: p.dbl("latitude")
-            val lng = p.dbl("lng") ?: p.dbl("longitude")
-            if (lat != null && lng != null) LatLng(lat, lng) else null
-        }
-        return RideStopInfo(
-            location = latLng,
-            name = place?.str("place_name") ?: place?.str("placeName") ?: place?.str("address"),
-            kind = o.str("kind"),
-            etaSeconds = o["eta_seconds"]?.jsonPrimitive?.intOrNull
-                ?: o["etaSeconds"]?.jsonPrimitive?.intOrNull,
-            completed = o["completed"]?.jsonPrimitive?.booleanOrNull ?: false,
-        )
-    }
-
-    private fun toStopProto(m: ProtoMessage): RideStopInfo {
-        val place = m.message(2) ?: m.message(7)
-        val latLng = place?.let {
-            val lat = it.double(1)
-            val lng = it.double(2)
-            if (lat != null && lng != null) LatLng(lat, lng) else null
-        }
-        return RideStopInfo(
-            location = latLng,
-            name = place?.string(5) ?: place?.string(3),
-            kind = m.string(3),
-            etaSeconds = m.varint(6)?.toInt(),
-            completed = m.varint(4)?.let { it != 0L } ?: false,
-        )
-    }
 
     private fun authHeaders(token: String): Map<String, String> =
         LyftAuth.commonHeaders() + mapOf(
@@ -1135,198 +691,6 @@ class LyftProvider(private val context: Context) : RideProvider {
         return """{"latitude_e6":$latE6,"longitude_e6":$lngE6}"""
     }
 
-    // ----------------------------------------------------------------------------------------
-    // JSON response
-    // ----------------------------------------------------------------------------------------
-
-    /**
-     * Parses proto-JSON `ReadOffersV2Response`: `offers.offers_list[]`, each an `OfferDTO` with a
-     * `cost_estimate` (price), `ride_type_details` (name + seats) and `ride_travel_details`
-     * (pickup ETA). int64 proto-JSON fields may arrive as strings, which the accessors handle.
-     * The offers wrapper also carries `purchase_session_id`/`offers_response_id`, reused when
-     * booking.
-     */
-    private fun parseOfferingsJson(raw: String): ParsedOffers {
-        val root = json.parseToJsonElement(raw) as? JsonObject ?: return ParsedOffers.EMPTY
-        val offers = root["offers"]?.jsonObject ?: return ParsedOffers.EMPTY
-        val quotes = offers["offers_list"]?.jsonArray
-            ?.mapNotNull { element -> (element as? JsonObject)?.let(::toQuoteJson) }
-            ?: emptyList()
-        return ParsedOffers(
-            quotes = quotes,
-            purchaseSessionId = offers.str("purchase_session_id"),
-            offersResponseId = offers.str("offers_response_id"),
-        )
-    }
-
-    private fun toQuoteJson(offer: JsonObject): RideQuote? {
-        val cost = offer["cost_estimate"]?.jsonObject
-        val rideType = offer["ride_type_details"]?.jsonObject
-        val display = rideType?.get("display_properties")?.jsonObject
-
-        val name = display?.str("name")
-            ?: cost?.str("ride_type")
-            ?: offer.str("offer_product_id")
-            ?: return null
-
-        val min = cost?.long("estimated_cost_cents_min")
-        val max = cost?.long("estimated_cost_cents_max")
-        val upfront = cost?.long("upfront_cost_cents")
-        // CostEstimate.applicable_coupons[0] carries the discount the rider actually receives.
-        val coupon = cost?.get("applicable_coupons")?.jsonArray?.firstOrNull() as? JsonObject
-        val fare = farePrice(
-            min, max, upfront,
-            discountMin = coupon?.long("discount_amount_min"),
-            discountMax = coupon?.long("discount_amount_max"),
-        ) ?: return null
-
-        val pickupEtaMs = offer["ride_travel_details"]?.jsonObject
-            ?.get("pickup_estimate")?.jsonObject
-            ?.get("duration_range")?.jsonObject
-            ?.long("duration_ms")
-
-        return RideQuote(
-            provider = Provider.LYFT,
-            productId = offer.str("offer_product_id") ?: name,
-            displayName = name,
-            fareLowMinor = fare.low,
-            fareHighMinor = fare.high,
-            originalFareLowMinor = fare.originalLow,
-            originalFareHighMinor = fare.originalHigh,
-            currency = cost?.str("currency") ?: "USD",
-            pickupEtaMinutes = pickupEtaMs?.let { (it / 60_000).toInt() },
-            tripDurationMinutes = cost?.long("estimated_duration_seconds")?.let { (it / 60).toInt() },
-            surgeMultiplier = cost?.get("primetime_multiplier")?.jsonPrimitive?.doubleOrNull,
-            capacity = rideType?.get("seats")?.jsonPrimitive?.intOrNull,
-            offerId = offer.str("id"),
-            // StringValue wrappers serialize to the bare string in proto3-JSON.
-            offerToken = offer.str("offer_token"),
-            costToken = cost?.str("cost_token"),
-            rideType = cost?.str("ride_type"),
-            // `cost_token_expiry_time` is an epoch **seconds** value (measured live: ~120s
-            // lifetime, shared across all fares); convert to ms so callers can compare to now.
-            costTokenExpiryMs = cost?.long("cost_token_expiry_time")?.let { it * 1000 },
-        )
-    }
-
-    private fun JsonObject.str(key: String) = this[key]?.jsonPrimitive?.contentOrNull
-
-    private fun JsonObject.long(key: String) = this[key]?.jsonPrimitive?.longOrNull
-
-    private fun JsonObject.dbl(key: String) = this[key]?.jsonPrimitive?.doubleOrNull
-
-    // ----------------------------------------------------------------------------------------
-    // Protobuf response (binary). Field tags mirror the DTOs decompiled from the APK.
-    // ----------------------------------------------------------------------------------------
-
-    /**
-     * Parses binary `ReadOffersV2Response`. Message nesting (field numbers):
-     *  - ReadOffersV2Response.offers = 1  → OffersV2DTO
-     *  - OffersV2DTO.offers_list      = 3  (repeated) → OfferDTO
-     *  - OfferDTO: offer_product_id=2, cost_estimate=4, ride_type_details=5, ride_travel_details=9
-     *  - CostEstimate: cents_max=5, cents_min=6, upfront=7, currency=8, primetime_multiplier=12,
-     *    estimated_duration_seconds=22  (the *_cents / currency / duration are wrapper messages)
-     *  - RideMode: seats=7, display_properties=10 → name=3
-     *  - RideTravelDetails.pickup_estimate=1 → duration_range=2 → duration_ms=1 (wrapper)
-     */
-    private fun parseOfferingsProto(bytes: ByteArray): ParsedOffers {
-        val root = ProtoMessage(bytes, 0, bytes.size)
-        val offers = root.message(1) ?: return ParsedOffers.EMPTY
-        return ParsedOffers(
-            quotes = offers.messages(3).mapNotNull { toQuoteProto(it) },
-            purchaseSessionId = offers.string(1),
-            offersResponseId = offers.string(2),
-        )
-    }
-
-    private fun toQuoteProto(offer: ProtoMessage): RideQuote? {
-        val cost = offer.message(4)
-        val rideType = offer.message(5)
-        val display = rideType?.message(10)
-
-        val name = display?.string(3)
-            ?: cost?.string(4) // ride_type
-            ?: offer.string(2) // offer_product_id
-            ?: return null
-
-        val min = cost?.wrappedLong(6)
-        val max = cost?.wrappedLong(5)
-        val upfront = cost?.wrappedLong(7)
-        // applicable_coupons(18, repeated ApplicableCoupon): discount_amount_min(10),
-        // discount_amount_max(11) are plain int64. First coupon is the one the client applies.
-        val coupon = cost?.messages(18)?.firstOrNull()
-        val fare = farePrice(
-            min, max, upfront,
-            discountMin = coupon?.varint(10),
-            discountMax = coupon?.varint(11),
-        ) ?: return null
-
-        val pickupEtaMs = offer.message(9)?.message(1)?.message(2)?.wrappedLong(1)
-
-        return RideQuote(
-            provider = Provider.LYFT,
-            productId = offer.string(2) ?: name,
-            displayName = name,
-            fareLowMinor = fare.low,
-            fareHighMinor = fare.high,
-            originalFareLowMinor = fare.originalLow,
-            originalFareHighMinor = fare.originalHigh,
-            currency = cost?.wrappedString(8) ?: "USD",
-            pickupEtaMinutes = pickupEtaMs?.let { (it / 60_000).toInt() },
-            tripDurationMinutes = cost?.wrappedLong(22)?.let { (it / 60).toInt() },
-            surgeMultiplier = cost?.double(12),
-            capacity = rideType?.varint(7)?.toInt(),
-            // OfferDTO.id=1, offer_token=3 (StringValue). CostEstimate.cost_token=3,
-            // ride_type=4, cost_token_expiry_time=20 (best-effort; type unverified — dry-run
-            // surfaces the built request for validation).
-            offerId = offer.string(1),
-            offerToken = offer.wrappedString(3),
-            costToken = cost?.string(3),
-            rideType = cost?.string(4),
-            // Epoch seconds (see toQuoteJson) -> ms.
-            costTokenExpiryMs = (cost?.wrappedLong(20) ?: cost?.varint(20))?.let { it * 1000 },
-        )
-    }
-
-    private fun priceRange(min: Long?, max: Long?, upfront: Long?): Pair<Long, Long>? = when {
-        min != null && max != null -> min to max
-        upfront != null -> upfront to upfront
-        min != null -> min to min
-        max != null -> max to max
-        else -> null
-    }
-
-    /**
-     * The pre-discount base range plus the actual price after the first applicable coupon. Lyft
-     * carries no post-promo scalar; the app computes it as estimate − coupon discount (clamped at
-     * 0), keeping `upfront`/estimate as the struck-through original. Mirrors that (see api-notes §3).
-     */
-    private data class FarePrice(
-        val low: Long,
-        val high: Long,
-        val originalLow: Long?,
-        val originalHigh: Long?,
-    )
-
-    private fun farePrice(
-        min: Long?,
-        max: Long?,
-        upfront: Long?,
-        discountMin: Long?,
-        discountMax: Long?,
-    ): FarePrice? {
-        val (baseLow, baseHigh) = priceRange(min, max, upfront) ?: return null
-        val dLow = (discountMin ?: 0).coerceAtLeast(0)
-        val dHigh = (discountMax ?: 0).coerceAtLeast(0)
-        if (dLow == 0L && dHigh == 0L) return FarePrice(baseLow, baseHigh, null, null)
-        return FarePrice(
-            low = (baseLow - dLow).coerceAtLeast(0),
-            high = (baseHigh - dHigh).coerceAtLeast(0),
-            originalLow = baseLow,
-            originalHigh = baseHigh,
-        )
-    }
-
     companion object {
         private const val TAG = "LyftProvider"
 
@@ -1382,88 +746,4 @@ private sealed interface TokenizeResult {
     ) : TokenizeResult
 
     data class Err(val message: String) : TokenizeResult
-}
-
-/**
- * Minimal read-only protobuf message view over a byte range. Supports exactly the wire types the
- * offers response uses: varint (0), 64-bit (1), length-delimited (2). Accessors return the last
- * value for a field number (protobuf "last one wins"), which is all this parser needs.
- */
-private class ProtoMessage(private val buf: ByteArray, start: Int, private val end: Int) {
-    // fieldNumber -> list of entries. For wire 0/1 the Long is the value; for wire 2 it is the
-    // [start, end) byte range packed as start (in `ranges`).
-    private val varints = HashMap<Int, MutableList<Long>>()
-    private val fixed64 = HashMap<Int, MutableList<Long>>()
-    private val ranges = HashMap<Int, MutableList<IntArray>>()
-
-    init {
-        var p = start
-        loop@ while (p < end) {
-            val (tag, afterTag) = readVarint(buf, p)
-            p = afterTag
-            val field = (tag ushr 3).toInt()
-            when ((tag and 7).toInt()) {
-                0 -> {
-                    val (v, np) = readVarint(buf, p); p = np
-                    varints.getOrPut(field) { mutableListOf() }.add(v)
-                }
-                1 -> {
-                    var v = 0L
-                    for (i in 0 until 8) v = v or ((buf[p + i].toLong() and 0xff) shl (8 * i))
-                    p += 8
-                    fixed64.getOrPut(field) { mutableListOf() }.add(v)
-                }
-                2 -> {
-                    val (len, np) = readVarint(buf, p); p = np
-                    val s = p; val e = p + len.toInt()
-                    ranges.getOrPut(field) { mutableListOf() }.add(intArrayOf(s, e))
-                    p = e
-                }
-                5 -> p += 4
-                else -> break@loop // unknown/invalid wire type: stop rather than misread
-            }
-        }
-    }
-
-    fun varint(field: Int): Long? = varints[field]?.lastOrNull()
-
-    fun double(field: Int): Double? = fixed64[field]?.lastOrNull()?.let { Double.fromBits(it) }
-
-    fun string(field: Int): String? = ranges[field]?.lastOrNull()?.let {
-        String(buf, it[0], it[1] - it[0], Charsets.UTF_8)
-    }
-
-    fun message(field: Int): ProtoMessage? = ranges[field]?.lastOrNull()?.let {
-        ProtoMessage(buf, it[0], it[1])
-    }
-
-    fun messages(field: Int): List<ProtoMessage> =
-        ranges[field]?.map { ProtoMessage(buf, it[0], it[1]) } ?: emptyList()
-
-    /** A google.protobuf.Int64Value/UInt64Value wrapper: a sub-message with field 1 = the value. */
-    fun wrappedLong(field: Int): Long? = message(field)?.varint(1)
-
-    /** A google.protobuf.StringValue wrapper: a sub-message with field 1 = the string. */
-    fun wrappedString(field: Int): String? = message(field)?.string(1)
-
-    /** A google.protobuf.BoolValue wrapper: a sub-message with field 1 = the bool (varint). */
-    fun wrappedBool(field: Int): Boolean? = message(field)?.varint(1)?.let { it != 0L }
-
-    /** A google.protobuf.DoubleValue wrapper: a sub-message with field 1 = the double. */
-    fun wrappedDouble(field: Int): Double? = message(field)?.double(1)
-
-    private companion object {
-        fun readVarint(buf: ByteArray, from: Int): Pair<Long, Int> {
-            var p = from
-            var shift = 0
-            var result = 0L
-            while (true) {
-                val b = buf[p++].toInt() and 0xff
-                result = result or ((b and 0x7f).toLong() shl shift)
-                if (b < 0x80) break
-                shift += 7
-            }
-            return result to p
-        }
-    }
 }

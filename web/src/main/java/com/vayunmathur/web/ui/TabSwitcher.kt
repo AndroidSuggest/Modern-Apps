@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -38,6 +37,7 @@ import com.vayunmathur.library.ui.Motion
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TopAppBar
+import com.vayunmathur.library.ui.adaptiveGridCells
 import com.vayunmathur.library.ui.itemMotion
 import com.vayunmathur.library.ui.rememberHaptics
 import com.vayunmathur.library.ui.rememberReorderableLazyGridState
@@ -48,8 +48,8 @@ import com.vayunmathur.web.ui.components.TabTile
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-/** Fixed rather than adaptive: two columns is what makes a tile big enough to recognise a page in. */
-private const val COLUMNS = 2
+/** Minimum tile width: keeps a tile big enough to recognise a page in while letting wider windows fit more columns. */
+private const val MIN_TILE_WIDTH_DP = 180
 
 /** How far across itself a tile has to travel before letting go of it closes the tab. */
 private const val FLICK_FRACTION = 0.4f
@@ -110,7 +110,7 @@ fun TabSwitcher(
                 actions = { IconButton(onClick = onNewTab) { IconAdd() } }
             )
             LazyVerticalGrid(
-                columns = GridCells.Fixed(COLUMNS),
+                columns = adaptiveGridCells(MIN_TILE_WIDTH_DP.dp),
                 state = gridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(8.dp),

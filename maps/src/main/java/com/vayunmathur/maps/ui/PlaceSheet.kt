@@ -89,9 +89,17 @@ fun PlaceSheet(
     viewModel: SelectedFeatureViewModel,
     feature: SpecificFeature.Restaurant,
     modifier: Modifier = Modifier,
-) = PlaceSheetContent(
-    viewModel, modifier, menu = feature.menu, openingHours = feature.openingHours,
-)
+) {
+    val poi by viewModel.currentPoiInfo.collectAsState()
+    val selectedSection by viewModel.poiSection.collectAsState()
+    PlaceSheetContent(
+        poi = poi,
+        selectedSection = selectedSection,
+        modifier = modifier,
+        menu = feature.menu,
+        openingHours = feature.openingHours,
+    )
+}
 
 @Composable
 fun PlaceSheet(
@@ -99,22 +107,72 @@ fun PlaceSheet(
     feature: SpecificFeature.GenericPlace,
     modifier: Modifier = Modifier,
     onDepartures: (() -> Unit)? = null,
+) {
+    val poi by viewModel.currentPoiInfo.collectAsState()
+    val selectedSection by viewModel.poiSection.collectAsState()
+    PlaceSheetContent(
+        poi = poi,
+        selectedSection = selectedSection,
+        modifier = modifier,
+        menu = null,
+        openingHours = feature.openingHours,
+        address = feature.address,
+        onDepartures = onDepartures,
+    )
+}
+
+/**
+ * Stateless tab panel: the same content as [PlaceSheet], driven by literal
+ * state instead of the ViewModel, so previews can render it with no device.
+ * Kept as (poi, section) rather than [PlacePanelState] because the content
+ * half only ever reads the enrichment — the saved slots and user position are
+ * the header's and the route's business, not this panel's.
+ */
+@Composable
+fun PlaceSheet(
+    poi: GooglePoiInfo?,
+    selectedSection: PoiSection,
+    feature: SpecificFeature.Restaurant,
+    modifier: Modifier = Modifier,
 ) = PlaceSheetContent(
-    viewModel, modifier, menu = null, openingHours = feature.openingHours,
-    address = feature.address, onDepartures = onDepartures,
+    poi = poi,
+    selectedSection = selectedSection,
+    modifier = modifier,
+    menu = feature.menu,
+    openingHours = feature.openingHours,
+)
+
+/**
+ * Stateless tab panel: the same content as [PlaceSheet], driven by literal
+ * state instead of the ViewModel, so previews can render it with no device.
+ */
+@Composable
+fun PlaceSheet(
+    poi: GooglePoiInfo?,
+    selectedSection: PoiSection,
+    feature: SpecificFeature.GenericPlace,
+    modifier: Modifier = Modifier,
+    onDepartures: (() -> Unit)? = null,
+) = PlaceSheetContent(
+    poi = poi,
+    selectedSection = selectedSection,
+    modifier = modifier,
+    menu = null,
+    openingHours = feature.openingHours,
+    address = feature.address,
+    onDepartures = onDepartures,
 )
 
 @Composable
 private fun PlaceSheetContent(
-    viewModel: SelectedFeatureViewModel,
+    poi: GooglePoiInfo?,
+    selectedSection: PoiSection,
     modifier: Modifier,
     menu: String?,
     openingHours: OpeningHours?,
     address: String? = null,
     onDepartures: (() -> Unit)? = null,
 ) {
-    val poi by viewModel.currentPoiInfo.collectAsState()
-    val selectedSection by viewModel.poiSection.collectAsState()
     val context = LocalContext.current
 
     // OSM is the source of truth for the weekly schedule: it carries all seven days,
@@ -243,75 +301,5 @@ internal fun RatingStars(rating: Double, modifier: Modifier = Modifier) {
             if (i < rating.toInt()) IconStar(Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
             else IconStarBorder(Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }
-}
-
-@Composable
-private fun OsmHours(openingHours: OpeningHours, todayOverride: Pair<DayOfWeek, String>? = null) {
-    var showDetails by remember { mutableStateOf(false) }
-
-    val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-    val isOpen = openingHours.isOpen(now)
-    val nextChangeTime = openingHours.nextStatusChangeTime(now)
-    val openStr = stringResource(R.string.open_status)
-    val closedStr = stringResource(R.string.closed_status)
-    val closesAtStr = stringResource(R.string.closes_at, nextChangeTime.time.format(timeFormat))
-    val opensAtStr = stringResource(R.string.opens_at, nextChangeTime.time.format(timeFormat))
-    val openColor = MaterialTheme.colorScheme.tertiary
-    val closedColor = MaterialTheme.colorScheme.error
-    val liveLabel = stringResource(R.string.poi_hours_live)
-    val text = AnnotatedString.Builder().apply {
-        if (isOpen) withStyle(SpanStyle(openColor)) { append(openStr) } else withStyle(SpanStyle(closedColor)) { append(closedStr) }
-        append(" \u2022 ")
-        if (isOpen) append(closesAtStr) else append(opensAtStr)
-        if (nextChangeTime.date != now.date) append(" ${localizedDayOfWeekNames(DateNameStyle.FULL)[nextChangeTime.date.dayOfWeek.isoDayNumber - 1]}")
-    }.toAnnotatedString()
-    Column {
-        RestaurantItem(
-            { IconSchedule() },
-            text,
-            shape = verticalShape(0, if (showDetails) 2 else 1),
-        ) {
-            showDetails = !showDetails
-        }
-        if (showDetails) {
-            Spacer(Modifier.padding(2.dp))
-            Card(shape = verticalShape(1, 2)) {
-                for ((day, hours) in openingHours.openingHours()) {
-                    // Today's row shows Google's live value when it sent one, tagged so
-                    // the swap is visible; the other six stay straight off OSM.
-                    val live = todayOverride?.takeIf { it.first == day }?.second
-                    val trailing = if (live != null) {
-                        AnnotatedString.Builder().apply {
-                            append(live)
-                            append("  ")
-                            withStyle(SpanStyle(openColor)) { append(liveLabel) }
-                        }.toAnnotatedString()
-                    } else AnnotatedString(hours)
-                    ListItem(
-                        { Text(day.name.lowercase().firstLetterUppercase()) },
-                        leadingContent = {},
-                        trailingContent = { Text(trailing) },
-                        colors = ListItemDefaults.colors(Color.Transparent),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun RestaurantItem(icon: @Composable () -> Unit, text: String, shape: Shape = CardDefaults.shape, onClick: () -> Unit) {
-    RestaurantItem(icon, AnnotatedString(text), shape, onClick)
-}
-
-@Composable
-fun RestaurantItem(icon: @Composable () -> Unit, text: AnnotatedString, shape: Shape = CardDefaults.shape, onClick: () -> Unit) {
-    Card(shape = shape) {
-        ListItem({
-            Text(text)
-        }, Modifier.clickable(onClick = onClick), leadingContent = {
-            icon()
-        }, colors = ListItemDefaults.colors(Color.Transparent))
     }
 }

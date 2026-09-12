@@ -12,6 +12,7 @@ class ModernAppsIssueRegistry : IssueRegistry() {
         ToastDetector.ISSUE,
         DirectBuildDatabaseDetector.ISSUE,
         DirectComposeAnimationDetector.ISSUE,
+        FileLengthDetector.ISSUE,
         OneComposablePerFileDetector.ISSUE,
         PackageStructureDetector.ISSUE,
         RawScaffoldInAppDetector.ISSUE,

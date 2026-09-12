@@ -23,10 +23,13 @@ import com.vayunmathur.games.solitaire.data.GameMode
 import com.vayunmathur.games.solitaire.data.SolitaireUiState
 import com.vayunmathur.games.solitaire.platform.SolitaireActions
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.isExpandedWidth
 import com.vayunmathur.library.ui.game.formatDuration
 
-private val SolitaireBoardMaxWidth = 640.dp
+private val SolitaireCompactBoardMaxWidth = 640.dp
+private val SolitaireExpandedBoardMaxWidth = 720.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +45,9 @@ fun GameBoardScreen(state: SolitaireUiState, mode: GameMode, actions: SolitaireA
     val elapsed = activeGame?.third ?: 0
     val modeName = mode.displayName()
     val timeText = formatDuration(elapsed)
+    // Wide windows get a slightly larger readable board; the container below
+    // letterboxes anything past 720dp so cards never stretch absurdly wide.
+    val boardMaxWidth = if (isExpandedWidth()) SolitaireExpandedBoardMaxWidth else SolitaireCompactBoardMaxWidth
     AppScaffold(
         title = modeName,
         actions = {
@@ -51,19 +57,21 @@ fun GameBoardScreen(state: SolitaireUiState, mode: GameMode, actions: SolitaireA
         scrollBehavior = appBarScrollBehavior(),
     ) { innerPadding ->
         Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 8.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DesktopMaxWidthContainer(modifier = Modifier.padding(innerPadding)) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 8.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 GameActionBar(onUndo = { actions.undo() }, onGiveUp = { actions.giveUp(); onExit() }, undoEnabled = state.history.isNotEmpty() && !isWon)
                 when (mode) {
                     GameMode.KLONDIKE -> state.klondike?.let {
-                        KlondikeBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = SolitaireBoardMaxWidth).fillMaxWidth())
+                        KlondikeBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = boardMaxWidth).fillMaxWidth())
                         if (!it.isWon && it.tableauPiles.none { p -> p.faceDown.isNotEmpty() }) {
                             Button(onClick = { actions.klondikeAutoComplete() }, Modifier.align(Alignment.CenterHorizontally)) { Text(stringResource(R.string.auto_complete)) }
                         }
                     }
-                    GameMode.SPIDER -> state.spider?.let { SpiderBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = SolitaireBoardMaxWidth).fillMaxWidth()) }
-                    GameMode.FREECELL -> state.freeCell?.let { FreeCellBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = SolitaireBoardMaxWidth).fillMaxWidth()) }
-                    GameMode.PYRAMID -> state.pyramid?.let { PyramidBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = SolitaireBoardMaxWidth).fillMaxWidth()) }
+                    GameMode.SPIDER -> state.spider?.let { SpiderBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = boardMaxWidth).fillMaxWidth()) }
+                    GameMode.FREECELL -> state.freeCell?.let { FreeCellBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = boardMaxWidth).fillMaxWidth()) }
+                    GameMode.PYRAMID -> state.pyramid?.let { PyramidBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = boardMaxWidth).fillMaxWidth()) }
                 }
+            }
             }
             if (isWon) { WinOverlay(elapsedSeconds = elapsed, moveCount = moveCount, onNewGame = { actions.restart() }, onBack = onExit) }
         }

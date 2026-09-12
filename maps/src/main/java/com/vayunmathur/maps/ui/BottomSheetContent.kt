@@ -1,58 +1,30 @@
 package com.vayunmathur.maps.ui
-import android.content.Intent
-import androidx.compose.foundation.layout.Arrangement
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.ButtonDefaults
-import com.vayunmathur.library.ui.Card
-import com.vayunmathur.library.ui.FilterChip
-import com.vayunmathur.library.ui.ListItem
-import com.vayunmathur.library.ui.LoadingState
-import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.PrimaryTabRow
-import com.vayunmathur.library.ui.Tab
-import com.vayunmathur.library.ui.Spacing
-import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TextButton
-import com.vayunmathur.library.ui.verticalShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import com.vayunmathur.library.ui.IconHome
-import com.vayunmathur.library.ui.IconWork
-import com.vayunmathur.library.ui.LocalContentColor
+import com.vayunmathur.library.ui.LoadingState
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.maps.R
+import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.data.SpecificFeature
-import com.vayunmathur.maps.ipc.RideEstimateClient
-import com.vayunmathur.maps.ipc.RideHandoffContract
-import com.vayunmathur.maps.ipc.rememberRideEstimate
-import com.vayunmathur.maps.util.NavigationService
+import com.vayunmathur.maps.data.google.PoiSection
 import com.vayunmathur.maps.util.NavigationSessionManager
+import com.vayunmathur.maps.util.PlacePanelActions
+import com.vayunmathur.maps.util.PlacePanelState
 import com.vayunmathur.maps.util.RouteService
 import com.vayunmathur.maps.util.SavedPlacesViewModel
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
 import com.vayunmathur.maps.util.TransitStopsViewModel
-import com.vayunmathur.maps.util.formatDistance
-import com.vayunmathur.maps.util.formatDuration
-import com.vayunmathur.maps.util.formatEta
-import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.maps.util.rememberPlacePanelState
 
 /**
  * Everything on the map's bottom sheet below the fold — what expanding it reveals.
@@ -72,6 +44,68 @@ fun BottomSheetContent(
     transitViewModel: TransitStopsViewModel,
     navState: NavigationSessionManager.NavState = NavigationSessionManager.NavState.Idle,
 ) {
+    val panelState = rememberPlacePanelState(viewModel, savedPlacesViewModel)
+    val panelActions = remember(selectedFeature) {
+        object : PlacePanelActions {
+            override fun setPoiSection(section: PoiSection) {
+                viewModel.setPoiSection(section)
+            }
+            override fun addSaved() {
+                (selectedFeature as? SpecificFeature.RoutableFeature)?.let {
+                    savedPlacesViewModel.addSaved(it)
+                }
+            }
+            override fun removeSaved(place: SavedPlace) {
+                savedPlacesViewModel.removeSaved(place)
+            }
+            override fun setHome() {
+                (selectedFeature as? SpecificFeature.RoutableFeature)?.let {
+                    savedPlacesViewModel.setHome(it)
+                }
+            }
+            override fun clearHome() {
+                savedPlacesViewModel.clearHome()
+            }
+            override fun setWork() {
+                (selectedFeature as? SpecificFeature.RoutableFeature)?.let {
+                    savedPlacesViewModel.setWork(it)
+                }
+            }
+            override fun clearWork() {
+                savedPlacesViewModel.clearWork()
+            }
+            override fun openNearestStop(lat: Double, lon: Double) {
+                transitViewModel.openNearestStop(lat, lon)
+            }
+        }
+    }
+    BottomSheetContent(
+        panelState = panelState,
+        panelActions = panelActions,
+        selectedFeature = selectedFeature,
+        route = route,
+        selectedRouteType = selectedRouteType,
+        setSelectedRouteType = setSelectedRouteType,
+        navState = navState,
+    )
+}
+
+/**
+ * Stateless sheet body: the same content as [BottomSheetContent], driven by
+ * [PlacePanelState] instead of the ViewModels, so previews can render it with
+ * literal state. The ViewModel overload above is the only caller that binds
+ * real state; everything else passes through untouched.
+ */
+@Composable
+fun BottomSheetContent(
+    panelState: PlacePanelState,
+    panelActions: PlacePanelActions,
+    selectedFeature: SpecificFeature?,
+    route: Map<RouteService.TravelMode, RouteService.RouteType?>?,
+    selectedRouteType: RouteService.TravelMode,
+    setSelectedRouteType: (RouteService.TravelMode) -> Unit,
+    navState: NavigationSessionManager.NavState = NavigationSessionManager.NavState.Idle,
+) {
     when (selectedFeature) {
         is SpecificFeature.Admin0Label ->
             AdminLabelHeader(selectedFeature.name, selectedFeature.wikipedia)
@@ -84,31 +118,33 @@ fun BottomSheetContent(
                 // Weighted so the chips below are measured first: the tab panel scrolls and
                 // would otherwise take every pixel of a tall sheet and leave them at zero
                 // height. They used to be safe behind the panel's 300 dp cap.
-                PlaceSheet(viewModel, selectedFeature, Modifier.weight(1f, fill = false))
-                SavedPlaceActions(selectedFeature, savedPlacesViewModel)
+                PlaceSheet(panelState.poi, panelState.poiSection, selectedFeature, Modifier.weight(1f, fill = false))
+                SavedPlaceActions(selectedFeature, panelState, panelActions)
             }
         }
         is SpecificFeature.GenericPlace -> {
             Column {
                 PlaceSheet(
-                    viewModel, selectedFeature, Modifier.weight(1f, fill = false),
+                    panelState.poi,
+                    panelState.poiSection,
+                    selectedFeature,
+                    Modifier.weight(1f, fill = false),
                     onDepartures = if (selectedFeature.poiType == 50) {
                         {
-                            transitViewModel.openNearestStop(
+                            panelActions.openNearestStop(
                                 selectedFeature.position.latitude,
                                 selectedFeature.position.longitude,
                             )
                         }
                     } else null,
                 )
-                SavedPlaceActions(selectedFeature, savedPlacesViewModel)
+                SavedPlaceActions(selectedFeature, panelState, panelActions)
             }
         }
         is SpecificFeature.Route -> {
             val currentRoute = route
             if (currentRoute != null) {
-                val userPosition by viewModel.userPosition.collectAsState()
-                RouteSheet(selectedFeature, currentRoute, selectedRouteType, setSelectedRouteType, navState, userPosition)
+                RouteSheet(selectedFeature, currentRoute, selectedRouteType, setSelectedRouteType, navState, panelState.userPosition)
             } else {
                 // Routes arrive asynchronously and start out null, so this is the state right
                 // after asking for directions. It used to render nothing at all, inside a sheet
@@ -148,395 +184,5 @@ private fun AdminLabelHeader(name: String, wikipedia: String?, modifier: Modifie
                 Text(stringResource(R.string.wikipedia))
             }
         }
-    }
-}
-
-/**
- * The directions panel: one segment per travel mode, then the turn-by-turn step list.
- *
- * Each segment carries its own time and distance, so there is no separate summary row —
- * comparing modes is the point of the control, and that only works if the numbers are on
- * it. Rideshare appears as a fifth segment when the taxi app is installed, showing
- * arrival and price instead, and is a UI-level pseudo-mode rather than a
- * [RouteService.TravelMode].
- *
- * Stateless (no ViewModel) so the store-listing previews can render it - the map it
- * normally sits over is a native surface a preview cannot draw.
- */
-@Composable
-fun RouteSheet(
-    selectedFeature: SpecificFeature.Route,
-    route: Map<RouteService.TravelMode, RouteService.RouteType?>,
-    selectedRouteType: RouteService.TravelMode,
-    setSelectedRouteType: (RouteService.TravelMode) -> Unit,
-    navState: NavigationSessionManager.NavState = NavigationSessionManager.NavState.Idle,
-    userPosition: GeoPoint? = null,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-
-    // Rideshare endpoints. Origin may be "from here" (a null waypoint) → the user's live
-    // position; the destination must be a real waypoint, so it never falls back to it.
-    val rideOrigin = selectedFeature.waypoints.firstOrNull()
-    val rideDest = selectedFeature.waypoints.lastOrNull()
-    val rideOriginPos = rideOrigin?.position ?: userPosition
-    val rideDestPos = rideDest?.position
-    val driveRoute = route[RouteService.TravelMode.DRIVE]
-
-    val taxiInstalled = remember { RideEstimateClient.isInstalled(context) }
-    val rideEstimate =
-        if (taxiInstalled && rideOriginPos != null && rideDestPos != null) {
-            rememberRideEstimate(
-                context,
-                rideOriginPos.latitude, rideOriginPos.longitude,
-                rideDestPos.latitude, rideDestPos.longitude,
-                rideOrigin?.name, rideDest.name,
-            ).value?.takeIf { it.available }
-        } else null
-
-    // A ride substitutes for driving, so it needs the drive route to borrow a duration
-    // and a polyline from. No taxi app, no segment — same as the card this replaced.
-    val rideshareOffered = taxiInstalled &&
-        rideOriginPos != null &&
-        rideDestPos != null &&
-        selectedFeature.waypoints.size >= 2 &&
-        driveRoute != null
-
-    // Rideshare is a segment in this selector but deliberately **not** a
-    // [RouteService.TravelMode]: it has no routing profile of its own, and a new variant
-    // would make every `when` across TravelMode's thirteen consumers non-exhaustive. So
-    // its selection lives here, and picking it leaves the mode on DRIVE — a ride follows
-    // the driving route, which is what the map is already drawing.
-    var rideshareSelected by remember { mutableStateOf(false) }
-    val showRideshare = rideshareSelected && rideshareOffered
-
-    Column(modifier) {
-        // A tab row rather than the ButtonGroup this replaced: each segment now carries
-        // three stacked lines (mode, time, distance), and `toggleableItem` takes a label
-        // string with no content slot. Tab's content overload is the only primitive in
-        // library/ui that holds a column.
-        val modes = route.keys.toList()
-        val selectedIndex =
-            if (showRideshare) modes.size else modes.indexOf(selectedRouteType).coerceAtLeast(0)
-        PrimaryTabRow(selectedTabIndex = selectedIndex, modifier = Modifier.fillMaxWidth()) {
-            modes.forEach { mode ->
-                val modeRoute = route[mode]?.takeIf { it !is RouteService.EmptyRoute }
-                Tab(
-                    selected = !showRideshare && selectedRouteType == mode,
-                    onClick = {
-                        rideshareSelected = false
-                        setSelectedRouteType(mode)
-                    },
-                ) {
-                    ModeTab(
-                        label = stringResource(
-                            when (mode) {
-                                RouteService.TravelMode.WALK -> R.string.travel_mode_walk
-                                RouteService.TravelMode.BICYCLE -> R.string.travel_mode_bicycle
-                                RouteService.TravelMode.DRIVE -> R.string.travel_mode_drive
-                                RouteService.TravelMode.TRANSIT -> R.string.travel_mode_transit
-                            }
-                        ),
-                        primary = modeRoute?.let { formatDuration(context, it.duration) },
-                        secondary = modeRoute?.let { formatDistance(it.distanceMeters) },
-                    )
-                }
-            }
-            if (rideshareOffered) {
-                Tab(
-                    selected = showRideshare,
-                    onClick = {
-                        rideshareSelected = true
-                        setSelectedRouteType(RouteService.TravelMode.DRIVE)
-                    },
-                ) {
-                    ModeTab(
-                        label = stringResource(R.string.route_taxi_title),
-                        // Dropoff, which the provider does not give us: `etaMinutes` is
-                        // the pickup wait. Device-local wall clock, unlike a transit
-                        // itinerary's feed-local times, because a ride is happening now.
-                        primary = rideEstimate?.etaMinutes?.let { wait ->
-                            formatEta(
-                                System.currentTimeMillis() +
-                                    wait * 60_000L +
-                                    driveRoute.duration.inWholeMilliseconds
-                            )
-                        },
-                        secondary = rideEstimate?.fareEstimate,
-                    )
-                }
-            }
-        }
-
-        if (showRideshare) {
-            // No step list and no Start Navigation: the ride is driven for the user, so
-            // booking it is the only action.
-            RideshareBooking(
-                originLat = rideOriginPos.latitude,
-                originLng = rideOriginPos.longitude,
-                originLabel = rideOrigin?.name,
-                destLat = rideDestPos.latitude,
-                destLng = rideDestPos.longitude,
-                destLabel = rideDest.name,
-            )
-            return@Column
-        }
-
-        val routeForMode = route[selectedRouteType]
-        if(routeForMode != null) {
-            if(routeForMode !is RouteService.EmptyRoute) {
-                // Time and distance live in the selector now, so the summary row that
-                // used to sit here would only repeat the selected tab.
-                //
-                // "Start Navigation" needs a concrete Route (steps + polyline), no active
-                // session, and a real destination. TRANSIT is excluded: the navigation
-                // engine snaps GPS to the polyline and computes ETA from progress along
-                // it, which doesn't model trains/buses, and a mid-trip recalc would
-                // replace transit steps with walking ones. The step list still shows.
-                val lastWaypoint = selectedFeature.waypoints.lastOrNull()
-                if (routeForMode is RouteService.Route &&
-                    navState is NavigationSessionManager.NavState.Idle &&
-                    selectedRouteType != RouteService.TravelMode.TRANSIT &&
-                    lastWaypoint != null
-                ) {
-                    Button(
-                        onClick = {
-                            val intent = Intent(context, NavigationService::class.java)
-                            context.startForegroundService(intent)
-                            NavigationSessionManager.init(context)
-                            NavigationSessionManager.start(
-                                route = routeForMode,
-                                mode = selectedRouteType,
-                                destination = lastWaypoint.position,
-                                destinationLabel = lastWaypoint.name,
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Text(stringResource(R.string.nav_action_start))
-                    }
-                }
-                Spacer(Modifier.height(Spacing.sm))
-            }
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                when (routeForMode) {
-                    is RouteService.Route -> {
-                        // "Leave at" and "Arrive at" bracket the leg list as ordinary rows, so
-                        // the card rounding has to be indexed across all three groups rather
-                        // than over the legs alone.
-                        val leave = listOfNotNull(routeForMode.departureTime)
-                        val arrive = listOfNotNull(routeForMode.arrivalTime)
-                        val total = leave.size + routeForMode.step.size + arrive.size
-                        itemsIndexed(leave) { idx, time ->
-                            Card(shape = verticalShape(idx, total)) {
-                                ListItem({ Text(stringResource(R.string.leave_at, time)) })
-                            }
-                        }
-                        itemsIndexed(routeForMode.step) { idx, it ->
-                            Card(shape = verticalShape(leave.size + idx, total)) {
-                                val transit = it.transitDetails
-                                ListItem({
-                                    Text(it.navInstruction.instructions)
-                                }, leadingContent = {
-                                    it.navInstruction.maneuver.iconContent()?.let { icon ->
-                                        icon(Modifier, LocalContentColor.current)
-                                    }
-                                }, supportingContent = transit?.let { t ->
-                                    {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            LineBadge(
-                                                t.transitLine.nameShort ?: t.transitLine.name,
-                                                t.transitLine.color,
-                                            )
-                                            Text(
-                                                transitSupportingText(t),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                    }
-                                }, trailingContent = transit
-                                    ?.stopDetails
-                                    ?.takeIf { d -> d.departureTime.isNotBlank() }
-                                    ?.let { d ->
-                                        {
-                                            Column(horizontalAlignment = Alignment.End) {
-                                                Text(
-                                                    d.departureTime,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                )
-                                                if (d.arrivalTime.isNotBlank()) {
-                                                    Text(
-                                                        d.arrivalTime,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme
-                                                            .onSurfaceVariant,
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    })
-                            }
-                        }
-                        itemsIndexed(arrive) { idx, time ->
-                            Card(
-                                shape = verticalShape(
-                                    leave.size + routeForMode.step.size + idx,
-                                    total,
-                                )
-                            ) {
-                                ListItem({ Text(stringResource(R.string.arrive_at, time)) })
-                            }
-                        }
-                    }
-
-                    is RouteService.EmptyRoute -> {
-                        item {
-                            ListItem({
-                                Text(stringResource(R.string.no_route_found))
-                            })
-                        }
-                    }
-                }
-            }
-        } else {
-            ListItem({
-                Text(stringResource(R.string.generating_route))
-            })
-        }
-    }
-}
-
-/**
- * "Towards X · 4 stops" for a transit step, dropping whichever half the feed
- * doesn't provide (headsign is optional in GTFS; a single-hop ride has no
- * intermediate stops).
- */
-@Composable
-private fun transitSupportingText(details: RouteService.API.TransitDetails): String {
-    val headsign = details.headsign.takeIf { it.isNotBlank() }
-        ?.let { stringResource(R.string.transit_towards, it) }
-    val stops = details.stopCount.takeIf { it > 0 }?.let {
-        pluralStringResource(R.plurals.transit_stop_count, it, it)
-    }
-    return when {
-        headsign != null && stops != null ->
-            stringResource(R.string.transit_detail_separator, headsign, stops)
-        else -> headsign ?: stops ?: ""
-    }
-}
-
-/**
- * "Book ride": hands the trip off to the MA taxi app, pre-filled (P20).
- *
- * The only action the rideshare segment offers — the ride is driven for the user, so
- * there is no step list and nothing to navigate. Shown only once the caller has
- * established the app is installed; the fare and pickup wait are on the segment itself,
- * and a provider that will not quote either simply leaves those lines off.
- */
-@Composable
-private fun RideshareBooking(
-    originLat: Double,
-    originLng: Double,
-    originLabel: String?,
-    destLat: Double,
-    destLng: Double,
-    destLabel: String?,
-) {
-    val context = LocalContext.current
-    Button(
-        onClick = {
-            goto(
-                context,
-                RideHandoffContract.bookingDeepLink(
-                    originLat, originLng, originLabel, destLat, destLng, destLabel,
-                ),
-            )
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ),
-    ) {
-        Text(stringResource(R.string.route_taxi_book))
-    }
-}
-
-/**
- * One segment of the mode selector: name on top, then two supporting lines.
- *
- * For a travel mode those lines are time and distance; for rideshare they are arrival
- * and price. Either may be missing — a route that is still being computed, or a fare
- * the provider would not quote — and the line is dropped rather than blanked so the
- * segments stay the same height.
- */
-@Composable
-private fun ModeTab(label: String, primary: String?, secondary: String?) {
-    Column(
-        Modifier.padding(vertical = Spacing.sm),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
-        if (primary != null) {
-            Text(primary, style = MaterialTheme.typography.bodyMedium)
-        }
-        if (secondary != null) {
-            Text(
-                secondary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/**
- * Two chips under a place's details letting the user pin it to Home or Work.
- * If the place is already saved in a slot, the chip is selected and tapping it
- * again removes it, so the same control handles setting, replacing and clearing.
- */
-@Composable
-fun SavedPlaceActions(
-    feature: SpecificFeature.RoutableFeature,
-    savedPlacesViewModel: SavedPlacesViewModel,
-) {
-    val home by savedPlacesViewModel.home.collectAsState()
-    val work by savedPlacesViewModel.work.collectAsState()
-
-    val isHome = home?.matches(feature) == true
-    val isWork = work?.matches(feature) == true
-
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(
-            selected = isHome,
-            onClick = { if (isHome) savedPlacesViewModel.clearHome() else savedPlacesViewModel.setHome(feature) },
-            label = {
-                Text(stringResource(if (isHome) R.string.remove_from_home else R.string.save_as_home))
-            },
-            leadingIcon = { IconHome(Modifier.size(18.dp)) },
-        )
-        FilterChip(
-            selected = isWork,
-            onClick = { if (isWork) savedPlacesViewModel.clearWork() else savedPlacesViewModel.setWork(feature) },
-            label = {
-                Text(stringResource(if (isWork) R.string.remove_from_work else R.string.save_as_work))
-            },
-            leadingIcon = { IconWork(Modifier.size(18.dp)) },
-        )
     }
 }

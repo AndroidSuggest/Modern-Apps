@@ -258,11 +258,11 @@ fun Navigation(viewModel: CalendarViewModel, initialRoute: Route?, onImportClear
     }
 
     MainNavigation(backStack) {
-        entry<Route.Calendar> {
+        entry<Route.Calendar>(metadata = ListPage()) {
             CalendarScreen(viewModel, backStack)
         }
         // Morph: the event's title travels out of the chip the user tapped on the grid.
-        entry<Route.Event>(metadata = MorphPage()) { key ->
+        entry<Route.Event>(metadata = ListDetailPage() + MorphPage()) { key ->
             EventScreen(viewModel, key.instance, backStack)
         }
         entry<Route.Settings> {
@@ -272,7 +272,7 @@ fun Navigation(viewModel: CalendarViewModel, initialRoute: Route?, onImportClear
             HolidayCalendarsScreen(viewModel, backStack)
         }
         // Morph: the event's location line grows into the location field.
-        entry<Route.EditEvent>(metadata = MorphPage()) { key ->
+        entry<Route.EditEvent>(metadata = ListDetailPage() + MorphPage()) { key ->
             EditEventScreen(viewModel, key, backStack)
         }
 

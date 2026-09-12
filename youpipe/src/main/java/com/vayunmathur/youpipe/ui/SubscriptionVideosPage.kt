@@ -1,6 +1,7 @@
 package com.vayunmathur.youpipe.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,11 +11,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
+import com.vayunmathur.library.ui.adaptiveGridCells
+import com.vayunmathur.library.ui.isExpandedWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -88,6 +93,9 @@ fun SubscriptionVideosPage(
  * Stateless subscription feed. [backStack] is here only for preview tooling; taps on the
  * list itself go through [actions].
  */
+// RAW SCAFFOLD EXCEPTION: the feed switches between a LazyColumn (compact) and a
+// LazyVerticalGrid of adaptiveGridCells (expanded) around the same skeleton/loading
+// content. No shared scaffold models a column/grid switch.
 @Composable
 fun SubscriptionVideosScreen(
     backStack: NavBackStack<Route>,
@@ -95,6 +103,25 @@ fun SubscriptionVideosScreen(
     actions: SubscriptionFeedActions,
 ) {
     Scaffold { paddingValues ->
+        if (isExpandedWidth() && !state.isLoading && state.fetchProgress !in 0f..1f) {
+            // Desktop: the feed fills the window with an adaptive grid instead of
+            // stretching one column across it. Loading states stay a list below.
+            LazyVerticalGrid(
+                columns = adaptiveGridCells(320.dp),
+                modifier = Modifier.padding(paddingValues),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(state.videos, key = { it.videoID }) { row ->
+                    FeedVideoRow(
+                        row = row,
+                        openVideo = actions::openVideo,
+                        titleSharedKey = "youpipe-video-title-${row.videoID}",
+                    )
+                }
+            }
+            return@Scaffold
+        }
         LazyColumn(Modifier.padding(paddingValues)) {
             if (state.fetchProgress in 0f..1f) {
                 item {

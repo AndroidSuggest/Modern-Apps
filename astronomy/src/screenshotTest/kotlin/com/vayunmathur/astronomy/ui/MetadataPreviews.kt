@@ -35,6 +35,9 @@ import kotlin.time.Instant
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
 
+/** Desktop-wide (1280dp >= 840dp), so the letterboxed expanded layout renders. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
+
 /**
  * Store listing images for `:astronomy`, rendered from Compose previews instead of from an
  * instrumented test on a device. See `common-conventions-preview-metadata`.
@@ -107,6 +110,19 @@ class MetadataPreviews {
                     deepSkyCount = 110,
                 ),
                 actions = SettingsActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-search-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview4SearchExpanded() {
+        DynamicTheme(darkTheme = true) {
+            SearchScreen(
+                backStack = rememberNavBackStack<Route>(Route.Search),
+                actions = SampleSearch,
+                initialQuery = "al",
             )
         }
     }

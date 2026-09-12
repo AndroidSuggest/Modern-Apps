@@ -32,6 +32,7 @@ import com.vayunmathur.library.ui.AppBarAlignment
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.FilledTonalIconButton
 import com.vayunmathur.library.ui.IconArrowDropDown
@@ -44,6 +45,7 @@ import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.SelectableDropdownMenuItem
 import com.vayunmathur.library.ui.Spacing
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.ToggleButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
 
 /** Binds [CalculatorViewModel] to the stateless [UnitConverterScreen]. */
@@ -65,10 +67,12 @@ fun UnitConverterScreen(state: UnitConverterUiState, actions: UnitConverterActio
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
         val category = state.categories.getOrNull(state.selectedCategoryIndex)
+        // Sibling tool, never list-detail: a single converter form, letterboxed
+        // on expanded windows so it keeps a readable measure.
+        DesktopMaxWidthContainer(Modifier.padding(padding)) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
             CategoryDropdown(
@@ -126,7 +130,7 @@ fun UnitConverterScreen(state: UnitConverterUiState, actions: UnitConverterActio
                                     fontSize = 14.sp,
                                 )
                                 Text(
-                                    if (state.outputText.isEmpty()) "—" else "${state.outputText}\u202F$toSymbol",
+                                    if (state.outputText.isEmpty()) "—" else "${state.outputText} $toSymbol",
                                     fontSize = 28.sp,
                                     maxLines = 1,
                                 )
@@ -135,6 +139,7 @@ fun UnitConverterScreen(state: UnitConverterUiState, actions: UnitConverterActio
                     }
                 }
             }
+        }
         }
     }
 }

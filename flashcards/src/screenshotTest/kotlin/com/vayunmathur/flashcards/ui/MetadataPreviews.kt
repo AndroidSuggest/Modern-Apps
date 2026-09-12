@@ -1,5 +1,7 @@
 package com.vayunmathur.flashcards.ui
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
@@ -27,6 +29,9 @@ import java.time.LocalDate
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
 private const val PHONE = "spec:width=411dp,height=891dp,dpi=420"
+
+/** Expanded desktop/tablet window — comfortably above the 840dp expanded-width threshold. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 /**
  * Store listing images for `:flashcards`. See `common-conventions-preview-metadata`.
@@ -182,4 +187,33 @@ class MetadataPreviews {
             )
         }
     }
+
+    @PreviewTest
+    @Preview(name = "6-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview6Expanded() {
+        // Medium widths pair the deck list with its cards: the detail no longer covers
+        // the list, so the listing captures both side by side.
+        DynamicTheme(darkTheme = true) {
+            Row(Modifier.fillMaxSize()) {
+                androidx.compose.foundation.layout.Box(Modifier.weight(0.45f)) {
+                    DeckListScreen(
+                        state = DeckListUiState(decks = deckSamples),
+                        actions = DeckListActions.Noop,
+                    )
+                }
+                androidx.compose.foundation.layout.Box(Modifier.weight(0.55f)) {
+                    NoteListScreen(
+                        state = NoteListUiState(
+                            deckName = "Spanish Vocabulary",
+                            notes = noteSamples,
+                            dueCount = 12,
+                        ),
+                        actions = NoteListActions.Noop,
+                    )
+                }
+            }
+        }
+    }
+}
 }

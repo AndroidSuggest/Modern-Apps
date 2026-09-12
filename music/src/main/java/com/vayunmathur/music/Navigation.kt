@@ -2,6 +2,8 @@ package com.vayunmathur.music
 
 import androidx.compose.runtime.Composable
 import com.vayunmathur.library.util.DialogPage
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -17,19 +19,19 @@ import com.vayunmathur.music.ui.dialogs.AddToPlaylistDialog
 fun Navigation(musicViewModel: MusicViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Home)
     MainNavigation(backStack) {
-        entry<Route.Home> {
+        entry<Route.Home>(metadata = ListPage()) {
             MusicTabsScreen(backStack, musicViewModel)
         }
         entry<Route.Song>(metadata = MorphPage()) {
             SongScreen(backStack, musicViewModel)
         }
-        entry<Route.AlbumDetail>(metadata = MorphPage()) {
+        entry<Route.AlbumDetail>(metadata = ListDetailPage() + MorphPage()) {
             AlbumDetailScreen(backStack, musicViewModel, it.albumId)
         }
-        entry<Route.ArtistDetail>(metadata = MorphPage()) {
+        entry<Route.ArtistDetail>(metadata = ListDetailPage() + MorphPage()) {
             ArtistDetailScreen(backStack, musicViewModel, it.artistId)
         }
-        entry<Route.PlaylistDetail>(metadata = MorphPage()) {
+        entry<Route.PlaylistDetail>(metadata = ListDetailPage() + MorphPage()) {
             PlaylistDetailScreen(backStack, musicViewModel, it.playlistId)
         }
         entry<Route.AddToPlaylistDialog>(metadata = DialogPage()) {

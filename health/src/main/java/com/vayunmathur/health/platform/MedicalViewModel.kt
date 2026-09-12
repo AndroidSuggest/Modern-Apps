@@ -3,9 +3,6 @@
 package com.vayunmathur.health.platform
 
 import android.app.Application
-import android.content.Context
-import android.util.Log
-import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -28,9 +25,6 @@ import com.vayunmathur.health.data.ProfileAnswer
 import com.vayunmathur.health.data.RepeatUnit
 import com.vayunmathur.health.data.SmokingStatus
 import com.vayunmathur.health.data.VaccinationEntry
-import com.vayunmathur.health.domain.FhirRecords
-import com.vayunmathur.health.domain.SocialHistoryQuestions
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,7 +33,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -47,21 +40,20 @@ import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.datetime.toLocalDateTime
 import java.time.Instant
 import kotlin.time.Clock
-import kotlin.uuid.Uuid
 
 /** Today in the device's timezone. The default date on both add forms. */
-private fun today(): LocalDate =
+internal fun today(): LocalDate =
     Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
 
 /** Midnight local time on this date, which is the precision a medical record carries. */
-private fun LocalDate.toInstant(): Instant =
+internal fun LocalDate.toInstant(): Instant =
     Instant.ofEpochMilli(atStartOfDayIn(TimeZone.currentSystemDefault()).toEpochMilliseconds())
 
 /** The local calendar date an [Instant] falls on. */
-private fun Instant.toLocalDate(): LocalDate =
+internal fun Instant.toLocalDate(): LocalDate =
     atZone(java.time.ZoneId.systemDefault()).toLocalDate().toKotlinLocalDate()
 
-private fun String.blankToNull(): String? = trim().ifBlank { null }
+internal fun String.blankToNull(): String? = trim().ifBlank { null }
 
 /**
  * Owns the Medication and Medical History screens.
@@ -73,10 +65,15 @@ private fun String.blankToNull(): String? = trim().ifBlank { null }
  * what makes the feature work at all below Android 15, where the Personal Health Record API does not
  * exist, and it means a rejected or failed FHIR write costs the user nothing — the row is already
  * saved, it simply has no `fhirResourceId` yet.
+ *
+ * The save/delete/mirror/import operations live in same-package files
+ * ([MedicalVaccinationOps.kt][saveVaccinationDraft], [MedicalMedicationOps.kt][saveMedicationDraft],
+ * [MedicalClinicalOps.kt][saveAllergyDraft], [MedicalProfileOps.kt][setPregnancyStatus],
+ * [MedicalImportOps.kt][importFromHealthConnect]) as extensions over the internals below.
  */
 class MedicalViewModel(
     application: Application,
-    private val repository: HealthRepository = HealthRepository.get(application),
+    internal val repository: HealthRepository = HealthRepository.get(application),
 ) : AndroidViewModel(application) {
 
     val vaccinations: StateFlow<List<VaccinationEntry>> = repository.getVaccinationsFlow()
@@ -116,7 +113,11 @@ class MedicalViewModel(
             .map { all -> all.associateBy { it.medicationId } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    private val _syncing = MutableStateFlow(false)
+    /** Every dose taken, newest first. */
+    val doseEvents: StateFlow<List<DoseEvent>> = repository.getDoseEventsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    internal val _syncing = MutableStateFlow(false)
     val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
 
     /**
@@ -201,10 +202,10 @@ class MedicalViewModel(
         val editingTimeIndex: Int? = null,
     )
 
-    private val _vaccinationDraft = MutableStateFlow(VaccinationDraft())
+    internal val _vaccinationDraft = MutableStateFlow(VaccinationDraft())
     val vaccinationDraft: StateFlow<VaccinationDraft> = _vaccinationDraft.asStateFlow()
 
-    private val _medicationDraft = MutableStateFlow(MedicationDraft())
+    internal val _medicationDraft = MutableStateFlow(MedicationDraft())
     val medicationDraft: StateFlow<MedicationDraft> = _medicationDraft.asStateFlow()
 
     data class AllergyDraft(
@@ -241,10 +242,10 @@ class MedicalViewModel(
         val note: String = "",
     )
 
-    private val _allergyDraft = MutableStateFlow(AllergyDraft())
+    internal val _allergyDraft = MutableStateFlow(AllergyDraft())
     val allergyDraft: StateFlow<AllergyDraft> = _allergyDraft.asStateFlow()
 
-    private val _conditionDraft = MutableStateFlow(ConditionDraft())
+    internal val _conditionDraft = MutableStateFlow(ConditionDraft())
     val conditionDraft: StateFlow<ConditionDraft> = _conditionDraft.asStateFlow()
 
     fun startAllergyDraft(id: String? = null) {
@@ -290,7 +291,7 @@ class MedicalViewModel(
         _conditionDraft.update(transform)
     }
 
-    private val _labDraft = MutableStateFlow(LabResultDraft())
+    internal val _labDraft = MutableStateFlow(LabResultDraft())
     val labDraft: StateFlow<LabResultDraft> = _labDraft.asStateFlow()
 
     fun startLabDraft(id: String? = null) {
@@ -379,671 +380,10 @@ class MedicalViewModel(
     fun editMedicationDraft(transform: (MedicationDraft) -> MedicationDraft) {
         _medicationDraft.update(transform)
     }
-
-    // --- Vaccinations --------------------------------------------------------
-
-    /**
-     * Saves the vaccination form, whether adding or editing, then mirrors it.
-     *
-     * Newly picked attachments are imported here rather than when the user picked them, so
-     * abandoning the form cannot leave orphaned files behind; removed ones are deleted here for the
-     * mirror-image reason. [fallbackAttachmentName] covers a content provider that reports no
-     * display name.
-     */
-    fun saveVaccinationDraft(fallbackAttachmentName: String) {
-        val draft = _vaccinationDraft.value
-        if (draft.displayName.isBlank()) return
-
-        viewModelScope.launch {
-            // Keeping the row id on edit is what makes the Health Connect mirror an update rather
-            // than a second resource, since the row id is also the FHIR resource id.
-            val existing = draft.editingId?.let { repository.getVaccination(it) }
-            val entry = (existing ?: VaccinationEntry(
-                id = Uuid.random().toString(),
-                displayName = "",
-                occurredAt = Instant.now(),
-            )).copy(
-                cvxCode = draft.cvxCode,
-                displayName = draft.displayName.trim(),
-                occurredAt = draft.occurredOn.toInstant(),
-                lotNumber = draft.lotNumber.blankToNull(),
-                site = draft.site.blankToNull(),
-                route = draft.route.blankToNull(),
-                doseQuantity = draft.dose.blankToNull(),
-                performer = draft.performer.blankToNull(),
-                note = draft.note.blankToNull(),
-            )
-            repository.upsertVaccination(entry)
-
-            draft.savedAttachments
-                .filter { it.id in draft.removedAttachmentIds }
-                .forEach { attachment ->
-                    AttachmentStore.delete(getApplication(), attachment.fileName)
-                    repository.deleteAttachment(attachment)
-                }
-
-            val stored = withContext(Dispatchers.IO) {
-                draft.attachmentUris.mapNotNull { uri ->
-                    AttachmentStore.import(getApplication(), uri.toUri(), fallbackAttachmentName)
-                }
-            }
-            val now = Instant.now()
-            stored.forEach { imported ->
-                repository.insertAttachment(
-                    MedicalAttachment(
-                        id = Uuid.random().toString(),
-                        vaccinationId = entry.id,
-                        fileName = imported.fileName,
-                        displayName = imported.displayName,
-                        mimeType = imported.mimeType,
-                        sizeBytes = imported.sizeBytes,
-                        importedAt = now,
-                    )
-                )
-            }
-
-            mirrorVaccination(entry.id)
-        }
-    }
-
-    fun deleteVaccination(entry: VaccinationEntry) {
-        viewModelScope.launch {
-            repository.getAttachmentsFor(entry.id).forEach { attachment ->
-                AttachmentStore.delete(getApplication(), attachment.fileName)
-                repository.deleteAttachment(attachment)
-            }
-            repository.deleteVaccination(entry)
-
-            val dataSourceId = entry.dataSourceId
-            val fhirId = entry.fhirResourceId
-            if (dataSourceId != null && fhirId != null) {
-                PersonalHealthRecords.delete(
-                    dataSourceId,
-                    PersonalHealthRecords.immunizationResourceType,
-                    fhirId,
-                )
-            }
-        }
-    }
-
-    private suspend fun mirrorVaccination(id: String) {
-        val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return
-        val entry = repository.getVaccination(id) ?: return
-        val fhirAttachments = repository.getAttachmentsFor(id).map { attachment ->
-            FhirRecords.FhirAttachment(
-                contentType = attachment.mimeType,
-                title = attachment.displayName,
-                url = AttachmentStore.fileFor(getApplication(), attachment.fileName).toURI().toString(),
-                creation = attachment.importedAt,
-            )
-        }
-        val written = PersonalHealthRecords.upsert(
-            dataSourceId,
-            FhirRecords.immunizationJson(entry, fhirAttachments),
-        ) ?: return
-        repository.upsertVaccination(
-            entry.copy(fhirResourceId = written, dataSourceId = dataSourceId)
-        )
-    }
-
-    // --- Medications ---------------------------------------------------------
-
-    fun saveMedicationDraft() {
-        val draft = _medicationDraft.value
-        if (draft.ingredient.isBlank()) return
-        viewModelScope.launch {
-            val existing = draft.editingId?.let { repository.getMedication(it) }
-            val entry = (existing ?: MedicationEntry(
-                id = Uuid.random().toString(),
-                displayName = "",
-                startedAt = Instant.now(),
-            )).copy(
-                rxcui = draft.rxcui,
-                displayName = draft.ingredient.trim(),
-                strength = draft.strength,
-                doseForm = draft.doseForm,
-                status = draft.status,
-                startedAt = draft.startedOn.toInstant(),
-                endedAt = draft.endedOn?.toInstant(),
-                dosageText = draft.dosage.blankToNull(),
-                note = draft.note.blankToNull(),
-            )
-            repository.upsertMedication(entry)
-            saveSchedule(draft, entry.id)
-            mirrorMedication(entry.id)
-        }
-    }
-
-    /**
-     * Writes or clears the reminder schedule for [medicationId] and re-arms the alarm.
-     *
-     * Always re-arms from the stored row rather than the draft, so what fires is what was saved.
-     */
-    private suspend fun saveSchedule(draft: MedicationDraft, medicationId: String) {
-        val context: Context = getApplication()
-        if (!draft.remindersEnabled || draft.times.isEmpty()) {
-            draft.scheduleId?.let { DoseScheduler.cancel(context, it) }
-            repository.deleteScheduleFor(medicationId)
-            return
-        }
-        val schedule = MedicationSchedule(
-            id = draft.scheduleId ?: Uuid.random().toString(),
-            medicationId = medicationId,
-            enabled = true,
-            times = draft.times.sorted(),
-            repeatUnit = draft.repeatUnit,
-            interval = draft.interval.coerceAtLeast(1),
-            daysOfWeek = draft.daysOfWeek,
-            anchorDate = draft.anchorDate,
-            endDate = draft.remindersUntil,
-        )
-        repository.upsertSchedule(schedule)
-        DoseScheduler.arm(context, schedule)
-    }
-
-    fun deleteMedication(entry: MedicationEntry) {
-        viewModelScope.launch {
-            repository.getScheduleFor(entry.id)?.let {
-                DoseScheduler.cancel(getApplication(), it.id)
-            }
-            repository.deleteScheduleFor(entry.id)
-            // The doses go with the medication. Leaving them would strand rows pointing at a
-            // MedicationRequest that no longer exists.
-            repository.deleteDosesFor(entry.id)
-            repository.deleteMedication(entry)
-            val dataSourceId = entry.dataSourceId
-            val fhirId = entry.fhirResourceId
-            if (dataSourceId != null && fhirId != null) {
-                PersonalHealthRecords.delete(
-                    dataSourceId,
-                    PersonalHealthRecords.medicationRequestResourceType,
-                    fhirId,
-                )
-            }
-        }
-    }
-
-    /**
-     * Writes the medication to Health Connect as a `MedicationRequest`.
-     *
-     * The schedule goes with it, which is what puts the reminder times in the record as
-     * `dosageInstruction.timing.repeat` rather than leaving them as a private detail of this app.
-     */
-    private suspend fun mirrorMedication(id: String) {
-        val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return
-        val entry = repository.getMedication(id) ?: return
-        val schedule = repository.getScheduleFor(id)
-        val written = PersonalHealthRecords.upsert(
-            dataSourceId,
-            FhirRecords.medicationRequestJson(entry, schedule),
-        ) ?: return
-        repository.upsertMedication(
-            entry.copy(fhirResourceId = written, dataSourceId = dataSourceId)
-        )
-    }
-
-    // --- Doses taken ---------------------------------------------------------
-
-    /** Every dose taken, newest first. */
-    val doseEvents: StateFlow<List<DoseEvent>> = repository.getDoseEventsFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    /**
-     * Records that a dose was taken, now.
-     *
-     * Called from the reminder's Taken action and from the medication list. Only acknowledged doses
-     * are ever written — see [DoseEvent].
-     */
-    fun recordDoseTaken(medicationId: String, takenAt: Instant = Instant.now()) {
-        viewModelScope.launch {
-            val event = DoseEvent(
-                id = Uuid.random().toString(),
-                medicationId = medicationId,
-                takenAt = takenAt,
-            )
-            repository.upsertDoseEvent(event)
-
-            val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return@launch
-            val medication = repository.getMedication(medicationId) ?: return@launch
-            val written = PersonalHealthRecords.upsert(
-                dataSourceId,
-                FhirRecords.doseEventJson(event, medication),
-            ) ?: return@launch
-            repository.upsertDoseEvent(
-                event.copy(fhirResourceId = written, dataSourceId = dataSourceId)
-            )
-        }
-    }
-
-    fun deleteDoseEvent(event: DoseEvent) {
-        viewModelScope.launch {
-            repository.deleteDoseEvent(event)
-            val dataSourceId = event.dataSourceId
-            val fhirId = event.fhirResourceId
-            if (dataSourceId != null && fhirId != null) {
-                PersonalHealthRecords.delete(
-                    dataSourceId,
-                    PersonalHealthRecords.medicationStatementResourceType,
-                    fhirId,
-                )
-            }
-        }
-    }
-
-    // --- Allergies and conditions --------------------------------------------
-
-    fun saveAllergyDraft() {
-        val draft = _allergyDraft.value
-        if (draft.displayName.isBlank()) return
-        viewModelScope.launch {
-            val existing = draft.editingId?.let { repository.getAllergy(it) }
-            val entry = (existing ?: AllergyEntry(
-                id = Uuid.random().toString(),
-                displayName = "",
-                recordedAt = Instant.now(),
-            )).copy(
-                rxcui = draft.rxcui,
-                displayName = draft.displayName.trim(),
-                category = draft.category,
-                criticality = draft.criticality,
-                reaction = draft.reaction.blankToNull(),
-                onsetAt = draft.onsetOn?.toInstant(),
-                note = draft.note.blankToNull(),
-            )
-            repository.upsertAllergy(entry)
-            mirrorAllergy(entry.id)
-        }
-    }
-
-    fun deleteAllergy(entry: AllergyEntry) {
-        viewModelScope.launch {
-            repository.deleteAllergy(entry)
-            val dataSourceId = entry.dataSourceId
-            val fhirId = entry.fhirResourceId
-            if (dataSourceId != null && fhirId != null) {
-                PersonalHealthRecords.delete(
-                    dataSourceId,
-                    PersonalHealthRecords.allergyResourceType,
-                    fhirId,
-                )
-            }
-        }
-    }
-
-    private suspend fun mirrorAllergy(id: String) {
-        val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return
-        val entry = repository.getAllergy(id) ?: return
-        val written = PersonalHealthRecords.upsert(
-            dataSourceId,
-            FhirRecords.allergyIntoleranceJson(entry),
-        ) ?: return
-        repository.upsertAllergy(entry.copy(fhirResourceId = written, dataSourceId = dataSourceId))
-    }
-
-    fun saveConditionDraft() {
-        val draft = _conditionDraft.value
-        if (draft.displayName.isBlank()) return
-        viewModelScope.launch {
-            val existing = draft.editingId?.let { repository.getCondition(it) }
-            val entry = (existing ?: ConditionEntry(
-                id = Uuid.random().toString(),
-                displayName = "",
-                onsetAt = Instant.now(),
-            )).copy(
-                icd10Code = draft.icd10Code,
-                displayName = draft.displayName.trim(),
-                status = draft.status,
-                onsetAt = draft.onsetOn.toInstant(),
-                resolvedAt = draft.resolvedOn?.toInstant(),
-                note = draft.note.blankToNull(),
-            )
-            repository.upsertCondition(entry)
-            mirrorCondition(entry.id)
-        }
-    }
-
-    fun deleteCondition(entry: ConditionEntry) {
-        viewModelScope.launch {
-            repository.deleteCondition(entry)
-            val dataSourceId = entry.dataSourceId
-            val fhirId = entry.fhirResourceId
-            if (dataSourceId != null && fhirId != null) {
-                PersonalHealthRecords.delete(
-                    dataSourceId,
-                    PersonalHealthRecords.conditionResourceType,
-                    fhirId,
-                )
-            }
-        }
-    }
-
-    private suspend fun mirrorCondition(id: String) {
-        val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return
-        val entry = repository.getCondition(id) ?: return
-        val written = PersonalHealthRecords.upsert(
-            dataSourceId,
-            FhirRecords.conditionJson(entry),
-        ) ?: return
-        repository.upsertCondition(entry.copy(fhirResourceId = written, dataSourceId = dataSourceId))
-    }
-
-    // --- Lab results and the standing profile --------------------------------
-
-    fun saveLabDraft() {
-        val draft = _labDraft.value
-        if (draft.displayName.isBlank()) return
-        viewModelScope.launch {
-            val existing = draft.editingId?.let { repository.getLabResult(it) }
-            // A result is either a number or a word. Anything that does not parse is kept verbatim
-            // as text rather than being coerced to zero, because "positive" and "trace" are real
-            // results and silently turning one into 0.0 would be a clinically wrong record.
-            val numeric = draft.value.trim().replace(',', '.').toDoubleOrNull()
-            val entry = (existing ?: LabResultEntry(
-                id = Uuid.random().toString(),
-                displayName = "",
-                takenAt = Instant.now(),
-            )).copy(
-                loincCode = draft.loincCode,
-                displayName = draft.displayName.trim(),
-                value = numeric,
-                valueText = if (numeric == null) draft.value.blankToNull() else null,
-                unit = draft.unit.blankToNull(),
-                referenceLow = draft.referenceLow.trim().toDoubleOrNull(),
-                referenceHigh = draft.referenceHigh.trim().toDoubleOrNull(),
-                takenAt = draft.takenOn.toInstant(),
-                note = draft.note.blankToNull(),
-            )
-            repository.upsertLabResult(entry)
-            mirrorLabResult(entry.id)
-        }
-    }
-
-    fun deleteLabResult(entry: LabResultEntry) {
-        viewModelScope.launch {
-            repository.deleteLabResult(entry)
-            val dataSourceId = entry.dataSourceId
-            val fhirId = entry.fhirResourceId
-            if (dataSourceId != null && fhirId != null) {
-                PersonalHealthRecords.delete(
-                    dataSourceId,
-                    PersonalHealthRecords.observationResourceType,
-                    fhirId,
-                )
-            }
-        }
-    }
-
-    private suspend fun mirrorLabResult(id: String) {
-        val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return
-        val entry = repository.getLabResult(id) ?: return
-        val written = PersonalHealthRecords.upsert(
-            dataSourceId,
-            FhirRecords.labResultJson(entry),
-        ) ?: return
-        repository.upsertLabResult(entry.copy(fhirResourceId = written, dataSourceId = dataSourceId))
-    }
-
-    /**
-     * Records a new pregnancy status, dated now.
-     *
-     * Each change writes a fresh observation rather than editing the last one, because "pregnant as
-     * of March" and "not pregnant as of September" are both true statements about different moments
-     * and a clinician reading the record needs the date attached.
-     */
-    fun setPregnancyStatus(status: PregnancyStatus, dueDate: LocalDate?) {
-        viewModelScope.launch {
-            val now = Instant.now()
-            val current = repository.getProfile() ?: HealthProfile()
-            val updated = current.copy(
-                pregnancyStatus = status,
-                dueDate = dueDate?.toInstant(),
-                pregnancyRecordedAt = now,
-                pregnancyFhirId = current.pregnancyFhirId ?: Uuid.random().toString(),
-            )
-            repository.upsertProfile(updated)
-            mirrorProfile(pregnancy = true)
-        }
-    }
-
-    fun setSmokingStatus(status: SmokingStatus) {
-        viewModelScope.launch {
-            val now = Instant.now()
-            val current = repository.getProfile() ?: HealthProfile()
-            val updated = current.copy(
-                smokingStatus = status,
-                smokingRecordedAt = now,
-                smokingFhirId = current.smokingFhirId ?: Uuid.random().toString(),
-            )
-            repository.upsertProfile(updated)
-            mirrorProfile(pregnancy = false)
-        }
-    }
-
-    private suspend fun mirrorProfile(pregnancy: Boolean) {
-        val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return
-        val profile = repository.getProfile() ?: return
-        if (pregnancy) {
-            val id = profile.pregnancyFhirId ?: return
-            val recordedAt = profile.pregnancyRecordedAt ?: return
-            PersonalHealthRecords.upsert(
-                dataSourceId,
-                FhirRecords.pregnancyStatusJson(
-                    id, profile.pregnancyStatus, recordedAt, profile.dueDate
-                ),
-            )
-        } else {
-            val id = profile.smokingFhirId ?: return
-            val recordedAt = profile.smokingRecordedAt ?: return
-            PersonalHealthRecords.upsert(
-                dataSourceId,
-                FhirRecords.smokingStatusJson(id, profile.smokingStatus, recordedAt),
-            )
-        }
-        repository.upsertProfile(profile.copy(dataSourceId = dataSourceId))
-    }
-
-    /** Records an answer to one social history question, dated now. */
-    fun setSocialHistoryAnswer(
-        question: SocialHistoryQuestions.Question,
-        answer: SocialHistoryQuestions.Answer,
-    ) {
-        viewModelScope.launch {
-            val existing = repository.getProfileAnswer(question.loinc)
-            val row = ProfileAnswer(
-                loincCode = question.loinc,
-                answerCode = answer.code,
-                recordedAt = Instant.now(),
-                // Reusing the id is what makes this an update. Minting a new one leaves the old
-                // observation behind, and the next import then sees two answers to one question.
-                fhirResourceId = existing?.fhirResourceId ?: Uuid.random().toString(),
-                dataSourceId = existing?.dataSourceId,
-            )
-            repository.upsertProfileAnswer(row)
-
-            val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return@launch
-            val fhirId = row.fhirResourceId ?: return@launch
-            PersonalHealthRecords.upsert(
-                dataSourceId,
-                FhirRecords.socialHistoryAnswerJson(fhirId, question, answer, row.recordedAt),
-            ) ?: return@launch
-            repository.upsertProfileAnswer(row.copy(dataSourceId = dataSourceId))
-        }
-    }
-
-    /**
-     * Un-answers a question, removing the observation as well as the local row.
-     *
-     * Deleting only locally would leave the answer in Health Connect for the next import to bring
-     * straight back.
-     */
-    fun clearSocialHistoryAnswer(question: SocialHistoryQuestions.Question) {
-        viewModelScope.launch {
-            val existing = repository.getProfileAnswer(question.loinc)
-            repository.deleteProfileAnswer(question.loinc)
-            val dataSourceId = existing?.dataSourceId ?: return@launch
-            val fhirId = existing.fhirResourceId ?: return@launch
-            PersonalHealthRecords.delete(
-                dataSourceId,
-                PersonalHealthRecords.observationResourceType,
-                fhirId,
-            )
-        }
-    }
-
-    // --- Import --------------------------------------------------------------
-
-    /**
-     * Pulls vaccinations and medications out of Health Connect into Room.
-     *
-     * This is what surfaces records a hospital or pharmacy has synced in, so it deliberately reads
-     * every data source rather than only this app's. Rows the app wrote are matched on their FHIR id
-     * and left alone; anything else is inserted.
-     */
-    fun importFromHealthConnect() {
-        if (_syncing.value || !PersonalHealthRecords.isAvailable()) return
-        viewModelScope.launch {
-            _syncing.value = true
-            try {
-                val vaccines = PersonalHealthRecords.readAll(PersonalHealthRecords.vaccinesType)
-                    .mapNotNull { resource ->
-                        FhirRecords.parseImmunization(resource.data, resource.dataSourceId)
-                    }
-                if (vaccines.isNotEmpty()) repository.upsertVaccinations(vaccines)
-
-                // Medications are MedicationRequests; a MedicationStatement in the same category is
-                // a dose that was taken. Old records written by an earlier build are plain
-                // statements with no basedOn, so they parse as neither and are skipped rather than
-                // being misread as doses.
-                val medResources = PersonalHealthRecords.readAll(PersonalHealthRecords.medicationsType)
-
-                val meds = medResources.mapNotNull { resource ->
-                    FhirRecords.parseMedicationRequest(resource.data, resource.dataSourceId)
-                }
-                if (meds.isNotEmpty()) {
-                    repository.upsertMedications(meds.map { it.first })
-                    // An imported schedule arrives disabled, so this cannot start alarms on its own.
-                    meds.mapNotNull { it.second }.forEach { repository.upsertSchedule(it) }
-                }
-
-                val doses = medResources.mapNotNull { resource ->
-                    FhirRecords.parseDoseEvent(resource.data, resource.dataSourceId)
-                }
-                if (doses.isNotEmpty()) repository.upsertDoseEvents(doses)
-
-                val allergyRows = PersonalHealthRecords.readAll(PersonalHealthRecords.allergiesType)
-                    .mapNotNull { resource ->
-                        FhirRecords.parseAllergyIntolerance(resource.data, resource.dataSourceId)
-                    }
-                if (allergyRows.isNotEmpty()) repository.upsertAllergies(allergyRows)
-
-                val conditionRows = PersonalHealthRecords.readAll(PersonalHealthRecords.conditionsType)
-                    .mapNotNull { resource ->
-                        FhirRecords.parseCondition(resource.data, resource.dataSourceId)
-                    }
-                if (conditionRows.isNotEmpty()) repository.upsertConditions(conditionRows)
-
-                val labRows = PersonalHealthRecords.readAll(PersonalHealthRecords.labsType)
-                    .mapNotNull { resource ->
-                        FhirRecords.parseLabResult(resource.data, resource.dataSourceId)
-                    }
-                if (labRows.isNotEmpty()) repository.upsertLabResults(labRows)
-
-                importProfile()
-            } catch (e: Exception) {
-                Log.e(TAG, "Import from Health Connect failed", e)
-            } finally {
-                _syncing.value = false
-            }
-        }
-    }
-
-    /**
-     * Pulls the two standing observations back out of Health Connect.
-     *
-     * Both live in the same PHR category and are told apart by their LOINC code, since a category
-     * read returns every social-history observation a provider has ever written — alcohol use,
-     * housing status and the rest — not just the two this app writes. Only the newest of each is
-     * kept: these are current answers, not a log.
-     */
-    private suspend fun importProfile() {
-        val resources = PersonalHealthRecords.readAll(PersonalHealthRecords.socialHistoryType) +
-            PersonalHealthRecords.readAll(PersonalHealthRecords.pregnancyType)
-        if (resources.isEmpty()) return
-
-        var profile = repository.getProfile() ?: HealthProfile()
-
-        // Newest answer per question. A category read returns every social-history observation the
-        // phone holds, which can include several for the same question - from a provider, or from
-        // an older build of this app - and picking whichever came last in the list is how an answer
-        // appears to revert after being set.
-        val newest = mutableMapOf<String, ProfileAnswer>()
-
-        resources.forEach { resource ->
-            val loinc = FhirRecords.observationLoincCode(resource.data)
-            when (loinc) {
-                FhirRecords.LOINC_PREGNANCY_STATUS ->
-                    FhirRecords.parsePregnancyStatus(resource.data)?.let { (status, due) ->
-                        profile = profile.copy(
-                            pregnancyStatus = status,
-                            dueDate = due,
-                            pregnancyFhirId = profile.pregnancyFhirId
-                                ?: FhirRecords.resourceId(resource.data),
-                        )
-                    }
-                FhirRecords.LOINC_SMOKING_STATUS ->
-                    FhirRecords.parseSmokingStatus(resource.data)?.let { status ->
-                        profile = profile.copy(
-                            smokingStatus = status,
-                            smokingFhirId = profile.smokingFhirId
-                                ?: FhirRecords.resourceId(resource.data),
-                        )
-                    }
-                else -> {
-                    // Anything else in this category that is one of ours, matched by question code.
-                    // A provider's social history contains plenty this app does not ask about.
-                    val question = loinc?.let { SocialHistoryQuestions.byLoinc(it) } ?: return@forEach
-                    val answerCode = FhirRecords.parseSocialHistoryAnswer(resource.data)
-                        ?: return@forEach
-                    // Refuse an answer outside the question's own list rather than storing a code
-                    // the selector could never show.
-                    if (question.answers.none { it.code == answerCode }) return@forEach
-
-                    val candidate = ProfileAnswer(
-                        loincCode = question.loinc,
-                        answerCode = answerCode,
-                        // The observation's own date, not now. Using now would make every import
-                        // look like the freshest answer and would misdate the "Recorded" line.
-                        recordedAt = FhirRecords.observationEffective(resource.data)
-                            ?: return@forEach,
-                        fhirResourceId = FhirRecords.resourceId(resource.data),
-                        dataSourceId = resource.dataSourceId,
-                    )
-                    val held = newest[question.loinc]
-                    if (held == null || candidate.recordedAt.isAfter(held.recordedAt)) {
-                        newest[question.loinc] = candidate
-                    }
-                }
-            }
-        }
-
-        newest.values.forEach { incoming ->
-            val local = repository.getProfileAnswer(incoming.loincCode)
-            // Never overwrite a newer local answer. The user may have just tapped one while this
-            // import was still reading, and their answer should win over what was on disk before.
-            if (local == null || incoming.recordedAt.isAfter(local.recordedAt)) {
-                repository.upsertProfileAnswer(incoming)
-            }
-        }
-        repository.upsertProfile(profile)
-    }
-
-    companion object {
-        private const val TAG = "MedicalViewModel"
-    }
 }
 
 /** Trims a trailing ".0" so an integral result edits back as "12" rather than "12.0". */
-private fun formatNumber(value: Double): String =
+internal fun formatNumber(value: Double): String =
     if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
 
 class MedicalViewModelFactory(

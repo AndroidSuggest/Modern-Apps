@@ -9,6 +9,8 @@ import com.vayunmathur.euicc.ui.DownloadScreen
 import com.vayunmathur.euicc.ui.EuiccHomeScreen
 import com.vayunmathur.euicc.ui.ProfileDetailScreen
 import com.vayunmathur.euicc.ui.QrScannerScreen
+import com.vayunmathur.library.util.ListDetailPage
+import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -28,7 +30,7 @@ fun Navigation(viewModel: EuiccViewModel) {
     }
 
     MainNavigation(backStack) {
-        entry<Route.Home> {
+        entry<Route.Home>(metadata = ListPage()) {
             EuiccHomeScreen(
                 state = viewModel.state,
                 backStack = backStack,
@@ -37,7 +39,7 @@ fun Navigation(viewModel: EuiccViewModel) {
             )
         }
         // Morph: the tapped row's profile name travels up into the app bar here.
-        entry<Route.ProfileDetail>(metadata = MorphPage()) { route ->
+        entry<Route.ProfileDetail>(metadata = ListDetailPage() + MorphPage()) { route ->
             ProfileDetailScreen(
                 iccid = route.iccid,
                 state = viewModel.state,
@@ -48,7 +50,7 @@ fun Navigation(viewModel: EuiccViewModel) {
                 onRename = { profile, name -> viewModel.rename(profile.iccid, name) },
             )
         }
-        entry<Route.DeviceInfo> {
+        entry<Route.DeviceInfo>(metadata = ListDetailPage()) {
             DeviceInfoScreen(
                 state = viewModel.state,
                 backStack = backStack,

@@ -64,8 +64,8 @@ object OfficeRoles {
 }
 
 /** How long a collaborator stays visible after their last activity, and how long "typing…" lingers. */
-private const val PRESENCE_TTL_MS = 5 * 60 * 1000L
-private const val TYPING_TTL_MS = 3000L
+internal const val PRESENCE_TTL_MS = 5 * 60 * 1000L
+internal const val TYPING_TTL_MS = 3000L
 
 /** Ephemeral presence for a collaborator in a document (relayed encrypted; never stored). */
 @Serializable

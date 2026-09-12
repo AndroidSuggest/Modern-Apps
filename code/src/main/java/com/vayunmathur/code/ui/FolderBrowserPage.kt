@@ -27,6 +27,7 @@ import com.vayunmathur.code.R
 import com.vayunmathur.code.Route
 import com.vayunmathur.code.util.FileFiles
 import com.vayunmathur.code.util.EditorViewModel
+import com.vayunmathur.code.util.openFolder
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.HorizontalDivider

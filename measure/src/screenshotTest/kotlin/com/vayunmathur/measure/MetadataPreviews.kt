@@ -2,6 +2,7 @@ package com.vayunmathur.measure
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.measure.data.model.Anchor
 import com.vayunmathur.measure.data.model.MeasurementKind
@@ -29,6 +30,9 @@ import com.vayunmathur.measure.ui.SettingsContent
  * Store listing screenshots, rendered from Compose previews rather than an instrumented
  * test. Numbered so the collected image order matches the listing order.
  */
+
+/** Desktop-wide (1280dp >= 840dp), so the letterboxed expanded layout renders. */
+private const val EXPANDED = "spec:width=1280dp,height=800dp,dpi=240"
 
 @Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
@@ -110,5 +114,24 @@ fun Preview6Settings() {
             state = SettingsUiState(levelCalibrated = true),
             actions = SettingsActions.Noop,
         )
+    }
+}
+
+class ExpandedPreviews {
+    @PreviewTest
+    @Preview(name = "7-saved-expanded", device = EXPANDED, showSystemUi = true)
+    @Composable
+    fun Preview7SavedExpanded() {
+        DynamicTheme {
+            SavedMeasurementsContent(
+                state = SavedUiState(
+                    measurements = listOf(
+                        SavedMeasurement(1, "Kitchen wall", MeasurementKind.Distance, 3.42, 0L),
+                        SavedMeasurement(2, "Rug", MeasurementKind.Area, 4.18, 0L),
+                    ),
+                ),
+                actions = SavedActions.Noop,
+            )
+        }
     }
 }

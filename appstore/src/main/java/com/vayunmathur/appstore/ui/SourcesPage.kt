@@ -23,6 +23,9 @@ import com.vayunmathur.appstore.data.ModernAppsRepo
 import com.vayunmathur.appstore.data.accrescent.AccrescentRepo
 import com.vayunmathur.appstore.data.security.ApkCertificates
 import com.vayunmathur.appstore.util.AppStoreViewModel
+import com.vayunmathur.appstore.util.setAutoInstallUpdates
+import com.vayunmathur.appstore.util.setSourceEnabled
+import com.vayunmathur.appstore.util.syncSources
 import com.vayunmathur.library.ui.AppBarAlignment
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
