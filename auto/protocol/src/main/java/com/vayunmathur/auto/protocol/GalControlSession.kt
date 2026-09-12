@@ -1,16 +1,22 @@
 package com.vayunmathur.auto.protocol
 
+import com.vayunmathur.auto.protocol.gal.AudioFocusNotification
+import com.vayunmathur.auto.protocol.gal.AudioFocusRequestMessage
+import com.vayunmathur.auto.protocol.gal.AudioFocusRequestType
 import com.vayunmathur.auto.protocol.gal.AuthComplete
 import com.vayunmathur.auto.protocol.gal.ByeByeReason
 import com.vayunmathur.auto.protocol.gal.ByeByeRequest
 import com.vayunmathur.auto.protocol.gal.ChannelOpenRequest
 import com.vayunmathur.auto.protocol.gal.ChannelOpenResponse
 import com.vayunmathur.auto.protocol.gal.MessageStatus
+import com.vayunmathur.auto.protocol.gal.NavigationFocusNotification
 import com.vayunmathur.auto.protocol.gal.PingRequest
 import com.vayunmathur.auto.protocol.gal.PingResponse
 import com.vayunmathur.auto.protocol.gal.Service
 import com.vayunmathur.auto.protocol.gal.ServiceDiscoveryRequest
 import com.vayunmathur.auto.protocol.gal.ServiceDiscoveryResponse
+import com.vayunmathur.auto.protocol.gal.VideoFocusIndication
+import com.vayunmathur.auto.protocol.gal.VideoFocusMode
 import java.nio.ByteBuffer
 import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLEngineResult.HandshakeStatus
@@ -107,6 +113,19 @@ class GalControlSession(
     var pendingChannels: List<Int> = emptyList()
         private set
 
+    /**
+     * Who owns the screen and the speakers. Fed by the control notifications below
+     * and, for video, by [onVideoFocusIndication] (the 0x8008 rides the video
+     * channel, so the sink forwards it). The driver observes [onFocusChange].
+     */
+    val focus = FocusArbitration()
+
+    /**
+     * Fires whenever [focus] accepts a change, on whatever thread drives the session.
+     * The Android side mirrors this into `AutoSessionState` without polling.
+     */
+    var onFocusChange: (FocusChange) -> Unit = {}
+
     private var tlsInbound: ByteBuffer = ByteBuffer.allocate(0)
 
     /** Handles one control-channel message and returns whatever should go back. */
@@ -122,14 +141,15 @@ class GalControlSession(
             state = SessionState.CLOSED
             emptyList()
         }
-        // Focus and status notifications are observed by higher layers; the control channel
-        // itself has nothing to answer.
-        GalMessage.Control.AUDIO_FOCUS_NOTIFICATION,
-        GalMessage.Control.NAVIGATION_FOCUS_NOTIFICATION,
+        // Call availability and discovery updates are observed by higher layers;
+        // the control channel itself has nothing to answer. Focus notifications
+        // feed [focus] instead (see below).
         GalMessage.Control.CALL_AVAILABILITY_STATUS,
         GalMessage.Control.SERVICE_DISCOVERY_UPDATE,
         GalMessage.Control.PING_RESPONSE,
         -> emptyList()
+        GalMessage.Control.AUDIO_FOCUS_NOTIFICATION -> onAudioFocusNotification(payload)
+        GalMessage.Control.NAVIGATION_FOCUS_NOTIFICATION -> onNavigationFocusNotification(payload)
 
         // The head unit's rejection of one of our messages. Observed, not fatal:
         // gearhead's `izu` logs it (`ai(1698)`) and carries on, and channel-level
@@ -189,6 +209,34 @@ class GalControlSession(
             payload = ByeByeRequest.newBuilder().setReason(reason).build().toByteArray(),
             encrypted = true,
         )
+
+    /**
+     * Folds a video focus indication (0x8008) into [focus].
+     *
+     * The indication rides the video channel, not channel 0, so the video sink parses
+     * it and forwards it here; the session stays the single owner of the
+     * arbitration state. Observed, never answered.
+     *
+     * An unset mode is ignored: the lite runtime drops unknown enum values on parse,
+     * so a future mode arrives as absent rather than as a wrong known one -- never
+     * clobber a known state with it.
+     */
+    fun onVideoFocusIndication(indication: VideoFocusIndication) {
+        if (!indication.hasMode()) return
+        notifyFocus(focus.onVideoFocus(indication.mode))
+    }
+
+    /**
+     * Asks the head unit for audio focus (control 0x18) for the audio sinks.
+     *
+     * Fire-and-forget: the head unit answers with an 0x13 notification, which lands
+     * in [focus] via [onAudioFocusNotification]. Encrypted like every post-auth send.
+     */
+    fun requestAudioFocus(type: AudioFocusRequestType): OutboundMessage = OutboundMessage(
+        type = GalMessage.Control.AUDIO_FOCUS_REQUEST,
+        payload = AudioFocusRequestMessage.newBuilder().setRequest(type).build().toByteArray(),
+        encrypted = true,
+    )
 
     // ---- handlers ----
 
@@ -313,6 +361,28 @@ class GalControlSession(
         val id = pendingChannels.firstOrNull() ?: return
         pendingChannels -= id
         refusedChannels += id
+    }
+
+    /**
+     * Folds a control 0x13 audio focus notification into [focus]. Observed, never
+     * answered: like gearhead's `izu`, the session carries on regardless.
+     */
+    private fun onAudioFocusNotification(payload: ByteArray): List<OutboundMessage> {
+        notifyFocus(focus.onAudioFocus(AudioFocusNotification.parseFrom(payload).state))
+        return emptyList()
+    }
+
+    /**
+     * Folds a control 0x0E navigation focus notification into [focus]. Observed,
+     * never answered.
+     */
+    private fun onNavigationFocusNotification(payload: ByteArray): List<OutboundMessage> {
+        notifyFocus(focus.onNavigationFocus(NavigationFocusNotification.parseFrom(payload).focus))
+        return emptyList()
+    }
+
+    private fun notifyFocus(change: FocusChange) {
+        if (change.any) onFocusChange(change)
     }
 
     private fun onPing(payload: ByteArray): List<OutboundMessage> = listOf(

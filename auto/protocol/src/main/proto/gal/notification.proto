@@ -1,0 +1,66 @@
+// Google Automotive Link messaging channel (service 14, NOTIFICATION).
+//
+// MA sender-defined DTOs: the teardown recovered the service descriptor slot
+// (`Service.notification`, field 13, `xjm`) but never the xjm channel message
+// IDs, so there is nothing exact to pin here. These messages frame the
+// Phase 7 set -- threads, body, reply, mark-read -- as proto2 channel payloads
+// behind the 2-byte type prefix, exactly like every other service channel.
+//
+// This is a DHU-tolerated stub by construction: an unknown ch14 payload earns
+// at worst a bare MessageError (0xff) on ch14 while video and the bring-up
+// carry on. If the teardown ever recovers the real xjm IDs, they replace the
+// MA-defined types in `GalMessage.Notification` and these DTOs get re-pinned
+// against them.
+
+syntax = "proto2";
+
+package gal;
+
+option java_package = "com.vayunmathur.auto.protocol.gal";
+option java_multiple_files = true;
+
+// One conversation. Phone -> head unit, inside THREADS.
+message MessagingThread {
+  required string thread_id = 1;
+  optional string title = 2;
+  optional string sender = 3;
+  optional int64 last_message_ms = 4;
+  optional uint32 unread_count = 5;
+}
+
+// A thread-list snapshot. Phone -> head unit (0x8001).
+message MessagingThreads {
+  repeated MessagingThread threads = 1;
+}
+
+// One message body posted. Phone -> head unit (0x8002).
+message MessagingMessage {
+  required string thread_id = 1;
+  required string message_id = 2;
+  optional string sender = 3;
+  required string body = 4;
+  optional int64 timestamp_ms = 5;
+}
+
+// A thread dismissed on the phone or read elsewhere.
+// Phone -> head unit (0x8003).
+message MessagingDismiss {
+  required string thread_id = 1;
+  optional string message_id = 2;
+}
+
+enum MessagingActionType {
+  // The user typed a reply on the head unit; `reply_text` carries it.
+  MESSAGE_REPLY = 1;
+  // The user marked the thread read on the head unit.
+  MESSAGE_MARK_READ = 2;
+  // The user asked to reply by voice: open a ch6 mic turn for this thread.
+  MESSAGE_VOICE_REPLY_BEGIN = 3;
+}
+
+// A user action on the head unit. HU -> phone (0x8004).
+message MessagingAction {
+  required string thread_id = 1;
+  required MessagingActionType action = 2;
+  optional string reply_text = 3;
+}
