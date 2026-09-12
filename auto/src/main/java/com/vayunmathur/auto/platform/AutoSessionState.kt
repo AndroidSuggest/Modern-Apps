@@ -278,8 +278,6 @@ object AutoSessionState {
         _lastAckAgeMs.value = (nowWall - at).coerceAtLeast(0)
     }
 
-    private companion object {
-        /** Sliding window the fps rates are computed over. */
-        const val FPS_WINDOW_MS = 5_000L
-    }
+    /** Sliding window the fps rates are computed over. */
+    private const val FPS_WINDOW_MS = 5_000L
 }
