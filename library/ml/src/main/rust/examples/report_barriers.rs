@@ -6,9 +6,17 @@
 //!
 //! # Why
 //!
-//! `vulkan::run::Net::record` emits a `vkCmdPipelineBarrier` after **every** op, and on a Tensor
-//! G4 that is 74% of a Supertonic utterance — 5,091 ms falling to 1,194 ms with the barriers taken
-//! out. See `analysis/maml_vs_litert.md`.
+//! `vulkan::run::Net::record` emits a `vkCmdPipelineBarrier` after **every** op, which is
+//! expensive — but how expensive is **unmeasured**. The figure this header used to quote (74% of a
+//! Supertonic utterance, 5,091 ms falling to 1,194 ms) came from a no-barrier control that
+//! delivered 43,008 frames against a correct run's 150,528, so it compared a full utterance
+//! against a truncated one and measured output length as much as barrier cost.
+//!
+//! The one valid same-work comparison available is `narrow` at 2,179 ms against `none` at
+//! 1,160 ms, both at 43,008 frames: a 47% delta, at a truncated workload and with a cheaper
+//! barrier than the default. Treat that as a lower bound and not as the headline. A real ceiling
+//! needs the frame count pinned so both paths do identical work — that is task 11. See
+//! `analysis/maml_vs_litert.md` section 6.
 //!
 //! There are two ways to spend less on that, and this decides between them before either is
 //! built:

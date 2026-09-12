@@ -1,10 +1,16 @@
 //! Opt-in timing, silent unless it is asked for.
 //!
-//! This runtime's cost is dominated by things that do not show up in a profile of the arithmetic
-//! — see `analysis/maml_vs_litert.md`, where 74% of an utterance turned out to be the pipeline
-//! barrier between one op and the next — so the numbers have to come from the runtime itself.
-//! They are also useless in aggregate: "inference took 5.5 seconds" says nothing, while "the
-//! sampler ran 32 times at 158 ms of which 96 ms was barriers" says everything.
+//! This runtime's cost is dominated by things that do not show up in a profile of the arithmetic —
+//! serialising every op is expensive, though the size of that effect is **unmeasured**: the
+//! no-barrier control delivered 43,008 frames against a correct run's 150,528, so it compared a
+//! full utterance against a truncated one. The one valid same-work pair, `narrow` 2,179 ms against
+//! `none` 1,160 ms at 43,008 frames each, puts it at 47% of a truncated run with a cheaper
+//! barrier. See `analysis/maml_vs_litert.md` section 6; pinning the frame count so both paths do
+//! identical work is task 11.
+//!
+//! Either way the numbers have to come from the runtime itself, and they are useless in aggregate:
+//! "inference took 5.5 seconds" says nothing, while "the sampler ran 32 times at 158 ms of which
+//! 96 ms was barriers" says everything.
 //!
 //! Switched on by `MODELRUNNER_TIMING` or `debug.modelrunner.timing`; see [`crate::knobs`] for
 //! why there are two.

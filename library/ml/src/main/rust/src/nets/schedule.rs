@@ -2,10 +2,19 @@
 //!
 //! [`super::Plan`]'s `ops` field says "each depends on the results of the ones before it", and
 //! [`crate::vulkan::run::Net::record`] takes it literally: a `vkCmdPipelineBarrier` after every
-//! op. That claim is false in general, and it is expensive. Measured on a Tensor G4, removing the
-//! barriers from Supertonic's sampler takes it from 5,091 ms to 1,194 ms — **74% of an utterance
-//! is the drain between one op and the next**, at about 0.55 ms each. See
-//! `analysis/maml_vs_litert.md`.
+//! op. That claim is false in general, and serialising every op is expensive — but the **size of
+//! the effect is unmeasured**. This header used to say 5,091 ms falling to 1,194 ms, 74% of an
+//! utterance at about 0.55 ms a barrier. That came from a no-barrier control which delivered
+//! 43,008 frames against a correct run's 150,528, so it set a full utterance against a truncated
+//! one; the comparison captures output length at least as much as barrier cost.
+//!
+//! The one valid same-work pair is `narrow` at 2,179 ms against `none` at 1,160 ms, both at
+//! 43,008 frames — a 47% delta, at a truncated workload and with a barrier cheaper than the
+//! default, so it is a lower bound. A valid ceiling needs the frame count pinned so both paths do
+//! identical work; that is task 11. See `analysis/maml_vs_litert.md` section 6.
+//!
+//! None of which changes what this module is for: whatever a barrier costs, emitting one that is
+//! not needed costs all of it for nothing.
 //!
 //! This module answers the narrower question the runtime should have been asking: given what each
 //! op reads and writes, which pairs actually have to be ordered.
