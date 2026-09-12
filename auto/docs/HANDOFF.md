@@ -26,18 +26,22 @@ the Desktop Head Unit, shipping Google's extracted GAL credential.
 
 ## 2. Where it actually got to
 
-Verified live against `desktop-head-unit.exe` 2.0 over TCP:
+Verified live against `desktop-head-unit.exe` 2.0 over TCP (Run 8 + video run):
 
 ```
 HU → VersionRequest (1.7)          PH → VersionResponse (1.7, OK)   ✓
 HU → SslHandshake ×2               PH → SslHandshake ×2             ✓  TLS 1.2 established
-HU → AuthComplete (STATUS_SUCCESS) PH → ServiceDiscoveryRequest
-HU → MessageError (0xff, empty)                                     ✗  BLOCKED HERE
+HU → AuthComplete (STATUS_SUCCESS) PH → ServiceDiscoveryRequest    ✓  field 5 only
+HU → ServiceDiscoveryResponse      PH → ChannelOpen ×7 (services 1-7 in wire order) ✓
+HU → ChannelOpenResponse (SUCCESS) PH → MediaSetupRequest (video)  ✓
+HU → MediaConfig (index 0)         PH → VideoFocusRequest → MediaStart → H.264 frames ✓
 HU → PingRequest every 1s          PH → PingResponse                ✓  link stays healthy
 ```
 
-**The extracted GAL credential is accepted by a real Google head unit implementation.** That
-was the biggest open risk in the whole project and it is now closed.
+**The full GAL bring-up completes against a real Google head unit
+implementation, and H.264 frames stream with head-unit acks.** The biggest open
+risk in the whole project (credential acceptance) is closed, and so is every
+post-discovery sub-blocker from Task 6 (see §3).
 
 The ping/pong after the error is important evidence: DHU keeps pinging and keeps accepting
 our *encrypted* replies, so **application-data TLS works in both directions**. The failure is
@@ -47,18 +51,39 @@ Identical failure on a Pixel 8 (MAOS) and a Pixel 9 Pro XL (GrapheneOS), so it i
 protocol — nothing to do with the OS or with privileges.
 
 ### Not done
-- No pixels on a head unit. The video pipeline is written but never reached.
+- Render path unconfirmed: frames are encoded, sent and acked, but nobody has
+  confirmed they decode and display on the DHU surface yet.
 - No MAOS integration at all: the app is **sideloaded**, holds no role, and none of the
   role/privapp/RRO work from plan Phase 3 has been started.
 - USB (AOAP) and wireless transports not written. Only TCP, which is what DHU uses.
-- Audio, input and sensor channels not written.
+- Audio, input and sensor channels advertised but no traffic verified on them yet.
 
 ---
 
-## 3. The blocker, precisely
+## 3. The blocker, precisely — RESOLVED (Tasks 3+6)
 
-DHU answers our ServiceDiscoveryRequest (control message 5) with MessageError (255, empty
-payload) and then carries on pinging.
+DHU *used to* answer our ServiceDiscoveryRequest (control message 5) with
+MessageError (255, empty payload) and then carry on pinging. That blocker is
+closed, along with every sub-blocker found past it. What each turned out to be:
+
+1. **Discovery content** (Task 3, `8449cbeb7`): send only field 5 =
+   `"Google Pixel 8"` (MANUFACTURER-first), framing `0x0B`.
+2. **0x8 gating** (`a93db5e18`): wait for ChannelOpenResponse before media
+   setup; parse `xir` status.
+3. **Non-fatal 0xff** (`d9694dab4`): inbound MessageError is observed, session
+   stays ACTIVE (gearhead's `izu` logs and carries on).
+4. **Open queue** (`e5d2ff668`→`01abb3bbe`): sequential opens in HU wire order;
+   bare 0xff drains the pending open into refusedChannels.
+5. **CONTROL on 0x7** (`0b0a7cb6e`→`91f7b1d72`): 0x7 goes `0x0F` (CONTROL set),
+   scoped to the open path only; 0x5 stays CONTROL-less as accepted.
+6. **Target-channel opens** (`200b2c92b`): 0x7 rides the channel being opened
+   (`izd.b` sends via `izl.g(this.b, …)`); ch0-framed opens drew
+   STATUS_INVALID_CHANNEL (-5).
+7. **CONTROL-less setup** (`86039cc7c`): service-channel sends never set
+   CONTROL (`jbe.i` flags from `Lizm.f`, false for all service traffic);
+   our CONTROL-flagged 0x8000 was 0xff'd.
+8. **TLS wrap guard** (`572de7515`): fail loudly on zero-progress wrap instead
+   of spinning (also fixed a hung test worker).
 
 ### What has been ruled out
 - **Encryption.** DHU decrypts our PingResponses happily and we decrypt its messages.
