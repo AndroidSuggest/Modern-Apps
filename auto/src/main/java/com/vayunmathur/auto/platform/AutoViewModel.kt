@@ -2,6 +2,7 @@ package com.vayunmathur.auto.platform
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.auto.protocol.AudioSinkRole
 import com.vayunmathur.auto.protocol.VideoFocus
 import com.vayunmathur.auto.protocol.gal.AudioFocusState
 import kotlinx.coroutines.flow.SharingStarted

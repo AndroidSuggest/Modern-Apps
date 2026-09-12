@@ -3,9 +3,9 @@ package com.vayunmathur.auto.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.auto.R
-import com.vayunmathur.auto.platform.AudioSinkRole
 import com.vayunmathur.auto.platform.AudioSinkState
 import com.vayunmathur.auto.platform.AudioSinkStatus
+import com.vayunmathur.auto.protocol.AudioSinkRole
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.Text
 

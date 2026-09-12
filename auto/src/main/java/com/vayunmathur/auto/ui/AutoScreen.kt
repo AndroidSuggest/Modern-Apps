@@ -12,12 +12,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.auto.R
-import com.vayunmathur.auto.platform.AudioSinkRole
 import com.vayunmathur.auto.platform.AudioSinkStatus
 import com.vayunmathur.auto.platform.AutoConnectionState
 import com.vayunmathur.auto.platform.AutoViewModel
 import com.vayunmathur.auto.platform.NowPlayingInfo
 import com.vayunmathur.auto.platform.VideoInfo
+import com.vayunmathur.auto.protocol.AudioSinkRole
 import com.vayunmathur.auto.protocol.VideoFocus
 import com.vayunmathur.auto.protocol.gal.AudioFocusState
 import com.vayunmathur.library.ui.AppScaffold
