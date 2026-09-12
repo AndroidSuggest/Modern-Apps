@@ -221,8 +221,27 @@ class GalControlSessionTest {
     fun `a refused channel open is recorded, not fatal`() {
         // DHU 2.0 answers some opens with an empty MessageError and never sends
         // 0x8 at all; other times 0x8 carries non-SUCCESS. Either way the
-        // bring-up continues with the remaining services.
-        val session = session(GalCredential.serverEngine(context()))
+        // bring-up continues with the remaining services. Walk to ACTIVE first:
+        // opens only happen after discovery completes.
+        val context = context()
+        val server = GalCredential.serverEngine(context)
+        val car = context.createSSLEngine().apply { useClientMode = true }
+        val session = session(server)
+        session.onMessage(GalMessage.Control.VERSION_REQUEST, versionRequest(1, 6))
+        runHandshake(session, car)
+        session.onMessage(
+            GalMessage.Control.AUTH_COMPLETE,
+            AuthComplete.newBuilder()
+                .setStatus(MessageStatus.STATUS_SUCCESS.number)
+                .build()
+                .toByteArray(),
+        )
+        session.onMessage(
+            GalMessage.Control.SERVICE_DISCOVERY_RESPONSE,
+            headUnitServices().toByteArray(),
+        )
+        assertEquals(SessionState.ACTIVE, session.state)
+
         val service = Service.newBuilder().setId(GalService.VIDEO_SINK.id).build()
         session.openChannel(service)
         assertEquals(listOf(GalService.VIDEO_SINK.id), session.pendingChannels)
@@ -236,7 +255,7 @@ class GalControlSessionTest {
         assertEquals(setOf(GalService.VIDEO_SINK.id), session.refusedChannels)
         assertTrue(session.pendingChannels.isEmpty())
         assertNull(session.failure)
-        assertEquals(SessionState.DISCOVERING, session.state)
+        assertEquals(SessionState.ACTIVE, session.state)
     }
 
     @Test
