@@ -6,11 +6,15 @@ import android.graphics.Color
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.Surface
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.FutureTask
 
 /**
  * The car's screen, as a virtual display rendered into the encoder's input surface.
@@ -29,8 +33,19 @@ class CarDisplay(
 ) {
     private var virtualDisplay: VirtualDisplay? = null
     private var presentation: Presentation? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    /** Creates the display against [surface] and shows the car UI on it. */
+    private val isMainThread get() = Looper.myLooper() == Looper.getMainLooper()
+
+    /**
+     * Creates the display against [surface] and shows the car UI on it.
+     *
+     * The [Presentation] is created on the main thread: it builds a [Handler]
+     * internally, so constructing it on the `ma-auto-projection` worker thread (which
+     * has no [Looper]) crashes. That worker thread must stay Looper-free -- one
+     * `SSLEngine` backs the connection and an engine is not thread-safe -- so this
+     * hops to the main thread and waits, keeping the video bring-up order unchanged.
+     */
     fun show(surface: Surface) {
         val displayManager = context.getSystemService(DisplayManager::class.java)
         val display = displayManager.createVirtualDisplay(
@@ -43,14 +58,43 @@ class CarDisplay(
         ) ?: error("could not create the car virtual display")
         virtualDisplay = display
 
-        presentation = CarPresentation(context, display.display).also { it.show() }
+        presentation = showPresentation(display.display)
     }
 
+    /**
+     * Dismisses the car UI and releases the virtual display. The dismiss hops to the
+     * main thread to match [show]; it is fire-and-forget since nothing after it
+     * depends on the window being gone.
+     */
     fun release() {
-        presentation?.dismiss()
+        val shown = presentation
         presentation = null
+        if (shown != null) {
+            if (isMainThread) shown.dismiss() else mainHandler.post { shown.dismiss() }
+        }
         virtualDisplay?.release()
         virtualDisplay = null
+    }
+
+    /** Creates and shows the [Presentation] for [display] on the main thread. */
+    private fun showPresentation(display: android.view.Display): Presentation {
+        if (isMainThread) return CarPresentation(context, display).also { it.show() }
+        val show = FutureTask<CarPresentation> {
+            CarPresentation(context, display).also { it.show() }
+        }
+        mainHandler.post(show)
+        try {
+            return show.get()
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            virtualDisplay?.release()
+            virtualDisplay = null
+            throw RuntimeException("interrupted while showing the car display", e)
+        } catch (e: ExecutionException) {
+            virtualDisplay?.release()
+            virtualDisplay = null
+            throw e.cause ?: e
+        }
     }
 
     /**
