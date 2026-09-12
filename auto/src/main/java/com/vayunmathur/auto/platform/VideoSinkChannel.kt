@@ -69,7 +69,20 @@ class VideoSinkChannel(
         )
     }
 
-    fun onMessage(type: Int, payload: ByteArray) {
+    /**
+     * Handles an inbound message for this channel.
+     *
+     * [channelId] scopes the parse: 0x8004 is aliased across services (MediaAck
+     * on media channels, SensorError on the sensor channel), so a message for a
+     * different channel is ignored rather than misparsed. The service routes
+     * every service-channel message here today; a future sensor owner will take
+     * its own channel's traffic.
+     */
+    fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
+        if (channelId != this.channelId) {
+            Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            return
+        }
         when (type) {
             GalMessage.Media.CONFIG -> onSetupResponse(payload)
             GalMessage.Video.FOCUS_INDICATION -> onFocus(payload)

@@ -1,6 +1,7 @@
 package com.vayunmathur.auto.platform
 
 import android.os.SystemClock
+import com.vayunmathur.auto.protocol.AckTracker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,12 +41,14 @@ sealed interface VideoEvent {
     data class FrameSent(val presentationTimeUs: Long, val latencyUs: Long) : VideoEvent
 
     /**
-     * The head unit acknowledged frames (0x8004).
+     * The head unit acknowledged frames (0x8004 on the video channel).
      *
-     * [ackSeq] is the `ack` counter from the `MediaAck`, unsigned-extended; null
-     * when the head unit omits the field. [extraCount] is how many `field3`
-     * entries rode along. An ack confirms receipt, not visibility — the
-     * sender-side proxy for "visible" is acks advancing in step with frames.
+     * [ackSeq] is the `ack` frame counter from the `MediaAck`, unsigned-extended;
+     * null when the head unit omits the field. The counter is **mod 256** — it
+     * wraps, so the session unwraps it rather than treating a lower value as a
+     * regression. [extraCount] is how many `field3` entries rode along. An ack
+     * confirms receipt, not visibility — the sender-side proxy for "visible" is
+     * acks advancing in step with frames.
      */
     data class AckReceived(val ackSeq: Long?, val extraCount: Int) : VideoEvent
 
@@ -110,7 +113,7 @@ object AutoSessionState {
     private val _lastAckAt = MutableStateFlow<Long?>(null)
     val lastAckAt: StateFlow<Long?> = _lastAckAt.asStateFlow()
 
-    /** Highest 0x8004 `ack` counter seen; null until an ack carries the field. */
+    /** Highest 0x8004 `ack` counter seen, unwrapped across mod-256 wraps; null until an ack carries the field. */
     private val _lastAckSeq = MutableStateFlow<Long?>(null)
     val lastAckSeq: StateFlow<Long?> = _lastAckSeq.asStateFlow()
 
@@ -133,6 +136,14 @@ object AutoSessionState {
      */
     private val frameTimes = ArrayDeque<Long>()
     private val ackTimes = ArrayDeque<Long>()
+
+    /**
+     * Last unwrapped 0x8004 ack counter. The wire `ack` field is a frame counter
+     * mod 256, so it wraps: an [AckTracker] folds arrivals into a monotonically
+     * non-decreasing sequence. Single-threaded owner is the `ma-auto-projection`
+     * worker thread, like the timestamp windows above.
+     */
+    private val ackTracker = AckTracker()
 
     /** Wall-clock millis when the session became active, for the phone's elapsed counter. */
     private val _sessionStartedAt = MutableStateFlow<Long?>(null)
@@ -178,6 +189,7 @@ object AutoSessionState {
     private fun resetTelemetry() {
         frameTimes.clear()
         ackTimes.clear()
+        ackTracker.reset()
         _encodedFps.value = 0.0
         _ackFps.value = 0.0
         _lastAckAgeMs.value = null
@@ -242,8 +254,7 @@ object AutoSessionState {
         }
         _ackFps.value = ackTimes.size * 1_000.0 / FPS_WINDOW_MS
         if (ackSeq != null) {
-            val previous = _lastAckSeq.value
-            if (previous == null || ackSeq > previous) _lastAckSeq.value = ackSeq
+            _lastAckSeq.value = ackTracker.onAck(ackSeq)
         }
     }
 

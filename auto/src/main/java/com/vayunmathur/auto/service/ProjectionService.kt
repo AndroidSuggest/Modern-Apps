@@ -66,7 +66,9 @@ class ProjectionService : Service() {
                 sslContext = GalCredential.fromAssets(assets),
                 deviceModel = Build.MODEL,
                 deviceManufacturer = Build.MANUFACTURER,
-                onChannelMessage = { message -> video?.onMessage(message.type, message.payload) },
+                onChannelMessage = { message ->
+                    video?.onMessage(message.channelId, message.type, message.payload)
+                },
                 trace = { Log.d(TAG, it) },
             )
 
