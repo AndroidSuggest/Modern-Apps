@@ -631,7 +631,13 @@ struct SupertonicNets<'a> {
     timing: Timing,
 }
 
-/// TEMPORARY instrumentation: where an utterance's time goes.
+/// Where an utterance's time goes, filled in as the stages run.
+///
+/// Reported through [`crate::timing`], so it costs a branch per stage unless
+/// `MODELRUNNER_TIMING` or `debug.modelrunner.timing` is set. It is kept rather than deleted
+/// because the stage split is the whole diagnosis — `analysis/maml_vs_litert.md` turns on the
+/// sampler being 92% of an utterance and the barriers being 61% of the sampler, neither of which
+/// is visible from a total.
 #[derive(Default)]
 struct Timing {
     reshape: f64,
@@ -892,7 +898,7 @@ fn build_supertonic<'l>(
 
     let device_at = std::time::Instant::now();
     let shared = context::shared()?;
-    log(&format!("TIMING device {:.0} ms", device_at.elapsed().as_secs_f64() * 1000.0));
+    timing!("device {:.0} ms", device_at.elapsed().as_secs_f64() * 1000.0);
     let built = std::time::Instant::now();
     let duration_net = Reshaped::streamed(
         shared.clone(),
@@ -901,11 +907,11 @@ fn build_supertonic<'l>(
         SMALLEST,
         duration_plan,
     )?;
-    log(&format!("TIMING dp net {:.0} ms", built.elapsed().as_secs_f64() * 1000.0));
+    timing!("dp net {:.0} ms", built.elapsed().as_secs_f64() * 1000.0);
     let built = std::time::Instant::now();
     let text_net =
         Reshaped::streamed(shared.clone(), text_weights.offsets(), &text_weights, SMALLEST, text_plan)?;
-    log(&format!("TIMING ttl net {:.0} ms", built.elapsed().as_secs_f64() * 1000.0));
+    timing!("ttl net {:.0} ms", built.elapsed().as_secs_f64() * 1000.0);
     let built = std::time::Instant::now();
     let sampler_net = Reshaped::streamed(
         shared.clone(),
@@ -914,11 +920,11 @@ fn build_supertonic<'l>(
         (SMALLEST, SMALLEST),
         sampler_plan,
     )?;
-    log(&format!("TIMING ve net {:.0} ms", built.elapsed().as_secs_f64() * 1000.0));
+    timing!("ve net {:.0} ms", built.elapsed().as_secs_f64() * 1000.0);
     let built = std::time::Instant::now();
     let vocoder_net =
         Reshaped::streamed(shared, vocoder_weights.offsets(), &vocoder_weights, SMALLEST, vocoder_plan)?;
-    log(&format!("TIMING voc net {:.0} ms", built.elapsed().as_secs_f64() * 1000.0));
+    timing!("voc net {:.0} ms", built.elapsed().as_secs_f64() * 1000.0);
     let handle = SupertonicHandle {
         duration: duration_net,
         text: text_net,
@@ -1082,8 +1088,8 @@ fn speak_supertonic(
             noise.borrow_mut().normal(count)
         });
     let t = &nets.timing;
-    log(&format!(
-        "TIMING utterance {:.0} ms: reshape {:.0}, duration {:.0}, text {:.0}, sampler {:.0} over {} calls, vocoder {:.0}",
+    timing!(
+        "utterance {:.0} ms: reshape {:.0}, duration {:.0}, text {:.0}, sampler {:.0} over {} calls, vocoder {:.0}",
         whole.elapsed().as_secs_f64() * 1000.0,
         t.reshape,
         t.duration,
@@ -1091,7 +1097,7 @@ fn speak_supertonic(
         t.sampler,
         t.sampler_calls,
         t.vocoder,
-    ));
+    );
     out
 }
 

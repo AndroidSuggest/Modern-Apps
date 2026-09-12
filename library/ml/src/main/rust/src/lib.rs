@@ -45,11 +45,18 @@
 //! needs a `dlltool` on `PATH` to build; the NDK's `llvm-dlltool` works under that name.
 
 pub mod gate;
+pub mod knobs;
 pub mod logmel;
 pub mod microfrontend;
 pub mod nets;
 pub mod post;
 pub mod preprocess;
+// `#[macro_use]` so `timing!` is in scope for the modules declared after this one, which is
+// every module that measures anything. `#[macro_export]` alone puts it at the crate root for
+// other crates - the `examples/` are separate crates - but does not bring the bare name into
+// scope here.
+#[macro_use]
+pub mod timing;
 pub mod weights;
 
 pub mod vulkan;

@@ -28,7 +28,7 @@
 //! design. About 350 barriers per inference is the cost of that simplicity, and it is the
 //! first thing to look at if U^2-Netp is slower than it should be.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use ash::vk;
 
@@ -41,23 +41,154 @@ use super::context::Context;
 use super::pipeline::{Pipelines, MAX_WORKGROUPS_PER_DIM, WORKGROUP};
 use super::segment::Segments;
 
-/// TEMPORARY instrumentation.
-#[cfg(target_os = "android")]
-fn tlog(message: &str) {
-    #[link(name = "log")]
-    extern "C" {
-        fn __android_log_write(priority: i32, tag: *const u8, text: *const u8) -> i32;
-    }
-    let tag = b"ModelRunner\0";
-    let mut text: Vec<u8> = message.as_bytes().to_vec();
-    text.push(0);
-    unsafe {
-        let _ = __android_log_write(6, tag.as_ptr(), text.as_ptr());
-    }
+use crate::timing;
+
+/// How [`Net::barrier_over`] spells the dependency between two ops.
+///
+/// Selected by `MODELRUNNER_BARRIER` or `debug.modelrunner.barrier`, defaulting to
+/// [`Formulation::Range`], which is what this runtime has always done.
+///
+/// # Only four of these are correct
+///
+/// [`Formulation::Range`], [`Formulation::Whole`], [`Formulation::Global`] and
+/// [`Formulation::AllCommands`] all compute right answers and differ only in how much the driver
+/// is told. [`Formulation::Narrow`], [`Formulation::GlobalNarrow`] and [`Formulation::None`] do
+/// not: [`Formulation::selected`] will not return them outside a `debug_assertions` build.
+///
+/// An earlier version of this comment claimed every variant but [`Formulation::None`] was correct.
+/// A sweep of all seven showed otherwise — see `analysis/maml_vs_litert.md` section 6.
+///
+/// # Why it is a run-time knob
+///
+/// Nothing in the Vulkan spec says which spelling of the same dependency a given driver makes
+/// cheap, so it has to be measured — and measured *within one process*, because comparing two
+/// builds is how an earlier attempt attributed a shader regression to the barrier.
+///
+/// The sweep it was built for found nothing to choose between them: 5,073 / 5,091 / 5,095 /
+/// 5,096 ms across the four correct variants on a Tensor G4, a spread of 0.45% against a noise
+/// floor of 2%. Cost is also not proportional to the byte range — [`Formulation::Global`] names no
+/// range at all and [`Formulation::Whole`] names the entire arena, and they land 4 ms apart. The
+/// knob is kept so the sweep can be re-run on a new device, not because a winner is expected.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Formulation {
+    /// A buffer barrier over the op's own output range. The default and the historical behaviour.
+    Range,
+    /// A buffer barrier over the whole arena. What this used to do before `barrier_over` narrowed
+    /// it; worth re-measuring now that the arena is 540 KB for Supertonic rather than Gemma's
+    /// 303 MB.
+    Whole,
+    /// A global memory barrier: no buffer, no range for the driver to walk.
+    Global,
+    /// **Incorrect on this runtime**, and debug-only. [`Formulation::Global`] with only the
+    /// compute-to-compute dependency named. See [`Formulation::Narrow`] for why naming less here
+    /// is wrong rather than merely leaner.
+    GlobalNarrow,
+    /// **Incorrect on this runtime**, and debug-only. A buffer barrier over the op's range naming
+    /// only `SHADER_WRITE` to `SHADER_READ` — the compute-to-compute dependency and nothing else.
+    ///
+    /// That is not enough, because **a copy is also an op here**. The input upload and the output
+    /// readback are `TRANSFER` work recorded into the same command buffer as the dispatches, so
+    /// dropping the transfer stage and its two accesses from the mask leaves them unordered
+    /// against the dispatches either side. The dependency this omits is a real one, not a
+    /// redundant one the spec lets you elide.
+    ///
+    /// It surfaced as a short utterance — 43,008 frames delivered instead of 150,528, because the
+    /// duration model reads an unsynchronised upload and asks for 14 latent frames instead of 49
+    /// — but that is the symptom. The missing transfer edge is the fault, and it would show up
+    /// somewhere else entirely on a net that uploads different things.
+    Narrow,
+    /// `ALL_COMMANDS` on both sides. The bluntest correct answer, as a control.
+    AllCommands,
+    /// **No barrier at all. Produces wrong results.** Debug-only.
+    ///
+    /// Here so the ceiling can be measured in the same process as the variants being compared
+    /// against it, which is the only way to know the ceiling has not moved under them. Never
+    /// select this outside a measurement.
+    ///
+    /// It is not currently a *valid* ceiling: like [`Formulation::Narrow`] it corrupts the
+    /// duration prediction, so it computes 14 latent frames where a correct run computes 49 and
+    /// its 1,160 ms is 3.5x less work rather than the same work without barriers. Any figure for
+    /// what the barrier costs needs this path pinned to the known-good frame count first.
+    None,
 }
 
-#[cfg(not(target_os = "android"))]
-fn tlog(_message: &str) {}
+impl Formulation {
+    /// The selected variant, read once.
+    ///
+    /// Cached because this is called once per op inside `record`, where a property lookup per
+    /// call would be a meaningful share of what is being measured.
+    pub fn selected() -> Formulation {
+        static CHOICE: OnceLock<Formulation> = OnceLock::new();
+        *CHOICE.get_or_init(|| {
+            let name = crate::knobs::get("barrier").unwrap_or_default();
+            let chosen = match name.trim() {
+                "" | "range" => Formulation::Range,
+                "whole" => Formulation::Whole,
+                "global" => Formulation::Global,
+                "all-commands" => Formulation::AllCommands,
+                // The three that compute wrong answers are measurement tools, and a shipped
+                // build has no business selecting one. Gated at the point of selection rather
+                // than on the variants so the enum has one shape in both profiles and callers
+                // never need a `cfg` to match on it.
+                #[cfg(debug_assertions)]
+                "global-narrow" => Formulation::GlobalNarrow,
+                #[cfg(debug_assertions)]
+                "narrow" => Formulation::Narrow,
+                #[cfg(debug_assertions)]
+                "none" => Formulation::None,
+                #[cfg(not(debug_assertions))]
+                wrong @ ("global-narrow" | "narrow" | "none") => {
+                    timing!("barrier formulation {wrong:?} computes wrong output and is \
+                             debug-only, using range");
+                    Formulation::Range
+                }
+                other => {
+                    timing!("unknown barrier formulation {other:?}, using range");
+                    Formulation::Range
+                }
+            };
+            if chosen != Formulation::Range {
+                timing!("barrier formulation {chosen:?}");
+            }
+            chosen
+        })
+    }
+
+    /// The source and destination pipeline stages.
+    fn stages(self) -> (vk::PipelineStageFlags, vk::PipelineStageFlags) {
+        let compute = vk::PipelineStageFlags::COMPUTE_SHADER;
+        let both = compute | vk::PipelineStageFlags::TRANSFER;
+        match self {
+            Formulation::Narrow | Formulation::GlobalNarrow => (compute, compute),
+            Formulation::AllCommands => {
+                (vk::PipelineStageFlags::ALL_COMMANDS, vk::PipelineStageFlags::ALL_COMMANDS)
+            }
+            _ => (both, both),
+        }
+    }
+
+    /// The source and destination access masks.
+    fn accesses(self) -> (vk::AccessFlags, vk::AccessFlags) {
+        match self {
+            // Exactly the dependency a dispatch has on the dispatch before it, and nothing else.
+            Formulation::Narrow | Formulation::GlobalNarrow => (
+                vk::AccessFlags::SHADER_WRITE,
+                vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE,
+            ),
+            Formulation::AllCommands => {
+                (vk::AccessFlags::MEMORY_WRITE, vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE)
+            }
+            // The historical masks: a copy is also an op here, so transfer is named on both sides.
+            _ => (
+                vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::TRANSFER_WRITE,
+                vk::AccessFlags::SHADER_READ
+                    | vk::AccessFlags::SHADER_WRITE
+                    | vk::AccessFlags::TRANSFER_READ
+                    | vk::AccessFlags::TRANSFER_WRITE,
+            ),
+        }
+    }
+}
 
 /// Values a recorded command buffer reads from memory rather than from its own recording.
 ///
@@ -209,7 +340,7 @@ impl Net {
             params.buffer,
             segments.all(),
         )?;
-        tlog(&format!("TIMING pipelines {:.0} ms", staged.elapsed().as_secs_f64() * 1000.0));
+        timing!("pipelines {:.0} ms", staged.elapsed().as_secs_f64() * 1000.0);
 
         // `RESET_COMMAND_BUFFER`, so a net can re-record without reallocating.
         let pool_info = vk::CommandPoolCreateInfo::default()
@@ -241,11 +372,11 @@ impl Net {
 
         let staged = std::time::Instant::now();
         net.upload_weights(weights)?;
-        tlog(&format!(
-            "TIMING upload {} MB in {:.0} ms",
+        timing!(
+            "upload {} MB in {:.0} ms",
             weights_bytes / (1024 * 1024),
             staged.elapsed().as_secs_f64() * 1000.0
-        ));
+        );
         net.command_buffer = net.allocate_command_buffer()?;
         net.fence = net.create_fence()?;
         // Written before the first record so a shader reading it never sees uninitialised
@@ -253,12 +384,12 @@ impl Net {
         net.set_params(StepParams::default())?;
         let staged = std::time::Instant::now();
         net.record()?;
-        tlog(&format!(
-            "TIMING record {:.0} ms for {} ops, arena {} KB",
+        timing!(
+            "record {:.0} ms for {} ops, arena {} KB",
             staged.elapsed().as_secs_f64() * 1000.0,
             net.plan.ops.len(),
             arena_bytes / 1024
-        ));
+        );
         Ok(net)
     }
 
@@ -359,8 +490,8 @@ impl Net {
             self.poisoned = true;
             return Err(e);
         }
-        tlog(&format!(
-            "TIMING rebuild-record {:.0} ms for {} ops, arena {} KB, dispatches {}, invocations {}",
+        timing!(
+            "rebuild-record {:.0} ms for {} ops, arena {} KB, dispatches {}, invocations {}",
             staged.elapsed().as_secs_f64() * 1000.0,
             self.plan.ops.len(),
             self.arena.size / 1024,
@@ -373,7 +504,7 @@ impl Net {
                     _ => 0,
                 })
                 .sum::<u64>()
-        ));
+        );
         Ok(())
     }
 
@@ -623,13 +754,10 @@ impl Net {
                 // A zero-length range is not a barrier at all, and a shape this could not read
                 // is a plan bug rather than something to guess around - so fall back to the
                 // whole arena, which is always correct if slower.
-                // A dispatch only needs a compute-to-compute dependency; a copy is the only op
-                // here that writes through the transfer stage.
-                let transfer = matches!(*op, Op::Copy { .. });
                 if size == 0 || offset + size > self.arena.size {
                     self.barrier(buffer);
                 } else {
-                    self.barrier_masked(buffer, offset, size, transfer);
+                    self.barrier_over(buffer, offset, size);
                 }
             }
 
@@ -700,48 +828,56 @@ impl Net {
     /// An op only ever makes visible what it wrote, so the range is its own output. Anything
     /// earlier was already made visible by the barrier that followed *it*.
     ///
+    /// # How it is spelled is a variable, and it is switchable
+    ///
+    /// It is tempting to read a dispatch's dependency on the dispatch before it as only
+    /// `SHADER_WRITE` to `SHADER_READ`, making the transfer stage and the two transfer accesses
+    /// more than the spec requires. That is wrong here, and [`Formulation::Narrow`] is the
+    /// measurement proving it: a copy is also an op in this runtime, so the transfer edge is load
+    /// bearing and dropping it corrupts the output.
+    ///
+    /// Whether a *correct* spelling is cheaper than another correct one is a property of the
+    /// driver rather than of the spec. On a Tensor G4 the answer turned out to be no — the four
+    /// correct variants sit within 0.45% of each other. See [`Formulation`] and
+    /// `analysis/maml_vs_litert.md` section 6.
+    ///
+    /// [`Formulation`] makes the choice a run-time knob rather than a rebuild. That is not
+    /// convenience: the first attempt at this measured a rebuild against a rebuild, a shader edit
+    /// silently failed to recompile in between, and the shader's 45% was attributed to the
+    /// barrier. Switching within one process makes the comparison interleavable and immune to
+    /// that. See `analysis/maml_vs_litert.md`.
+    ///
     /// # Safety
     ///
     /// `buffer` must be inside a `begin`/`end` pair, and the range must be inside the arena.
     unsafe fn barrier_over(&self, buffer: vk::CommandBuffer, offset: u64, size: u64) {
-        // SAFETY: as the compute-only form, which this widens to cover a transfer on either side.
-        unsafe { self.barrier_masked(buffer, offset, size, true) }
-    }
-
-    /// [`Net::barrier_over`], optionally without the transfer stage on either side.
-    ///
-    /// A dispatch's dependency on the dispatch before it is `SHADER_WRITE` to `SHADER_READ`
-    /// across `COMPUTE_SHADER`, and naming `TRANSFER` as well makes the driver order the op
-    /// against the transfer queue too. Only an [`Op::Copy`] and the input and output copies need
-    /// that, and they are a handful of the ops in a plan against one barrier per dispatch.
-    ///
-    /// # Safety
-    ///
-    /// As [`Net::barrier_over`].
-    unsafe fn barrier_masked(
-        &self,
-        buffer: vk::CommandBuffer,
-        offset: u64,
-        size: u64,
-        transfer: bool,
-    ) {
-        let stages = if transfer {
-            vk::PipelineStageFlags::COMPUTE_SHADER | vk::PipelineStageFlags::TRANSFER
+        let formulation = Formulation::selected();
+        if formulation == Formulation::None {
+            return;
+        }
+        let (src_stage, dst_stage) = formulation.stages();
+        let (src_access, dst_access) = formulation.accesses();
+        // A global memory barrier names no buffer and no range, so the driver has nothing to
+        // walk. If the cost scales with the range, this is where that shows up.
+        if formulation == Formulation::Global || formulation == Formulation::GlobalNarrow {
+            let barrier = vk::MemoryBarrier::default()
+                .src_access_mask(src_access)
+                .dst_access_mask(dst_access);
+            self.context.device.cmd_pipeline_barrier(
+                buffer,
+                src_stage,
+                dst_stage,
+                vk::DependencyFlags::empty(),
+                std::slice::from_ref(&barrier),
+                &[],
+                &[],
+            );
+            return;
+        }
+        let (offset, size) = if formulation == Formulation::Whole {
+            (0, vk::WHOLE_SIZE)
         } else {
-            vk::PipelineStageFlags::COMPUTE_SHADER
-        };
-        let src_access = if transfer {
-            vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::TRANSFER_WRITE
-        } else {
-            vk::AccessFlags::SHADER_WRITE
-        };
-        let dst_access = if transfer {
-            vk::AccessFlags::SHADER_READ
-                | vk::AccessFlags::SHADER_WRITE
-                | vk::AccessFlags::TRANSFER_READ
-                | vk::AccessFlags::TRANSFER_WRITE
-        } else {
-            vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE
+            (offset, size)
         };
         let barrier = vk::BufferMemoryBarrier::default()
             .src_access_mask(src_access)
@@ -753,8 +889,8 @@ impl Net {
             .size(size);
         self.context.device.cmd_pipeline_barrier(
             buffer,
-            vk::PipelineStageFlags::COMPUTE_SHADER | vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::COMPUTE_SHADER | vk::PipelineStageFlags::TRANSFER,
+            src_stage,
+            dst_stage,
             vk::DependencyFlags::empty(),
             &[],
             std::slice::from_ref(&barrier),
