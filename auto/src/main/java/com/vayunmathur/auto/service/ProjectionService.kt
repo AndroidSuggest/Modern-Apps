@@ -346,10 +346,9 @@ class ProjectionService : Service() {
      * The Phase 7 messaging owner, created when ch14 opens in [openNext] like
      * the video sink. Outlives nothing: released with the session above.
      *
-     * Audio seam: [CarMessagingAudio] once the ch4/ch6 owners land (TTS on
-     * the system sink, voice replies on the mic source); [MessagingAudio.NoOp]
-     * until then, so posts are counted and observed while audio is skipped.
-     * Assumptions live in `MessagingAudio.kt`.
+     * Audio seam: [CarMessagingAudio] (TTS on the ch4 system sink, voice
+     * replies on the ch6 mic source); [MessagingAudio.NoOp] remains the seam's
+     * pre-audio holder for tests. Assumptions live in `MessagingAudio.kt`.
      */
     private var messaging: MessagingCarAppService? = null
 
