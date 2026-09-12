@@ -218,19 +218,42 @@ class GalControlSessionTest {
     }
 
     @Test
-    fun `a refused channel open fails the session`() {
+    fun `a refused channel open is recorded, not fatal`() {
+        // DHU 2.0 answers some opens with an empty MessageError and never sends
+        // 0x8 at all; other times 0x8 carries non-SUCCESS. Either way the
+        // bring-up continues with the remaining services.
         val session = session(GalCredential.serverEngine(context()))
         val service = Service.newBuilder().setId(GalService.VIDEO_SINK.id).build()
         session.openChannel(service)
+        assertEquals(listOf(GalService.VIDEO_SINK.id), session.pendingChannels)
 
         session.onMessage(
             GalMessage.Control.CHANNEL_OPEN_RESPONSE,
             ChannelOpenResponse.newBuilder().setStatus(-4).build().toByteArray(),
         )
 
-        assertEquals(SessionState.CLOSED, session.state)
         assertTrue(session.openChannels.isEmpty())
-        assertNotNull(session.failure)
+        assertEquals(setOf(GalService.VIDEO_SINK.id), session.refusedChannels)
+        assertTrue(session.pendingChannels.isEmpty())
+        assertNull(session.failure)
+        assertEquals(SessionState.DISCOVERING, session.state)
+    }
+
+    @Test
+    fun `sequential opens track one flight at a time`() {
+        val session = session(GalCredential.serverEngine(context()))
+        val video = Service.newBuilder().setId(GalService.VIDEO_SINK.id).build()
+        val input = Service.newBuilder().setId(GalService.INPUT_SOURCE.id).build()
+        session.openChannel(video)
+        session.openChannel(input)
+
+        // First answer drains the head of the queue.
+        session.onMessage(
+            GalMessage.Control.CHANNEL_OPEN_RESPONSE,
+            ChannelOpenResponse.newBuilder().setStatus(0).build().toByteArray(),
+        )
+        assertEquals(setOf(GalService.VIDEO_SINK.id), session.openChannels)
+        assertEquals(listOf(GalService.INPUT_SOURCE.id), session.pendingChannels)
     }
 
     @Test

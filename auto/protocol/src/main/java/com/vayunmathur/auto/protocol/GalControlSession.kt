@@ -79,7 +79,17 @@ class GalControlSession(
     var openChannels: Set<Int> = emptySet()
         private set
 
-    private var pendingChannel: Int = -1
+    /**
+     * Service ids the head unit rejected with a non-SUCCESS ChannelOpenResponse.
+     * Kept so the driver can move on to the next service instead of retrying a
+     * refused open forever.
+     */
+    var refusedChannels: Set<Int> = emptySet()
+        private set
+
+    /** Ids with an open request in flight, in the order requested. */
+    var pendingChannels: List<Int> = emptyList()
+        private set
 
     private var tlsInbound: ByteBuffer = ByteBuffer.allocate(0)
 
@@ -122,11 +132,12 @@ class GalControlSession(
      *
      * The channel opens asynchronously: the head unit answers with
      * ChannelOpenResponse, and [openChannels] gains the id only on
-     * STATUS_SUCCESS. Nothing may be sent on the channel before that --
-     * gearhead's `jdk.Q()` sends media setup from `onChannelOpened`.
+     * STATUS_SUCCESS ([refusedChannels] on anything else). Nothing may be sent
+     * on the channel before that -- gearhead's `jdk.Q()` sends media setup from
+     * `onChannelOpened`.
      */
     fun openChannel(service: Service, priority: Int = 0): OutboundMessage {
-        pendingChannel = service.id
+        pendingChannels += service.id
         return OutboundMessage(
             type = GalMessage.Control.CHANNEL_OPEN_REQUEST,
             payload = ChannelOpenRequest.newBuilder()
@@ -232,14 +243,21 @@ class GalControlSession(
      * the driver must wait for STATUS_SUCCESS here before sending anything on
      * the new channel. Sending service messages (e.g. media setup) against a
      * channel the head unit has not opened earns a bare MessageError (0xff).
+     *
+     * A refusal is recorded, not fatal: the HU answers some opens with an empty
+     * MessageError and never sends 0x8 at all (DHU 2.0 vs video service 2), and
+     * the bring-up must continue with the remaining services. The driver moves
+     * on when the refusal is visible via [refusedChannels] or a bare 0xff.
      */
     private fun onChannelOpen(payload: ByteArray): List<OutboundMessage> {
         val status = ChannelOpenResponse.parseFrom(payload).status
+        val id = pendingChannels.firstOrNull() ?: return emptyList()
+        pendingChannels -= id
         if (status != MessageStatus.STATUS_SUCCESS.number) {
-            return fail("head unit refused channel open: status $status")
+            refusedChannels += id
+            return emptyList()
         }
-        openChannels += pendingChannel
-        pendingChannel = -1
+        openChannels += id
         return emptyList()
     }
 

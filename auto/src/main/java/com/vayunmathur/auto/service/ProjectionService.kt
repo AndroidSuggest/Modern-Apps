@@ -67,16 +67,17 @@ class ProjectionService : Service() {
                 trace = { Log.d(TAG, it) },
             )
 
-            var openedVideo = false
             var setupVideo = false
             while (running && connection.pump()) {
-                // Opening the video channel is the first thing to do once discovery lands.
-                if (!openedVideo && connection.session.state == SessionState.ACTIVE) {
-                    openedVideo = openVideo(connection)
+                // Open every advertised service in HU-discovery wire order, one at a
+                // time: the next 0x7 goes out only once the previous channel is
+                // granted (openChannels) or refused (refusedChannels, or a bare
+                // 0xff with no 0x8 -- DHU 2.0 answers that way). gearhead opens in
+                // this same order (`jbp.i[]` follows the `xob.c` wire order).
+                // Video setup additionally waits for its own channel grant.
+                if (connection.session.state == SessionState.ACTIVE) {
+                    openNext(connection)
                 }
-                // Media setup only AFTER the head unit's ChannelOpenResponse grants the
-                // channel (gearhead's `jdk.Q()` sends setup from `onChannelOpened`).
-                // Setting up against a not-yet-open channel earns MessageError (0xff).
                 if (!setupVideo && GalService.VIDEO_SINK.id in connection.session.openChannels) {
                     setupVideo = true
                     video?.requestSetup()
@@ -91,17 +92,26 @@ class ProjectionService : Service() {
 
     private var video: VideoSinkChannel? = null
 
-    /** @return true once the request is away, so it is only sent once. */
-    private fun openVideo(connection: GalConnection): Boolean {
-        val service = connection.session.services
-            .firstOrNull { it.id == GalService.VIDEO_SINK.id && it.hasMediaSink() }
-        if (service == null) {
-            Log.w(TAG, "head unit advertised no video sink; nothing to project onto")
-            return true
+    /**
+     * Opens the next not-yet-attempted advertised service, in the HU's wire order.
+     *
+     * Only one open is ever in flight: while `pendingChannels` is non-empty the
+     * head unit still owes us an answer, so wait. Channel 0 (control) is local
+     * -- gearhead creates it without any 0x7 -- so it is skipped, never sent.
+     */
+    private fun openNext(connection: GalConnection) {
+        val session = connection.session
+        if (session.pendingChannels.isNotEmpty()) return
+        val next = session.services.firstOrNull {
+            it.id != CONTROL_SERVICE_ID &&
+                it.id !in session.openChannels &&
+                it.id !in session.refusedChannels
+        } ?: return
+        connection.send(session.openChannel(next))
+        Log.i(TAG, "requesting channel open for service ${next.id}")
+        if (next.id == GalService.VIDEO_SINK.id && next.hasMediaSink()) {
+            video = VideoSinkChannel(this, next, connection)
         }
-        connection.send(connection.session.openChannel(service))
-        video = VideoSinkChannel(this, service, connection)
-        return true
     }
 
     private fun notification(): Notification {
@@ -124,6 +134,9 @@ class ProjectionService : Service() {
         private const val TAG = "MaAuto.Service"
         private const val CHANNEL_ID = "projection"
         private const val NOTIFICATION_ID = 1
+
+        /** Service 1 is the control channel: opened locally, never via 0x7. */
+        private const val CONTROL_SERVICE_ID = 1
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, ProjectionService::class.java))
