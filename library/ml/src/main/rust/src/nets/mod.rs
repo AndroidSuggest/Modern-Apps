@@ -31,6 +31,7 @@
 /// so it adds nothing to the shipped `.so`.
 #[cfg(test)]
 pub mod reference;
+pub mod schedule;
 pub mod gemma4;
 pub mod gemma4_audio;
 pub mod gemma4_vision;
@@ -686,6 +687,131 @@ impl Kind {
             }
         }
         reads
+    }
+
+    /// Every arena range this kind reads, in **fp16 elements**, given one op's [`Push`].
+    ///
+    /// The mirror of [`Kind::weight_reads`] for the other buffer, and the reason it is `pub` is
+    /// [`super::schedule`]: deciding whether two ops need a barrier between them is exactly
+    /// "does the later one read what the earlier one wrote", and that question needs both sides
+    /// to be exact.
+    ///
+    /// # Why [`Reads::Unknown`] exists
+    ///
+    /// This table began as the arms of `tests::assert_no_aliasing`, which checks a *weaker*
+    /// property: that an op does not read the range it is writing. A table that under-reports an
+    /// operand still passes that check in every net where the operand happens not to overlap the
+    /// output — but a scheduler believing the same table would drop a barrier and read a value
+    /// the previous op had not finished writing, non-deterministically, on one driver.
+    ///
+    /// So there is no catch-all. A kind whose reads have not been checked against its shader
+    /// answers [`Reads::Unknown`], which every caller must treat as "reads everything". Adding a
+    /// kind is then a choice to audit it or to be conservative, rather than a default that is
+    /// silently wrong.
+    pub fn arena_reads(self, push: &Push) -> Reads {
+        // Every input plane, as the generic shape-driven kinds read it.
+        let dense = push.in_c * push.in_h * push.in_w;
+        // Every output element. Not `push.count`: the reducing kinds dispatch one invocation per
+        // reduction rather than per element, so their `count` understates what they touch.
+        let written = push.out_c * push.out_h * push.out_w;
+        let one = |at: u32, len: u32| Reads::Ranges(vec![(at, len)]);
+        let two = |a: (u32, u32), b: (u32, u32)| Reads::Ranges(vec![a, b]);
+        match self {
+            // Both operands are the output's shape.
+            Kind::Add | Kind::Mul => two((push.in0, written), (push.in1, written)),
+            // Rotary reads a partner channel half a head away, so the whole plane, and the angle
+            // table is `head_dim` channels of the same length.
+            Kind::Rotary => two((push.in0, written), (push.in1, push.in_c * push.out_w)),
+            // The gate is one value per channel, broadcast over H and W.
+            Kind::MulBroadcast => two((push.in0, written), (push.in1, push.in_c)),
+            // As `MulBroadcast`: one shift per channel.
+            Kind::AddBroadcast => two((push.in0, written), (push.in1, push.out_c)),
+            // Reads no arena at all - it is a copy out of the weights file.
+            Kind::Constant => Reads::Ranges(Vec::new()),
+            // Q and K are each `in_c` channels but of their own lengths, which the score map's
+            // height and width carry.
+            Kind::AttnScores | Kind::AttnScoresRelative | Kind::AttnScoresBanded => {
+                two((push.in0, push.in_c * push.out_h), (push.in1, push.in_c * push.out_w))
+            }
+            // The score map is `[heads, queries, keys]`; V is a sequence of keys.
+            Kind::AttnApply | Kind::AttnApplyRelative | Kind::AttnApplyBanded => {
+                two((push.in0, push.group * push.out_w * push.in_w), (push.in1, dense))
+            }
+            // One query against a position-major cache. Q is one position of `in_c` channels; the
+            // cache is `out_w` positions of `kv_heads * head_dim`, which under grouped- or
+            // multi-query attention is narrower than `in_c`.
+            Kind::AttnScoresCached => {
+                let head_dim = push.in_c / push.group.max(1);
+                let kv = if push.kv_heads == 0 { push.group } else { push.kv_heads };
+                two((push.in0, push.in_c), (push.in1, push.out_w * kv * head_dim))
+            }
+            // One query's row of probabilities is `in_w` keys long, and the cache is `in_w`
+            // positions of `kv_heads * head_dim`.
+            Kind::AttnApplyCached => {
+                let head_dim = push.out_c / push.group.max(1);
+                let kv = if push.kv_heads == 0 { push.group } else { push.kv_heads };
+                two((push.in0, push.group * push.in_w), (push.in1, push.in_w * kv * head_dim))
+            }
+            // One id per position per lane, so the read is `in_c * out_w` and not `dense` -
+            // `in_w` here is the *table's* row count.
+            Kind::Embed => one(push.in0, push.in_c * push.out_w),
+            // One row in. Not `dense`: `in_h` here is the cache's capacity, not a spatial extent.
+            Kind::CacheWrite => one(push.in0, push.count),
+            // The whole input plane, whatever the kernel touches. The tiled and gemv lowerings
+            // read it too - their `count` is tiles or channel groups, not elements.
+            Kind::Conv
+            | Kind::ConvTranspose
+            | Kind::ConvInt8
+            | Kind::ConvPoint
+            | Kind::ConvPointInt8
+            | Kind::ConvVecInt8
+            | Kind::ConvPointInt4
+            | Kind::ConvVecInt4
+            | Kind::MaxPool
+            | Kind::AvgPool
+            | Kind::Resize
+            | Kind::ResizeNearest
+            | Kind::GlobalAvgPool
+            | Kind::LayerNorm
+            | Kind::RmsNorm
+            | Kind::Softmax
+            | Kind::SoftmaxCausal
+            | Kind::SoftmaxPrefix
+            | Kind::Affine
+            | Kind::Softcap
+            | Kind::Activate
+            | Kind::GatedActivate
+            | Kind::MulScalar
+            | Kind::Clamp => one(push.in0, dense),
+        }
+    }
+}
+
+/// What [`Kind::arena_reads`] knows about an op's reads.
+///
+/// Not a bare `Vec`, so that "this kind has not been audited" is a value a caller has to handle
+/// rather than an empty list it would mistake for "reads nothing". See [`Kind::arena_reads`].
+///
+/// No arm returns [`Reads::Unknown`] today — the match is exhaustive over [`Kind`], so a new kind
+/// fails to compile until someone writes its reads, which is a stronger guarantee than a
+/// conservative default would be. The variant stays for the kind that eventually cannot be
+/// described statically, so that being conservative is a decision someone makes rather than one
+/// they fall into.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reads {
+    /// Exactly these `(element offset, element count)` ranges, and nothing else.
+    Ranges(Vec<(u32, u32)>),
+    /// Unaudited. Treat as reading the whole arena.
+    Unknown,
+}
+
+impl Reads {
+    /// The ranges, or `None` when nothing is known and the caller must be conservative.
+    pub fn ranges(&self) -> Option<&[(u32, u32)]> {
+        match self {
+            Reads::Ranges(ranges) => Some(ranges),
+            Reads::Unknown => None,
+        }
     }
 }
 
@@ -3695,83 +3821,17 @@ pub(crate) mod tests {
             let (out, reads) = match *op {
                 Op::Copy { src, dst, elems } => ((dst, elems), vec![(src, elems)]),
                 Op::Dispatch { kind, push, .. } => {
-                    let dense = push.in_c * push.in_h * push.in_w;
-                    // Not `push.count`: the reducing kinds dispatch one invocation per
-                    // reduction rather than per element, so their `count` understates
-                    // what they write. Every output here is dense.
-                    let written = push.out_c * push.out_h * push.out_w;
-                    let reads = match kind {
-                        Kind::Add | Kind::Mul => {
-                            vec![(push.in0, written), (push.in1, written)]
-                        }
-                        // Rotary reads a partner channel half a head away, so the whole plane,
-                        // and the angle table is `head_dim` channels of the same length.
-                        Kind::Rotary => {
-                            vec![(push.in0, written), (push.in1, push.in_c * push.out_w)]
-                        }
-                        // The gate is one value per channel, broadcast over H and W.
-                        Kind::MulBroadcast => {
-                            vec![(push.in0, written), (push.in1, push.in_c)]
-                        }
-                        // As `MulBroadcast`: one shift per channel.
-                        Kind::AddBroadcast => {
-                            vec![(push.in0, written), (push.in1, push.out_c)]
-                        }
-                        // Reads no arena at all - it is a copy out of the weights file.
-                        Kind::Constant => Vec::new(),
-                        // Q and K are each `in_c` channels but of their own lengths, which the
-                        // score map's height and width carry.
-                        Kind::AttnScores | Kind::AttnScoresRelative => {
-                            vec![
-                                (push.in0, push.in_c * push.out_h),
-                                (push.in1, push.in_c * push.out_w),
-                            ]
-                        }
-                        // The score map is `[heads, queries, keys]`; V is a sequence of keys.
-                        Kind::AttnApply | Kind::AttnApplyRelative => {
-                            vec![(push.in0, push.group * push.out_w * push.in_w), (push.in1, dense)]
-                        }
-                        // One query against a position-major cache. Q is one position of `in_c`
-                        // channels; the cache is `out_w` positions of `kv_heads * head_dim`,
-                        // which under grouped- or multi-query attention is narrower than `in_c`.
-                        Kind::AttnScoresCached => {
-                            let head_dim = push.in_c / push.group.max(1);
-                            let kv = if push.kv_heads == 0 { push.group } else { push.kv_heads };
-                            vec![(push.in0, push.in_c), (push.in1, push.out_w * kv * head_dim)]
-                        }
-                        // One query's row of probabilities is `in_w` keys long, and the cache is
-                        // `in_w` positions of `kv_heads * head_dim`.
-                        Kind::AttnApplyCached => {
-                            let head_dim = push.out_c / push.group.max(1);
-                            let kv = if push.kv_heads == 0 { push.group } else { push.kv_heads };
-                            vec![
-                                (push.in0, push.group * push.in_w),
-                                (push.in1, push.in_w * kv * head_dim),
-                            ]
-                        }
-                        // One id per position per lane, so the read is `in_c * out_w` and
-                        // not `dense` - `in_w` here is the *table's* row count.
-                        Kind::Embed => vec![(push.in0, push.in_c * push.out_w)],
-                        // One row in, one row of the cache out. Not `dense`: `in_h` here is the
-                        // cache's capacity, not a spatial extent, so the generic read span would
-                        // be the whole cache and would overlap the write by construction.
-                        //
-                        // The write is reported as the whole cache rather than the single row it
-                        // touches, because which row that is comes from the step and is not
-                        // known here. That is the conservative direction - it can only refuse a
-                        // plan that would have been fine, never accept one that aliases - and it
-                        // is still disjoint from the source, which is a different tensor.
-                        Kind::CacheWrite => vec![(push.in0, push.count)],
-                        // As `Conv`: the whole input plane, whatever the kernel touches.
-                        Kind::ConvInt8 => vec![(push.in0, dense)],
-                        // count is tiles or channel groups here, so the read span is the input
-                        // plane. `ConvVecInt8`'s is one position of it.
-                        Kind::ConvPoint | Kind::ConvPointInt8 | Kind::ConvVecInt8
-                        | Kind::ConvPointInt4 | Kind::ConvVecInt4 => {
-                            vec![(push.in0, dense)]
-                        }
-                        _ => vec![(push.in0, dense)],
+                    // The one table, in `Kind::arena_reads`. This assertion is the weaker of its
+                    // two consumers - it only asks whether the reads overlap the write - but
+                    // sharing it is what keeps `schedule`, which asks the stronger question,
+                    // honest against every shipping net.
+                    let reads = match kind.arena_reads(&push) {
+                        Reads::Ranges(ranges) => ranges,
+                        // Nothing to assert about a kind that has not been audited. It is not a
+                        // failure here; `schedule` is where it costs something.
+                        Reads::Unknown => continue,
                     };
+                    let written = push.out_c * push.out_h * push.out_w;
                     ((push.out, written), reads)
                 }
             };
