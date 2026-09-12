@@ -137,9 +137,10 @@ class CarMapsMirror(
         active.setUserPuck(
             UserPuck(position = position, bearing = snapshot.bearingDeg),
         )
-        val navigating = snapshot.guidanceActive && snapshot.route != null
-        if (navigating) {
-            val points = snapshot.route.map { GeoPoint(it.longitude, it.latitude) }
+        val route = snapshot.route
+        val navigating = snapshot.guidanceActive && route != null
+        if (navigating && route != null) {
+            val points = route.map { GeoPoint(it.longitude, it.latitude) }
             // Identity gate: the monitor forwards the provider's list
             // untouched, so an unchanged route skips the tessellation.
             if (points !== pushedRoute) {
