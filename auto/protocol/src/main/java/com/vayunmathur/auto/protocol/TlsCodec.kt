@@ -24,6 +24,14 @@ class TlsCodec(private val engine: SSLEngine) {
         while (source.hasRemaining()) {
             val result = engine.wrap(source, record)
             check(result.status == Status.OK) { "TLS wrap failed: ${result.status}" }
+            // A pre-handshake engine returns OK with zero bytes consumed AND
+            // produced forever, which spins this loop at 100% CPU (production
+            // ANR; hung the unit-test worker at GalConnectionTest:138). Real
+            // multi-record wraps always make progress per iteration, so
+            // zero/zero is only ever the stuck case: fail loudly instead.
+            check(result.bytesConsumed() != 0 || result.bytesProduced() != 0) {
+                "TLS wrap made no progress -- engine handshake incomplete?"
+            }
         }
         record.flip()
         return ByteArray(record.remaining()).also { record.get(it) }

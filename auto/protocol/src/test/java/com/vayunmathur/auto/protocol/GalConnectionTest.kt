@@ -5,6 +5,7 @@ import java.nio.ByteBuffer
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -113,39 +114,62 @@ class GalConnectionTest {
         // an empty 0xff and no 0x8 (Run 5), while the CONTROL-less 0x5 is
         // accepted -- so the bit goes on the open, nothing else. Dalvik ground
         // truth (`Ljbe.i`): gearhead's 0x7 goes out as 0x0F.
-        val transport = FakeTransport()
-        val connection = connection(transport)
-        connection.send(
-            OutboundMessage(
-                type = GalMessage.Control.CHANNEL_OPEN_REQUEST,
-                payload = byteArrayOf(0x08, 0x00, 0x10, 0x02),
-                encrypted = true,
-                isControl = true,
-            ),
+        //
+        // Framed at the FrameWriter level with a handshook engine: sending
+        // encrypted data through a full connection needs a completed handshake
+        // (a fresh engine's wrap() makes no progress -- see TlsCodec.wrap).
+        val context = TestTls.context()
+        val server = GalCredential.serverEngine(context)
+        TestTls.handshake(server, TestTls.carEngine(context))
+        val writer = FrameWriter(encrypt = TlsCodec(server)::wrap)
+        val message = OutboundMessage(
+            type = GalMessage.Control.CHANNEL_OPEN_REQUEST,
+            payload = byteArrayOf(0x08, 0x00, 0x10, 0x02),
+            encrypted = true,
+            isControl = true,
         )
 
-        val written = transport.written.toByteArray()
-        assertEquals(0x00, written[0])
-        assertEquals(0x0F, written[1].toInt() and 0xFF)
+        val frame = writer.frame(
+            channelId = 0,
+            payload = MessageCodec.encode(message.type, message.payload),
+            isControl = message.isControl,
+            encrypted = message.encrypted,
+        ).single()
+
+        assertEquals(0x00, frame[0])
+        assertEquals(0x0F, frame[1].toInt() and 0xFF)
     }
 
     @Test
     fun `other control messages leave the CONTROL bit clear`() {
         // Discovery (0x5), ping responses and byebye ride CONTROL-less: the 0x5
         // is live-accepted that way, and nothing else has shown a need.
+        // Plaintext here exercises the full connection send path end to end.
         val transport = FakeTransport()
         val connection = connection(transport)
         connection.send(
             OutboundMessage(
                 type = GalMessage.Control.SERVICE_DISCOVERY_REQUEST,
                 payload = byteArrayOf(0x2A, 0x0E) + "Google Pixel 8".toByteArray(),
-                encrypted = true,
+                encrypted = false,
             ),
         )
 
         val written = transport.written.toByteArray()
         assertEquals(0x00, written[0])
-        assertEquals(0x0B, written[1].toInt() and 0xFF)
+        assertEquals(0x03, written[1].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `wrapping without a handshake fails instead of spinning`() {
+        // Pre-handshake wrap() returns OK with zero bytes consumed/produced
+        // forever; the codec must fail loudly (production ANR + hung test
+        // worker at GalConnectionTest:138) rather than loop.
+        val codec = TlsCodec(GalCredential.serverEngine(TestTls.context()))
+
+        assertFailsWith<IllegalStateException> {
+            codec.wrap(byteArrayOf(0x08, 0x00, 0x10, 0x02))
+        }
     }
 
     @Test
