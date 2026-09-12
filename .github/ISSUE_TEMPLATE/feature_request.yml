@@ -11,31 +11,40 @@ body:
       options:
         - alchemist
         - appstore
+        - arrows
         - astronomy
         - auto
+        - backup
         - calculator
         - calendar
         - camera
+        - cast
         - chess
         - clock
         - code
+        - communicate
         - contacts
         - education
         - email
+        - euicc
         - everysync
         - files
         - findfamily
+        - flashcards
         - fooddelivery
         - health
         - hub
         - keyboard
+        - launcher
         - logicgate
         - logviewer
         - maps
         - measure
-        - messages
+        - minesweeper
         - music
         - musicbrainz
+        - networklocation
+        - nonogram
         - notes
         - office
         - openassistant
@@ -43,13 +52,20 @@ body:
         - pdf
         - photos
         - pipes
+        - safefamily
+        - setupwizard
+        - share
         - solitaire
         - speech
+        - sudoku
+        - taxi
         - things
+        - tools:holidaygen
         - translate
         - travel
         - tuner
         - unblockjam
+        - updater
         - vpn
         - voxels
         - weather
