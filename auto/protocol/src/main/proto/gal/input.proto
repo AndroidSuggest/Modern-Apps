@@ -1,0 +1,130 @@
+// Google Automotive Link input channel (service 8): touch, keys and scroll.
+//
+// Field numbers, wire types and cardinality were recovered from the protobuf-lite
+// RawMessageInfo descriptors in the Android Auto APK (analysis/maauto/dump_protos.py) and are
+// exact. Message and field NAMES are not in the APK -- they follow the public aasdk/openauto
+// naming where it matches, and are plain descriptions elsewhere. See gal/control.proto for
+// the provenance note and auto/docs/FINDINGS.md for the endpoint teardown.
+//
+// Direction: the head unit OWNS the input hardware, so it SENDS InputReport (0x8001) and
+// the phone only answers with KeyBindingRequest (0x8002, supported keycodes echoed back
+// on channel open) and InputFeedback (0x8004). The phone never builds an InputReport.
+// The dispatch compares raw wire ids (`jar.a()` overrides the base and never calls
+// `wub.o`, so there is no off-by-one here): 0x8001 report, 0x8003 binding response.
+//
+// Touch mapping, from `ikb.i` + `iye.a` + `wox.A`:
+// - TouchPointer is (x, y, pointer_id): `iyd` prints "ProjectionPointer(x,y,id)" and
+//   `iye.a` assigns `props.id = pointer_id`, `coords.x/y = x/y` (+ a zero offset).
+// - The action enum IS the MotionEvent action: `wox.A` maps 0->1, 1->2, 2->3, 5->6,
+//   6->7 and `ikb.i` subtracts one, so 0/1/2/5/6 become DOWN/UP/MOVE/POINTER_DOWN/
+//   POINTER_UP. Anything else maps to 0 and then defaults back to DOWN -- mirrored
+//   in InputCodec.motionAction rather than fixed, because the head unit decides.
+// - `action_index` indexes the pointers list for the POINTER_DOWN/UP actions.
+// - Coordinates arrive in head-unit touchscreen pixels (discovery `TouchConfig`
+//   width/height, DHU default 800x480) and are scaled to car-display pixels by
+//   the receiver; see InputCodec.scaleCoordinate.
+//
+// Key mapping, from `ikb.h`: KeyEvent(code=field1, down=field2, meta=field3) --
+// field3 sits in the KeyEvent metaState position. Field4 is observed but its exact
+// HU intent is undecoded: a key-UP carrying it makes gearhead synthesize a full
+// down+up pair (`jar.java` fallback branch), so it is kept as `field4` rather
+// than given a confident wrong name.
+//
+// Scroll, from `jar.java` relative handling: RelativeEvent{keycode=65536, delta}
+// with a non-zero delta becomes an ACTION_SCROLL MotionEvent with AXIS_VSCROLL set
+// to the delta and SOURCE_MOUSE. AbsoluteEvent{keycode=65541, value} is the
+// touchpad tap-as-select: value 1 presses KEYCODE_DPAD_CENTER, 0 releases it.
+
+syntax = "proto2";
+
+package gal;
+
+option java_package = "com.vayunmathur.auto.protocol.gal";
+option java_multiple_files = true;
+
+// `xom.e` via `wox.A`, minus one: these already ARE the MotionEvent actions.
+enum TouchAction {
+  TOUCH_DOWN = 0;
+  TOUCH_UP = 1;
+  TOUCH_MOVE = 2;
+  TOUCH_POINTER_DOWN = 5;
+  TOUCH_POINTER_UP = 6;
+}
+
+// One finger: `xol` (`iyd`), fields in order x, y, pointer id.
+message TouchPointer {
+  required uint32 x = 1;
+  required uint32 y = 2;
+  required uint32 pointer_id = 3;
+}
+
+// One touch frame: `xom`. Field 3 is the touchscreen, field 7 the touchpad.
+message TouchEvent {
+  repeated TouchPointer pointers = 1;
+  optional uint32 action_index = 2;
+  optional TouchAction action = 3;
+}
+
+// One key press or release: `xke`.
+message KeyEvent {
+  required uint32 keycode = 1;
+  required bool key_down = 2;
+  required uint32 meta_state = 3;
+  optional bool field4 = 4;
+}
+
+// One rotary/scroll tick: `xno`. Scroll is keycode 65536 with a non-zero delta.
+message RelativeEvent {
+  required uint32 keycode = 1;
+  required int32 delta = 2;
+}
+
+message RelativeEvents {
+  repeated RelativeEvent event = 1;
+}
+
+// One absolute input value: `xgw`. Keycode 65541 is tap-as-select.
+message AbsoluteEvent {
+  required uint32 keycode = 1;
+  required int32 value = 2;
+}
+
+message AbsoluteEvents {
+  repeated AbsoluteEvent event = 1;
+}
+
+// The key-event list inside a report: `xkf`.
+message KeyEvents {
+  repeated KeyEvent events = 1;
+}
+
+// The head-unit-to-phone report: `xjt`. Field 1 is the report timestamp;
+// every section is optional and the phone handles whichever are present.
+message InputReport {
+  required uint64 timestamp = 1;
+  optional TouchEvent touchscreen = 3;
+  optional KeyEvents key_events = 4;
+  optional AbsoluteEvents abs_events = 5;
+  optional RelativeEvents relative_events = 6;
+  optional TouchEvent touchpad = 7;
+  // Field 2 is absent from this build.
+}
+
+// Phone-to-head-unit, sent on channel open: `xkb`. The phone echoes the keycode
+// list the head unit advertised in discovery (`ikb.r` sends `this.c`, which came
+// from `xjw` field 1 via `wub.ay`).
+message KeyBindingRequest {
+  repeated int32 keycodes = 1 [packed = true];
+}
+
+// Head-unit-to-phone answer: `xkc`, a single status (field 1).
+message KeyBindingResponse {
+  required int32 status = 1;
+}
+
+// Phone-to-head-unit feedback event: `xjs` (`ikb.n` sends one per `xji` event
+// from the discovery-advertised set). The field carries the feedback event id;
+// like `xjw` field 4 it is enum-typed on the wire and int32 here.
+message InputFeedback {
+  optional int32 feedback_event = 1;
+}
