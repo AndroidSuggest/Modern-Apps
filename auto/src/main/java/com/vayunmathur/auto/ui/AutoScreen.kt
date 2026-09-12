@@ -32,6 +32,13 @@ fun AutoScreen(viewModel: AutoViewModel) {
         framesSent = viewModel.framesSent.collectAsStateWithLifecycle().value,
         acksSeen = viewModel.acksSeen.collectAsStateWithLifecycle().value,
         ackMismatches = viewModel.ackMismatches.collectAsStateWithLifecycle().value,
+        encodedFps = viewModel.encodedFps.collectAsStateWithLifecycle().value,
+        ackFps = viewModel.ackFps.collectAsStateWithLifecycle().value,
+        lastAckAt = viewModel.lastAckAt.collectAsStateWithLifecycle().value,
+        lastAckSeq = viewModel.lastAckSeq.collectAsStateWithLifecycle().value,
+        avgEncodeLatencyUs = viewModel.avgEncodeLatencyUs.collectAsStateWithLifecycle().value,
+        encoderDrains = viewModel.encoderDrains.collectAsStateWithLifecycle().value,
+        surfaceValid = viewModel.surfaceValid.collectAsStateWithLifecycle().value,
         sessionStartedAt = viewModel.sessionStartedAt.collectAsStateWithLifecycle().value,
     )
     val scrollBehavior = appBarScrollBehavior()
@@ -68,6 +75,20 @@ data class SessionSnapshot(
     val framesSent: Long,
     val acksSeen: Long,
     val ackMismatches: Long,
+    /** Encode-side frames per second; sent, never decoded or shown. */
+    val encodedFps: Double,
+    /** Head-unit acks per second; receipt, not visibility. */
+    val ackFps: Double,
+    /** Wall-clock millis of the last ack; null before the first. Drives the live age. */
+    val lastAckAt: Long?,
+    /** Highest 0x8004 ack counter seen; null until an ack carries the field. */
+    val lastAckSeq: Long?,
+    /** Rolling mean encode-to-send latency in microseconds, or null with no frames. */
+    val avgEncodeLatencyUs: Long?,
+    /** Encoder drains so far. */
+    val encoderDrains: Long,
+    /** Whether the virtual display + encoder input surface pair is up. */
+    val surfaceValid: Boolean,
     val sessionStartedAt: Long?,
 )
 

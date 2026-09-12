@@ -1,5 +1,6 @@
 package com.vayunmathur.auto.platform
 
+import android.os.SystemClock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,14 +29,34 @@ sealed interface VideoEvent {
     /** The first encoded frame went out. */
     data object FirstFrame : VideoEvent
 
-    /** One encoded frame went out. */
-    data object FrameSent : VideoEvent
+    /**
+     * One encoded frame went out.
+     *
+     * [presentationTimeUs] is the codec timestamp; [latencyUs] is monotonic
+     * queue + encode time for this frame (send time minus its timestamp).
+     * Sender-side only: this counts frames handed to the socket, never frames
+     * decoded or shown by the head unit.
+     */
+    data class FrameSent(val presentationTimeUs: Long, val latencyUs: Long) : VideoEvent
 
-    /** The head unit acknowledged frames. */
-    data object AckReceived : VideoEvent
+    /**
+     * The head unit acknowledged frames (0x8004).
+     *
+     * [ackSeq] is the `ack` counter from the `MediaAck`, unsigned-extended; null
+     * when the head unit omits the field. [extraCount] is how many `field3`
+     * entries rode along. An ack confirms receipt, not visibility — the
+     * sender-side proxy for "visible" is acks advancing in step with frames.
+     */
+    data class AckReceived(val ackSeq: Long?, val extraCount: Int) : VideoEvent
 
     /** An ack named a session that is not ours; the session id lines up otherwise. */
     data class AckMismatch(val expected: Int, val actual: Int) : VideoEvent
+
+    /** One encoder drain produced [framesOut] frames (0 when it had nothing ready). */
+    data class EncoderDrained(val framesOut: Int) : VideoEvent
+
+    /** The virtual-display + encoder-input-surface pair became valid or went away. */
+    data class SurfaceChanged(val valid: Boolean) : VideoEvent
 }
 
 /**
@@ -66,6 +87,53 @@ object AutoSessionState {
     private val _ackMismatches = MutableStateFlow(0L)
     val ackMismatches: StateFlow<Long> = _ackMismatches.asStateFlow()
 
+    /**
+     * Encode-side frames per second over a sliding window of send timestamps.
+     * Sender-side: frames handed to the socket per second, not frames displayed.
+     */
+    private val _encodedFps = MutableStateFlow(0.0)
+    val encodedFps: StateFlow<Double> = _encodedFps.asStateFlow()
+
+    /**
+     * Head-unit acks per second over a sliding window of ack timestamps.
+     * The sender-side proxy for "visible" is this advancing in step with
+     * [encodedFps], not the total in [acksSeen].
+     */
+    private val _ackFps = MutableStateFlow(0.0)
+    val ackFps: StateFlow<Double> = _ackFps.asStateFlow()
+
+    /** Millis since the last 0x8004 ack; null when none has arrived this session. */
+    private val _lastAckAgeMs = MutableStateFlow<Long?>(null)
+    val lastAckAgeMs: StateFlow<Long?> = _lastAckAgeMs.asStateFlow()
+
+    /** Wall-clock millis of the last 0x8004 ack; the UI derives a live age from this. */
+    private val _lastAckAt = MutableStateFlow<Long?>(null)
+    val lastAckAt: StateFlow<Long?> = _lastAckAt.asStateFlow()
+
+    /** Highest 0x8004 `ack` counter seen; null until an ack carries the field. */
+    private val _lastAckSeq = MutableStateFlow<Long?>(null)
+    val lastAckSeq: StateFlow<Long?> = _lastAckSeq.asStateFlow()
+
+    /** Rolling mean encode-to-send latency in microseconds over recent frames. */
+    private val _avgEncodeLatencyUs = MutableStateFlow<Long?>(null)
+    val avgEncodeLatencyUs: StateFlow<Long?> = _avgEncodeLatencyUs.asStateFlow()
+
+    /** Encoder drains so far; frames ride out via [framesSent]. */
+    private val _encoderDrains = MutableStateFlow(0L)
+    val encoderDrains: StateFlow<Long> = _encoderDrains.asStateFlow()
+
+    /** Whether the virtual display + encoder input surface pair is currently up. */
+    private val _surfaceValid = MutableStateFlow(false)
+    val surfaceValid: StateFlow<Boolean> = _surfaceValid.asStateFlow()
+
+    /**
+     * Send/ack timestamps backing the fps windows. Mutated only on the
+     * `ma-auto-projection` worker thread (every entry point above runs there),
+     * so no extra locking beyond the flows' own thread-safety.
+     */
+    private val frameTimes = ArrayDeque<Long>()
+    private val ackTimes = ArrayDeque<Long>()
+
     /** Wall-clock millis when the session became active, for the phone's elapsed counter. */
     private val _sessionStartedAt = MutableStateFlow<Long?>(null)
     val sessionStartedAt: StateFlow<Long?> = _sessionStartedAt.asStateFlow()
@@ -77,6 +145,7 @@ object AutoSessionState {
         _framesSent.value = 0
         _acksSeen.value = 0
         _ackMismatches.value = 0
+        resetTelemetry()
         _sessionStartedAt.value = null
         _connection.value = AutoConnectionState.Connecting
     }
@@ -98,6 +167,25 @@ object AutoSessionState {
         _video.value = null
         _focusMode.value = null
         _sessionStartedAt.value = null
+        resetTelemetry()
+    }
+
+    /**
+     * Clears every Phase 0 telemetry counter. Called from [onSocketAccepted] and
+     * [onDisconnected] alongside the existing counters — a new socket means a
+     * new session, so stale fps/age/seq values must not leak across.
+     */
+    private fun resetTelemetry() {
+        frameTimes.clear()
+        ackTimes.clear()
+        _encodedFps.value = 0.0
+        _ackFps.value = 0.0
+        _lastAckAgeMs.value = null
+        _lastAckAt.value = null
+        _lastAckSeq.value = null
+        _avgEncodeLatencyUs.value = null
+        _encoderDrains.value = 0
+        _surfaceValid.value = false
     }
 
     /** End of a session: a recorded failure means refusal, anything else a clean parting. */
@@ -110,12 +198,63 @@ object AutoSessionState {
             is VideoEvent.Setup -> _video.value = event.info
             is VideoEvent.FocusChanged -> _focusMode.value = event.mode
             VideoEvent.FirstFrame -> Unit
-            VideoEvent.FrameSent -> _framesSent.value++
-            VideoEvent.AckReceived -> _acksSeen.value++
+            is VideoEvent.FrameSent -> {
+                _framesSent.value++
+                val now = SystemClock.uptimeMillis()
+                frameTimes.addLast(now)
+                while (frameTimes.isNotEmpty() && now - frameTimes.first() > FPS_WINDOW_MS) {
+                    frameTimes.removeFirst()
+                }
+                _encodedFps.value = frameTimes.size * 1_000.0 / FPS_WINDOW_MS
+                // Blend this frame's encode-to-send latency into the rolling mean.
+                val previous = _avgEncodeLatencyUs.value
+                _avgEncodeLatencyUs.value =
+                    if (previous == null) event.latencyUs else (previous + event.latencyUs) / 2
+                // Keep the ack age live while frames flow: it is the gap since the
+                // last ack, recomputed on every frame, not just when an ack lands.
+                refreshAckAge(System.currentTimeMillis())
+            }
+            is VideoEvent.AckReceived -> {
+                _acksSeen.value++
+                recordAck(event.ackSeq)
+            }
             is VideoEvent.AckMismatch -> {
                 _acksSeen.value++
                 _ackMismatches.value++
+                // A mismatched ack still proves the head unit is alive and consuming.
+                _lastAckAt.value = System.currentTimeMillis()
+                _lastAckAgeMs.value = 0
             }
+            is VideoEvent.EncoderDrained -> _encoderDrains.value++
+            is VideoEvent.SurfaceChanged -> _surfaceValid.value = event.valid
         }
+    }
+
+    /** Shares the ack timestamp/rate bookkeeping between matching and mismatched acks. */
+    private fun recordAck(ackSeq: Long?) {
+        val nowWall = System.currentTimeMillis()
+        val nowUptime = SystemClock.uptimeMillis()
+        _lastAckAt.value = nowWall
+        _lastAckAgeMs.value = 0
+        ackTimes.addLast(nowUptime)
+        while (ackTimes.isNotEmpty() && nowUptime - ackTimes.first() > FPS_WINDOW_MS) {
+            ackTimes.removeFirst()
+        }
+        _ackFps.value = ackTimes.size * 1_000.0 / FPS_WINDOW_MS
+        if (ackSeq != null) {
+            val previous = _lastAckSeq.value
+            if (previous == null || ackSeq > previous) _lastAckSeq.value = ackSeq
+        }
+    }
+
+    /** Recomputes the last-ack age against [nowWall]; a no-op until the first ack. */
+    private fun refreshAckAge(nowWall: Long) {
+        val at = _lastAckAt.value ?: return
+        _lastAckAgeMs.value = (nowWall - at).coerceAtLeast(0)
+    }
+
+    private companion object {
+        /** Sliding window the fps rates are computed over. */
+        const val FPS_WINDOW_MS = 5_000L
     }
 }

@@ -2,7 +2,10 @@ package com.vayunmathur.auto.platform
 
 import android.content.Context
 import android.media.MediaCodec
+import android.os.SystemClock
 import android.util.Log
+import android.view.Surface
+import com.vayunmathur.auto.BuildConfig
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalMessage
 import com.vayunmathur.auto.protocol.gal.MediaAck
@@ -43,6 +46,13 @@ class VideoSinkChannel(
     private var sessionId = -1
     private var configurationIndex = 0
     private var firstFrameSent = false
+
+    /**
+     * Frames emitted since the last [pumpEncoder] call. `drain()` invokes
+     * [sendFrame] synchronously, so snapshotting after it returns counts exactly
+     * this pump's yield — which is what tells "encoder idle" from "flowing".
+     */
+    private var framesOutSinceDrain = 0
 
     /** Chosen from what the head unit advertised in discovery. */
     private val configuration: VideoConfiguration? =
@@ -96,13 +106,19 @@ class VideoSinkChannel(
 
     private fun onAck(payload: ByteArray) {
         // Flow control: the head unit has consumed frames. Nothing to do while we send
-        // unthrottled, but parsing it confirms the session id lines up.
+        // unthrottled, but parsing it confirms the session id lines up — and the ack
+        // counter plus field3 entries are the sender-side sequence track of the stream.
         val ack = MediaAck.parseFrom(payload)
         if (ack.sessionId != sessionId) {
             Log.w(TAG, "ack for session ${ack.sessionId}, expected $sessionId")
             onEvent(VideoEvent.AckMismatch(expected = sessionId, actual = ack.sessionId))
         } else {
-            onEvent(VideoEvent.AckReceived)
+            onEvent(
+                VideoEvent.AckReceived(
+                    ackSeq = if (ack.hasAck()) Integer.toUnsignedLong(ack.ack) else null,
+                    extraCount = ack.field3Count,
+                ),
+            )
         }
     }
 
@@ -121,9 +137,14 @@ class VideoSinkChannel(
         this.encoder = encoder
         encoder.start()
 
+        val surface = checkNotNull(encoder.surface) { "encoder produced no input surface" }
         display = CarDisplay(context, width, height, density).also {
-            it.show(checkNotNull(encoder.surface) { "encoder produced no input surface" })
+            it.show(surface)
         }
+        // The render pair is up: a private virtual display compositing straight into
+        // the encoder's input surface. Validity dump for the Phase 0 probe.
+        dumpSurfaces(width, height, density, surface)
+        onEvent(VideoEvent.SurfaceChanged(valid = true))
 
         // Step 4.
         connection.send(
@@ -137,12 +158,38 @@ class VideoSinkChannel(
         )
     }
 
+    /**
+     * Dev-build validity dump of the render pair for the Phase 0 probe: virtual-display
+     * geometry plus whether the encoder input surface is still live. R8 strips the
+     * whole call from release builds via [BuildConfig.DEV_BUILD]; production logcat
+     * stays quiet.
+     */
+    private fun dumpSurfaces(width: Int, height: Int, density: Int, surface: Surface) {
+        if (!BuildConfig.DEV_BUILD) return
+        Log.i(
+            TAG,
+            "render pair up: virtual display ${width}x$height dpi $density, " +
+                "encoder input surface valid=${surface.isValid}",
+        )
+    }
+
     private fun sendFrame(buffer: ByteBuffer, info: MediaCodec.BufferInfo) {
         if (!firstFrameSent) {
             firstFrameSent = true
             onEvent(VideoEvent.FirstFrame)
         }
-        onEvent(VideoEvent.FrameSent)
+        framesOutSinceDrain++
+        // Encode-to-send latency: codec timestamp (queue time, monotonic) vs now.
+        // Clamped at zero — a late pump can drain a frame whose timestamp predates
+        // the send by more than the stream age only on clock weirdness.
+        val latencyUs = (SystemClock.elapsedRealtimeNanos() / 1_000 - info.presentationTimeUs)
+            .coerceAtLeast(0)
+        onEvent(
+            VideoEvent.FrameSent(
+                presentationTimeUs = info.presentationTimeUs,
+                latencyUs = latencyUs,
+            ),
+        )
         val bytes = ByteArray(info.size)
         buffer.get(bytes)
         // Timestamped form: an 8-byte microsecond timestamp then the access unit. Codec
@@ -154,9 +201,19 @@ class VideoSinkChannel(
         connection.send(channelId, GalMessage.Media.DATA_WITH_TIMESTAMP, payload)
     }
 
-    /** Pushes any encoded frames out. Called from the connection's loop. */
+    /**
+     * Pushes any encoded frames out. Called from the connection's loop.
+     *
+     * Emits a drain observation per pump so the phone UI can tell "encoder idle"
+     * (drains with nothing ready) from "frames flowing" ([VideoEvent.FrameSent]).
+     */
     fun pumpEncoder() {
+        // No encoder yet (channel open but setup/start still in flight): nothing to
+        // drain and nothing to count — drains are scoped to the streaming session.
+        if (encoder == null) return
+        framesOutSinceDrain = 0
         encoder?.drain()
+        onEvent(VideoEvent.EncoderDrained(framesOut = framesOutSinceDrain))
     }
 
     fun release() {
@@ -164,6 +221,7 @@ class VideoSinkChannel(
         display = null
         encoder?.stop()
         encoder = null
+        onEvent(VideoEvent.SurfaceChanged(valid = false))
     }
 
     private fun VideoResolution?.dimensions(): Pair<Int, Int> = when (this) {

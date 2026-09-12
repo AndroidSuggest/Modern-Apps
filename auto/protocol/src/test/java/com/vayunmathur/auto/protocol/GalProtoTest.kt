@@ -6,6 +6,7 @@ import com.vayunmathur.auto.protocol.gal.ByeByeReason
 import com.vayunmathur.auto.protocol.gal.ByeByeRequest
 import com.vayunmathur.auto.protocol.gal.ChannelOpenResponse
 import com.vayunmathur.auto.protocol.gal.ChannelOpenRequest
+import com.vayunmathur.auto.protocol.gal.MediaAck
 import com.vayunmathur.auto.protocol.gal.MediaCodecType
 import com.vayunmathur.auto.protocol.gal.MediaSinkService
 import com.vayunmathur.auto.protocol.gal.PingRequest
@@ -151,5 +152,44 @@ class GalProtoTest {
         assertEquals(1, MediaCodecType.MEDIA_CODEC_AUDIO_PCM.number)
         assertEquals(3, MediaCodecType.MEDIA_CODEC_VIDEO_H264_BP.number)
         assertEquals(7, MediaCodecType.MEDIA_CODEC_VIDEO_H265.number)
+    }
+
+    @Test
+    fun `MediaAck carries session id, ack counter and field3 entries`() {
+        // 0x8004 from the head unit. The video channel reads the optional ack
+        // counter (field 2) for its sequence track and counts field3 entries,
+        // so pin both the exact bytes and the accessors here.
+        val bytes = MediaAck.newBuilder()
+            .setSessionId(0)
+            .setAck(118)
+            .addField3(1L)
+            .addField3(2L)
+            .build()
+            .toByteArray()
+        assertContentEquals(
+            byteArrayOf(
+                0x08, 0x00, // field 1, varint, session 0
+                0x10, 0x76, // field 2, varint, 118
+                0x18, 0x01, // field 3, varint, 1
+                0x18, 0x02, // field 3, varint, 2
+            ),
+            bytes,
+        )
+        val parsed = MediaAck.parseFrom(bytes)
+        assertEquals(0, parsed.sessionId)
+        assertTrue(parsed.hasAck())
+        assertEquals(118, parsed.ack)
+        assertEquals(2, parsed.field3Count)
+    }
+
+    @Test
+    fun `MediaAck without ack leaves the counter absent`() {
+        // The head unit may omit the optional counter; the channel then reports
+        // a null sequence rather than a bogus zero.
+        val parsed = MediaAck.parseFrom(
+            MediaAck.newBuilder().setSessionId(0).build().toByteArray(),
+        )
+        assertTrue(!parsed.hasAck())
+        assertEquals(0, parsed.field3Count)
     }
 }

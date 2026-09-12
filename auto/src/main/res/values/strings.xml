@@ -38,6 +38,47 @@
     <string name="session_ack_mismatch">Ack mismatches</string>
     <!-- %1$d is the count of mismatched acks. -->
     <string name="session_ack_mismatch_value"><xliff:g example="1" id="count">%1$d</xliff:g></string>
+    <!-- Heading of the row showing the encode-side and ack rates over a sliding window.
+         Sender-side only: sent frames per second and head-unit acks per second. -->
+    <string name="session_rates">Rates sent / acked</string>
+    <!-- %1$.1f is frames sent per second, %2$.1f is acks per second. -->
+    <string name="session_rates_value"><xliff:g example="30.0" id="sent_fps">%1$.1f</xliff:g> / <xliff:g example="29.5" id="ack_fps">%2$.1f</xliff:g> fps</string>
+    <!-- Heading of the row showing how old the last head-unit ack is. -->
+    <string name="session_ack_age">Last ack</string>
+    <!-- Shown once an ack has arrived. %1$s is an age like "0.4 s" or "12 s". -->
+    <string name="session_ack_age_value"><xliff:g example="0.4 s" id="age">%1$s</xliff:g> ago</string>
+    <!-- Age of the last head-unit ack under ten seconds, one decimal. %1$.1f is
+         seconds; translators own the unit so it can be spaced or abbreviated per locale. -->
+    <string name="session_ack_age_secs"><xliff:g example="0.4" id="secs">%1$.1f</xliff:g> s</string>
+    <!-- Age of the last head-unit ack at ten seconds or more, whole seconds.
+         %1$d is seconds; translators own the unit. -->
+    <string name="session_ack_age_secs_whole"><xliff:g example="12" id="secs">%1$d</xliff:g> s</string>
+    <!-- Shown on the session card before the first head-unit ack arrives. -->
+    <string name="session_ack_age_none">No acks yet</string>
+    <!-- Heading of the row showing the highest head-unit ack counter seen. -->
+    <string name="session_ack_seq">Ack sequence</string>
+    <!-- %1$d is the highest 0x8004 ack counter seen so far. -->
+    <string name="session_ack_seq_value"><xliff:g example="118" id="seq">%1$d</xliff:g></string>
+    <!-- Shown when no ack has carried a sequence counter yet. -->
+    <string name="session_ack_seq_none">—</string>
+    <!-- Heading of the row showing the mean encode-to-send latency. -->
+    <string name="session_latency">Encode latency</string>
+    <!-- %1$d is the rolling mean encode-to-send latency in microseconds. -->
+    <string name="session_latency_value"><xliff:g example="8300" id="latency_us">%1$d</xliff:g> µs</string>
+    <!-- Shown when no frame has been sent yet to measure latency from. -->
+    <string name="session_latency_none">—</string>
+    <!-- Heading of the row counting encoder drains. -->
+    <string name="session_drains">Encoder drains</string>
+    <!-- %1$d is the count of encoder drains so far. -->
+    <string name="session_drains_value"><xliff:g example="240" id="count">%1$d</xliff:g></string>
+    <!-- Heading of the row showing whether the virtual display plus encoder input
+         surface pair is currently up. -->
+    <string name="session_surface">Surface</string>
+    <!-- Shown on the session card while the virtual-display and encoder-input-surface
+         pair is up and compositing. -->
+    <string name="session_surface_valid">Valid</string>
+    <!-- Shown on the session card when the render pair is down or not yet up. -->
+    <string name="session_surface_invalid">Down</string>
     <!-- Heading of the row showing how long the session has been active. -->
     <string name="session_elapsed">Session time</string>
     <!-- Shown when there is no active session to time. -->

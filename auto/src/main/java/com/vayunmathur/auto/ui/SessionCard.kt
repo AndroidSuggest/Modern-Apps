@@ -55,9 +55,90 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
                     },
                 )
             }
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.session_rates)) },
+                supportingContent = {
+                    Text(
+                        stringResource(
+                            R.string.session_rates_value,
+                            session.encodedFps,
+                            session.ackFps,
+                        ),
+                    )
+                },
+            )
+            AckAgeRow(lastAckAt = session.lastAckAt)
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.session_ack_seq)) },
+                supportingContent = {
+                    Text(
+                        session.lastAckSeq?.let {
+                            stringResource(R.string.session_ack_seq_value, it)
+                        } ?: stringResource(R.string.session_ack_seq_none),
+                    )
+                },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.session_latency)) },
+                supportingContent = {
+                    Text(
+                        session.avgEncodeLatencyUs?.let {
+                            stringResource(R.string.session_latency_value, it)
+                        } ?: stringResource(R.string.session_latency_none),
+                    )
+                },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.session_drains)) },
+                supportingContent = {
+                    Text(stringResource(R.string.session_drains_value, session.encoderDrains))
+                },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.session_surface)) },
+                supportingContent = {
+                    Text(
+                        stringResource(
+                            if (session.surfaceValid) R.string.session_surface_valid
+                            else R.string.session_surface_invalid,
+                        ),
+                    )
+                },
+            )
             SessionElapsedRow(sessionStartedAt = session.sessionStartedAt)
         }
     }
+}
+
+/**
+ * Live age of the last head-unit ack, recomposing each second from the wall-clock
+ * timestamp; a dash while no ack has arrived. Reuses the session clock pattern so
+ * only this row recomposes, not the whole card.
+ */
+@Composable
+private fun AckAgeRow(lastAckAt: Long?) {
+    val now = rememberClock(1.seconds)
+    var tick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    tick = now()
+    if (lastAckAt == null) {
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.session_ack_age)) },
+            supportingContent = { Text(stringResource(R.string.session_ack_age_none)) },
+        )
+        return
+    }
+    val age = formatAge(tick - lastAckAt)
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_ack_age)) },
+        supportingContent = { Text(stringResource(R.string.session_ack_age_value, age)) },
+    )
+}
+
+@Composable
+private fun formatAge(millis: Long): String {
+    val clamped = millis.coerceAtLeast(0)
+    return if (clamped < 10_000) stringResource(R.string.session_ack_age_secs, clamped / 1_000.0)
+    else stringResource(R.string.session_ack_age_secs_whole, (clamped / 1_000).toInt())
 }
 
 /** Live mm:ss counter since the session became active; a dash when there is no session. */

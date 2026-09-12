@@ -8,6 +8,7 @@ import android.hardware.display.VirtualDisplay
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.Surface
 import android.view.View
@@ -16,6 +17,7 @@ import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.vayunmathur.auto.BuildConfig
 import com.vayunmathur.auto.R
 import java.text.DateFormat
 import java.util.Date
@@ -65,6 +67,7 @@ class CarDisplay(
         virtualDisplay = display
 
         presentation = showPresentation(display.display)
+        dumpVirtualDisplay(display.display, surface)
     }
 
     /**
@@ -262,5 +265,21 @@ class CarDisplay(
 
     private companion object {
         const val DISPLAY_NAME = "MA Auto"
+        const val TAG = "MaAuto.Display"
+
+        /**
+         * Dev-build validity dump of the virtual display for the Phase 0 probe:
+         * display id, real size, and whether the encoder input surface is live.
+         * Gated on [BuildConfig.DEV_BUILD] so release logcat stays quiet.
+         */
+        fun dumpVirtualDisplay(display: android.view.Display, surface: Surface) {
+            if (!BuildConfig.DEV_BUILD) return
+            val size = android.graphics.Point().also { display.getRealSize(it) }
+            Log.i(
+                TAG,
+                "virtual display up: id=${display.displayId} real=${size.x}x${size.y} " +
+                    "surface valid=${surface.isValid}",
+            )
+        }
     }
 }
