@@ -108,6 +108,46 @@ class GalConnectionTest {
     }
 
     @Test
+    fun `an encrypted control message carries the CONTROL bit`() {
+        // Dalvik ground truth (`Ljbe.i`): every `jbj.k` send builds Lizm.f=true,
+        // which ORs 0x04 into the flags -- encrypted channel-0 messages go out
+        // as FIRST|LAST|CONTROL|ENCRYPTED = 0x0F. DHU 2.0 answers a
+        // CONTROL-less 0x7 with an empty 0xff and no 0x8 (Run 5).
+        val transport = FakeTransport()
+        val connection = connection(transport)
+        connection.send(
+            OutboundMessage(
+                type = GalMessage.Control.CHANNEL_OPEN_REQUEST,
+                payload = byteArrayOf(0x08, 0x00, 0x10, 0x02),
+                encrypted = true,
+            ),
+        )
+
+        val written = transport.written.toByteArray()
+        assertEquals(0x00, written[0])
+        assertEquals(0x0F, written[1].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `a plaintext control message leaves the CONTROL bit clear`() {
+        // Version negotiation rides pre-TLS and was accepted as-is; only
+        // encrypted channel-0 messages get the bit.
+        val transport = FakeTransport()
+        val connection = connection(transport)
+        connection.send(
+            OutboundMessage(
+                type = GalMessage.Control.VERSION_RESPONSE,
+                payload = byteArrayOf(0x00, 0x01, 0x00, 0x06, 0x00, 0x00),
+                encrypted = false,
+            ),
+        )
+
+        val written = transport.written.toByteArray()
+        assertEquals(0x00, written[0])
+        assertEquals(0x03, written[1].toInt() and 0xFF)
+    }
+
+    @Test
     fun `pump reports end of stream when the head unit goes away`() {
         val transport = FakeTransport()
         val connection = connection(transport)

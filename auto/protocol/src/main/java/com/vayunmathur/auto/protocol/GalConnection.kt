@@ -107,8 +107,16 @@ class GalConnection(
         write(
             channelId = CONTROL_CHANNEL,
             payload = MessageCodec.encode(message.type, message.payload),
-            // Never set on channel 0; see isChannelControlMessage.
-            isControl = false,
+            // Set on encrypted channel-0 messages, clear on the plaintext
+            // version/handshake frames. Dalvik ground truth (`Ljbe.i` flag
+            // assembly): every `jbj.k` send builds `Lizm.f = true`, which ORs
+            // in 0x04 -- so gearhead's 0x5/0x7/ping-responses go out as
+            // FIRST|LAST|CONTROL|ENCRYPTED = 0x0F. DHU 2.0 accepts a
+            // CONTROL-less 0x5 (discovery path doesn't check) but answers a
+            // CONTROL-less 0x7 with an empty 0xff and no 0x8 (Run 5: every
+            // service refused). Version/handshake stay clear: those were
+            // accepted as-is and they ride pre-TLS.
+            isControl = message.encrypted,
             encrypted = message.encrypted,
         )
     }
