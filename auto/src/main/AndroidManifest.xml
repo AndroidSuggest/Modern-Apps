@@ -7,6 +7,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- The head unit connects in over TCP. For the Desktop Head Unit that is an adb forward
+         to loopback; for a real car it is the wireless link. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Bringing up the WiFi link to a wireless head unit. This is also what qualifies
+         ProjectionService for the connectedDevice foreground type: that check accepts a USB
+         accessory only when one is physically attached and permission-granted, so the USB
+         filter below does not satisfy it on its own. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
     <application
         android:allowBackup="false"
@@ -27,6 +35,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Plugging into a head unit puts the phone into AOAP accessory mode and
+                 Android hands the connection to whoever matches, which is also how the app
+                 gets launched on plug-in. -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED"
+                android:resource="@xml/usb_accessory_filter" />
         </activity>
+
+        <service
+            android:name=".service.ProjectionService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
     </application>
 </manifest>

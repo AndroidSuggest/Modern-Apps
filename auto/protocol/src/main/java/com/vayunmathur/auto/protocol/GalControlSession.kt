@@ -55,6 +55,7 @@ enum class SessionState {
 class GalControlSession(
     private val engine: SSLEngine,
     private val deviceName: String,
+    private val deviceBrand: String = deviceName,
     private val supportedVersion: GalVersion = VersionNegotiation.SUPPORTED,
 ) {
     var state: SessionState = SessionState.AWAITING_VERSION
@@ -169,8 +170,11 @@ class GalControlSession(
         return listOf(
             OutboundMessage(
                 type = GalMessage.Control.SERVICE_DISCOVERY_REQUEST,
+                // Both name and brand: a head unit rejects the request outright when only
+                // one is set, which shows up as a bare MessageError with no explanation.
                 payload = ServiceDiscoveryRequest.newBuilder()
                     .setDeviceName(deviceName)
+                    .setDeviceBrand(deviceBrand)
                     .build()
                     .toByteArray(),
                 encrypted = true,

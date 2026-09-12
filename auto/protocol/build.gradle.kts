@@ -13,7 +13,10 @@ plugins {
 // literal in every build.gradle.kts it finds, and a library has no such properties.
 dependencies {
     implementation(project(":library"))
-    implementation(libs.protobuf.javalite)
+    // `api`, not `implementation`: the generated message classes are part of this module's
+    // public surface, so a consumer that touches one needs GeneratedMessageLite and
+    // Internal.EnumLite on its compile classpath too.
+    api(libs.protobuf.javalite)
 }
 
 protobuf {

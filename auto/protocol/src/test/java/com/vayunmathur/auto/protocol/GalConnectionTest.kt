@@ -50,12 +50,12 @@ class GalConnectionTest {
     private fun connection(transport: FakeTransport) =
         GalConnection(transport, TestTls.context(), deviceName = "Pixel 8")
 
-    /** A control frame as a head unit would put it on the wire: plaintext, channel 0. */
+    /** A control frame exactly as the Desktop Head Unit puts it on the wire. */
     private fun headUnitFrame(type: Int, payload: ByteArray): ByteArray =
         FrameWriter().frame(
             channelId = 0,
             payload = MessageCodec.encode(type, payload),
-            isControl = true,
+            isControl = false,
             encrypted = false,
         ).single()
 
@@ -72,11 +72,11 @@ class GalConnectionTest {
 
         assertTrue(connection.pump())
 
-        // The full frame: 4-byte header, then type 2, major, minor, status. Flags are 0x07,
-        // FIRST|LAST|CONTROL -- the control bit is what puts this on the control channel.
+        // Flags 0x03, FIRST|LAST with the control bit CLEAR: version negotiation is raw
+        // shorts rather than protobuf. A real DHU sends its request the same way.
         assertContentEquals(
             byteArrayOf(
-                0x00, 0x07, 0x00, 0x08, // channel 0, FIRST|LAST|CONTROL, 8-byte payload
+                0x00, 0x03, 0x00, 0x08, // channel 0, FIRST|LAST, 8-byte payload
                 0x00, 0x02, //             VersionResponse
                 0x00, 0x01, 0x00, 0x06, // 1.6
                 0x00, 0x00, //             STATUS_SUCCESS
@@ -85,6 +85,26 @@ class GalConnectionTest {
         )
         assertEquals(GalVersion(1, 6), connection.session.negotiatedVersion)
         assertEquals(SessionState.HANDSHAKING, connection.session.state)
+    }
+
+    @Test
+    fun `the exact bytes a Desktop Head Unit sends are understood`() {
+        // Captured from desktop-head-unit.exe 2.0 on connect. Kept verbatim because it is
+        // the only ground truth we have for what a head unit actually puts on the wire.
+        val fromDhu = byteArrayOf(
+            0x00, 0x03, 0x00, 0x06, // channel 0, FIRST|LAST, 6-byte payload
+            0x00, 0x01, //             VersionRequest
+            0x00, 0x01, 0x00, 0x07, // 1.7
+        )
+        val transport = FakeTransport()
+        val connection = connection(transport)
+        transport.queue(fromDhu)
+
+        assertTrue(connection.pump())
+
+        assertEquals(GalVersion(1, 7), connection.session.negotiatedVersion)
+        assertEquals(SessionState.HANDSHAKING, connection.session.state)
+        assertTrue(transport.written.size() > 0, "the head unit should have been answered")
     }
 
     @Test
@@ -120,15 +140,18 @@ class GalConnectionTest {
             transport,
             TestTls.context(),
             deviceName = "Pixel 8",
-        ) { received += it }
+            // Named: `trace` is also a trailing lambda, so positional binding here would
+            // silently attach this to the wrong parameter.
+            onChannelMessage = { received += it },
+        )
 
-        // A plaintext service-channel frame. Real ones are encrypted, but the routing
-        // decision is the control flag, which is what this is checking.
+        // A service-channel frame. Routing is by channel id, so this must reach the handler
+        // rather than the session regardless of how the control bit is set.
         transport.queue(
             FrameWriter().frame(
                 channelId = GalService.VIDEO_SINK.id,
                 payload = MessageCodec.encode(GalMessage.Video.FOCUS_INDICATION, byteArrayOf(1)),
-                isControl = false,
+                isControl = true,
                 encrypted = false,
             ).single(),
         )

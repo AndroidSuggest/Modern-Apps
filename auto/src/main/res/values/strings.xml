@@ -18,4 +18,9 @@
 
     <!-- Explains that plugging in is all that is needed; there is nothing to configure. -->
     <string name="connect_hint">Plug the phone into the car with a USB cable, or start Android Auto from the car\'s screen if it supports a wireless connection.</string>
+
+    <!-- Notification channel name for the ongoing projection session. -->
+    <string name="projection_channel">Projection</string>
+    <!-- Ongoing notification shown while a car is connected. -->
+    <string name="projection_running">Connected to a car</string>
 </resources>

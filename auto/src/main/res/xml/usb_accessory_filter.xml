@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The AOAP identity a head unit announces when it puts the phone into accessory mode.
+     Matching it is what lets Android hand us the connection, and it is also what qualifies
+     the projection service for the connectedDevice foreground type. -->
+<resources>
+    <usb-accessory manufacturer="Android" model="Android Auto" />
+    <usb-accessory manufacturer="Android" model="Android Auto Wireless" />
+</resources>

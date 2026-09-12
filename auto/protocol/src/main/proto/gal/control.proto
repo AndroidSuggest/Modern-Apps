@@ -94,13 +94,15 @@ enum NavigationFocusType {
 // ---- messages ----
 
 // Control message 5. Sent by the PHONE. Only sent once version negotiation reaches >= 1.6.
+//
+// Fields 4 and 5 are optional in this build's descriptor but aasdk has both as required, and
+// a Desktop Head Unit answers MessageError when only one is set, so both are always populated.
 message ServiceDiscoveryRequest {
   optional bytes field1 = 1;
   optional bytes field2 = 2;
   optional bytes field3 = 3;
-  optional string field4 = 4;
-  // Build.MODEL, prefixed with Build.MANUFACTURER when not already prefixed.
-  optional string device_name = 5;
+  optional string device_name = 4;
+  optional string device_brand = 5;
   optional bytes field6 = 6;
 }
 
