@@ -90,7 +90,7 @@ class CarDisplay(
         // additionally requires ADD_TRUSTED_DISPLAY (the MAOS role); requesting it
         // without the permission throws, so it rides only on the trusted route.
         var flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
-        if (trusted) flags = flags or DisplayManager.VIRTUAL_DISPLAY_FLAG_TRUSTED
+        if (trusted) flags = flags or trustedDisplayFlag()
         val display = displayManager.createVirtualDisplay(
             DISPLAY_NAME,
             width,
@@ -591,6 +591,18 @@ class CarDisplay(
     private companion object {
         const val DISPLAY_NAME = "MA Auto"
         const val TAG = "MaAuto.Display"
+
+        /**
+         * `VIRTUAL_DISPLAY_FLAG_TRUSTED` by value: hidden before API 36, so read
+         * reflectively. Falls back to PRESENTATION-only (private display) where
+         * absent, preserving the private-by-default intent; the [Presentation]
+         * owned by this app renders fine without it.
+         */
+        fun trustedDisplayFlag(): Int = try {
+            DisplayManager::class.java.getField("VIRTUAL_DISPLAY_FLAG_TRUSTED").getInt(null)
+        } catch (_: Exception) {
+            0
+        }
 
         /**
          * Dev-build validity dump of the virtual display for the Phase 0 probe:
