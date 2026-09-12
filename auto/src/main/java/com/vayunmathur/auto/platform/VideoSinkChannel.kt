@@ -286,7 +286,7 @@ class VideoSinkChannel(
     }
 
     /** One vsync tick: drain, count, re-arm. Main thread only. */
-    private val vsyncCallback = Choreographer.FrameCallback {
+    private val vsyncCallback: Choreographer.FrameCallback = Choreographer.FrameCallback {
         pumpEncoder()
         choreographer?.postFrameCallback(vsyncCallback)
     }
