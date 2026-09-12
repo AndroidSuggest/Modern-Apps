@@ -31,6 +31,13 @@ class OutboundMessage(
      * rather than applied to every encrypted channel-0 send.
      */
     val isControl: Boolean = false,
+    /**
+     * Frame channel for sends that don't ride channel 0. The channel-open
+     * request targets the channel being opened: gearhead's `izd.b()` sends via
+     * `izl.g(this.b, ...)`, and a ch0-framed 0x7 is refused with
+     * STATUS_INVALID_CHANNEL (-5, Run 6). Ignored for other message types.
+     */
+    val channelId: Int = 0,
 )
 
 /** Where the session has got to. */
@@ -155,6 +162,10 @@ class GalControlSession(
      * 0x04, so gearhead's 0x7 goes out as FIRST|LAST|CONTROL|ENCRYPTED = 0x0F.
      * Scoped to this path only -- the CONTROL-less 0x5 is live-accepted, so no
      * other channel-0 send takes the bit.
+     *
+     * The frame rides the TARGET channel, not channel 0: `izd.b()` sends via
+     * `izl.g(this.b, ...)`, and a ch0-framed 0x7 is refused with
+     * STATUS_INVALID_CHANNEL (-5, Run 6) even though it parses.
      */
     fun openChannel(service: Service, priority: Int = 0): OutboundMessage {
         pendingChannels += service.id
@@ -167,6 +178,7 @@ class GalControlSession(
                 .toByteArray(),
             encrypted = true,
             isControl = true,
+            channelId = service.id,
         )
     }
 

@@ -70,9 +70,16 @@ class GalConnection(
 
         for (message in reader.offer(buffer, 0, count)) {
             val decoded = MessageCodec.decode(message.channelId, message.payload)
-            // Routed by channel id, not by the frame's control bit: a head unit leaves that
-            // bit clear on the version request, which is a control-channel message.
-            if (message.channelId == CONTROL_CHANNEL) {
+            // Channel-open traffic (0x7 out / 0x8 in) rides the TARGET channel,
+            // not channel 0: gearhead's `izd.b()` sends the open via
+            // `izl.g(this.b, ...)` where `b` is the channel being opened, and
+            // the HU's 0x8 comes back the same way. A ch0-framed 0x7 parses but
+            // is refused with STATUS_INVALID_CHANNEL (-5, Run 6). So an inbound
+            // 0x8 on ANY channel belongs to the session; everything else on a
+            // service channel goes to that channel's owner.
+            if (message.channelId == CONTROL_CHANNEL ||
+                decoded.type == GalMessage.Control.CHANNEL_OPEN_RESPONSE
+            ) {
                 val before = session.state
                 val replies = session.onMessage(decoded.type, decoded.payload)
                 // Log the payload: incoming message bodies are otherwise invisible, and
@@ -104,8 +111,10 @@ class GalConnection(
 
     /** Frames a control message and writes it. */
     fun send(message: OutboundMessage) {
+        // Most control messages ride channel 0; the channel-open request rides
+        // its target channel (see OutboundMessage.channelId).
         write(
-            channelId = CONTROL_CHANNEL,
+            channelId = message.channelId,
             payload = MessageCodec.encode(message.type, message.payload),
             // Per-message: only the channel-open request sets CONTROL today.
             // The CONTROL-less 0x5 is live-accepted, so nothing else takes the

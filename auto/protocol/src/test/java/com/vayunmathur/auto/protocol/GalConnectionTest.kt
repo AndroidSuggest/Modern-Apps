@@ -1,5 +1,7 @@
 package com.vayunmathur.auto.protocol
 
+import com.vayunmathur.auto.protocol.gal.ChannelOpenResponse
+import com.vayunmathur.auto.protocol.gal.Service
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import kotlin.test.Test
@@ -109,11 +111,10 @@ class GalConnectionTest {
     }
 
     @Test
-    fun `the channel-open request carries the CONTROL bit`() {
-        // Scoped to the 0x7 path only: DHU 2.0 answers a CONTROL-less 0x7 with
-        // an empty 0xff and no 0x8 (Run 5), while the CONTROL-less 0x5 is
-        // accepted -- so the bit goes on the open, nothing else. Dalvik ground
-        // truth (`Ljbe.i`): gearhead's 0x7 goes out as 0x0F.
+    fun `the channel-open request rides its target channel`() {
+        // gearhead's `izd.b()` sends the open via `izl.g(this.b, ...)` -- the
+        // frame channel is the channel being opened. A ch0-framed 0x7 parses
+        // but is refused with STATUS_INVALID_CHANNEL (-5, Run 6).
         //
         // Framed at the FrameWriter level with a handshook engine: sending
         // encrypted data through a full connection needs a completed handshake
@@ -127,17 +128,49 @@ class GalConnectionTest {
             payload = byteArrayOf(0x08, 0x00, 0x10, 0x02),
             encrypted = true,
             isControl = true,
+            channelId = GalService.VIDEO_SINK.id,
         )
 
         val frame = writer.frame(
-            channelId = 0,
+            channelId = message.channelId,
             payload = MessageCodec.encode(message.type, message.payload),
             isControl = message.isControl,
             encrypted = message.encrypted,
         ).single()
 
-        assertEquals(0x00, frame[0])
+        assertEquals(GalService.VIDEO_SINK.id, frame[0].toInt() and 0xFF)
         assertEquals(0x0F, frame[1].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `a channel-open response on a service channel reaches the session`() {
+        // The HU's 0x8 comes back on the target channel, not channel 0. It must
+        // still land in the session rather than the service handler.
+        val transport = FakeTransport()
+        val received = mutableListOf<ChannelMessage>()
+        val connection = GalConnection(
+            transport,
+            TestTls.context(),
+            deviceModel = "Pixel 8",
+            onChannelMessage = { received += it },
+        )
+        val service = Service.newBuilder().setId(GalService.VIDEO_SINK.id).build()
+        connection.session.openChannel(service)
+        transport.queue(
+            FrameWriter().frame(
+                channelId = GalService.VIDEO_SINK.id,
+                payload = MessageCodec.encode(
+                    GalMessage.Control.CHANNEL_OPEN_RESPONSE,
+                    ChannelOpenResponse.newBuilder().setStatus(0).build().toByteArray(),
+                ),
+                isControl = true,
+                encrypted = false,
+            ).single(),
+        )
+
+        assertTrue(connection.pump())
+        assertTrue(received.isEmpty(), "the 0x8 must reach the session, not the handler")
+        assertEquals(setOf(GalService.VIDEO_SINK.id), connection.session.openChannels)
     }
 
     @Test
