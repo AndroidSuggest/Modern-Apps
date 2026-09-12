@@ -4,6 +4,7 @@ import com.vayunmathur.auto.protocol.gal.AudioConfiguration
 import com.vayunmathur.auto.protocol.gal.AuthComplete
 import com.vayunmathur.auto.protocol.gal.ByeByeReason
 import com.vayunmathur.auto.protocol.gal.ByeByeRequest
+import com.vayunmathur.auto.protocol.gal.ChannelOpenResponse
 import com.vayunmathur.auto.protocol.gal.ChannelOpenRequest
 import com.vayunmathur.auto.protocol.gal.MediaCodecType
 import com.vayunmathur.auto.protocol.gal.MediaSinkService
@@ -70,6 +71,15 @@ class GalProtoTest {
         assertContentEquals(
             byteArrayOf(0x08, 0x00),
             AuthComplete.newBuilder().setStatus(0).build().toByteArray(),
+        )
+    }
+
+    @Test
+    fun `a channel-open response pins status in field 1`() {
+        // `xir`: single enum field 1. STATUS_SUCCESS = 0 encodes as 08 00.
+        assertContentEquals(
+            byteArrayOf(0x08, 0x00),
+            ChannelOpenResponse.newBuilder().setStatus(0).build().toByteArray(),
         )
     }
 

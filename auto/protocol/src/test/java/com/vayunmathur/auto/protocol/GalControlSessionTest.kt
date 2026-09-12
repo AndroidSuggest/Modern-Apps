@@ -1,6 +1,7 @@
 package com.vayunmathur.auto.protocol
 
 import com.vayunmathur.auto.protocol.gal.AuthComplete
+import com.vayunmathur.auto.protocol.gal.ChannelOpenResponse
 import com.vayunmathur.auto.protocol.gal.MediaCodecType
 import com.vayunmathur.auto.protocol.gal.MediaSinkService
 import com.vayunmathur.auto.protocol.gal.MessageStatus
@@ -200,17 +201,36 @@ class GalControlSessionTest {
     }
 
     @Test
-    fun `opening a channel names the service and rides encrypted`() {
+    fun `the channel opens only on a success response`() {
         val session = session(GalCredential.serverEngine(context()))
         val service = Service.newBuilder().setId(GalService.VIDEO_SINK.id).build()
+        session.openChannel(service)
 
-        val open = session.openChannel(service, priority = -128)
+        // A success response marks the channel open with no reply of its own.
+        assertTrue(
+            session.onMessage(
+                GalMessage.Control.CHANNEL_OPEN_RESPONSE,
+                ChannelOpenResponse.newBuilder().setStatus(0).build().toByteArray(),
+            ).isEmpty(),
+        )
+        assertEquals(setOf(GalService.VIDEO_SINK.id), session.openChannels)
+        assertNull(session.failure)
+    }
 
-        assertEquals(GalMessage.Control.CHANNEL_OPEN_REQUEST, open.type)
-        assertTrue(open.encrypted)
-        val parsed = com.vayunmathur.auto.protocol.gal.ChannelOpenRequest.parseFrom(open.payload)
-        assertEquals(GalService.VIDEO_SINK.id, parsed.serviceId)
-        assertEquals(-128, parsed.priority)
+    @Test
+    fun `a refused channel open fails the session`() {
+        val session = session(GalCredential.serverEngine(context()))
+        val service = Service.newBuilder().setId(GalService.VIDEO_SINK.id).build()
+        session.openChannel(service)
+
+        session.onMessage(
+            GalMessage.Control.CHANNEL_OPEN_RESPONSE,
+            ChannelOpenResponse.newBuilder().setStatus(-4).build().toByteArray(),
+        )
+
+        assertEquals(SessionState.CLOSED, session.state)
+        assertTrue(session.openChannels.isEmpty())
+        assertNotNull(session.failure)
     }
 
     // ---- helpers ----

@@ -75,16 +75,26 @@ class GalConnection(
             if (message.channelId == CONTROL_CHANNEL) {
                 val before = session.state
                 val replies = session.onMessage(decoded.type, decoded.payload)
+                // Log the payload: incoming message bodies are otherwise invisible, and
+                // the head unit's answers (discovery list, open status, errors) carry
+                // the only explanation we ever get for a rejection. First bytes only:
+                // enough for status enums and service ids, small enough to read.
                 trace(
                     "ctrl in 0x${decoded.type.toString(16)} (${decoded.payload.size}B) " +
-                        "$before -> ${session.state}, ${replies.size} reply",
+                        "$before -> ${session.state}, ${replies.size} reply " +
+                        decoded.payload.take(IN_PAYLOAD_LOG_BYTES).joinToString("") {
+                            "%02x".format(it)
+                        },
                 )
                 session.failure?.let { trace("session failed: $it") }
                 replies.forEach(::send)
             } else {
                 trace(
                     "ch${message.channelId} in 0x${decoded.type.toString(16)} " +
-                        "(${decoded.payload.size}B)",
+                        "(${decoded.payload.size}B) " +
+                        decoded.payload.take(IN_PAYLOAD_LOG_BYTES).joinToString("") {
+                            "%02x".format(it)
+                        },
                 )
                 onChannelMessage.onMessage(decoded)
             }
@@ -134,5 +144,8 @@ class GalConnection(
 
         /** Comfortably larger than one frame, so a read rarely splits one. */
         const val READ_BUFFER_SIZE = 32 * 1024
+
+        /** Bytes of each inbound payload in the trace log: enough for ids and statuses. */
+        const val IN_PAYLOAD_LOG_BYTES = 64
     }
 }

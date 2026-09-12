@@ -4,6 +4,7 @@ import com.vayunmathur.auto.protocol.gal.AuthComplete
 import com.vayunmathur.auto.protocol.gal.ByeByeReason
 import com.vayunmathur.auto.protocol.gal.ByeByeRequest
 import com.vayunmathur.auto.protocol.gal.ChannelOpenRequest
+import com.vayunmathur.auto.protocol.gal.ChannelOpenResponse
 import com.vayunmathur.auto.protocol.gal.MessageStatus
 import com.vayunmathur.auto.protocol.gal.PingRequest
 import com.vayunmathur.auto.protocol.gal.PingResponse
@@ -74,6 +75,12 @@ class GalControlSession(
     var failure: String? = null
         private set
 
+    /** Service ids whose ChannelOpenResponse came back STATUS_SUCCESS. */
+    var openChannels: Set<Int> = emptySet()
+        private set
+
+    private var pendingChannel: Int = -1
+
     private var tlsInbound: ByteBuffer = ByteBuffer.allocate(0)
 
     /** Handles one control-channel message and returns whatever should go back. */
@@ -82,6 +89,7 @@ class GalControlSession(
         GalMessage.Control.SSL_HANDSHAKE -> onHandshakeData(payload)
         GalMessage.Control.AUTH_COMPLETE -> onAuthComplete(payload)
         GalMessage.Control.SERVICE_DISCOVERY_RESPONSE -> onServiceDiscovery(payload)
+        GalMessage.Control.CHANNEL_OPEN_RESPONSE -> onChannelOpen(payload)
         GalMessage.Control.PING_REQUEST -> onPing(payload)
         GalMessage.Control.BYEBYE_REQUEST -> onByeBye()
         GalMessage.Control.BYEBYE_RESPONSE -> {
@@ -94,23 +102,32 @@ class GalControlSession(
         GalMessage.Control.NAVIGATION_FOCUS_NOTIFICATION,
         GalMessage.Control.CALL_AVAILABILITY_STATUS,
         GalMessage.Control.SERVICE_DISCOVERY_UPDATE,
-        GalMessage.Control.CHANNEL_OPEN_RESPONSE,
         GalMessage.Control.PING_RESPONSE,
         -> emptyList()
 
         else -> fail("unexpected control message type 0x${type.toString(16)}")
     }
 
-    /** Asks the head unit to open [service]'s channel. */
-    fun openChannel(service: Service, priority: Int = 0): OutboundMessage = OutboundMessage(
-        type = GalMessage.Control.CHANNEL_OPEN_REQUEST,
-        payload = ChannelOpenRequest.newBuilder()
-            .setPriority(priority)
-            .setServiceId(service.id)
-            .build()
-            .toByteArray(),
-        encrypted = true,
-    )
+    /**
+     * Asks the head unit to open [service]'s channel.
+     *
+     * The channel opens asynchronously: the head unit answers with
+     * ChannelOpenResponse, and [openChannels] gains the id only on
+     * STATUS_SUCCESS. Nothing may be sent on the channel before that --
+     * gearhead's `jdk.Q()` sends media setup from `onChannelOpened`.
+     */
+    fun openChannel(service: Service, priority: Int = 0): OutboundMessage {
+        pendingChannel = service.id
+        return OutboundMessage(
+            type = GalMessage.Control.CHANNEL_OPEN_REQUEST,
+            payload = ChannelOpenRequest.newBuilder()
+                .setPriority(priority)
+                .setServiceId(service.id)
+                .build()
+                .toByteArray(),
+            encrypted = true,
+        )
+    }
 
     /** Ends the session politely. */
     fun disconnect(reason: ByeByeReason = ByeByeReason.USER_SELECTION): OutboundMessage =
@@ -196,6 +213,24 @@ class GalControlSession(
     private fun onServiceDiscovery(payload: ByteArray): List<OutboundMessage> {
         services = ServiceDiscoveryResponse.parseFrom(payload).servicesList
         state = SessionState.ACTIVE
+        return emptyList()
+    }
+
+    /**
+     * Records the head unit's answer to [openChannel].
+     *
+     * The channel is NOT open yet when this returns: like gearhead's `iza.a()`,
+     * the driver must wait for STATUS_SUCCESS here before sending anything on
+     * the new channel. Sending service messages (e.g. media setup) against a
+     * channel the head unit has not opened earns a bare MessageError (0xff).
+     */
+    private fun onChannelOpen(payload: ByteArray): List<OutboundMessage> {
+        val status = ChannelOpenResponse.parseFrom(payload).status
+        if (status != MessageStatus.STATUS_SUCCESS.number) {
+            return fail("head unit refused channel open: status $status")
+        }
+        openChannels += pendingChannel
+        pendingChannel = -1
         return emptyList()
     }
 

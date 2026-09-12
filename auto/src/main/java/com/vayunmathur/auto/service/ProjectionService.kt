@@ -68,10 +68,18 @@ class ProjectionService : Service() {
             )
 
             var openedVideo = false
+            var setupVideo = false
             while (running && connection.pump()) {
                 // Opening the video channel is the first thing to do once discovery lands.
                 if (!openedVideo && connection.session.state == SessionState.ACTIVE) {
                     openedVideo = openVideo(connection)
+                }
+                // Media setup only AFTER the head unit's ChannelOpenResponse grants the
+                // channel (gearhead's `jdk.Q()` sends setup from `onChannelOpened`).
+                // Setting up against a not-yet-open channel earns MessageError (0xff).
+                if (!setupVideo && GalService.VIDEO_SINK.id in connection.session.openChannels) {
+                    setupVideo = true
+                    video?.requestSetup()
                 }
                 video?.pumpEncoder()
             }
@@ -92,7 +100,7 @@ class ProjectionService : Service() {
             return true
         }
         connection.send(connection.session.openChannel(service))
-        video = VideoSinkChannel(this, service, connection).also { it.requestSetup() }
+        video = VideoSinkChannel(this, service, connection)
         return true
     }
 

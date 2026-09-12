@@ -50,12 +50,15 @@ enum MessageStatus {
   STATUS_PING_TIMEOUT = -25;
   STATUS_CAR_PROPERTY_SET_REQUEST_FAILED = -26;
   STATUS_CAR_PROPERTY_LISTENER_REGISTRATION_FAILED = -27;
-  STATUS_COMMAND_NOT_SUPPORTED = -250;
-  STATUS_FRAMING_ERROR = -251;
-  STATUS_UNEXPECTED_MESSAGE = -253;
-  STATUS_BUSY = -254;
-  STATUS_OUT_OF_MEMORY = -255;
+// Control message 7. Note the order: priority first, then the service id. `priority` is
+// sint32 because the control channel opens itself at -128.
+message ChannelOpenRequest {
+  required sint32 priority = 1;
+  required int32 service_id = 2;
 }
+
+// Control message 8. Sent by the HEAD UNIT: whether our channel-open request
+// succeeded. `status` is the `xkr` status enum value (STATUS_SUCCESS = 0).
 
 enum ByeByeReason {
   USER_SELECTION = 1;
@@ -164,11 +167,12 @@ message ServiceDiscoveryUpdate {
   optional Service service = 1;
 }
 
-// Control message 7. Note the order: priority first, then the service id. `priority` is
-// sint32 because the control channel opens itself at -128.
-message ChannelOpenRequest {
-  required sint32 priority = 1;
-  required int32 service_id = 2;
+// Control message 8. Sent by the HEAD UNIT: whether our channel-open request
+// succeeded. `xir.c` is the `xkr` status enum value (STATUS_SUCCESS = 0).
+// gearhead's `iza.a()` parses exactly this and, on anything but SUCCESS, closes
+// the channel (`P(1)` + `c()`).
+message ChannelOpenResponse {
+  required int32 status = 1;
 }
 
 // Control message 4.
