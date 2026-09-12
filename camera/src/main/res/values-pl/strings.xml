@@ -41,4 +41,5 @@
     <string name="audio_source_unprocessed_description">Surowy, bez obróbki</string>
     <string name="settings_mirror_front">Lustrzane odbicie selfie</string>
     <string name="settings_mirror_front_description">Lustrzane odbicie podglądu z przedniego aparatu oraz zapisanych zdjęć selfie</string>
+    <string name="qr_scanning_paused">Skanowanie kodów QR wstrzymane</string>
 </resources>
