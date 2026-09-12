@@ -11,13 +11,11 @@ fun interface ChannelMessageHandler {
 /**
  * Whether a service-channel message type carries protobuf rather than bulk media.
  *
- * The [FrameFlags.CONTROL] bit does *not* mean "control channel" -- channel 0 is what
- * identifies that, and a head unit never sets the bit there. Observed against a Desktop Head
- * Unit: its VersionRequest, its SslHandshake frames, its AuthComplete and even its encrypted
- * control replies all arrive as `FIRST|LAST` or `FIRST|LAST|ENC`, with the bit clear.
- *
- * What it distinguishes is a channel's own protobuf messages (the 0x8000 range) from the
- * bulk media that shares the channel with them.
+ * Classification helper only: it must NOT drive the outgoing CONTROL bit.
+ * `jbe.i()` sets 0x04 from `Lizm.f`, which is false for every service-channel
+ * send (`izd.d` → `izl.g(..., isControl=false, ...)`), protobuf or bulk alike
+ * -- so service-channel frames always go out CONTROL-clear. The bit is set
+ * only on channel-0 channel-open requests (see `GalConnection.send`).
  */
 fun isChannelControlMessage(type: Int): Boolean = when (type) {
     GalMessage.Media.DATA, GalMessage.Media.DATA_WITH_TIMESTAMP -> false
@@ -124,12 +122,22 @@ class GalConnection(
         )
     }
 
-    /** Frames a service-channel message and writes it. Always encrypted. */
+    /**
+     * Frames a service-channel message and writes it. Always encrypted, never
+     * CONTROL-flagged.
+     *
+     * `jbe.i()` builds flags as `FIRST | LAST | (Lizm.f ? 0x04 : 0) |
+     * (Lizm.h ? 0x08 : 0)`, and every service-channel send goes through
+     * `izd.d` → `izl.g(i, jcn, canFragment=true, isControl=false, izn)` --
+     * `Lizm.f` is false for ALL service-channel traffic, protobuf or bulk
+     * (Run 7: HU 0xffs a CONTROL-flagged 0x8000 setup on ch2). The CONTROL bit
+     * belongs only to channel-0 channel-open requests (see [send] above).
+     */
     fun send(channelId: Int, type: Int, payload: ByteArray) {
         write(
             channelId = channelId,
             payload = MessageCodec.encode(type, payload),
-            isControl = isChannelControlMessage(type),
+            isControl = false,
             encrypted = true,
         )
     }

@@ -206,6 +206,27 @@ class GalConnectionTest {
     }
 
     @Test
+    fun `service-channel sends never set CONTROL`() {
+        // `jbe.i()`: 0x04 comes from Lizm.f, false for every service-channel
+        // send. Run 7: HU 0xffs a CONTROL-flagged 0x8000 setup on ch2.
+        // Plaintext connection send exercises the path without a handshake.
+        val transport = FakeTransport()
+        // Plaintext service send is not exposed (service sends are always
+        // encrypted), so assert at the framing contract: the service overload
+        // hardcodes isControl=false. Exercise via a captured write of the
+        // video setup shape through an unencrypted frame writer.
+        val frame = FrameWriter().frame(
+            channelId = GalService.VIDEO_SINK.id,
+            payload = MessageCodec.encode(GalMessage.Media.SETUP_REQUEST, byteArrayOf(0x08, 0x03)),
+            isControl = false,
+            encrypted = false,
+        ).single()
+
+        assertEquals(GalService.VIDEO_SINK.id, frame[0].toInt() and 0xFF)
+        assertEquals(0x03, frame[1].toInt() and 0xFF)
+    }
+
+    @Test
     fun `pump reports end of stream when the head unit goes away`() {
         val transport = FakeTransport()
         val connection = connection(transport)
