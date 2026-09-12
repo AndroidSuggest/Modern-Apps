@@ -2692,9 +2692,13 @@ impl Renderer {
         // flag is clear and the shader draws straight through `tile_clip`, byte-identical to
         // before. Curved labels carry each vertex as its own anchor, so they stay on the ground
         // regardless — a road name lies along the road, which is the one case where flat is right.
+        //
+        // One derivation, not two checked: [`symbol::icon_push_billboard`] builds the flag and the
+        // matrix the icon push *and* the text push below both read, so the pictogram cannot slide
+        // off its name under tilt. Reverting either value in one copy compiles clean and passes —
+        // which is exactly the silent failure this sharing exists to make unrepresentable.
         let flat_clip = Camera { pitch_deg: 0.0, ..*camera }.tile_to_clip(tz, tx, ty);
-        let ortho2x2 = [flat_clip[0], flat_clip[1], flat_clip[4], flat_clip[5]];
-        let billboard_flag = if camera.pitch_deg != 0.0 { 1.0 } else { 0.0 };
+        let (billboard_flag, ortho2x2) = symbol::icon_push_billboard(&flat_clip, camera.pitch_deg);
         let (primary, alternate) = anchors_for(layer);
         // Labels counter-rotate about their anchor so they stay upright under a
         // heading-up camera, which is what a driver needs and what keeps the placer's

@@ -67,27 +67,52 @@ fun LaneGuidance(
  * when there is no combined glyph for this set and the caller should fall back
  * to one arrow. Covers the combinations that actually occur in OSM
  * `turn:lanes`.
+ *
+ * `internal` so [LaneGuidanceTest] pins every combination: a lane whose set matches no row
+ * silently falls back to one arrow, which is exactly the failure that would otherwise show as
+ * a plausible-but-wrong single arrow on device.
  */
-private fun combinedLaneIcon(
+internal fun combinedLaneIcon(
     directions: List<Maneuver>,
 ): (@Composable (Modifier, Color) -> Unit)? {
+    // Derived from [laneComboGlyph], never authored twice: the composable table and the testable
+    // table are one decision, so they cannot drift apart.
+    return when (laneComboGlyph(directions)) {
+        null -> null
+        LaneComboGlyph.THROUGH_LEFT -> { m, t -> IconLaneThroughLeft(m, t) }
+        LaneComboGlyph.THROUGH_RIGHT -> { m, t -> IconLaneThroughRight(m, t) }
+        LaneComboGlyph.THROUGH_SLIGHT_LEFT -> { m, t -> IconLaneThroughSlightLeft(m, t) }
+        LaneComboGlyph.THROUGH_SLIGHT_RIGHT -> { m, t -> IconLaneThroughSlightRight(m, t) }
+        LaneComboGlyph.THROUGH_LEFT_RIGHT -> { m, t -> IconLaneThroughLeftRight(m, t) }
+        LaneComboGlyph.LEFT_RIGHT -> { m, t -> IconLaneLeftRight(m, t) }
+    }
+}
+
+/**
+ * Which combined lane glyph a direction set selects, or null for the single-arrow fallback.
+ *
+ * The data half of [combinedLaneIcon]: the composable lambdas are not comparable on the JVM,
+ * so this is what the test pins — one row per combination, with the fallback explicit.
+ */
+internal enum class LaneComboGlyph {
+    THROUGH_LEFT, THROUGH_RIGHT, THROUGH_SLIGHT_LEFT, THROUGH_SLIGHT_RIGHT,
+    THROUGH_LEFT_RIGHT, LEFT_RIGHT,
+}
+
+internal fun laneComboGlyph(directions: List<Maneuver>): LaneComboGlyph? {
     val set = directions.toSet()
     if (set.size < 2) return null
     val through = Maneuver.STRAIGHT in set
     val turns = set - Maneuver.STRAIGHT
     return when {
-        through && turns == setOf(Maneuver.TURN_LEFT) ->
-            { m, t -> IconLaneThroughLeft(m, t) }
-        through && turns == setOf(Maneuver.TURN_RIGHT) ->
-            { m, t -> IconLaneThroughRight(m, t) }
-        through && turns == setOf(Maneuver.TURN_SLIGHT_LEFT) ->
-            { m, t -> IconLaneThroughSlightLeft(m, t) }
-        through && turns == setOf(Maneuver.TURN_SLIGHT_RIGHT) ->
-            { m, t -> IconLaneThroughSlightRight(m, t) }
+        through && turns == setOf(Maneuver.TURN_LEFT) -> LaneComboGlyph.THROUGH_LEFT
+        through && turns == setOf(Maneuver.TURN_RIGHT) -> LaneComboGlyph.THROUGH_RIGHT
+        through && turns == setOf(Maneuver.TURN_SLIGHT_LEFT) -> LaneComboGlyph.THROUGH_SLIGHT_LEFT
+        through && turns == setOf(Maneuver.TURN_SLIGHT_RIGHT) -> LaneComboGlyph.THROUGH_SLIGHT_RIGHT
         through && turns == setOf(Maneuver.TURN_LEFT, Maneuver.TURN_RIGHT) ->
-            { m, t -> IconLaneThroughLeftRight(m, t) }
+            LaneComboGlyph.THROUGH_LEFT_RIGHT
         !through && turns == setOf(Maneuver.TURN_LEFT, Maneuver.TURN_RIGHT) ->
-            { m, t -> IconLaneLeftRight(m, t) }
+            LaneComboGlyph.LEFT_RIGHT
         else -> null
     }
 }

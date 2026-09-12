@@ -441,11 +441,23 @@ class SurfaceMapRenderer(
      * is one frame and the cost of a missed one is a map that has silently stopped updating.
      *
      * Main thread, like everything else here. Idempotent within a frame.
+     *
+     * Increments [wakeCount], which is what [FrameLoopWakeTest] counts: the failure mode of
+     * this loop is a change nobody woke it for, so every mutator's wake is enumerated there.
      */
     fun invalidate() {
+        wakeCount++
         lastChangeNanos = System.nanoTime()
         requestFrame()
     }
+
+    /**
+     * How many times the loop has been woken. Test seam for the on-demand contract: every
+     * public mutator must wake the loop, and [FrameLoopWakeTest] asserts each one does. A
+     * setter that stops calling [invalidate] fails there instead of freezing the map on device.
+     */
+    internal var wakeCount = 0
+        private set
 
     private fun requestFrame() {
         if (!started || handle == 0L) return
@@ -823,7 +835,9 @@ class SurfaceMapRenderer(
         }
     }
 
-    private companion object {
+    // `internal` (not `private`) so the frame-loop contract is testable: `IDLE_GRACE_NANOS`
+    // is pinned by `FrameLoopWakeTest`.
+    internal companion object {
         const val TAG = "SurfaceMapRenderer"
         const val CACHE_DIR_NAME = "vectortilecache"
 
@@ -836,8 +850,12 @@ class SurfaceMapRenderer(
          * or two late (the `snapshotFlow` push channel is one such) and short enough that an
          * idle map settles to zero frames while the user is still looking at it. It costs
          * nothing during an interaction, where every frame re-arms it.
+         *
+         * `internal` rather than `private` so [FrameLoopWakeTest] can pin the quarter-second:
+         * a grace of zero freezes the map whenever the push channel is one frame late, and an
+         * unbounded one re-heats the phone this loop exists to cool.
          */
-        val IDLE_GRACE_NANOS = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(250)
+        internal val IDLE_GRACE_NANOS = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(250)
 
         /**
          * The fill the single-colour [setRoute] convenience paints: the car's `#1A73E8`,

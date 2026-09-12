@@ -144,8 +144,13 @@ pub fn get_maneuver(prev_bearing: f64, next_bearing: f64) -> i32 {
     while angle_diff > 180.0 {
         angle_diff -= 360.0;
     }
+    // A reversal keeps its loop direction: a clockwise loop (positive sweep)
+    // reads as a right U-turn and a counterclockwise one as a left U-turn, so
+    // the two glyphs `ManeuverIcon` distinguishes can both be reached. Folding
+    // both to UTURN_LEFT drew every U-turn as a left hook, which is only right
+    // in right-hand traffic (task 36).
     if !(-155.0..=155.0).contains(&angle_diff) {
-        return 3;
+        return if angle_diff >= 0.0 { 7 } else { 3 };
     }
     if angle_diff < -100.0 {
         return 2;
@@ -231,6 +236,28 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A U-turn keeps its loop direction (task 36): folding both to UTURN_LEFT
+    /// drew every reversal as a left hook. A clockwise loop sweeps positive and
+    /// reads UTURN_RIGHT; counterclockwise sweeps negative and reads UTURN_LEFT.
+    #[test]
+    fn a_uturn_reports_the_direction_of_its_loop() {
+        assert_eq!(get_maneuver(0.0, 180.0), 7, "due reversal at +180 loops right");
+        assert_eq!(get_maneuver(0.0, -179.0), 3, "and at -179 it loops left");
+        assert_eq!(get_maneuver(0.0, 170.0), 7, "a 170-degree clockwise sweep");
+        assert_eq!(get_maneuver(0.0, -170.0), 3, "and counterclockwise");
+        // The wrap is what makes the sign meaningful rather than an artefact:
+        // southbound, looping back to just east of north sweeps negative and
+        // reads left; to just west of north sweeps positive and reads right.
+        assert_eq!(get_maneuver(180.0, 5.0), 3);
+        assert_eq!(get_maneuver(180.0, -5.0), 7);
+        // Everything short of a reversal is untouched.
+        assert_eq!(get_maneuver(0.0, 0.0), 9);
+        assert_eq!(get_maneuver(0.0, -90.0), 4);
+        assert_eq!(get_maneuver(0.0, 90.0), 8);
+        assert_eq!(get_maneuver(0.0, 150.0), 6);
+        assert_eq!(get_maneuver(0.0, -150.0), 2);
     }
 
     #[test]

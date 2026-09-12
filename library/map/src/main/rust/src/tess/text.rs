@@ -1443,4 +1443,140 @@ mod tests {
             "the turn is shared across glyphs rather than taken in one step: {steps:?}"
         );
     }
+
+    /// The real fixture tile's road as a tile-local centreline, extracted exactly the way
+    /// production does (`geometry.rs` joins a feature's parts in order and scales by the extent).
+    /// `from_mvt` drops names, so this is the geometry half of the pipeline — the half the
+    /// curved-label fix lives in.
+    fn real_road_centreline() -> Vec<(f32, f32)> {
+        const REAL_TILE: &[u8] = include_bytes!("../../tests/fixtures/v5ca_z11_tile.mvt");
+        let tile = tilecodec::mvt::Tile::decode(REAL_TILE).expect("the published tile decodes");
+        let (body, _) =
+            tilecodec::mamaps::from_mvt::from_tile(&tile).expect("converts");
+        let scale = body.extent.max(1) as f32;
+        let source = body
+            .layer(tilecodec::mamaps::dict::LAYER_ROADS)
+            .expect("the fixture has a roads layer");
+        let feature = source.features.first().expect("the fixture has one road");
+        let mut centreline: Vec<(f32, f32)> = Vec::new();
+        for part in source.parts_of(feature) {
+            for &(px, py) in source.points(part) {
+                centreline.push((px as f32 / scale, py as f32 / scale));
+            }
+        }
+        centreline
+    }
+
+    /// The curved-label fix, reproduced against a real tile instead of a synthetic polyline.
+    ///
+    /// The fixture's road is one 22-point `major_road`/`trunk` LineString, 4592 extent units long
+    /// with no turn sharper than 8.4° — a single smooth run in production terms. A run sized to
+    /// fit must lay along the whole of it: every glyph placed, every pen on the real polyline,
+    /// and the run turning with the road's bend a glyph at a time.
+    ///
+    /// Coverage split, stated honestly: this pins the longest-smooth-run selection and the
+    /// per-glyph turn-sharing on real digitised coordinates. The chord-vs-segment-tangent half
+    /// is not observable on this road — its bends are too gentle to separate the two at any
+    /// tolerance that is not noise — and stays pinned by the synthetic 30° bend in
+    /// `a_gentle_bend_turns_glyph_by_glyph_instead_of_in_steps`. A segment-tangent revert passes
+    /// this test and fails that one; a whole-length fit revert fails the joined-parts test below.
+    #[test]
+    fn the_real_tile_road_carries_a_run_along_its_whole_smooth_length() {
+        let centreline = real_road_centreline();
+        assert!(centreline.len() >= 20, "the fixture road has {} points", centreline.len());
+        // 20 ems at 16 px on a 512 px tile: 0.625 tile-local units, inside the road's ~1.12.
+        let run = block_run(20);
+        let ppfu = 16.0 / UP_EM as f32 / 512.0;
+        let placed = layout_along_line(&run, &centreline, ppfu);
+        assert_eq!(placed.len(), run.glyphs.len(), "every glyph of a fitting run is placed");
+        // Pens march along the road in order, never leaving it.
+        for pair in placed.windows(2) {
+            let (a, b) = (pair[0].pen, pair[1].pen);
+            let step = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+            assert!(step > 0.0 && step < 0.1, "pens advance along the road, step {step}");
+        }
+        // Chord smoothing on real quantised coordinates: the run follows the road's bend
+        // overall, but no single glyph absorbs the whole of it at once (the faceted,
+        // individually-rotated look the chord tangents fix) — and the turn is shared across
+        // glyphs rather than taken in one step.
+        let headings: Vec<f32> = placed.iter().map(|c| heading(c.tangent)).collect();
+        let steps: Vec<f32> =
+            headings.windows(2).map(|w| (w[1] - w[0]).abs()).collect();
+        let spread = headings.iter().cloned().fold(f32::NEG_INFINITY, f32::max)
+            - headings.iter().cloned().fold(f32::INFINITY, f32::min);
+        assert!(spread > 1e-3, "the real road bends, so the run must turn with it");
+        assert!(
+            steps.iter().all(|s| *s < spread),
+            "no single glyph absorbs the whole bend: steps {steps:?} spread {spread}",
+        );
+        assert!(
+            steps.iter().filter(|s| **s > 1e-4).count() >= 2,
+            "the turn is shared across glyphs rather than taken in one step: {steps:?}"
+        );
+        let span = (placed.last().expect("placed").pen.0 - placed.first().expect("placed").pen.0).abs()
+            + (placed.last().expect("placed").pen.1 - placed.first().expect("placed").pen.1).abs();
+        assert!(span > 0.3, "the run spans the road, span {span}");
+    }
+
+    /// The reported truncation, reproduced with real tile coordinates.
+    ///
+    /// Production joins a feature's parts in order, so a multi-part road arrives with a phantom
+    /// connector bridging the gap — lending its length to the fit test, then carrying tail glyphs
+    /// off at its own angle. Here the fixture road is split into two disjoint real pieces joined
+    /// in order: a run longer than either piece but shorter than the joined total must be rejected
+    /// outright (it fits nowhere), and a run that fits the longer piece must lay only there.
+    #[test]
+    fn joined_real_parts_lend_no_length_to_the_fit_test() {
+        let centreline = real_road_centreline();
+        // Two disjoint real pieces, the second shifted sideways: what two parts of one feature
+        // look like after production joins them in order — a phantom connector bridging a gap,
+        // meeting both pieces at an angle no real road takes.
+        let (head, tail) = (centreline[..8].to_vec(), centreline[14..].to_vec());
+        let shifted: Vec<(f32, f32)> =
+            tail.iter().map(|&(x, y)| (x + 0.35, y + 0.25)).collect();
+        let mut joined = head.clone();
+        joined.extend_from_slice(&shifted);
+        let len = |pts: &[(f32, f32)]| {
+            pts.windows(2)
+                .map(|w| ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt())
+                .sum::<f32>()
+        };
+        let joined_len = len(&joined);
+        let smooth_len = len(longest_smooth_run(&joined));
+        assert!(
+            smooth_len < joined_len - 0.1,
+            "the joint must split the run: smooth {smooth_len} vs joined {joined_len}",
+        );
+        // One em == 0.1 tile-local units here; size the probe between the longest smooth piece
+        // and the joined total, so only the phantom length could admit it.
+        let ppfu = 0.1 / UP_EM as f32;
+        let probe_em = ((smooth_len + joined_len) * 0.5 * 10.0) as usize;
+        assert!(
+            (probe_em as f32) * 0.1 > smooth_len && (probe_em as f32) * 0.1 < joined_len,
+            "probe {probe_em} ems must sit between smooth {smooth_len} and joined {joined_len}",
+        );
+        assert!(
+            layout_along_line(&block_run(probe_em), &joined, ppfu).is_empty(),
+            "a run that fits no single part must not be drawn at all",
+        );
+        // And a run that fits the longest smooth piece lays only on it: no glyph on the connector.
+        let fits_em = (smooth_len * 10.0 * 0.8) as usize;
+        let placed = layout_along_line(&block_run(fits_em), &joined, ppfu);
+        assert_eq!(placed.len(), fits_em, "a fitting run lays fully");
+        let smooth = longest_smooth_run(&joined);
+        let (sx0, sx1, sy0, sy1) = (
+            smooth.iter().map(|p| p.0).fold(f32::INFINITY, f32::min),
+            smooth.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max),
+            smooth.iter().map(|p| p.1).fold(f32::INFINITY, f32::min),
+            smooth.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max),
+        );
+        for cg in &placed {
+            assert!(
+                cg.pen.0 >= sx0 - 1e-3 && cg.pen.0 <= sx1 + 1e-3
+                    && cg.pen.1 >= sy0 - 1e-3 && cg.pen.1 <= sy1 + 1e-3,
+                "glyph left the smooth run at {:?}",
+                cg.pen,
+            );
+        }
+    }
 }

@@ -221,7 +221,10 @@ fn osm_mask_to_dir_mask(osm: u16) -> u32 {
         m |= 1 << 6; // TURN_SHARP_RIGHT
     }
     if osm & LANE_REVERSE != 0 {
-        m |= 1 << 3; // UTURN_LEFT
+        // A `reverse` lane offers the U-turn in whichever direction the route
+        // loops: the tag names the reversal, not the side, and `get_maneuver`
+        // reports the loop's own direction (task 36).
+        m |= (1 << 3) | (1 << 7); // UTURN_LEFT | UTURN_RIGHT
     }
     if osm & LANE_MERGE_TO_LEFT != 0 {
         m |= 1 << 1; // slight left
@@ -246,6 +249,7 @@ fn lane_serves(dir_mask: u32, taken: i32) -> bool {
         1 => has(1) || has(4), // TURN_SLIGHT_LEFT
         2 => has(2) || has(4), // TURN_SHARP_LEFT
         3 => has(3),           // UTURN_LEFT
+        7 => has(7),           // UTURN_RIGHT
         8 => has(8) || has(5), // TURN_RIGHT
         5 => has(5) || has(8), // TURN_SLIGHT_RIGHT
         6 => has(6) || has(8), // TURN_SHARP_RIGHT
@@ -997,6 +1001,19 @@ mod tests {
     fn a_zero_length_span_reads_the_source_elevation() {
         // A degenerate edge (both endpoints coincident) has no ramp; every point reads e0.
         assert_eq!(interp_by_cumdist(&[0.0, 0.0, 0.0], 42.0, 99.0), vec![42.0, 42.0, 42.0]);
+    }
+
+    /// A `reverse` lane offers the U-turn in either loop direction (task 36):
+    /// the tag names the reversal, not the side, and the taken maneuver carries
+    /// the loop's own direction from `get_maneuver`.
+    #[test]
+    fn a_reverse_lane_serves_a_uturn_looping_either_way() {
+        let mask = osm_mask_to_dir_mask(LANE_REVERSE);
+        assert_ne!(mask & (1 << 3), 0, "UTURN_LEFT is offered");
+        assert_ne!(mask & (1 << 7), 0, "UTURN_RIGHT is offered");
+        assert!(lane_serves(mask, 3), "a left loop validates");
+        assert!(lane_serves(mask, 7), "and so does a right loop");
+        assert!(!lane_serves(mask, 9), "but not a straight-on");
     }
 }
 

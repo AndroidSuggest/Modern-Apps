@@ -5,6 +5,10 @@ android {
     defaultConfig {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    // FrameLoopWakeTest constructs a real `Application` for its `Context`: without this every
+    // `android.util`/`android.app` stub throws "not mocked". Same flag `:maps` sets for
+    // `PoiIndexTest`'s side-file reader, which logs.
+    testOptions.unitTests.isReturnDefaultValues = true
 }
 androidComponents {
     onVariants { variant ->

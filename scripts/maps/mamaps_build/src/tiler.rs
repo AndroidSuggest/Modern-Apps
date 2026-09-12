@@ -2110,6 +2110,54 @@ mod tests {
         assert!(seen, "at least one archived road tile carries the turn masks");
     }
 
+    /// **The junction layer's coalesce opt-out, through the full tiler.** Every
+    /// connector shares one class (no kind, no detail), so coalescing would
+    /// chain unrelated movements — a left turn and the through beside it — into
+    /// one polyline and draw a ribbon between them. This pushes two touching
+    /// connectors and asserts each survives as its own feature, mirroring
+    /// `a_traffic_layer_keeps_one_id_per_segment_through_the_tiler` for the
+    /// traffic layer's neighbouring opt-out.
+    #[test]
+    fn a_junction_layer_keeps_one_connector_per_feature_through_the_tiler() {
+        use crate::schema::junction::junction_class;
+        // Two connectors meeting end to start at the junction mouth: exactly
+        // the shape a join would splice, and the shape a left turn beside a
+        // through movement takes.
+        let connector = |x0: f64, x1: f64| Feature {
+            class: junction_class(),
+            geometry: Geometry::Lines(vec![vec![(x0, 35.0), (x1, 35.0004)]]),
+            name: None,
+            id: tilecodec::mamaps::body::ID_NONE,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        let features =
+            vec![connector(-120.0, -119.9996), connector(-119.9996, -119.9992)];
+        let (bytes, _) = build(&spilled(&features), &settings(14, 14)).expect("build");
+        let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
+        let mut total = 0usize;
+        for (_, _, body) in &entries {
+            let body = Body::parse(body).expect("parse");
+            let Some(layer) = body.layer(dict::LAYER_JUNCTION) else { continue };
+            for feature in &layer.features {
+                assert_eq!(feature.geom_type, GEOM_LINE);
+                total += 1;
+            }
+        }
+        assert_eq!(
+            total, 2,
+            "coalescing chained the two connectors into one feature: \
+             delete the LAYER_JUNCTION opt-out in encode_batch and this fails",
+        );
+    }
+
     /// **The traffic layer's one-id-per-segment invariant, through the full tiler.** Traffic
     /// features share a class (no kind, no detail), so if the layer were coalesced like every
     /// other line layer they would collapse into one feature and every segment's `component_id`

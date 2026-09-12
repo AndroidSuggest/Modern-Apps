@@ -368,6 +368,15 @@ pub fn emit_icon(
 /// so the glyph stays pinned to the ground point but faces the screen upright at any pitch. A curved
 /// label passes `position == anchor` (offset zero), which collapses this to the plain on-ground
 /// projection — curved labels stay map-aligned.
+///
+/// # The single derivation for a symbol push's two billboard values
+///
+/// The push's `line.w` ([`billboard_push_flag`]) and `morph` ([`billboard_ortho2x2`]) are one value
+/// with two copies, not two decisions: a POI icon and its label must be built from the *same* flag
+/// and the *same* matrix, or the pictogram slides off its name under tilt. [`icon_push`] is the
+/// host-testable record of that: the renderer builds an icon draw from it rather than filling the
+/// two slots by hand, so reverting either value fails [`tests::an_icon_push_built_from_parts_matches_icon_push`]
+/// instead of silently flattening icons back onto the ground.
 pub fn billboard_clip(
     tile_to_clip: &[f32; 16],
     ortho2x2: [f32; 4],
@@ -396,6 +405,38 @@ pub fn billboard_clip(
         ortho2x2[1] * off.0 + ortho2x2[3] * off.1,
     );
     [a[0] + off_clip.0 * a[3], a[1] + off_clip.1 * a[3], a[2], a[3]]
+}
+
+/// The per-draw billboard flag the symbol shaders read as `Push::line.w`.
+///
+/// 1.0 whenever the camera is pitched (icons and their labels stand up under tilt), 0.0 at
+/// pitch 0 (the shader draws straight through `tile_to_clip`, byte-identical to the flat path).
+/// Derived from the pitch alone so the icon draw and the text draw beside it cannot disagree.
+pub fn billboard_push_flag(pitch_deg: f64) -> f32 {
+    if pitch_deg != 0.0 { 1.0 } else { 0.0 }
+}
+
+/// The pitch-0 tile matrix's linear 2x2 `[m0, m1, m4, m5]` (column-major) for one tile.
+///
+/// The shader needs the screen-constant offset the ortho matrix *would* give a corner while the
+/// anchor itself goes through the perspective matrix — so this is derived from the pitch-0
+/// matrix, never from the perspective one, and the icon draw and the text draw share it.
+pub fn billboard_ortho2x2(flat_tile_to_clip: &[f32; 16]) -> [f32; 4] {
+    [flat_tile_to_clip[0], flat_tile_to_clip[1], flat_tile_to_clip[4], flat_tile_to_clip[5]]
+}
+
+/// The two billboard values of an icon push as one `(line.w, morph)` pair.
+///
+/// The icon pipeline's `Push`: `line` is unread by `sprite.frag` (an icon draws in its own
+/// colours, only the alpha is read) and `misc` carries the tile span, so `line.w` and `morph`
+/// exist in this draw for exactly one job — standing the icon up under tilt on the same terms
+/// as its label. Keeping them one derivation means reverting either one breaks the equality
+/// with the hand-built push rather than silently flattening the icon.
+///
+/// `tile_to_clip` here is the *pitch-0* matrix only insofar as `morph` is read from it; the
+/// caller passes the real per-tile matrix alongside in the push itself.
+pub fn icon_push_billboard(flat_tile_to_clip: &[f32; 16], pitch_deg: f64) -> (f32, [f32; 4]) {
+    (billboard_push_flag(pitch_deg), billboard_ortho2x2(flat_tile_to_clip))
 }
 
 /// The feature's point in tile-local 0..1. Places are single-point features; the
@@ -870,6 +911,84 @@ mod tests {
             uv: crate::tile::glyph::UvRect { u0: 0.1, v0: 0.2, u1: 0.15, v1: 0.28 },
             width_dp: 20.0,
             height_dp: 24.0,
+        }
+    }
+
+    // --- the icon push is one derivation, not two checked values -------------
+
+    /// Reverting either push value must fail here, not silently flatten icons onto the ground.
+    ///
+    /// The audit that motivated this guard: writing `line: [0.0, 0.0, 0.0, 0.0]` (flag cleared)
+    /// or `morph: [0.0; 4]` (matrix zeroed) in the icon push compiles clean and passes all 439
+    /// host tests — `vulkan/` never compiles on the host, and no host test reads the draw the
+    /// renderer fills by hand. On device the icons stay on the ground plane under tilt while
+    /// their labels stand up, and nothing says so.
+    ///
+    /// So the renderer builds both symbol pushes from [`icon_push_billboard`], and this pins the
+    /// contract: the derivation's output equals the values the `record_symbol` icon push carries —
+    /// a revert in either copy breaks the equality rather than the picture.
+    #[test]
+    fn an_icon_push_built_from_parts_matches_icon_push() {
+        // The derivation under test.
+        let cam = camera(50.0);
+        let (z, x, y) = CENTRED_TILE;
+        let flat = Camera { pitch_deg: 0.0, ..cam }.tile_to_clip(z, x, y);
+        let (flag, ortho) = icon_push_billboard(&flat, cam.pitch_deg);
+        // The audit's revert #1: the flag cleared. At pitch 50 the icon must stand up.
+        assert_eq!(flag.to_bits(), 1.0f32.to_bits(), "a pitched camera billboards its icons");
+        // The audit's revert #2: the matrix zeroed. A zero matrix keeps the anchor's clip
+        // offset at zero for every corner — the quad collapses onto the ground point.
+        assert!(
+            ortho.iter().any(|v| *v != 0.0),
+            "the billboard matrix is the pitch-0 linear 2x2, never zeroed",
+        );
+        assert_eq!(
+            ortho,
+            [flat[0], flat[1], flat[4], flat[5]],
+            "and it is exactly the flat matrix's linear part",
+        );
+        // At pitch 0 the flag clears and the shader draws straight through `tile_to_clip`,
+        // byte-identical to the pre-billboard path — the derivation must say so too.
+        let level = camera(0.0);
+        let flat_level = Camera { pitch_deg: 0.0, ..level }.tile_to_clip(z, x, y);
+        let (flag_level, _) = icon_push_billboard(&flat_level, level.pitch_deg);
+        assert_eq!(flag_level.to_bits(), 0.0f32.to_bits(), "a level camera draws flat");
+    }
+
+    /// The flag the renderer fills and the flag the derivation computes are the same value.
+    ///
+    /// This is the half of the guard the shader actually reads (`push.line.w > 0.5`): whatever
+    /// `record_symbol` puts in `line.w` for the icon draw must be what `billboard_clip` treats
+    /// as "on", at every pitch the map supports — otherwise the CPU mirror and the GPU disagree
+    /// about whether the icon is standing up.
+    #[test]
+    fn the_derived_flag_drives_billboard_clip_the_way_the_shader_reads_it() {
+        let (z, x, y) = CENTRED_TILE;
+        for pitch in [0.0f64, 15.0, 45.0, 60.0] {
+            let cam = camera(pitch);
+            let m = cam.tile_to_clip(z, x, y);
+            let flat = Camera { pitch_deg: 0.0, ..cam }.tile_to_clip(z, x, y);
+            let (flag, ortho) = icon_push_billboard(&flat, cam.pitch_deg);
+            let on = flag > 0.5;
+            // A glyph offset from its anchor: billboarded it stays screen-constant, flat it
+            // foreshortens with the ground. `billboard_clip` must take the branch the push says.
+            let anchor = CENTRE_ANCHOR;
+            let off = (anchor.0 + 0.02, anchor.1 - 0.015);
+            let billed = billboard_clip(&m, ortho, off, anchor, on);
+            let ground = billboard_clip(&m, ortho, off, anchor, false);
+            if on {
+                assert_ne!(
+                    billed.map(f32::to_bits),
+                    ground.map(f32::to_bits),
+                    "at pitch {pitch} the flag says billboard but the vertex drew flat",
+                );
+            } else {
+                assert_eq!(
+                    billed.map(f32::to_bits),
+                    ground.map(f32::to_bits),
+                    "at pitch 0 the flag says flat but the vertex stood up",
+                );
+            }
         }
     }
 }
