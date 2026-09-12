@@ -14,6 +14,10 @@
     <string name="next_level">Next Level</string>
     <!-- NonogramGameScreen: Clears every mark on the current puzzle. Verb -->
     <string name="restart">Restart</string>
+    <!-- NonogramGameScreen restart confirmation: Title asking whether to clear the board's marks. Question -->
+    <string name="confirm_restart_title">Restart this puzzle?</string>
+    <!-- NonogramGameScreen restart confirmation: Explains every mark is cleared. Sentence -->
+    <string name="confirm_restart_message">All your marks on this puzzle will be cleared.</string>
     <!-- NonogramGameScreen: Shown after finishing the daily, since there is only one per day. Sentence -->
     <string name="daily_come_back_tomorrow">Solved! Come back tomorrow for a new puzzle.</string>
     <!-- NonogramGameScreen: Celebratory line shown when a level is completed. Declarative -->

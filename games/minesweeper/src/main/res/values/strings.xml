@@ -48,6 +48,14 @@
     <string name="give_up">Give Up</string>
     <!-- GameBoardScreen: Starts a fresh field with the same settings. Verb phrase -->
     <string name="new_field_button">New Field</string>
+    <!-- GameBoardScreen restart confirmation: Title asking whether to throw away the field in progress. Question -->
+    <string name="confirm_new_field_title">Start a new field?</string>
+    <!-- GameBoardScreen restart confirmation: Explains the current field is discarded. Sentence -->
+    <string name="confirm_new_field_message">Your current field will be discarded.</string>
+    <!-- GameBoardScreen give-up confirmation: Title asking whether to abandon the field. Question -->
+    <string name="confirm_give_up_title">Give up this field?</string>
+    <!-- GameBoardScreen give-up confirmation: Explains abandoning counts as a loss. Sentence -->
+    <string name="confirm_give_up_message">Giving up counts as a loss and ends this field.</string>
 
     <!-- WinOverlay: Celebratory title shown when the field is cleared. Declarative -->
     <string name="cleared">Field Cleared!</string>

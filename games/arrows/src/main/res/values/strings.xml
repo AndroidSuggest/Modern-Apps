@@ -14,6 +14,10 @@
     <string name="next_level">Next Level</string>
     <!-- ArrowsGameScreen: Puts every arrow back and restores the hearts. Verb -->
     <string name="restart">Restart</string>
+    <!-- ArrowsGameScreen restart confirmation: Title asking whether to reset the board. Question -->
+    <string name="confirm_restart_title">Restart this board?</string>
+    <!-- ArrowsGameScreen restart confirmation: Explains progress on the board is lost. Sentence -->
+    <string name="confirm_restart_message">Your progress on this board will be lost.</string>
     <!-- ArrowsGameScreen: Shown after clearing the daily, since there is only one per day. Sentence -->
     <string name="daily_come_back_tomorrow">Cleared! Come back tomorrow for a new board.</string>
     <!-- ArrowsGameScreen: Celebratory line shown when every arrow has flown. Declarative -->

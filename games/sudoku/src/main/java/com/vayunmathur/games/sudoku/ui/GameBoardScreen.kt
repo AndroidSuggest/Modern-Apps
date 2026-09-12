@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -21,6 +25,7 @@ import com.vayunmathur.games.sudoku.ui.components.SudokuGrid
 import com.vayunmathur.library.ui.AppBarAlignment
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.FilledTonalButton
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
@@ -133,6 +138,7 @@ private fun ActionBar(
     onExit: () -> Unit,
 ) {
     val game = state.game ?: return
+    var confirmGiveUp by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         Row(
             Modifier.fillMaxWidth(),
@@ -168,10 +174,31 @@ private fun ActionBar(
         }
         TextButton(
             onClick = {
-                actions.giveUp()
-                onExit()
+                // A finished puzzle has nothing to lose; only confirm mid-game,
+                // when giving up records a loss.
+                if (!game.isWon) {
+                    confirmGiveUp = true
+                } else {
+                    actions.giveUp()
+                    onExit()
+                }
             },
             modifier = Modifier.fillMaxWidth(),
         ) { Text(stringResource(R.string.give_up)) }
+    }
+
+    if (confirmGiveUp) {
+        ConfirmDialog(
+            title = stringResource(R.string.confirm_give_up_title),
+            message = stringResource(R.string.confirm_give_up_message),
+            confirmLabel = stringResource(R.string.give_up),
+            dismissLabel = stringResource(UiR.string.cancel),
+            destructive = true,
+            onConfirm = {
+                actions.giveUp()
+                onExit()
+            },
+            onDismiss = { confirmGiveUp = false },
+        )
     }
 }

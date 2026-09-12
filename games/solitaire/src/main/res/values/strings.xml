@@ -15,6 +15,10 @@
     <string name="continue_game">Continue</string>
     <!-- GameActionBar: Button to abandon current game (records loss). Verb phrase -->
     <string name="give_up">Give Up</string>
+    <!-- GameBoardScreen give-up confirmation: Title asking whether to abandon the deal. Question -->
+    <string name="confirm_give_up_title">Give up this game?</string>
+    <!-- GameBoardScreen give-up confirmation: Explains abandoning counts as a loss. Sentence -->
+    <string name="confirm_give_up_message">Giving up counts as a loss and ends this game.</string>
     <!-- GameScreen TopAppBar / WinOverlay: Label for move counter HUD. Noun -->
     <string name="moves">Moves</string>
     <!-- WinOverlay: Label for elapsed time shown in win dialog, e.g. Time: 02:34. Noun -->

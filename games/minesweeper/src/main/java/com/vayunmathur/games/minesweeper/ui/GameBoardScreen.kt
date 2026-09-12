@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -26,6 +30,7 @@ import com.vayunmathur.library.ui.AppBarAlignment
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconFlag
 import com.vayunmathur.library.ui.MaterialTheme
@@ -55,6 +60,12 @@ fun GameBoardScreen(
 ) {
     val game = state.game
     val mineCount = state.config.difficulty.mineCount(state.config.size)
+    // The game is only worth confirming over once the first dig has laid the
+    // mines: a fresh field restarts into an identical blank one, and giving up
+    // on it records no loss.
+    val hasProgress = game?.let { it.started && !it.isOver } == true
+    var confirmRestart by remember { mutableStateOf(false) }
+    var confirmGiveUp by remember { mutableStateOf(false) }
     AppScaffold(
         // Size name plus the mine count rather than size plus density name: the two enums share
         // labels ("Medium" and "Medium"), and the raw count is what a player actually wants to know.
@@ -129,17 +140,48 @@ fun GameBoardScreen(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
                     Button(
-                        onClick = { actions.restart() },
+                        onClick = { if (hasProgress) confirmRestart = true else actions.restart() },
                         modifier = Modifier.weight(1f),
                     ) { Text(stringResource(R.string.new_field_button)) }
                     TextButton(
                         onClick = {
-                            actions.giveUp()
-                            onExit()
+                            if (hasProgress) {
+                                confirmGiveUp = true
+                            } else {
+                                actions.giveUp()
+                                onExit()
+                            }
                         },
                         modifier = Modifier.weight(1f),
                     ) { Text(stringResource(R.string.give_up)) }
                 }
+            }
+
+            if (confirmRestart) {
+                ConfirmDialog(
+                    title = stringResource(R.string.confirm_new_field_title),
+                    message = stringResource(R.string.confirm_new_field_message),
+                    confirmLabel = stringResource(R.string.new_field_button),
+                    dismissLabel = stringResource(UiR.string.cancel),
+                    destructive = true,
+                    onConfirm = { actions.restart() },
+                    onDismiss = { confirmRestart = false },
+                )
+            }
+
+            if (confirmGiveUp) {
+                ConfirmDialog(
+                    title = stringResource(R.string.confirm_give_up_title),
+                    message = stringResource(R.string.confirm_give_up_message),
+                    confirmLabel = stringResource(R.string.give_up),
+                    dismissLabel = stringResource(UiR.string.cancel),
+                    destructive = true,
+                    onConfirm = {
+                        actions.giveUp()
+                        onExit()
+                    },
+                    onDismiss = { confirmGiveUp = false },
+                )
             }
 
             if (game.isOver) {

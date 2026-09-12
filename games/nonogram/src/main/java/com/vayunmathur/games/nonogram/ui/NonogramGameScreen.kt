@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -28,6 +32,7 @@ import com.vayunmathur.library.ui.AppBarAlignment
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
@@ -36,6 +41,7 @@ import com.vayunmathur.library.ui.SegmentedButtonDefaults
 import com.vayunmathur.library.ui.SingleChoiceSegmentedButtonRow
 import com.vayunmathur.library.ui.Spacing
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.ui.game.DailyStreakText
 import com.vayunmathur.library.ui.game.GameModeChooser
@@ -231,6 +237,11 @@ private fun NonogramControls(
     daily: Boolean,
     actions: NonogramGameActions,
 ) {
+    var confirmRestart by remember { mutableStateOf(false) }
+    // Restart clears every mark, so only ask when there is something to lose:
+    // an untouched board restarts into itself.
+    val hasProgress = game.filled.isNotEmpty() || game.crossed.isNotEmpty() ||
+        game.revealedBlanks.isNotEmpty()
     when {
         game.isWon -> {
             Text(
@@ -276,9 +287,21 @@ private fun NonogramControls(
                     textAlign = TextAlign.Center,
                 )
             }
-            OutlinedButton(onClick = { actions.restartLevel() }) {
+            OutlinedButton(onClick = { if (hasProgress) confirmRestart = true else actions.restartLevel() }) {
                 Text(stringResource(R.string.restart))
             }
         }
+    }
+
+    if (confirmRestart) {
+        ConfirmDialog(
+            title = stringResource(R.string.confirm_restart_title),
+            message = stringResource(R.string.confirm_restart_message),
+            confirmLabel = stringResource(R.string.restart),
+            dismissLabel = stringResource(UiR.string.cancel),
+            destructive = true,
+            onConfirm = { actions.restartLevel() },
+            onDismiss = { confirmRestart = false },
+        )
     }
 }

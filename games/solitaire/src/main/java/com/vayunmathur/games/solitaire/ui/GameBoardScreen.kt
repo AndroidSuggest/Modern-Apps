@@ -12,8 +12,14 @@ import androidx.compose.foundation.verticalScroll
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.ConfirmDialog
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AppScaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -56,10 +62,16 @@ fun GameBoardScreen(state: SolitaireUiState, mode: GameMode, actions: SolitaireA
         },
         scrollBehavior = appBarScrollBehavior(),
     ) { innerPadding ->
+        var confirmGiveUp by remember { mutableStateOf(false) }
+        val giveUp = {
+            // Giving up records a loss, so confirm while the game is still
+            // winnable; a finished board has nothing left to lose.
+            if (!isWon) confirmGiveUp = true else { actions.giveUp(); onExit() }
+        }
         Box(Modifier.fillMaxSize()) {
             DesktopMaxWidthContainer(modifier = Modifier.padding(innerPadding)) {
             Column(Modifier.fillMaxSize().padding(horizontal = 8.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                GameActionBar(onUndo = { actions.undo() }, onGiveUp = { actions.giveUp(); onExit() }, undoEnabled = state.history.isNotEmpty() && !isWon)
+                GameActionBar(onUndo = { actions.undo() }, onGiveUp = giveUp, undoEnabled = state.history.isNotEmpty() && !isWon)
                 when (mode) {
                     GameMode.KLONDIKE -> state.klondike?.let {
                         KlondikeBoard(it, actions, Modifier.align(Alignment.CenterHorizontally).widthIn(max = boardMaxWidth).fillMaxWidth())
@@ -74,6 +86,17 @@ fun GameBoardScreen(state: SolitaireUiState, mode: GameMode, actions: SolitaireA
             }
             }
             if (isWon) { WinOverlay(elapsedSeconds = elapsed, moveCount = moveCount, onNewGame = { actions.restart() }, onBack = onExit) }
+            if (confirmGiveUp) {
+                ConfirmDialog(
+                    title = stringResource(R.string.confirm_give_up_title),
+                    message = stringResource(R.string.confirm_give_up_message),
+                    confirmLabel = stringResource(R.string.give_up),
+                    dismissLabel = stringResource(UiR.string.cancel),
+                    destructive = true,
+                    onConfirm = { actions.giveUp(); onExit() },
+                    onDismiss = { confirmGiveUp = false },
+                )
+            }
         }
     }
 }

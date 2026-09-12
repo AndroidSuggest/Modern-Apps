@@ -40,6 +40,10 @@
     <string name="erase">Erase</string>
     <!-- GameBoardScreen action bar: Abandons the puzzle, recorded as a loss. Verb phrase -->
     <string name="give_up">Give Up</string>
+    <!-- GameBoardScreen give-up confirmation: Title asking whether to abandon the puzzle. Question -->
+    <string name="confirm_give_up_title">Give up this puzzle?</string>
+    <!-- GameBoardScreen give-up confirmation: Explains abandoning counts as a loss. Sentence -->
+    <string name="confirm_give_up_message">Giving up counts as a loss and ends this puzzle.</string>
     <!-- GameBoardScreen TopAppBar: Label preceding the hint counter, e.g. Hints: 2. Noun plural -->
     <string name="hints_used">Hints</string>
 
