@@ -122,7 +122,12 @@ class GalControlSession(
         // The payload names the offending message; the trace in GalConnection
         // prints it. Killing the session here is what turned a recoverable
         // per-message rejection into a dead bring-up.
-        GalMessage.Control.MESSAGE_ERROR -> emptyList()
+        //
+        // When the error is bare (empty payload, no channel context) and an open
+        // is in flight, it is that open's refusal: DHU 2.0 answers this way
+        // instead of sending 0x8. Draining the queue lets the driver move on to
+        // the next service instead of stalling with a phantom pending open.
+        GalMessage.Control.MESSAGE_ERROR -> onMessageError()
 
         else -> fail("unexpected control message type 0x${type.toString(16)}")
     }
@@ -247,18 +252,39 @@ class GalControlSession(
      * A refusal is recorded, not fatal: the HU answers some opens with an empty
      * MessageError and never sends 0x8 at all (DHU 2.0 vs video service 2), and
      * the bring-up must continue with the remaining services. The driver moves
-     * on when the refusal is visible via [refusedChannels] or a bare 0xff.
+     * on when the refusal is visible via [refusedChannels] or a bare 0xff
+     * (see [onMessageError], which drains the same queue).
      */
     private fun onChannelOpen(payload: ByteArray): List<OutboundMessage> {
         val status = ChannelOpenResponse.parseFrom(payload).status
-        val id = pendingChannels.firstOrNull() ?: return emptyList()
-        pendingChannels -= id
         if (status != MessageStatus.STATUS_SUCCESS.number) {
-            refusedChannels += id
+            drainPendedToRefused()
             return emptyList()
         }
+        val id = pendingChannels.firstOrNull() ?: return emptyList()
+        pendingChannels -= id
         openChannels += id
         return emptyList()
+    }
+
+    /**
+     * Records a bare MessageError as the refusal of the in-flight open.
+     *
+     * DHU 2.0 rejects some channel opens with an empty 0xff that names no
+     * channel, instead of a 0x8 refusal. Without this the queue stalls: the
+     * open stays "pending" forever and no further 0x7 ever goes out (Run 4).
+     * The head of the queue is what the error must belong to -- nothing else
+     * is in flight, since the driver sends one open at a time.
+     */
+    fun onMessageError(): List<OutboundMessage> {
+        drainPendedToRefused()
+        return emptyList()
+    }
+
+    private fun drainPendedToRefused() {
+        val id = pendingChannels.firstOrNull() ?: return
+        pendingChannels -= id
+        refusedChannels += id
     }
 
     private fun onPing(payload: ByteArray): List<OutboundMessage> = listOf(

@@ -259,20 +259,22 @@ class GalControlSessionTest {
     }
 
     @Test
-    fun `sequential opens track one flight at a time`() {
+    fun `a bare message error refuses the in-flight open`() {
+        // Run 4: DHU 2.0 answers the 0x7 with an empty 0xff and never sends 0x8.
+        // The queue must drain so the driver moves on to the next service.
         val session = session(GalCredential.serverEngine(context()))
         val video = Service.newBuilder().setId(GalService.VIDEO_SINK.id).build()
         val input = Service.newBuilder().setId(GalService.INPUT_SOURCE.id).build()
         session.openChannel(video)
         session.openChannel(input)
 
-        // First answer drains the head of the queue.
-        session.onMessage(
-            GalMessage.Control.CHANNEL_OPEN_RESPONSE,
-            ChannelOpenResponse.newBuilder().setStatus(0).build().toByteArray(),
-        )
-        assertEquals(setOf(GalService.VIDEO_SINK.id), session.openChannels)
+        val replies = session.onMessage(GalMessage.Control.MESSAGE_ERROR, byteArrayOf())
+
+        assertTrue(replies.isEmpty())
+        assertEquals(setOf(GalService.VIDEO_SINK.id), session.refusedChannels)
         assertEquals(listOf(GalService.INPUT_SOURCE.id), session.pendingChannels)
+        assertTrue(session.openChannels.isEmpty())
+        assertNull(session.failure)
     }
 
     @Test

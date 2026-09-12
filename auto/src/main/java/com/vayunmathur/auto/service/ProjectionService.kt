@@ -96,15 +96,21 @@ class ProjectionService : Service() {
      * Opens the next not-yet-attempted advertised service, in the HU's wire order.
      *
      * Only one open is ever in flight: while `pendingChannels` is non-empty the
-     * head unit still owes us an answer, so wait. Channel 0 (control) is local
-     * -- gearhead creates it without any 0x7 -- so it is skipped, never sent.
+     * head unit still owes us an answer, so wait.
+     *
+     * Service 1 IS sent, first: gearhead opens channel 0 locally and never sends
+     * a 0x7 for it, but DHU 2.0 rejects a first-0x7 for service 2 with an empty
+     * 0xff and no 0x8 (Run 4) -- so the HU-side may expect the wire-order
+     * sequence to start at 1. If the HU 0xffs/0x8-refuses service 1 as well, it
+     * lands in refusedChannels like any other refusal and the bring-up moves on
+     * to service 2; the experiment then distinguishes "first-open must be 1"
+     * (0x8 arrives for 1) from "video refused regardless" (both refused).
      */
     private fun openNext(connection: GalConnection) {
         val session = connection.session
         if (session.pendingChannels.isNotEmpty()) return
         val next = session.services.firstOrNull {
-            it.id != CONTROL_SERVICE_ID &&
-                it.id !in session.openChannels &&
+            it.id !in session.openChannels &&
                 it.id !in session.refusedChannels
         } ?: return
         connection.send(session.openChannel(next))
@@ -134,9 +140,6 @@ class ProjectionService : Service() {
         private const val TAG = "MaAuto.Service"
         private const val CHANNEL_ID = "projection"
         private const val NOTIFICATION_ID = 1
-
-        /** Service 1 is the control channel: opened locally, never via 0x7. */
-        private const val CONTROL_SERVICE_ID = 1
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, ProjectionService::class.java))
