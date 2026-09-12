@@ -1,14 +1,15 @@
 # MA Auto — handoff
 
-**Status: the GAL link authenticates and stays alive against Google's Desktop Head Unit.
-It is blocked at service discovery, one message short of opening the video channel.
-Nothing has been rendered on a head unit yet.**
+**Status: the full GAL bring-up completes against Google's Desktop Head Unit —
+discovery → channel opens → media setup → focus → start — and H.264 frames
+stream with head-unit acks. Render path (decode→surface) still unconfirmed.**
 
-> This file lives under `analysis/`, which is **gitignored**. It will not survive a clean
-> checkout. Move it somewhere tracked if you want it to persist.
+> This file is tracked at `auto/docs/HANDOFF.md` (moved out of gitignored
+> `analysis/maauto/` in `5c323e528`). Companion teardown lives at
+> `auto/docs/FINDINGS.md`.
 
 Companion documents:
-- `analysis/maauto/FINDINGS.md` — the full gearhead teardown: crypto, framing, message IDs,
+- `auto/docs/FINDINGS.md` — the full gearhead teardown: crypto, framing, message IDs,
   service table, protobuf recovery. Read that first for anything protocol-shaped.
 - `C:\Users\Vayun\.llms\plans\ma_auto_projection.plan.md` — the approved plan, including the
   role strategy.
@@ -144,21 +145,32 @@ before the request is built. Whatever that gates might matter.
 
 ## 4. What is committed
 
-Five commits, all pathspec-limited so other agents' work was never swept in:
+Protocol bring-up commits (Tasks 3+6), all pathspec-limited so other agents'
+work was never swept in:
 
 ```
-92cddbe0e auto: video pipeline, head unit server and DHU-verified GAL handshake
-2a3737aac auto: wire transport, framing and control session into a connection
-08d8cd0cc auto: TLS record codec and stream transport
-020ef11b9 build-logic: stop packaging .proto sources into every APK
-50e474943 auto: GAL frame codec, transport interface and control session
+86039cc7c maauto: clear CONTROL on service-channel sends
+200b2c92b maauto: frame channel-open on its target channel
+572de7515 maauto: fail TLS wrap on zero progress, fix tests
+91f7b1d72 maauto: scope CONTROL bit to channel-open sends
+0b0a7cb6e maauto: set CONTROL on encrypted channel-0 sends
+01abb3bbe maauto: drain open queue on bare 0xff, try service 1
+e5d2ff668 maauto: open channels sequentially in HU wire order
+c0126946b maauto: walk refusal test to ACTIVE before 0x8
+b73fe6848 maauto: log full control payloads inbound
+e1389aa18 maauto: repair MessageStatus enum mangled by edit
+d9694dab4 maauto: survive inbound MessageError without closing
+a93db5e18 maauto: gate media setup on ChannelOpenResponse
+9689479d3 maauto: pass renamed device fields in GalConnection
+8449cbeb7 maauto: send field-5-only ServiceDiscoveryRequest
+5c323e528 maauto: preserve protocol handoff docs
+ff9ea758e maauto: record completed bring-up in handoff
 ```
 
-Everything before those was squashed into `5ac87e232 "various fixes"` by a rebase — the
-module scaffolding, metadata, README/issue-list registration, the lint exclusion and
-`SUPPLY_CHAIN_RISKS.md` §10.2 all landed there.
+Earlier foundation commits (handshake, transport, TLS codec, frame codec)
+predate this list; see `git log --oneline -- auto/` for the full history.
 
-**74 unit tests, all passing.** `:auto:protocol:testDebugUnitTest`.
+**85+ unit tests, all passing.** `:auto:protocol:testDebugUnitTest`.
 
 ---
 
@@ -265,15 +277,13 @@ re-extracted from a newer gearhead.
 
 ## 8. Suggested order from here
 
-1. **Unblock discovery** — §3. Small, and everything else is behind it.
-2. **Video to the DHU.** The pipeline exists but is untested past construction. Expect to
-   iterate on the media setup → config → focus → start ordering; a head unit silently drops
-   frames sent before it has acknowledged the start request.
-3. **Input**, so the DHU's touch does something. Channel messages are mapped in FINDINGS.md.
-4. **MAOS integration** (plan Phase 3) — the role move is the risky part. Both the
+1. **Confirm the render path** — frames stream and are acked, but nobody has
+   confirmed they decode and display on the DHU surface yet.
+2. **Input**, so the DHU's touch does something. Channel messages are mapped in FINDINGS.md.
+3. **MAOS integration** (plan Phase 3) — the role move is the risky part. Both the
    privapp-permissions entry and the `roles.xml` patch are boot-fatal if wrong, so change one
    at a time and flash between.
-5. Audio, sensors, then the real car UI.
+4. Audio, sensors, then the real car UI.
 
 Phase 3 in the plan has the full role strategy: MA Auto takes
 `SYSTEM_AUTOMOTIVE_PROJECTION`, MA Cast moves to `COMPANION_DEVICE_APP_STREAMING` (which
@@ -302,6 +312,12 @@ code rather than an error. Details in FINDINGS.md.
 I lost a long stretch to trap 1 after a 6,400-candidate brute force found nothing.
 
 Two more found from live wire capture, not decompilation:
-- The `0x04` CONTROL flag does **not** mean "control channel". Route by channel id 0. DHU
-  never sets the bit on anything it sends; gearhead does set it on protobuf control messages.
+- The `0x04` CONTROL flag does **not** mean "control channel". Route by channel id.
+  The full rule, verified live across Runs 5-8: DHU→phone never sets the bit on
+  anything. Phone→HU sets it **only** on channel-0 channel-open requests (0x7,
+  framed `0x0F`). Discovery (0x5), ping responses and byebye ride CONTROL-clear
+  (`0x0B`) and are accepted that way; every service-channel send (setup, focus,
+  start, media) rides CONTROL-clear (`0x0B`) — a CONTROL-flagged 0x8000 is
+  0xff'd. And the 0x7 must be framed on the TARGET channel, not channel 0
+  (ch0-framed opens draw STATUS_INVALID_CHANNEL, -5).
 - The head unit speaks first. The phone answers a version request, it does not send one.
