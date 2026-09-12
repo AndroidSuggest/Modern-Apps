@@ -41,8 +41,8 @@ class MessageMirrorService : NotificationListenerService() {
      * messages, or a latest message with blank text.
      */
     internal fun extract(sbn: StatusBarNotification): Pair<MessagingThread, MessagingMessage>? {
-        val extras = NotificationCompat.getExtras(sbn.notification) ?: return null
-        val messages = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotificationExtras(extras)
+        val messages = NotificationCompat.MessagingStyle
+            .extractMessagingStyleFromNotification(sbn.notification)
             ?.messages
             ?.takeIf { it.isNotEmpty() }
             ?: return null
@@ -77,8 +77,9 @@ class MessageMirrorService : NotificationListenerService() {
     }
 
     private fun conversationTitle(sbn: StatusBarNotification, latest: NotificationCompat.MessagingStyle.Message): String {
-        val styleTitle = NotificationCompat.getExtras(sbn.notification)
-            ?.let { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotificationExtras(it)?.conversationTitle }
+        val styleTitle = NotificationCompat.MessagingStyle
+            .extractMessagingStyleFromNotification(sbn.notification)
+            ?.conversationTitle
         if (!styleTitle.isNullOrBlank()) return styleTitle.toString()
         val sender = latest.person?.name?.toString()
         if (!sender.isNullOrBlank()) return sender
