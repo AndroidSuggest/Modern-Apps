@@ -14,10 +14,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.vayunmathur.games.hub.data.entities.HubGameEntity
@@ -92,11 +95,21 @@ fun GameCard(
                         Text(stringResource(R.string.achievements_2, unlocked, total), style = MaterialTheme.typography.labelSmall)
                     }
                 }
-                dailyStreak?.let { (current, longest) ->
-                    if (current > 0) {
-                        Text(stringResource(R.string.daily_streak_days, current, longest), style = MaterialTheme.typography.labelSmall)
-                    }
+                // The streak line always occupies one line of labelSmall text so every
+                // tile in the dashboard carousel keeps the same height, whether or
+                // not the game has an active streak (#698). An inactive streak is an
+                // invisible, semantics-hidden placeholder rather than missing content.
+                val streakText = dailyStreak?.let { (current, longest) ->
+                    if (current > 0) stringResource(R.string.daily_streak_days, current, longest) else null
                 }
+                Text(
+                    streakText ?: stringResource(R.string.daily_streak_days, 0, 0),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = if (streakText != null) Modifier
+                    else Modifier.alpha(0f).clearAndSetSemantics { }
+                )
             }
 
             if (achievementProgress != null && achievementProgress.second > 0) {
