@@ -1,6 +1,12 @@
 // Google Automotive Link service descriptors -- the payloads a head unit puts inside each
 // Service entry of its discovery response.
 //
+// GAL 11/12 GAP (Phase 4, MA Auto sender): the APK teardown recovered the service
+// descriptor fields but not the MEDIA_PLAYBACK_STATUS / MEDIA_BROWSER channel message
+// IDs, so MA Auto does not speak services 11/12. Now-playing is served from the
+// on-device media session and rendered into the ch2 video stream instead; inbound
+// 11/12 traffic is NOT_SUPPORTED (observed, never answered). See gal/media.proto.
+//
 // Field numbers recovered from the APK's protobuf-lite descriptors and exact; names follow
 // aasdk/openauto. See gal/control.proto for the provenance note.
 

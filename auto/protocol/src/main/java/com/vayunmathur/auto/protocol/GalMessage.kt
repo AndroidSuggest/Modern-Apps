@@ -132,3 +132,14 @@ enum class GalService(val id: Int) {
         fun fromId(id: Int): GalService? = byId[id]
     }
 }
+
+/**
+ * GAL 11/12 gap (Phase 4, MA Auto sender): the teardown recovered the
+ * `MEDIA_PLAYBACK_STATUS` (`xkn`, control.proto field 9) and `MEDIA_BROWSER`
+ * (`xki`, field 11) descriptor fields but never their channel message IDs, so
+ * MA Auto neither opens these channels' semantics nor answers them. Now-playing
+ * is served from the on-device media session and rendered into the ch2 video
+ * stream instead; inbound 11/12 traffic is NOT_SUPPORTED: observed and ignored.
+ */
+fun isMediaBrowserChannel(channelId: Int): Boolean =
+    channelId == GalService.MEDIA_PLAYBACK_STATUS.id || channelId == GalService.MEDIA_BROWSER.id

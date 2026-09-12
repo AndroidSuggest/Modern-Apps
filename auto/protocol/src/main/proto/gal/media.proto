@@ -1,6 +1,13 @@
 // Google Automotive Link media channels: the shared setup/start/ack sequence used by the
 // video sink and the three audio sinks, plus video focus.
 //
+// GAL 11/12 GAP (Phase 4, MA Auto sender): the media-playback-status (service 11,
+// `xkn`) and media-browser (service 12, `xki`) channel messages are unmapped, so they
+// are deliberately absent below. Now-playing is served from the on-device media session
+// and rendered into the ch2 video stream instead; inbound 11/12 traffic is
+// NOT_SUPPORTED (observed, never answered -- see `isMediaBrowserChannel`).
+// If the teardown ever recovers those IDs, their messages go at the end of this file.
+//
 // Field numbers recovered from the APK's protobuf-lite descriptors and exact; names follow
 // aasdk/openauto. See gal/control.proto for the provenance note.
 
