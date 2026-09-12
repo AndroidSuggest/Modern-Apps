@@ -108,11 +108,11 @@ class GalConnectionTest {
     }
 
     @Test
-    fun `an encrypted control message carries the CONTROL bit`() {
-        // Dalvik ground truth (`Ljbe.i`): every `jbj.k` send builds Lizm.f=true,
-        // which ORs 0x04 into the flags -- encrypted channel-0 messages go out
-        // as FIRST|LAST|CONTROL|ENCRYPTED = 0x0F. DHU 2.0 answers a
-        // CONTROL-less 0x7 with an empty 0xff and no 0x8 (Run 5).
+    fun `the channel-open request carries the CONTROL bit`() {
+        // Scoped to the 0x7 path only: DHU 2.0 answers a CONTROL-less 0x7 with
+        // an empty 0xff and no 0x8 (Run 5), while the CONTROL-less 0x5 is
+        // accepted -- so the bit goes on the open, nothing else. Dalvik ground
+        // truth (`Ljbe.i`): gearhead's 0x7 goes out as 0x0F.
         val transport = FakeTransport()
         val connection = connection(transport)
         connection.send(
@@ -120,6 +120,7 @@ class GalConnectionTest {
                 type = GalMessage.Control.CHANNEL_OPEN_REQUEST,
                 payload = byteArrayOf(0x08, 0x00, 0x10, 0x02),
                 encrypted = true,
+                isControl = true,
             ),
         )
 
@@ -129,22 +130,22 @@ class GalConnectionTest {
     }
 
     @Test
-    fun `a plaintext control message leaves the CONTROL bit clear`() {
-        // Version negotiation rides pre-TLS and was accepted as-is; only
-        // encrypted channel-0 messages get the bit.
+    fun `other control messages leave the CONTROL bit clear`() {
+        // Discovery (0x5), ping responses and byebye ride CONTROL-less: the 0x5
+        // is live-accepted that way, and nothing else has shown a need.
         val transport = FakeTransport()
         val connection = connection(transport)
         connection.send(
             OutboundMessage(
-                type = GalMessage.Control.VERSION_RESPONSE,
-                payload = byteArrayOf(0x00, 0x01, 0x00, 0x06, 0x00, 0x00),
-                encrypted = false,
+                type = GalMessage.Control.SERVICE_DISCOVERY_REQUEST,
+                payload = byteArrayOf(0x2A, 0x0E) + "Google Pixel 8".toByteArray(),
+                encrypted = true,
             ),
         )
 
         val written = transport.written.toByteArray()
         assertEquals(0x00, written[0])
-        assertEquals(0x03, written[1].toInt() and 0xFF)
+        assertEquals(0x0B, written[1].toInt() and 0xFF)
     }
 
     @Test

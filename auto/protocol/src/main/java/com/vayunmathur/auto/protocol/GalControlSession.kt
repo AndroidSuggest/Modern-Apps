@@ -22,6 +22,15 @@ class OutboundMessage(
     val payload: ByteArray,
     /** Whether the frame should be TLS-wrapped and flagged [FrameFlags.ENCRYPTED]. */
     val encrypted: Boolean,
+    /**
+     * Whether to set the frame's [FrameFlags.CONTROL] bit.
+     *
+     * Only the channel-open request sets this today: DHU 2.0 answers a
+     * CONTROL-less 0x7 with an empty 0xff and no 0x8 (Run 5), while a
+     * CONTROL-less 0x5 is accepted -- so the bit is scoped to the 0x7 path
+     * rather than applied to every encrypted channel-0 send.
+     */
+    val isControl: Boolean = false,
 )
 
 /** Where the session has got to. */
@@ -140,6 +149,12 @@ class GalControlSession(
      * STATUS_SUCCESS ([refusedChannels] on anything else). Nothing may be sent
      * on the channel before that -- gearhead's `jdk.Q()` sends media setup from
      * `onChannelOpened`.
+     *
+     * The frame carries the CONTROL bit: Dalvik ground truth (`Ljbe.i` flag
+     * assembly) shows every `jbj.k` send builds `Lizm.f = true`, which ORs in
+     * 0x04, so gearhead's 0x7 goes out as FIRST|LAST|CONTROL|ENCRYPTED = 0x0F.
+     * Scoped to this path only -- the CONTROL-less 0x5 is live-accepted, so no
+     * other channel-0 send takes the bit.
      */
     fun openChannel(service: Service, priority: Int = 0): OutboundMessage {
         pendingChannels += service.id
@@ -151,6 +166,7 @@ class GalControlSession(
                 .build()
                 .toByteArray(),
             encrypted = true,
+            isControl = true,
         )
     }
 
