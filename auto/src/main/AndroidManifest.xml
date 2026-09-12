@@ -16,6 +16,20 @@
          filter below does not satisfy it on its own. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
+    <!-- The car launcher resolves Maps / Music / dialer through PackageManager. Android 11+
+         hides other apps by default, so these queries keep those lookups visible. -->
+    <queries>
+        <package android:name="com.vayunmathur.maps" />
+        <package android:name="com.vayunmathur.music" />
+        <intent>
+            <action android:name="android.media.browse.MediaBrowserService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"

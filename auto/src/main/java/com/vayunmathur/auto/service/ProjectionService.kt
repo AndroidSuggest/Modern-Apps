@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.util.Log
 import com.vayunmathur.auto.R
 import com.vayunmathur.auto.network.HeadUnitServer
+import com.vayunmathur.auto.platform.AutoSessionState
 import com.vayunmathur.auto.platform.VideoSinkChannel
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalCredential
@@ -58,6 +59,8 @@ class ProjectionService : Service() {
 
     private fun session(server: HeadUnitServer) {
         server.accept().use { socket ->
+            // A head unit is on the wire; the phone status screen leaves Disconnected.
+            AutoSessionState.onSocketAccepted()
             val connection = GalConnection(
                 transport = StreamTransport(socket.getInputStream(), socket.getOutputStream()),
                 sslContext = GalCredential.fromAssets(assets),
@@ -68,6 +71,7 @@ class ProjectionService : Service() {
             )
 
             var setupVideo = false
+            var reportedActive = false
             while (running && connection.pump()) {
                 // Open every advertised service in HU-discovery wire order, one at a
                 // time: the next 0x7 goes out only once the previous channel is
@@ -76,6 +80,10 @@ class ProjectionService : Service() {
                 // this same order (`jbp.i[]` follows the `xob.c` wire order).
                 // Video setup additionally waits for its own channel grant.
                 if (connection.session.state == SessionState.ACTIVE) {
+                    if (!reportedActive) {
+                        reportedActive = true
+                        AutoSessionState.onActive(CAR_NAME)
+                    }
                     openNext(connection)
                 }
                 if (!setupVideo && GalService.VIDEO_SINK.id in connection.session.openChannels) {
@@ -85,6 +93,7 @@ class ProjectionService : Service() {
                 video?.pumpEncoder()
             }
             Log.i(TAG, "head unit disconnected: ${connection.session.failure ?: "cleanly"}")
+            AutoSessionState.onSessionEnd(connection.session.failure)
             video?.release()
             video = null
         }
@@ -116,7 +125,7 @@ class ProjectionService : Service() {
         connection.send(session.openChannel(next))
         Log.i(TAG, "requesting channel open for service ${next.id}")
         if (next.id == GalService.VIDEO_SINK.id && next.hasMediaSink()) {
-            video = VideoSinkChannel(this, next, connection)
+            video = VideoSinkChannel(this, next, connection, AutoSessionState::onVideoEvent)
         }
     }
 
@@ -140,6 +149,13 @@ class ProjectionService : Service() {
         private const val TAG = "MaAuto.Service"
         private const val CHANNEL_ID = "projection"
         private const val NOTIFICATION_ID = 1
+
+        /**
+         * Interim car name until the head unit reports its own. The GAL services the DHU
+         * advertises carry no human-readable name, so the status screen says where the
+         * pixels are going rather than guessing a make.
+         */
+        private const val CAR_NAME = "Desktop Head Unit"
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, ProjectionService::class.java))

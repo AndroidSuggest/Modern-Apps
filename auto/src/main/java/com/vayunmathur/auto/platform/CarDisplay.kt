@@ -10,9 +10,15 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.Surface
+import android.view.View
 import android.view.ViewGroup
+import android.widget.GridLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.vayunmathur.auto.R
+import java.text.DateFormat
+import java.util.Date
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
 
@@ -98,52 +104,159 @@ class CarDisplay(
     }
 
     /**
-     * A placeholder car UI.
+     * The car launcher: a driving-safe home screen with a status bar and big app tiles.
      *
-     * Something unmistakably ours and unmistakably live, so a successful projection is
-     * obvious at a glance and a frozen one is obvious too. The real driving-safe interface
-     * replaces this.
+     * Deliberately Views, not Compose: a `Presentation` on a private virtual display has
+     * no Compose lifecycle owner, and Views render into the encoder surface with no
+     * extra plumbing. Large tiles, high contrast, and nothing that needs reading at
+     * a glance beyond a label.
      */
     private class CarPresentation(context: Context, display: android.view.Display) :
         Presentation(context, display) {
+
+        private var clockView: TextView? = null
+        private val timeFormat: DateFormat = DateFormat.getTimeInstance(DateFormat.SHORT)
+
+        // Real wall-clock time, ticking every second. The old placeholder showed a
+        // session counter here; a driver needs to know what time it is instead, and the
+        // moving digits still prove frames are flowing rather than one stale image.
+        private val ticker = object : Runnable {
+            override fun run() {
+                val view = clockView ?: return
+                view.text = timeFormat.format(Date())
+                view.postDelayed(this, 1000)
+            }
+        }
 
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
             val root = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
                 setBackgroundColor(Color.parseColor("#101418"))
                 layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
             }
-            root.addView(
+            root.addView(statusBar())
+            root.addView(divider())
+            val apps = CarApps.query(context)
+            root.addView(if (apps.isEmpty()) emptyState() else appGrid(apps))
+            setContentView(root)
+
+            clockView?.let {
+                it.text = timeFormat.format(Date())
+                it.post(ticker)
+            }
+        }
+
+        override fun onStop() {
+            clockView?.removeCallbacks(ticker)
+            clockView = null
+            super.onStop()
+        }
+
+        private fun statusBar(): LinearLayout {
+            val bar = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(24), dp(16), dp(24), dp(16))
+            }
+            val titles = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+            }
+            titles.addView(
                 TextView(context).apply {
-                    text = "MA Auto"
+                    text = context.getString(R.string.app_name)
                     setTextColor(Color.WHITE)
-                    textSize = 40f
-                    gravity = Gravity.CENTER
+                    textSize = 28f
                 },
             )
+            titles.addView(
+                TextView(context).apply {
+                    text = context.getString(R.string.car_connected)
+                    setTextColor(Color.parseColor("#8AB4F8"))
+                    textSize = 16f
+                },
+            )
+            bar.addView(titles)
             val clock = TextView(context).apply {
+                setTextColor(Color.WHITE)
+                textSize = 24f
+                gravity = Gravity.END
+            }
+            clockView = clock
+            bar.addView(clock)
+            return bar
+        }
+
+        private fun divider(): View = View(context).apply {
+            setBackgroundColor(Color.parseColor("#2A3138"))
+            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1))
+        }
+
+        private fun appGrid(apps: List<CarApp>): GridLayout {
+            return GridLayout(context).apply {
+                columnCount = COLUMNS
+                setPadding(dp(16), dp(8), dp(16), dp(16))
+                layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
+                apps.forEach { app ->
+                    addView(
+                        appCell(app).apply {
+                            layoutParams = GridLayout.LayoutParams().apply {
+                                width = 0
+                                columnSpec = GridLayout.spec(UNDEFINED_COLUMN, 1, FILL, 1f)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        private fun appCell(app: CarApp): LinearLayout {
+            return LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(16), dp(8), dp(16))
+                isClickable = true
+                isFocusable = true
+                addView(
+                    ImageView(context).apply {
+                        setImageDrawable(app.icon)
+                        contentDescription = app.label.toString()
+                        layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
+                    },
+                )
+                addView(
+                    TextView(context).apply {
+                        text = app.label.toString()
+                        setTextColor(Color.WHITE)
+                        textSize = 16f
+                        gravity = Gravity.CENTER
+                        setPadding(0, dp(8), 0, 0)
+                    },
+                )
+                setOnClickListener { context.startActivity(app.launch) }
+            }
+        }
+
+        private fun emptyState(): TextView {
+            return TextView(context).apply {
+                text = context.getString(R.string.car_no_apps)
                 setTextColor(Color.parseColor("#8AB4F8"))
                 textSize = 20f
                 gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
             }
-            root.addView(clock)
-            setContentView(root)
-
-            // A moving element proves frames are still flowing rather than one stale image.
-            val ticker = object : Runnable {
-                private var seconds = 0
-                override fun run() {
-                    clock.text = "projecting — ${seconds++}s"
-                    clock.postDelayed(this, 1000)
-                }
-            }
-            clock.post(ticker)
         }
+
+        private fun dp(value: Int): Int =
+            (value * context.resources.displayMetrics.density).toInt()
 
         private companion object {
             const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
+            const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+            const val COLUMNS = 3
+            const val UNDEFINED_COLUMN = GridLayout.UNDEFINED
+            val FILL: GridLayout.Alignment = GridLayout.FILL
         }
     }
 

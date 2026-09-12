@@ -6,11 +6,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.auto.R
 import com.vayunmathur.auto.platform.AutoConnectionState
+import com.vayunmathur.auto.platform.AutoViewModel
+import com.vayunmathur.auto.platform.VideoInfo
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.ListItem
@@ -18,9 +22,18 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 
-/** Whether a car is attached, and what to do if one is not. */
+/** Whether a car is attached, and what is running on it. */
 @Composable
-fun AutoScreen(state: AutoConnectionState) {
+fun AutoScreen(viewModel: AutoViewModel) {
+    val state by viewModel.connection.collectAsStateWithLifecycle()
+    val session = SessionSnapshot(
+        video = viewModel.video.collectAsStateWithLifecycle().value,
+        focusMode = viewModel.focusMode.collectAsStateWithLifecycle().value,
+        framesSent = viewModel.framesSent.collectAsStateWithLifecycle().value,
+        acksSeen = viewModel.acksSeen.collectAsStateWithLifecycle().value,
+        ackMismatches = viewModel.ackMismatches.collectAsStateWithLifecycle().value,
+        sessionStartedAt = viewModel.sessionStartedAt.collectAsStateWithLifecycle().value,
+    )
     val scrollBehavior = appBarScrollBehavior()
     AppScaffold(
         title = stringResource(R.string.app_name),
@@ -38,6 +51,7 @@ fun AutoScreen(state: AutoConnectionState) {
                     supportingContent = { Text(state.describe()) },
                 )
             }
+            SessionCard(session = session, modifier = Modifier.padding(top = 16.dp))
             Text(
                 text = stringResource(R.string.connect_hint),
                 style = MaterialTheme.typography.bodyMedium,
@@ -46,6 +60,16 @@ fun AutoScreen(state: AutoConnectionState) {
         }
     }
 }
+
+/** Whatever the session card needs that is not the connection state itself. */
+data class SessionSnapshot(
+    val video: VideoInfo?,
+    val focusMode: String?,
+    val framesSent: Long,
+    val acksSeen: Long,
+    val ackMismatches: Long,
+    val sessionStartedAt: Long?,
+)
 
 @Composable
 private fun AutoConnectionState.describe(): String = when (this) {

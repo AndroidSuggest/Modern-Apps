@@ -32,11 +32,17 @@ class VideoSinkChannel(
     private val context: Context,
     private val service: Service,
     private val connection: GalConnection,
+    /**
+     * Fire-and-forget observations for the phone status screen. Never blocks and never
+     * gates streaming: the service forwards these to the session state without waiting.
+     */
+    private val onEvent: (VideoEvent) -> Unit = {},
 ) {
     private var display: CarDisplay? = null
     private var encoder: VideoEncoder? = null
     private var sessionId = -1
     private var configurationIndex = 0
+    private var firstFrameSent = false
 
     /** Chosen from what the head unit advertised in discovery. */
     private val configuration: VideoConfiguration? =
@@ -82,6 +88,7 @@ class VideoSinkChannel(
     private fun onFocus(payload: ByteArray) {
         val mode = VideoFocusIndication.parseFrom(payload).mode
         Log.i(TAG, "video focus is now $mode")
+        onEvent(VideoEvent.FocusChanged(mode.name))
         // Regaining the screen needs a fresh keyframe; the head unit has nothing to decode
         // against otherwise and would show garbage until the next scheduled one.
         if (mode == VideoFocusMode.VIDEO_FOCUS_PROJECTED) encoder?.requestKeyFrame()
@@ -93,6 +100,9 @@ class VideoSinkChannel(
         val ack = MediaAck.parseFrom(payload)
         if (ack.sessionId != sessionId) {
             Log.w(TAG, "ack for session ${ack.sessionId}, expected $sessionId")
+            onEvent(VideoEvent.AckMismatch(expected = sessionId, actual = ack.sessionId))
+        } else {
+            onEvent(VideoEvent.AckReceived)
         }
     }
 
@@ -103,8 +113,10 @@ class VideoSinkChannel(
         val density = config?.density?.takeIf { it > 0 } ?: DEFAULT_DENSITY
 
         Log.i(TAG, "starting video ${width}x$height @${frameRate} dpi $density")
+        onEvent(VideoEvent.Setup(VideoInfo(width, height, frameRate, configurationIndex)))
 
         sessionId = 0
+        firstFrameSent = false
         val encoder = VideoEncoder(width, height, frameRate, onFrame = ::sendFrame)
         this.encoder = encoder
         encoder.start()
@@ -126,6 +138,11 @@ class VideoSinkChannel(
     }
 
     private fun sendFrame(buffer: ByteBuffer, info: MediaCodec.BufferInfo) {
+        if (!firstFrameSent) {
+            firstFrameSent = true
+            onEvent(VideoEvent.FirstFrame)
+        }
+        onEvent(VideoEvent.FrameSent)
         val bytes = ByteArray(info.size)
         buffer.get(bytes)
         // Timestamped form: an 8-byte microsecond timestamp then the access unit. Codec

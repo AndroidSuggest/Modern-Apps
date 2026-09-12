@@ -19,8 +19,37 @@
     <!-- Explains that plugging in is all that is needed; there is nothing to configure. -->
     <string name="connect_hint">Plug the phone into the car with a USB cable, or start Android Auto from the car\'s screen if it supports a wireless connection.</string>
 
+    <!-- Heading of the card showing what the projection session is doing. -->
+    <string name="session_headline">Session</string>
+    <!-- The video stream the head unit accepted. %1$d and %2$d are the width and height in
+         pixels, %3$d the frame rate, %4$d the configuration index it chose. -->
+    <string name="session_video">Video <xliff:g example="800" id="width">%1$d</xliff:g>×<xliff:g example="480" id="height">%2$d</xliff:g> @ <xliff:g example="30" id="fps">%3$d</xliff:g> fps, config <xliff:g example="0" id="config">%4$d</xliff:g></string>
+    <!-- Shown when no video configuration has been accepted yet. -->
+    <string name="session_video_none">No video yet</string>
+    <!-- Heading of the row showing which side currently holds video focus. -->
+    <string name="session_focus">Focus</string>
+    <!-- Shown when no focus indication has arrived yet. -->
+    <string name="session_focus_none">Unknown</string>
+    <!-- Heading of the row showing encoded frames sent and head-unit acks seen. -->
+    <string name="session_frames">Frames / acks</string>
+    <!-- %1$d is frames sent, %2$d is acks seen. -->
+    <string name="session_frames_value"><xliff:g example="120" id="frames">%1$d</xliff:g> / <xliff:g example="118" id="acks">%2$d</xliff:g></string>
+    <!-- Heading of the row counting acks that named the wrong session. -->
+    <string name="session_ack_mismatch">Ack mismatches</string>
+    <!-- %1$d is the count of mismatched acks. -->
+    <string name="session_ack_mismatch_value"><xliff:g example="1" id="count">%1$d</xliff:g></string>
+    <!-- Heading of the row showing how long the session has been active. -->
+    <string name="session_elapsed">Session time</string>
+    <!-- Shown when there is no active session to time. -->
+    <string name="session_elapsed_none">—</string>
+
     <!-- Notification channel name for the ongoing projection session. -->
     <string name="projection_channel">Projection</string>
     <!-- Ongoing notification shown while a car is connected. -->
     <string name="projection_running">Connected to a car</string>
+
+    <!-- Second line of the car status bar, under the product name. -->
+    <string name="car_connected">Connected</string>
+    <!-- Shown on the car display when no launchable apps were found on the phone. -->
+    <string name="car_no_apps">No apps available — install Maps or Music to get started</string>
 </resources>

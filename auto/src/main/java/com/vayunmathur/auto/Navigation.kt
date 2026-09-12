@@ -11,7 +11,7 @@ fun Navigation(viewModel: AutoViewModel) {
     val backStack = rememberNavBackStack<Route>(Route.Home)
     MainNavigation(backStack) {
         entry<Route.Home> {
-            AutoScreen(state = viewModel.state)
+            AutoScreen(viewModel = viewModel)
         }
     }
 }
