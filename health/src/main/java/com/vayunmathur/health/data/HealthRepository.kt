@@ -124,6 +124,7 @@ class HealthRepository private constructor(context: Context) :
     fun getProfileAnswersFlow(): Flow<List<ProfileAnswer>> = medicalDao.getProfileAnswersFlow()
     suspend fun getProfileAnswer(loincCode: String): ProfileAnswer? =
         medicalDao.getProfileAnswer(loincCode)
+    suspend fun deleteProfileAnswer(loincCode: String) = medicalDao.deleteProfileAnswer(loincCode)
 
     /** Expose underlying [HealthDatabase] for call sites that need transactional access (prefer adding a method here instead). */
     internal val database: HealthDatabase get() = db

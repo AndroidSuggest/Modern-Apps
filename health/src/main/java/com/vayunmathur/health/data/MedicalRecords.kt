@@ -350,4 +350,7 @@ interface MedicalDao {
 
     @Query("SELECT * FROM ProfileAnswer WHERE loincCode = :loincCode")
     suspend fun getProfileAnswer(loincCode: String): ProfileAnswer?
+
+    @Query("DELETE FROM ProfileAnswer WHERE loincCode = :loincCode")
+    suspend fun deleteProfileAnswer(loincCode: String)
 }

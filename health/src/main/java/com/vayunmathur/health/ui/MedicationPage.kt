@@ -22,6 +22,7 @@ import com.vayunmathur.health.data.MedicationStatus
 import com.vayunmathur.health.domain.DoseSchedule
 import com.vayunmathur.health.platform.MedicalViewModel
 import com.vayunmathur.health.ui.components.MedicalStorageNotice
+import com.vayunmathur.health.ui.components.SectionLabel
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.DateString
@@ -128,16 +129,6 @@ fun MedicationPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
             ) { MedicationCard(entry, schedules[entry.id]) { openEditor(entry) } }
         }
     }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 8.dp),
-    )
 }
 
 @Composable

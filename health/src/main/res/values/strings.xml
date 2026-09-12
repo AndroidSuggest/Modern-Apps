@@ -580,30 +580,78 @@
     <string name="about_you">About you</string>
     <!-- RecordsPage: Overline on the About you row, distinguishing it from the logs. Noun phrase -->
     <string name="about_you_overline">Current status</string>
-    <!-- AboutYouPage: Form section heading. Noun -->
-    <string name="section_pregnancy">Pregnancy</string>
-    <!-- AboutYouPage: Form section heading. Noun -->
-    <string name="section_smoking">Smoking</string>
     <!-- AboutYouPage: Selector label for pregnancy status. Noun phrase -->
     <string name="field_pregnancy_status">Status</string>
     <!-- AboutYouPage: Estimated delivery date. Noun phrase -->
     <string name="field_due_date">Due date</string>
     <!-- AboutYouPage: Selector label for smoking status. Noun phrase -->
     <string name="field_smoking_status">Status</string>
-    <!-- AboutYouPage: When the answer above was last given, %1$s is a date -->
-    <string name="recorded_on">Recorded <xliff:g example="4 March 2026" id="date">%1$s</xliff:g></string>
-    <!-- Pregnancy status: never answered. Adjective -->
-    <string name="pregnancy_unknown">Not answered</string>
     <!-- Pregnancy status: currently pregnant. Adjective -->
     <string name="pregnancy_pregnant">Pregnant</string>
     <!-- Pregnancy status: not currently pregnant. Adjective phrase -->
     <string name="pregnancy_not_pregnant">Not pregnant</string>
-    <!-- Smoking status: never answered. Adjective -->
-    <string name="smoking_unknown">Not answered</string>
     <!-- Smoking status: has never smoked. Adverb -->
     <string name="smoking_never">Never smoked</string>
     <!-- Smoking status: used to smoke. Adjective -->
     <string name="smoking_former">Former smoker</string>
     <!-- Smoking status: currently smokes. Verb phrase -->
     <string name="smoking_current">Currently smokes</string>
+
+    <!-- AboutYouPage: The alcohol question, worded as AUDIT-C asks it. Question -->
+    <string name="social_alcohol">How often do you have a drink containing alcohol?</string>
+    <!-- AboutYouPage: The drug use question, worded as the NIDA quick screen asks it. Question -->
+    <string name="social_drugs">How many times in the past year have you used an illegal drug, or a prescription medication for non-medical reasons?</string>
+    <!-- AboutYouPage: The housing question. Question -->
+    <string name="social_housing">What is your housing situation today?</string>
+    <!-- AboutYouPage: First Hunger Vital Sign statement, to be agreed with -->
+    <string name="social_food_worried">Within the past 12 months, we worried whether our food would run out before we got money to buy more.</string>
+    <!-- AboutYouPage: Second Hunger Vital Sign statement, to be agreed with -->
+    <string name="social_food_ran_out">Within the past 12 months, the food we bought just did not last and we did not have money to get more.</string>
+    <!-- AboutYouPage: The transport question. Question -->
+    <string name="social_transport">Has a lack of transport kept you from medical appointments, work, or from getting things you need for daily living?</string>
+    <!-- AboutYouPage: Section heading over the habit questions. Noun -->
+    <string name="section_lifestyle">Lifestyle</string>
+    <!-- AboutYouPage: Section heading over the housing, food and transport questions. Noun -->
+    <string name="section_circumstances">Circumstances</string>
+    <!-- AboutYouPage: Default option on every question the user has not answered. Adjective -->
+    <string name="not_answered">Not answered</string>
+
+    <!-- Answer to the drug use question: not at all. Adverb -->
+    <string name="freq_never">Never</string>
+    <!-- Answer to the drug use question: once or twice in the year. Adverb phrase -->
+    <string name="freq_once_or_twice">Once or twice</string>
+    <!-- Answer to the drug use question: about monthly. Adverb -->
+    <string name="freq_monthly">Monthly</string>
+    <!-- Answer to the drug use question: about weekly. Adverb -->
+    <string name="freq_weekly">Weekly</string>
+    <!-- Answer to the drug use question: every day or nearly. Adverb phrase -->
+    <string name="freq_daily">Daily or almost daily</string>
+    <!-- Alcohol frequency answer: monthly at most. Adverb phrase -->
+    <string name="audit_monthly_or_less">Monthly or less</string>
+    <!-- Alcohol frequency answer. Adverb phrase -->
+    <string name="audit_2_4_month">2 to 4 times a month</string>
+    <!-- Alcohol frequency answer. Adverb phrase -->
+    <string name="audit_2_3_week">2 to 3 times a week</string>
+    <!-- Alcohol frequency answer. Adverb phrase -->
+    <string name="audit_4_plus_week">4 or more times a week</string>
+    <!-- Housing answer: stable housing. Sentence -->
+    <string name="housing_steady">I have a steady place to live</string>
+    <!-- Housing answer: housed but at risk. Sentence -->
+    <string name="housing_worried">I have a place today, but worry about losing it</string>
+    <!-- Housing answer: unstably housed. Sentence -->
+    <string name="housing_none">I do not have a steady place to live</string>
+    <!-- Hunger Vital Sign answer: the statement was often true. Adjective phrase -->
+    <string name="hvs_often_true">Often true</string>
+    <!-- Hunger Vital Sign answer: the statement was sometimes true. Adjective phrase -->
+    <string name="hvs_sometimes_true">Sometimes true</string>
+    <!-- Hunger Vital Sign answer: the statement was never true. Adjective phrase -->
+    <string name="hvs_never_true">Never true</string>
+    <!-- Transport answer: has prevented medical care. Sentence -->
+    <string name="transport_medical">Yes, from medical appointments or getting medication</string>
+    <!-- Transport answer: has prevented other essentials. Sentence -->
+    <string name="transport_non_medical">Yes, from work or other things I need</string>
+    <!-- Transport answer: transport is not a problem. Adverb -->
+    <string name="transport_no">No</string>
+    <!-- Answer available on some questions when the user would rather not say. Sentence -->
+    <string name="decline_to_answer">I choose not to answer</string>
 </resources>

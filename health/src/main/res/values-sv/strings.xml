@@ -99,14 +99,11 @@
     <string name="log_meal">Logga måltid</string>
     <string name="log_body_metric">Logga <xliff:g id="metric" example="Weight">%1$s</xliff:g></string>
     <string name="nav_today">I dag</string>
-    <string name="nav_activity">Aktivitet</string>
     <string name="nav_nutrition">Näring</string>
     <string name="nav_body">Kropp</string>
     <string name="section_latest_vitals">Senaste vitalvärdena</string>
     <string name="section_last_night">I natt</string>
     <string name="section_quick_stats">Snabbstatistik</string>
-    <string name="section_today_activity">I dag</string>
-    <string name="section_this_week">Den här veckan</string>
     <string name="label_exercise">Träning</string>
     <string name="no_workouts">Inga träningspass har registrerats</string>
     <string name="view_full_breakdown">Visa fullständig fördelning</string>

@@ -23,10 +23,12 @@ import com.vayunmathur.health.data.MedicationEntry
 import com.vayunmathur.health.data.MedicationSchedule
 import com.vayunmathur.health.data.MedicationStatus
 import com.vayunmathur.health.data.PregnancyStatus
+import com.vayunmathur.health.data.ProfileAnswer
 import com.vayunmathur.health.data.RepeatUnit
 import com.vayunmathur.health.data.SmokingStatus
 import com.vayunmathur.health.data.VaccinationEntry
 import com.vayunmathur.health.domain.FhirRecords
+import com.vayunmathur.health.domain.SocialHistoryQuestions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -95,6 +97,11 @@ class MedicalViewModel(
     val profile: StateFlow<HealthProfile> = repository.getProfileFlow()
         .map { it ?: HealthProfile() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HealthProfile())
+
+    /** Answered social history questions, keyed by the LOINC code of the question. */
+    val profileAnswers: StateFlow<Map<String, ProfileAnswer>> = repository.getProfileAnswersFlow()
+        .map { all -> all.associateBy { it.loincCode } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** Attachments keyed by the vaccination they belong to. */
     val attachments: StateFlow<Map<String, List<MedicalAttachment>>> =
@@ -776,6 +783,54 @@ class MedicalViewModel(
         repository.upsertProfile(profile.copy(dataSourceId = dataSourceId))
     }
 
+    /** Records an answer to one social history question, dated now. */
+    fun setSocialHistoryAnswer(
+        question: SocialHistoryQuestions.Question,
+        answer: SocialHistoryQuestions.Answer,
+    ) {
+        viewModelScope.launch {
+            val existing = repository.getProfileAnswer(question.loinc)
+            val row = ProfileAnswer(
+                loincCode = question.loinc,
+                answerCode = answer.code,
+                recordedAt = Instant.now(),
+                // Reusing the id is what makes this an update. Minting a new one leaves the old
+                // observation behind, and the next import then sees two answers to one question.
+                fhirResourceId = existing?.fhirResourceId ?: Uuid.random().toString(),
+                dataSourceId = existing?.dataSourceId,
+            )
+            repository.upsertProfileAnswer(row)
+
+            val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return@launch
+            val fhirId = row.fhirResourceId ?: return@launch
+            PersonalHealthRecords.upsert(
+                dataSourceId,
+                FhirRecords.socialHistoryAnswerJson(fhirId, question, answer, row.recordedAt),
+            ) ?: return@launch
+            repository.upsertProfileAnswer(row.copy(dataSourceId = dataSourceId))
+        }
+    }
+
+    /**
+     * Un-answers a question, removing the observation as well as the local row.
+     *
+     * Deleting only locally would leave the answer in Health Connect for the next import to bring
+     * straight back.
+     */
+    fun clearSocialHistoryAnswer(question: SocialHistoryQuestions.Question) {
+        viewModelScope.launch {
+            val existing = repository.getProfileAnswer(question.loinc)
+            repository.deleteProfileAnswer(question.loinc)
+            val dataSourceId = existing?.dataSourceId ?: return@launch
+            val fhirId = existing.fhirResourceId ?: return@launch
+            PersonalHealthRecords.delete(
+                dataSourceId,
+                PersonalHealthRecords.observationResourceType,
+                fhirId,
+            )
+        }
+    }
+
     // --- Import --------------------------------------------------------------
 
     /**
@@ -843,16 +898,67 @@ class MedicalViewModel(
         if (resources.isEmpty()) return
 
         var profile = repository.getProfile() ?: HealthProfile()
+
+        // Newest answer per question. A category read returns every social-history observation the
+        // phone holds, which can include several for the same question - from a provider, or from
+        // an older build of this app - and picking whichever came last in the list is how an answer
+        // appears to revert after being set.
+        val newest = mutableMapOf<String, ProfileAnswer>()
+
         resources.forEach { resource ->
-            when (FhirRecords.observationLoincCode(resource.data)) {
+            val loinc = FhirRecords.observationLoincCode(resource.data)
+            when (loinc) {
                 FhirRecords.LOINC_PREGNANCY_STATUS ->
                     FhirRecords.parsePregnancyStatus(resource.data)?.let { (status, due) ->
-                        profile = profile.copy(pregnancyStatus = status, dueDate = due)
+                        profile = profile.copy(
+                            pregnancyStatus = status,
+                            dueDate = due,
+                            pregnancyFhirId = profile.pregnancyFhirId
+                                ?: FhirRecords.resourceId(resource.data),
+                        )
                     }
                 FhirRecords.LOINC_SMOKING_STATUS ->
                     FhirRecords.parseSmokingStatus(resource.data)?.let { status ->
-                        profile = profile.copy(smokingStatus = status)
+                        profile = profile.copy(
+                            smokingStatus = status,
+                            smokingFhirId = profile.smokingFhirId
+                                ?: FhirRecords.resourceId(resource.data),
+                        )
                     }
+                else -> {
+                    // Anything else in this category that is one of ours, matched by question code.
+                    // A provider's social history contains plenty this app does not ask about.
+                    val question = loinc?.let { SocialHistoryQuestions.byLoinc(it) } ?: return@forEach
+                    val answerCode = FhirRecords.parseSocialHistoryAnswer(resource.data)
+                        ?: return@forEach
+                    // Refuse an answer outside the question's own list rather than storing a code
+                    // the selector could never show.
+                    if (question.answers.none { it.code == answerCode }) return@forEach
+
+                    val candidate = ProfileAnswer(
+                        loincCode = question.loinc,
+                        answerCode = answerCode,
+                        // The observation's own date, not now. Using now would make every import
+                        // look like the freshest answer and would misdate the "Recorded" line.
+                        recordedAt = FhirRecords.observationEffective(resource.data)
+                            ?: return@forEach,
+                        fhirResourceId = FhirRecords.resourceId(resource.data),
+                        dataSourceId = resource.dataSourceId,
+                    )
+                    val held = newest[question.loinc]
+                    if (held == null || candidate.recordedAt.isAfter(held.recordedAt)) {
+                        newest[question.loinc] = candidate
+                    }
+                }
+            }
+        }
+
+        newest.values.forEach { incoming ->
+            val local = repository.getProfileAnswer(incoming.loincCode)
+            // Never overwrite a newer local answer. The user may have just tapped one while this
+            // import was still reading, and their answer should win over what was on disk before.
+            if (local == null || incoming.recordedAt.isAfter(local.recordedAt)) {
+                repository.upsertProfileAnswer(incoming)
             }
         }
         repository.upsertProfile(profile)

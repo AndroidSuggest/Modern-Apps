@@ -636,6 +636,17 @@ object FhirRecords {
         return (root["code"] as? JsonObject).codingWithSystem(LOINC_SYSTEM)?.string("code")
     }
 
+    /** The resource's own `id`, needed to update rather than duplicate it on the next write. */
+    fun resourceId(data: String): String? = parseObject(data)?.string("id")
+
+    /** When an observation says it was taken, which is what orders two answers to one question. */
+    fun observationEffective(data: String): Instant? {
+        val root = parseObject(data) ?: return null
+        return parseDateTime(root.string("effectiveDateTime"))
+            ?: parseDateTime(root.string("issued"))
+            ?: parseDateTime((root["effectivePeriod"] as? JsonObject).string("start"))
+    }
+
     /** The status and estimated delivery date from a pregnancy observation. */
     fun parsePregnancyStatus(data: String): Pair<PregnancyStatus, Instant?>? {
         val root = parseObject(data) ?: return null

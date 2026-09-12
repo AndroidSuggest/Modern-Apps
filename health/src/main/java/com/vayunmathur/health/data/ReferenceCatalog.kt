@@ -137,6 +137,17 @@ object ReferenceCatalog {
 
     private val prepareMutex = Mutex()
 
+    /**
+     * The unpacked database, once confirmed to match the asset in this process.
+     *
+     * Confirmation is what makes [prepare] cheap to call on every picker, and it deliberately
+     * compares the whole descriptor rather than just [Meta.schemaVersion]. Two builds can share a
+     * schema and hold different data — adding the LOINC table did exactly that — and short-cutting
+     * on the version alone leaves the previous build's database in place forever.
+     */
+    @Volatile
+    private var verified: Meta? = null
+
     private var handle: SQLiteDatabase? = null
     private val lock = Any()
 
@@ -152,7 +163,6 @@ object ReferenceCatalog {
         // rather than leaving a few megabytes of dead database in filesDir forever.
         File(appContext.filesDir, "rxterms.db").delete()
         File(appContext.filesDir, "rxterms.db.meta.json").delete()
-        installedMeta()?.let { _status.value = Status.Ready(it) }
     }
 
     /**
@@ -380,10 +390,10 @@ object ReferenceCatalog {
      * was typed, and "type 2 diab" likewise. A search box that is empty for seven of the eight
      * keystrokes it takes to reach a result reads as broken, and no amount of making it faster helps.
      *
-     * Returns null below [MIN_QUERY_LENGTH] characters as well as for input with nothing searchable
-     * in it. A one-letter prefix matches tens of thousands of rows, and while finding them is cheap
-     * the sort to rank them is not — measured at 10 ms against 0.3 ms for three letters. One letter
-     * is not a search, so the cheapest fix is to decline it.
+     * One character is searched like any other. A single-letter prefix does cost more — about 10 ms
+     * against the conditions table, almost all of it ranking the matches rather than finding them,
+     * versus 0.3 ms from three letters on. That is off the main thread and behind a debounce, so it
+     * is invisible; an empty list after typing a letter is not.
      *
      * Splitting on everything non-alphanumeric matches how the unicode61 tokenizer split the indexed
      * text; quoting stops `-`, `(` and `*` in the user's own input being read as operators, and one
@@ -391,13 +401,9 @@ object ReferenceCatalog {
      * index cannot evaluate. Space-separated terms keep FTS5's implicit AND.
      */
     internal fun escapeFtsQuery(raw: String): String? {
-        if (raw.trim().length < MIN_QUERY_LENGTH) return null
         val tokens = raw.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
         return if (tokens.isEmpty()) null else tokens.joinToString(" ") { "\"$it\"*" }
     }
-
-    /** Shortest input worth querying the database for. See [escapeFtsQuery]. */
-    const val MIN_QUERY_LENGTH = 2
 
     // --- Unpacking ---------------------------------------------------------
 
@@ -406,12 +412,13 @@ object ReferenceCatalog {
      * screen that needs a picker can call it freely on every appearance.
      */
     suspend fun prepare(): Result<Meta> = withContext(Dispatchers.IO) {
-        // Cheap path first. Every picker calls this on appearance, and re-reading and re-parsing
-        // two metadata files each time is pointless once the database is open and current.
-        (_status.value as? Status.Ready)?.let { return@withContext Result.success(it.meta) }
+        // Cheap path, but only once the unpacked copy has been checked against the asset. Every
+        // picker calls this on appearance, and re-reading two metadata files each time is pointless
+        // after that.
+        verified?.let { return@withContext Result.success(it) }
 
         prepareMutex.withLock {
-            (_status.value as? Status.Ready)?.let { return@withLock Result.success(it.meta) }
+            verified?.let { return@withLock Result.success(it) }
 
             val asset = assetMeta()
                 ?: return@withLock fail("This build has no medical catalogue")
@@ -423,8 +430,9 @@ object ReferenceCatalog {
             installedMeta()?.let { current ->
                 if (current == asset) {
                     // Already unpacked from a previous run. Open it now rather than letting the
-                    // first search pay for opening a 14 MB file.
+                    // first search pay for opening a 26 MB file.
                     openHandle()
+                    verified = current
                     _status.value = Status.Ready(current)
                     return@withLock Result.success(current)
                 }
@@ -462,6 +470,7 @@ object ReferenceCatalog {
                 metaFile.writeText(json.encodeToString(asset))
 
                 openHandle()
+                verified = asset
                 _status.value = Status.Ready(asset)
                 Result.success(asset)
             } catch (e: Exception) {

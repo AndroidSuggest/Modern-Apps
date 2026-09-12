@@ -35,23 +35,25 @@ object SocialHistoryQuestions {
         val loinc: String,
         /** Canonical English name of the question, for `Observation.code.display`. */
         val display: String,
-        /** Short heading for the card. */
+        /**
+         * The question, in full, as the instrument asks it.
+         *
+         * Not a topic and not a paraphrase. These are validated screening instruments whose wording
+         * is the measurement: drop "within the past 12 months" or "before we got money to buy more"
+         * and the answer no longer means what the code says it means. It is shown as a wrapping row
+         * title rather than a field label for the same reason — there has to be room for all of it.
+         */
         val titleRes: Int,
-        /** The question as actually asked, since these only make sense in full. */
-        val promptRes: Int,
         val answers: List<Answer>,
     )
 
-    /** Never / Once or twice / Monthly / Weekly / Daily — shared by the two frequency screens. */
-    private val FREQUENCY = listOf(
-        Answer("LA6270-8", "Never", R.string.freq_never),
-        Answer("LA26460-8", "Once or twice", R.string.freq_once_or_twice),
-        Answer("LA18876-5", "Monthly", R.string.freq_monthly),
-        Answer("LA18891-4", "Weekly", R.string.freq_weekly),
-        Answer("LA18934-2", "Daily or almost daily", R.string.freq_daily),
-    )
-
-    /** Often / Sometimes / Never true — LOINC list LL5890-0, the Hunger Vital Sign answers. */
+    /**
+     * LOINC list LL5890-0, shared by both Hunger Vital Sign questions.
+     *
+     * "Often true" is the instrument's own answer and reads correctly because the statement it
+     * agrees with is on screen above it. Rewriting these to be self-describing was an attempt to
+     * compensate for having hidden the question, which was the actual mistake.
+     */
     private val HUNGER = listOf(
         Answer("LA28397-0", "Often true", R.string.hvs_often_true),
         Answer("LA6729-3", "Sometimes true", R.string.hvs_sometimes_true),
@@ -62,7 +64,6 @@ object SocialHistoryQuestions {
         loinc = "68518-0",
         display = "How often do you have a drink containing alcohol",
         titleRes = R.string.social_alcohol,
-        promptRes = R.string.social_alcohol_prompt,
         // LL2179-1. Its own scale, not the shared one - AUDIT-C asks about frequency of any
         // drinking rather than counting occasions.
         answers = listOf(
@@ -79,15 +80,19 @@ object SocialHistoryQuestions {
         display = "How many times in the past year have you used an illegal drug or used a " +
             "prescription medication for non-medical reasons",
         titleRes = R.string.social_drugs,
-        promptRes = R.string.social_drugs_prompt,
-        answers = FREQUENCY,
+        answers = listOf(
+            Answer("LA6270-8", "Never", R.string.freq_never),
+            Answer("LA26460-8", "Once or twice", R.string.freq_once_or_twice),
+            Answer("LA18876-5", "Monthly", R.string.freq_monthly),
+            Answer("LA18891-4", "Weekly", R.string.freq_weekly),
+            Answer("LA18934-2", "Daily or almost daily", R.string.freq_daily),
+        ),
     )
 
     val HOUSING = Question(
         loinc = "71802-3",
         display = "Housing status",
         titleRes = R.string.social_housing,
-        promptRes = R.string.social_housing_prompt,
         // LL5876-9, the three-answer PRAPARE-style list rather than the older five-answer one,
         // which was written for a clinician describing a patient ("Patient is homeless").
         answers = listOf(
@@ -102,7 +107,6 @@ object SocialHistoryQuestions {
         display = "Within the past 12 months we worried whether our food would run out before we " +
             "got money to buy more",
         titleRes = R.string.social_food_worried,
-        promptRes = R.string.social_food_worried_prompt,
         answers = HUNGER,
     )
 
@@ -111,7 +115,6 @@ object SocialHistoryQuestions {
         display = "Within the past 12 months the food we bought just didn't last and we didn't " +
             "have money to get more",
         titleRes = R.string.social_food_ran_out,
-        promptRes = R.string.social_food_ran_out_prompt,
         answers = HUNGER,
     )
 
@@ -120,7 +123,6 @@ object SocialHistoryQuestions {
         display = "Has lack of transportation kept you from medical appointments, meetings, work, " +
             "or from getting things needed for daily living",
         titleRes = R.string.social_transport,
-        promptRes = R.string.social_transport_prompt,
         // LL5336-4. "I choose not to answer" is kept: declining is a real answer and the record
         // should be able to say so rather than leaving it indistinguishable from never asked.
         answers = listOf(
@@ -131,7 +133,13 @@ object SocialHistoryQuestions {
         ),
     )
 
-    val ALL = listOf(ALCOHOL, DRUGS, HOUSING, FOOD_WORRIED, FOOD_RAN_OUT, TRANSPORT)
+    /** Habits. Grouped only so the page reads as two short lists rather than one long one. */
+    val LIFESTYLE = listOf(ALCOHOL, DRUGS)
+
+    /** The social determinants: where you live, whether you can eat, whether you can travel. */
+    val CIRCUMSTANCES = listOf(HOUSING, FOOD_WORRIED, FOOD_RAN_OUT, TRANSPORT)
+
+    val ALL = LIFESTYLE + CIRCUMSTANCES
 
     fun byLoinc(code: String): Question? = ALL.firstOrNull { it.loinc == code }
 }

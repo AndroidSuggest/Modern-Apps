@@ -34,8 +34,6 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.IconAdd
-import com.vayunmathur.library.ui.IconButton
-import com.vayunmathur.library.ui.IconRefresh
 import com.vayunmathur.library.ui.IconVaccine
 import com.vayunmathur.library.ui.LazyListScaffold
 import com.vayunmathur.library.ui.ListItem
@@ -81,11 +79,6 @@ fun VaccinationsPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel
         scrollBehavior = appBarScrollBehavior(),
         horizontalPadding = 16.dp,
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        actions = {
-            if (viewModel.healthConnectAvailable) {
-                IconButton(onClick = { viewModel.importFromHealthConnect() }) { IconRefresh() }
-            }
-        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
