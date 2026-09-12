@@ -55,7 +55,7 @@ class GalConnection(
     private val reader = FrameReader(decrypt = tls::unwrap)
     private val writer = FrameWriter(encrypt = tls::wrap)
 
-    val session: GalControlSession = GalControlSession(engine, deviceName, deviceBrand)
+    val session: GalControlSession = GalControlSession(engine, deviceModel, deviceManufacturer)
 
     private val buffer = ByteArray(READ_BUFFER_SIZE)
 
