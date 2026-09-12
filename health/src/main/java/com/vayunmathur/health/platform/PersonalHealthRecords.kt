@@ -199,6 +199,7 @@ object PersonalHealthRecords {
     val socialHistoryType: Int get() = MedicalResource.MEDICAL_RESOURCE_TYPE_SOCIAL_HISTORY
     val immunizationResourceType: Int get() = FhirResource.FHIR_RESOURCE_TYPE_IMMUNIZATION
     val medicationStatementResourceType: Int get() = FhirResource.FHIR_RESOURCE_TYPE_MEDICATION_STATEMENT
+    val medicationRequestResourceType: Int get() = FhirResource.FHIR_RESOURCE_TYPE_MEDICATION_REQUEST
     val allergyResourceType: Int get() = FhirResource.FHIR_RESOURCE_TYPE_ALLERGY_INTOLERANCE
     val conditionResourceType: Int get() = FhirResource.FHIR_RESOURCE_TYPE_CONDITION
     val observationResourceType: Int get() = FhirResource.FHIR_RESOURCE_TYPE_OBSERVATION

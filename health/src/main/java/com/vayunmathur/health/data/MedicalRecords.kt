@@ -108,6 +108,22 @@ data class AllergyEntry(
     val dataSourceId: String? = null,
 )
 
+/**
+ * One dose actually taken, mirrored to Health Connect as a completed FHIR `MedicationStatement`.
+ *
+ * Only doses the user acknowledged are recorded. A reminder that rang and was ignored writes
+ * nothing, because the app has no idea whether the dose was taken anyway — inferring "missed" from
+ * an untapped notification would put a clinical claim in the record that nobody made.
+ */
+@Entity(indices = [Index(value = ["medicationId", "takenAt"])])
+data class DoseEvent(
+    @PrimaryKey val id: String,
+    val medicationId: String,
+    val takenAt: Instant,
+    val fhirResourceId: String? = null,
+    val dataSourceId: String? = null,
+)
+
 /** Where a condition stands now. FHIR `Condition.clinicalStatus`. */
 enum class ConditionStatus { Active, Recurrence, Remission, Resolved }
 
@@ -353,4 +369,27 @@ interface MedicalDao {
 
     @Query("DELETE FROM ProfileAnswer WHERE loincCode = :loincCode")
     suspend fun deleteProfileAnswer(loincCode: String)
+
+    // --- Dose events -------------------------------------------------------
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDoseEvent(event: DoseEvent)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDoseEvents(events: List<DoseEvent>)
+
+    @Delete
+    suspend fun deleteDoseEvent(event: DoseEvent)
+
+    @Query("SELECT * FROM DoseEvent ORDER BY takenAt DESC")
+    fun getDoseEventsFlow(): Flow<List<DoseEvent>>
+
+    @Query("SELECT * FROM DoseEvent WHERE medicationId = :medicationId ORDER BY takenAt DESC LIMIT :limit")
+    suspend fun getRecentDoses(medicationId: String, limit: Int): List<DoseEvent>
+
+    @Query("SELECT * FROM DoseEvent WHERE id = :id")
+    suspend fun getDoseEvent(id: String): DoseEvent?
+
+    @Query("DELETE FROM DoseEvent WHERE medicationId = :medicationId")
+    suspend fun deleteDosesFor(medicationId: String)
 }

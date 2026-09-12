@@ -30,6 +30,8 @@ import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FloatingActionButton
 import com.vayunmathur.library.ui.IconAdd
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconMedication
 import com.vayunmathur.library.ui.LazyListScaffold
 import com.vayunmathur.library.ui.ListItem
@@ -41,6 +43,7 @@ import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.ui.itemMotion
 import com.vayunmathur.library.ui.rememberIs24Hour
 import com.vayunmathur.library.util.NavBackStack
+import java.time.Instant
 import kotlin.time.Clock
 
 /**
@@ -59,6 +62,9 @@ fun MedicationPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
     LaunchedEffect(Unit) { viewModel.importFromHealthConnect() }
 
     val schedules by viewModel.schedules.collectAsState()
+    val doses by viewModel.doseEvents.collectAsState()
+    // Newest dose per medication. The flow is already ordered newest first, so the first hit wins.
+    val lastTaken = remember(doses) { doses.associateBy({ it.medicationId }, { it.takenAt }) }
     val current = entries.filter { it.status == MedicationStatus.Active }
     val past = entries.filter { it.status != MedicationStatus.Active }
 
@@ -115,7 +121,15 @@ fun MedicationPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
                 modifier = itemMotion(),
                 enableStartToEnd = false,
                 onEndToStart = { pendingDelete = entry },
-            ) { MedicationCard(entry, schedules[entry.id]) { openEditor(entry) } }
+            ) {
+                MedicationCard(
+                    entry = entry,
+                    schedule = schedules[entry.id],
+                    lastTaken = lastTaken[entry.id],
+                    onTake = { viewModel.recordDoseTaken(entry.id) },
+                    onClick = { openEditor(entry) },
+                )
+            }
         }
 
         if (past.isNotEmpty()) {
@@ -126,7 +140,16 @@ fun MedicationPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
                 modifier = itemMotion(),
                 enableStartToEnd = false,
                 onEndToStart = { pendingDelete = entry },
-            ) { MedicationCard(entry, schedules[entry.id]) { openEditor(entry) } }
+            ) {
+                MedicationCard(
+                    entry = entry,
+                    schedule = schedules[entry.id],
+                    lastTaken = lastTaken[entry.id],
+                    // No tick on something no longer being taken.
+                    onTake = null,
+                    onClick = { openEditor(entry) },
+                )
+            }
         }
     }
 }
@@ -135,6 +158,8 @@ fun MedicationPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel) 
 private fun MedicationCard(
     entry: MedicationEntry,
     schedule: MedicationSchedule?,
+    lastTaken: Instant?,
+    onTake: (() -> Unit)?,
     onClick: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
@@ -144,12 +169,34 @@ private fun MedicationCard(
             },
             overlineContent = { Text(medicationPeriod(entry)) },
             supportingContent = {
-                Text(detailLine(entry.doseForm, entry.dosageText, nextDoseText(schedule)))
+                Text(
+                    detailLine(
+                        entry.doseForm,
+                        entry.dosageText,
+                        lastTakenText(lastTaken),
+                        nextDoseText(schedule),
+                    )
+                )
             },
             leadingContent = { IconMedication(tint = HealthColors.Medical) },
-            trailingContent = { Text(stringResource(entry.status.selectorLabelRes())) },
+            trailingContent = {
+                if (onTake != null) {
+                    // One tap to log a dose without opening anything, which is the only way this
+                    // gets used for a medication that has no reminder set.
+                    IconButton(onClick = onTake) { IconCheck(tint = HealthColors.Medical) }
+                } else {
+                    Text(stringResource(entry.status.selectorLabelRes()))
+                }
+            },
         )
     }
+}
+
+/** "Last taken …" for a medication with a recorded dose, or null when there is none. */
+@Composable
+private fun lastTakenText(takenAt: Instant?): String? {
+    if (takenAt == null) return null
+    return stringResource(R.string.last_taken, medicalDateTimeString(takenAt, rememberIs24Hour()))
 }
 
 /** "Next dose …" for a scheduled medication, or null when it has no reminders. */

@@ -126,6 +126,16 @@ class HealthRepository private constructor(context: Context) :
         medicalDao.getProfileAnswer(loincCode)
     suspend fun deleteProfileAnswer(loincCode: String) = medicalDao.deleteProfileAnswer(loincCode)
 
+    // Doses taken
+    suspend fun upsertDoseEvent(event: DoseEvent) = medicalDao.upsertDoseEvent(event)
+    suspend fun upsertDoseEvents(events: List<DoseEvent>) = medicalDao.upsertDoseEvents(events)
+    suspend fun deleteDoseEvent(event: DoseEvent) = medicalDao.deleteDoseEvent(event)
+    fun getDoseEventsFlow(): Flow<List<DoseEvent>> = medicalDao.getDoseEventsFlow()
+    suspend fun getRecentDoses(medicationId: String, limit: Int): List<DoseEvent> =
+        medicalDao.getRecentDoses(medicationId, limit)
+    suspend fun getDoseEvent(id: String): DoseEvent? = medicalDao.getDoseEvent(id)
+    suspend fun deleteDosesFor(medicationId: String) = medicalDao.deleteDosesFor(medicationId)
+
     /** Expose underlying [HealthDatabase] for call sites that need transactional access (prefer adding a method here instead). */
     internal val database: HealthDatabase get() = db
 

@@ -5,9 +5,13 @@ import com.vayunmathur.health.data.AllergyCriticality
 import com.vayunmathur.health.data.AllergyEntry
 import com.vayunmathur.health.data.ConditionEntry
 import com.vayunmathur.health.data.ConditionStatus
+import com.vayunmathur.health.data.DoseEvent
 import com.vayunmathur.health.data.LabResultEntry
+import com.vayunmathur.health.data.MedicationSchedule
 import com.vayunmathur.health.data.PregnancyStatus
+import com.vayunmathur.health.data.RepeatUnit
 import com.vayunmathur.health.data.SmokingStatus
+import kotlinx.datetime.LocalDate as KotlinLocalDate
 import com.vayunmathur.health.data.MedicationEntry
 import com.vayunmathur.health.data.MedicationStatus
 import com.vayunmathur.health.data.VaccinationEntry
@@ -149,14 +153,18 @@ class FhirRecordsTest {
         assertEquals(flu.id, parsed.fhirResourceId)
     }
 
-    // --- MedicationStatement -------------------------------------------------
+    // --- MedicationRequest: the plan ------------------------------------------
 
     @Test
-    fun `medication statement carries every field FHIR requires`() {
-        val root = parse(FhirRecords.medicationStatementJson(amoxicillin))
+    fun `a medication is a plan, not a report that it was taken`() {
+        val root = parse(FhirRecords.medicationRequestJson(amoxicillin))
 
-        assertEquals("MedicationStatement", root.str("resourceType"))
+        // MedicationRequest, because this is the intention to take something. A statement would
+        // assert the whole course had already been consumed.
+        assertEquals("MedicationRequest", root.str("resourceType"))
         assertEquals("completed", root.str("status"))
+        assertEquals("plan", root.str("intent"))
+        assertEquals("true", root.str("reportedBoolean"))
         assertEquals(
             "Patient/${FhirRecords.PATIENT_RESOURCE_ID}",
             root["subject"]!!.jsonObject.str("reference"),
@@ -167,34 +175,160 @@ class FhirRecordsTest {
         assertEquals(FhirRecords.RXNORM_SYSTEM, coding.str("system"))
         assertEquals("308182", coding.str("code"))
         assertEquals("amoxicillin 250 MG Oral Capsule", coding.str("display"))
-
-        val period = root["effectivePeriod"]!!.jsonObject
-        assertEquals("2026-01-10T00:00:00Z", period.str("start"))
-        assertEquals("2026-01-17T00:00:00Z", period.str("end"))
+        assertEquals("2026-01-10T00:00:00Z", root.str("authoredOn"))
     }
 
     @Test
-    fun `an ongoing medication has no period end`() {
+    fun `an ongoing medication is active`() {
         val ongoing = amoxicillin.copy(status = MedicationStatus.Active, endedAt = null)
-        val root = parse(FhirRecords.medicationStatementJson(ongoing))
-
-        assertEquals("active", root.str("status"))
-        assertNull(root["effectivePeriod"]!!.jsonObject["end"])
+        assertEquals("active", parse(FhirRecords.medicationRequestJson(ongoing)).str("status"))
     }
 
     @Test
-    fun `a medication statement round trips`() {
-        val parsed = FhirRecords.parseMedicationStatement(
-            FhirRecords.medicationStatementJson(amoxicillin),
+    fun `a medication round trips`() {
+        val parsed = FhirRecords.parseMedicationRequest(
+            FhirRecords.medicationRequestJson(amoxicillin),
             "src-1",
-        )
+        )?.first
 
         assertNotNull(parsed)
         assertEquals(amoxicillin.rxcui, parsed.rxcui)
         assertEquals(amoxicillin.status, parsed.status)
         assertEquals(amoxicillin.startedAt, parsed.startedAt)
-        assertEquals(amoxicillin.endedAt, parsed.endedAt)
         assertEquals(amoxicillin.dosageText, parsed.dosageText)
+    }
+
+    @Test
+    fun `the dose schedule travels as timing repeat`() {
+        val schedule = MedicationSchedule(
+            id = "sched-1",
+            medicationId = amoxicillin.id,
+            times = listOf(8 * 3600, 20 * 3600),
+            repeatUnit = RepeatUnit.Weekly,
+            interval = 2,
+            // Monday and Thursday. Bit 0 is Sunday.
+            daysOfWeek = (1 shl 1) or (1 shl 4),
+            anchorDate = KotlinLocalDate(2026, 1, 10),
+            endDate = KotlinLocalDate(2026, 3, 1),
+        )
+        val dosage = parse(FhirRecords.medicationRequestJson(amoxicillin, schedule))[
+            "dosageInstruction"
+        ]!!.jsonArray.single().jsonObject
+        val repeat = dosage["timing"]!!.jsonObject["repeat"]!!.jsonObject
+
+        assertEquals(
+            listOf("08:00:00", "20:00:00"),
+            (repeat["timeOfDay"] as JsonArray).map { it.jsonPrimitive.content },
+        )
+        assertEquals("2", repeat.str("period"))
+        assertEquals("wk", repeat.str("periodUnit"))
+        assertEquals("2", repeat.str("frequency"))
+        assertEquals(
+            listOf("mon", "thu"),
+            (repeat["dayOfWeek"] as JsonArray).map { it.jsonPrimitive.content },
+        )
+        assertEquals("2026-03-01", repeat["boundsPeriod"]!!.jsonObject.str("end"))
+    }
+
+    @Test
+    fun `a schedule round trips, but arrives switched off`() {
+        val schedule = MedicationSchedule(
+            id = amoxicillin.id,
+            medicationId = amoxicillin.id,
+            enabled = true,
+            times = listOf(9 * 3600),
+            repeatUnit = RepeatUnit.Daily,
+            interval = 3,
+            anchorDate = KotlinLocalDate(2026, 1, 10),
+        )
+        val parsed = FhirRecords.parseMedicationRequest(
+            FhirRecords.medicationRequestJson(amoxicillin, schedule),
+            "src-1",
+        )?.second
+
+        assertNotNull(parsed)
+        assertEquals(listOf(9 * 3600), parsed.times)
+        assertEquals(RepeatUnit.Daily, parsed.repeatUnit)
+        assertEquals(3, parsed.interval)
+        // Someone else's record must not start this phone ringing.
+        assertEquals(false, parsed.enabled)
+    }
+
+    @Test
+    fun `a medication with no schedule yields no schedule`() {
+        val parsed = FhirRecords.parseMedicationRequest(
+            FhirRecords.medicationRequestJson(amoxicillin),
+            "src-1",
+        )
+        assertNotNull(parsed)
+        assertNull(parsed.second)
+    }
+
+    // --- MedicationStatement: the dose actually taken --------------------------
+
+    @Test
+    fun `a taken dose is a completed statement pointing at its plan`() {
+        val event = DoseEvent(
+            id = "dose-1",
+            medicationId = amoxicillin.id,
+            takenAt = Instant.parse("2026-01-12T08:05:00Z"),
+        )
+        val root = parse(FhirRecords.doseEventJson(event, amoxicillin))
+
+        assertEquals("MedicationStatement", root.str("resourceType"))
+        assertEquals("completed", root.str("status"))
+        // A moment, not a period - one dose rather than a course.
+        assertEquals("2026-01-12T08:05:00Z", root.str("effectiveDateTime"))
+        assertNull(root["effectivePeriod"])
+        assertEquals(
+            "MedicationRequest/${amoxicillin.id}",
+            (root["basedOn"] as JsonArray).single().jsonObject.str("reference"),
+        )
+    }
+
+    @Test
+    fun `a dose round trips`() {
+        val event = DoseEvent(
+            id = "dose-1",
+            medicationId = amoxicillin.id,
+            takenAt = Instant.parse("2026-01-12T08:05:00Z"),
+        )
+        val parsed = FhirRecords.parseDoseEvent(
+            FhirRecords.doseEventJson(event, amoxicillin),
+            "src-1",
+        )
+
+        assertNotNull(parsed)
+        assertEquals(event.medicationId, parsed.medicationId)
+        assertEquals(event.takenAt, parsed.takenAt)
+    }
+
+    @Test
+    fun `the plan and the dose never parse as each other`() {
+        val event = DoseEvent("dose-1", amoxicillin.id, Instant.parse("2026-01-12T08:05:00Z"))
+        val plan = FhirRecords.medicationRequestJson(amoxicillin)
+        val dose = FhirRecords.doseEventJson(event, amoxicillin)
+
+        assertNull(FhirRecords.parseDoseEvent(plan, "src"))
+        assertNull(FhirRecords.parseMedicationRequest(dose, "src"))
+    }
+
+    @Test
+    fun `a bare statement with no basedOn is not treated as a dose`() {
+        // What an earlier build of this app wrote for a medication, and what a provider writes for
+        // a reported medication. Neither is a dose event, and guessing would invent history.
+        val bare = """
+            {
+              "resourceType": "MedicationStatement",
+              "id": "legacy-1",
+              "status": "active",
+              "medicationCodeableConcept": { "text": "Metformin" },
+              "subject": { "reference": "Patient/other" },
+              "effectiveDateTime": "2024-06-01"
+            }
+        """.trimIndent()
+
+        assertNull(FhirRecords.parseDoseEvent(bare, "hospital"))
     }
 
     // --- Reading what other systems write ------------------------------------
@@ -228,16 +362,17 @@ class FhirRecordsTest {
     fun `unknown statuses are treated as still being taken`() {
         val provider = """
             {
-              "resourceType": "MedicationStatement",
+              "resourceType": "MedicationRequest",
               "id": "provider-2",
               "status": "unknown",
+              "intent": "order",
               "medicationCodeableConcept": { "text": "Metformin" },
               "subject": { "reference": "Patient/other" },
-              "effectiveDateTime": "2024-06"
+              "authoredOn": "2024-06"
             }
         """.trimIndent()
 
-        val parsed = FhirRecords.parseMedicationStatement(provider, "hospital")
+        val parsed = FhirRecords.parseMedicationRequest(provider, "hospital")?.first
 
         assertNotNull(parsed)
         assertEquals(MedicationStatus.Active, parsed.status)
@@ -249,7 +384,7 @@ class FhirRecordsTest {
     fun `the wrong resource type and malformed json are refused, not thrown on`() {
         assertNull(FhirRecords.parseImmunization("{ not json", "src"))
         assertNull(FhirRecords.parseImmunization(FhirRecords.patientJson(), "src"))
-        assertNull(FhirRecords.parseMedicationStatement(FhirRecords.immunizationJson(flu), "src"))
+        assertNull(FhirRecords.parseMedicationRequest(FhirRecords.immunizationJson(flu), "src"))
     }
 
     @Test

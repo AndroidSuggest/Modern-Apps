@@ -351,9 +351,9 @@ interface HealthDao {
         Record::class, Ingredient::class, Recipe::class, ServingUnit::class, RecipeIngredient::class,
         VaccinationEntry::class, MedicationEntry::class, MedicalAttachment::class,
         MedicationSchedule::class, AllergyEntry::class, ConditionEntry::class,
-        LabResultEntry::class, HealthProfile::class, ProfileAnswer::class,
+        LabResultEntry::class, HealthProfile::class, ProfileAnswer::class, DoseEvent::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @ColumnTypeConverters(Converters::class)
@@ -530,6 +530,23 @@ abstract class HealthDatabase : RoomDatabase() {
                         dataSourceId TEXT
                     )
                     """.trimIndent()
+                )
+            },
+            Migration(10, 11) {
+                it.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS DoseEvent (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        medicationId TEXT NOT NULL,
+                        takenAt INTEGER NOT NULL,
+                        fhirResourceId TEXT,
+                        dataSourceId TEXT
+                    )
+                    """.trimIndent()
+                )
+                it.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_DoseEvent_medicationId_takenAt " +
+                        "ON DoseEvent (medicationId, takenAt)"
                 )
             }
         )

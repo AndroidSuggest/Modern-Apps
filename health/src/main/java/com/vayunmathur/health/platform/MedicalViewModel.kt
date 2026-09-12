@@ -15,6 +15,7 @@ import com.vayunmathur.health.data.AllergyCriticality
 import com.vayunmathur.health.data.AllergyEntry
 import com.vayunmathur.health.data.ConditionEntry
 import com.vayunmathur.health.data.ConditionStatus
+import com.vayunmathur.health.data.DoseEvent
 import com.vayunmathur.health.data.HealthProfile
 import com.vayunmathur.health.data.HealthRepository
 import com.vayunmathur.health.data.LabResultEntry
@@ -546,9 +547,79 @@ class MedicalViewModel(
                 DoseScheduler.cancel(getApplication(), it.id)
             }
             repository.deleteScheduleFor(entry.id)
+            // The doses go with the medication. Leaving them would strand rows pointing at a
+            // MedicationRequest that no longer exists.
+            repository.deleteDosesFor(entry.id)
             repository.deleteMedication(entry)
             val dataSourceId = entry.dataSourceId
             val fhirId = entry.fhirResourceId
+            if (dataSourceId != null && fhirId != null) {
+                PersonalHealthRecords.delete(
+                    dataSourceId,
+                    PersonalHealthRecords.medicationRequestResourceType,
+                    fhirId,
+                )
+            }
+        }
+    }
+
+    /**
+     * Writes the medication to Health Connect as a `MedicationRequest`.
+     *
+     * The schedule goes with it, which is what puts the reminder times in the record as
+     * `dosageInstruction.timing.repeat` rather than leaving them as a private detail of this app.
+     */
+    private suspend fun mirrorMedication(id: String) {
+        val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return
+        val entry = repository.getMedication(id) ?: return
+        val schedule = repository.getScheduleFor(id)
+        val written = PersonalHealthRecords.upsert(
+            dataSourceId,
+            FhirRecords.medicationRequestJson(entry, schedule),
+        ) ?: return
+        repository.upsertMedication(
+            entry.copy(fhirResourceId = written, dataSourceId = dataSourceId)
+        )
+    }
+
+    // --- Doses taken ---------------------------------------------------------
+
+    /** Every dose taken, newest first. */
+    val doseEvents: StateFlow<List<DoseEvent>> = repository.getDoseEventsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Records that a dose was taken, now.
+     *
+     * Called from the reminder's Taken action and from the medication list. Only acknowledged doses
+     * are ever written — see [DoseEvent].
+     */
+    fun recordDoseTaken(medicationId: String, takenAt: Instant = Instant.now()) {
+        viewModelScope.launch {
+            val event = DoseEvent(
+                id = Uuid.random().toString(),
+                medicationId = medicationId,
+                takenAt = takenAt,
+            )
+            repository.upsertDoseEvent(event)
+
+            val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return@launch
+            val medication = repository.getMedication(medicationId) ?: return@launch
+            val written = PersonalHealthRecords.upsert(
+                dataSourceId,
+                FhirRecords.doseEventJson(event, medication),
+            ) ?: return@launch
+            repository.upsertDoseEvent(
+                event.copy(fhirResourceId = written, dataSourceId = dataSourceId)
+            )
+        }
+    }
+
+    fun deleteDoseEvent(event: DoseEvent) {
+        viewModelScope.launch {
+            repository.deleteDoseEvent(event)
+            val dataSourceId = event.dataSourceId
+            val fhirId = event.fhirResourceId
             if (dataSourceId != null && fhirId != null) {
                 PersonalHealthRecords.delete(
                     dataSourceId,
@@ -557,18 +628,6 @@ class MedicalViewModel(
                 )
             }
         }
-    }
-
-    private suspend fun mirrorMedication(id: String) {
-        val dataSourceId = PersonalHealthRecords.dataSourceId() ?: return
-        val entry = repository.getMedication(id) ?: return
-        val written = PersonalHealthRecords.upsert(
-            dataSourceId,
-            FhirRecords.medicationStatementJson(entry),
-        ) ?: return
-        repository.upsertMedication(
-            entry.copy(fhirResourceId = written, dataSourceId = dataSourceId)
-        )
     }
 
     // --- Allergies and conditions --------------------------------------------
@@ -851,11 +910,25 @@ class MedicalViewModel(
                     }
                 if (vaccines.isNotEmpty()) repository.upsertVaccinations(vaccines)
 
-                val meds = PersonalHealthRecords.readAll(PersonalHealthRecords.medicationsType)
-                    .mapNotNull { resource ->
-                        FhirRecords.parseMedicationStatement(resource.data, resource.dataSourceId)
-                    }
-                if (meds.isNotEmpty()) repository.upsertMedications(meds)
+                // Medications are MedicationRequests; a MedicationStatement in the same category is
+                // a dose that was taken. Old records written by an earlier build are plain
+                // statements with no basedOn, so they parse as neither and are skipped rather than
+                // being misread as doses.
+                val medResources = PersonalHealthRecords.readAll(PersonalHealthRecords.medicationsType)
+
+                val meds = medResources.mapNotNull { resource ->
+                    FhirRecords.parseMedicationRequest(resource.data, resource.dataSourceId)
+                }
+                if (meds.isNotEmpty()) {
+                    repository.upsertMedications(meds.map { it.first })
+                    // An imported schedule arrives disabled, so this cannot start alarms on its own.
+                    meds.mapNotNull { it.second }.forEach { repository.upsertSchedule(it) }
+                }
+
+                val doses = medResources.mapNotNull { resource ->
+                    FhirRecords.parseDoseEvent(resource.data, resource.dataSourceId)
+                }
+                if (doses.isNotEmpty()) repository.upsertDoseEvents(doses)
 
                 val allergyRows = PersonalHealthRecords.readAll(PersonalHealthRecords.allergiesType)
                     .mapNotNull { resource ->

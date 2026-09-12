@@ -654,4 +654,6 @@
     <string name="transport_no">No</string>
     <!-- Answer available on some questions when the user would rather not say. Sentence -->
     <string name="decline_to_answer">I choose not to answer</string>
+    <!-- MedicationPage: Supporting line showing when a dose was last recorded, %1$s is a date and time -->
+    <string name="last_taken">Last taken <xliff:g example="4 Mar 2026 08:00" id="when">%1$s</xliff:g></string>
 </resources>

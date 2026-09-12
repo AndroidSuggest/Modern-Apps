@@ -5,6 +5,7 @@ import com.vayunmathur.health.R
 import com.vayunmathur.library.ui.DateString
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.toKotlinLocalDate
+import kotlinx.datetime.toKotlinLocalTime
 import java.time.Instant
 import java.time.ZoneId
 import kotlin.time.Duration.Companion.minutes
@@ -27,6 +28,23 @@ fun Instant.toLocalDate(): kotlinx.datetime.LocalDate =
  * is genuinely ambiguous and the year matters.
  */
 fun medicalDateString(instant: Instant): String = DateString.dateLong(instant.toLocalDate())
+
+/**
+ * A medical record's date and time of day.
+ *
+ * For the few places where the hour matters as much as the day — when a dose was taken, when the
+ * next one is due. Honours the device's 12- or 24-hour setting through [DateString].
+ */
+fun medicalDateTimeString(instant: Instant, is24Hour: Boolean): String {
+    val local = instant.atZone(ZoneId.systemDefault())
+    return DateString.dateTime(
+        kotlinx.datetime.LocalDateTime(
+            local.toLocalDate().toKotlinLocalDate(),
+            local.toLocalTime().toKotlinLocalTime(),
+        ),
+        is24Hour,
+    )
+}
 
 /** Joins the parts that are present with a middle dot, the app's inline detail separator. */
 fun detailLine(vararg parts: String?): String =
