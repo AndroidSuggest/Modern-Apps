@@ -25,9 +25,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * Bring-up mirrors video's (`requestSetup` on the grant -> CONFIG answered
  * with a focus ask on control 0x18 -> START with the confirmed config), and
  * each sink's samples are written by its own audio thread -- never the pump
- * thread, never the video vsync drain. The only thing shared with the pump
- * is [GalConnection.send], which enqueues and flushes under the connection's
- * engine lock (see `GalConnection`'s one-lock-many-threads discipline). The
+ * thread, never the video vsync drain, never the main thread's socket: the only
+ * thing shared with the pump is [GalConnection.send], which enqueues and hands
+ * the flush to the connection's single I/O thread (see `GalConnection`'s
+ * one-thread-many-senders discipline). The
  * sink's state is written on the audio thread and read off it only through
  * the atomic frame counter and the [AudioSinkStatus] snapshots, which hop to
  * the pump/main threads via the thread-safe `StateFlow` set in

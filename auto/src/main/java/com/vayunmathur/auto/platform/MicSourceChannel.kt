@@ -23,8 +23,9 @@ import com.vayunmathur.auto.protocol.GalMessage
  * callback; a TTS/speak turn needs no buffer and only counts.
  *
  * All turn work lands on the mic's own thread -- never the pump thread --
- * and the only thing shared with the pump is [GalConnection.send], which is
- * thread-safe under the connection's engine lock.
+ * and the only thing shared with the pump is [GalConnection.send], which
+ * enqueues and hands the flush to the connection's single I/O thread
+ * (thread-safe from anywhere, main thread included).
  */
 class MicSourceChannel(
     private val connection: GalConnection,

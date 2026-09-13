@@ -1,9 +1,17 @@
 package com.vayunmathur.auto.protocol
 
 import java.io.Closeable
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import javax.net.ssl.SSLContext
 import kotlin.concurrent.withLock
+
+/** Name of [GalConnection]'s single I/O thread; asserted by the IoThread tests. */
+internal const val GAL_IO_THREAD_NAME = "ma-auto-gal-io"
 
 /** A message on a service channel, handed to whatever owns that service. */
 fun interface ChannelMessageHandler {
@@ -28,11 +36,16 @@ fun isChannelControlMessage(type: Int): Boolean = when (type) {
  * Ties a [GalTransport] to the control session.
  *
  * Owns the single [javax.net.ssl.SSLEngine] for the connection. The engine is not
- * thread-safe, so every wrap and unwrap happens under [engineLock] -- one lock, many
- * threads. The pump thread reads and processes; the vsync encoder thread, the audio
- * sinks and input injection only ever call [send], which enqueues and flushes under
- * the same lock. Callers drive [pump] rather than it spawning threads, which keeps
- * the whole thing testable over an in-memory transport.
+ * thread-safe, so every wrap and unwrap happens on one dedicated I/O thread
+ * ([GAL_IO_THREAD_NAME]) -- one thread, many senders. Every [SSLEngine] op and every
+ * socket write runs there, including the ones triggered from the Choreographer
+ * vsync drain, the audio sinks and input injection: [send] only enqueues into
+ * [ChannelSendQueue] (synchronized, never blocks) and hands the drain to the I/O
+ * thread, so a sender never touches the network itself. That keeps socket I/O off
+ * the main thread (a first video frame sent out of a vsync callback used to die
+ * with NetworkOnMainThreadException and take the whole process with it), while the
+ * queue's control-first drain order is unchanged. Callers drive [pump] rather than
+ * it spawning threads, which keeps the whole thing testable over an in-memory transport.
  *
  * Outbound traffic goes through per-channel queues ([ChannelSendQueue]): channel 0
  * always drains first and service channels round-robin, so a video burst never
@@ -66,9 +79,27 @@ class GalConnection(
 
     /**
      * The single-engine discipline: every [SSLEngine] wrap/unwrap on this connection
-     * holds this lock. Reentrant, so [pump] can answer (which [send]s) while holding it.
+     * runs on the single [io] thread below. The lock guards the rare synchronous
+     * entry when already on that thread (see [runOnIo]), plus the plain-JVM queue
+     * tests that drive [flushSends] with no thread of their own. Reentrant, so
+     * [pump] can answer (which [send]s) while holding it.
      */
     private val engineLock = ReentrantLock()
+
+    /**
+     * The only thread that touches the [SSLEngine] or the socket. Single-threaded,
+     * so wraps, unwraps and writes serialize in submission order behind one queue
+     * into [sendQueue]: submitting a whole drain (or a whole pump processing
+     * step) as one task keeps each flush an ordered unit, exactly as the old
+     * lock-held drain did. Daemon, so a leaked connection can never pin the
+     * process open.
+     */
+    private val io: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, GAL_IO_THREAD_NAME).apply { isDaemon = true }
+    }
+
+    /** Set once [close] parks the I/O thread; late sends are dropped, never run. */
+    private val closed = AtomicBoolean(false)
 
     /** Per-channel outbound queues; see the class KDoc for the drain order. */
     private val sendQueue = ChannelSendQueue()
@@ -78,10 +109,45 @@ class GalConnection(
     private val buffer = ByteArray(READ_BUFFER_SIZE)
 
     /**
+     * Runs [block] on the single I/O thread, waiting for it.
+     *
+     * Already there (a reply triggered inside [pump]'s own processing, or a nested
+     * flush) it runs inline under [engineLock]: re-entering the executor queue from
+     * the I/O thread would self-deadlock waiting on itself. Everywhere else the
+     * caller blocks until its drain completes, so submission order is wire order
+     * and the sequential channel-open / reply semantics are unchanged.
+     *
+     * A send racing [close] is dropped with a trace instead of running on a parked
+     * thread or throwing [RejectedExecutionException] at the caller.
+     */
+    private fun runOnIo(block: () -> Unit) {
+        if (Thread.currentThread().name == GAL_IO_THREAD_NAME) {
+            engineLock.withLock { block() }
+            return
+        }
+        if (closed.get()) {
+            trace("drop send after close")
+            return
+        }
+        try {
+            io.submit(block).get()
+        } catch (e: ExecutionException) {
+            throw e.cause ?: e
+        } catch (e: RejectedExecutionException) {
+            trace("drop send after close")
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            trace("send interrupted")
+        }
+    }
+
+    /**
      * Reads once, handles whatever that produced, then drains the send queue.
      *
-     * The blocking read holds no lock; everything engine-touching (unwrap in
-     * [FrameReader], wrap in [flushSends]) runs under [engineLock].
+     * The blocking read holds no lock and runs on the caller's (pump) thread --
+     * parking the I/O thread in a read would wedge every send behind it.
+     * Everything engine-touching (unwrap in [FrameReader], wrap in
+     * [flushSendsLocked]) runs on the single I/O thread instead (see [runOnIo]).
      *
      * @return false at end of stream, when the head unit has gone away.
      */
@@ -89,7 +155,9 @@ class GalConnection(
         val count = transport.read(buffer, 0, buffer.size)
         if (count < 0) return false
 
-        engineLock.withLock {
+        // Processing answers and flushes as one task keeps replies and other
+        // threads' queued sends in a single ordered drain, exactly as before.
+        runOnIo {
             for (message in reader.offer(buffer, 0, count)) {
                 val decoded = MessageCodec.decode(message.channelId, message.payload)
                 // Channel-open traffic (0x7 out / 0x8 in) rides the TARGET channel,
@@ -136,8 +204,9 @@ class GalConnection(
     }
 
     /**
-     * Enqueues a control message and flushes. Thread-safe: safe from the vsync
-     * encoder thread, audio sinks and input injection alike.
+     * Enqueues a control message and flushes it from the I/O thread. Thread-safe
+     * from anywhere, including the main thread: the enqueue never blocks and the
+     * socket write runs on [GAL_IO_THREAD_NAME], never on the caller.
      */
     fun send(message: OutboundMessage) {
         enqueue(message)
@@ -145,8 +214,9 @@ class GalConnection(
     }
 
     /**
-     * Enqueues a service-channel message and flushes. Always encrypted, never
-     * CONTROL-flagged. Thread-safe; see [send].
+     * Enqueues a service-channel message and flushes it from the I/O thread.
+     * Always encrypted, never CONTROL-flagged. Thread-safe from anywhere, main
+     * thread included; see [send].
      *
      * `jbe.i()` builds flags as `FIRST | LAST | (Lizm.f ? 0x04 : 0) |
      * (Lizm.h ? 0x08 : 0)`, and every service-channel send goes through
@@ -196,10 +266,12 @@ class GalConnection(
     }
 
     /**
-     * Writes everything queued, control-first. Thread-safe; holds [engineLock]
-     * across the drain so a burst goes out as one ordered unit.
+     * Writes everything queued, control-first, on the single I/O thread.
+     * Thread-safe from anywhere, main thread included; the caller waits for its
+     * own drain, so ordering matches the old immediate write. Holds [engineLock]
+     * across the inline drain so a burst goes out as one ordered unit.
      */
-    fun flushSends() = engineLock.withLock { flushSendsLocked() }
+    fun flushSends() = runOnIo { engineLock.withLock { flushSendsLocked() } }
 
     /** Sends still queued, across all channels. Telemetry and tests. */
     fun pendingSends(): Int = sendQueue.pendingCount()
@@ -226,7 +298,18 @@ class GalConnection(
         transport.flush()
     }
 
-    override fun close() = transport.close()
+    override fun close() {
+        // First mark closed so late sends drop instead of racing the shutdown,
+        // then park the I/O thread. The socket close unblocks a pump read, and
+        // queued-but-unsent frames are dropped: a new socket starts clean.
+        if (!closed.compareAndSet(false, true)) {
+            runCatching { transport.close() }
+            return
+        }
+        io.shutdownNow()
+        sendQueue.clear()
+        transport.close()
+    }
 
     private companion object {
         const val CONTROL_CHANNEL = 0

@@ -341,8 +341,9 @@ class VideoSinkChannel(
     /**
      * Pushes any encoded frames out. Called on the main thread at vsync cadence (see
      * [startVsyncDrain]), never from the connection's pump loop: the pump thread owns
-     * net/SSL while this owns media, and sends serialize under the connection's
-     * engine lock.
+     * reads while the connection's single I/O thread owns net/SSL, and sends queue
+     * there without blocking the caller -- so no socket write ever runs on this
+     * (main) thread.
      *
      * Emits a drain observation per vsync so the phone UI can tell "encoder idle"
      * (drains with nothing ready) from "frames flowing" ([VideoEvent.FrameSent]).

@@ -41,13 +41,14 @@ import kotlin.concurrent.thread
  * Runs a projection session for as long as a head unit is attached.
  *
  * Concurrency, by deliberate split: one [javax.net.ssl.SSLEngine] backs the
- * connection and an engine is not thread-safe, so every wrap/unwrap holds the
- * connection's engine lock -- one lock, many threads. The `ma-auto-projection`
- * thread owns net/SSL (the [GalConnection.pump] loop below); the main thread owns
- * media (the [VideoSinkChannel] vsync drain); audio sinks, mic, TTS and
- * input injection only ever enqueue sends, which flush under the same lock.
- * See `ProjectionService` + `CarDisplay` KDoc for the matching discipline on
- * the UI side.
+ * connection and an engine is not thread-safe, so every wrap/unwrap and every
+ * socket write runs on the connection's single I/O thread -- one thread, many
+ * senders. The `ma-auto-projection` thread owns reads (the [GalConnection.pump]
+ * loop below); the main thread owns media (the [VideoSinkChannel] vsync drain);
+ * audio sinks, mic, TTS and input injection only ever enqueue sends, which the
+ * I/O thread flushes without blocking the caller -- so no socket write ever runs
+ * on the main thread. See `ProjectionService` + `CarDisplay` KDoc for the
+ * matching discipline on the UI side.
  */
 class ProjectionService : Service() {
 
@@ -221,6 +222,10 @@ class ProjectionService : Service() {
                 // to runSession so the backoff loop sees the failure.
                 Log.i(TAG, "head unit disconnected: ${connection.session.failure ?: "cleanly"}")
                 AutoSessionState.onSessionEnd(connection.session.failure)
+                // Park the connection's I/O thread first: closing the socket
+                // unblocks the pump read, and late sends drop rather than racing
+                // the shutdown. The socket `use` below closes the streams anyway.
+                runCatching { connection.close() }
                 video?.release()
                 video = null
                 messaging?.release()
@@ -245,10 +250,11 @@ class ProjectionService : Service() {
     }
 
     /**
-     * The bring-up + streaming loop. Pump owns net/SSL only -- never the encoder:
-     * the sink drains itself on the main thread at vsync cadence (see
-     * VideoSinkChannel.startVsyncDrain). Channel opens go out sequentially in
-     * HU-discovery wire order, one in flight at a time; see [openNext].
+     * The bring-up + streaming loop. Pump owns reads only -- never the encoder and
+     * never socket writes: the sink drains itself on the main thread at vsync
+     * cadence (see VideoSinkChannel.startVsyncDrain) and the connection's single
+     * I/O thread owns every wrap/unwrap/write. Channel opens go out sequentially
+     * in HU-discovery wire order, one in flight at a time; see [openNext].
      */
     private fun pumpUntilGone(connection: GalConnection) {
         var setupVideo = false
