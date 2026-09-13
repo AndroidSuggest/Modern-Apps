@@ -23,6 +23,8 @@
     <string name="label_map">Map</string>
     <!-- Navigation label: People face-grouping tab. Noun plural -->
     <string name="label_people">People</string>
+    <!-- Navigation label: Albums tab. Noun plural -->
+    <string name="label_albums">Albums</string>
     <!-- Navigation label: Trash tab. Noun -->
     <string name="label_trash">Trash</string>
     <!-- Navigation label: Secure Folder tab. Noun phrase -->
@@ -32,6 +34,15 @@
     <string name="secure_folder_is_empty">Secure Folder is empty</string>
     <!-- Empty state centered text when Trash has no photos -->
     <string name="trash_is_empty">Trash is empty</string>
+    <!-- Empty state centered text when no albums exist yet (empty library). Sentence -->
+    <string name="albums_empty">No albums yet. Albums appear here once your photos have been synced.</string>
+    <!-- Fallback album name for photos with no MediaStore bucket (rows predating the album column, or bucket-less MediaStore rows). Noun -->
+    <string name="albums_unknown">Unknown</string>
+    <!-- Subtitle per album grid cell showing photo count. %1$d = count -->
+    <plurals name="album_photo_count">
+        <item quantity="one"><xliff:g id="count" example="12">%1$d</xliff:g> photo</item>
+        <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> photos</item>
+    </plurals>
 
     <!-- Generic selection count badge in TopAppBar of Gallery, SecureFolder, Trash. %1$d = number selected -->
     <string name="items_selected"><xliff:g id="count" example="5">%1$d</xliff:g> selected</string>
