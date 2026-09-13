@@ -100,6 +100,7 @@ fn main() -> ExitCode {
     let mut report: Option<PathBuf> = None;
     let mut keep_store = false;
     let mut reuse_store = false;
+    let mut shared_table = false;
     let mut layers = schema::Layers::all();
     let mut min_zoom = 0u8;
     let mut max_zoom = DEFAULT_MAX_ZOOM;
@@ -134,6 +135,10 @@ fn main() -> ExitCode {
             }
             "--reuse-store" => {
                 reuse_store = true;
+                Ok(1)
+            }
+            "--shared-table" => {
+                shared_table = true;
                 Ok(1)
             }
             "--coastline" => value("--coastline").map(|v| {
@@ -202,6 +207,7 @@ fn main() -> ExitCode {
         report,
         keep_store,
         reuse_store,
+        shared_table,
         coastline,
         transit_routes,
         graph,
@@ -247,6 +253,9 @@ struct RunSettings {
     keep_store: bool,
     /// Skip stage A and read the spill an earlier `--keep-store` run left behind.
     reuse_store: bool,
+    /// Intern v8 shared-table logical rows while tiling; see [`tiler::Settings::shared_table`].
+    /// Off by default, and off is byte-identical v7.
+    shared_table: bool,
 }
 
 fn run(
@@ -381,6 +390,7 @@ fn run(
             stats.features,
             run.transit_routes.is_some(),
             run.graph.is_some(),
+            run.shared_table,
         )
     });
 
@@ -407,6 +417,7 @@ fn run(
         // style instead, by not painting marine protected areas green in the first place.
         ocean: false,
         dem,
+        shared_table: run.shared_table,
     };
     let (bytes, per_zoom) = tiler::build(&store, &settings).map_err(|e| e.to_string())?;
     tiler::check_not_empty(&per_zoom).map_err(|e| e.to_string())?;
@@ -550,6 +561,7 @@ fn derive_build_id(
     features: u64,
     transit_routes: bool,
     graph: bool,
+    shared_table: bool,
 ) -> u64 {
     let mut h = 0xcbf2_9ce4_8422_2325u64;
     let mut eat = |bytes: &[u8]| {
@@ -641,6 +653,9 @@ fn derive_build_id(
         // Likewise a build with a graph carries the whole traffic and junction layers that one
         // without does not.
         u8::from(graph),
+        // Likewise a shared-table build appends the v8 section past the tile data that a v7
+        // build does not carry.
+        u8::from(shared_table),
     ]);
     eat(&simplification.to_le_bytes());
     eat(&features.to_le_bytes());
@@ -711,10 +726,11 @@ fn usage() {
          \x20                   [--graph GRAPH_DIR]\n\
          \x20                   [--dem HEIGHTMAPS.mdem]\n\
          \x20                   [--simplification F] [--build-id N] [--report FILE]\n\
-         \x20                   [--keep-store] [--reuse-store]\n\
+         \x20                   [--keep-store] [--reuse-store] [--shared-table]\n\
          \n\
          --keep-store   leave the feature spill and its index behind\n\
-         --reuse-store  tile from that spill instead of re-running stage A"
+         --reuse-store  tile from that spill instead of re-running stage A\n\
+         --shared-table intern the v8 shared section (logical rows + slim refs)"
     );
 }
 
@@ -793,17 +809,19 @@ mod tests {
     fn a_build_id_follows_the_inputs_that_decide_the_output() {
         let path = std::path::Path::new("nonexistent.osm.pbf");
         let all = schema::Layers::all();
-        let base = derive_build_id(path, all, 0, 14, 1.0, 100, false, false);
-        assert_eq!(base, derive_build_id(path, all, 0, 14, 1.0, 100, false, false), "stable");
+        let base = derive_build_id(path, all, 0, 14, 1.0, 100, false, false, false);
+        assert_eq!(base, derive_build_id(path, all, 0, 14, 1.0, 100, false, false, false), "stable");
         for other in [
-            derive_build_id(path, all, 1, 14, 1.0, 100, false, false),
-            derive_build_id(path, all, 0, 15, 1.0, 100, false, false),
-            derive_build_id(path, all, 0, 14, 2.0, 100, false, false),
-            derive_build_id(path, all, 0, 14, 1.0, 101, false, false),
+            derive_build_id(path, all, 1, 14, 1.0, 100, false, false, false),
+            derive_build_id(path, all, 0, 15, 1.0, 100, false, false, false),
+            derive_build_id(path, all, 0, 14, 2.0, 100, false, false, false),
+            derive_build_id(path, all, 0, 14, 1.0, 101, false, false, false),
             // A transit-routes file adds a whole layer the same `.pbf` would not produce.
-            derive_build_id(path, all, 0, 14, 1.0, 100, true, false),
+            derive_build_id(path, all, 0, 14, 1.0, 100, true, false, false),
             // A routing graph adds the traffic layer the same `.pbf` would not produce.
-            derive_build_id(path, all, 0, 14, 1.0, 100, false, true),
+            derive_build_id(path, all, 0, 14, 1.0, 100, false, true, false),
+            // A shared-table build appends the v8 section a v7 build does not carry.
+            derive_build_id(path, all, 0, 14, 1.0, 100, false, false, true),
             derive_build_id(
                 path,
                 schema::Layers { water: true, ..schema::Layers::none() },
@@ -811,6 +829,7 @@ mod tests {
                 14,
                 1.0,
                 100,
+                false,
                 false,
                 false,
             ),
@@ -821,6 +840,7 @@ mod tests {
                 14,
                 1.0,
                 100,
+                false,
                 false,
                 false,
             ),

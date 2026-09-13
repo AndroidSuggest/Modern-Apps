@@ -16,7 +16,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.Card
-import com.vayunmathur.library.ui.DateNameStyle
+import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.ui.IconSchedule
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.ListItemDefaults

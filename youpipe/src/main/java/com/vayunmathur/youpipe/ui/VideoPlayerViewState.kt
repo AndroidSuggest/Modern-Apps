@@ -23,7 +23,9 @@ import com.vayunmathur.sdk.cast.CastContract
 import com.vayunmathur.sdk.cast.CastPickerContract
 import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.youpipe.R
+import com.vayunmathur.youpipe.platform.CastPlayback
 import com.vayunmathur.youpipe.findActivity
+import com.vayunmathur.youpipe.rememberIsInPipMode
 import com.vayunmathur.youpipe.util.YouPipeViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -148,8 +150,7 @@ internal fun rememberVideoPlayerViewState(
     // Local audio is muted with volume rather than by stopping the renderer, because volume is applied
     // in the sink *after* the processor chain - so CastAudioTap still sees full-scale PCM.
     LaunchedEffect(controller, castState) {
-    controller: MediaController?,
-    isPlaying: Boolean,
+        val player = controller ?: return@LaunchedEffect
         val casting = castState as? CastPlayback.State.Casting
         if (casting != null) {
             android.util.Log.i(

@@ -62,32 +62,6 @@ internal fun headingSizeSp(style: ParagraphStyle): Float? = when (style) {
     else -> null
 }
 
-/** OffsetMapping for list prefixes injected at the start of each paragraph in a run. (A1) */
-private class PrefixOffsetMapping(
-    private val origStarts: IntArray,
-    private val transStarts: IntArray,
-    private val prefixLens: IntArray,
-    private val lens: IntArray,
-    private val origLen: Int,
-    private val transLen: Int
-) : OffsetMapping {
-    override fun originalToTransformed(offset: Int): Int {
-        val o = offset.coerceIn(0, origLen)
-        var p = 0
-        for (i in origStarts.indices) { if (origStarts[i] <= o) p = i else break }
-        val inPara = (o - origStarts[p]).coerceIn(0, lens[p])
-        return (transStarts[p] + prefixLens[p] + inPara).coerceIn(0, transLen)
-    }
-    override fun transformedToOriginal(offset: Int): Int {
-        val t = offset.coerceIn(0, transLen)
-        var p = 0
-        for (i in transStarts.indices) { if (transStarts[i] <= t) p = i else break }
-        val afterPrefix = t - transStarts[p] - prefixLens[p]
-        val inPara = afterPrefix.coerceIn(0, lens[p])
-        return (origStarts[p] + inPara).coerceIn(0, origLen)
-    }
-}
-
 /**
  * Remaps a caret offset when the editor's text is replaced externally (e.g. a collaborator's merged
  * edit) so the caret follows its surrounding content: insertions/deletions *before* the caret shift

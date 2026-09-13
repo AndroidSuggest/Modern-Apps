@@ -91,6 +91,19 @@ pub struct Options {
     /// build, and a system temporary directory is routinely on a small system volume. The generator
     /// already puts its *feature* spill beside the output for the same reason.
     pub spill_dir: Option<PathBuf>,
+    /// Write the v8 shared section (`MBSH`) after the tile data.
+    ///
+    /// Off by default, and off is byte-identical v7: no shared bytes are
+    /// emitted, `file_len` covers exactly header/dictionary/root/leaves/data,
+    /// and no flag is set. On, the tiler interns logical rows through
+    /// [`StreamWriter::shared_builder`] as tiles arrive (tile-id order, which
+    /// is what makes first-use order deterministic) and `finish` appends the
+    /// section from [`SharedBuilder::serialize`](crate::mamaps::shared::SharedBuilder::serialize)
+    /// after the tile data, extending `file_len` past it.
+    ///
+    /// The header version and `shared_offset`/`shared_len` publication are
+    /// lane B's; this flag only controls the bytes.
+    pub shared_table: bool,
     pub min_lon_e7: i32,
     pub min_lat_e7: i32,
     pub max_lon_e7: i32,
@@ -107,6 +120,7 @@ impl Default for Options {
             rings_validated: false,
             leaf_entry_capacity: DEFAULT_LEAF_CAPACITY,
             spill_dir: None,
+            shared_table: false,
             min_lon_e7: -1_800_000_000,
             min_lat_e7: -850_511_287,
             max_lon_e7: 1_800_000_000,
@@ -148,6 +162,17 @@ pub struct StreamWriter {
     /// one body and two entries.
     distinct: u64,
     runs_used: bool,
+    /// The v8 shared section under construction, or `None` when
+    /// [`Options::shared_table`] is off (the default) or no row has been
+    /// interned yet.
+    ///
+    /// Rows arrive in ascending tile-id order — the same order bodies do —
+    /// because the tiler interns through [`Self::shared_builder`] as it
+    /// encodes each tile. Nothing here iterates a hash map at emit time:
+    /// [`SharedBuilder::serialize`](crate::mamaps::shared::SharedBuilder::serialize)
+    /// sorts rows by `logical_id`, so first-use order is tile-id order by
+    /// construction, never hash order.
+    shared: Option<crate::mamaps::shared::SharedBuilder>,
 }
 
 /// One stored body's index entry, before it knows which leaf it belongs to.
@@ -201,6 +226,7 @@ impl StreamWriter {
         // After the option checks, so a build with an impossible zoom range fails without having
         // created a file to clean up.
         let data = Spill::create(options.spill_dir.as_deref())?;
+        let shared = options.shared_table.then(crate::mamaps::shared::SharedBuilder::new);
         Ok(StreamWriter {
             options,
             data,
@@ -211,7 +237,19 @@ impl StreamWriter {
             tiles_addressed: 0,
             distinct: 0,
             runs_used: false,
+            shared,
         })
+    }
+
+    /// The v8 shared-section builder, or `None` when [`Options::shared_table`] is off.
+    ///
+    /// Lane E's tiler interns logical rows and pushes slim refs through this
+    /// as it encodes each tile, in ascending tile-id order — which is what
+    /// keeps first-use order deterministic. `None` is not an error to ignore:
+    /// a caller that asked for a shared table always gets one, and a caller
+    /// that did not must not be writing shared rows.
+    pub fn shared_builder(&mut self) -> Option<&mut crate::mamaps::shared::SharedBuilder> {
+        self.shared.as_mut()
     }
 
     /// Encode and append one tile. Ids must ascend.
@@ -345,8 +383,18 @@ impl StreamWriter {
     ///
     /// The header is parsed before the destination is touched, so a build that would not open does
     /// not leave a file behind that looks like it might.
+    ///
+    /// With [`Options::shared_table`] on, the shared section follows the tile
+    /// data immediately — it starts exactly at `data_offset + data_len` — and
+    /// `file_len` covers it. Off, nothing is appended and the file is
+    /// byte-identical v7.
     pub fn finish_to_path(mut self, path: &Path) -> Result<()> {
-        let (header, prefix) = self.prefix()?;
+        let shared = self.take_shared_bytes()?;
+        let (shared_len, shared_pools) = match &shared {
+            Some((bytes, pools)) => (bytes.len() as u64, *pools),
+            None => (0, 0),
+        };
+        let (header, prefix) = self.prefix(shared_len, shared_pools)?;
         let mut out = File::create(path).map_err(|e| {
             crate::proto::Error(format!("cannot write {}: {e}", path.display()))
         })?;
@@ -359,6 +407,11 @@ impl StreamWriter {
                 header.data_len,
             ));
         }
+        if let Some((shared, _)) = &shared {
+            out.write_all(shared).map_err(|e| {
+                crate::proto::Error(format!("cannot write {}: {e}", path.display()))
+            })?;
+        }
         Ok(())
     }
 
@@ -367,8 +420,17 @@ impl StreamWriter {
     /// Kept for callers small enough not to care — the tests, and the tools that read an archive
     /// back before writing it — and for them the peak is one copy of the archive rather than the two
     /// it used to be. Anything the size of a region should use [`Self::finish_to_path`].
+    ///
+    /// With [`Options::shared_table`] on, the shared section is appended after
+    /// the tile data exactly as [`Self::finish_to_path`] appends it, so the two
+    /// finishes stay two ways of emitting one archive.
     pub fn finish(mut self) -> Result<Vec<u8>> {
-        let (header, prefix) = self.prefix()?;
+        let shared = self.take_shared_bytes()?;
+        let (shared_len, shared_pools) = match &shared {
+            Some((bytes, pools)) => (bytes.len() as u64, *pools),
+            None => (0, 0),
+        };
+        let (header, prefix) = self.prefix(shared_len, shared_pools)?;
         // TEMPORARY instrumentation.
         eprintln!(
             "spill: {} confirms, {} from file ({:.2}%), {} bytes read back",
@@ -386,8 +448,26 @@ impl StreamWriter {
                 header.data_len,
             ));
         }
+        if let Some((shared, _)) = &shared {
+            out.extend_from_slice(shared);
+        }
         debug_assert_eq!(out.len() as u64, header.file_len);
         Ok(out)
+    }
+
+    /// The shared section bytes plus its pool count, or `None` when the flag is off.
+    ///
+    /// Taken (not borrowed) because [`SharedBuilder::serialize`](crate::mamaps::shared::SharedBuilder::serialize)
+    /// consumes the builder to sort its rows. Called once at the top of each
+    /// finish, before [`Self::prefix`], so the header's `file_len` already
+    /// covers the section both finishes then append. The pool count comes out
+    /// of the section's own header — never a literal — so it stays right
+    /// however many pools the builder emits.
+    fn take_shared_bytes(&mut self) -> Result<Option<(Vec<u8>, u32)>> {
+        let Some(builder) = self.shared.take() else { return Ok(None) };
+        let bytes = builder.serialize()?;
+        let pools = crate::mamaps::shared::SharedHeader::parse(&bytes)?.pool_count;
+        Ok(Some((bytes, pools)))
     }
 
     /// Everything ahead of the data section: header, dictionary, root, leaves, in that order.
@@ -395,10 +475,22 @@ impl StreamWriter {
     /// Section order on disk is header, dictionary, root, leaves, data — but every one of them is
     /// located by a header field, so a later version may reorder them freely.
     ///
+    /// `shared_len` is the serialised v8 shared section's length and
+    /// `shared_pools` its pool count, or zeros when [`Options::shared_table`]
+    /// is off. The shared section itself is appended
+    /// by the finishes, immediately after the tile data, so it always starts
+    /// exactly at `data_offset + data_len`; stating its length here lets the
+    /// header's `file_len` cover the whole file up front. With zeros the
+    /// header is byte-identical v7.
+    ///
     /// Returned parsed as well as serialized, because every check `Header::parse` makes is a check a
     /// reader will make on open, and finding out then means finding out on a device. It is checked
     /// here, before either finish emits a byte.
-    fn prefix(&self) -> Result<(Header, Vec<u8>)> {
+    ///
+    /// No top-level flag is set for the shared section: lane B publishes it
+    /// as a 160-byte v8 header (version byte 8) with `shared_offset` /
+    /// `shared_len` / `shared_pools`, derived from these same two values.
+    fn prefix(&self, shared_len: u64, shared_pools: u32) -> Result<(Header, Vec<u8>)> {
         if self.entries.is_empty() {
             return err("a .mamaps archive needs at least one tile");
         }
@@ -452,11 +544,22 @@ impl StreamWriter {
             flags |= crate::mamaps::header::FLAG_LEAF_LEN_64;
         }
         let root_bytes = index::serialize_root(&root);
-        let dict_offset = HEADER_LEN as u64;
+        // The dictionary starts where the header ends: 128 on a v7 archive,
+        // 160 with a shared section (lane B's `wire_len`). Offsets shift with
+        // it, so a v7 build's bytes never move.
+        let header_len = if shared_len == 0 {
+            HEADER_LEN as u64
+        } else {
+            crate::mamaps::header::HEADER_LEN_V8 as u64
+        };
+        let dict_offset = header_len;
         let root_offset = dict_offset + dictionary.len() as u64;
         let leaf_offset = root_offset + root_bytes.len() as u64;
         let data_offset = leaf_offset + leaf_bytes.len() as u64;
         let data_len = self.data.len();
+        // The shared section starts exactly where the tile data ends; lane B
+        // publishes it as `shared_offset`/`shared_len` (zero/absent on v7).
+        let shared_offset = data_offset + data_len;
 
         let header = Header {
             flags,
@@ -465,7 +568,10 @@ impl StreamWriter {
             min_zoom: self.options.min_zoom,
             max_zoom: self.options.max_zoom,
             build_id: self.options.build_id,
-            file_len: data_offset + data_len,
+            // The shared section rides past the tile data, so the file is the
+            // prefix plus data plus shared. Zero when the flag is off: v7's
+            // exact length, byte for byte.
+            file_len: data_offset + data_len + shared_len,
             dict_offset,
             dict_len: dictionary.len() as u32,
             leaf_entry_capacity: capacity,
@@ -482,6 +588,10 @@ impl StreamWriter {
             min_lat_e7: self.options.min_lat_e7,
             max_lon_e7: self.options.max_lon_e7,
             max_lat_e7: self.options.max_lat_e7,
+            shared_offset: if shared_len == 0 { 0 } else { shared_offset },
+            shared_len,
+            shared_flags: 0,
+            shared_pools,
         };
 
         let mut prefix = Vec::with_capacity(data_offset as usize);
@@ -585,6 +695,7 @@ impl StreamWriter {
             tiles_addressed: entries.len() as u64,
             distinct: entries.len() as u64,
             runs_used: false,
+            shared: None,
         };
         w.partition(capacity)
     }
@@ -829,4 +940,168 @@ fn hash64(data: &[u8]) -> u64 {
         h = h.wrapping_mul(0x100_0000_01b3);
     }
     h
+}
+
+#[cfg(all(test, feature = "write"))]
+mod tests {
+    use super::*;
+    use crate::mamaps::header::Header;
+    use crate::mamaps::shared::{SharedLogicalRow, SharedView, SHARED_MAGIC};
+    use crate::pmtiles::tile_id;
+
+    // Fail-watch convention (lane A's): each test pins one wire fact as a
+    // literal, so a revert of that fact quotes its failure (`left` vs
+    // `right`) rather than a vague mismatch. Revert → quote → restore.
+
+    fn tiny_body() -> Body {
+        Body::new(crate::mamaps::body::DEFAULT_EXTENT)
+    }
+
+    fn two_tiles(options: Options) -> Vec<u8> {
+        let mut w = StreamWriter::new(options).expect("options");
+        w.append(tile_id(0, 0, 0), &tiny_body()).expect("append");
+        w.append(tile_id(1, 0, 0), &tiny_body()).expect("append");
+        w.finish().expect("finish")
+    }
+
+    /// The flag defaults OFF, and OFF is byte-identical v7 however it is spelled.
+    #[test]
+    fn shared_table_defaults_off_and_off_is_byte_identical_v7() {
+        assert!(
+            !Options::default().shared_table,
+            "shared_table must default OFF so default builds stay v7"
+        );
+        let mut w = StreamWriter::new(Options::default()).expect("options");
+        assert!(w.shared_builder().is_none(), "no builder when the flag is off");
+        drop(w);
+        let implicit = two_tiles(Options::default());
+        let explicit = two_tiles(Options { shared_table: false, ..Options::default() });
+        assert_eq!(implicit, explicit, "flag OFF must be byte-identical v7 either way");
+        let header = Header::parse(&implicit).expect("header");
+        assert_eq!(
+            header.file_len as usize, implicit.len(),
+            "file_len covers exactly the v7 sections"
+        );
+        assert_eq!(implicit.len(), 128 + header.dict_len as usize + header.root_len as usize + header.leaf_len as usize + header.data_len as usize);
+        assert_eq!(implicit[7], 7, "a shared-table-off archive is version byte 7");
+        assert!(header.shared_location().is_none(), "no shared section published when off");
+    }
+
+    /// The shared section starts exactly at `data_offset + data_len`, opens
+    /// behind `MBSH`, and `file_len` covers it — and both finishes emit it.
+    ///
+    /// The header publishes the section too: version byte 8, 160 bytes, and
+    /// `shared_offset`/`shared_len` naming exactly the trailing bytes (lane
+    /// B's fields, wired here). Off, the header stays 128-byte v7.
+    #[test]
+    fn a_shared_section_starts_exactly_at_data_end_and_file_len_covers_it() {
+        let mut w =
+            StreamWriter::new(Options { shared_table: true, ..Options::default() }).expect("options");
+        assert!(w.shared_builder().is_some(), "the flag buys a builder");
+        // Interned in tile-id arrival order: z0's row before z1's.
+        let name = w.shared_builder().expect("builder").intern_string("Main St");
+        assert_eq!(name, 1, "the first string is ref 1 (0 is none)");
+        w.shared_builder().expect("builder").push_row(
+            SharedLogicalRow {
+                logical_id: 7,
+                name_ref: name,
+                kind: 45,
+                kind_detail: 0,
+                view_bits: 0,
+                building_idx: 0,
+                carriageway_idx: 0,
+                lane_turns_idx: 0,
+                flags: 0,
+            },
+            crate::mamaps::body::ID_NONE,
+        );
+        w.append(tile_id(0, 0, 0), &tiny_body()).expect("append");
+        w.append(tile_id(1, 0, 0), &tiny_body()).expect("append");
+        let bytes = w.finish().expect("finish");
+
+        let header = Header::parse(&bytes).expect("header");
+        assert_eq!(header.file_len as usize, bytes.len(), "file_len covers the shared section");
+        let at = (header.data_offset + header.data_len) as usize;
+        let view = SharedView::parse(&bytes[at..]).expect("parse the shared section");
+        // Lane B's publication: a shared table is a v8 header (160 bytes,
+        // version 8) whose shared fields name the trailing bytes exactly.
+        assert_eq!(
+            header.shared_location(),
+            Some((at as u64, bytes.len() as u64 - at as u64)),
+            "shared_offset/shared_len name the bytes past the tile data",
+        );
+        assert_eq!(
+            header.shared_pools, view.header.pool_count,
+            "the header's pool count is the section's own",
+        );
+        assert!(at < bytes.len(), "a shared table adds trailing bytes past the tile data");
+        assert_eq!(&bytes[at..at + 4], SHARED_MAGIC, "the shared section starts at data end");
+        assert_eq!(view.header.row_count, 1, "one logical row");
+        assert_eq!(view.header.string_count, 1, "one interned name");
+        assert_eq!(view.strings.lookup(1), Some("Main St"));
+
+        // `finish_to_path` is the same file, not a second archive.
+        let out = std::env::temp_dir().join(format!("mamaps_lane_d_{}", std::process::id()));
+        let mut w =
+            StreamWriter::new(Options { shared_table: true, ..Options::default() }).expect("options");
+        let name = w.shared_builder().expect("builder").intern_string("Main St");
+        w.shared_builder().expect("builder").push_row(
+            SharedLogicalRow {
+                logical_id: 7,
+                name_ref: name,
+                kind: 45,
+                kind_detail: 0,
+                view_bits: 0,
+                building_idx: 0,
+                carriageway_idx: 0,
+                lane_turns_idx: 0,
+                flags: 0,
+            },
+            crate::mamaps::body::ID_NONE,
+        );
+        w.append(tile_id(0, 0, 0), &tiny_body()).expect("append");
+        w.append(tile_id(1, 0, 0), &tiny_body()).expect("append");
+        w.finish_to_path(&out).expect("finish_to_path");
+        let streamed = std::fs::read(&out).expect("read back");
+        assert_eq!(streamed, bytes, "streamed and in-memory finishes emit one archive");
+        let _ = std::fs::remove_file(&out);
+    }
+
+    /// Rows hit the wire ascending by `logical_id` whatever order they arrive
+    /// in: `serialize` sorts, so hash-map or thread order can never leak out.
+    #[test]
+    fn shared_rows_emit_in_logical_id_order_whichever_order_they_arrive_in() {
+        let build = |order: &[u32]| {
+            let mut w = StreamWriter::new(Options { shared_table: true, ..Options::default() })
+                .expect("options");
+            {
+                let b = w.shared_builder().expect("builder");
+                for &id in order {
+                    b.push_row(
+                        SharedLogicalRow {
+                            logical_id: id,
+                            name_ref: 0,
+                            kind: 1,
+                            kind_detail: 0,
+                            view_bits: 0,
+                            building_idx: 0,
+                            carriageway_idx: 0,
+                            lane_turns_idx: 0,
+                            flags: 0,
+                        },
+                        id as u64 * 1000,
+                    );
+                }
+            }
+            w.append(tile_id(0, 0, 0), &tiny_body()).expect("append");
+            w.finish().expect("finish")
+        };
+        let (scrambled, ordered) = (build(&[3, 1, 2]), build(&[1, 2, 3]));
+        assert_eq!(scrambled, ordered, "row push order must not reach the wire");
+        let header = Header::parse(&scrambled).expect("header");
+        let at = (header.data_offset + header.data_len) as usize;
+        let view = SharedView::parse(&scrambled[at..]).expect("parse");
+        let ids: Vec<u32> = view.rows.iter().map(|r| r.logical_id).collect();
+        assert_eq!(ids, vec![1, 2, 3], "rows on the wire ascend by logical_id");
+    }
 }

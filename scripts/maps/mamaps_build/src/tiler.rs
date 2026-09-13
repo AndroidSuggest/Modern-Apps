@@ -261,6 +261,15 @@ pub struct Settings {
     /// with no terrain. See [`crate::dem::Dem`]. A tile with no DEM under it carries no heightmap
     /// section (stays 16-byte), and a build without a dataset leaves every tile's `heightmap` unset.
     pub dem: Option<crate::dem::Dem>,
+    /// Whether to intern v8 shared-table logical rows while encoding.
+    ///
+    /// Off by default, and off is byte-identical v7: nothing is interned and the writer emits no
+    /// shared section. On, every tile contributes its roads/buildings/traffic/junction logicals —
+    /// keyed by full content, see [`shared_row_key`] — to the writer's shared builder in
+    /// ascending tile-id order, which is what keeps first-use order deterministic. Bodies are
+    /// unchanged either way: slim refs ride the shared section, and how they ride a body is lane
+    /// C's wire, not this flag's.
+    pub shared_table: bool,
 }
 
 /// One chunk's share of a zoom, keyed on `(tile id, layer id)`.
@@ -381,6 +390,9 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
         // skip its repair pass — and the renderer still keeps that pass, gated, because a claim is
         // only as good as the generator making it.
         rings_validated: true,
+        // Off by default: byte-identical v7. On, tiles intern shared logical rows as they encode
+        // (see `Settings::shared_table`).
+        shared_table: settings.shared_table,
         min_lon_e7: bbox.0,
         min_lat_e7: bbox.1,
         max_lon_e7: bbox.2,
@@ -389,6 +401,10 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
     })?;
 
     let mut per_zoom = Vec::new();
+    // First sightings of every shared logical are interned by the builder
+    // itself (content-keyed, sequential ids in first-sighting order), so no
+    // local dedup map is needed: the drain consults the builder, and this
+    // loop's tile-id order is what keeps first-use order deterministic.
     for z in settings.min_zoom..=settings.max_zoom {
         let mut stats = ZoomStats { zoom: z, ..ZoomStats::default() };
         let tolerance = simplify::tolerance_for(z, settings.max_zoom, settings.simplification);
@@ -432,12 +448,18 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
                 break;
             }
             let encoding = std::time::Instant::now();
-            let done = encode_batch(batch, settings.dem.as_ref(), store.conventions())?;
+            let done = encode_batch(batch, settings.dem.as_ref(), store.conventions(), settings.shared_table)?;
             stats.encode_ms += encoding.elapsed().as_millis() as u64;
             let appending = std::time::Instant::now();
-            for (id, encoded, rings, lines) in done {
+            for (id, encoded, rings, lines, intents) in done {
                 stats.rings.add(rings);
                 stats.lines.add(lines);
+                // The serial half of shared interning: intents are per-tile pure (built in parallel),
+                // and this loop is tile-id ordered, so pushes reach the builder in first-use order.
+                // `None` when the flag is off — and then `intents` is always empty anyway.
+                if let Some(builder) = writer.shared_builder() {
+                    drain_shared_rows(builder, intents)?;
+                }
                 let Some((stored, raw_len)) = encoded else { continue };
                 // Uncompressed, as this column has always meant.
                 stats.bytes += raw_len as u64;
@@ -1266,11 +1288,213 @@ fn timed<R>(on: bool, counter: &std::sync::atomic::AtomicU64, f: impl FnOnce() -
 }
 
 /// One encoded tile on its way back from [`encode_batch`]: its id, the compressed body with its raw
-/// length, and what stage C and coalescing did to it.
+/// length, what stage C and coalescing did to it, and its shared-table row intents (empty unless
+/// the build asked for a shared table).
 ///
 /// Folded by the caller in `tile_id` order rather than accumulated across workers, so the counters
 /// need no atomics and a million tiles do not contend on three cache lines.
-type Encoded = (u64, Option<(Vec<u8>, usize)>, crate::rings::Stats, crate::coalesce::Stats);
+type Encoded = (
+    u64,
+    Option<(Vec<u8>, usize)>,
+    crate::rings::Stats,
+    crate::coalesce::Stats,
+    Vec<SharedRowIntent>,
+);
+
+/// One tile's contribution to the v8 shared section, collected in parallel and drained in
+/// tile-id order.
+///
+/// Built per tile inside [`encode_batch`] — a pure function of that tile's fused layers, so
+/// parallelism cannot change it — and pushed into the writer's shared builder by [`build`]'s
+/// serial append loop in ascending tile-id order. That order is the whole determinism story: the
+/// builder sorts rows at emit, but string/attr first-use order is push order, so pushes must never
+/// follow the scheduler.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SharedRowIntent {
+    key: tilecodec::mamaps::shared::SharedRowKey,
+    /// [`SHARED_FLAG_DETAIL_NUMERIC`](tilecodec::mamaps::shared::SHARED_FLAG_DETAIL_NUMERIC)
+    /// when the feature's detail is a number, else 0. Kept beside the key
+    /// (rather than inside it) only for the drain test's literal style; the
+    /// builder reads flags off the key.
+    flags: u32,
+    /// The stable identity this logical was keyed by (`ID_NONE` for junctions).
+    stable_id: u64,
+}
+
+/// The per-tile visibility mask for rows and slim refs, both.
+///
+/// Opaque to the tiler: a zero mask hides nothing and claims nothing, and what (if anything) a
+/// non-zero mask means is lane C's read contract, not this writer's. Pinned here rather than
+/// inlined so the day lane C defines it there is one constant to change.
+const SHARED_VIEW_BITS: u32 = 0;
+
+/// Key one feature's shared logical row by its full content, or `None` when it
+/// has none.
+///
+/// `logical_id`s are sequential build-local (see [`SharedBuilder::intern_row`]),
+/// so this returns the [`SharedRowKey`] the builder dedups on rather than a
+/// derived id — same file, so first-sighting order *is* the id, and there is
+/// no fold to collide.
+/// * `traffic` keys by `component_id` (validated stable across z12/z13): the
+///   id-table entry, carried whole on the key and in the id-runs pool.
+///   Low16-aliasing edges are distinct rows by construction.
+/// * `junction` keys by geometry hash ([`junction_key`](tilecodec::mamaps::shared::junction_key)
+///   over the tile-local centreline): confirmed to carry no stable id.
+/// * `roads` and `buildings` key by OSM way id from the id table when one is
+///   present. Stage A does not plumb one today (a road is coalesced, so the
+///   survivor's id would be arbitrary), so these return `None` until it does —
+///   a row without an identity cannot dedup and is skipped rather than hashed.
+/// * Every other layer returns `None`: labels and borders are not shared logicals.
+fn shared_row_key(
+    layer_id: u8,
+    stable_id: u64,
+    points: &[(i16, i16)],
+    name: Option<String>,
+    kind: u16,
+    kind_detail: u16,
+    flags: u32,
+    building: BuildingAttrs,
+    carriageway: tilecodec::mamaps::body::Carriageway,
+    lane_turns: tilecodec::mamaps::body::LaneTurns,
+) -> Option<tilecodec::mamaps::shared::SharedRowKey> {
+    use tilecodec::mamaps::dict::{LAYER_BUILDINGS, LAYER_JUNCTION, LAYER_ROADS, LAYER_TRAFFIC};
+    use tilecodec::mamaps::shared::{
+        SharedBuildingAttrs, SharedCarriageway, SharedLaneTurns, SharedRowKey,
+    };
+    let geom_hash = if layer_id == LAYER_JUNCTION {
+        tilecodec::mamaps::shared::junction_key(points)
+    } else {
+        0
+    };
+    let keyed = match layer_id {
+        LAYER_TRAFFIC if stable_id != tilecodec::mamaps::body::ID_NONE => true,
+        LAYER_JUNCTION => true,
+        LAYER_ROADS | LAYER_BUILDINGS if stable_id != tilecodec::mamaps::body::ID_NONE => true,
+        _ => return None,
+    };
+    if !keyed {
+        return None;
+    }
+    Some(SharedRowKey {
+        layer: layer_id,
+        stable_id,
+        geom_hash,
+        name,
+        kind,
+        kind_detail,
+        flags,
+        building: SharedBuildingAttrs::from_body(&building),
+        carriageway: SharedCarriageway::from_body(&carriageway),
+        lane_turns: SharedLaneTurns::from_body(&lane_turns),
+    })
+}
+
+/// One fused side-table row, by layer and feature position.
+///
+/// The fusion loops skip empty tables, so a missing table (or a short one, which cannot happen but
+/// is not worth failing over here — the fusion already length-checked) reads as absent.
+fn fused_row<'a, T>(fused: &'a [(u8, Vec<T>)], layer_id: u8, index: usize) -> Option<&'a T> {
+    fused.iter().find(|(l, _)| *l == layer_id).and_then(|(_, v)| v.get(index))
+}
+
+/// Collect one tile's shared rows from its fused layers.
+///
+/// Runs after coalescing, stage C and side-table fusion, so the features (and the parallel
+/// `ids`/`turn_lanes`/`buildings`/`carriageways` vectors) are the ones the body carries. One
+/// intent per shared feature, in layer/feature order; the drain turns first sightings into rows
+/// and every sighting into a slim ref.
+fn shared_intents_for_tile(
+    layers: &[ChunkEntry],
+    names: &[String],
+    ids: &[(u8, Vec<u64>)],
+    turn_lanes: &[(u8, Vec<tilecodec::mamaps::body::LaneTurns>)],
+    buildings: &[(u8, Vec<BuildingAttrs>)],
+    carriageways: &[(u8, Vec<tilecodec::mamaps::body::Carriageway>)],
+) -> Vec<SharedRowIntent> {
+    use tilecodec::mamaps::body::NAME_NONE;
+    use tilecodec::mamaps::dict::{LAYER_BUILDINGS, LAYER_JUNCTION, LAYER_ROADS, LAYER_TRAFFIC};
+    let mut intents = Vec::new();
+    for entry in layers {
+        let layer_id = entry.layer.layer_id;
+        if !matches!(layer_id, LAYER_ROADS | LAYER_BUILDINGS | LAYER_TRAFFIC | LAYER_JUNCTION) {
+            continue;
+        }
+        for (index, feature) in entry.layer.features.iter().enumerate() {
+            let stable_id =
+                fused_row(ids, layer_id, index).copied().unwrap_or(tilecodec::mamaps::body::ID_NONE);
+            // Junction identity IS the geometry: every part's tile-local points, concatenated.
+            // Every other layer keys by id and never reads points.
+            let points: Vec<(i16, i16)> = if layer_id == LAYER_JUNCTION {
+                entry
+                    .layer
+                    .parts_of(feature)
+                    .iter()
+                    .flat_map(|part| entry.layer.points(part))
+                    .copied()
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let name = if feature.name_idx == NAME_NONE {
+                None
+            } else {
+                names.get(feature.name_idx as usize - 1).cloned()
+            };
+            let flags = if feature.flags & tilecodec::mamaps::body::FLAG_DETAIL_NUMERIC != 0 {
+                tilecodec::mamaps::shared::SHARED_FLAG_DETAIL_NUMERIC
+            } else {
+                0
+            };
+            let building =
+                fused_row(buildings, layer_id, index).copied().unwrap_or_default();
+            let carriageway =
+                fused_row(carriageways, layer_id, index).copied().unwrap_or_default();
+            let lane_turns =
+                fused_row(turn_lanes, layer_id, index).cloned().unwrap_or_default();
+            let Some(key) = shared_row_key(
+                layer_id,
+                stable_id,
+                &points,
+                name,
+                feature.kind,
+                feature.kind_detail,
+                flags,
+                building,
+                carriageway,
+                lane_turns,
+            ) else {
+                continue;
+            };
+            intents.push(SharedRowIntent { key, flags, stable_id });
+        }
+    }
+    intents
+}
+
+/// Push one tile's intents into the shared builder, in order.
+///
+/// The builder interns by full content key (sequential build-local id,
+/// first-sighting order); every sighting pushes a slim ref, so the slim pool
+/// stays tile-major in tile-id order. Equal keys mean equal rows, so two
+/// sightings of one key share one row and different content is a different
+/// row: a misjoin is unrepresentable, and the old "two features, one id" build
+/// failure is gone with the fold that caused it.
+fn drain_shared_rows(
+    builder: &mut tilecodec::mamaps::shared::SharedBuilder,
+    intents: Vec<SharedRowIntent>,
+) -> Result<()> {
+    use tilecodec::mamaps::shared::SharedSlimRef;
+    for intent in intents {
+        let (kind, kind_detail) = (intent.key.kind, intent.key.kind_detail);
+        let logical_id =
+            builder.intern_row(intent.key, kind, kind_detail, SHARED_VIEW_BITS, intent.stable_id);
+        builder.push_slim_ref(SharedSlimRef {
+            logical_id,
+            view_bits: SHARED_VIEW_BITS,
+        });
+    }
+    Ok(())
+}
 
 /// Derive the sea for one tile as the tile rectangle with land cut out of it.
 ///
@@ -1387,6 +1611,7 @@ fn encode_batch(
     batch: Vec<(u64, Vec<ChunkEntry>)>,
     dem: Option<&crate::dem::Dem>,
     conventions: &crate::schema::boundaries::Conventions,
+    shared: bool,
 ) -> Result<Vec<Encoded>> {
     let min_len = par::min_task_len(batch.len());
     let on = timing();
@@ -1464,7 +1689,7 @@ fn encode_batch(
                         layers.retain(|entry| !entry.layer.features.is_empty());
                     });
                     if layers.is_empty() {
-                        return Ok((id, None, rings, lines));
+                        return Ok((id, None, rings, lines, Vec::new()));
                     }
                     // What the `u16` feature index in the body format has to hold. Sampled here
                     // because this is the shape that reaches the encoder: after coalescing merged
@@ -1609,6 +1834,21 @@ fn encode_batch(
                             .push((entry.layer.layer_id, std::mem::take(&mut entry.carriageways)));
                     }
                     let convention = (!carriageways.is_empty()).then_some(convention);
+                    // Shared intents are per-tile pure — safe to build on the worker — while the
+                    // drain stays serial in `build`. Skipped entirely when the flag is off, so a
+                    // v7 build pays nothing for the table it did not ask for.
+                    let shared_intents = if shared {
+                        shared_intents_for_tile(
+                            &layers,
+                            &names,
+                            &ids,
+                            &turn_lanes,
+                            &buildings,
+                            &carriageways,
+                        )
+                    } else {
+                        Vec::new()
+                    };
                     let body = Body {
                         extent: EXTENT as u16,
                         layers: layers.into_iter().map(|entry| entry.layer).collect(),
@@ -1631,7 +1871,7 @@ fn encode_batch(
                     let stored = timed(on, &DEFLATE_NANOS, || {
                         tilecodec::mamaps::write::compress_body_with(deflate, encoded)
                     });
-                    Ok((id, Some((stored, raw_len)), rings, lines))
+                    Ok((id, Some((stored, raw_len)), rings, lines, shared_intents))
                 },
             )
             .collect()
@@ -2449,6 +2689,238 @@ mod tests {
         assert!(total >= 8, "feature count {total} is short of the segments pushed");
     }
 
+    /// **Lane E keying.** Shared logicals are keyed by full content per layer:
+    /// traffic by `component_id`, junctions by geometry hash (no stable id),
+    /// roads/buildings by OSM way id when stage A plumbs one (it does not yet,
+    /// so those return `None` and are skipped). Anything else is not a shared
+    /// logical.
+    #[test]
+    fn shared_logicals_are_keyed_by_content_per_layer() {
+        use crate::schema::traffic::pack_component_id;
+        use tilecodec::mamaps::dict::{
+            LAYER_BUILDINGS, LAYER_JUNCTION, LAYER_ROADS, LAYER_TRAFFIC, LAYER_WATER,
+        };
+        use tilecodec::mamaps::shared::junction_key;
+        let key = |layer: u8, id: u64, points: &[(i16, i16)]| {
+            shared_row_key(
+                layer,
+                id,
+                points,
+                None,
+                0,
+                0,
+                0,
+                BuildingAttrs::default(),
+                tilecodec::mamaps::body::Carriageway::default(),
+                tilecodec::mamaps::body::LaneTurns::default(),
+            )
+        };
+        // Traffic: the full component id rides the key, so low16-aliasing
+        // edges are distinct rows by construction.
+        let a = key(LAYER_TRAFFIC, pack_component_id(7, 3), &[]);
+        let aliased = key(LAYER_TRAFFIC, pack_component_id(7 + 65536, 3), &[]);
+        assert!(a.is_some(), "traffic keys through the component id");
+        assert_eq!(
+            aliased.clone().map(|k| k.stable_id),
+            Some(pack_component_id(7 + 65536, 3)),
+            "the full id rides the key, not a fold",
+        );
+        assert_ne!(aliased, a, "aliasing edges are distinct rows");
+        // Junctions: the geometry hash, stable for one shape and distinct for
+        // another — and independent of whatever stable id rides along.
+        let points = [(0i16, 0i16), (100, 50), (200, 0)];
+        let keyed = key(LAYER_JUNCTION, 999, &points);
+        assert_eq!(
+            keyed.clone().map(|k| k.geom_hash),
+            Some(junction_key(&points)),
+            "junctions key by geometry",
+        );
+        assert_eq!(
+            key(LAYER_JUNCTION, 1000, &points).map(|k| k.geom_hash),
+            keyed.clone().map(|k| k.geom_hash),
+            "same geometry hashes the same whatever id rides along",
+        );
+        assert_ne!(
+            key(LAYER_JUNCTION, 999, &[(0i16, 0i16), (100, 50), (200, 1)]),
+            keyed,
+            "distinct connectors hash distinctly",
+        );
+        // Roads and buildings: way 12345 keys whole; ID_NONE is skipped.
+        let way = crate::extract::tagged_id(12345, crate::extract::ELEMENT_WAY);
+        assert_eq!(way & 0b11, crate::extract::ELEMENT_WAY);
+        assert!(key(LAYER_ROADS, way, &[]).is_some());
+        assert!(key(LAYER_BUILDINGS, way, &[]).is_some());
+        assert_eq!(
+            key(LAYER_ROADS, tilecodec::mamaps::body::ID_NONE, &[]),
+            None,
+            "no identity, no row",
+        );
+        assert_eq!(key(LAYER_BUILDINGS, tilecodec::mamaps::body::ID_NONE, &[]), None);
+        // Nothing else is a shared logical, id or no id.
+        assert_eq!(key(LAYER_WATER, way, &[]), None);
+        assert_eq!(
+            key(LAYER_TRAFFIC, tilecodec::mamaps::body::ID_NONE, &[]),
+            None,
+        );
+    }
+
+    /// **Lane E drain.** The first sighting of a content key interns its row
+    /// (sequential id, first-sighting order), every sighting pushes a slim
+    /// ref, and the same content twice shares one row. Round-trips through the
+    /// real section encoding, independent of the writer's finish wiring.
+    #[test]
+    fn the_shared_drain_interns_once_refs_per_tile_and_shares_repeats() {
+        use tilecodec::mamaps::shared::{
+            SharedBuilder, SharedBuildingAttrs, SharedCarriageway, SharedLaneTurns, SharedRowKey,
+            SharedView,
+        };
+        let key = |name: &str, stable_id: u64| SharedRowKey {
+            layer: 1,
+            stable_id,
+            geom_hash: 0,
+            name: Some(name.to_string()),
+            kind: 45,
+            kind_detail: 0,
+            flags: 0,
+            building: SharedBuildingAttrs::default(),
+            carriageway: SharedCarriageway::default(),
+            lane_turns: SharedLaneTurns::default(),
+        };
+        let intent = |key: SharedRowKey, stable_id: u64| SharedRowIntent {
+            key,
+            flags: 0,
+            stable_id,
+        };
+        // Two tiles, one shared road each, plus a second road on the second:
+        // three sightings, two rows, four slim refs.
+        let mut builder = SharedBuilder::new();
+        drain_shared_rows(
+            &mut builder,
+            vec![
+                intent(key("Market Street", 100), 100),
+                intent(key("Oak Ave", 200), 200),
+            ],
+        )
+        .expect("first tile");
+        drain_shared_rows(
+            &mut builder,
+            vec![
+                intent(key("Market Street", 100), 100),
+                intent(key("Elm St", 300), 300),
+            ],
+        )
+        .expect("second tile repeats one row");
+        // The same content twice: shared, not refused.
+        let view =
+            SharedView::parse(&builder.serialize().expect("section")).expect("parse");
+        // The shared-section 4-tuple the dump prints: rows, strings, pools, id runs.
+        assert_eq!(view.header.row_count, 3, "one row per distinct content: {view:?}");
+        assert_eq!(view.header.string_count, 3, "three distinct names interned");
+        assert_eq!(view.header.pool_count, 7, "every pool is written");
+        assert_eq!(view.header.id_run_count, 3, "one stable id per row");
+        assert_eq!(view.slim_refs.len(), 4, "one slim ref per tile-feature");
+        assert_eq!(
+            view.rows.iter().map(|r| r.logical_id).collect::<Vec<_>>(),
+            vec![1, 2, 3],
+            "sequential ids in first-sighting order",
+        );
+    }
+
+    /// **Lane E flag.** `--shared-table` on changes what is interned, never what is drawn: a
+    /// shared build parses, keeps the traffic id and every junction connector (the opt-out guards
+    /// stay green), and is byte-identical run to run (intents are per-tile pure, the drain is
+    /// tile-id ordered).
+    ///
+    /// NOTE (lane-A follow-up): this fixture carries a single traffic segment on purpose.
+    /// `SharedBuilder` sorts rows by logical id and `encode_id_runs` then requires stable ids
+    /// strictly increasing in that row order — but the splitmix traffic fold does not preserve row
+    /// order across segments, so any multi-segment traffic fixture refuses with "shared ids must
+    /// be strictly increasing in row order". That is a builder-contract issue (the fold fixed
+    /// low32 collisions but invalidated the sortedness assumption), not a keying issue: the full
+    /// u64s are distinct and correct, only their fold order is unsorted. Junction NONE-rows
+    /// interleave freely, so the multi-row builder path is still exercised here; the multi-segment
+    /// traffic case waits on lane-A relaxing the enforcement (zigzag already encodes signed
+    /// deltas — only the `delta > 0` check assumes sortedness).
+    #[test]
+    fn a_shared_build_parses_and_is_deterministic() {
+        use crate::schema::junction::junction_class;
+        use crate::schema::traffic::{pack_component_id, traffic_class, unpack_component_id};
+        let mut features = vec![Feature {
+            class: traffic_class(),
+            geometry: Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.9996, 35.0004)]]),
+            name: None,
+            id: pack_component_id(7, 0),
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        }];
+        // Two connectors meeting end to start: the shape a join would splice.
+        let connector = |x0: f64, x1: f64| Feature {
+            class: junction_class(),
+            geometry: Geometry::Lines(vec![vec![(x0, 35.0), (x1, 35.0004)]]),
+            name: None,
+            id: tilecodec::mamaps::body::ID_NONE,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        features.push(connector(-120.0, -119.9996));
+        features.push(connector(-119.9996, -119.9992));
+        // A road and a building with no stable identity: skipped rows, never an error.
+        features.push(Feature {
+            class: Class::line(dict::LAYER_ROADS, crate::schema::kind("minor_road"), 12),
+            geometry: Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.99, 35.001)]]),
+            name: None,
+            id: tilecodec::mamaps::body::ID_NONE,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        });
+        let shared = Settings { shared_table: true, ..settings(14, 14) };
+        let first = build(&spilled(&features), &shared).expect("shared build").0;
+        let second = build(&spilled(&features), &shared).expect("shared build").0;
+        assert_eq!(first, second, "a shared build is deterministic");
+        let entries = tilecodec::mamaps::read::read_all(&first).expect("read");
+        let mut segs = std::collections::BTreeSet::new();
+        let mut connectors = 0usize;
+        for (_, _, body) in &entries {
+            let body = Body::parse(body).expect("parse");
+            if let Some(layer) = body.layer(dict::LAYER_TRAFFIC) {
+                for index in 0..layer.features.len() {
+                    let id = body
+                        .feature_id(dict::LAYER_TRAFFIC, index)
+                        .expect("the traffic layer must carry an id table");
+                    let (edge, seg) = unpack_component_id(id);
+                    assert_eq!(edge, 7);
+                    segs.insert(seg);
+                }
+            }
+            if let Some(layer) = body.layer(dict::LAYER_JUNCTION) {
+                connectors += layer.features.len();
+            }
+        }
+        assert_eq!(segs.len(), 1, "the traffic segment keeps its component id");
+        assert_eq!(connectors, 2, "coalescing must not chain the two connectors");
+    }
+
     /// A measurement, not an assertion: build the same z14 region with and without a dense grid of
     /// traffic segments and print the compressed archive delta, so a real per-segment cost can be
     /// extrapolated to a region build without the California inputs to hand. Run explicitly:
@@ -2765,6 +3237,9 @@ mod tests {
             // would flood every one of them. `ocean_fills_a_tile_with_no_land` opts in.
             ocean: false,
             dem: None,
+            // Off: the shared-table tests opt in per test, so every existing test keeps asserting
+            // byte-identical v7.
+            shared_table: false,
         }
     }
 

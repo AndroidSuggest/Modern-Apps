@@ -289,6 +289,3 @@ private fun PlaceHeader(name: String, poi: GooglePoiInfo?, modifier: Modifier = 
         }
     }
 }
-
-@Composable
-private fun PlaceHeader(name: String, poi: GooglePoiInfo?, modifier: Modifier = Modifier) {

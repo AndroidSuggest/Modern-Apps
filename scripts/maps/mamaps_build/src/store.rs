@@ -567,6 +567,13 @@ impl Provenance {
 /// Magic and version of the sidecar index. Bumped whenever the layout below changes, so an index
 /// written by an older build is refused rather than misread.
 ///
+/// v8: the archive gains the v8 shared section (`MBSH`) after the tile data,
+/// fed by logical rows the tiler keys by stable identity (roads/buildings OSM
+/// way id, traffic component id, junctions by geometry hash). A v7 spill was
+/// built without those keys, and `--reuse-store` over one would feed a tiler
+/// that now interns shared rows with a spill that carries nothing to key them
+/// on — so the version gate refuses it outright rather than misbuilding.
+///
 /// v7: `roads` features carry a directional carriageway split under the `cw` property key, and the
 /// index gained the marking-convention grid stage A resolves from the country relations. A v6
 /// spill has neither, and `--reuse-store` over one would feed a tiler that now builds a carriageway
@@ -594,7 +601,7 @@ impl Provenance {
 /// v2: `layers` widened to `u16` (ten layers) and the spill's packed class widened its layer
 /// field to 4 bits, so a v1 spill would misdecode every feature. Refused here, not there.
 const INDEX_MAGIC: &[u8; 8] = b"MAMASTOR";
-const INDEX_VERSION: u32 = 7;
+const INDEX_VERSION: u32 = 8;
 
 impl Store {
     /// Write the sidecar that lets [`Store::open`] skip stage A.
@@ -2017,6 +2024,47 @@ mod tests {
         assert_eq!(name.as_deref(), Some("Café"), "UTF-8 survives the spill");
         let (_, _, name, _, _, _, _, _) = reader.next(&mut refs).expect("read").expect("a way");
         assert_eq!(name, None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **No cross-version `--reuse-store`.** A v7 index (rewritten version
+    /// byte) is refused by this v8 build rather than misread: the v8 tiler
+    /// keys shared rows by stable identity, and a v7 spill carries nothing to
+    /// key them on.
+    #[test]
+    fn a_v7_store_index_is_refused_rather_than_reused() {
+        let path = temp("version_gate");
+        let mut sink = Sink::create(&path).expect("create");
+        let road = Class::line(dict::LAYER_ROADS, schema::kind("highway"), 0);
+        sink.push(&road, &Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.5, 35.5)]]))
+            .expect("push");
+        let store = sink.finish(&path).expect("finish");
+        let provenance = Provenance {
+            source_len: 1234,
+            source_mtime: 5678,
+            layers: 0b101,
+            coastline: true,
+            transit_routes: false,
+            graph: true,
+        };
+        let index = store.save_index(provenance, 99).expect("save the index");
+
+        // Downgrade the saved index to v7: same bytes, older version word
+        // (magic is 8 B, version the 4 LE bytes after it).
+        let mut raw = std::fs::read(&index).expect("read the index");
+        raw[8..12].copy_from_slice(&7u32.to_le_bytes());
+        std::fs::write(&index, &raw).expect("rewrite as v7");
+
+        let failure = match Store::open(&path, provenance) {
+            Ok(_) => panic!("a v7 index must be refused"),
+            Err(e) => e,
+        };
+        assert!(
+            failure.0.contains("is version 7, this build writes 8"),
+            "unexpected refusal: {}",
+            failure.0,
+        );
+        let _ = std::fs::remove_file(&index);
         let _ = std::fs::remove_file(&path);
     }
 }

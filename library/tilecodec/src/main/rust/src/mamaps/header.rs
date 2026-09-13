@@ -1,4 +1,5 @@
-//! The `.mamaps` header: 128 fixed bytes that locate every other section.
+//! The `.mamaps` header: 128 bytes that locate every other section — 160 on a v8 archive,
+//! whose trailing 32 name the shared section.
 //!
 //! Every section is found **only** through an offset declared here. Nothing is inferred from
 //! layout, because layout is not fixed: the real 137 GB PMTiles archive puts its leaf
@@ -65,7 +66,32 @@ pub const MAGIC: &[u8; 7] = b"MAMAPS\0";
 /// `poi` and `transit` entirely.
 pub const FORMAT_VERSION: u8 = 7;
 
+/// The archive version byte of a v8 archive: one carrying a shared section.
+///
+/// v8 interns the long-lived per-feature attributes (names, logical rows, S3DB extrusion,
+/// carriageway splits, lane turns, stable ids) into one archive-global shared section behind
+/// `MBSH`, and appends a 32-byte tail to the header (bytes 128..160) naming it:
+/// `shared_offset`/`shared_len`, `shared_flags`, `shared_pools`, reserved. An archive without
+/// a shared section is byte-identical v7 — 128 bytes with version byte 7. With one it is 160
+/// bytes with version byte 8. The bump is forced twice over, the way v6's and v7's were: an
+/// older reader rejects both an unknown version byte and a header length that is not 128, so
+/// a v8 archive is a clean rejection rather than a misread map. A v8 reader opens both
+/// shapes: a 128-byte header reads as v7 with no shared section, a 160-byte header parses
+/// the tail.
+///
+/// Tile bodies version independently: a v8 slim body carries body version 8 and resolves
+/// through the shared section, while a v7 full body still carries 7. `Body::parse` keeps
+/// gating on [`FORMAT_VERSION`], which is why this const exists beside it rather than
+/// replacing it.
+pub const FORMAT_VERSION_V8: u8 = 8;
+
 pub const HEADER_LEN: usize = 128;
+
+/// A v8 header's wire length: the 128 v7 bytes plus the 32-byte shared-section tail.
+///
+/// The first 128 bytes keep their v7 field positions exactly, so everything up to the tail
+/// reads the same out of either shape.
+pub const HEADER_LEN_V8: usize = 160;
 
 /// Bodies are compressed frames; clear means the body is stored raw.
 pub const FLAG_BODIES_COMPRESSED: u16 = 1 << 0;
@@ -143,6 +169,24 @@ pub struct Header {
     pub min_lat_e7: i32,
     pub max_lon_e7: i32,
     pub max_lat_e7: i32,
+    /// Where the v8 shared section lives.
+    ///
+    /// `shared_len == 0` means no shared section: a v7 archive, whose serialization is the
+    /// byte-identical 128-byte header with version byte 7. Nonzero means a v8 archive (160
+    /// bytes, version byte 8) whose shared section starts at `shared_offset` and runs
+    /// `shared_len` bytes. What lane C's `shared_location()` hook reads.
+    pub shared_offset: u64,
+    pub shared_len: u64,
+    /// Header-level shared-section flags. None are defined yet, so any set bit is refused —
+    /// the same rule as the top-level flags: a flag changes how the section must be handled,
+    /// and ignoring one would draw the map wrong.
+    pub shared_flags: u16,
+    /// How many pool directory entries the shared section carries.
+    ///
+    /// Mirrors the section's own pool count so `Header::check` can require the directory (its
+    /// header plus this many pool entries) to fit inside the section — and inside the opening
+    /// prefix — before any pool is fetched.
+    pub shared_pools: u32,
 }
 
 impl Header {
@@ -154,6 +198,27 @@ impl Header {
         self.flags & FLAG_RINGS_VALIDATED != 0
     }
 
+    /// `(offset, len)` of the shared section, or `None` on a v7 archive.
+    ///
+    /// Absent ⟺ `shared_len == 0`. What lane C's `shared_location()` hook calls: on `Some`
+    /// it fetches and parses the section, on `None` it stays on the v7 cost contract with no
+    /// request made. Reads the header only, never the wire.
+    pub fn shared_location(&self) -> Option<(u64, u64)> {
+        (self.shared_len != 0).then_some((self.shared_offset, self.shared_len))
+    }
+
+    /// This header's wire length: 128 without a shared section, 160 with one.
+    ///
+    /// What the writer offsets the dictionary by: the dictionary starts where the header
+    /// ends, and the header ends 32 bytes later on a v8 archive.
+    pub fn wire_len(&self) -> usize {
+        if self.shared_len == 0 {
+            HEADER_LEN
+        } else {
+            HEADER_LEN_V8
+        }
+    }
+
     /// Read a header out of the opening prefix.
     ///
     /// Byte map, all little-endian: `0..7` magic, `7` format version, `8..10` header_len,
@@ -162,7 +227,12 @@ impl Header {
     /// `44..48` leaf_entry_capacity, `48..56` root_offset, `56..60` root_len, `60..64`
     /// leaf_count, `64..72` leaf_offset, `72..76` leaf_len, `76..80` reserved, `80..88`
     /// data_offset, `88..96` data_len, `96..104` tiles_addressed, `104..112` bodies_written,
-    /// `112..128` the bbox as four `i32` of degrees times 1e7.
+    /// `112..128` the bbox as four `i32` of degrees times 1e7. On a v8 archive (byte 7 is 8,
+    /// `header_len` 160) the tail follows: `128..136` shared_offset, `136..144` shared_len,
+    /// `144..146` shared_flags, `146..150` shared_pools, `150..160` reserved zero. A
+    /// version-7 header is 128 bytes and parses with the shared fields zeroed; anything past
+    /// byte 128 in its buffer is the dictionary, not the header, and is ignored the way it
+    /// always was.
     ///
     /// Every `u64` sits on an 8-byte boundary so a reader may take them as aligned loads.
     pub fn parse(buf: &[u8]) -> Result<Header> {
@@ -172,10 +242,10 @@ impl Header {
         if &buf[0..7] != MAGIC {
             return err("not a .mamaps archive (bad magic)");
         }
-        if buf[7] != FORMAT_VERSION {
+        let version = buf[7];
+        if version != FORMAT_VERSION && version != FORMAT_VERSION_V8 {
             return err(format!(
-                "unsupported .mamaps format version {} (this reader speaks v{FORMAT_VERSION})",
-                buf[7],
+                "unsupported .mamaps format version {version} (this reader speaks v{FORMAT_VERSION} and v{FORMAT_VERSION_V8})",
             ));
         }
         let u16_at = |o: usize| u16::from_le_bytes([buf[o], buf[o + 1]]);
@@ -194,9 +264,21 @@ impl Header {
             ])
         };
 
+        // v7 ⟺ 128 bytes, v8 ⟺ 160: each version declares exactly one length, so a header
+        // claiming otherwise — a v7 length behind a v8 version or the reverse — is refused
+        // rather than parsed as the shape it resembles.
         let header_len = u16_at(8);
-        if header_len as usize != HEADER_LEN {
-            return err(format!("a .mamaps header declares {header_len} bytes, not {HEADER_LEN}"));
+        let wire_len = if version == FORMAT_VERSION { HEADER_LEN } else { HEADER_LEN_V8 };
+        if header_len as usize != wire_len {
+            return err(format!(
+                "a .mamaps v{version} header declares {header_len} bytes, not {wire_len}"
+            ));
+        }
+        if buf.len() < wire_len {
+            return err(format!(
+                "a .mamaps v{version} header needs {wire_len} bytes, got {}",
+                buf.len()
+            ));
         }
         let flags = u16_at(10);
         // An unknown flag means the writer recorded something about the bodies that this reader
@@ -225,6 +307,31 @@ impl Header {
             }
             u32_at(72) as u64
         };
+        // The v8 tail. A v7 header has no tail: its bytes past 128 are the dictionary the
+        // prefix also carries, so they are ignored and the shared fields read as zero. v8
+        // names a section or it is malformed: a 160-byte header with a zero-length section,
+        // unknown shared flags, or a dirty reserved tail is refused here.
+        let (shared_offset, shared_len, shared_flags, shared_pools) =
+            if version == FORMAT_VERSION_V8 {
+                let shared_offset = u64_at(128);
+                let shared_len = u64_at(136);
+                let shared_flags = u16_at(144);
+                let shared_pools = u32_at(146);
+                if shared_len == 0 {
+                    return err("a .mamaps v8 header names a zero-length shared section");
+                }
+                if shared_flags != 0 {
+                    return err(format!(
+                        "a .mamaps v8 header sets unknown shared flags {shared_flags:#06X}"
+                    ));
+                }
+                if buf[150..160].iter().any(|&b| b != 0) {
+                    return err("a .mamaps v8 header has a non-zero reserved tail");
+                }
+                (shared_offset, shared_len, shared_flags, shared_pools)
+            } else {
+                (0, 0, 0, 0)
+            };
         let header = Header {
             flags,
             compression: buf[12],
@@ -249,6 +356,10 @@ impl Header {
             min_lat_e7: i32_at(116),
             max_lon_e7: i32_at(120),
             max_lat_e7: i32_at(124),
+            shared_offset,
+            shared_len,
+            shared_flags,
+            shared_pools,
         };
         header.check()?;
         Ok(header)
@@ -282,8 +393,53 @@ impl Header {
         if self.leaf_count == 0 {
             return err("a .mamaps archive needs at least one leaf");
         }
-        if self.file_len < HEADER_LEN as u64 {
+        // A v8 archive's header is 160 bytes, so a section may not start inside the tail any
+        // more than inside the first 128. Absent ⟺ all four shared fields zero; anything else
+        // beside a zero length is a section claimed and not named.
+        let header_floor = if self.shared_len == 0 {
+            if self.shared_offset != 0 || self.shared_flags != 0 || self.shared_pools != 0 {
+                return err("a .mamaps header names a shared section of zero length");
+            }
+            HEADER_LEN as u64
+        } else {
+            HEADER_LEN_V8 as u64
+        };
+        if self.file_len < header_floor {
             return err(format!("a .mamaps header declares a {} byte file", self.file_len));
+        }
+        if self.shared_len != 0 {
+            // The pool directory sits at the section's head: its entries must fit inside the
+            // section, and the directory itself must fit the opening prefix — hundreds of
+            // pools past the seven kinds the shared section defines is corruption, refused
+            // before any pool is fetched rather than allocated into.
+            let dir = (super::shared::SHARED_HEADER_LEN as u64)
+                .checked_add(
+                    (self.shared_pools as u64)
+                        .checked_mul(super::shared::SHARED_POOL_ENTRY_LEN as u64)
+                        .ok_or_else(|| {
+                            crate::proto::Error(
+                                "a .mamaps shared section's directory overflows".to_string(),
+                            )
+                        })?,
+                )
+                .ok_or_else(|| {
+                    crate::proto::Error(
+                        "a .mamaps shared section's directory overflows".to_string(),
+                    )
+                })?;
+            if dir > self.shared_len {
+                return err(format!(
+                    "a .mamaps shared section of {} bytes cannot hold its {} pool(s)",
+                    self.shared_len, self.shared_pools,
+                ));
+            }
+            if dir > crate::stream::OPEN_PREFIX_BYTES as u64 {
+                return err(format!(
+                    "a .mamaps shared section names {} pool(s), whose directory does not fit the {} byte opening prefix",
+                    self.shared_pools,
+                    crate::stream::OPEN_PREFIX_BYTES,
+                ));
+            }
         }
         let sections = [
             ("the dictionary", self.dict_offset, self.dict_len as u64),
@@ -292,7 +448,7 @@ impl Header {
             ("the tile data", self.data_offset, self.data_len),
         ];
         for (what, offset, len) in sections {
-            if offset < HEADER_LEN as u64 {
+            if offset < header_floor {
                 return err(format!("{what} overlaps the .mamaps header"));
             }
             match offset.checked_add(len) {
@@ -312,6 +468,36 @@ impl Header {
                 }
             }
         }
+        // The shared section against each of the four above: same three refusals — inside
+        // the header, past the end (including an offset+length that wraps), overlapping a
+        // section — with its own name on the diagnostic.
+        if self.shared_len != 0 {
+            if self.shared_offset < header_floor {
+                return err("the shared section overlaps the .mamaps header");
+            }
+            // Checked once, so the overlap compares below cannot wrap.
+            let shared_end =
+                self.shared_offset.checked_add(self.shared_len).ok_or_else(|| {
+                    crate::proto::Error(
+                        "a .mamaps shared section's extent overflows".to_string(),
+                    )
+                })?;
+            if shared_end > self.file_len {
+                return err("the shared section runs past the end of the .mamaps file");
+            }
+            for &(other, other_offset, other_len) in &sections {
+                if other_len == 0 {
+                    continue;
+                }
+                if self.shared_offset < other_offset + other_len
+                    && other_offset < shared_end
+                {
+                    return err(format!(
+                        "the shared section and {other} overlap in the .mamaps file"
+                    ));
+                }
+            }
+        }
         if self.root_len as usize % super::index::ROOT_ENTRY_LEN != 0 {
             return err(format!(
                 "a .mamaps root index of {} bytes is not a whole number of {} byte entries",
@@ -325,11 +511,23 @@ impl Header {
         Ok(())
     }
 
+    /// The v7 bytes, or the v8 bytes when this names a shared section.
+    ///
+    /// Absent (`shared_len == 0`) serializes to the byte-identical 128-byte v7 header with
+    /// version byte 7 — which is what keeps a shared-table-off build byte-identical v7.
+    /// Present serializes to 160 bytes with version byte 8 and the tail at 128..160.
     pub fn serialize(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(HEADER_LEN);
+        let v8 = self.shared_len != 0;
+        if !v8 {
+            debug_assert_eq!(self.shared_offset, 0, "a v7 header names no shared section");
+            debug_assert_eq!(self.shared_flags, 0, "a v7 header sets no shared flags");
+            debug_assert_eq!(self.shared_pools, 0, "a v7 header names no shared pools");
+        }
+        let wire_len = if v8 { HEADER_LEN_V8 } else { HEADER_LEN };
+        let mut out = Vec::with_capacity(wire_len);
         out.extend_from_slice(MAGIC);
-        out.push(FORMAT_VERSION);
-        out.extend_from_slice(&(HEADER_LEN as u16).to_le_bytes());
+        out.push(if v8 { FORMAT_VERSION_V8 } else { FORMAT_VERSION });
+        out.extend_from_slice(&(wire_len as u16).to_le_bytes());
         out.extend_from_slice(&self.flags.to_le_bytes());
         out.push(self.compression);
         out.push(self.layer_count);
@@ -360,7 +558,14 @@ impl Header {
         for v in [self.min_lon_e7, self.min_lat_e7, self.max_lon_e7, self.max_lat_e7] {
             out.extend_from_slice(&v.to_le_bytes());
         }
-        debug_assert_eq!(out.len(), HEADER_LEN);
+        if v8 {
+            out.extend_from_slice(&self.shared_offset.to_le_bytes());
+            out.extend_from_slice(&self.shared_len.to_le_bytes());
+            out.extend_from_slice(&self.shared_flags.to_le_bytes());
+            out.extend_from_slice(&self.shared_pools.to_le_bytes());
+            out.extend_from_slice(&[0u8; 10]);
+        }
+        debug_assert_eq!(out.len(), wire_len);
         out
     }
 }
@@ -395,6 +600,10 @@ mod tests {
             min_lat_e7: 324_000_000,
             max_lon_e7: -1_140_000_000,
             max_lat_e7: 420_000_000,
+            shared_offset: 0,
+            shared_len: 0,
+            shared_flags: 0,
+            shared_pools: 0,
         }
     }
 
@@ -409,7 +618,7 @@ mod tests {
     #[test]
     fn every_u64_field_is_eight_byte_aligned() {
         // So a reader may take them as aligned loads out of a zero-copy prefix slice.
-        for offset in [16, 24, 32, 48, 64, 80, 88, 96, 104] {
+        for offset in [16, 24, 32, 48, 64, 80, 88, 96, 104, 128, 136] {
             assert_eq!(offset % 8, 0, "a u64 sits at byte {offset}");
         }
     }
@@ -430,8 +639,8 @@ mod tests {
         wrong_magic[0] = b'P';
         assert!(Header::parse(&wrong_magic).is_err(), "PMTiles is not this format");
         let mut wrong_version = bytes.clone();
-        wrong_version[7] = FORMAT_VERSION + 1;
-        assert!(Header::parse(&wrong_version).is_err(), "a newer format");
+        wrong_version[7] = FORMAT_VERSION_V8 + 1;
+        assert!(Header::parse(&wrong_version).is_err(), "a version past v8");
     }
 
     /// An unknown flag means the writer said something about the bodies this reader would
@@ -532,5 +741,186 @@ mod tests {
         bad.data_offset = bad.leaf_offset + bad.leaf_len;
         bad.file_len = bad.data_offset + bad.data_len;
         assert!(Header::parse(&bad.serialize()).is_err(), "extended with small leaf_len must be rejected");
+    }
+
+    // Fail-watch convention (lane B): each test pins one wire fact as a literal, so a
+    // revert of that fact quotes its failure (`left` vs `right`) rather than a vague
+    // mismatch. Revert → quote the failure → restore.
+
+    /// A header naming a shared section past the tile data: every v7 section shifted by
+    /// the 32-byte tail, the section itself last, `file_len` covering it.
+    fn plausible_v8() -> Header {
+        let v7 = plausible();
+        let shift = (HEADER_LEN_V8 - HEADER_LEN) as u64;
+        Header {
+            dict_offset: v7.dict_offset + shift,
+            root_offset: v7.root_offset + shift,
+            leaf_offset: v7.leaf_offset + shift,
+            data_offset: v7.data_offset + shift,
+            shared_offset: v7.data_offset + shift + v7.data_len,
+            shared_len: 512,
+            file_len: v7.data_offset + shift + v7.data_len + 512,
+            shared_flags: 0,
+            // The seven pool kinds the shared section defines.
+            shared_pools: 7,
+            ..v7
+        }
+    }
+
+    /// Fail-watched: the v8 shape. 160 bytes behind version byte 8, field positions
+    /// identical to v7 (lengths untouched, offsets shifted by exactly the tail), the tail
+    /// naming the section. A revert of the version byte quotes `left: 7, right: 8`; of the
+    /// length, `left: 128, right: 160`.
+    #[test]
+    fn a_v8_header_is_160_bytes_with_a_v7_identical_first_128() {
+        let v8 = plausible_v8();
+        let bytes = v8.serialize();
+        let v7bytes = plausible().serialize();
+        assert_eq!(bytes.len(), 160, "a v8 header is 160 bytes");
+        assert_eq!(bytes[7], 8, "the version byte marks v8");
+        assert_eq!(&bytes[8..10], &160u16.to_le_bytes(), "the header declares 160");
+        assert_eq!(&bytes[0..7], &v7bytes[0..7], "magic");
+        assert_eq!(&bytes[10..24], &v7bytes[10..24], "flags through build_id");
+        assert_eq!(&bytes[24..32], &4640u64.to_le_bytes(), "file_len covers the section");
+        // Offsets shift by exactly the 32-byte tail; lengths are untouched.
+        for (at, off) in [(32usize, 160u64), (48, 672u64), (64, 736u64), (80, 768u64)] {
+            assert_eq!(&bytes[at..at + 8], &off.to_le_bytes(), "offset at {at}");
+        }
+        assert_eq!(&bytes[40..44], &v7bytes[40..44], "dict_len");
+        assert_eq!(&bytes[56..60], &v7bytes[56..60], "root_len");
+        assert_eq!(&bytes[72..76], &v7bytes[72..76], "leaf_len low");
+        assert_eq!(&bytes[88..112], &v7bytes[88..112], "data_len, tiles, bodies");
+        assert_eq!(&bytes[112..128], &v7bytes[112..128], "bbox");
+        // The tail itself, little-endian: section at 4128 for 512 bytes, 7 pools.
+        assert_eq!(&bytes[128..136], &4128u64.to_le_bytes(), "shared_offset");
+        assert_eq!(&bytes[136..144], &512u64.to_le_bytes(), "shared_len");
+        assert_eq!(&bytes[144..146], &0u16.to_le_bytes(), "shared_flags");
+        assert_eq!(&bytes[146..150], &7u32.to_le_bytes(), "shared_pools");
+        assert_eq!(&bytes[150..160], &[0u8; 10], "reserved tail");
+        assert_eq!(Header::parse(&bytes).expect("should parse"), v8);
+        // It arrives inside a 16 KiB prefix like every header.
+        let mut prefixed = bytes.clone();
+        prefixed.extend_from_slice(&[0xAB; 1024]);
+        assert!(Header::parse(&prefixed).is_ok());
+    }
+
+    /// Fail-watched: the v8 reader still opens a 128-byte v7 header, with the shared
+    /// fields zeroed and no shared section.
+    #[test]
+    fn a_128_byte_v7_header_opens_with_no_shared_section() {
+        let header = Header::parse(&plausible().serialize()).expect("v7 still parses");
+        assert_eq!((header.shared_offset, header.shared_len), (0, 0));
+        assert_eq!(header.shared_location(), None, "v7 carries no shared section");
+        assert_eq!(header.wire_len(), 128);
+    }
+
+    /// Fail-watched: version and length are bound together. A v7 version declaring 160,
+    /// a v8 version declaring 128, a v8 header cut to 159 bytes, and anything past v8
+    /// are all refused — while 8 itself parses.
+    #[test]
+    fn a_version_length_mismatch_is_refused() {
+        let mut v7declares160 = plausible().serialize();
+        v7declares160[8..10].copy_from_slice(&160u16.to_le_bytes());
+        assert!(Header::parse(&v7declares160).is_err(), "v7 declaring 160");
+        let mut v8declares128 = plausible_v8().serialize();
+        v8declares128[8..10].copy_from_slice(&128u16.to_le_bytes());
+        assert!(Header::parse(&v8declares128).is_err(), "v8 declaring 128");
+        let full = plausible_v8().serialize();
+        assert!(Header::parse(&full[..159]).is_err(), "a v8 header cut to 159 bytes");
+        assert!(Header::parse(&full[..128]).is_err(), "a v8 version in 128 bytes");
+        let mut past = full.clone();
+        past[7] = 9;
+        assert!(Header::parse(&past).is_err(), "a version past v8");
+    }
+
+    /// Fail-watched: the tail's own hygiene. Unknown shared flags and a dirty reserved
+    /// tail are refused at parse; a 160-byte header naming a zero-length section is
+    /// refused with it.
+    #[test]
+    fn a_dirty_shared_tail_is_refused() {
+        let mut flags = plausible_v8().serialize();
+        flags[144] = 1;
+        assert!(Header::parse(&flags).is_err(), "unknown shared flags");
+        let mut reserved = plausible_v8().serialize();
+        reserved[159] = 1;
+        assert!(Header::parse(&reserved).is_err(), "a dirty reserved tail");
+        let mut zero_len = plausible_v8().serialize();
+        zero_len[136..144].copy_from_slice(&0u64.to_le_bytes());
+        assert!(Header::parse(&zero_len).is_err(), "v8 naming a zero-length section");
+    }
+
+    /// Fail-watched: the shared section gets the same three refusals as every other
+    /// section — inside the header (including the 32-byte v8 tail), past the end
+    /// (including an offset+length that wraps), overlapping a section — plus the
+    /// zero-length contradiction a hand-built header can state.
+    #[test]
+    fn a_shared_section_must_fit_without_overlapping() {
+        let cases: &[(&str, fn(&mut Header))] = &[
+            ("shared over the dictionary", |h| {
+                h.shared_offset = 200;
+            }),
+            ("shared over the tile data", |h| {
+                h.shared_offset = 1000;
+                h.shared_len = 100;
+            }),
+            ("shared past the end", |h| {
+                h.shared_offset = h.file_len - 100;
+            }),
+            ("shared inside the v8 tail", |h| {
+                h.shared_offset = 140;
+            }),
+            ("shared wrapping the address space", |h| {
+                h.shared_offset = u64::MAX - 8;
+                h.shared_len = 64;
+            }),
+        ];
+        for (what, break_it) in cases {
+            let mut header = plausible_v8();
+            break_it(&mut header);
+            assert!(Header::parse(&header.serialize()).is_err(), "{what} should be refused");
+        }
+        // Zero length beside a nonzero offset is a section claimed and not named.
+        let mut header = plausible();
+        header.shared_offset = 4096;
+        assert!(header.check().is_err(), "a zero-length section with an offset");
+    }
+
+    /// Fail-watched: the pool directory must fit its section and the opening prefix.
+    /// 100 pools need 2432 bytes of directory, past the 512-byte section; 1000 pools
+    /// need 24032, inside a 1 MiB section but past the 16 KiB prefix a corrupt count
+    /// must never make a reader allocate into.
+    #[test]
+    fn a_pool_directory_must_fit_its_section_and_the_opening_prefix() {
+        let mut past_section = plausible_v8();
+        past_section.shared_pools = 100;
+        assert!(
+            Header::parse(&past_section.serialize()).is_err(),
+            "a directory past its section"
+        );
+        let mut past_prefix = plausible_v8();
+        past_prefix.shared_len = 1 << 20;
+        past_prefix.file_len = past_prefix.shared_offset + past_prefix.shared_len;
+        past_prefix.shared_pools = 1000;
+        assert!(
+            Header::parse(&past_prefix.serialize()).is_err(),
+            "a directory past the opening prefix"
+        );
+        let mut absurd = plausible_v8();
+        absurd.shared_pools = u32::MAX;
+        assert!(
+            Header::parse(&absurd.serialize()).is_err(),
+            "an absurd pool count"
+        );
+    }
+
+    /// Fail-watched: the lane C wiring. `shared_location()` is `None` on v7 and the
+    /// section on v8; `wire_len()` is the dictionary's offset on either shape.
+    #[test]
+    fn shared_location_is_none_for_v7_and_the_section_for_v8() {
+        assert_eq!(plausible().shared_location(), None);
+        assert_eq!(plausible().wire_len(), HEADER_LEN);
+        let v8 = plausible_v8();
+        assert_eq!(v8.shared_location(), Some((4128, 512)));
+        assert_eq!(v8.wire_len(), HEADER_LEN_V8);
     }
 }
