@@ -118,13 +118,17 @@ fun SecureFolderPage(
                             isSelected = photo.id in selectedIds,
                             isSelectionMode = isSelectionMode,
                             secureFolderViewModel = secureFolderViewModel,
-                        ) {
-                            if (isSelectionMode) {
-                                secureFolderViewModel.toggleSelection(photo.id)
-                            } else {
+                            onClick = {
+                                if (isSelectionMode) {
+                                    secureFolderViewModel.toggleSelection(photo.id)
+                                } else {
+                                    backStack.add(Route.VaultViewer(photo.id))
+                                }
+                            },
+                            onLongClick = {
                                 secureFolderViewModel.addSelection(photo.id)
-                            }
-                        }
+                            },
+                        )
                     }
                 }
             }
@@ -141,6 +145,7 @@ fun VaultPhotoItem(
     isSelectionMode: Boolean,
     secureFolderViewModel: SecureFolderViewModel,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = onClick,
 ) {
     val bitmap by remember(photo.thumbnailPath) {
         secureFolderViewModel.thumbnailState(photo.thumbnailPath)
@@ -161,7 +166,7 @@ fun VaultPhotoItem(
             .clip(RoundedCornerShape(8.dp))
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onClick
+                onLongClick = onLongClick
             ),
         contentAlignment = Alignment.Center
     ) {

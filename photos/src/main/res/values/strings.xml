@@ -46,6 +46,10 @@
 
     <!-- Generic selection count badge in TopAppBar of Gallery, SecureFolder, Trash. %1$d = number selected -->
     <string name="items_selected"><xliff:g id="count" example="5">%1$d</xliff:g> selected</string>
+    <!-- Vault viewer error when the encrypted file cannot be decrypted to the cache. Sentence -->
+    <string name="vault_viewer_decrypt_failed">Couldn\'t open this item</string>
+    <!-- Vault viewer message when the item no longer exists in the vault. Sentence -->
+    <string name="vault_viewer_not_found">This item is no longer in the Secure Folder</string>
     <!-- Gallery grouping header: month + year. %1$s = month name e.g. January, %2$d = year e.g. 2024 -->
     <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2024">%2$d</xliff:g></string>
     <!-- Search bar placeholder hint. Noun phrase with ellipsis -->

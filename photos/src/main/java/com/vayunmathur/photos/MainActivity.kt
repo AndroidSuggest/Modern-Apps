@@ -81,6 +81,7 @@ import com.vayunmathur.photos.ui.PeoplePage
 import com.vayunmathur.photos.ui.PhotoPage
 import com.vayunmathur.photos.ui.SecureFolderPage
 import com.vayunmathur.photos.ui.TrashPage
+import com.vayunmathur.photos.ui.VaultViewerPage
 import com.vayunmathur.photos.ui.WallpaperPage
 import com.vayunmathur.photos.util.GalleryViewModel
 import com.vayunmathur.photos.util.GalleryViewModelFactory
@@ -248,6 +249,9 @@ sealed interface Route: NavKey {
     data object SecureFolder: Route
 
     @Serializable
+    data class VaultViewer(val vaultId: Long): Route
+
+    @Serializable
     data class Wallpaper(val id: Long, val uri: String? = null) : Route
 }
 
@@ -348,6 +352,15 @@ fun Navigation(
 
         entry<Route.SecureFolder>(metadata = SiblingPage()) {
             SecureFolderEntry(backStack, secureFolderViewModel, vaultPhotoDao != null, vaultPassword)
+        }
+
+        entry<Route.VaultViewer>(metadata = ListDetailPage()) {
+            val password = vaultPassword
+            if (password != null) {
+                VaultViewerPage(backStack, it.vaultId, password, secureFolderViewModel)
+            } else {
+                SecureFolderEntry(backStack, secureFolderViewModel, false, null)
+            }
         }
     }
 }

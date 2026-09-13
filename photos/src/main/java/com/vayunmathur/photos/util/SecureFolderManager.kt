@@ -201,6 +201,42 @@ class SecureFolderManager(val context: Context) {
         }
     }
 
+    /**
+     * Decrypt the vault file at [path] into the app cache so it can be viewed
+     * full-screen without touching the MediaStore. The output lives under
+     * [cacheDir]/vault_view/ and is plaintext while it exists, so callers must
+     * serve it via FileProvider (never a file:// Uri to another app) and delete
+     * it when the viewer closes (see [clearViewerCache]).
+     * Returns null when the file is missing or decryption fails.
+     */
+    fun decryptToCacheFile(path: String, password: String, cacheDir: File): File? {
+        val inputFile = File(path)
+        if (!inputFile.exists()) return null
+        val viewerDir = File(cacheDir, "vault_view")
+        if (!viewerDir.exists() && !viewerDir.mkdirs()) return null
+        val outputFile = File(viewerDir, inputFile.nameWithoutExtension)
+        return try {
+            val key = getSecretKey(password)
+            FileInputStream(inputFile).use { fis ->
+                FileOutputStream(outputFile).use { fos ->
+                    if (!decryptToOutputStream(fis, fos, key)) {
+                        outputFile.delete()
+                        return null
+                    }
+                }
+            }
+            outputFile
+        } catch (e: Exception) {
+            outputFile.delete()
+            null
+        }
+    }
+
+    /** Delete plaintext files left under [cacheDir]/vault_view (see [decryptToCacheFile]). */
+    fun clearViewerCache(cacheDir: File) {
+        File(cacheDir, "vault_view").listFiles()?.forEach { runCatching { it.delete() } }
+    }
+
     fun decryptAndRestore(vaultPhoto: VaultPhoto, password: String): Uri? {
         val inputFile = File(vaultPhoto.path)
         if (!inputFile.exists()) return null
