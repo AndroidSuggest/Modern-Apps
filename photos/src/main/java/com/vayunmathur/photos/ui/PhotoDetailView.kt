@@ -2,6 +2,7 @@ package com.vayunmathur.photos.ui
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.MediaStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -9,7 +10,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,7 +26,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -49,18 +54,22 @@ import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.FadeVisibility
 import com.vayunmathur.library.ui.FilledTonalButton
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.util.sharedContainer
 import com.vayunmathur.photos.R
 import com.vayunmathur.photos.data.OcrLayout
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.domain.OcrBoxStore
+import com.vayunmathur.photos.platform.MotionPhotoVideo
 import com.vayunmathur.photos.util.PhotoFaceBoxes
 import com.vayunmathur.photos.util.PhotoMapViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.absoluteValue
 
 // Helper class to store zoom information
@@ -178,6 +187,23 @@ fun PhotoDetailView(
     val isSphere = photo.panoData?.isSphere == true
     var showImmersive by remember(photo.id) { mutableStateOf(false) }
 
+    // Motion photos (still JPEG with an embedded MicroVideo clip) play like
+    // panoramas view: a toggle button replaces the still with the shared
+    // VideoPlayer. Detection opens the original bytes' XMP off the main
+    // thread and reads as not-motion on any failure; the grid is untouched
+    // (per-tile EXIF IO would jank scrolling), so the check lives here in the
+    // viewer only. The GIF path below is untouched: mimeType wins there.
+    val messenger = rememberMessenger()
+    val motionFailedMessage = stringResource(R.string.motion_photo_failed)
+    val canBeMotion = photo.videoData == null && !photo.isGif
+    val isMotionPhoto by produceState(initialValue = false, photo.id, canBeMotion) {
+        value = if (canBeMotion) MotionPhotoVideo.isMotionPhoto(context, photo.uri) else false
+    }
+    var motionPlaying by remember(photo.id) { mutableStateOf(false) }
+    var motionFile by remember(photo.id) { mutableStateOf<File?>(null) }
+    var motionExtracting by remember(photo.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     Box(
         modifier =
             Modifier.fillMaxSize()
@@ -201,7 +227,7 @@ fun PhotoDetailView(
                 translationX = zoom.offset.x
                 translationY = zoom.offset.y
             }
-        if (photo.videoData == null) {
+        if (photo.videoData == null && !(motionPlaying && motionFile != null)) {
             val imageModifier =
                 Modifier.fillMaxSize()
                     .onGloballyPositioned { layoutCoordinates ->
@@ -242,6 +268,19 @@ fun PhotoDetailView(
                     contentScale = ContentScale.Fit
                 )
             }
+        } else if (motionPlaying && motionFile != null) {
+            // Motion-photo playback. The seek bar is the frame inspector:
+            // scrubbing pauses polling and seeks on release, like videos.
+            // Autoplay is gated on the settled page, mirroring plain videos.
+            VideoPlayer(
+                modifier =
+                    Modifier.fillMaxSize()
+                        .onGloballyPositioned { size = it.size }
+                        .then(zoomModifier),
+                uri = Uri.fromFile(motionFile!!),
+                isMetadataVisible = isMetadataVisible,
+                isSettledPage = isSettled && motionPlaying
+            )
         } else {
             VideoPlayer(
                 modifier =
@@ -299,19 +338,56 @@ fun PhotoDetailView(
                 pageOffset = pageOffset,
                 peopleCount = peopleCount,
                 isSphere = isSphere,
+                isMotionPhoto = isMotionPhoto,
                 onSetWallpaper = onSetWallpaper,
                 onEditPhoto = onEditPhoto,
                 onDelete = onDelete,
             )
         }
 
-        if (isPanorama) {
+        if (isPanorama || isMotionPhoto) {
             FadeVisibility(
                 visible = isMetadataVisible,
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
             ) {
-                FilledTonalButton(onClick = { showImmersive = true }) {
-                    Text(stringResource(if (isSphere) R.string.view_360 else R.string.view_panorama))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (isPanorama) {
+                        FilledTonalButton(onClick = { showImmersive = true }) {
+                            Text(stringResource(if (isSphere) R.string.view_360 else R.string.view_panorama))
+                        }
+                    }
+                    if (isMotionPhoto) {
+                        FilledTonalButton(
+                            onClick = {
+                                if (motionPlaying) {
+                                    motionPlaying = false
+                                } else if (motionFile != null) {
+                                    motionPlaying = true
+                                } else if (!motionExtracting) {
+                                    motionExtracting = true
+                                    scope.launch {
+                                        val file = MotionPhotoVideo.motionVideoFile(context, photo.uri, photo.id)
+                                        motionExtracting = false
+                                        if (file != null) {
+                                            motionFile = file
+                                            motionPlaying = true
+                                        } else {
+                                            // Extraction failure: stay on the still and report it.
+                                            messenger.show(motionFailedMessage)
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !motionExtracting
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (motionPlaying) R.string.stop_motion_photo
+                                    else R.string.play_motion_photo
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }

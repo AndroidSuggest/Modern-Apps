@@ -45,6 +45,7 @@ internal fun PhotoMetadataCard(
     pageOffset: Float,
     peopleCount: Int = 0,
     isSphere: Boolean = false,
+    isMotionPhoto: Boolean = false,
     onSetWallpaper: (Photo) -> Unit = {},
     onEditPhoto: () -> Unit,
     onDelete: (Photo) -> Unit = {},
@@ -99,6 +100,11 @@ internal fun PhotoMetadataCard(
         }
         if (photo.panoData != null) {
             Text(text = if (isSphere) "360°" else stringResource(R.string.panorama), color = Color.LightGray)
+        }
+        // Motion badge lives in the viewer metadata only: the grid shows no
+        // motion marking, since detecting it needs per-file EXIF reads.
+        if (isMotionPhoto) {
+            Text(text = stringResource(R.string.motion_badge), color = Color.LightGray)
         }
         if (peopleCount > 0) {
             Text(
