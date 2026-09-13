@@ -126,6 +126,10 @@ class AutoViewModel : ViewModel() {
     val audioBytesSent: StateFlow<Long> = AutoSessionState.audioBytesSent
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), 0L)
 
+    /** Music PCM bytes captured into the ch5 sink this session. */
+    val musicBytesCaptured: StateFlow<Long> = AutoSessionState.musicBytesCaptured
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), 0L)
+
     /** ch6 mic turns that yielded retained PCM this session. */
     val micTurns: StateFlow<Long> = AutoSessionState.micTurns
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), 0L)

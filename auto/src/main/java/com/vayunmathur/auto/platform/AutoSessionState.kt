@@ -215,6 +215,10 @@ object AutoSessionState {
     private val _audioBytesSent = MutableStateFlow(0L)
     val audioBytesSent: StateFlow<Long> = _audioBytesSent.asStateFlow()
 
+    /** Music PCM bytes captured into the ch5 sink this session. */
+    private val _musicBytesCaptured = MutableStateFlow(0L)
+    val musicBytesCaptured: StateFlow<Long> = _musicBytesCaptured.asStateFlow()
+
     /** 0x800B sync pulses answered on ch4/5 this session. */
     private val _audioSyncs = MutableStateFlow(0L)
     val audioSyncs: StateFlow<Long> = _audioSyncs.asStateFlow()
@@ -303,6 +307,7 @@ object AutoSessionState {
         _navStatusPosts.value = 0
         _sinkStatus.value = emptyMap()
         _audioBytesSent.value = 0
+        _musicBytesCaptured.value = 0
         _audioSyncs.value = 0
         _audioAcks.value = 0
         _ttsSpoken.value = 0
@@ -474,6 +479,8 @@ object AutoSessionState {
             is AudioEvent.MicTurn -> _micTurns.value++
             AudioEvent.MicAcked -> _micAcks.value++
             AudioEvent.MicIdle -> Unit
+            is AudioEvent.MusicCaptured -> _musicBytesCaptured.value += event.bytes
+            is AudioEvent.MusicDropped -> Unit
         }
     }
 

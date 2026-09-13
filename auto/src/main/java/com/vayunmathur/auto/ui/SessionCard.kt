@@ -146,6 +146,7 @@ fun SessionCard(session: SessionSnapshot, modifier: Modifier = Modifier) {
             AudioRow(
                 sinkStatus = session.sinkStatus,
                 bytesSent = session.audioBytesSent,
+                musicCaptured = session.musicBytesCaptured,
                 micTurns = session.micTurns,
                 micAcks = session.micAcks,
                 ttsSpoken = session.ttsSpoken,

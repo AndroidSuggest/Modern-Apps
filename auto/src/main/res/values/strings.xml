@@ -289,6 +289,38 @@
     <string name="session_audio_bytes">Audio bytes</string>
     <!-- %1$d is PCM bytes framed out this session. -->
     <string name="session_audio_bytes_value"><xliff:g example="48000" id="bytes">%1$d</xliff:g></string>
+    <!-- Heading of the session-card row counting music PCM captured into ch5. -->
+    <string name="session_audio_music_captured">Music captured</string>
+    <!-- %1$d is music PCM bytes captured into the ch5 sink this session. -->
+    <string name="session_audio_music_captured_value"><xliff:g example="48000" id="bytes">%1$d</xliff:g></string>
+
+    <!-- Heading of the card gating car music. Both switches must be on before
+         phone audio reaches the head unit: the in-app consent below and the
+         system media-projection grant. -->
+    <string name="music_capture_headline">Music in the car</string>
+    <!-- Explains what the card gates: phone media audio leaves for the car
+         speakers only while consented and granted; otherwise it stays local. -->
+    <string name="music_capture_body">Send phone music to the car speakers while projecting. The phone stays quiet for music while capture runs; without both switches below, music plays on the phone as before.</string>
+    <!-- Row toggling the in-app music-capture switch. Capture stays off until
+         this is on AND the system projection grant below is granted. -->
+    <string name="music_capture_consent">Send music to the car</string>
+    <!-- Supporting text under the consent switch while capture is on. -->
+    <string name="music_capture_consent_on">Music plays on the car speakers while projecting</string>
+    <!-- Supporting text under the consent switch while capture is off. -->
+    <string name="music_capture_consent_off">Music stays on the phone until this is on</string>
+    <!-- Row opening the system media-projection consent dialog. -->
+    <string name="music_capture_projection">Screen-cast permission</string>
+    <!-- Shown when the system media-projection grant is stored. -->
+    <string name="music_capture_projection_granted">Allowed — MA Auto can capture media audio</string>
+    <!-- Shown when the system media-projection grant is not stored. -->
+    <string name="music_capture_projection_missing">Not allowed — grant permission to send music to the car</string>
+    <!-- Button launching the system media-projection consent dialog. -->
+    <string name="music_capture_allow">Allow</string>
+    <!-- Snackbar when the media-projection consent dialog is denied or fails. -->
+    <string name="music_capture_denied">Permission denied — music stays on the phone</string>
+    <!-- Ongoing notification while music capture runs (its own service holds
+         the media-projection token; %1$s is the product name). -->
+    <string name="music_capture_notification">Sending music to the car</string>
     <!-- Heading of the session-card row counting ch6 mic turns and acks. -->
     <string name="session_audio_mic">Car mic</string>
     <!-- %1$d is mic turns that yielded PCM, %2$d is chunks acked upstream. -->

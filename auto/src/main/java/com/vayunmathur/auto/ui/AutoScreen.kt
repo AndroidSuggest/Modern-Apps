@@ -63,6 +63,7 @@ fun AutoScreen(viewModel: AutoViewModel, onPairing: () -> Unit) {
         keysInjected = viewModel.keysInjected.collectAsStateWithLifecycle().value,
         scrollsInjected = viewModel.scrollsInjected.collectAsStateWithLifecycle().value,
         inputDropped = viewModel.inputDropped.collectAsStateWithLifecycle().value,
+        musicBytesCaptured = viewModel.musicBytesCaptured.collectAsStateWithLifecycle().value,
     )
     val scrollBehavior = appBarScrollBehavior()
     AppScaffold(
@@ -87,6 +88,7 @@ fun AutoScreen(viewModel: AutoViewModel, onPairing: () -> Unit) {
                 )
             }
             SessionCard(session = session, modifier = Modifier.padding(top = 16.dp))
+            MusicCaptureCard(modifier = Modifier.padding(top = 16.dp))
             MessagingConsentCard(modifier = Modifier.padding(top = 16.dp))
             MicPermissionCard(modifier = Modifier.padding(top = 16.dp))
             Text(
@@ -155,6 +157,8 @@ data class SessionSnapshot(
     val scrollsInjected: Long,
     /** ch8 reports dropped for lack of input focus this session. */
     val inputDropped: Long,
+    /** Music PCM bytes captured into the ch5 sink this session. */
+    val musicBytesCaptured: Long,
 )
 
 @Composable

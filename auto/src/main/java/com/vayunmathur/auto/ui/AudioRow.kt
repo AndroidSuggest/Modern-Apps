@@ -18,6 +18,7 @@ import com.vayunmathur.library.ui.Text
 fun AudioRow(
     sinkStatus: Map<AudioSinkRole, AudioSinkStatus>,
     bytesSent: Long,
+    musicCaptured: Long,
     micTurns: Long,
     micAcks: Long,
     ttsSpoken: Long,
@@ -35,6 +36,10 @@ fun AudioRow(
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_audio_bytes)) },
         supportingContent = { Text(stringResource(R.string.session_audio_bytes_value, bytesSent)) },
+    )
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.session_audio_music_captured)) },
+        supportingContent = { Text(stringResource(R.string.session_audio_music_captured_value, musicCaptured)) },
     )
     ListItem(
         headlineContent = { Text(stringResource(R.string.session_audio_mic)) },

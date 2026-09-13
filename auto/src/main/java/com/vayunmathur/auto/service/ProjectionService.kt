@@ -18,11 +18,13 @@ import com.vayunmathur.auto.platform.AutoSessionState
 import com.vayunmathur.auto.platform.CarTts
 import com.vayunmathur.auto.platform.GuidanceChannel
 import com.vayunmathur.auto.platform.InputChannel
+import com.vayunmathur.auto.platform.InputEvent
 import com.vayunmathur.auto.platform.MediaEvent
 import com.vayunmathur.auto.platform.MediaPlaybackMonitor
 import com.vayunmathur.auto.platform.MessagingEvent
 import com.vayunmathur.auto.platform.MicPermission
 import com.vayunmathur.auto.platform.MicSourceChannel
+import com.vayunmathur.auto.platform.MusicCaptureSinkHolder
 import com.vayunmathur.auto.platform.NavStatusChannel
 import com.vayunmathur.auto.platform.NightSource
 import com.vayunmathur.auto.platform.SensorChannel
@@ -178,7 +180,20 @@ class ProjectionService : Service() {
                     } else if (message.channelId == GalService.NOTIFICATION.id) {
                         messaging?.onMessage(message.channelId, message.type, message.payload)
                     } else if (message.channelId == GalService.INPUT_SOURCE.id) {
-                        input?.onMessage(message.channelId, message.type, message.payload)
+                        if (input == null) {
+                            // ch8 traffic with no owner: the channel was never
+                            // advertised with an input source, or openNext has not
+                            // run yet. Log, don't crash -- the owner binds on its
+                            // grant once advertised.
+                            Log.w(
+                                TAG,
+                                "ch8 input traffic with no input owner " +
+                                    "(0x${message.type.toString(16)}); dropping",
+                            )
+                            AutoSessionState.onInputEvent(InputEvent.DroppedNoFocus)
+                        } else {
+                            input?.onMessage(message.channelId, message.type, message.payload)
+                        }
                     } else if (message.channelId == GalService.SENSOR_SOURCE.id) {
                         sensors?.onMessage(message.channelId, message.type, message.payload)
                     } else if (message.channelId == GalService.AUDIO_SINK_GUIDANCE.id) {
@@ -206,6 +221,12 @@ class ProjectionService : Service() {
                 AutoSessionState.onFocusChanged(connection.session.focus)
                 audioSys?.onFocusChanged()
                 audioMedia?.onFocusChanged()
+                // Flapping back to input-allowed re-binds ch8: a head unit that
+                // parked input on NO_INPUT_FOCUS may need the echo to resume
+                // sending reports. requestBinding is idempotent.
+                if (connection.session.focus.inputAllowed) {
+                    input?.requestBinding()
+                }
             }
 
             // Phone-side TTS starts with the session, not with any channel
@@ -213,6 +234,12 @@ class ProjectionService : Service() {
             // the sink resolves lazily -- early utterances drop with a count.
             tts = CarTts(this, systemSink = { audioSys }, onEvent = AutoSessionState::onAudioEvent)
                 .also { it.start() }
+
+            // Music capture starts with the session too, in its own
+            // mediaProjection-typed service (the projection type cannot ride
+            // on this service -- see MusicCaptureService). No stored grant
+            // means fail-closed silence on ch5.
+            MusicCaptureService.startIfGranted(this)
 
             try {
                 pumpUntilGone(connection)
@@ -235,10 +262,13 @@ class ProjectionService : Service() {
                 audioSys = null
                 audioMedia?.release()
                 audioMedia = null
+                MusicCaptureSinkHolder.sink = null
                 mic?.release()
                 mic = null
                 tts?.stop()
                 tts = null
+                MusicCaptureService.stop(this)
+                MusicCaptureSinkHolder.sink = null
                 sensors?.release()
                 sensors = null
                 guidance?.release()
@@ -547,6 +577,9 @@ class ProjectionService : Service() {
                 focus = { connection.session.focus },
                 onEvent = AutoSessionState::onAudioEvent,
             )
+            // The music-capture service resolves this lazily per feed; publish
+            // it now so capture starts flowing once the sink starts.
+            MusicCaptureSinkHolder.sink = audioMedia
         }
         // ch6 advertises in the same wire-order pass; the owner starts
         // acking on the grant (see MicSourceChannel.onChannelOpen).

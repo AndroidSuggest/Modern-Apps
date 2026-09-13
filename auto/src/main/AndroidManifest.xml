@@ -29,6 +29,11 @@
          itself needs no permission (chunks are acked and counted regardless);
          without this grant the phone keeps no voice data (fail-closed). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Music capture into the ch5 media sink: AudioPlaybackCapture of the USAGE_MEDIA
+         mix needs the media-projection consent dialog, whose foreground service type
+         is mediaProjection. The capture runs only while consented in-app AND granted
+         here; either off means fail-closed silence on the head unit. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
     <!-- The car launcher resolves Maps / Music / dialer through PackageManager. Android 11+
          hides other apps by default, so these queries keep those lookups visible. The media
@@ -80,6 +85,15 @@
             android:name=".service.ProjectionService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+        <!-- Holds the media-projection token while music capture runs. Started
+             only after the user grants the consent dialog (see MusicCaptureGrant):
+             on API 34+ an FGS with type mediaProjection cannot start before the
+             projection is registered, so this lives apart from ProjectionService
+             rather than widening its foreground type and crashing bring-up. -->
+        <service
+            android:name=".service.MusicCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <!-- Answers the USB permission round-trip and accessory detach while no
              activity is up; both funnel into UsbConnector. The permission action

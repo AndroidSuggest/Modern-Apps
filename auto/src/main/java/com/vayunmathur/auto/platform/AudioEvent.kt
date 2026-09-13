@@ -45,4 +45,10 @@ sealed interface AudioEvent {
 
     /** Mic audio arrived but retention is off, so only the ack went out. */
     data object MicIdle : AudioEvent
+
+    /** Captured music PCM went to the media sink; [bytes] is the chunk size. */
+    data class MusicCaptured(val bytes: Long) : AudioEvent
+
+    /** A music chunk was dropped (no sink, not started); [reason] is short. */
+    data class MusicDropped(val reason: String) : AudioEvent
 }
