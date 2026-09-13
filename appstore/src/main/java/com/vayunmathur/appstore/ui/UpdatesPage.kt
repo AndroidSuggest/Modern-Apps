@@ -36,6 +36,7 @@ import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.IconDownload
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedButton
+import com.vayunmathur.library.ui.PullToRefreshBox
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 
@@ -68,104 +69,110 @@ fun UpdatesScreen(
         },
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (state.updates.isNotEmpty()) {
-                    Button(
-                        onClick = { actions.updateAll() },
-                        enabled = !anyInstalling,
-                        modifier = Modifier.weight(1f),
+        PullToRefreshBox(
+            isRefreshing = state.isChecking,
+            onRefresh = { actions.checkForUpdates() },
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (state.updates.isNotEmpty()) {
+                        Button(
+                            onClick = { actions.updateAll() },
+                            enabled = !anyInstalling,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            IconDownload()
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.update_all, state.updates.size))
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { actions.checkForUpdates() },
+                        enabled = !state.isChecking,
+                        modifier = if (state.updates.isEmpty()) Modifier.weight(1f) else Modifier,
                     ) {
-                        IconDownload()
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.update_all, state.updates.size))
+                        Text(stringResource(R.string.action_check_again))
                     }
                 }
-                OutlinedButton(
-                    onClick = { actions.checkForUpdates() },
-                    enabled = !state.isChecking,
-                    modifier = if (state.updates.isEmpty()) Modifier.weight(1f) else Modifier,
-                ) {
-                    Text(stringResource(R.string.action_check_again))
-                }
-            }
 
-            val status = state.statusMessage.takeIf { it.isNotBlank() }
-                ?: state.lastCheckedAt.takeIf { it > 0 }?.let {
-                    stringResource(
-                        R.string.updates_last_checked,
-                        DateUtils.getRelativeTimeSpanString(
-                            it,
-                            System.currentTimeMillis(),
-                            DateUtils.MINUTE_IN_MILLIS,
-                        ),
+                val status = state.statusMessage.takeIf { it.isNotBlank() }
+                    ?: state.lastCheckedAt.takeIf { it > 0 }?.let {
+                        stringResource(
+                            R.string.updates_last_checked,
+                            DateUtils.getRelativeTimeSpanString(
+                                it,
+                                System.currentTimeMillis(),
+                                DateUtils.MINUTE_IN_MILLIS,
+                            ),
+                        )
+                    }
+                if (status != null) {
+                    Text(
+                        status,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
-            if (status != null) {
-                Text(
-                    status,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-            }
 
-            if (state.updates.isEmpty()) {
-                EmptyState(
-                    title = stringResource(R.string.all_apps_up_to_date),
-                    message = stringResource(R.string.updates_empty_message),
-                    icon = { IconCheck() },
-                )
-            } else {
-                LazyColumn(
-                    Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 24.dp),
-                ) {
-                    item("count") {
-                        Text(
-                            pluralStringResource(
-                                R.plurals.updates_count,
-                                state.updates.size,
-                                state.updates.size,
-                            ),
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
-                    items(state.updates, key = { it.packageName }) { app ->
-                        val stage = state.stages[app.packageName]
-                        val installed = state.installedInfos[app.packageName]
-                        val versionLabel = installed?.let { info ->
-                            val old = info.versionName?.let { "$it (${info.versionCode})" }
-                                ?: info.versionCode.toString()
-                            val new = app.versionName?.let { "$it (${app.versionCode})" }
-                                ?: app.versionCode.toString()
-                            stringResource(R.string.version_update, old, new)
+                if (state.updates.isEmpty()) {
+                    EmptyState(
+                        title = stringResource(R.string.all_apps_up_to_date),
+                        message = stringResource(R.string.updates_empty_message),
+                        icon = { IconCheck() },
+                    )
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 24.dp),
+                    ) {
+                        item("count") {
+                            Text(
+                                pluralStringResource(
+                                    R.plurals.updates_count,
+                                    state.updates.size,
+                                    state.updates.size,
+                                ),
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
                         }
-                        AppRow(
-                            app = app,
-                            isInstalled = true,
-                            stage = stage,
-                            installedIcon = state.installedIcons[app.packageName],
-                            versionLabel = versionLabel,
-                            onClick = { onAppClick(app) },
-                            trailing = {
-                                Button(
-                                    onClick = { actions.install(app) },
-                                    enabled = stage == null || stage is InstallStage.Failed,
-                                ) {
-                                    Text(stringResource(R.string.action_update))
-                                }
-                            },
-                            // Library keys the same app with the same key, but the tabs are a
-                            // pager that only composes the settled page, so the two are never
-                            // origins at the same time.
-                            sharedKey = "appstore-app-${app.packageName}",
-                        )
+                        items(state.updates, key = { it.packageName }) { app ->
+                            val stage = state.stages[app.packageName]
+                            val installed = state.installedInfos[app.packageName]
+                            val versionLabel = installed?.let { info ->
+                                val old = info.versionName?.let { "$it (${info.versionCode})" }
+                                    ?: info.versionCode.toString()
+                                val new = app.versionName?.let { "$it (${app.versionCode})" }
+                                    ?: app.versionCode.toString()
+                                stringResource(R.string.version_update, old, new)
+                            }
+                            AppRow(
+                                app = app,
+                                isInstalled = true,
+                                stage = stage,
+                                installedIcon = state.installedIcons[app.packageName],
+                                versionLabel = versionLabel,
+                                onClick = { onAppClick(app) },
+                                trailing = {
+                                    Button(
+                                        onClick = { actions.install(app) },
+                                        enabled = stage == null || stage is InstallStage.Failed,
+                                    ) {
+                                        Text(stringResource(R.string.action_update))
+                                    }
+                                },
+                                // Library keys the same app with the same key, but the tabs are a
+                                // pager that only composes the settled page, so the two are never
+                                // origins at the same time.
+                                sharedKey = "appstore-app-${app.packageName}",
+                            )
+                        }
                     }
                 }
             }
