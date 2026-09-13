@@ -16,7 +16,7 @@ import java.util.concurrent.CopyOnWriteArraySet
  */
 object MessageMirrorBus {
     fun interface Listener {
-        fun onMirror(thread: MessagingThread, message: MessagingMessage)
+        fun onMirror(thread: MessagingThread, message: MessagingMessage, route: MessageReplyRoute?)
     }
 
     private val listeners = CopyOnWriteArraySet<Listener>()
@@ -27,7 +27,7 @@ object MessageMirrorBus {
         return AutoCloseable { listeners -= listener }
     }
 
-    fun post(thread: MessagingThread, message: MessagingMessage) {
-        for (listener in listeners) listener.onMirror(thread, message)
+    fun post(thread: MessagingThread, message: MessagingMessage, route: MessageReplyRoute? = null) {
+        for (listener in listeners) listener.onMirror(thread, message, route)
     }
 }

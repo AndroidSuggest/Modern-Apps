@@ -511,6 +511,7 @@ class ProjectionService : Service() {
                 onReply = { threadId, text ->
                     Log.i(TAG, "head-unit reply for $threadId (${text.length} chars)")
                 },
+                context = { this },
             )
         }
         // ch8 advertises in the same wire-order pass; the owner binds on its

@@ -448,6 +448,8 @@ object AutoSessionState {
             is MessagingEvent.ThreadsPosted -> _threadsPosted.value = event.count.toLong()
             is MessagingEvent.MessagePosted -> _messagesPosted.value++
             is MessagingEvent.ReplyReceived -> _repliesReceived.value++
+            is MessagingEvent.ReplySent -> _repliesReceived.value++
+            is MessagingEvent.ReplyFailed -> Unit
             is MessagingEvent.MarkedRead -> Unit
         }
     }
@@ -460,6 +462,7 @@ object AutoSessionState {
             is InputEvent.Touch -> _touchesInjected.value++
             is InputEvent.Key -> _keysInjected.value++
             is InputEvent.Scroll -> _scrollsInjected.value++
+            is InputEvent.VolumeKey -> _keysInjected.value++
             InputEvent.DroppedNoFocus -> _inputDropped.value++
         }
     }

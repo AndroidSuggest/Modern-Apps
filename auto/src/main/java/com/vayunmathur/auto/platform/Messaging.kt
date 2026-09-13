@@ -16,6 +16,12 @@ sealed interface MessagingEvent {
     /** The head unit answered with reply text for [threadId]. */
     data class ReplyReceived(val threadId: String) : MessagingEvent
 
+    /** Reply text for [threadId] was handed to the message app for sending. */
+    data class ReplySent(val threadId: String) : MessagingEvent
+
+    /** Reply text for [threadId] could not be handed off; [reason] is short. */
+    data class ReplyFailed(val threadId: String, val reason: String) : MessagingEvent
+
     /**
      * The head unit marked [threadId] read. Observed only: the phone keeps no
      * per-thread read state yet, so there is nothing to update. Kept as an

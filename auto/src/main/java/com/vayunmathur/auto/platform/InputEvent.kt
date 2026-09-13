@@ -21,6 +21,13 @@ sealed interface InputEvent {
     /** One key press or release was injected. */
     data class Key(val keycode: Int, val down: Boolean) : InputEvent
 
+    /**
+     * A head-unit volume key was consumed, not injected: the car owns its
+     * speaker volume (gearhead's car home swallows 24/25), so these count
+     * separately from injected keys.
+     */
+    data class VolumeKey(val keycode: Int, val down: Boolean) : InputEvent
+
     /** One scroll tick was injected. */
     data class Scroll(val delta: Int) : InputEvent
 

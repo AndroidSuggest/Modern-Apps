@@ -26,7 +26,7 @@ class MessageMirrorService : NotificationListenerService() {
         val notification = sbn.notification
         if (notification.category != Notification.CATEGORY_MESSAGE) return
         val (thread, message) = extract(sbn) ?: return
-        MessageMirrorBus.post(thread, message)
+        MessageMirrorBus.post(thread, message, replyRoute(sbn))
         Log.d(TAG, "mirrored message for thread ${thread.threadId}")
     }
 
@@ -88,6 +88,33 @@ class MessageMirrorService : NotificationListenerService() {
 
     private fun messageKey(sbn: StatusBarNotification, timestamp: Long): String =
         "${sbn.id}:$timestamp"
+
+    /**
+     * Pulls the reply/mark-read route out of a message notification, or null
+     * when the app offers no reply action.
+     *
+     * Only the direct-action shape is read: a notification action carrying a
+     * `RemoteInput` (what modern message apps post with `MessagingStyle`).
+     * The legacy `CarExtender` unread-conversation shape is deliberately not
+     * read -- androidx.core removed its accessor, and every current message
+     * app uses direct actions. An action without a reply intent is no route.
+     */
+    private fun replyRoute(sbn: StatusBarNotification): MessageReplyRoute? {
+        val notification = sbn.notification
+        val threadId = conversationKey(sbn)
+        for (action in notification.actions.orEmpty()) {
+            val remoteInputs = action.remoteInputs
+            if (!remoteInputs.isNullOrEmpty() && action.actionIntent != null) {
+                return MessageReplyRoute(
+                    threadId = threadId,
+                    replyIntent = action.actionIntent,
+                    remoteInput = remoteInputs.first(),
+                    readIntent = null,
+                )
+            }
+        }
+        return null
+    }
 
     private companion object {
         const val TAG = "MaAuto.MsgMirror"

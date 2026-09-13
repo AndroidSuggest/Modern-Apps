@@ -141,7 +141,15 @@ class InputChannel(
             if (touchSink(scaled)) onEvent(InputEvent.Touch(scaled.action, scaled.pointers.size))
         }
         events.keys.forEach { key ->
-            if (keySink(key)) onEvent(InputEvent.Key(key.keycode, key.down))
+            // Volume keys are consumed, never injected: gearhead's car home
+            // swallows KEYCODE_VOLUME_UP/DOWN (its dispatchKeyEvent returns
+            // true for 24/25) because the head unit owns its speaker volume.
+            // Injecting them would double-handle volume the HU already manages.
+            if (key.keycode == VOLUME_UP || key.keycode == VOLUME_DOWN) {
+                onEvent(InputEvent.VolumeKey(key.keycode, key.down))
+            } else if (keySink(key)) {
+                onEvent(InputEvent.Key(key.keycode, key.down))
+            }
         }
         // Tap-as-select rides the absolute section: keycode 65541, value 1
         // presses DPAD_CENTER and anything else releases it (`jar.java`).
@@ -160,6 +168,10 @@ class InputChannel(
 
     private companion object {
         const val TAG = "MaAuto.Input"
+
+        /** Consumed, never injected: the head unit owns its speaker volume. */
+        const val VOLUME_UP = 24
+        const val VOLUME_DOWN = 25
 
         private fun com.vayunmathur.auto.protocol.InputEvents.describe(): String =
             "input report (${touches.size} touch, ${keys.size} keys, " +
