@@ -271,6 +271,12 @@
     <string name="car_now_playing_unknown_artist">Unknown artist</string>
     <!-- Shown on the car display when no launchable apps were found on the phone. -->
     <string name="car_no_apps">No apps available — install Maps or Music to get started</string>
+    <!-- Label of the hotseat drawer cell and the drawer heading listing every car app. -->
+    <string name="car_drawer_apps">Apps</string>
+    <!-- Decorative glyph shown on the hotseat drawer cell, which has no app icon. -->
+    <string name="car_drawer_glyph">▦</string>
+    <!-- Decorative glyph on the facet dashboard button (goes home, closes drawer). -->
+    <string name="car_home_glyph">⌂</string>
 
     <!-- Heading of the session-card row showing the system sink (ch4, transient TTS/pings). -->
     <string name="session_audio_sys">System audio</string>

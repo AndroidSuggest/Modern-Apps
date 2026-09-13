@@ -3,6 +3,7 @@ package com.vayunmathur.auto.platform
 import android.app.Presentation
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Outline
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.os.Bundle
@@ -13,6 +14,7 @@ import android.view.Gravity
 import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -354,6 +356,7 @@ class CarDisplay(
         private var mediaState: TextView? = null
         private var mediaProgress: View? = null
         private var mediaCard: LinearLayout? = null
+        private var drawerView: View? = null
 
         // Real wall-clock time, ticking every second. The old placeholder showed a
         // session counter here; a driver needs to know what time it is instead, and the
@@ -398,16 +401,24 @@ class CarDisplay(
 
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
+            // Coolwalk facet structure, matching gearhead's
+            // `gh_coolwalk_facet_bar` + dashboard cards + drawer:
+            // content area (split nav/media cards, drawer overlay) above a
+            // bottom facet bar (dashboard button, hotseat dock, status).
+            // Views, not Compose (see the class KDoc).
             val root = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundColor(Color.parseColor("#101418"))
                 layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
             }
-            root.addView(statusBar())
-            root.addView(divider())
-            root.addView(nowPlayingCard())
             val apps = CarApps.query(context)
-            root.addView(if (apps.isEmpty()) emptyState() else appGrid(apps))
+            val content = android.widget.FrameLayout(context).apply {
+                layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
+                addView(splitCards(apps))
+                addView(appDrawer(apps).also { drawerView = it })
+            }
+            root.addView(content)
+            root.addView(facetBar(apps))
             setContentView(root)
 
             pendingNowPlaying?.let { updateNowPlaying(it) }
@@ -433,6 +444,7 @@ class CarDisplay(
             mediaState = null
             mediaProgress = null
             mediaCard = null
+            drawerView = null
             super.onStop()
         }
 
@@ -477,8 +489,11 @@ class CarDisplay(
         }
 
         /**
-         * The single now-playing layout (Phase 4 time-box): card, title, artist,
-         * state, progress bar. Tapping anywhere on the card toggles playback.
+         * The single now-playing layout, matching `frag_dash_media` structure:
+         * title (28sp, 1 line) + subtitle (24sp), 4dp progress bar, whole card
+         * tappable to toggle playback. Album art and the prev/next button row
+         * are omitted: no art backend exists, and transport beyond toggle has
+         * no monitor path yet -- the card never shows what it cannot do.
          */
         private fun nowPlayingCard(): LinearLayout {
             val card = LinearLayout(context).apply {
@@ -501,14 +516,15 @@ class CarDisplay(
             )
             card.addView(
                 TextView(context).apply {
-                    textSize = 24f
+                    textSize = 28f
+                    maxLines = 1
                     setTextColor(Color.WHITE)
                     mediaTitle = this
                 },
             )
             card.addView(
                 TextView(context).apply {
-                    textSize = 16f
+                    textSize = 24f
                     setTextColor(Color.parseColor("#C7CFD9"))
                     mediaSubtitle = this
                 },
@@ -590,6 +606,294 @@ class CarDisplay(
             layoutParams = LinearLayout.LayoutParams(MATCH, dp(1))
         }
 
+        /**
+         * The bottom facet bar (`gh_coolwalk_facet_bar`): dashboard button,
+         * centered hotseat dock, and the status clock at the end. Touch
+         * targets match gearhead (`facet_bar_touch_target_size` 68dp,
+         * `coolwalk_launcher_dashboard_margin` 10dp, `rail_coolwalk_rail_margin`
+         * 6dp). No assistant button: there is no assistant backend, and the
+         * launcher never shows what the phone cannot open.
+         */
+        private fun facetBar(apps: List<CarApp>): LinearLayout {
+            return LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setBackgroundColor(Color.parseColor("#161C24"))
+                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+                setPadding(dp(10), dp(6), dp(6), dp(6))
+                addView(
+                    facetButton(context.getString(R.string.car_home_glyph), "Home") {
+                        drawerView?.visibility = View.GONE
+                    },
+                )
+                addView(
+                    LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+                        apps.take(MAX_DOCK_APPS).forEach { app ->
+                            addView(hotseatCell(app))
+                        }
+                        addView(
+                            hotseatCell(null) {
+                                drawerView?.visibility = View.VISIBLE
+                            },
+                        )
+                    },
+                )
+                addView(facetStatus())
+            }
+        }
+
+        /** One 68dp facet-bar button with a decorative glyph label. */
+        private fun facetButton(glyph: String, description: String, onTap: () -> Unit): TextView {
+            return TextView(context).apply {
+                text = glyph
+                contentDescription = description
+                setTextColor(Color.WHITE)
+                textSize = 28f
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(dp(68), dp(68))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { onTap() }
+            }
+        }
+
+        /**
+         * One hotseat cell (`sys_ui_rail_hotseat` item): a 68dp touch target
+         * with the app icon at 56dp and 8dp padding, untinted, no label --
+         * labels live in the drawer grid (`app_launcher_item`). A null app
+         * renders the drawer glyph cell instead.
+         */
+        private fun hotseatCell(app: CarApp?, onDrawerTap: (() -> Unit)? = null): android.widget.FrameLayout {
+            return android.widget.FrameLayout(context).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(68), dp(68))
+                isClickable = true
+                isFocusable = true
+                if (app != null) {
+                    addView(
+                        ImageView(context).apply {
+                            setImageDrawable(app.icon)
+                            contentDescription = app.label.toString()
+                            setPadding(dp(8), dp(8), dp(8), dp(8))
+                            layoutParams = android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER)
+                        },
+                    )
+                    setOnClickListener { context.startActivity(app.launch) }
+                } else {
+                    addView(
+                        TextView(context).apply {
+                            text = context.getString(R.string.car_drawer_glyph)
+                            setTextColor(Color.WHITE)
+                            textSize = 28f
+                            gravity = Gravity.CENTER
+                            layoutParams = android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER)
+                        },
+                    )
+                    setOnClickListener { onDrawerTap?.invoke() }
+                }
+            }
+        }
+
+        /**
+         * The facet status slot (`rail_statusbar`): clock only. Gearhead shows
+         * signal/battery icons here; the phone cannot know the car's radio
+         * state, so nothing is faked.
+         */
+        private fun facetStatus(): TextView {
+            return TextView(context).apply {
+                setTextColor(Color.WHITE)
+                textSize = 24f
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(WRAP, dp(68))
+                setPadding(dp(6), 0, dp(6), 0)
+            }.also { clockView = it }
+        }
+
+        /**
+         * The Coolwalk split: nav card beside the media card, sharing the
+         * content area. The media card is the existing now-playing layout
+         * (visibility-gated as before); the nav card deep-links Maps.
+         */
+        private fun splitCards(apps: List<CarApp>): LinearLayout {
+            return LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                // Fills the content frame: weights only work in a LinearLayout
+                // parent, and this lives in a FrameLayout (split + drawer
+                // overlay), so MATCH/MATCH, not 0-weight.
+                layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+                addView(
+                    navCard(apps).apply {
+                        layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f).apply {
+                            marginEnd = dp(8)
+                        }
+                    },
+                )
+                addView(
+                    nowPlayingCard().apply {
+                        layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f).apply {
+                            marginStart = dp(8)
+                        }
+                    },
+                )
+            }
+        }
+
+        /**
+         * The nav half of the split: Maps icon + label, tapping launches it.
+         * Without Maps installed this shows the empty state instead of a dead
+         * tile, so the split never offers what the phone cannot open.
+         */
+        private fun navCard(apps: List<CarApp>): LinearLayout {
+            val maps = apps.firstOrNull {
+                it.launch.`package` == MAPS_PACKAGE ||
+                    it.label.toString().contains(MAPS_LABEL, ignoreCase = true)
+            }
+            return LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setBackgroundColor(Color.parseColor("#1B2430"))
+                setPadding(dp(24), dp(16), dp(24), dp(16))
+                if (maps != null) {
+                    maps.icon?.let { icon ->
+                        addView(
+                            ImageView(context).apply {
+                                setImageDrawable(icon)
+                                contentDescription = maps.label.toString()
+                                layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
+                            },
+                        )
+                    }
+                    addView(
+                        TextView(context).apply {
+                            text = maps.label.toString()
+                            setTextColor(Color.WHITE)
+                            textSize = 20f
+                            gravity = Gravity.CENTER
+                            setPadding(0, dp(8), 0, 0)
+                        },
+                    )
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener { context.startActivity(maps.launch) }
+                } else {
+                    addView(
+                        TextView(context).apply {
+                            text = context.getString(R.string.car_no_apps)
+                            setTextColor(Color.parseColor("#8AB4F8"))
+                            textSize = 18f
+                            gravity = Gravity.CENTER
+                        },
+                    )
+                }
+            }
+        }
+
+        /**
+         * The app-drawer overlay (`drawer_contents`): full content-area sheet
+         * with an "Apps" heading and the app grid in the gearhead launcher
+         * item shape (84dp circular icons, 24sp centered single-line labels,
+         * 156dp tiles). Starts GONE; the hotseat drawer cell opens it, the
+         * dashboard facet button or a launch closes it.
+         */
+        private fun appDrawer(apps: List<CarApp>): View {
+            return LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(Color.parseColor("#101418"))
+                layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
+                visibility = View.GONE
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                addView(
+                    TextView(context).apply {
+                        text = context.getString(R.string.car_drawer_apps)
+                        setTextColor(Color.WHITE)
+                        textSize = 28f
+                        setPadding(0, 0, 0, dp(16))
+                    },
+                )
+                if (apps.isEmpty()) {
+                    addView(
+                        TextView(context).apply {
+                            text = context.getString(R.string.car_no_apps)
+                            setTextColor(Color.parseColor("#8AB4F8"))
+                            textSize = 24f
+                            gravity = Gravity.CENTER
+                            layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
+                        },
+                    )
+                } else {
+                    addView(
+                        GridLayout(context).apply {
+                            columnCount = COLUMNS
+                            layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
+                            apps.forEach { app ->
+                                addView(
+                                    launcherItem(app).apply {
+                                        layoutParams = GridLayout.LayoutParams().apply {
+                                            width = 0
+                                            height = dp(156)
+                                            columnSpec = GridLayout.spec(
+                                                UNDEFINED_COLUMN,
+                                                1,
+                                                FILL,
+                                                1f,
+                                            )
+                                        }
+                                        setOnClickListener {
+                                            context.startActivity(app.launch)
+                                            drawerView?.visibility = View.GONE
+                                        }
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        /**
+         * One launcher item (`app_launcher_item`): 84dp circular icon over a
+         * 24sp centered single-line label. Circular crop via outline clipping
+         * (no CardView dependency); focusable for rotary/dpad parity.
+         */
+        private fun launcherItem(app: CarApp): LinearLayout {
+            return LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                isClickable = true
+                isFocusable = true
+                addView(
+                    ImageView(context).apply {
+                        setImageDrawable(app.icon)
+                        contentDescription = app.label.toString()
+                        layoutParams = LinearLayout.LayoutParams(dp(84), dp(84))
+                        clipToOutline = true
+                        outlineProvider = object : ViewOutlineProvider() {
+                            override fun getOutline(view: View, outline: Outline) {
+                                outline.setOval(0, 0, view.width, view.height)
+                            }
+                        }
+                    },
+                )
+                addView(
+                    TextView(context).apply {
+                        text = app.label.toString()
+                        setTextColor(Color.WHITE)
+                        textSize = 24f
+                        gravity = Gravity.CENTER
+                        maxLines = 1
+                        layoutParams = LinearLayout.LayoutParams(MATCH, dp(28)).apply {
+                            topMargin = dp(16)
+                        }
+                    },
+                )
+            }
+        }
+
         private fun appGrid(apps: List<CarApp>): GridLayout {
             return GridLayout(context).apply {
                 columnCount = COLUMNS
@@ -654,6 +958,13 @@ class CarDisplay(
             const val COLUMNS = 3
             const val UNDEFINED_COLUMN = GridLayout.UNDEFINED
             val FILL: GridLayout.Alignment = GridLayout.FILL
+
+            /** Hotseat shows this many apps before the drawer cell; the rest live in the drawer. */
+            const val MAX_DOCK_APPS = 3
+
+            /** Package + label fallback identifying the Maps slot for the nav card. */
+            const val MAPS_PACKAGE = "com.vayunmathur.maps"
+            const val MAPS_LABEL = "map"
 
             /**
              * Ceiling for the continuous frame invalidator: the encoder paces
