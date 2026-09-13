@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,8 +20,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconSettings
+import com.vayunmathur.library.ui.Switch
+import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
@@ -27,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,9 +73,18 @@ fun SecureFolderPage(
     var columnCount by LocalColumnCount.current
     val selectedIds by secureFolderViewModel.selectedIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
+    var showRelockSettings by remember { mutableStateOf(false) }
+    val relockOnExit by secureFolderViewModel.relockOnExit.collectAsState()
 
     val closeSelection: (() -> Unit)? =
         if (isSelectionMode) ({ secureFolderViewModel.clearSelection() }) else null
+    if (showRelockSettings) {
+        SecureFolderRelockDialog(
+            relockOnExit = relockOnExit,
+            onCheckedChange = { secureFolderViewModel.setRelockOnExit(it) },
+            onDismiss = { showRelockSettings = false },
+        )
+    }
     AppScaffold(
         title = if (isSelectionMode) {
             stringResource(R.string.items_selected, selectedIds.size)
@@ -84,6 +101,9 @@ fun SecureFolderPage(
                     IconUnarchive()
                 }
             } else {
+                IconButton(onClick = { showRelockSettings = true }) {
+                    IconSettings()
+                }
                 BackupButtons(
                     dbConfigs = listOf("vault-db" to password),
                     dbCodec = SqlCipherDbCodec,
@@ -134,6 +154,39 @@ fun SecureFolderPage(
             }
         }
     }
+}
+
+@Composable
+private fun SecureFolderRelockDialog(
+    relockOnExit: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.secure_folder_relock_title)) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(R.string.secure_folder_relock_label))
+                    Switch(checked = relockOnExit, onCheckedChange = onCheckedChange)
+                }
+                Text(
+                    stringResource(R.string.secure_folder_relock_description),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(UiR.string.done))
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

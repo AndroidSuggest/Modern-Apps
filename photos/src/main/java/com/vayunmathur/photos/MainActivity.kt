@@ -296,6 +296,21 @@ fun Navigation(
     val backStack = rememberNavBackStack<Route>(viewerRoute ?: Route.Gallery)
     val vaultPhotoDao by secureFolderViewModel.vaultPhotoDao.collectAsState()
     val vaultPassword by secureFolderViewModel.vaultPassword.collectAsState()
+    val relockOnExit by secureFolderViewModel.relockOnExit.collectAsState()
+
+    // Opt-in re-lock: leaving the Secure Folder (any route other than the
+    // folder itself or the vault viewer, which counts as inside) locks the
+    // vault so the next open requires unlock again. Off by default, which
+    // preserves the current stay-unlocked behaviour.
+    val topRoute = backStack.backStack.lastOrNull()
+    LaunchedEffect(topRoute, relockOnExit) {
+        if (relockOnExit && topRoute != null &&
+            topRoute !is Route.SecureFolder && topRoute !is Route.VaultViewer &&
+            vaultPhotoDao != null
+        ) {
+            secureFolderViewModel.lock()
+        }
+    }
 
     // Indexed once per incoming URI, and `rememberSaveable` rather than the LaunchedEffect key so
     // a configuration change does not re-run it.

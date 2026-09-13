@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.core.net.toUri
 import com.vayunmathur.library.biometric.unlockDatabaseWithBiometrics
+import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.data.PhotosRepository
 import com.vayunmathur.photos.data.VaultPhoto
@@ -61,6 +62,25 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
 
     private val sfm: SecureFolderManager by lazy { SecureFolderManager(application) }
 
+    private val dataStore: DataStoreUtils by lazy {
+        DataStoreUtils.getInstance(application.applicationContext)
+    }
+
+    private val _relockOnExit = MutableStateFlow(
+        // Read synchronously at construction; the default (false) preserves the
+        // current stay-unlocked behaviour until the user opts into re-locking.
+        DataStoreUtils.getInstance(application.applicationContext)
+            .getBoolean(RELOCK_ON_EXIT_KEY, false)
+    )
+    val relockOnExit: StateFlow<Boolean> = _relockOnExit.asStateFlow()
+
+    fun setRelockOnExit(value: Boolean) {
+        _relockOnExit.value = value
+        viewModelScope.launch {
+            dataStore.setBoolean(RELOCK_ON_EXIT_KEY, value)
+        }
+    }
+
     /**
      * One observable holder per thumbnail path.
      *
@@ -102,6 +122,23 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
     fun setVault(dao: VaultPhotoDao, password: String) {
         _vaultPassword.value = password
         _vaultPhotoDao.value = dao
+    }
+
+    /**
+     * Re-lock the vault: drop the DAO and password so the next open requires
+     * biometric unlock again, and drop decrypted thumbnails. Thumbnails are
+     * cleared without recycling (mirrors the LRU eviction policy: the UI may
+     * still hold references; the collector reclaims them). No-op safe when
+     * already locked.
+     */
+    fun lock() {
+        synchronized(thumbCache) {
+            thumbStates.values.forEach { it.value = null }
+            thumbCache.clear()
+        }
+        _selectedIds.value = emptySet()
+        _vaultPhotoDao.value = null
+        _vaultPassword.value = null
     }
 
     fun unlock(
@@ -285,6 +322,7 @@ class SecureFolderViewModel(application: Application) : AndroidViewModel(applica
 
     companion object {
         private const val TAG = "SecureFolderViewModel"
+        const val RELOCK_ON_EXIT_KEY = "secure_folder_relock_on_exit"
     }
 }
 

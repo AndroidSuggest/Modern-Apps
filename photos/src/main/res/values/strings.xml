@@ -103,6 +103,20 @@
     <string name="view_panorama">View panorama</string>
     <!-- Fallback label when panorama type detected but no specific kind -->
     <string name="panorama">Panorama</string>
+    <!-- Button to play the embedded clip of a motion photo, replacing the still. Verb phrase -->
+    <string name="play_motion_photo">Play motion photo</string>
+    <!-- Button to stop motion-photo playback and return to the still. Verb phrase -->
+    <string name="stop_motion_photo">Stop motion</string>
+    <!-- Viewer metadata badge marking a motion photo (a still with an embedded clip). Keep uppercase -->
+    <string name="motion_badge">MOTION</string>
+    <!-- Snackbar when the embedded motion-photo clip could not be extracted for playback. Sentence -->
+    <string name="motion_photo_failed">Couldn\'t play the motion photo.</string>
+    <!-- Secure Folder settings dialog title. Noun phrase -->
+    <string name="secure_folder_relock_title">Secure Folder settings</string>
+    <!-- Secure Folder settings row label for the re-lock-on-exit toggle. Verb phrase -->
+    <string name="secure_folder_relock_label">Lock when leaving</string>
+    <!-- Secure Folder settings row description explaining the re-lock toggle. Sentence -->
+    <string name="secure_folder_relock_description">When on, the Secure Folder locks every time you leave it and asks for unlock on every open.</string>
 
     <!-- TopAppBar title for photo editor screen. Verb phrase -->
     <string name="title_edit_photo">Edit Photo</string>
