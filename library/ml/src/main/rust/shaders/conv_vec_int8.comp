@@ -129,5 +129,5 @@ void main() {
     }
     float scale = float(weights[p.act_weight + channel]);
     float offset = float(weights[p.bias + channel]);
-    arena[p.out_at + channel] = float16_t(activate(total * scale + offset, p.act, channel));
+    arena[p.out_at + channel] = float16_t(fused_store(total * scale + offset, p.act, channel, channel));
 }

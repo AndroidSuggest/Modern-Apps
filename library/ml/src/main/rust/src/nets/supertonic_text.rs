@@ -447,12 +447,9 @@ mod tests {
             "{counts:?}"
         );
         // Six block residuals, two per attention layer, the whole-stack skip, and one per
-        // style attention.
-        assert_eq!(
-            counts.get("Add"),
-            Some(&(BLOCKS + ATTN_LAYERS * 2 + 1 + STYLE_ATTENTIONS)),
-            "{counts:?}"
-        );
+        // style attention — minus the thirteen whose skip side is already written when
+        // the producing convolution runs, which fold into its store. See `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&4), "{counts:?}");
         assert_eq!(
             counts.get("LayerNorm"),
             Some(&(BLOCKS + ATTN_LAYERS * 2 + 1)),

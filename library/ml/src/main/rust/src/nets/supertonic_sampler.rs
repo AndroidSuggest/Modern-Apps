@@ -81,7 +81,7 @@
 //! at 0.29 from `main_blocks.11` on. A per-stage comparison found it in one run, which is much
 //! faster than reasoning about a 1004-node graph.
 
-use super::{Act, Builder, Id, Plan, Shape, WeightSource};
+use super::{Act, Builder, Id, Plan, Shape, WeightSource, NO_FUSE};
 
 /// Latent channels in and out. `ldim * chunk_compress_factor`, and the vocoder's `PACKED`.
 pub const LATENT: u32 = 144;
@@ -256,16 +256,77 @@ fn convnext(b: &mut Builder, l: &mut Layers, x: Id, dilation: u32) -> Id {
 /// The output is this branch's velocity, `[144, 1, frames]`. Combining the two branches and
 /// taking the Euler step is [`crate::post::supertonic::step`].
 pub fn build(weights: &dyn WeightSource, frames: u32, chars: u32) -> Result<Plan, String> {
+    build_at(weights, frames, chars, &mut Layers { next: 0 })
+}
+
+/// One branch of [`build`], sharing `builder` and replaying `layers`.
+///
+/// [`build_dual`] runs both guidance branches in one plan and one submit. The branches share
+/// every weight — the only structural difference is which style keys arrive as inputs — so the
+/// second branch replays the same tensor indices rather than consuming new ones. `layers` is
+/// the counter that hands those out, and rewinding it is what makes the replay land on the
+/// same tensors instead of past the end of the file.
+fn build_at(
+    weights: &dyn WeightSource,
+    frames: u32,
+    chars: u32,
+    layers: &mut Layers,
+) -> Result<Plan, String> {
+    let mut builder = Builder::new(weights);
+    let velocity = branch(&mut builder, layers, frames, chars)?;
+    branch_host_tensors(&mut builder);
+    builder.finish(&[velocity])
+}
+
+/// Both guidance branches in one plan, for one submit instead of two.
+///
+/// Fourteen inputs — the seven of [`build`] twice, conditional branch first — and two
+/// outputs, the two velocities in the same order. One `infer_raw_many` over fourteen slices
+/// runs what were two submits, so a sampler step pays one `queue_submit` and one fence wait
+/// rather than two. The GPU work is unchanged and still serial on this runtime's one queue;
+/// what this removes is the host round trip per step, sixteen of them per utterance.
+///
+/// The branches share weights but not arena: each branch's tensors are allocated in order,
+/// so the second branch's intermediates land past the first's and neither reads the other's.
+/// The fusion fold in [`Builder::finish`] sees both branches' graphs at once and folds each
+/// branch's residuals exactly as it would have alone.
+///
+/// `layers` replays between branches — see [`build_at`] — so `TENSORS` still covers the file:
+/// no branch consumes a weight twice, and [`Builder::finish`]'s every-tensor-read rule holds
+/// over the union.
+pub fn build_dual(weights: &dyn WeightSource, frames: u32, chars: u32) -> Result<Plan, String> {
     if frames == 0 {
         return Err("a sampler pass over no frames".into());
     }
     if chars == 0 {
         return Err("a sampler pass over no characters".into());
     }
-
-    let l = &mut Layers { next: 0 };
     let mut builder = Builder::new(weights);
-    let b = &mut builder;
+    let mut layers = Layers { next: 0 };
+    let conditional = branch(&mut builder, &mut layers, frames, chars)?;
+    layers.next = 0;
+    let unconditional = branch(&mut builder, &mut layers, frames, chars)?;
+    branch_host_tensors(&mut builder);
+    builder.finish(&[conditional, unconditional])
+}
+
+/// One branch's graph, with its seven inputs declared first.
+///
+/// Split out of [`build`] so [`build_dual`] can emit it twice. The inputs are declared here —
+/// in branch order — so the dual plan's fourteen inputs are the conditional seven followed by
+/// the unconditional seven, and the host uploads them in that order.
+fn branch(
+    b: &mut Builder,
+    l: &mut Layers,
+    frames: u32,
+    chars: u32,
+) -> Result<Id, String> {
+    if frames == 0 {
+        return Err("a sampler pass over no frames".into());
+    }
+    if chars == 0 {
+        return Err("a sampler pass over no characters".into());
+    }
     // Every padded convolution here replicates its border; all 28 `Pad`s are `mode=edge`.
     b.edge_padding();
 
@@ -333,6 +394,15 @@ pub fn build(weights: &dyn WeightSource, frames: u32, chars: u32) -> Result<Plan
     if l.next != PLAN_TENSORS {
         return Err(format!("the forward pass claims {} tensors, not {PLAN_TENSORS}", l.next));
     }
+    Ok(velocity)
+}
+
+/// The host-owned tensors, named once per plan rather than once per branch.
+///
+/// [`build`] calls this after its single branch; [`build_dual`] after both. Naming them
+/// twice would be harmless — `host_tensor` only marks the read flag — but once states the
+/// invariant once: these eighteen are read on the host, whichever branch runs.
+fn branch_host_tensors(b: &mut Builder) {
     // Named rather than skipped: see `Builder::host_tensor`.
     b.host_tensor(HOST_THETA, &[FREQUENCIES]);
     b.host_tensor(HOST_FREQUENCIES, &[FREQUENCIES]);
@@ -348,8 +418,6 @@ pub fn build(weights: &dyn WeightSource, frames: u32, chars: u32) -> Result<Plan
     b.host_tensor(HOST_STYLE_TOKEN, &[STYLE, STYLE_TOKENS]);
     b.host_tensor(HOST_KEYS_CONDITIONAL, &[STYLE * MAIN_BLOCKS as u32, STYLE_TOKENS]);
     b.host_tensor(HOST_KEYS_UNCONDITIONAL, &[STYLE * MAIN_BLOCKS as u32, STYLE_TOKENS]);
-
-    builder.finish(&[velocity])
 }
 
 #[cfg(test)]
@@ -577,7 +645,10 @@ mod tests {
         assert_eq!(counts.get("Softmax"), Some(&(MAIN_BLOCKS * 2)), "{counts:?}");
         assert_eq!(counts.get("AddBroadcast"), Some(&MAIN_BLOCKS), "{counts:?}");
         assert_eq!(counts.get("LayerNorm"), Some(&(BLOCKS + MAIN_BLOCKS * 2)), "{counts:?}");
-        assert_eq!(counts.get("Add"), Some(&(BLOCKS + MAIN_BLOCKS * 2)), "{counts:?}");
+        // Half the residual adds fold into their producing pointwise's store: the 28
+        // ConvNeXt tails and the 8 attention projections whose skip side is already
+        // written when they run. The rest stay dispatches — see `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&18), "{counts:?}");
         // No relative attention here: the positions are rotary.
         assert_eq!(counts.get("AttnScoresRelative"), None, "{counts:?}");
         assert_eq!(counts.get("Embed"), None, "{counts:?}");
@@ -625,5 +696,120 @@ mod tests {
             println!("supertonic_sampler at {frames} frames, {chars} chars: {mib:.2} MiB");
             assert!(mib < 256.0, "{frames} frames wants {mib} MiB");
         }
+    }
+
+    /// The dual plan holds both branches: fourteen inputs, two outputs.
+    ///
+    /// Conditional branch first, in the order `bridge.rs` uploads them — the seven of
+    /// [`build`] twice — and the two velocities out in the same order. Both branches'
+    /// inputs are pinned, so the first branch's seven sit at the same offsets as the
+    /// single plan's and the second branch's seven follow.
+    #[test]
+    fn the_dual_plan_holds_both_branches_in_order() {
+        let source = Shapes::new(TENSORS);
+        let dual = build_dual(&source, FRAMES, CHARS).expect("the dual plan builds");
+        assert_eq!(dual.inputs.len(), 14);
+        assert_eq!(dual.outputs.len(), 2);
+        let single = plan(FRAMES, CHARS).1;
+        assert_eq!(&dual.inputs[..7], &single.inputs[..]);
+        // Same shapes in the same order for the second branch; different offsets,
+        // since both branches' inputs are pinned.
+        for (branch, first) in dual.inputs[7..].iter().zip(&single.inputs) {
+            assert_eq!(branch.shape, first.shape);
+        }
+        assert_eq!(dual.inputs[0].shape, Shape::new(LATENT, 1, FRAMES));
+        assert_eq!(dual.outputs[0].shape, Shape::new(LATENT, 1, FRAMES));
+        assert_eq!(dual.outputs[1].shape, Shape::new(LATENT, 1, FRAMES));
+        // The dual plan reads the same weights — replayed, not doubled — so the file
+        // coverage is unchanged. Each branch reads every plan tensor once, and the
+        // host tensors once per plan, so the ask count is two branches plus hosts.
+        let asked = source.asked.borrow();
+        assert_eq!(asked.len(), (TENSORS - 18) * 2 + 18);
+        let mut indices: Vec<usize> = asked.iter().map(|(i, _)| *i).collect();
+        indices.sort_unstable();
+        indices.dedup();
+        assert_eq!(indices, (0..TENSORS).collect::<Vec<usize>>());
+    }
+
+    /// The dual plan is two single plans back to back, op for op.
+    ///
+    /// Same dispatches in the same order per branch, so the second branch costs exactly
+    /// what the first does and neither reads the other's arena. Checked structurally —
+    /// the interpreter test below checks the numbers.
+    #[test]
+    fn the_dual_plan_is_two_single_plans_back_to_back() {
+        let source = Shapes::new(TENSORS);
+        let dual = build_dual(&source, FRAMES, CHARS).expect("the dual plan builds");
+        let single = plan(FRAMES, CHARS).1;
+        assert_eq!(dual.ops.len(), single.ops.len() * 2);
+        // Both branches' inputs and outputs are pinned, so the dual arena holds two
+        // branches' worth of live tensors rather than exactly twice one branch's
+        // high-water mark — but it must stay well under the utterance budget.
+        assert!(dual.arena_elems < 256 * 1024 * 1024 / 2, "{}", dual.arena_elems);
+        assert!(dual.arena_elems >= single.arena_elems, "{}", dual.arena_elems);
+        assert_no_aliasing(&dual);
+    }
+
+    /// Both branches of the dual plan compute their own velocity.
+    ///
+    /// Branch independence at the graph level: branch identity is carried by arena
+    /// offsets, and the two branches' tensors must be disjoint. Checked structurally —
+    /// every read of the second branch lands inside the second branch's own input or
+    /// intermediate ranges, never inside the first branch's — rather than by running
+    /// the whole sampler through the interpreter, which takes minutes at these shapes.
+    #[test]
+    fn the_dual_plan_computes_each_branch_from_its_own_inputs() {
+        let source = Shapes::new(TENSORS);
+        let dual = build_dual(&source, FRAMES, CHARS).expect("the dual plan builds");
+        let single = plan(FRAMES, CHARS).1;
+        let half = single.ops.len();
+        assert_eq!(dual.ops.len(), half * 2);
+        // The second branch's inputs are pinned at offsets 7..14 of the dual plan.
+        // Every second-half read must land either inside those inputs or at/past the
+        // second branch's own intermediates — never inside the first branch's range.
+        let second_inputs: Vec<(u32, u32)> =
+            dual.inputs[7..].iter().map(|b| (b.at, b.shape.len())).collect();
+        let second_start = second_inputs.iter().map(|(at, _)| *at).min().unwrap_or(0);
+        let in_second_inputs = |at: u32| {
+            second_inputs.iter().any(|(base, len)| *base <= at && at < base + len)
+        };
+        for op in &dual.ops[half..] {
+            match op {
+                Op::Dispatch { push, .. } => {
+                    for read in [push.in0, push.in1] {
+                        // `in1` is only meaningful on binary ops; the fused sentinel
+                        // and the zero default of non-binary pushes are not reads.
+                        if read == NO_FUSE || (read == 0 && push.in0 != 0) {
+                            continue;
+                        }
+                        assert!(
+                            in_second_inputs(read) || read >= second_start,
+                            "second-branch op reads offset {read} inside the first branch"
+                        );
+                    }
+                    if push.res != NO_FUSE {
+                        assert!(
+                            in_second_inputs(push.res) || push.res >= second_start,
+                            "second-branch residual reads inside the first branch"
+                        );
+                    }
+                    if push.shift != NO_FUSE {
+                        assert!(
+                            in_second_inputs(push.shift) || push.shift >= second_start,
+                            "second-branch shift reads inside the first branch"
+                        );
+                    }
+                }
+                Op::Copy { src, .. } => {
+                    assert!(
+                        in_second_inputs(*src) || *src >= second_start,
+                        "second-branch copy reads inside the first branch"
+                    );
+                }
+            }
+        }
+        // And the outputs are one velocity per branch, at the two branch ends.
+        assert_eq!(dual.outputs.len(), 2);
+        assert_ne!(dual.outputs[0].at, dual.outputs[1].at);
     }
 }

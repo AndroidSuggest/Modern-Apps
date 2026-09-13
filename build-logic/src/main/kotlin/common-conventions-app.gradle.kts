@@ -137,9 +137,8 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         // (ExtraTranslation is Fatal) by default and has a pre-existing backlog.
         warning += listOf(
             "HardcodedText",
-            // Repo rules from :lint-rules. Only the two gates below are not advisory.
+            // Repo rules from :lint-rules. Only the three gates below are not advisory.
             "DirectBuildDatabase",
-            "FileLength",
             "OneComposablePerFile",
             "PackageStructure",
             "RawScaffoldInApp",
@@ -170,7 +169,10 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         // everything else is advisory. See :lint-rules.
         // DirectComposeAnimation keeps motion in the shared helpers, so the same
         // interaction cannot pick up a different duration on every screen.
-        fatal += listOf("ToastUsage", "DirectComposeAnimation")
+        // FileLength caps Kotlin file size (350 ui / 800 elsewhere): oversized
+        // screen files hide brace-imbalance breakage and rot into helper
+        // grab-bags. Split first — the build fails until each file fits.
+        fatal += listOf("ToastUsage", "DirectComposeAnimation", "FileLength")
     }
 
     // Every app declares the same res/resources.properties (unqualifiedResLocale) for

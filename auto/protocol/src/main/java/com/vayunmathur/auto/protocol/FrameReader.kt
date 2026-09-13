@@ -23,9 +23,15 @@ class ReassembledMessage(
  *
  * @param decrypt unwraps one frame payload. The default is identity, for the plaintext
  *   frames exchanged before the TLS handshake completes and for tests.
+ * @param onFramingError fires when an encrypted frame fails to decrypt. Corrupt
+ *   ciphertext is malformed input, and gearhead's `rtr` answers with a 2-byte `0xFFFF`
+ *   framing-error control frame and tears down rather than carrying a poisoned
+ *   reassembly buffer -- so the reader drops the frame and lets the owner tear down.
+ *   Decryption still happens per frame before reassembly; only the failure gains a path.
  */
 class FrameReader(
     private val decrypt: (ByteArray) -> ByteArray = { it },
+    private val onFramingError: () -> Unit = {},
 ) {
     private var pending = ByteBuffer.allocate(0)
     private val partial = mutableMapOf<Int, ByteArrayOutputStream>()
@@ -69,7 +75,17 @@ class FrameReader(
         pending.get(raw)
         compact()
 
-        val plaintext = if (header.isEncrypted) decrypt(raw) else raw
+        // A frame that fails to decrypt is malformed input, not a short read:
+        // drop it and fire the teardown hook rather than feeding garbage to
+        // reassembly or throwing out of the pump loop.
+        val plaintext = if (header.isEncrypted) {
+            runCatching { decrypt(raw) }.getOrElse {
+                onFramingError()
+                return null
+            }
+        } else {
+            raw
+        }
 
         if (header.isFirst && header.isLast) {
             return ReassembledMessage(header.channelId, header.isControl, plaintext)

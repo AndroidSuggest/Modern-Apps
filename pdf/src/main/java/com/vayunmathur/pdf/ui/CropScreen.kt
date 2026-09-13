@@ -228,7 +228,7 @@ fun CropOverlay(
         }
 
         for (i in 0..3) {
-            CropHandle(offset = screenCorners[i], onDragStart = { activeDragCorner = i }, onDragEnd = { activeDragCorner = null }) { delta ->
+            CropScreenSection(offset = screenCorners[i], onDragStart = { activeDragCorner = i }, onDragEnd = { activeDragCorner = null }) { delta ->
                 val c = quadrilateral.corner(i)
                 val newPos = Offset(
                     (c.x + delta.x / width).coerceIn(0f, 1f),
@@ -332,30 +332,4 @@ fun MagnifierWindow(
             drawLine(Color.Yellow, magCorner, magNext, strokeWidth = 1.5.dp.toPx())
         }
     }
-}
-
-@Composable
-fun CropHandle(offset: Offset, onDragStart: () -> Unit = {}, onDragEnd: () -> Unit = {}, onDrag: (Offset) -> Unit) {
-    val density = LocalDensity.current
-    val handleSize = 24.dp
-    val handleRadiusPx = with(density) { (handleSize / 2).toPx() }
-    val currentOnDrag by rememberUpdatedState(onDrag)
-    val currentOnDragStart by rememberUpdatedState(onDragStart)
-    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
-    Box(modifier = Modifier
-        .offset { IntOffset((offset.x - handleRadiusPx).roundToInt(), (offset.y - handleRadiusPx).roundToInt()) }
-        .size(handleSize)
-        .pointerInput(Unit) {
-            detectDragGestures(
-                onDragStart = { currentOnDragStart() },
-                onDragEnd = { currentOnDragEnd() },
-                onDragCancel = { currentOnDragEnd() },
-                onDrag = { change, dragAmount ->
-                    change.consume()
-                    currentOnDrag(dragAmount)
-                }
-            )
-        }
-        .background(Color.White, androidx.compose.foundation.shape.CircleShape)
-    )
 }

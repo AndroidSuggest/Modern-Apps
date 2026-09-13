@@ -22,6 +22,13 @@ import com.vayunmathur.auto.protocol.GalMessage
  * voice-reply turn buffers chunks until [endTurn] and hands the PCM to its
  * callback; a TTS/speak turn needs no buffer and only counts.
  *
+ * The 0x8006 request payload (`xkt`) has no recovered DTO -- only its message
+ * id (`GalMessage.Microphone.REQUEST`) -- so requests are acked opaquely and
+ * counted, never parsed. When the teardown recovers the `xkt` layout, parse
+ * it through the protocol codec here (like `AudioCodec.decodeMicData` for
+ * bulk) rather than inline; until then the acks-first-chunk behavior above
+ * is the whole contract.
+ *
  * All turn work lands on the mic's own thread -- never the pump thread --
  * and the only thing shared with the pump is [GalConnection.send], which
  * enqueues and hands the flush to the connection's single I/O thread

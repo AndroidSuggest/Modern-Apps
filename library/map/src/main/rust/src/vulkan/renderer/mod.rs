@@ -1,0 +1,562 @@
+//! The frame: tile residency, and one render pass per frame.
+
+use crate::camera::Camera;
+use crate::marker::Marker;
+use crate::overlay::{RoutePlacement, RouteSegmentRange};
+use crate::style::{Anchor, Layer, LayerKind};
+use crate::tile::geometry;
+use crate::vulkan::buffers::{Buffer, ScratchRing};
+use crate::vulkan::cache::ShaderCache;
+use crate::vulkan::context::{ANativeWindow, Context};
+use crate::vulkan::images::{AtlasSet, SampledImage};
+use crate::vulkan::pick::Pick;
+use crate::vulkan::pipeline::Pipelines;
+use crate::vulkan::swapchain::Swapchain;
+use ash::vk;
+use std::cell::Cell;
+use std::collections::HashMap;
+
+mod frame;
+mod placement;
+mod record;
+mod rebuild;
+mod upload;
+
+/// How many frames may be in flight. Two is enough to keep the GPU fed behind vsync
+/// without adding latency the user can feel when panning.
+const FRAMES_IN_FLIGHT: usize = 2;
+
+/// One layer's geometry, resident on the GPU.
+struct LayerBuffers {
+    layer_index: usize,
+    kind: LayerKind,
+    vertices: Buffer,
+    indices: Buffer,
+    index_count: u32,
+    /// Set when the mesh carries its own colour — see
+    /// [`geometry::LayerMesh::color_override`].
+    color_override: Option<u32>,
+    /// The lane inputs this mesh draws with — see [`geometry::LayerMesh::lane`].
+    lane: (u8, u8, u8),
+}
+
+/// One tile's geometry, resident on the GPU.
+struct ResidentTile {
+    layers: Vec<LayerBuffers>,
+    /// The tile's extruded 3D buildings, or `None` below z14 / where the tile has none. Drawn in
+    /// its own depth-tested pass ([`Renderer::record_buildings`]), not the flat layer loop.
+    buildings: Option<BuildingBuffers>,
+    /// The tile's DEM-displaced ground grid, or `None` where the tile carries no heightmap. Drawn
+    /// in its own depth-tested pass ([`Renderer::record_terrain`]) before the flat layer loop; a
+    /// tile with no terrain draws its flat `earth` fill in the layer loop as before.
+    terrain: Option<TerrainBuffers>,
+    /// The region shapes in this tile, for the selection mask. Uploaded with the rest of the
+    /// tile so selecting a region costs no tessellation and no allocation.
+    regions: Vec<RegionBuffers>,
+    /// The live-traffic component segments in this tile, each keyed by its `component_id`.
+    /// Uploaded with the rest of the tile; coloured per frame from the pushed table so a new
+    /// speed reading never re-uploads or re-tessellates them.
+    traffic: Vec<TrafficBuffers>,
+    /// The road carriageways in this tile, one per distinct set of road-shape push inputs, plus
+    /// the lane connectors through its junctions. Drawn in their own pass
+    /// ([`Renderer::record_carriageways`]) through the ribbon pipeline, not the flat layer loop,
+    /// because the vertex format and three of the push slots differ. Empty below the carriageway
+    /// layer's zoom window.
+    carriageways: Vec<CarriagewayBuffers>,
+    /// The tile's driving convention paints the line between opposing streams yellow rather than
+    /// white. A property of the tile, not of a road, so it rides here and not on each mesh.
+    yellow_centre: bool,
+    /// Shaped symbol candidates (CPU-side): the renderer emits quads per frame
+    /// at the frame's text size. Shaped once on the worker thread.
+    labels: Vec<geometry::ShapedLabel>,
+    /// Per-lane turn arrows (CPU-side): placed once on the worker thread from the archive's
+    /// turn-lane table. The renderer builds their triangles per frame — rotated, scaled to a screen
+    /// size and offset into their lane — because all three follow the camera, exactly as the
+    /// carriageway's own width does. Empty below the lane zoom gate and on any tile with no
+    /// `turn:lanes`.
+    arrows: Vec<crate::tile::arrow::ArrowInstance>,
+    z: u8,
+    x: u32,
+    y: u32,
+    /// The clock (`Camera::time_seconds`) when this tile's GPU buffers were created, in the
+    /// same epoch as `Push.misc.w`. WS-D ramps the tile's `Push.morph.x` opacity from 0 to 1
+    /// over [`LOD_FADE_SECONDS`] from this stamp so a finer LOD fades in over its coarse
+    /// ancestor instead of popping.
+    uploaded_at: f32,
+    /// The toggle generation this was tessellated at — see
+    /// [`crate::style::SharedToggles`].
+    generation: u32,
+}
+
+/// One live-traffic component segment, on the GPU.
+///
+/// The line pipeline's own vertex format, so it draws exactly like a road — the only thing
+/// that differs is the colour, which is looked up from [`Renderer::traffic_colors`] by
+/// [`id`](Self::id) at draw time rather than coming from a style layer.
+struct TrafficBuffers {
+    /// The segment's `component_id`, the key into the pushed colour table.
+    id: u64,
+    vertices: Buffer,
+    indices: Buffer,
+    index_count: u32,
+}
+
+/// One tile's carriageway surface for one set of road-shape inputs, on the GPU.
+///
+/// The three shape fields are push constants rather than vertex attributes, which is why they key
+/// the mesh split: every road in the tile that agrees on all three shares this draw.
+struct CarriagewayBuffers {
+    /// Index into the style's layer list, for the asphalt colour and the lane width ramp.
+    layer_index: usize,
+    lanes: u8,
+    split: f32,
+    oneway: bool,
+    vertices: Buffer,
+    indices: Buffer,
+    index_count: u32,
+}
+
+/// One tile's extruded 3D buildings, on the GPU.
+///
+/// One combined mesh per tile — every building in the tile, walls and roofs — in the 7-float
+/// `tess::roof` vertex format, drawn depth-tested through [`Pipelines::building`]. `None` on a tile
+/// with no buildings, which is every tile below z14.
+struct BuildingBuffers {
+    vertices: Buffer,
+    indices: Buffer,
+    index_count: u32,
+}
+
+/// One tile's DEM-displaced ground grid, on the GPU (WS-G, 3D terrain relief).
+///
+/// One combined mesh per tile in the 6-float `tess::terrain` vertex format (position + height +
+/// normal), drawn depth-tested through [`Pipelines::terrain`] before the flat layer loop. `None` on
+/// a tile with no heightmap, which then draws its flat `earth` fill instead.
+struct TerrainBuffers {
+    vertices: Buffer,
+    indices: Buffer,
+    index_count: u32,
+}
+
+/// One region's tessellated shape within one tile, on the GPU.
+struct RegionBuffers {
+    /// The OSM relation this piece came from, matched against the selected region.
+    id: u64,
+    vertices: Buffer,
+    indices: Buffer,
+    index_count: u32,
+    /// Exterior rings in tile-local 0..1, kept on the CPU for [`Renderer::region_at`].
+    rings: Vec<Vec<(f32, f32)>>,
+    /// Total absolute ring area, for preferring the smallest region containing a point.
+    area: f32,
+    /// The region's OSM `admin_level`, so a lookup can ask for a state rather than whatever
+    /// happens to be smallest at that point.
+    level: u16,
+}
+
+/// A transient per-frame buffer pair (one symbol draw's vertices + indices),
+/// held for [`FRAMES_IN_FLIGHT`] frames so no in-flight command buffer still
+/// references it at destroy time. Same grace rule as [`Renderer::retiring`],
+/// but buffers are not tiles — so they retire in their own queue, with no
+/// per-frame `device_wait_idle` stall (that wedged the guest under load).
+struct TransientBuffers {
+    vbuf: Buffer,
+    ibuf: Buffer,
+    frames: usize,
+}
+
+/// What the symbol placer accepted: candidate id → (it took its alternate anchor, where in
+/// acceptance order it landed).
+type AcceptSet = HashMap<u64, (bool, u32)>;
+
+/// Everything [`Renderer::place_symbols`] reads that can change what it decides.
+///
+/// Floats are compared as bit patterns rather than by value. This is an identity test — "is this
+/// the same camera the last accept-set was computed from" — and not a question about numeric
+/// closeness, so bits are both the correct comparison and the one that needs no epsilon.
+#[derive(PartialEq, Eq)]
+struct PlacementKey {
+    center_lon: u64,
+    center_lat: u64,
+    zoom: u64,
+    bearing: u64,
+    pitch: u64,
+    width_dp: u32,
+    height_dp: u32,
+    density: u32,
+    extent: (u32, u32),
+    filter: crate::style::KindFilter,
+    /// Every resident tile with its upload stamp, so a tile that arrives or is replaced re-places
+    /// even though the camera has not moved. `camera.time_seconds` is deliberately *not* in this
+    /// key: it changes every frame and enters no collision box.
+    tiles: Vec<(u64, u32)>,
+    /// The style, by layer count. A style or toggle change re-tessellates the resident set, which
+    /// restamps every tile above, so this only has to catch the layer set itself changing.
+    layers: usize,
+}
+
+/// Per-frame synchronisation and its command buffer.
+struct Frame {
+    command_buffer: vk::CommandBuffer,
+    /// Signalled when this frame's commands have finished, so its buffers can be reused.
+    in_flight: vk::Fence,
+    /// Signalled when the swapchain image is ready to draw into.
+    image_available: vk::Semaphore,
+    /// Signalled when drawing is done, so presentation can start.
+    render_finished: vk::Semaphore,
+}
+
+/// The user's own location, as the host last reported it.
+///
+/// `bearing` is degrees clockwise from north, and `None` when the fix carries no heading
+/// — which is what a cold start looks like before the compass has settled. That is a
+/// different thing from a heading of zero, and drawing them the same way points the cone
+/// spuriously north for the first second of every session.
+#[derive(Clone, Copy, Debug)]
+pub struct UserPuck {
+    pub lon: f64,
+    pub lat: f64,
+    pub bearing: Option<f32>,
+}
+
+/// Something drawn on top of every tile, from the same camera value as the tiles.
+///
+/// Every variant draws from the shared unit quad and is pure `Copy`/owned state — no vertex
+/// buffers with a retirement rule — which is why the route line is deliberately *not* one of
+/// these (it lives in [`Renderer::route`] beside [`Renderer::selected_region`]).
+///
+/// Draw order is fixed in [`record_overlays`](Renderer::record_overlays), not by position in the
+/// vec: markers (and WS-F's vehicles) draw first, the puck last, so the user's own location stays
+/// on top of the pins around it.
+///
+/// # The shared sprite/billboard contract (WS-C owns; WS-F extends)
+///
+/// [`Markers`](Self::Markers) draws app pins as billboarded atlas sprites (see [`crate::marker`]).
+/// [`Vehicles`](Self::Vehicles) (WS-F) is a sibling arm for simulated transit vehicles that reuses
+/// the exact same [`draw_markers`](Renderer::draw_markers) path and sprite atlas — a vehicle is a
+/// [`Marker`] whose icon names a mode sprite (bus/tram/train/ferry) — so the bulk many-sprites case
+/// is one extra match arm and one bulk setter, with no new pipeline or atlas. Vehicles are pushed
+/// on their own ~1 Hz cadence, replaced as a set by [`set_vehicles`](Renderer::set_vehicles)
+/// independently of the app pins, and are deliberately *not* pickable (see
+/// [`pick_at`](Renderer::pick_at)) — a moving simulated sprite is not a tap target.
+enum Overlay {
+    Puck(UserPuck),
+    /// App pins: parking, transit stops, search results, saved places, family members. Replaces
+    /// the Compose pin overlays so they pan and tilt in lock-step with the basemap.
+    Markers(Vec<Marker>),
+    /// WS-F simulated transit vehicles: a bus/tram/train/ferry sprite per in-service trip in the
+    /// visible bbox, pushed at ~1 Hz. Drawn through the same billboarded sprite path as
+    /// [`Markers`](Self::Markers), under the pins and the puck.
+    Vehicles(Vec<Marker>),
+}
+
+/// The navigation route, resident on the GPU.
+///
+/// Uploaded once by [`Renderer::set_route`] and never touched again until the route
+/// changes: the mesh is zoom-independent by construction (see [`crate::overlay`]), so a
+/// frame does nothing but build one matrix and push a casing plus one colour/width pair
+/// per coloured run. That is the difference between a route that costs nothing in a
+/// two-hour drive and one that re-tessellates on every zoom step.
+struct RouteBuffers {
+    placement: RoutePlacement,
+    vertices: Buffer,
+    indices: Buffer,
+    index_count: u32,
+    /// Each coloured run's slice of [`indices`](Self::indices) and its fill colour. The
+    /// casing draws the whole index buffer once; each fill draws one of these slices.
+    segments: Vec<RouteSegmentRange>,
+}
+
+/// Where `lon`/`lat` falls inside tile `z/x/y`, in tile-local 0..1, or `None` if it is outside.
+///
+/// Web Mercator, matching the projection the tiler cut the archive with.
+fn tile_local(lon: f64, lat: f64, z: u8, x: u32, y: u32) -> Option<(f32, f32)> {
+    let n = f64::from(1u32 << z);
+    let sin = lat.to_radians().sin().clamp(-0.9999, 0.9999);
+    let world_x = (lon + 180.0) / 360.0 * n;
+    let world_y = (0.5 - ((1.0 + sin) / (1.0 - sin)).ln() / (4.0 * std::f64::consts::PI)) * n;
+    let u = world_x - f64::from(x);
+    let v = world_y - f64::from(y);
+    (0.0..=1.0).contains(&u).then_some(())?;
+    (0.0..=1.0).contains(&v).then_some(())?;
+    Some((u as f32, v as f32))
+}
+
+/// Even-odd point-in-polygon over a closed ring.
+fn contains(ring: &[(f32, f32)], u: f32, v: f32) -> bool {
+    let mut inside = false;
+    for window in ring.windows(2) {
+        let (x0, y0) = window[0];
+        let (x1, y1) = window[1];
+        if (y0 > v) != (y1 > v) && u < (x1 - x0) * (v - y0) / (y1 - y0) + x0 {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
+/// How dark the world outside the selected region goes. Alpha, not a colour swap, so the map
+/// stays legible underneath — the point is to say "this is the boundary", not to hide the rest.
+const SCRIM_COLOR: u32 = 0x8C00_0000;
+
+/// Column-major identity, for an overlay whose vertices are already in clip space.
+const IDENTITY: [f32; 16] = [
+    1.0, 0.0, 0.0, 0.0, //
+    0.0, 1.0, 0.0, 0.0, //
+    0.0, 0.0, 1.0, 0.0, //
+    0.0, 0.0, 0.0, 1.0,
+];
+
+/// The unit quad every screen-anchored overlay draws with: four vertices in −1..1 and the
+/// two triangles over them.
+///
+/// Uploaded once in [`Renderer::new`], because everything that varies about an overlay —
+/// where it is, how big, what colour, which way it points — rides in the matrix and the
+/// push constants. So the per-frame cost is one `cmd_push_constants` and one
+/// `cmd_draw_indexed`, not the pair of `vkAllocateMemory` calls a transient buffer pays.
+struct Quad {
+    vertices: Buffer,
+    indices: Buffer,
+}
+
+/// The four corners of the unit square, in the −1..1 the puck shaders read as a local
+/// coordinate.
+const QUAD_VERTICES: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0];
+const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
+
+/// The puck's blue, from the `drawUserIcon` in `maps` this replaces.
+const PUCK_COLOR: u32 = 0xFF0E_35F1;
+/// The white rim's radius in Dp, and the blue dot's on top of it.
+const PUCK_RIM_DP: f32 = 9.5;
+const PUCK_DOT_DP: f32 = 8.0;
+/// The bearing cone: the radius its stroke is centred on, and half that stroke's width.
+const PUCK_CONE_DP: f32 = 20.0;
+const PUCK_CONE_HALF_STROKE_DP: f32 = 4.0;
+/// The quad's radius. The cone's outer edge is at 24 Dp, but its radial gradient only
+/// reaches zero at 28 — the radius the Compose original's `Brush.radialGradient` used —
+/// so a quad any tighter would clip the falloff.
+const PUCK_QUAD_DP: f32 = 28.0;
+
+/// The turn-arrow glyph: its screen size in Dp (the unit arrow spans roughly `-1..1`, so this is a
+/// touch under its half-extent), and its colour. A muted near-white so the arrows read on the dark
+/// carriageway without competing with the route line's saturated blue.
+const ARROW_DP: f32 = 9.0;
+const ARROW_COLOR: u32 = 0xE6EE_F1F5;
+
+/// Stroke width of a live-traffic segment, in Dp.
+///
+/// A single constant width rather than a style ramp: the overlay is one legible band drawn
+/// over the road casing, not a road class that has to grow and shrink with zoom. A shade
+/// wider than a minor road so the colour reads as an overlay on top of the network rather
+/// than as the road itself. Applied as a per-frame push constant (halved and density-scaled
+/// like every other stroke), so it re-tessellates nothing.
+const TRAFFIC_WIDTH_DP: f32 = 4.0;
+
+/// The shallowest camera zoom the 3D buildings draw at, matching the `buildings` style layer's
+/// `minzoom`. A tile may carry building geometry as a deeper-zoom ancestor stand-in, but the pass
+/// is gated on the camera's own zoom so buildings appear only once the map is zoomed in far enough
+/// for the extruded detail to read — below it the map is the flat basemap it always was.
+const BUILDINGS_DRAW_MIN_ZOOM: f64 = 14.0;
+
+pub struct Renderer {
+    context: Context,
+    swapchain: Swapchain,
+    pipelines: Pipelines,
+    /// Sampled-image infra shared by the glyph atlas and the sprite atlas: one
+    /// pool/layout, one set per atlas. Uploaded once at startup from the
+    /// CPU-built atlas bytes.
+    atlas_set: AtlasSet,
+    glyph_atlas: Option<SampledImage>,
+    glyph_set: Option<vk::DescriptorSet>,
+    /// The POI icon sheet, uploaded beside the glyphs. `None` when the sheet would
+    /// not decode, which leaves POI labels drawing without icons rather than not at
+    /// all.
+    sprite_atlas: Option<SampledImage>,
+    sprite_set: Option<vk::DescriptorSet>,
+    command_pool: vk::CommandPool,
+    frames: Vec<Frame>,
+    frame_index: usize,
+    tiles: HashMap<u64, ResidentTile>,
+    /// Retired buffers waiting for the frames that might still reference them.
+    retiring: Vec<(usize, ResidentTile)>,
+    /// The persistent shader-compilation cache, seeded from disk at startup and shared by every
+    /// pipeline and by [`Pick`]. Outlives [`Pipelines`], which is destroyed and rebuilt whenever
+    /// the render pass changes — that is the whole point, since the rebuild is what used to
+    /// recompile twelve pipelines inside a frame.
+    pipeline_cache: ShaderCache,
+    /// Transient per-frame symbol buffers, same grace rule as `retiring`.
+    transients: Vec<TransientBuffers>,
+    /// One scratch bump allocator per frame in flight, which every symbol draw's geometry is
+    /// suballocated from. Indexed by [`frame_index`](Self::frame_index) and reset once that
+    /// frame's fence has signalled. See [`ScratchRing`].
+    scratch: Vec<ScratchRing>,
+    window: *mut ANativeWindow,
+    pub width: u32,
+    pub height: u32,
+    /// Set when the swapchain needs rebuilding: a resize, a rotation, or an out-of-date
+    /// present.
+    needs_rebuild: bool,
+    /// Draw calls actually submitted by the last recorded frame.
+    ///
+    /// Counted where they are issued rather than re-derived, because a layer can be resident
+    /// and still not drawn — the authored style ramps a road's width to zero outside the zooms
+    /// it is meant for, and [`record`](Self::record) skips it. Any second implementation of
+    /// that test would drift out of step with the one that matters and the number would start
+    /// lying again, more subtly.
+    ///
+    /// A `Cell` because `record` takes `&self`; the frame path is single-threaded, as the
+    /// module docs of [`crate::bridge`] set out.
+    submitted_draws: Cell<usize>,
+    /// Task-17 pick state: the last frame's PLACED labels — accept-set id,
+    /// screen box in DEVICE px, layer index, display name, kind string, and
+    /// anchor lon/lat — so `pick_labels` answers without re-tessellating.
+    /// Refreshed by `record_inner` every frame; read by the JNI pick path.
+    placed: std::cell::RefCell<Vec<PlacedHit>>,
+    /// The last symbol placement and the state it was computed from.
+    ///
+    /// [`place_symbols`](Self::place_symbols) projects a collision box for every glyph of every
+    /// curved label and then runs a solver that is quadratic in accepted boxes, all of it on the
+    /// Choreographer callback. None of that depends on the frame clock, so a camera that has not
+    /// moved gets last frame's answer instead of the same computation again.
+    placement_cache: std::cell::RefCell<Option<(PlacementKey, AcceptSet)>>,
+    /// What this frame draws on top of every tile, in order. See [`Overlay`].
+    overlays: Vec<Overlay>,
+    /// The geometry every overlay shares, uploaded once.
+    quad: Quad,
+    /// The OSM relation whose shape is punched out of the mask scrim, if any.
+    ///
+    /// Not an [`Overlay`]: an overlay draws itself over the tiles, while this one is a property
+    /// of how every tile is drawn — two pipelines and a stencil rather than one quad.
+    selected_region: Option<u64>,
+    /// The navigation route line, or `None` when no route is set.
+    route: Option<RouteBuffers>,
+    /// The live-traffic colour table: `component_id → ARGB`, pushed from the host each update.
+    ///
+    /// The device owns the theme and palette, so it sends fully-resolved colours; the renderer
+    /// only looks them up. A segment whose id is absent draws nothing (see [`record_traffic`]),
+    /// which keeps the overlay to the roads traffic actually covers rather than flooding the
+    /// whole network with a neutral tint. Replacing this map is the whole of a recolour — no
+    /// geometry is touched — so new speeds cost no tessellation.
+    ///
+    /// [`record_traffic`]: Self::record_traffic
+    traffic_colors: HashMap<u64, u32>,
+    /// Whether the traffic overlay is drawn this frame. Set from the host's layer toggle; the
+    /// geometry is also gated at tessellation, so this is the cheap per-frame guard that stops
+    /// resident traffic meshes drawing in the window before a toggle-off re-tessellation lands.
+    traffic_enabled: bool,
+    /// The offscreen id-buffer pass, for tap picking. Self-contained (its own render pass, pipeline
+    /// and target); invoked out of band by [`pick_at`](Self::pick_at), never in the frame loop.
+    pick: Pick,
+    /// The last camera a frame was recorded with, so [`pick_at`](Self::pick_at) can place markers
+    /// against the frame the user is actually looking at. `None` before the first frame.
+    last_camera: Option<Camera>,
+}
+
+/// One placed label as the pick path sees it: everything `pickLabels` needs
+/// to answer without touching tiles, layers, or the camera.
+#[derive(Clone)]
+pub struct PlacedHit {
+    /// Screen box in device px (same box the placer accepted).
+    pub rect: (f32, f32, f32, f32),
+    /// Index into the style layer list (maps to the flat layer id).
+    pub layer_index: usize,
+    /// Display name as shaped.
+    pub name: String,
+    /// Kind string (`country`/`region`/`locality`/…).
+    pub kind: String,
+    /// The archive's stable id for the feature, or
+    /// [`ID_NONE`](tilecodec::mamaps::body::ID_NONE) when it has none. Lets the host rejoin the
+    /// hit against its own data without matching on name and position.
+    pub feature_id: u64,
+    /// Anchor lon/lat in degrees.
+    pub lon: f64,
+    pub lat: f64,
+}
+
+/// The interned `kind`'s name, or empty when it is [`dict::NONE`] or past the table.
+///
+/// The archive stores kinds as ids into a frozen dictionary; the pick path reports names,
+/// because that is what the host filters and switches on.
+fn kind_name(kind: u16) -> String {
+    use tilecodec::mamaps::dict;
+    usize::from(kind)
+        .checked_sub(1)
+        .and_then(|at| dict::KINDS.get(at))
+        .map(|name| (*name).to_string())
+        .unwrap_or_default()
+}
+
+/// The anchors a layer's labels may be drawn at: its first choice, and the one to fall
+/// back to when that box collides.
+///
+/// A layer with no `text-variable-anchor` is centred and cannot move, which is every place
+/// layer. Only the first two are used: the reference declares exactly two, and a
+/// [`crate::tile::placement::Candidate`] carries exactly two boxes.
+fn anchors_for(layer: &Layer) -> (Anchor, Option<Anchor>) {
+    match layer.variable_anchor.as_slice() {
+        [] => (Anchor::Center, None),
+        [only] => (*only, None),
+        [first, second, ..] => (*first, Some(*second)),
+    }
+}
+
+/// Everything one label's collision box depends on besides its anchor.
+///
+/// Built once per label and reused for each candidate anchor, so the two boxes a POI is
+/// tried at can only differ in where they sit — not in how big they are.
+fn box_inputs(
+    layer: &Layer,
+    label: &geometry::ShapedLabel,
+    camera: &Camera,
+) -> crate::tile::placement::BoxInputs {
+    crate::tile::placement::BoxInputs {
+        text_px: layer.text_size_for(camera.zoom, label.pop) * camera.density,
+        advance: label.total_advance,
+        line_count: label.lines.len(),
+        offset_em: layer.text_offset,
+        // Dp from the sheet, device px here — the same conversion `emit_icon` makes.
+        icon_px: label
+            .sprite
+            .map(|s| (s.width_dp * camera.density, s.height_dp * camera.density)),
+        pad_px: collision_padding_px(camera.zoom),
+    }
+}
+
+/// Collision padding in device px around every label box, by camera zoom.
+///
+/// MapLibre pads every label (icon + text padding, growing at low zoom via
+/// the icon-padding ramp), which is what holds z6 to ~10 cities while z14
+/// stays dense. Without it tight advance boxes let hundreds of villages
+/// survive at z6. 24px at z6 and below culls hamlets against towns; 4px at
+/// z14+ keeps street labels tight. Linear between.
+fn collision_padding_px(zoom: f64) -> f32 {
+    if zoom <= 6.0 {
+        24.0
+    } else if zoom >= 14.0 {
+        4.0
+    } else {
+        (24.0 - (zoom - 6.0) * (20.0 / 8.0)) as f32
+    }
+}
+
+/// Multiply a colour's alpha by `opacity`, for the style's fill-opacity ramps.
+///
+/// The ramp is applied here rather than folded into the layer table because it is a function of
+/// the camera's zoom: a fill has to fade across a zoom, not switch at one.
+fn scale_alpha(argb: u32, opacity: f32) -> u32 {
+    if opacity >= 1.0 {
+        return argb;
+    }
+    let alpha = (((argb >> 24) & 0xFF) as f32 * opacity.clamp(0.0, 1.0)).round() as u32;
+    (alpha << 24) | (argb & 0x00FF_FFFF)
+}
+
+/// ARGB to the linear RGBA the shaders and clear values take.
+fn argb_to_rgba(argb: u32) -> [f32; 4] {
+    [
+        ((argb >> 16) & 0xFF) as f32 / 255.0,
+        ((argb >> 8) & 0xFF) as f32 / 255.0,
+        (argb & 0xFF) as f32 / 255.0,
+        ((argb >> 24) & 0xFF) as f32 / 255.0,
+    ]
+}

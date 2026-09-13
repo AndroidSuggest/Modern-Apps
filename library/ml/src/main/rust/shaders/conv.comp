@@ -67,5 +67,5 @@ void main() {
         }
     }
 
-    arena[p.out_at + index] = float16_t(activate(acc, p.act, oc));
+    arena[p.out_at + index] = float16_t(fused_store(acc, p.act, oc, index));
 }

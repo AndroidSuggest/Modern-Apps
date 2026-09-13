@@ -408,8 +408,9 @@ mod tests {
         assert_eq!(counts.get("AttnScores"), Some(&2), "{counts:?}");
         assert_eq!(counts.get("Softmax"), Some(&2), "{counts:?}");
         assert_eq!(counts.get("AttnApply"), Some(&2), "{counts:?}");
-        // Two residuals per block.
-        assert_eq!(counts.get("Add"), Some(&4), "{counts:?}");
+        // Two residuals per block — half of which fold into their producing
+        // convolution's store. See `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&2), "{counts:?}");
         // The sixteen learnable affine blocks that could not fold; see `AFFINES`.
         assert_eq!(counts.get("Affine"), Some(&16), "{counts:?}");
         // The one concatenation, lowered to two copies and no shader.

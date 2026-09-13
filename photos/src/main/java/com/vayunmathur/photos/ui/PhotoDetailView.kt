@@ -293,124 +293,52 @@ fun PhotoDetailView(
             )
         }
 
-        ocrLayout?.takeIf { isSettled && size != IntSize.Zero }?.let { layout ->
-            key(ocrClearToken) {
-                OcrTextLayer(
-                    layout = layout,
-                    containerSize = size,
-                    showOutlines = isMetadataVisible,
-                    zoom = { currentZoom.value.scale },
-                    modifier = Modifier.fillMaxSize().then(zoomModifier)
-                )
-            }
-        }
-
-        // Above the OCR layer so a face tap wins over the selection container's
-        // invisible text. The tradeoff is that text selection is blocked inside a
-        // face rect; faces and text rarely overlap, and the other way round — the
-        // selection layer eating face taps — is worse. Gated so the layer is not
-        // composed while the chrome is hidden, or its tap targets would swallow
-        // the single tap that brings the chrome back.
-        faceBoxes?.takeIf { isSettled && size != IntSize.Zero }?.let { boxes ->
-            FadeVisibility(
-                visible = isMetadataVisible,
-                modifier = Modifier.fillMaxSize().then(zoomModifier)
-            ) {
-                FaceBoxLayer(
-                    boxes = boxes,
-                    containerSize = size,
-                    zoom = { currentZoom.value.scale },
-                    onFaceClick = onOpenPerson,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-
-        FadeVisibility(
-            visible = isMetadataVisible,
-            modifier = Modifier.align(Alignment.BottomStart)
-        ) {
-            PhotoMetadataCard(
-                photo = photo,
-                context = context,
-                countryName = countryName,
-                fileSize = fileSize,
-                pageOffset = pageOffset,
-                peopleCount = peopleCount,
-                isSphere = isSphere,
-                isMotionPhoto = isMotionPhoto,
-                onSetWallpaper = onSetWallpaper,
-                onEditPhoto = onEditPhoto,
-                onDelete = onDelete,
-            )
-        }
-
-        if (isPanorama || isMotionPhoto) {
-            FadeVisibility(
-                visible = isMetadataVisible,
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (isPanorama) {
-                        FilledTonalButton(onClick = { showImmersive = true }) {
-                            Text(stringResource(if (isSphere) R.string.view_360 else R.string.view_panorama))
-                        }
-                    }
-                    if (isMotionPhoto) {
-                        FilledTonalButton(
-                            onClick = {
-                                if (motionPlaying) {
-                                    motionPlaying = false
-                                } else if (motionFile != null) {
-                                    motionPlaying = true
-                                } else if (!motionExtracting) {
-                                    motionExtracting = true
-                                    scope.launch {
-                                        val file = MotionPhotoVideo.motionVideoFile(context, photo.uri, photo.id)
-                                        motionExtracting = false
-                                        if (file != null) {
-                                            motionFile = file
-                                            motionPlaying = true
-                                        } else {
-                                            // Extraction failure: stay on the still and report it.
-                                            messenger.show(motionFailedMessage)
-                                        }
-                                    }
-                                }
-                            },
-                            enabled = !motionExtracting
-                        ) {
-                            Text(
-                                stringResource(
-                                    if (motionPlaying) R.string.stop_motion_photo
-                                    else R.string.play_motion_photo
-                                )
-                            )
+        PhotoDetailSection(
+            photo = photo,
+            context = context,
+            countryName = countryName,
+            fileSize = fileSize,
+            pageOffset = pageOffset,
+            peopleCount = peopleCount,
+            isSphere = isSphere,
+            isMotionPhoto = isMotionPhoto,
+            isPanorama = isPanorama,
+            isMetadataVisible = isMetadataVisible,
+            showImmersive = showImmersive,
+            motionPlaying = motionPlaying,
+            motionExtracting = motionExtracting,
+            faceBoxes = faceBoxes,
+            ocrLayout = ocrLayout,
+            ocrClearToken = ocrClearToken,
+            isSettled = isSettled,
+            size = size,
+            currentZoom = currentZoom,
+            zoomModifier = zoomModifier,
+            onOpenPerson = onOpenPerson,
+            onSetWallpaper = onSetWallpaper,
+            onEditPhoto = onEditPhoto,
+            onDelete = onDelete,
+            onShowImmersive = { showImmersive = it },
+            onMotionClick = {
+                if (motionPlaying) {
+                    motionPlaying = false
+                } else if (motionFile != null) {
+                    motionPlaying = true
+                } else if (!motionExtracting) {
+                    motionExtracting = true
+                    scope.launch {
+                        val file = MotionPhotoVideo.motionVideoFile(context, photo.uri, photo.id)
+                        motionExtracting = false
+                        if (file != null) {
+                            motionFile = file
+                            motionPlaying = true
+                        } else {
+                            // Extraction failure: stay on the still and report it.
+                            messenger.show(motionFailedMessage)
                         }
                     }
                 }
-            }
-        }
-    }
-
-    if (showImmersive && photo.panoData != null) {
-        Dialog(
-            onDismissRequest = { showImmersive = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-                if (isSphere) {
-                    PanoramaSphereView(photo = photo, modifier = Modifier.fillMaxSize())
-                } else {
-                    PanoramaFlatView(photo = photo, modifier = Modifier.fillMaxSize())
-                }
-                FilledTonalButton(
-                    onClick = { showImmersive = false },
-                    modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
-                ) {
-                    Text(stringResource(UiR.string.close))
-                }
-            }
-        }
+            },
+        )
     }
 }

@@ -145,4 +145,31 @@ class FrameReaderTest {
         assertTrue(reader.offer(wire, 3, 50).isEmpty(), "payload incomplete")
         assertEquals(1, reader.offer(wire, 53, wire.size - 53).size)
     }
+
+    @Test
+    fun `an undecryptable frame fires the teardown hook and is dropped`() {
+        // Corrupt ciphertext is malformed input (`rtr` answers 0xFFFF and tears
+        // down): the reader drops the frame and fires the hook rather than
+        // throwing out of the pump loop or feeding garbage to reassembly.
+        var fired = 0
+        val reader = FrameReader(
+            decrypt = { error("corrupt record") },
+            onFramingError = { fired++ },
+        )
+        val wire = writer.frame(1, payload(64), encrypted = true).single()
+
+        assertTrue(reader.offer(wire).isEmpty(), "the bad frame is dropped")
+        assertEquals(1, fired)
+    }
+
+    @Test
+    fun `plaintext frames never touch the teardown hook`() {
+        var fired = 0
+        val reader = FrameReader(onFramingError = { fired++ })
+
+        val message = reader.offer(writer.frame(1, payload(16)).single()).single()
+
+        assertEquals(16, message.payload.size)
+        assertEquals(0, fired)
+    }
 }

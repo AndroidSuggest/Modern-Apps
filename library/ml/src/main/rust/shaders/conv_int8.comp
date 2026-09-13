@@ -71,5 +71,5 @@ void main() {
 
     float scale = float(weights[p.act_weight + oc]);
     float biased = total * scale + float(weights[p.bias + oc]);
-    arena[p.out_at + index] = float16_t(activate(biased, p.act, oc));
+    arena[p.out_at + index] = float16_t(fused_store(biased, p.act, oc, index));
 }

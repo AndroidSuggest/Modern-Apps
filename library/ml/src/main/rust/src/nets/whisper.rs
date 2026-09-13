@@ -713,8 +713,10 @@ mod tests {
         assert_eq!(counts.get("AttnApply"), Some(&ENCODER_LAYERS), "{counts:?}");
         // Not causal: an audio window's positions all see each other.
         assert_eq!(counts.get("SoftmaxCausal"), None, "{counts:?}");
-        // Two residuals per layer, plus the position table.
-        assert_eq!(counts.get("Add"), Some(&(ENCODER_LAYERS * 2 + 1)), "{counts:?}");
+        // Two residuals per layer, plus the position table — minus the six whose
+        // skip side is already written when the producing convolution runs, which
+        // fold into its store. See `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&7), "{counts:?}");
         assert_eq!(counts.get("Constant"), Some(&1), "{counts:?}");
         assert_eq!(counts.len(), 7, "{counts:?}");
 
@@ -786,8 +788,9 @@ mod tests {
         assert_eq!(counts.get("Softmax"), Some(&DECODER_LAYERS), "{counts:?}");
         assert_eq!(counts.get("SoftmaxPrefix"), Some(&DECODER_LAYERS), "{counts:?}");
         assert_eq!(counts.get("CacheWrite"), Some(&(DECODER_LAYERS * 2)), "{counts:?}");
-        // Three residuals per layer.
-        assert_eq!(counts.get("Add"), Some(&(DECODER_LAYERS * 3)), "{counts:?}");
+        // Three residuals per layer — half of which fold into their producing
+        // convolution's store. See `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&9), "{counts:?}");
         assert_no_aliasing(&plan);
     }
 

@@ -465,8 +465,9 @@ mod tests {
         assert_eq!(counts.get("AttnApplyRelative"), Some(&ATTN_LAYERS), "{counts:?}");
         assert_eq!(counts.get("Softmax"), Some(&ATTN_LAYERS), "{counts:?}");
         // Six block residuals, two per attention layer, and the skip around the whole
-        // attention encoder.
-        assert_eq!(counts.get("Add"), Some(&(BLOCKS + ATTN_LAYERS * 2 + 1)), "{counts:?}");
+        // attention encoder — minus the seven whose skip side is already written when
+        // the producing convolution runs, which fold into its store. See `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&4), "{counts:?}");
         assert_eq!(counts.get("LayerNorm"), Some(&(BLOCKS + ATTN_LAYERS * 2)), "{counts:?}");
         // No pool: the reduction is the strided convolution, not an average over the
         // sentence. A `GlobalAvgPool` here would be the wrong model producing a plausible

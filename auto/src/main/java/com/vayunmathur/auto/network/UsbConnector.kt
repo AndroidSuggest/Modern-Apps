@@ -32,13 +32,24 @@ object UsbConnector {
     /** Broadcast action for the accessory-permission round-trip; see [UsbReceiver]. */
     const val ACTION_USB_PERMISSION = "com.vayunmathur.auto.USB_PERMISSION"
 
+    /**
+     * Force-start action for the USB projection chain (`BT_START` ->
+     * `START_USB_PROJECTION`, see `CarStartupService`): whoever holds the
+     * trigger (startup service, CDM handoff) asks USB to bring up the last
+     * accessory without a physical replug. No accessory yet means nothing to
+     * force -- logged, never crashed on.
+     */
+    const val ACTION_USB_ACCESSORY_FORCE_START = "com.vayunmathur.auto.USB_ACCESSORY_FORCE_START"
+
     private val session = UsbSession()
     private var lastAccessory: UsbAccessory? = null
 
     /**
-     * Handles accessory intents forwarded from `MainActivity`.
+     * Handles accessory intents forwarded from `MainActivity`, plus the
+     * force-start chain action from `CarStartupService`.
      *
-     * @return true when the intent was an accessory attach/detach this consumed.
+     * @return true when the intent was an accessory attach/detach (or the
+     * force-start chain action) this consumed.
      */
     @Suppress("DEPRECATION")
     fun onAccessoryIntent(context: Context, intent: Intent): Boolean {
@@ -57,8 +68,29 @@ object UsbConnector {
                 Log.i(TAG, "USB accessory detached")
                 return true
             }
+            ACTION_USB_ACCESSORY_FORCE_START -> {
+                forceStart(context)
+                return true
+            }
             else -> return false
         }
+    }
+
+    /**
+     * Force-starts USB bring-up for the last accessory without a replug.
+     * Reuses the attach path exactly (permission round-trip included):
+     * force-start is a re-drive, not a bypass. MANAGE_USB would additionally
+     * allow role-switch/reset handling (see `ConnectionResetReceiver`), but
+     * that permission is privapp-gated -- without the allowlist this stays
+     * on the plain open path, which needs no privileged grant.
+     */
+    fun forceStart(context: Context) {
+        val accessory = lastAccessory ?: run {
+            Log.i(TAG, "USB force-start with no accessory seen; ignoring")
+            return
+        }
+        Log.i(TAG, "USB force-start for ${accessory.model}")
+        onAttached(context, accessory)
     }
 
     /**
@@ -98,12 +130,22 @@ object UsbConnector {
             hasPermission = manager?.hasPermission(accessory) == true,
         )
         TransportState.publishUsb(session)
+        // TPlus variant note: a TPlus head unit arrives on this same ATTACHED
+        // path (same filter, same fd-as-stream open below) with its own model
+        // string -- the handshake difference is HU-side framing the GAL bytes
+        // ride unchanged through. No fork here on purpose: the transport is
+        // agnostic and the session reuses TLS/GAL verbatim. MANAGE_USB would
+        // gate only the reset/role-switch side (see ConnectionResetReceiver).
         Log.i(TAG, "USB accessory attached: ${session.accessoryLabel}")
         val granted = manager?.hasPermission(accessory) == true
         if (granted) open(context, accessory) else requestPermission(context, accessory)
     }
 
     private fun requestPermission(context: Context, accessory: UsbAccessory) {
+        // App-private round-trip (setPackage): without MANAGE_USB this app
+        // cannot grant itself accessory access, so the system dialog (via
+        // UsbReceiver) is the only path -- hence no silent retry here, only
+        // the user-driven retryPermission above.
         val manager = context.getSystemService(UsbManager::class.java) ?: return
         val intent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
         // Mutable: the system fills in the grant answer on delivery (required on S+).

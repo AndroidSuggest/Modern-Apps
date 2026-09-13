@@ -2,6 +2,7 @@ package com.vayunmathur.auto.protocol
 
 import com.vayunmathur.auto.protocol.gal.AbsoluteEvent
 import com.vayunmathur.auto.protocol.gal.AbsoluteEvents
+import com.vayunmathur.auto.protocol.gal.InputFeedback
 import com.vayunmathur.auto.protocol.gal.InputReport
 import com.vayunmathur.auto.protocol.gal.KeyBindingRequest
 import com.vayunmathur.auto.protocol.gal.KeyBindingResponse
@@ -90,6 +91,16 @@ object InputCodec {
     fun encodeKeyBinding(keycodes: List<Int>): Pair<Int, ByteArray> =
         GalMessage.Input.KEY_BINDING_REQUEST to KeyBindingRequest.newBuilder()
             .addAllKeycodes(keycodes)
+            .build()
+            .toByteArray()
+
+    /**
+     * Phone -> HU: one input-stream feedback event (`xjs`) from the
+     * discovery-advertised set (`ikb.n` sends one per `xji` event).
+     */
+    fun encodeFeedback(feedbackEvent: Int): Pair<Int, ByteArray> =
+        GalMessage.Input.FEEDBACK to InputFeedback.newBuilder()
+            .setFeedbackEvent(feedbackEvent)
             .build()
             .toByteArray()
 

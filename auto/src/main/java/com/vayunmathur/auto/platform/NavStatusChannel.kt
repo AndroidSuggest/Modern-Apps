@@ -4,6 +4,7 @@ import android.util.Log
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalService
 import com.vayunmathur.auto.protocol.NavStatusCodec
+import com.vayunmathur.auto.protocol.NavStatusUpdate
 
 /**
  * The navigation-status channel: posts phone-side turn guidance onto ch10.
@@ -28,9 +29,17 @@ class NavStatusChannel(
 
     private var open = false
 
+    /**
+     * The last update that went out, seeded with the grant-time inactive
+     * post. [postUpdate] skips reposts of identical state so a stationary
+     * fix rate does not spam the cluster with the same turn.
+     */
+    private var lastPosted: NavStatusUpdate? = NavStatusUpdate(guidanceActive = false)
+
     /** The grant arrived: post the inactive stub. Called once per channel open. */
     fun onChannelOpen() {
         open = true
+        lastPosted = NavStatusUpdate(guidanceActive = false)
         val (type, payload) = NavStatusCodec.encodeInactive()
         connection.send(channelId, type, payload)
         Log.i(TAG, "nav-status posted: no guidance")
@@ -44,6 +53,20 @@ class NavStatusChannel(
             return
         }
         Log.d(TAG, "unhandled nav-status message 0x${type.toString(16)}")
+    }
+
+    /**
+     * Live-route seam (HANDOFF.md section 10, maps-dev): forwards one
+     * guidance snapshot -- `MapsGuidance.toNavStatus(snapshot)` -- as a turn
+     * update while the route advances. Identical reposts are skipped (see
+     * [lastPosted]); the grant-time inactive stub stays the no-guidance
+     * state, and posts before the grant are dropped, never queued.
+     */
+    fun postUpdate(update: NavStatusUpdate) {
+        if (!open) return
+        if (update == lastPosted) return
+        lastPosted = update
+        postStatus(update.guidanceActive, update.nextRoad, update.nextTurnDistanceM, update.maneuver)
     }
 
     /**

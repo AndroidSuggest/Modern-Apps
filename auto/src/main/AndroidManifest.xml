@@ -34,6 +34,95 @@
          is mediaProjection. The capture runs only while consented in-app AND granted
          here; either off means fail-closed silence on the head unit. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!-- Background mic (ch6) and location (ch7) must survive without a visible
+         activity on API 34+: the projection service declares the Chimera triple
+         (microphone|connectedDevice|location) and each type needs its own
+         foreground-service permission. Without these the platform kills the
+         background mic/location legs and the channels starve. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Wireless bring-up (BT_START -> RFCOMM -> TCP): discovery, association
+         and the socket all need the Bluetooth family. The CDM trigger
+         (CarCompanionDeviceService) additionally needs the association trio
+         below; the pairing-screen stand-in path needs SCAN+CONNECT. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_PRIVILEGED" />
+    <uses-permission android:name="android.permission.LOCAL_MAC_ADDRESS" />
+    <!-- Projected calls + message/call templates: the InCall pair
+         (CarProjection/non-car) and reading the threads the mirror posts.
+         Without these the call UI stays on the phone and restricted message
+         data never reaches the car (fail-closed silence). -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.RECEIVE_SENSITIVE_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.GET_INTENT_SENDER_INTENT" />
+    <!-- Wired auto-launch/role-switch/reset: the USB receivers and the reset
+         chain. Privapp-gated (see the allowlist note below): without the
+         allowlist entry this is inert and USB falls back to the plain
+         attach/permission/open path, which needs no privileged grant. -->
+    <uses-permission android:name="android.permission.MANAGE_USB" />
+    <!-- Audio routing + telephony/in-call control + background launch: the
+         sinks route to the car speakers (not the phone), the InCall pair
+         controls the call, and background starts fire the startup chain.
+         Privapp-gated like MANAGE_USB (see below). -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_ROUTING" />
+    <uses-permission android:name="android.permission.TETHER_PRIVILEGED" />
+    <uses-permission android:name="android.permission.POWER_SAVER" />
+    <uses-permission android:name="android.permission.MANAGE_USERS" />
+    <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_COMPONENT_ENABLED_STATE" />
+    <uses-permission android:name="android.permission.MODIFY_PHONE_STATE" />
+    <uses-permission android:name="android.permission.CONTROL_INCALL_EXPERIENCE" />
+    <uses-permission android:name="android.permission.CALL_PRIVILEGED" />
+    <!-- Trusted display + projection control + secure capture: the virtual
+         display route (TRUSTED vs PRIVATE), the projection toggle, and
+         secure surfaces. Without these the display stays private-only and
+         secure content renders black on the head unit. -->
+    <uses-permission android:name="android.permission.ADD_TRUSTED_DISPLAY" />
+    <uses-permission android:name="android.permission.ADD_ALWAYS_UNLOCKED_DISPLAY" />
+    <uses-permission android:name="android.permission.CREATE_VIRTUAL_DEVICE" />
+    <uses-permission android:name="android.permission.TOGGLE_AUTOMOTIVE_PROJECTION" />
+    <uses-permission android:name="android.permission.CAPTURE_SECURE_VIDEO_OUTPUT" />
+    <!-- Companion-device trigger for wireless: the CDM service
+         (CarCompanionDeviceService) associates with the automotive-projection
+         profile and fires the BT_START chain. Without these the association
+         never forms and wireless stays on the pairing-screen stand-in. -->
+    <uses-permission android:name="android.permission.ASSOCIATE_COMPANION_DEVICES" />
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION" />
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_SELF_MANAGED" />
+    <uses-permission android:name="android.permission.COMPANION_APPROVE_WIFI_CONNECTIONS" />
+    <uses-permission android:name="android.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE" />
+    <!-- Background/trusted launch: the startup chain (BT_START,
+         START_USB_PROJECTION, deep links) and car-mode entry fire without a
+         visible activity. Without these the chain can only start while the
+         app is foreground. -->
+    <uses-permission android:name="android.permission.START_ACTIVITIES_FROM_BACKGROUND" />
+    <uses-permission android:name="android.permission.ENTER_CAR_MODE_PRIORITIZED" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.INTERACT_ACROSS_PROFILES" />
+    <!-- Do-not-disturb state for the rail status cluster (DND icon): reading
+         the interruption filter needs the policy grant; without it the icon
+         stays gone (fail-closed), like every other absent source. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Privapp allowlist half (mirrors the MAOS role half in MaosRole):
+         com.vayunmathur.auto must additionally allowlist MANAGE_USB,
+         MODIFY_AUDIO_ROUTING, TETHER_PRIVILEGED, CALL_PRIVILEGED,
+         POWER_SAVER, READ_PRIVILEGED_PHONE_STATE,
+         CHANGE_COMPONENT_ENABLED_STATE, MANAGE_USERS,
+         CAPTURE_SECURE_VIDEO_OUTPUT, BLUETOOTH_PRIVILEGED,
+         CONTROL_INCALL_EXPERIENCE and MODIFY_PHONE_STATE. Both halves are
+         boot-fatal if wrong -- land one at a time. Gearhead's GMS-signed
+         host permissions (NAVIGATION_TEMPLATES, ACCESS_SURFACE,
+         GEARHEAD_SERVICE, START_PROJECTED_ACTIVITY) are not declarable by
+         third parties and stay absent on purpose. -->
 
     <!-- The car launcher resolves Maps / Music / dialer through PackageManager. Android 11+
          hides other apps by default, so these queries keep those lookups visible. The media
@@ -84,7 +173,7 @@
         <service
             android:name=".service.ProjectionService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="microphone|connectedDevice|location" />
         <!-- Holds the media-projection token while music capture runs. Started
              only after the user grants the consent dialog (see MusicCaptureGrant):
              on API 34+ an FGS with type mediaProjection cannot start before the
@@ -97,22 +186,64 @@
 
         <!-- Answers the USB permission round-trip and accessory detach while no
              activity is up; both funnel into UsbConnector. The permission action
-             is app-private (setPackage on request). -->
+             is app-private (setPackage on request). The force-start chain action
+             (CarStartupService START_USB_PROJECTION) funnels there too. -->
         <receiver
             android:name=".platform.UsbReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.vayunmathur.auto.USB_PERMISSION" />
                 <action android:name="android.hardware.usb.action.USB_ACCESSORY_DETACHED" />
+                <action android:name="com.vayunmathur.auto.USB_ACCESSORY_FORCE_START" />
             </intent-filter>
         </receiver>
 
-        <!-- Re-starts the projection listener after a reboot. -->
+        <!-- TPlus head-unit announce/detach: funnels into the same USB attach
+             path (see UsbTPlusReceiver); the framing difference is HU-side. -->
         <receiver
-            android:name=".platform.BootReceiver"
+            android:name=".platform.UsbTPlusReceiver"
             android:exported="false">
             <intent-filter>
+                <action android:name="com.vayunmathur.auto.USB_TPLUS_ATTACHED" />
+                <action android:name="com.vayunmathur.auto.USB_TPLUS_DETACHED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- USB role/port/gadget/function resets: re-arms the projection
+             listener after the stack re-enumerates (see
+             ConnectionResetReceiver). MA-defined equivalents of gearhead's
+             internal reset chain. -->
+        <receiver
+            android:name=".platform.ConnectionResetReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.vayunmathur.auto.RESET_USB_PORT" />
+                <action android:name="com.vayunmathur.auto.RESET_GADGET" />
+                <action android:name="com.vayunmathur.auto.RESET_ROLES" />
+                <action android:name="com.vayunmathur.auto.RESET_FUNCTION" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Link changes under a wireless session (see
+             ConnectivityEventReceiver). -->
+        <receiver
+            android:name=".platform.ConnectivityEventReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Re-starts the projection listener after a reboot or an app
+             update. Runs in :car like gearhead's init receiver; both the boot
+             and the replaced actions restart plus republish the role. -->
+        <receiver
+            android:name=".platform.BootReceiver"
+            android:exported="true"
+            android:process=":car">
+            <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 
@@ -120,15 +251,163 @@
              ch14 owner via MessageMirrorBus. The system binds this itself once
              the user enables MA Auto in notification-access settings; posting
              additionally requires the in-app consent switch (MessagingPrefs),
-             so either gate off means fail-closed silence. -->
+             so either gate off means fail-closed silence. Single-user (one
+             listener across profiles would double-mirror), sensitive
+             notifications permitted (templates would otherwise arrive empty),
+             and the mirror filter declares the CATEGORY_MESSAGE gate. -->
         <service
             android:name=".notifications.MessageMirrorService"
             android:exported="true"
             android:label="@string/messaging_headline"
+            android:singleUser="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
+            <meta-data
+                android:name="com.vayunmathur.auto.MIRROR_FILTER"
+                android:resource="@xml/message_mirror_filter" />
         </service>
+
+        <!-- Projected calls (car-mode InCall half of the NonCar/CarProjection
+             split). The platform binds this in car mode with the InCall grant;
+             needs CALL_PHONE/READ_PHONE_STATE/CONTROL_INCALL_EXPERIENCE. -->
+        <service
+            android:name=".telephony.CarProjectionInCallService"
+            android:exported="true"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.InCallService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_UI"
+                android:value="true" />
+        </service>
+
+        <!-- Non-car InCall half: manifest-disabled, never bound (see
+             NonCarInCallService). Declared so the package surfaces match
+             gearhead's split. -->
+        <service
+            android:name=".telephony.NonCarInCallService"
+            android:exported="false"
+            android:enabled="false"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.InCallService" />
+            </intent-filter>
+        </service>
+
+        <!-- Companion-device trigger for wireless projection (CDM,
+             automotive-projection profile). Fires the BT_START chain on
+             association; runs in :car like gearhead's. The system binds this
+             under the CDM association grant (ASSOCIATE_COMPANION_DEVICES
+             above); no separate bind permission exists for the
+             automotive-projection profile. -->
+        <service
+            android:name=".platform.CarCompanionDeviceService"
+            android:exported="true"
+            android:process=":car"
+            android:permission="android.permission.ASSOCIATE_COMPANION_DEVICES">
+            <intent-filter>
+                <action android:name="android.companion.CompanionDeviceService" />
+            </intent-filter>
+        </service>
+
+        <!-- Head-unit compositor/decor bind targets (exported, like
+             gearhead's): binds are safely rejected -- MA renders CarDisplay
+             into ch2 video rather than hosting HU-composited windows. -->
+        <service
+            android:name=".platform.CarSystemUiControllerService"
+            android:exported="true" />
+        <service
+            android:name=".platform.AppDecorService"
+            android:exported="true" />
+
+        <!-- Chimera entry point (GMS-compat car.service.START): funnels into
+             the projection service. Triple foreground type for background
+             mic/location survival. -->
+        <service
+            android:name=".platform.CarChimeraService"
+            android:exported="true"
+            android:foregroundServiceType="microphone|connectedDevice|location">
+            <intent-filter>
+                <action android:name="car.service.START" />
+            </intent-filter>
+        </service>
+
+        <!-- First-time setup handshake target: binds safely rejected (the
+             pairing screen owns setup). -->
+        <service
+            android:name=".platform.CarSetupService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.vayunmathur.auto.CAR_SETUP_SERVICE" />
+            </intent-filter>
+        </service>
+
+        <!-- Head-unit startup chain (BT_START + START_USB_PROJECTION +
+             CAR_STARTUP_NOTIFICATION): starts the phone side without the app
+             open. -->
+        <service
+            android:name=".platform.CarStartupService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.vayunmathur.auto.BT_START" />
+                <action android:name="com.vayunmathur.auto.START_USB_PROJECTION" />
+                <action android:name="com.vayunmathur.auto.CAR_STARTUP_NOTIFICATION" />
+            </intent-filter>
+        </service>
+
+        <!-- Wireless setup pair: the shared service owns the phone half (tap
+             stand-in or CDM MAC), the car service's bind is safely rejected
+             (credentials ride CDM/RFCOMM, not a binder). -->
+        <service
+            android:name=".platform.WirelessSetupSharedService"
+            android:exported="false" />
+        <service
+            android:name=".platform.WirelessSetupCarService"
+            android:exported="true" />
+
+        <!-- BT/WiFi state during wireless setup (ACL + adapter state). -->
+        <receiver
+            android:name=".platform.WifiBluetoothReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+                <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Wireless head-unit announcement: enters the BT_START chain. -->
+        <receiver
+            android:name=".platform.WirelessStartupReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.vayunmathur.auto.WIRELESS_STARTUP" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Wireless first-run entry + deep-link router: no UI, they enter
+             the startup chain and finish. -->
+        <activity
+            android:name=".platform.WirelessStartupActivity"
+            android:exported="true"
+            android:theme="@style/Theme.General"
+            android:noHistory="true"
+            android:excludeFromRecents="true" />
+        <activity
+            android:name=".platform.DeepLinkResolverActivity"
+            android:exported="true"
+            android:theme="@style/Theme.General"
+            android:noHistory="true"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="maauto" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

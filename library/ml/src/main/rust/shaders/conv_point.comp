@@ -109,8 +109,9 @@ void main() {
             if (position >= positions) {
                 continue;
             }
-            float value = activate(acc[i][j] + offset, p.act, channel);
-            arena[p.out_at + channel * positions + position] = float16_t(value);
+            uint index = channel * positions + position;
+            float value = fused_store(acc[i][j] + offset, p.act, channel, index);
+            arena[p.out_at + index] = float16_t(value);
         }
     }
 }

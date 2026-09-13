@@ -26,7 +26,8 @@ configure<com.android.build.api.dsl.LibraryExtension> {
         // Toast is banned repo-wide. Apps also catch this transitively via
         // checkDependencies, but failing here gives faster feedback when
         // working inside a library module.
-        fatal += listOf("ToastUsage")
+        // FileLength caps Kotlin file size, same as apps: split first.
+        fatal += listOf("ToastUsage", "FileLength")
     }
 }
 

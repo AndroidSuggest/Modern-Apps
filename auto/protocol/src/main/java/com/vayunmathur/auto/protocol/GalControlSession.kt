@@ -6,6 +6,7 @@ import com.vayunmathur.auto.protocol.gal.AudioFocusRequestType
 import com.vayunmathur.auto.protocol.gal.AuthComplete
 import com.vayunmathur.auto.protocol.gal.ByeByeReason
 import com.vayunmathur.auto.protocol.gal.ByeByeRequest
+import com.vayunmathur.auto.protocol.gal.CallAvailabilityStatus
 import com.vayunmathur.auto.protocol.gal.ChannelOpenRequest
 import com.vayunmathur.auto.protocol.gal.ChannelOpenResponse
 import com.vayunmathur.auto.protocol.gal.MessageStatus
@@ -115,6 +116,14 @@ class GalControlSession(
         private set
 
     /**
+     * Last call-availability state the head unit reported (control 24), or
+     * null before the first one. Observed by the phone-status owner; the
+     * control channel itself never answers.
+     */
+    var callAvailable: Boolean? = null
+        private set
+
+    /**
      * Who owns the screen and the speakers. Fed by the control notifications below
      * and, for video, by [onVideoFocusIndication] (the 0x8008 rides the video
      * channel, so the sink forwards it). The driver observes [onFocusChange].
@@ -142,12 +151,13 @@ class GalControlSession(
             state = SessionState.CLOSED
             emptyList()
         }
-        // Call availability is observed by higher layers; the control channel
-        // itself has nothing to answer. Focus notifications feed [focus]
-        // instead (see below).
-        GalMessage.Control.CALL_AVAILABILITY_STATUS,
-        GalMessage.Control.PING_RESPONSE,
-        -> emptyList()
+        // Call availability is parsed into [callAvailable] for the higher
+        // layers; the control channel itself has nothing to answer.
+        GalMessage.Control.CALL_AVAILABILITY_STATUS -> onCallAvailability(payload)
+        // An inbound ping response answers our own pings at the transport
+        // layer; the control channel itself has nothing to answer. Focus
+        // notifications feed [focus] instead (see below).
+        GalMessage.Control.PING_RESPONSE -> emptyList()
         // Hot-add/update of one service after the initial discovery (FINDINGS.md
         // control table, id 26): merged into [services] so the driver's
         // wire-order open loop picks it up without a reconnect. This is how an
@@ -169,6 +179,9 @@ class GalControlSession(
         // instead of sending 0x8. Draining the queue lets the driver move on to
         // the next service instead of stalling with a phantom pending open.
         GalMessage.Control.MESSAGE_ERROR -> onMessageError()
+
+        // The head unit says we framed badly: answered in kind, then gone.
+        GalMessage.Control.FRAMING_ERROR -> onFramingError()
 
         else -> fail("unexpected control message type 0x${type.toString(16)}")
     }
@@ -214,6 +227,20 @@ class GalControlSession(
             payload = ByeByeRequest.newBuilder().setReason(reason).build().toByteArray(),
             encrypted = true,
         )
+
+    /**
+     * Rejects one of the head unit's messages. Fire-and-forget like
+     * [disconnect]: the head unit observes it and carries on.
+     *
+     * Bare, mirroring what a DHU sends us: the head-unit-side payload shape
+     * (which message was rejected) was never recovered from the teardown, so
+     * nothing is claimed here beyond the 0xff type itself.
+     */
+    fun sendMessageError(): OutboundMessage = OutboundMessage(
+        type = GalMessage.Control.MESSAGE_ERROR,
+        payload = ByteArray(0),
+        encrypted = true,
+    )
 
     /**
      * Folds a video focus indication (0x8008) into [focus].
@@ -376,6 +403,43 @@ class GalControlSession(
     fun onMessageError(): List<OutboundMessage> {
         drainPendedToRefused()
         return emptyList()
+    }
+
+    /**
+     * Folds a control-24 call-availability status into [callAvailable].
+     * Observed, never answered. Never throws: malformed bytes or a payload
+     * missing its field keep last-known rather than failing the session --
+     * the same never-throw rule as the service-channel codecs.
+     */
+    private fun onCallAvailability(payload: ByteArray): List<OutboundMessage> {
+        runCatching { CallAvailabilityStatus.parseFrom(payload) }.getOrNull()
+            ?.takeIf { it.isInitialized && it.hasCallAvailable() }
+            ?.let { callAvailable = it.callAvailable }
+        return emptyList()
+    }
+
+    /**
+     * The head unit says we framed badly: answer with the 2-byte 0xFFFF
+     * control frame and tear down, like gearhead's `rtr` (FINDINGS.md
+     * section 2). A framing error is fatal where a MessageError (0xff) is
+     * not -- the stream position itself is untrustworthy.
+     */
+    private fun onFramingError(): List<OutboundMessage> {
+        // The reply rides the normal control send path, so it matches the
+        // session phase: encrypted once the handshake is behind us (every
+        // post-auth send is), clear while version or TLS records are still
+        // in flight.
+        val encrypted = state != SessionState.AWAITING_VERSION &&
+            state != SessionState.HANDSHAKING
+        state = SessionState.CLOSED
+        failure = "framing error"
+        return listOf(
+            OutboundMessage(
+                type = GalMessage.Control.FRAMING_ERROR,
+                payload = ByteArray(0),
+                encrypted = encrypted,
+            ),
+        )
     }
 
     private fun drainPendedToRefused() {

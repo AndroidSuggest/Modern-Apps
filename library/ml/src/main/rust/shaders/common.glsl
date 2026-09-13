@@ -129,7 +129,29 @@ layout(push_constant) uniform Push {
     // patch's row and one by its column, each with its own 16 frequencies. See `rope_axes` in
     // `nets/mod.rs`.
     uint rope_axes;
+    // A residual addend folded into this op's store, or all-bits-set for none.
+    //
+    // `Builder::finish` removes a single-consumer `Add` after a convolution by storing
+    // `activate(acc + bias) + arena[res + index]`. All-bits-set because arena offset 0
+    // is a live tensor — the first input is pinned there — so 0 cannot mean "none".
+    uint res;
+    // A per-channel shift folded into this op's store, or all-bits-set for none.
+    //
+    // The `AddBroadcast` half of the same fold: Supertonic's timestep conditioning adds
+    // one value per channel, so the fused store adds `arena[shift + channel]`.
+    uint shift;
 } p;
+
+// Like `activate`, but for a convolution's store: the activated accumulator plus the
+// folded addends `Builder::finish` moved onto it. `p.res` is all-bits-set on every op
+// the fusion did not touch, and all-bits-set reads nothing — see `Push::res`.
+//
+// GLSL has no optional parameters and no function overloading on these types worth using,
+// so this is one function with two sentinel checks rather than a branch at each of the
+// seven call sites. `index` is the output element this invocation stores (the flat index
+// for the untiled shaders, `channel * positions + position` for the tiled and gemv ones);
+// `channel` is its output channel, for the per-channel shift.
+float fused_store(float acc, uint act, uint channel, uint index);
 
 // Keys a cached-attention op attends over, as an inclusive `[first, last]` range.
 //
@@ -295,4 +317,22 @@ void unpack(uint index, out uint c, out uint y, out uint x) {
     uint rest = index / p.out_w;
     y = rest % p.out_h;
     c = rest / p.out_h;
+}
+
+// Like `activate`, but for a convolution's store: the activated accumulator plus the
+// folded addends `Builder::finish` moved onto it. `p.res` is all-bits-set on every op
+// the fusion did not touch, and all-bits-set reads nothing — see the declaration above.
+//
+// After `unpack` (and so after `activate`) because it calls it: GLSL compiles in order,
+// so the definition has to see the declaration. The seven convolution shaders call this
+// rather than spelling the two sentinel checks each.
+float fused_store(float acc, uint act, uint channel, uint index) {
+    float value = activate(acc, act, channel);
+    if (p.res != 0xFFFFFFFFu) {
+        value += float(arena[p.res + index]);
+    }
+    if (p.shift != 0xFFFFFFFFu) {
+        value += float(arena[p.shift + channel]);
+    }
+    return value;
 }

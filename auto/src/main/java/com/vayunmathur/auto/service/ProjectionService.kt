@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.util.Log
 import com.vayunmathur.auto.R
 import com.vayunmathur.auto.network.HeadUnitServer
+import com.vayunmathur.auto.network.TransportIntake
 import com.vayunmathur.auto.platform.AudioSinkChannel
 import com.vayunmathur.auto.platform.AutoSessionState
 import com.vayunmathur.auto.platform.CarTts
@@ -24,15 +25,22 @@ import com.vayunmathur.auto.platform.MediaPlaybackMonitor
 import com.vayunmathur.auto.platform.MessagingEvent
 import com.vayunmathur.auto.platform.MicPermission
 import com.vayunmathur.auto.platform.MicSourceChannel
+import com.vayunmathur.auto.platform.CallCardPush
 import com.vayunmathur.auto.platform.MusicCaptureSinkHolder
+import com.vayunmathur.auto.platform.NavGuidanceMonitor
+import com.vayunmathur.auto.platform.CarMapsMirror
 import com.vayunmathur.auto.platform.NavStatusChannel
 import com.vayunmathur.auto.platform.NightSource
+import com.vayunmathur.auto.platform.PhoneStatusMonitor
 import com.vayunmathur.auto.platform.SensorChannel
 import com.vayunmathur.auto.platform.VideoSinkChannel
+import com.vayunmathur.auto.telephony.CarProjectionInCallService
 import com.vayunmathur.auto.protocol.AudioSinkRole
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalCredential
 import com.vayunmathur.auto.protocol.GalService
+import com.vayunmathur.auto.protocol.GalTransport
+import com.vayunmathur.auto.protocol.MapsGuidance
 import com.vayunmathur.auto.protocol.ReconnectBackoff
 import com.vayunmathur.auto.protocol.SessionState
 import com.vayunmathur.auto.protocol.StreamTransport
@@ -122,8 +130,29 @@ class ProjectionService : Service() {
     /**
      * Runs one head-unit session. Returns true when it ended abnormally (back the
      * loop off) rather than with a clean parting.
+     *
+     * Non-TCP transports park already-opened transports in [TransportIntake]
+     * (USB accessory fds, wireless sockets); those drain BEFORE blocking in
+     * TCP accept(), so a plugged-in cable never waits behind a DHU that never
+     * dials. Ownership stays in this serve loop either way: every transport
+     * runs the same session body, and TLS/GAL downstream never learn which
+     * intake won.
      */
     private fun runSession(server: HeadUnitServer): Boolean {
+        TransportIntake.take()?.let { pending ->
+            var failed = false
+            runCatching { sessionOnTransport(pending.transport, pending.carName) }
+                .onFailure {
+                    failed = true
+                    // The transport may never have reached the session body
+                    // (credential parse threw before GalConnection existed):
+                    // close it here so a stillborn intake leaks nothing. A
+                    // live session's transport closes with its connection.
+                    runCatching { pending.transport.close() }
+                    if (running) Log.e(TAG, "projection session ended", it)
+                }
+            return failed
+        }
         var failed = false
         runCatching { session(server) }
             .onFailure {
@@ -164,118 +193,202 @@ class ProjectionService : Service() {
 
     private fun session(server: HeadUnitServer) {
         server.accept().use { socket ->
-            // A head unit is on the wire; the phone status screen leaves Disconnected.
-            AutoSessionState.onSocketAccepted()
-            val connection = GalConnection(
-                transport = StreamTransport(socket.getInputStream(), socket.getOutputStream()),
-                sslContext = GalCredential.fromAssets(assets),
-                deviceModel = Build.MODEL,
-                deviceManufacturer = Build.MANUFACTURER,
-                onChannelMessage = { message ->
-                    if (isMediaBrowserChannel(message.channelId)) {
-                        // GAL 11/12 gap: the channel message IDs are unmapped, so
-                        // these are observed and ignored, never answered. Now-playing
-                        // rides the ch2 video stream instead.
-                        Log.d(TAG, "ignoring media-browser message on ch${message.channelId}")
-                    } else if (message.channelId == GalService.NOTIFICATION.id) {
-                        messaging?.onMessage(message.channelId, message.type, message.payload)
-                    } else if (message.channelId == GalService.INPUT_SOURCE.id) {
-                        if (input == null) {
-                            // ch8 traffic with no owner: the channel was never
-                            // advertised with an input source, or openNext has not
-                            // run yet. Log, don't crash -- the owner binds on its
-                            // grant once advertised.
-                            Log.w(
-                                TAG,
-                                "ch8 input traffic with no input owner " +
-                                    "(0x${message.type.toString(16)}); dropping",
-                            )
-                            AutoSessionState.onInputEvent(InputEvent.DroppedNoFocus)
-                        } else {
-                            input?.onMessage(message.channelId, message.type, message.payload)
-                        }
-                    } else if (message.channelId == GalService.SENSOR_SOURCE.id) {
-                        sensors?.onMessage(message.channelId, message.type, message.payload)
-                    } else if (message.channelId == GalService.AUDIO_SINK_GUIDANCE.id) {
-                        guidance?.onMessage(message.channelId, message.type, message.payload)
-                    } else if (message.channelId == GalService.NAVIGATION_STATUS.id) {
-                        navStatus?.onMessage(message.channelId, message.type, message.payload)
-                    } else if (message.channelId == AudioSinkRole.SYSTEM.serviceId) {
-                        audioSys?.onMessage(message.channelId, message.type, message.payload)
-                    } else if (message.channelId == AudioSinkRole.MEDIA.serviceId) {
-                        audioMedia?.onMessage(message.channelId, message.type, message.payload)
-                    } else if (message.channelId == GalService.AUDIO_SOURCE.id) {
-                        mic?.onMessage(message.channelId, message.type, message.payload)
-                    } else {
-                        video?.onMessage(message.channelId, message.type, message.payload)
-                    }
-                },
-                trace = { Log.d(TAG, it) },
+            // The TCP loopback path wraps its socket as an intake pending so
+            // it runs the same body as USB/wireless: one session shape, three
+            // intakes. The socket `use` still owns the socket itself; the
+            // session body owns the streams through the connection.
+            sessionOnTransport(
+                StreamTransport(socket.getInputStream(), socket.getOutputStream()),
+                CAR_NAME,
             )
+        }
+    }
 
-            // The session owns focus arbitration; mirror accepted changes to the
-            // phone flows so the status screen, input gate and audio sinks all
-            // read one source of truth. Sinks recompute their arbitrated gain
-            // off the same snapshot -- duck, mute and unmute follow the 0x13.
-            connection.session.onFocusChange = {
-                AutoSessionState.onFocusChanged(connection.session.focus)
-                audioSys?.onFocusChanged()
-                audioMedia?.onFocusChanged()
-                // Flapping back to input-allowed re-binds ch8: a head unit that
-                // parked input on NO_INPUT_FOCUS may need the echo to resume
-                // sending reports. requestBinding is idempotent.
-                if (connection.session.focus.inputAllowed) {
-                    input?.requestBinding()
+    /**
+     * One head-unit session over an already-opened transport. Transport-
+     * agnostic: version negotiation, TLS and the whole GAL bring-up are
+     * identical for TCP loopback, USB accessory fds and wireless sockets.
+     * The caller owns the raw resource (socket or parked transport); this
+     * owns everything GAL.
+     */
+    private fun sessionOnTransport(transport: GalTransport, carName: String) {
+        // A head unit is on the wire; the phone status screen leaves Disconnected.
+        AutoSessionState.onSocketAccepted()
+        val connection = GalConnection(
+            transport = transport,
+            sslContext = GalCredential.fromAssets(assets),
+            deviceModel = Build.MODEL,
+            deviceManufacturer = Build.MANUFACTURER,
+            onChannelMessage = { message ->
+                if (isMediaBrowserChannel(message.channelId)) {
+                    // GAL 11/12 gap: the channel message IDs are unmapped, so
+                    // these are observed and ignored, never answered. Now-playing
+                    // rides the ch2 video stream instead.
+                    Log.d(TAG, "ignoring media-browser message on ch${message.channelId}")
+                } else if (message.channelId == GalService.NOTIFICATION.id) {
+                    messaging?.onMessage(message.channelId, message.type, message.payload)
+                } else if (message.channelId == GalService.INPUT_SOURCE.id) {
+                    if (input == null) {
+                        // ch8 traffic with no owner: the channel was never
+                        // advertised with an input source, or openNext has not
+                        // run yet. Log, don't crash -- the owner binds on its
+                        // grant once advertised.
+                        Log.w(
+                            TAG,
+                            "ch8 input traffic with no input owner " +
+                                "(0x${message.type.toString(16)}); dropping",
+                        )
+                        AutoSessionState.onInputEvent(InputEvent.DroppedNoFocus)
+                    } else {
+                        input?.onMessage(message.channelId, message.type, message.payload)
+                    }
+                } else if (message.channelId == GalService.SENSOR_SOURCE.id) {
+                    sensors?.onMessage(message.channelId, message.type, message.payload)
+                } else if (message.channelId == GalService.AUDIO_SINK_GUIDANCE.id) {
+                    guidance?.onMessage(message.channelId, message.type, message.payload)
+                } else if (message.channelId == GalService.NAVIGATION_STATUS.id) {
+                    navStatus?.onMessage(message.channelId, message.type, message.payload)
+                } else if (message.channelId == AudioSinkRole.SYSTEM.serviceId) {
+                    audioSys?.onMessage(message.channelId, message.type, message.payload)
+                } else if (message.channelId == AudioSinkRole.MEDIA.serviceId) {
+                    audioMedia?.onMessage(message.channelId, message.type, message.payload)
+                } else if (message.channelId == GalService.AUDIO_SOURCE.id) {
+                    mic?.onMessage(message.channelId, message.type, message.payload)
+                } else if (message.channelId == GalService.VIDEO_SINK.id) {
+                    video?.onMessage(message.channelId, message.type, message.payload)
+                } else {
+                    // Unowned service (BT, phone-status, radio, vendor, wifi,
+                    // car-control and anything future): the channel opened
+                    // generically in openNext but no app owner exists -- see
+                    // observeUnownedService. Observed and ignored, never
+                    // answered and never crashed on; the bring-up moves on.
+                    Log.d(
+                        TAG,
+                        "ignoring message on unowned service ch${message.channelId} " +
+                            "(0x${message.type.toString(16)}); no owner",
+                    )
                 }
+            },
+            trace = { Log.d(TAG, it) },
+        )
+
+        // The session owns focus arbitration; mirror accepted changes to the
+        // phone flows so the status screen, input gate and audio sinks all
+        // read one source of truth. Sinks recompute their arbitrated gain
+        // off the same snapshot -- duck, mute and unmute follow the 0x13.
+        connection.session.onFocusChange = {
+            AutoSessionState.onFocusChanged(connection.session.focus)
+            audioSys?.onFocusChanged()
+            audioMedia?.onFocusChanged()
+            // Flapping back to input-allowed re-binds ch8: a head unit that
+            // parked input on NO_INPUT_FOCUS may need the echo to resume
+            // sending reports. requestBinding is idempotent.
+            if (connection.session.focus.inputAllowed) {
+                input?.requestBinding()
             }
+        }
 
-            // Phone-side TTS starts with the session, not with any channel
-            // grant: the first notification may arrive before ch4 opens, and
-            // the sink resolves lazily -- early utterances drop with a count.
-            tts = CarTts(this, systemSink = { audioSys }, onEvent = AutoSessionState::onAudioEvent)
-                .also { it.start() }
+        // Call snapshots push into the car card like focus mirrors into the
+        // phone flows: added/changed replace wholesale, removed clears.
+        // The card itself decides incoming vs active rows (see updateCallCard).
+        // Installed on the process bus (the InCall binding is platform-owned
+        // and cannot reference this session directly); cleared on teardown.
+        CallCardPush.push = { info -> video?.setActiveCall(info) }
 
-            // Music capture starts with the session too, in its own
-            // mediaProjection-typed service (the projection type cannot ride
-            // on this service -- see MusicCaptureService). No stored grant
-            // means fail-closed silence on ch5.
-            MusicCaptureService.startIfGranted(this)
+        // Phone-side TTS starts with the session, not with any channel
+        // grant: the first notification may arrive before ch4 opens, and
+        // the sink resolves lazily -- early utterances drop with a count.
+        // It also owns the ch3 guidance stream lifecycle (arms on start,
+        // parks on stop); the owner appears on the ch3 grant, after this.
+        tts = CarTts(
+            this,
+            systemSink = { audioSys },
+            guidance = { guidance },
+            onEvent = AutoSessionState::onAudioEvent,
+        ).also { it.start() }
 
-            try {
-                pumpUntilGone(connection)
-            } finally {
-                // A pump exception must not leak the session: the render pair tears
-                // down, the phone UI parts cleanly, and the error still propagates
-                // to runSession so the backoff loop sees the failure.
-                Log.i(TAG, "head unit disconnected: ${connection.session.failure ?: "cleanly"}")
-                AutoSessionState.onSessionEnd(connection.session.failure)
-                // Park the connection's I/O thread first: closing the socket
-                // unblocks the pump read, and late sends drop rather than racing
-                // the shutdown. The socket `use` below closes the streams anyway.
-                runCatching { connection.close() }
-                video?.release()
-                video = null
-                messaging?.release()
-                messaging = null
-                input = null
-                audioSys?.release()
-                audioSys = null
-                audioMedia?.release()
-                audioMedia = null
-                MusicCaptureSinkHolder.sink = null
-                mic?.release()
-                mic = null
-                tts?.stop()
-                tts = null
-                MusicCaptureService.stop(this)
-                MusicCaptureSinkHolder.sink = null
-                sensors?.release()
-                sensors = null
-                guidance?.release()
-                guidance = null
-                navStatus?.release()
-                navStatus = null
-            }
+        // Guidance + map mirror start with the session too: fixes flow
+        // from the first tick, and the mirror attaches when the nav
+        // card's TextureView is ready (or never, if the card is gone).
+        mapsMirror = CarMapsMirror(this)
+        guidanceMonitor = NavGuidanceMonitor(this) { snapshot ->
+            mapsMirror?.render(snapshot)
+            video?.setNavSnapshot(snapshot)
+            // ch7 live values: the fix folds into the same last-known
+            // snapshot the head-unit batches fold into (HANDOFF.md section
+            // 10); ch10 turn update as the route advances, deduped inside
+            // postUpdate so a stationary fix rate stays quiet.
+            sensors?.postLiveEvents(MapsGuidance.toSensorEvents(snapshot))
+            navStatus?.postUpdate(MapsGuidance.toNavStatus(snapshot))
+            // Car pixels follow the same snapshot: night restyles the rail,
+            // cards and drawer plus the map palette; parked clears the
+            // driving-restriction gate (drawer lockout down, media row
+            // visible). Both are last-known-wins with the ch7 NIGHT_MODE
+            // batch (the head unit owns the car truth; the phone only seeds
+            // it). Trip-end drawer close stays on setParked.
+            video?.setNightDark(snapshot.isNight ?: isNightNow())
+            video?.setParkedBrowsingGate(snapshot.parked)
+            if (snapshot.parked) video?.closeDrawerOnPark()
+        }.also { it.start() }
+
+        // Music capture starts with the session too, in its own
+        // mediaProjection-typed service (the projection type cannot ride
+        // on this service -- see MusicCaptureService). No stored grant
+        // means fail-closed silence on ch5.
+        MusicCaptureService.startIfGranted(this)
+
+        // Phone status starts with the session too: the rail cluster pulls
+        // signal/battery/DND/badge from it on its 1Hz tick, and the call
+        // card pushes come from the InCall owners below.
+        phoneStatusMonitor = PhoneStatusMonitor(this).also { it.start() }
+
+        try {
+            pumpUntilGone(connection, carName)
+        } finally {
+            // A pump exception must not leak the session: the render pair tears
+            // down, the phone UI parts cleanly, and the error still propagates
+            // to runSession so the backoff loop sees the failure.
+            Log.i(TAG, "head unit disconnected: ${connection.session.failure ?: "cleanly"}")
+            AutoSessionState.onSessionEnd(connection.session.failure)
+            // Park the connection's I/O thread first: closing the socket
+            // unblocks the pump read, and late sends drop rather than racing
+            // the shutdown. The socket `use` below closes the streams anyway.
+            // (On the intake path the parked transport closes with this
+            // connection too; a stillborn intake that never built one closes
+            // in runSession instead.)
+            runCatching { connection.close() }
+            video?.release()
+            video = null
+            messaging?.release()
+            messaging = null
+            input = null
+            audioSys?.release()
+            audioSys = null
+            audioMedia?.release()
+            audioMedia = null
+            MusicCaptureSinkHolder.sink = null
+            mic?.release()
+            mic = null
+            tts?.stop()
+            tts = null
+            guidanceMonitor?.stop()
+            guidanceMonitor = null
+            mapsMirror?.release()
+            mapsMirror = null
+            MusicCaptureService.stop(this)
+            MusicCaptureSinkHolder.sink = null
+            // Unowned services need no teardown: their channels opened
+            // generically with no app owner (see openNext), so closing the
+            // connection above already released everything they hold.
+            sensors?.release()
+            sensors = null
+            guidance?.release()
+            guidance = null
+            navStatus?.release()
+            navStatus = null
+            phoneStatusMonitor?.stop()
+            phoneStatusMonitor = null
+            CallCardPush.push = null
         }
     }
 
@@ -286,7 +399,7 @@ class ProjectionService : Service() {
      * I/O thread owns every wrap/unwrap/write. Channel opens go out sequentially
      * in HU-discovery wire order, one in flight at a time; see [openNext].
      */
-    private fun pumpUntilGone(connection: GalConnection) {
+    private fun pumpUntilGone(connection: GalConnection, carName: String) {
         var setupVideo = false
         var reportedActive = false
         var setupMessaging = false
@@ -307,7 +420,14 @@ class ProjectionService : Service() {
             if (connection.session.state == SessionState.ACTIVE) {
                 if (!reportedActive) {
                     reportedActive = true
-                    AutoSessionState.onActive(CAR_NAME)
+                    AutoSessionState.onActive(carName)
+                    // The control-24 call-availability verdict (parsed
+                    // protocol-side into session.callAvailable) mirrors into
+                    // the phone flows with the session, so the call UI reads
+                    // one source of truth like focus above.
+                    connection.session.callAvailable?.let {
+                        AutoSessionState.onCallAvailability(it)
+                    }
                 }
                 openNext(connection)
             }
@@ -446,6 +566,22 @@ class ProjectionService : Service() {
     private var mediaMonitor: MediaPlaybackMonitor? = null
 
     /**
+     * Session-scoped phone status (signal/battery/DND/badge) for the rail
+     * cluster. Started with the session like TTS; the cluster pulls the
+     * latest snapshot on its 1Hz tick. Stopped with the session.
+     */
+    private var phoneStatusMonitor: PhoneStatusMonitor? = null
+
+    /**
+     * Session-scoped guidance + map mirror, like TTS: started with the
+     * session (position/puck are live from the first fix), stopped with it.
+     * Snapshots render into the mirror and push the nav banner; with no
+     * location permission the monitor holds last-known and the map stays put.
+     */
+    private var guidanceMonitor: NavGuidanceMonitor? = null
+    private var mapsMirror: CarMapsMirror? = null
+
+    /**
      * Seeds the credential-expiry flow once per service start, off the pump thread.
      *
      * Reads the shipped leaf through the public asset constant, so a rotation that
@@ -492,6 +628,33 @@ class ProjectionService : Service() {
                         get = { AutoSessionState.nowPlaying.value },
                         onTap = { mediaMonitor?.toggle() },
                     )
+                    // Prev/next ride the same monitor as the card tap; unset
+                    // (null monitor) means the buttons show but stay disabled.
+                    sink.setTransportCallbacks(
+                        onPrevious = { mediaMonitor?.seekToPrevious() },
+                        onNext = { mediaMonitor?.seekToNext() },
+                    )
+                    // Night reaches the map palette through the same call
+                    // that restyles the rail/cards/drawer (see setNightDark).
+                    sink.setMapDarkApplier { dark -> mapsMirror?.setDark(dark) }
+                    // Rail cluster + call card feeds: the display caches
+                    // both for presentations created later.
+                    sink.setPhoneStatusSource { phoneStatusMonitor?.snapshot }
+                    sink.setCallSource(
+                        get = { AutoSessionState.activeCall.value },
+                        onAnswer = { CarProjectionInCallService.answerCall() },
+                        onEnd = { CarProjectionInCallService.endCall() },
+                        onHold = { CarProjectionInCallService.toggleHold() },
+                        onMute = { CarProjectionInCallService.toggleMute() },
+                    )
+                    sink.setNavSource(
+                        get = { guidanceMonitor?.snapshots?.value },
+                        onMapSurface = { surface, w, h ->
+                            val mirror = mapsMirror ?: return@setNavSource
+                            if (surface != null) mirror.setSurface(surface, w, h)
+                            else mirror.release()
+                        },
+                    )
                 }
         }
         // ch14 advertises in the same wire-order pass; the owner starts
@@ -529,10 +692,10 @@ class ProjectionService : Service() {
             )
         }
         // ch7 advertises in the same wire-order pass; the owner subscribes
-        // to the stub set on its grant (see SensorChannel.onChannelOpen).
+        // to the full 26-type set on its grant (see SensorChannel.onChannelOpen).
         // Night follows the phone until the first NIGHT_MODE batch; the
         // UiModeManager seam stays out of the service -- maps-dev owns the
-        // live night source with Phase 6.
+        // live night source next.
         if (next.id == GalService.SENSOR_SOURCE.id) {
             sensors = SensorChannel(
                 connection = connection,
@@ -541,11 +704,14 @@ class ProjectionService : Service() {
             )
         }
         // ch3 advertises in the same wire-order pass; the owner claims the
-        // sink on its grant and stays idle (see GuidanceChannel).
+        // sink on its grant (see GuidanceChannel). The stream itself is
+        // TTS-owned: the session predates ch3, so the grant arms it when the
+        // TTS session is already running.
         if (next.id == GalService.AUDIO_SINK_GUIDANCE.id && next.hasMediaSink()) {
             guidance = GuidanceChannel(
                 service = next,
                 connection = connection,
+                ttsActive = { tts != null },
                 onEvent = AutoSessionState::onSensorEvent,
             )
         }
@@ -593,6 +759,7 @@ class ProjectionService : Service() {
                 onEvent = AutoSessionState::onAudioEvent,
             )
         }
+        observeUnownedService(next)
     }
 
     private fun notification(): Notification {

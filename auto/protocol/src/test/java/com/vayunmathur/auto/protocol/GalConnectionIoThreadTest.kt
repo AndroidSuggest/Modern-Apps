@@ -136,6 +136,9 @@ class GalConnectionIoThreadTest {
                             GalService.VIDEO_SINK.id,
                             GalMessage.Media.DATA_WITH_TIMESTAMP,
                             byteArrayOf(index.toByte(), round.toByte()),
+                            // Plaintext: no handshake runs here (see class KDoc), and a
+                            // real engine that never handshook fails the wrap loudly.
+                            encrypted = false,
                         )
                     }
                 }, "sender-$index")

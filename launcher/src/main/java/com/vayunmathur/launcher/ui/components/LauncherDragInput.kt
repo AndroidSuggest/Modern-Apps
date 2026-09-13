@@ -179,20 +179,6 @@ fun Modifier.launcherDragInput(
 }
 
 /**
- * How a press ended: with the long-press timeout, or with the finger moving or leaving first.
- *
- * The travel and the velocity so far come with it, so a swipe that grows out of the press does not
- * restart its axis test from wherever the finger happened to be when the timeout expired.
- */
-private class Press(
-    val longPressed: Boolean,
-    val moved: Boolean,
-    val velocity: VelocityTracker,
-    val totalDx: Float,
-    val totalDy: Float,
-)
-
-/**
  * Races the long-press timeout against the finger moving, and consumes nothing either way.
  *
  * That last part is the whole reason this is one function rather than a branch per thing that can be

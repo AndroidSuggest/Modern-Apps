@@ -228,7 +228,6 @@ object AutoSessionState {
     val audioAcks: StateFlow<Long> = _audioAcks.asStateFlow()
 
     /** TTS utterances that reached the car this session. */
-    private val _ttsSpoken = MutableStateFlow(0L)
     val ttsSpoken: StateFlow<Long> = _ttsSpoken.asStateFlow()
 
     /** TTS utterances dropped (no sink, bad wav, dead engine) this session. */
@@ -240,8 +239,19 @@ object AutoSessionState {
     val micTurns: StateFlow<Long> = _micTurns.asStateFlow()
 
     /** ch6 mic chunks acked upstream this session. */
-    private val _micAcks = MutableStateFlow(0L)
     val micAcks: StateFlow<Long> = _micAcks.asStateFlow()
+
+    /** Live telecom calls currently tracked by the InCall owners; 0 with none. */
+    private val _activeCalls = MutableStateFlow(0)
+    val activeCalls: StateFlow<Int> = _activeCalls.asStateFlow()
+    /**
+     * Whether the head unit reports calls available (control 24, parsed
+     * protocol-side into the session). Null until the first verdict; the
+     * service mirrors it with the session like focus, and the InCall owners
+     * gate projected call UI on it.
+     */
+    private val _callAvailable = MutableStateFlow<Boolean?>(null)
+    val callAvailable: StateFlow<Boolean?> = _callAvailable.asStateFlow()
 
     /**
      * Guards [frameTimes], [ackTimes] and [ackTracker]. Frames are observed on the
@@ -314,6 +324,9 @@ object AutoSessionState {
         _ttsDropped.value = 0
         _micTurns.value = 0
         _micAcks.value = 0
+        _callAvailable.value = null
+        _activeCalls.value = 0
+        _activeCall.value = null
         resetTelemetry()
         _sessionStartedAt.value = null
         _connection.value = AutoConnectionState.Connecting
@@ -328,6 +341,40 @@ object AutoSessionState {
     /** The link came up but authentication failed, or the session otherwise refused us. */
     fun onRejected() {
         _connection.value = AutoConnectionState.Rejected
+    }
+
+    /** Mirrors one control-24 call-availability verdict; see [callAvailable]. */
+    fun onCallAvailability(available: Boolean) {
+        _callAvailable.value = available
+    }
+
+    /**
+     * Active call details for the projected call card ([UnCallView] shape).
+     * Null with no live call; replaced wholesale on every telecom callback
+     * so the card never shows a half-updated row. [state] is the
+     * `android.telecom.Call` state int; [number] is the handle's scheme part
+     * (null when withheld); [startedMs] is wall-clock accept time for the
+     * duration ticker (0 while ringing); [held]/[muted] drive the
+     * disabled-alpha + action states.
+     */
+    private val _activeCall = MutableStateFlow<ActiveCallInfo?>(null)
+    val activeCall: StateFlow<ActiveCallInfo?> = _activeCall.asStateFlow()
+
+    /** One telecom call entered an InCall owner; see [activeCall]. */
+    fun onCallAdded(info: ActiveCallInfo) {
+        _activeCall.value = info
+        _activeCalls.value++
+    }
+
+    /** One telecom call changed state; replaces the card snapshot wholesale. */
+    fun onCallChanged(info: ActiveCallInfo) {
+        _activeCall.value = info
+    }
+
+    /** One telecom call left its InCall owner; floors at zero, never negative. */
+    fun onCallRemoved() {
+        _activeCall.value = null
+        _activeCalls.value = (_activeCalls.value - 1).coerceAtLeast(0)
     }
 
     /** The head unit went away cleanly. */
@@ -463,6 +510,7 @@ object AutoSessionState {
             is InputEvent.Key -> _keysInjected.value++
             is InputEvent.Scroll -> _scrollsInjected.value++
             is InputEvent.VolumeKey -> _keysInjected.value++
+            is InputEvent.FeedbackSent -> Unit
             InputEvent.DroppedNoFocus -> _inputDropped.value++
         }
     }

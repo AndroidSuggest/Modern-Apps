@@ -1,6 +1,7 @@
 package com.vayunmathur.auto.protocol
 
 import com.vayunmathur.auto.protocol.gal.AuthComplete
+import com.vayunmathur.auto.protocol.gal.CallAvailabilityStatus
 import com.vayunmathur.auto.protocol.gal.ChannelOpenResponse
 import com.vayunmathur.auto.protocol.gal.MediaCodecType
 import com.vayunmathur.auto.protocol.gal.MediaSinkService
@@ -366,6 +367,79 @@ class GalControlSessionTest {
         assertTrue(replies.isEmpty())
         assertEquals(SessionState.HANDSHAKING, session.state)
         assertNull(session.failure)
+    }
+
+    @Test
+    fun `call availability parses into state with no reply`() {
+        // Control 24: `CallAvailabilityStatus{optional bool call_available=1}` --
+        // parsed and stored for the higher layers, never answered.
+        val session = session(GalCredential.serverEngine(context()))
+        assertNull(session.callAvailable)
+
+        val replies = session.onMessage(
+            GalMessage.Control.CALL_AVAILABILITY_STATUS,
+            CallAvailabilityStatus.newBuilder().setCallAvailable(true).build().toByteArray(),
+        )
+
+        assertTrue(replies.isEmpty(), "call availability needs no reply")
+        assertEquals(true, session.callAvailable)
+        assertNull(session.failure)
+    }
+
+    @Test
+    fun `a malformed call availability keeps last-known instead of failing`() {
+        // Never throws: garbage bytes are observed, the session survives, and
+        // the stored value stands.
+        val session = session(GalCredential.serverEngine(context()))
+        session.onMessage(
+            GalMessage.Control.CALL_AVAILABILITY_STATUS,
+            CallAvailabilityStatus.newBuilder().setCallAvailable(false).build().toByteArray(),
+        )
+
+        val replies = session.onMessage(
+            GalMessage.Control.CALL_AVAILABILITY_STATUS,
+            byteArrayOf(0x08),
+        )
+
+        assertTrue(replies.isEmpty())
+        assertEquals(false, session.callAvailable)
+        assertNull(session.failure)
+    }
+
+    @Test
+    fun `a sent message error is a bare encrypted 0xff`() {
+        // The send mirror of the bare-0xff recv path: type 255, empty payload
+        // (the HU-side rejection shape is unrecovered), encrypted like every
+        // post-auth control send.
+        val session = session(GalCredential.serverEngine(context()))
+
+        val out = session.sendMessageError()
+
+        assertEquals(GalMessage.Control.MESSAGE_ERROR, out.type)
+        assertContentEquals(ByteArray(0), out.payload)
+        assertTrue(out.encrypted, "post-auth control sends are wrapped")
+    }
+
+    @Test
+    fun `a framing error is answered with 0xFFFF and tears down`() {
+        // Like gearhead's `rtr`: reply with the 2-byte 0xFFFF control frame
+        // (`FF FF` on the wire via MessageCodec) and close -- the stream
+        // position is untrustworthy, unlike a 0xff message rejection.
+        val session = session(GalCredential.serverEngine(context()))
+        session.onMessage(GalMessage.Control.VERSION_REQUEST, versionRequest(1, 6))
+
+        val replies = session.onMessage(GalMessage.Control.FRAMING_ERROR, ByteArray(0))
+
+        val reply = replies.single()
+        assertEquals(GalMessage.Control.FRAMING_ERROR, reply.type)
+        assertContentEquals(
+            byteArrayOf(0xFF.toByte(), 0xFF.toByte()),
+            MessageCodec.encode(reply.type, reply.payload),
+            "the reply frames as exactly 2 bytes",
+        )
+        assertTrue(!reply.encrypted, "pre-auth framing reply goes out in the clear")
+        assertEquals(SessionState.CLOSED, session.state)
+        assertNotNull(session.failure)
     }
 
     // ---- helpers ----

@@ -615,7 +615,7 @@ fn text_plan(offsets: &Offsets, chars: u32) -> Result<Plan, String> {
 }
 
 fn sampler_plan(offsets: &Offsets, shape: (u32, u32)) -> Result<Plan, String> {
-    supertonic_sampler::build(offsets, shape.0, shape.1)
+    supertonic_sampler::build_dual(offsets, shape.0, shape.1)
 }
 
 fn vocoder_plan(offsets: &Offsets, frames: u32) -> Result<Plan, String> {
@@ -736,6 +736,63 @@ impl supertonic::Stages for SupertonicNets<'_> {
         ])?);
         self.timing.sampler += running.elapsed().as_secs_f64() * 1000.0;
         out
+    }
+
+    /// Both branches in one submit, through the dual plan.
+    ///
+    /// `Reshaped::at` re-records at the shape only when it changes, which for a sentence
+    /// is never mid-utterance — so the sixteen steps share one recording and each pays a
+    /// single submit for both branches. Falls back to two submits only when the dual plan
+    /// itself fails to build, which keeps a builder regression from silencing synthesis.
+    #[allow(clippy::too_many_arguments)]
+    fn sampler_both(
+        &mut self,
+        latent: &[f32],
+        conditional_text: &[f32],
+        conditional_keys: &[f32],
+        conditional_style: &[f32],
+        unconditional_text: &[f32],
+        unconditional_keys: &[f32],
+        unconditional_style: &[f32],
+        shifts: &[f32],
+        query_angles: &[f32],
+        key_angles: &[f32],
+    ) -> Result<[Vec<f32>; 2], String> {
+        let frames = positions("a latent", latent.len(), supertonic_sampler::LATENT as usize)?;
+        let chars = positions(
+            "a conditioning",
+            conditional_text.len(),
+            supertonic_sampler::TEXT as usize,
+        )?;
+        let reshaping = std::time::Instant::now();
+        let net = self.sampler.at((frames, chars))?;
+        self.timing.reshape += reshaping.elapsed().as_secs_f64() * 1000.0;
+        let running = std::time::Instant::now();
+        self.timing.sampler_calls += 1;
+        // Fourteen inputs: the conditional seven, then the unconditional seven — the
+        // order `build_dual` declares them in. Two outputs, the two velocities.
+        let out = net.infer_raw_many(&[
+            latent,
+            conditional_text,
+            conditional_keys,
+            conditional_style,
+            shifts,
+            query_angles,
+            key_angles,
+            latent,
+            unconditional_text,
+            unconditional_keys,
+            unconditional_style,
+            shifts,
+            query_angles,
+            key_angles,
+        ])?;
+        self.timing.sampler += running.elapsed().as_secs_f64() * 1000.0;
+        let [conditional, unconditional] =
+            <[Vec<f32>; 2]>::try_from(out).map_err(|other| {
+                format!("the dual sampler returned {} tensors, not two", other.len())
+            })?;
+        Ok([conditional, unconditional])
     }
 
     fn vocoder(&mut self, latent: &[f32], frames: u32) -> Result<Vec<f32>, String> {
@@ -3285,6 +3342,7 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_capabilit
         "VK_KHR_16bit_storage",
         "VK_KHR_shader_float16_int8",
         "VK_KHR_zero_initialize_workgroup_memory",
+        "VK_KHR_shader_subgroup_clustered",
     ];
     // SAFETY: the physical device outlives the context, which is shared and alive here.
     let found = unsafe {

@@ -74,3 +74,28 @@ message VideoFocusIndication {
   optional VideoFocusMode mode = 1;
   optional bool unsolicited = 2;
 }
+
+// 0x8006, from the head unit: microphone request (`xkt`), from the teardown
+// (proto2, required int32 field 1, optional int32 field 2). Field NAMES are
+// not in the APK -- `fieldN` until the teardown names them -- but numbers,
+// wire types and cardinality are exact. The car owns the microphone, so the
+// phone receives this and answers bulk audio with 0x8004 acks.
+message MicrophoneRequest {
+  required int32 field1 = 1;
+  optional int32 field2 = 2;
+}
+
+// 0x800A, phone -> HU: UI-config update (`xow`), from the teardown: a single
+// optional message field 1 carrying `xop` (proto2, 8 fields: 3 singular
+// messages, 1 enum, 1 repeated enum, 2 repeated messages, 1 message).
+//
+// The `xop` interior is NOT recovered -- its nested message/enum classes are
+// unidentified in the dump (`xou`/`xku` resolve to enum values, `xha`/`xiz`
+// to partial shapes, the rest to bare field names) -- so this is a typed
+// envelope stub: field 1's number and length-delimited wire type are exact,
+// the interior stays opaque bytes. NEVER fill the interior with invented
+// fields; an empty envelope (zero bytes on the wire) is the honest send
+// until the teardown recovers `xop`.
+message UpdateUiConfigRequest {
+  optional bytes config = 1;
+}

@@ -20,7 +20,10 @@ import androidx.compose.ui.unit.sp
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.maps.data.PostedLimit
+<<<<<<< Updated upstream
 import com.vayunmathur.maps.ui.theme.SpeedSign
+=======
+>>>>>>> Stashed changes
 import com.vayunmathur.maps.util.isImperialUnits
 import kotlin.math.roundToInt
 
@@ -43,7 +46,10 @@ fun SpeedWidget(
     postedLimit: PostedLimit?,
     modifier: Modifier = Modifier,
     defaultMph: Boolean = isImperialUnits(),
+<<<<<<< Updated upstream
     darkBasemap: Boolean = false,
+=======
+>>>>>>> Stashed changes
 ) {
     val useMph = postedLimit?.displayIsMph ?: defaultMph
     val speed = if (useMph) (speedMps * MPS_TO_MPH).roundToInt() else (speedMps * MPS_TO_KMH).roundToInt()

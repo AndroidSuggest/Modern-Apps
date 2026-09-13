@@ -27,12 +27,14 @@ class MessageMirrorService : NotificationListenerService() {
         if (notification.category != Notification.CATEGORY_MESSAGE) return
         val (thread, message) = extract(sbn) ?: return
         MessageMirrorBus.post(thread, message, replyRoute(sbn))
+        activeCount.incrementAndGet()
         Log.d(TAG, "mirrored message for thread ${thread.threadId}")
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         // Dismissals on the phone side stay local: without a per-thread read
         // store there is nothing truthful to tell the head unit.
+        activeCount.updateAndGet { count -> (count - 1).coerceAtLeast(0) }
     }
 
     /**
@@ -118,5 +120,17 @@ class MessageMirrorService : NotificationListenerService() {
 
     private companion object {
         const val TAG = "MaAuto.MsgMirror"
+
+        /**
+         * Live message notifications currently held by the bound listener.
+         * Incremented on post, decremented on remove (floored at zero); the
+         * rail status badge reads this for its count. Zero before the first
+         * bind, which keeps the badge gone like the layout default.
+         */
+        private val activeCount = java.util.concurrent.atomic.AtomicInteger(0)
+
+        /** See [activeCount]; fail-closed zero when the listener never bound. */
+        @JvmStatic
+        fun activeMessageCount(): Int = activeCount.get().coerceAtLeast(0)
     }
 }

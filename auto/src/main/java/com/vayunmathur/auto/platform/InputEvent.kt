@@ -31,6 +31,9 @@ sealed interface InputEvent {
     /** One scroll tick was injected. */
     data class Scroll(val delta: Int) : InputEvent
 
+    /** One 0x8004 feedback event went out after a successful inject. */
+    data class FeedbackSent(val feedbackEvent: Int) : InputEvent
+
     /** A report arrived but the arbitrated input flag was off, so it was dropped. */
     data object DroppedNoFocus : InputEvent
 }

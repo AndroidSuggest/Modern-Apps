@@ -227,7 +227,9 @@ mod tests {
         // 49 `Conv` plus 1 `Gemm` is 50 dispatches here.
         let plan = plan();
         assert_eq!(dispatches(&plan, Kind::Conv), 50);
-        assert_eq!(dispatches(&plan, Kind::Add), 12);
+        // Six of the twelve `Add`s fold into their producing convolution's store; the
+        // rest stay dispatches — see `Builder::add`.
+        assert_eq!(dispatches(&plan, Kind::Add), 6);
         // No pooling, no resize, no concatenation and no transposed convolution: this is
         // the plainest graph in the runtime.
         assert_eq!(dispatches(&plan, Kind::ConvTranspose), 0);

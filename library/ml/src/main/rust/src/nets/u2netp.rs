@@ -314,7 +314,10 @@ mod tests {
         assert_eq!(dispatches(&plan, Kind::Conv), 119);
         assert_eq!(dispatches(&plan, Kind::MaxPool), 33);
         assert_eq!(dispatches(&plan, Kind::Resize), 38);
-        assert_eq!(dispatches(&plan, Kind::Add), 11);
+        // All eleven RSU residuals fold into their producing convolution's store —
+        // every one is a plain skip already written when the projection runs.
+        // See `Builder::add`.
+        assert_eq!(dispatches(&plan, Kind::Add), 0);
         // 51 real Concats in the ONNX; the other 76 are shape scaffolding. Each lowers
         // to one copy per part, and every one here joins exactly two parts except the
         // final six-way side-output fuse.

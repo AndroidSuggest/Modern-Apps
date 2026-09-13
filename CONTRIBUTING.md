@@ -86,6 +86,7 @@ the two rules listed as `fatal` can fail a build.
 ./gradlew checkMetadata                      # enforced at release time
 bash scripts/lint_hardcoded_strings.sh
 bash scripts/check_preview_metadata.sh
+bash scripts/lint_rust_length.sh             # Rust files over 500 lines, advisory
 ```
 
 Treat the advisory rules as mandatory for code you write or touch. Older modules predate them

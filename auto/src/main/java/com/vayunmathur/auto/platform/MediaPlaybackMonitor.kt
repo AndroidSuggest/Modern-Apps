@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -18,9 +19,9 @@ import androidx.media3.session.SessionToken
  * Binds a [MediaController] to MA Music's `PlaybackService` (or, if that is
  * not installed, the first declared `MediaBrowserService`) and forwards every
  * metadata / playback-state change as a [NowPlayingInfo] snapshot. The
- * controller is read-only here except for [toggle]: playback itself stays in
- * the music app, and the GAL 11/12 media channels stay unspoken -- this is the
- * Phase 4 replacement for them.
+ * controller is read-only here except for [toggle], [seekToPrevious] and
+ * [seekToNext]: playback itself stays in the music app, and the GAL 11/12
+ * media channels stay unspoken -- this is the Phase 4 replacement for them.
  *
  * All session work hops to the main thread; [onUpdate] may be invoked from any
  * thread, so sinks must be thread-safe (a `StateFlow` set, a main-posted view
@@ -38,6 +39,8 @@ class MediaPlaybackMonitor(
         override fun onIsPlayingChanged(isPlaying: Boolean) = publish()
         override fun onPlaybackStateChanged(playbackState: Int) = publish()
         override fun onTimelineChanged(timeline: Timeline, reason: Int) = publish()
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) =
+            publish()
     }
 
     /**
@@ -71,6 +74,30 @@ class MediaPlaybackMonitor(
         }
     }
 
+    /**
+     * Skips to the previous queue item from the car card's prev button.
+     * Mirrors [toggle]: posted to main, no-op with no controller. Safe from
+     * any thread.
+     */
+    fun seekToPrevious() {
+        mainHandler.post {
+            val active = controller ?: return@post
+            if (active.hasPreviousMediaItem()) active.seekToPrevious()
+        }
+    }
+
+    /**
+     * Skips to the next queue item from the car card's next button.
+     * Mirrors [toggle]: posted to main, no-op with no controller. Safe from
+     * any thread.
+     */
+    fun seekToNext() {
+        mainHandler.post {
+            val active = controller ?: return@post
+            if (active.hasNextMediaItem()) active.seekToNext()
+        }
+    }
+
     /** Drops the controller. Safe from any thread. */
     fun stop() {
         mainHandler.post {
@@ -93,6 +120,11 @@ class MediaPlaybackMonitor(
     private fun publish() {
         val active = controller ?: return
         val metadata = active.mediaMetadata
+        // Source badge: the session owner's app icon, matching gearhead's
+        // per-source badge. Null when the package has no icon to load.
+        val sourceIcon = runCatching {
+            context.packageManager.getApplicationIcon(active.packageName)
+        }.getOrNull()
         onUpdate(
             NowPlayingInfo(
                 title = metadata.title?.toString(),
@@ -100,6 +132,10 @@ class MediaPlaybackMonitor(
                 playing = active.isPlaying,
                 positionMs = active.currentPosition.coerceAtLeast(0),
                 durationMs = active.duration.takeIf { it >= 0 },
+                artworkData = metadata.artworkData,
+                displayIcon = sourceIcon,
+                hasPrevious = active.hasPreviousMediaItem(),
+                hasNext = active.hasNextMediaItem(),
             ),
         )
     }

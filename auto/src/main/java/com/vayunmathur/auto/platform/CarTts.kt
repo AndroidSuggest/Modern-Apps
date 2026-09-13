@@ -25,6 +25,14 @@ import java.util.UUID
 class CarTts(
     context: Context,
     private val systemSink: () -> AudioSinkChannel?,
+    /**
+     * The ch3 guidance owner, when its channel has opened. The TTS session
+     * owns the guidance stream lifecycle: [start] arms it (the CONFIG
+     * confirm starts it) and [stop] parks it; with no owner the guidance
+     * channel stays claim-then-idle. Read per call -- the owner appears on
+     * the ch3 grant, after the session starts.
+     */
+    private val guidance: () -> GuidanceChannel? = { null },
     private val onEvent: (AudioEvent) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
@@ -53,6 +61,10 @@ class CarTts(
                 }
             }
         }
+        // Owns the guidance stream: arms it now (a no-op until the ch3 owner
+        // exists and confirms -- see GuidanceChannel), so guidance audio has
+        // a live sink for the whole session instead of a parked one.
+        guidance()?.startStream()
     }
 
     /** Reads [text] aloud on the car speakers. Fire-and-forget. */
@@ -63,6 +75,9 @@ class CarTts(
     }
 
     fun stop() {
+        // Parks the guidance stream with the session; the channel itself
+        // stays open and idle until teardown releases it.
+        runCatching { guidance()?.stopStream() }
         handler?.removeCallbacksAndMessages(null)
         handler?.post {
             runCatching { engine?.stop(); engine?.shutdown() }

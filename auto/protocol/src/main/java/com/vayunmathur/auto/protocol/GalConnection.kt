@@ -215,18 +215,21 @@ class GalConnection(
 
     /**
      * Enqueues a service-channel message and flushes it from the I/O thread.
-     * Always encrypted, never CONTROL-flagged. Thread-safe from anywhere, main
+     * Encrypted by default, never CONTROL-flagged. Thread-safe from anywhere, main
      * thread included; see [send].
      *
      * `jbe.i()` builds flags as `FIRST | LAST | (Lizm.f ? 0x04 : 0) |
      * (Lizm.h ? 0x08 : 0)`, and every service-channel send goes through
      * `izd.d` → `izl.g(i, jcn, canFragment=true, isControl=false, izn)` --
      * `Lizm.f` is false for ALL service-channel traffic, protobuf or bulk
-     * (Run 7: HU 0xffs a CONTROL-flagged 0x8000 setup on ch2). The CONTROL bit
+     * alike (Run 7: HU 0xffs a CONTROL-flagged 0x8000 setup on ch2). The CONTROL bit
      * belongs only to channel-0 channel-open requests (see [send] above).
+     *
+     * @param encrypted false only for handshake-less tests: a real engine that
+     *   never handshook fails the wrap loudly instead of spinning (see [TlsCodec]).
      */
-    fun send(channelId: Int, type: Int, payload: ByteArray) {
-        enqueue(channelId, type, payload)
+    fun send(channelId: Int, type: Int, payload: ByteArray, encrypted: Boolean = true) {
+        enqueue(channelId, type, payload, encrypted)
         flushSends()
     }
 
@@ -254,13 +257,13 @@ class GalConnection(
      * Enqueues a service-channel message without flushing. Pair with [flushSends]
      * when batching; otherwise prefer [send]. Thread-safe.
      */
-    fun enqueue(channelId: Int, type: Int, payload: ByteArray) {
+    fun enqueue(channelId: Int, type: Int, payload: ByteArray, encrypted: Boolean = true) {
         sendQueue.enqueue(
             QueuedSend(
                 channelId = channelId,
                 payload = MessageCodec.encode(type, payload),
                 isControl = false,
-                encrypted = true,
+                encrypted = encrypted,
             ),
         )
     }

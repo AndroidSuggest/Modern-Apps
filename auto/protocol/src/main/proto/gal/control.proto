@@ -145,14 +145,29 @@ message Service {
   optional InputSourceService input_source = 4;
   optional MediaSourceService media_source = 5;
   optional BluetoothService bluetooth = 6;
+  // Field 7 (`xnb`): `dump_protos.py` recovers a single optional message
+  // field 2, but the nested message class is unidentified in the dump, so
+  // this stays opaque bytes (NOT_SUPPORTED) rather than a mistyped DTO.
   optional bytes radio = 7;
   optional NavigationStatusService navigation_status = 8;
+  // Fields 9-11 (`xkn` media-playback-status, `xmf` phone-status, `xki`
+  // media-browser): every descriptor decodes EMPTY (proto2, zero fields), so
+  // there is no channel layout to type -- opaque bytes (NOT_SUPPORTED).
+  // Now-playing is served from the on-device media session and rendered into
+  // the ch2 video stream instead.
   optional bytes media_playback_status = 9;
   optional bytes phone_status = 10;
   optional bytes media_browser = 11;
   optional VendorExtensionService vendor_extension = 12;
+  // Field 13 (`xjm` notification): descriptor decodes EMPTY like 9-11 above,
+  // so the real ch14 IDs are unrecovered -- opaque bytes (NOT_SUPPORTED) and
+  // the MA-defined `gal/notification.proto` stub rides instead.
   optional bytes notification = 13;
   optional WifiProjectionService wifi_projection = 14;
+  // Fields 15-18 (`rro` 18 WIFI_DISCOVERY, 19 CAR_CONTROL, 20 CAR_LOCAL_MEDIA,
+  // 21 BUFFERED_MEDIA_SINK, 22 CAR_INTENT): `xnz` carries no class references
+  // for these slots, so their payload classes are unrecoverable from the
+  // dump -- opaque bytes (NOT_SUPPORTED), one slot per service in `rro` order.
   optional bytes field15 = 15;
   optional bytes field16 = 16;
   optional bytes field17 = 17;

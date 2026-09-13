@@ -83,6 +83,14 @@ object GalMessage {
         const val REPORT = 0x8001
         const val KEY_BINDING_REQUEST = 0x8002
         const val KEY_BINDING_RESPONSE = 0x8003
+
+        /**
+         * Phone -> HU: one input-stream feedback event (`xjs`, `InputFeedback`
+         * proto) from the discovery-advertised set. Aliased like the rest of
+         * the 0x8004 range (MediaAck, SensorError, messaging ACTION), so
+         * owners route by channel id first.
+         */
+        const val FEEDBACK = 0x8004
     }
 
     /** Sensor source. [SENSOR_REQUEST] is synchronous with a 2 s timeout. */

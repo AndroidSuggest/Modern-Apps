@@ -34,6 +34,32 @@ object CarApps {
         return found
     }
 
+    /**
+     * Resolves the assistant slot for the rail's assistant icon, or null when
+     * the phone has no assistant to open.
+     *
+     * Skip-if-missing like every [SLOTS] entry: the rail keeps its 68dp
+     * assistant container (gearhead `assistant_icon_container`) but the icon
+     * itself stays GONE, so the launcher never shows what the phone cannot
+     * open. `ACTION_ASSIST` first (the platform assistant entry point), then
+     * the legacy voice-command intent as a fallback.
+     */
+    fun assistant(context: Context): CarApp? = runCatching {
+        val pm = context.packageManager
+        val assist = Intent(Intent.ACTION_ASSIST).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val voice = Intent(Intent.ACTION_VOICE_COMMAND).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val launch = if (assist.resolveActivity(pm) != null) assist
+        else if (voice.resolveActivity(pm) != null) voice
+        else return null
+        val target = launch.resolveActivity(pm) ?: return null
+        val info = pm.getActivityInfo(target, 0)
+        CarApp(
+            label = info.loadLabel(pm),
+            icon = info.loadIcon(pm),
+            launch = launch,
+        )
+    }.getOrNull()
+
     private interface Slot {
         val label: String
         fun resolve(context: Context, pm: PackageManager): CarApp?

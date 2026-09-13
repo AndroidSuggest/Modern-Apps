@@ -51,6 +51,14 @@ class CarMapsMirror(
     private var mirrorWidth = 0
     private var mirrorHeight = 0
 
+    /**
+     * Last night state from [setDark], replayed onto every fresh renderer in
+     * [attach]. The basemap palette is free (push constant, no
+     * re-tessellation), so a surface recreation never flashes the wrong
+     * theme.
+     */
+    @Volatile private var dark = false
+
     /** The route polyline already on the GPU, by identity. */
     private var pushedRoute: List<GeoPoint>? = null
 
@@ -86,6 +94,7 @@ class CarMapsMirror(
 
     /** Switches the basemap palette; free (push constant, no re-tessellation). */
     fun setDark(dark: Boolean) {
+        this.dark = dark
         if (isMainThread) renderer?.setPalette(dark = dark, muted = false)
         else mainHandler.post { renderer?.setPalette(dark = dark, muted = false) }
     }
@@ -107,7 +116,7 @@ class CarMapsMirror(
         mirrorHeight = heightPx
         val created = runCatching {
             SurfaceMapRenderer(appContext, density).apply {
-                setPalette(dark = false, muted = false)
+                setPalette(dark = dark, muted = false)
                 setLayers(CAR_LAYERS)
                 attachSurface(surface, widthPx, heightPx)
             }

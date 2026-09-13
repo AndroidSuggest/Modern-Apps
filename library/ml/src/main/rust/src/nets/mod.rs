@@ -130,7 +130,7 @@ pub enum Act {
 }
 
 impl Act {
-    fn code(self) -> u32 {
+    pub(crate) fn code(self) -> u32 {
         match self {
             Act::None => 0,
             Act::Relu => 1,
@@ -413,14 +413,25 @@ pub enum Kind {
     Rotary,
 }
 
+/// [`Push::res`] / [`Push::shift`] when no addend is folded into the store.
+///
+/// Arena offset 0 is a live tensor — the first input is pinned there — so "none" needs a value
+/// no allocation can hold. [`Builder::finish`] writes real offsets only onto the ops it fuses;
+/// everything else keeps this through the manual [`Push`] default below.
+pub const NO_FUSE: u32 = u32::MAX;
+
 /// The push-constant block every shader declares.
 ///
 /// `repr(C)` so field order is declaration order, which is what the SPIR-V offsets
 /// assume. Deliberately one block shared by every pipeline: it fits inside the
 /// 128 bytes the spec guarantees (asserted in [`tests`]), so there is a single
 /// pipeline layout, no uniform buffers and no descriptor writes after setup.
+///
+/// `Default` is manual rather than derived: [`NO_FUSE`] is the opt-out for the two fused-addend
+/// fields, and the derive would write 0, which is a live offset. Every `..Push::default()` site
+/// outside the fusion fold therefore gets "no fusion" without naming it.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Push {
     /// Element offset of the first input in the activation arena.
     pub in0: u32,
@@ -529,6 +540,60 @@ pub struct Push {
     /// whole head as a single block would pair a row channel with a column channel, which is not
     /// a shape error and produces an image encoder that is subtly position-blind.
     pub rope_axes: u32,
+
+    /// Arena offset of a residual addend folded into this op's store, or [`NO_FUSE`].
+    ///
+    /// [`Builder::finish`] removes a single-consumer `Add` after a convolution by storing
+    /// `activate(acc + bias) + arena[res + index]` instead of emitting the add as its own
+    /// dispatch. Same shape as the output, so the same index addresses both. Only the
+    /// convolution kinds read it; every other op leaves [`NO_FUSE`].
+    pub res: u32,
+    /// Arena offset of a per-channel shift folded into this op's store, or [`NO_FUSE`].
+    ///
+    /// The `AddBroadcast` half of the same fold: Supertonic's timestep conditioning adds one
+    /// value per channel, so the fused store adds `arena[shift + channel]`. `C` values, which
+    /// is why this is a separate field rather than a second [`Push::in1`].
+    pub shift: u32,
+}
+
+impl Default for Push {
+    fn default() -> Push {
+        Push {
+            in0: 0,
+            in1: 0,
+            out: 0,
+            weight: 0,
+            bias: 0,
+            in_c: 0,
+            in_h: 0,
+            in_w: 0,
+            out_c: 0,
+            out_h: 0,
+            out_w: 0,
+            kh: 0,
+            kw: 0,
+            stride_h: 0,
+            stride_w: 0,
+            dil_h: 0,
+            dil_w: 0,
+            pad_t: 0,
+            pad_l: 0,
+            pad_edge: 0,
+            group: 0,
+            act: 0,
+            act_weight: 0,
+            param0_bits: 0,
+            param1_bits: 0,
+            count: 0,
+            dyn_keys: 0,
+            kv_heads: 0,
+            sliding: 0,
+            rope_axes: 0,
+            // The only fields whose zero value would be live: see [`NO_FUSE`].
+            res: NO_FUSE,
+            shift: NO_FUSE,
+        }
+    }
 }
 
 /// Which span of a score-map row a [`Node::Softmax`] normalises.
@@ -757,8 +822,11 @@ impl Kind {
             Kind::Embed => one(push.in0, push.in_c * push.out_w),
             // One row in. Not `dense`: `in_h` here is the cache's capacity, not a spatial extent.
             Kind::CacheWrite => one(push.in0, push.count),
-            // The whole input plane, whatever the kernel touches. The tiled and gemv lowerings
-            // read it too - their `count` is tiles or channel groups, not elements.
+            // Convolutions, whose store may also add a folded residual and a folded
+            // per-channel shift. The residual is the output's shape, so the same element
+            // count the op writes; the shift is one value per output channel. `NO_FUSE`
+            // reads nothing — see `Push::res` — so the ranges stay exact rather than
+            // conservative, which is what `schedule` needs them to be.
             Kind::Conv
             | Kind::ConvTranspose
             | Kind::ConvInt8
@@ -766,8 +834,18 @@ impl Kind {
             | Kind::ConvPointInt8
             | Kind::ConvVecInt8
             | Kind::ConvPointInt4
-            | Kind::ConvVecInt4
-            | Kind::MaxPool
+            | Kind::ConvVecInt4 => {
+                let mut ranges = vec![(push.in0, dense)];
+                if push.res != NO_FUSE {
+                    ranges.push((push.res, written));
+                }
+                if push.shift != NO_FUSE {
+                    ranges.push((push.shift, push.out_c));
+                }
+                Reads::Ranges(ranges)
+            }
+            // The whole input plane, whatever the kernel touches.
+            Kind::MaxPool
             | Kind::AvgPool
             | Kind::Resize
             | Kind::ResizeNearest
@@ -927,12 +1005,43 @@ impl WeightSource for crate::weights::Weights {
 }
 
 /// A tensor in the graph being built. Copy, so it can be passed and reused freely.
+///
+/// The inner index is `pub(crate)`: the graph-section emitter in `weights.rs` maps ids
+/// to computed positions, and the section loader maps them back. Both are in other
+/// modules; external callers only pass ids through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Id(usize);
+pub struct Id(pub(crate) usize);
+
+/// A recorded forward pass: the resolved plan plus the graph it came from.
+///
+/// [`Builder::record`] returns this instead of a bare [`Plan`] so the graph-section
+/// emitter can serialise the nodes — with weight file indices recovered through the
+/// read flags, shapes, and bindings — without re-deriving anything. The plan is what
+/// runs; the rest is what the converter needs to reproduce it.
+#[derive(Debug)]
+pub(crate) struct Recorded {
+    /// The resolved plan, as `finish` has always returned.
+    pub plan: Plan,
+    /// The fused nodes, in execution order.
+    pub nodes: Vec<Node>,
+    /// Shape per tensor id.
+    pub shapes: Vec<Shape>,
+    /// Input ids, in declaration order.
+    pub inputs: Vec<Id>,
+    /// Pinned ids (inputs, outputs, persistent).
+    pub pinned: Vec<Id>,
+    /// Per-file-tensor read flags, so the emitter can name host tensors.
+    pub read: Vec<bool>,
+}
 
 /// An unresolved step, against [`Id`]s rather than offsets.
+///
+/// `pub(crate)` rather than private: the graph-section emitter in `weights.rs` walks
+/// these to serialise the forward pass, and the section loader replays them through
+/// the `*_raw` builders. Both are in other modules; the variants stay non-exhaustive
+/// to them only by convention (see `emit_section`).
 #[derive(Clone, Debug)]
-enum Node {
+pub(crate) enum Node {
     Conv {
         input: Id,
         out: Id,
@@ -949,6 +1058,10 @@ enum Node {
         transpose: bool,
         /// Replicate the border instead of reading zeros. See [`Push::pad_edge`].
         pad_edge: bool,
+        /// A residual addend folded into the store. See [`Push::res`].
+        res: Option<Id>,
+        /// A per-channel shift folded into the store. See [`Push::shift`].
+        shift: Option<Id>,
     },
     MaxPool {
         input: Id,
@@ -1126,6 +1239,10 @@ enum Node {
         act: Act,
         /// Whether the kernel is eight bits or four. See [`Quant`].
         quant: Quant,
+        /// A residual addend folded into the store. See [`Push::res`].
+        res: Option<Id>,
+        /// A per-channel shift folded into the store. See [`Push::shift`].
+        shift: Option<Id>,
     },
     AttnApply {
         probs: Id,
@@ -1206,10 +1323,35 @@ const CONV_POINT_TILE: u32 = 16;
 ///
 /// That shader is dispatched one workgroup per group of this many channels, so [`Builder::emit`]
 /// has to know it to compute [`Push::count`], exactly as it does for [`CONV_POINT_TILE`].
-/// **Must equal `ROWS` in `conv_vec_int4.comp` and `conv_vec_int8.comp`.** The two are separate
-/// declarations in separate languages and nothing checks them against each other; a mismatch
-/// leaves most output channels never dispatched, which parity catches as zeros.
+/// **Must equal `ROWS` in `conv_vec_int8.comp`.** The two are separate declarations in
+/// separate languages and nothing checks them against each other; a mismatch leaves most
+/// output channels never dispatched, which parity catches as zeros. Held by
+/// `the_gemv_row_count_matches_both_shaders`.
 const CONV_VEC_ROWS: u32 = 2;
+
+/// `ROWS` in `shaders/conv_vec_int4.comp`: output channels per workgroup.
+///
+/// The int4 gemv runs eight rows per workgroup for the stream reason that shader's header
+/// gives, while the int8 gemv stays at [`CONV_VEC_ROWS`]. Separate constants because they
+/// are separate decisions now: the two shaders diverged, and one shared name would let an
+/// edit to either silently dispatch the other wrong. [`Builder::emit`] uses this for the
+/// int4 vector kinds; `the_int4_gemv_row_count_matches_its_shader` holds it against the shader.
+const CONV_VEC_INT4_ROWS: u32 = 8;
+
+#[cfg(test)]
+fn gemv_rows_of(shader: &str) -> u32 {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("shaders").join(shader);
+    let source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    let line = source
+        .lines()
+        .find(|line| line.trim_start().starts_with("#define ROWS"))
+        .unwrap_or_else(|| panic!("{shader} declares no ROWS"));
+    line.split_whitespace()
+        .nth(2)
+        .and_then(|word| word.trim_end_matches('u').parse().ok())
+        .unwrap_or_else(|| panic!("{shader} has an unreadable ROWS: {line}"))
+}
 
 /// `erf`, to about 1.5e-7 — Abramowitz and Stegun 7.1.26.
 ///
@@ -1321,6 +1463,10 @@ impl<'a> Builder<'a> {
     ///
     /// `weight_index` and `bias_index` are positions in the `.maml` tensor table, so a
     /// net module reads as the ordered list of layers that it is.
+    ///
+    /// [`Builder::conv_raw`] is the same convolution with resolved offsets rather than
+    /// table indices, for lowering a version-2 graph section. Hand-written passes use
+    /// this; the section loader uses that; both push the same `Node`.
     #[allow(clippy::too_many_arguments)]
     pub fn conv(
         &mut self,
@@ -1348,10 +1494,52 @@ impl<'a> Builder<'a> {
         let per_group = in_shape.c.checked_div(group).unwrap_or(0);
         let weight = self.weight(weight_index, &[m, per_group, kh, kw]);
         let bias = self.weight(weight_index + 1, &[m]);
+        let act_weight = self.act_weight(act, m);
+        self.push_conv(
+            input,
+            weight,
+            bias,
+            act_weight,
+            m,
+            kernel,
+            stride,
+            dilation,
+            pads,
+            group,
+            act,
+            false,
+            self.pad_edge,
+        )
+    }
+
+    /// The node push behind [`Builder::conv`] and [`Builder::conv_raw`].
+    ///
+    /// Split out so the two entry points — table indices for hand-written passes,
+    /// resolved offsets for section lowering — share the shape propagation, the output
+    /// allocation, and the node construction. The only thing they do differently is how
+    /// the weight offsets are obtained.
+    #[allow(clippy::too_many_arguments)]
+    fn push_conv(
+        &mut self,
+        input: Id,
+        weight: u32,
+        bias: u32,
+        act_weight: u32,
+        m: u32,
+        kernel: (u32, u32),
+        stride: (u32, u32),
+        dilation: (u32, u32),
+        pads: (u32, u32, u32, u32),
+        group: u32,
+        act: Act,
+        transpose: bool,
+        pad_edge: bool,
+    ) -> Id {
+        let in_shape = self.shape_of(input);
+        let (kh, kw) = kernel;
         let (pad_t, pad_l, pad_b, pad_r) = pads;
         let out_h = conv_out(in_shape.h, kh, stride.0, dilation.0, pad_t + pad_b);
         let out_w = conv_out(in_shape.w, kw, stride.1, dilation.1, pad_l + pad_r);
-        let act_weight = self.act_weight(act, m);
         let out = self.tensor(Shape::new(m, out_h, out_w));
         self.nodes.push(Node::Conv {
             input,
@@ -1365,10 +1553,41 @@ impl<'a> Builder<'a> {
             group,
             act,
             act_weight,
-            transpose: false,
-            pad_edge: self.pad_edge,
+            transpose,
+            pad_edge,
+            res: None,
+            shift: None,
         });
         out
+    }
+
+    /// [`Builder::conv`] with resolved weight offsets rather than table indices.
+    ///
+    /// The version-2 graph section names file tensors by index, and the section parser
+    /// already resolved and shape-checked them — re-resolving here would need the dims
+    /// the section deliberately does not carry. So this takes offsets (exactly what
+    /// `Offsets::shaped` returns) and `m` (the output channels, from the section's
+    /// computed table) and pushes the same `Node::Conv` the indexed path would have.
+    #[allow(clippy::too_many_arguments)]
+    pub fn conv_raw(
+        &mut self,
+        input: Id,
+        weight: u32,
+        bias: u32,
+        act_weight: u32,
+        m: u32,
+        act: Act,
+        kernel: (u32, u32),
+        stride: (u32, u32),
+        dilation: (u32, u32),
+        pads: (u32, u32, u32, u32),
+        group: u32,
+        pad_edge: bool,
+    ) -> Id {
+        self.push_conv(
+            input, weight, bias, act_weight, m, kernel, stride, dilation, pads, group,
+            act, false, pad_edge,
+        )
     }
 
     /// [`Builder::conv`] with int8 weights and a per-output-channel dequantisation scale.
@@ -1481,6 +1700,32 @@ impl<'a> Builder<'a> {
             }
         };
         let bias = self.weight(weight_index + 2, &[m]);
+        self.push_conv_int8(input, weight, scale, bias, m, kernel, stride, dilation, pads, group, act, quant)
+    }
+
+    /// The node push behind [`Builder::conv_quantised`] and [`Builder::conv_int8_raw`].
+    ///
+    /// As [`Builder::push_conv`] is for the fp16 path: the indexed and resolved entry
+    /// points share shape propagation and node construction, differing only in how the
+    /// weight offsets are obtained.
+    #[allow(clippy::too_many_arguments)]
+    fn push_conv_int8(
+        &mut self,
+        input: Id,
+        weight: u32,
+        scale: u32,
+        bias: u32,
+        m: u32,
+        kernel: (u32, u32),
+        stride: (u32, u32),
+        dilation: (u32, u32),
+        pads: (u32, u32, u32, u32),
+        group: u32,
+        act: Act,
+        quant: Quant,
+    ) -> Id {
+        let in_shape = self.shape_of(input);
+        let (kh, kw) = kernel;
         let (pad_t, pad_l, pad_b, pad_r) = pads;
         let out_h = conv_out(in_shape.h, kh, stride.0, dilation.0, pad_t + pad_b);
         let out_w = conv_out(in_shape.w, kw, stride.1, dilation.1, pad_l + pad_r);
@@ -1498,8 +1743,36 @@ impl<'a> Builder<'a> {
             group,
             act,
             quant,
+            res: None,
+            shift: None,
         });
         out
+    }
+
+    /// [`Builder::conv_int8`] with resolved weight offsets rather than table indices.
+    ///
+    /// As [`Builder::conv_raw`]: the section parser validated shapes, so lowering only
+    /// translates addressing. `m` is the section's computed output channels.
+    #[allow(clippy::too_many_arguments)]
+    pub fn conv_int8_raw(
+        &mut self,
+        input: Id,
+        weight: u32,
+        scale: u32,
+        bias: u32,
+        m: u32,
+        act: Act,
+        kernel: (u32, u32),
+        stride: (u32, u32),
+        dilation: (u32, u32),
+        pads: (u32, u32, u32, u32),
+        group: u32,
+        quant: Quant,
+    ) -> Id {
+        self.push_conv_int8(
+            input, weight, scale, bias, m, kernel, stride, dilation, pads, group, act,
+            quant,
+        )
     }
 
     /// Resolve [`Act::PRelu`]'s slope tensor, which is `[channels, 1, 1]` in the ONNX
@@ -1574,6 +1847,8 @@ impl<'a> Builder<'a> {
             act_weight,
             transpose: true,
             pad_edge: false,
+            res: None,
+            shift: None,
         });
         out
     }
@@ -1679,6 +1954,16 @@ impl<'a> Builder<'a> {
     }
 
     /// Elementwise `a + b`. Shapes must match.
+    ///
+    /// # Fusion
+    ///
+    /// [`Builder::finish`] may fold this into the convolution that produced one side —
+    /// see `Node::Conv::res` — when that side has no other reader and the other side is
+    /// already written by then. An FPN-style `add(earlier, later)` is the canonical
+    /// non-residual: the skip side is *downstream* of the producer, so reading it from
+    /// the producer's store would read an unwritten tensor, and the add stays its own
+    /// dispatch. Write residuals as `add(skip, produced)` and the fold applies; the
+    /// argument order carries no semantics either way.
     pub fn add(&mut self, a: Id, b: Id) -> Id {
         let (sa, sb) = (self.shape_of(a), self.shape_of(b));
         if sa != sb {
@@ -1786,9 +2071,31 @@ impl<'a> Builder<'a> {
         let shape = self.shape_of(input);
         let gamma = self.weight(weight_index, &[shape.c]);
         let beta = self.weight(weight_index + 1, &[shape.c]);
+        self.push_layer_norm(input, gamma, beta, epsilon)
+    }
+
+    /// The node push behind [`Builder::layer_norm`] and [`Builder::layer_norm_raw`].
+    ///
+    /// As [`Builder::push_conv` is for convolutions: shared shape passthrough and node
+    /// construction, differing only in how the gamma/beta offsets are obtained.
+    fn push_layer_norm(&mut self, input: Id, gamma: u32, beta: u32, epsilon: f32) -> Id {
+        let shape = self.shape_of(input);
         let out = self.tensor(shape);
         self.nodes.push(Node::LayerNorm { input, out, gamma, beta, epsilon });
         out
+    }
+
+    /// [`Builder::layer_norm`] with resolved weight offsets rather than table indices.
+    ///
+    /// As [`Builder::conv_raw` for convolutions.
+    pub fn layer_norm_raw(
+        &mut self,
+        input: Id,
+        gamma: u32,
+        beta: u32,
+        epsilon: f32,
+    ) -> Id {
+        self.push_layer_norm(input, gamma, beta, epsilon)
     }
 
     /// Root-mean-square normalisation over the channel axis, with a per-channel gain.
@@ -2617,7 +2924,33 @@ impl<'a> Builder<'a> {
     }
 
     /// Pack the arena and resolve every offset, with `outputs` as the result tensors.
-    pub fn finish(mut self, outputs: &[Id]) -> Result<Plan, String> {
+    pub fn finish(self, outputs: &[Id]) -> Result<Plan, String> {
+        // `finish` needs no file table: it resolves offsets, never indices. The
+        // emitter passes the table; the plan path passes an empty stand-in the
+        // recording never consults.
+        let recorded = self.record(outputs, &crate::weights::Offsets::empty())?;
+        Ok(recorded.plan)
+    }
+
+    /// Run the recording pipeline up to but excluding `Op` emission, for the graph
+    /// emitter.
+    ///
+    /// `finish` is record-then-emit; the emitter needs the recorded graph (nodes with
+    /// resolved weight file indices, shapes, and bindings) without the `Plan`. Split
+    /// out so both share the fusion fold, the liveness, and the every-tensor rule —
+    /// the emitter must see exactly the graph the plan would have been built from, or
+    /// the equivalence test is circular.
+    ///
+    /// `offsets` is unused today: nodes already carry resolved offsets and the emitter
+    /// inverts them through its own table. It stays in the signature so the recording
+    /// can later carry file indices directly (see the `Recorded` docs) without
+    /// changing every call site again.
+    pub(crate) fn record(
+        mut self,
+        outputs: &[Id],
+        offsets: &crate::weights::Offsets,
+    ) -> Result<Recorded, String> {
+        let _ = offsets;
         self.pinned.extend_from_slice(outputs);
         if let Some(e) = self.error.take() {
             return Err(e);
@@ -2640,6 +2973,25 @@ impl<'a> Builder<'a> {
             ));
         }
 
+        self.fuse_elementwise(outputs);
+
+        let plan = self.emit_all(outputs)?;
+        Ok(Recorded {
+            plan,
+            nodes: self.nodes,
+            shapes: self.shapes,
+            inputs: self.inputs,
+            pinned: self.pinned,
+            read: self.read,
+        })
+    }
+
+    /// Emit every node to `Op`s, packing the arena along the way.
+    ///
+    /// The second half of the old `finish`: allocate outputs before freeing inputs,
+    /// resolve offsets, and build the bindings. Split out so `record` can stop before
+    /// it — the emitter needs nodes and shapes, not dispatches.
+    fn emit_all(&self, outputs: &[Id]) -> Result<Plan, String> {
         let last_use = self.last_use();
         let mut arena = Arena::new();
         let mut offsets: Vec<Option<u32>> = vec![None; self.shapes.len()];
@@ -2705,6 +3057,145 @@ impl<'a> Builder<'a> {
         })
     }
 
+    /// Fold single-consumer elementwise adds into their producing convolution.
+    ///
+    /// A ConvNeXt block is five dispatches — depthwise conv, layer norm, widening pointwise
+    /// with GELU, narrowing pointwise, residual add — and Supertonic's sampler holds 28 of
+    /// them. The last of the five only adds two tensors that already sit in cache, so the
+    /// producing convolution stores `activate(acc + bias) + residual` directly and the add
+    /// never becomes a dispatch. Same for the timestep `AddBroadcast`: it adds one value per
+    /// channel, so the store adds `arena[shift + channel]` alongside.
+    ///
+    /// Runs to fixpoint because the two chain: the residual add's output feeds the timestep
+    /// shift, so the first iteration folds the add into the convolution and the second folds
+    /// the shift into the same store. Runs before [`Builder::last_use`] so liveness, the
+    /// arena packing and [`Kind::arena_reads`] all see the folded graph rather than the
+    /// spelled-out one.
+    ///
+    /// # What can fold, and what cannot
+    ///
+    /// The producer must be a `Conv` or `ConvInt8` node whose output the binary is the only
+    /// reader of — counted over node inputs *and* plan outputs, since an output tensor has to
+    /// survive even when nothing downstream reads it. Anything else (a second reader, a plan
+    /// output, a non-convolution producer) keeps the add as its own op, which is always
+    /// correct and merely one dispatch.
+    ///
+    /// Only `Add` and `AddBroadcast` fold. A fused multiply would have to round differently
+    /// from the unfused pair, and everything else elementwise in these nets already rides in
+    /// the convolution's own activation.
+    fn fuse_elementwise(&mut self, outputs: &[Id]) {
+        loop {
+            if !self.fuse_one_elementwise(outputs) {
+                return;
+            }
+        }
+    }
+
+    /// One fold, or `false` when no binary qualifies.
+    fn fuse_one_elementwise(&mut self, outputs: &[Id]) -> bool {
+        let folded = (0..self.nodes.len()).find_map(|i| {
+            // The producer's index, the tensor it produced, the addend that folds, and
+            // the binary's own output, which the sum moves onto. All `Copy`, so the
+            // borrow of `self.nodes` ends here.
+            let (index, produced, residual, shift, out) = match &self.nodes[i] {
+                Node::Binary { kind: Kind::Add, a, b, out } => {
+                    if let Some(index) = producer_of(&self.nodes, *a) {
+                        (index, *a, Some(*b), None, *out)
+                    } else if let Some(index) = producer_of(&self.nodes, *b) {
+                        (index, *b, Some(*a), None, *out)
+                    } else {
+                        return None;
+                    }
+                }
+                Node::Binary { kind: Kind::AddBroadcast, a, b, out } => {
+                    // `add_channel(a, b)` validates `b` as the `C x 1 x 1` shift, so the
+                    // producer side is always `a`.
+                    let index = producer_of(&self.nodes, *a)?;
+                    (index, *a, None, Some(*b), *out)
+                }
+                _ => return None,
+            };
+            // A self-add (`add(x, x)`) would fold into a convolution that reads the very
+            // tensor it no longer writes — the old output has no writer once the fold
+            // moves it. Refused rather than reasoned about: no net builds one.
+            if residual == Some(produced) || shift == Some(produced) {
+                return None;
+            }
+            // The addend must already exist when the producer runs. It always does in a
+            // residual — unless the "skip" side is itself downstream of the producer. A
+            // producer that (transitively) reads the addend would, after the fold, read
+            // a tensor whose writer moved downstream of it: a read-before-write the
+            // allocator cannot see, since it allocates in node order. SCRFD's neck does
+            // exactly this (`add(p4, upsample(p5))` where `p5`'s lateral is the later
+            // node). Refused by dataflow: the addend may only depend on nodes strictly
+            // before the producer. Inputs and host tensors depend on nothing, so they
+            // always qualify.
+            let addend_ready = |id: Id| {
+                let mut seen = vec![false; self.nodes.len()];
+                let mut stack = vec![id];
+                while let Some(next) = stack.pop() {
+                    // No producing node: an input or a host tensor, written before the
+                    // pass runs, so always ready.
+                    let Some(node_index) =
+                        self.nodes.iter().position(|node| node.out() == next)
+                    else {
+                        continue;
+                    };
+                    if node_index >= index {
+                        return false;
+                    }
+                    if seen[node_index] {
+                        continue;
+                    }
+                    seen[node_index] = true;
+                    stack.extend(self.nodes[node_index].inputs());
+                }
+                true
+            };
+            if !residual.is_none_or(addend_ready) || !shift.is_none_or(addend_ready) {
+                return None;
+            }
+            // The producer's output must reach exactly this binary: a second reader, or
+            // the plan holding it as an output, keeps the add unfolded.
+            let single = self.nodes.iter().enumerate()
+                .filter(|(j, _)| *j != index && *j != i)
+                .all(|(_, node)| !node.inputs().contains(&produced))
+                && !outputs.contains(&produced);
+            single.then_some((i, index, residual, shift, out))
+        });
+        let Some((i, index, residual, shift, out)) = folded else {
+            return false;
+        };
+        // The output tensor moves onto the convolution: it stores the sum directly, and
+        // the producer's old output — now unread by anything — is never allocated.
+        match &mut self.nodes[index] {
+            Node::Conv { out: conv_out, res, shift: fused_shift, .. } => {
+                *conv_out = out;
+                if residual.is_some() {
+                    *res = residual;
+                }
+                if shift.is_some() {
+                    *fused_shift = shift;
+                }
+            }
+            Node::ConvInt8 { out: conv_out, res, shift: fused_shift, .. } => {
+                *conv_out = out;
+                if residual.is_some() {
+                    *res = residual;
+                }
+                if shift.is_some() {
+                    *fused_shift = shift;
+                }
+            }
+            // `producer_of` only returns convolution nodes, so reaching this means the
+            // predicate and the application disagree — a bug, and folding nothing is the
+            // safe side of it.
+            _ => return false,
+        }
+        self.nodes.remove(i);
+        true
+    }
+
     /// For each tensor, the last step that reads it, or `None` if nothing does.
     fn last_use(&self) -> Vec<Option<usize>> {
         let mut last = vec![None; self.shapes.len()];
@@ -2716,6 +3207,20 @@ impl<'a> Builder<'a> {
             }
         }
         last
+    }
+
+    /// The arena offset of a folded addend, or [`NO_FUSE`] when there is none.
+    ///
+    /// `None` is the common case — only [`Builder::finish`]'s fusion fold sets these — and it
+    /// must resolve without touching the allocator, since "no addend" is not "the tensor at 0".
+    fn fuse_offset(
+        id: Option<Id>,
+        at: &dyn Fn(Id) -> Result<u32, String>,
+    ) -> Result<u32, String> {
+        match id {
+            Some(id) => at(id),
+            None => Ok(NO_FUSE),
+        }
     }
 
     fn emit(
@@ -2739,6 +3244,8 @@ impl<'a> Builder<'a> {
                 group,
                 act,
                 quant,
+                res,
+                shift,
             } => {
                 let (si, so) = (shape(*input), shape(*out));
                 // The same test `Node::Conv` applies below, less the two cases that cannot arise
@@ -2760,7 +3267,12 @@ impl<'a> Builder<'a> {
                 // shader instead. It is the whole of a SMaLL-100 decode step.
                 let vector = tiled && positions == 1;
                 let tiles = so.c.div_ceil(CONV_POINT_TILE) * positions.div_ceil(CONV_POINT_TILE);
-                let rows = so.c.div_ceil(CONV_VEC_ROWS);
+                // One workgroup per row-group: 2 channels for int8, 8 for int4 — the
+                // two gemv shaders diverged, so each kind counts its own rows.
+                let rows = match quant {
+                    Quant::I8 => so.c.div_ceil(CONV_VEC_ROWS),
+                    Quant::I4 => so.c.div_ceil(CONV_VEC_INT4_ROWS),
+                };
                 let kind = match (quant, tiled, vector) {
                     (Quant::I8, _, true) => Kind::ConvVecInt8,
                     (Quant::I8, true, false) => Kind::ConvPointInt8,
@@ -2815,6 +3327,8 @@ impl<'a> Builder<'a> {
                         group: *group,
                         act: act.code(),
                         count,
+                        res: Self::fuse_offset(*res, &at)?,
+                        shift: Self::fuse_offset(*shift, &at)?,
                         ..Push::default()
                     },
                     // One workgroup of 64 per unit for the staged shaders; one invocation per
@@ -2842,6 +3356,8 @@ impl<'a> Builder<'a> {
                 act_weight,
                 transpose,
                 pad_edge,
+                res,
+                shift,
             } => {
                 let (si, so) = (shape(*input), shape(*out));
                 // An ungrouped 1x1 goes to the tiled path. Its geometry is a matrix multiply
@@ -2875,6 +3391,8 @@ impl<'a> Builder<'a> {
                             act: act.code(),
                             // Tiles, not elements: one workgroup per tile.
                             count: tiles,
+                            res: Self::fuse_offset(*res, &at)?,
+                            shift: Self::fuse_offset(*shift, &at)?,
                             ..Push::default()
                         },
                         // 64 invocations a workgroup, so this asks for exactly `tiles` of them.
@@ -2908,6 +3426,8 @@ impl<'a> Builder<'a> {
                         act: act.code(),
                         act_weight: *act_weight,
                         count: so.len(),
+                        res: Self::fuse_offset(*res, &at)?,
+                        shift: Self::fuse_offset(*shift, &at)?,
                         ..Push::default()
                     },
                     invocations: so.len(),
@@ -3548,7 +4068,7 @@ impl<'a> Builder<'a> {
 }
 
 impl Node {
-    fn out(&self) -> Id {
+    pub(crate) fn out(&self) -> Id {
         match self {
             Node::Conv { out, .. }
             | Node::MaxPool { out, .. }
@@ -3588,8 +4108,19 @@ impl Node {
 
     fn inputs(&self) -> Vec<Id> {
         match self {
-            Node::Conv { input, .. }
-            | Node::MaxPool { input, .. }
+            Node::Conv { input, res, shift, .. } => {
+                let mut reads = vec![*input];
+                reads.extend(res.iter().copied());
+                reads.extend(shift.iter().copied());
+                reads
+            }
+            Node::ConvInt8 { input, res, shift, .. } => {
+                let mut reads = vec![*input];
+                reads.extend(res.iter().copied());
+                reads.extend(shift.iter().copied());
+                reads
+            }
+            Node::MaxPool { input, .. }
             | Node::AvgPool { input, .. }
             | Node::Resize { input, .. }
             | Node::Affine { input, .. }
@@ -3603,7 +4134,6 @@ impl Node {
             | Node::Clamp { input, .. }
             | Node::Embed { ids: input, .. }
             | Node::SliceChannels { input, .. }
-            | Node::ConvInt8 { input, .. }
             | Node::GlobalAvgPool { input, .. } => vec![*input],
             Node::Binary { a, b, .. } => vec![*a, *b],
             Node::Rotary { input, angles, .. } => vec![*input, *angles],
@@ -3627,6 +4157,17 @@ impl Node {
             Node::Constant { .. } => Vec::new(),
         }
     }
+}
+
+/// The convolution node that wrote `id`, if one did.
+///
+/// `finish`'s fusion fold only folds into convolutions — the op whose store does the adding —
+/// so this is the predicate that names a foldable producer. Anything else (`None`) keeps the
+/// binary as its own op.
+fn producer_of(nodes: &[Node], id: Id) -> Option<usize> {
+    nodes.iter().position(|node| {
+        matches!(node, Node::Conv { .. } | Node::ConvInt8 { .. }) && node.out() == id
+    })
 }
 
 /// `floor((in + pad - dilation * (k - 1) - 1) / stride) + 1`, ONNX's convolution
@@ -3727,34 +4268,40 @@ fn round_up(len: u32) -> u32 {
 #[cfg(test)]
 pub(crate) mod tests {
 
-    /// `CONV_VEC_ROWS` must equal `ROWS` in both gemv shaders.
+    /// `CONV_VEC_ROWS` must equal `ROWS` in the int8 gemv shader.
     ///
-    /// The same number is declared three times across two languages and nothing connects them:
-    /// Rust uses it to decide how many workgroups to dispatch, each shader to decide which
+    /// The same number is declared twice across two languages and nothing connects them:
+    /// Rust uses it to decide how many workgroups to dispatch, the shader to decide which
     /// channels a workgroup owns. Disagreeing does not fail to build - it dispatches too few
     /// workgroups and leaves most output channels never written, which reads as a plausible
     /// wrong answer rather than an error. That happened while tuning occupancy, and only the
     /// device parity fixtures caught it.
+    ///
+    /// The int4 gemv shader is deliberately not in this list: it runs `ROWS` 8 for the
+    /// stream reason its header gives, and its workgroup count comes from
+    /// [`CONV_VEC_INT4_ROWS`], checked by the test below it.
     #[test]
     fn the_gemv_row_count_matches_both_shaders() {
-        for shader in ["conv_vec_int4.comp", "conv_vec_int8.comp"] {
-            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("shaders").join(shader);
-            let source = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-            let line = source
-                .lines()
-                .find(|line| line.trim_start().starts_with("#define ROWS"))
-                .unwrap_or_else(|| panic!("{shader} declares no ROWS"));
-            let declared: u32 = line
-                .split_whitespace()
-                .nth(2)
-                .and_then(|word| word.trim_end_matches('u').parse().ok())
-                .unwrap_or_else(|| panic!("{shader} has an unreadable ROWS: {line}"));
-            assert_eq!(
-                declared, CONV_VEC_ROWS,
-                "{shader} owns {declared} channels a workgroup, Rust dispatches for {CONV_VEC_ROWS}"
-            );
-        }
+        assert_eq!(
+            gemv_rows_of("conv_vec_int8.comp"),
+            CONV_VEC_ROWS,
+            "the int8 gemv shader and Rust disagree on channels per workgroup"
+        );
+    }
+
+    /// `CONV_VEC_INT4_ROWS` must equal `ROWS` in the int4 gemv shader.
+    ///
+    /// The same agreement as the int8 test above, for the shader that diverged to 8:
+    /// Rust dispatches `out / 8` workgroups and the shader owns 8 channels each. At 8
+    /// the failure mode is the same — silent undispatch — and the shared-memory
+    /// partials are also sized by it, so a mismatch corrupts the reduction too.
+    #[test]
+    fn the_int4_gemv_row_count_matches_its_shader() {
+        assert_eq!(
+            gemv_rows_of("conv_vec_int4.comp"),
+            CONV_VEC_INT4_ROWS,
+            "the int4 gemv shader and Rust disagree on channels per workgroup"
+        );
     }
     use super::*;
 
@@ -3863,11 +4410,21 @@ pub(crate) mod tests {
     fn the_push_block_has_no_padding() {
         // The shaders read it at fixed offsets, so a gap Rust inserted would shift
         // every field after it.
-        assert_eq!(std::mem::size_of::<Push>(), 30 * 4);
+        assert_eq!(std::mem::size_of::<Push>(), 32 * 4);
         assert_eq!(std::mem::align_of::<Push>(), 4);
         // Vulkan only guarantees 128 bytes of push constants, so this is the ceiling the
         // block has to stay under however many modes get added to it.
         assert!(std::mem::size_of::<Push>() <= 128, "{}", std::mem::size_of::<Push>());
+    }
+
+    #[test]
+    fn the_fused_addend_fields_default_to_opted_out() {
+        // `..Push::default()` is how every non-convolution op is built. Offset 0 is the
+        // first input tensor, so a derived default of 0 would fuse a live addend into
+        // every one of them; the manual default must say [`NO_FUSE`] instead.
+        let push = Push::default();
+        assert_eq!(push.res, NO_FUSE);
+        assert_eq!(push.shift, NO_FUSE);
     }
 
     #[test]
@@ -3979,5 +4536,321 @@ pub(crate) mod tests {
             }
             other => panic!("expected two copies, got {other:?}"),
         }
+    }
+
+    /// A residual add over a convolution's output folds into its store.
+    ///
+    /// The ConvNeXt shape: `narrowed = conv(widened)`, then `add(x, narrowed)`. One
+    /// convolution dispatch and no add, with the sum stored where the add's output
+    /// would have gone.
+    #[test]
+    fn a_single_consumer_residual_folds_into_the_producing_store() {
+        let source = Shapes::new(5);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let widened = builder.conv_same(x, 0, 8, 1, 1, Act::Relu);
+        let narrowed = builder.conv_same(widened, 2, 4, 1, 1, Act::None);
+        let out = builder.add(x, narrowed);
+        // Tensor 4 is the file's spare: `finish` refuses an unread tensor, and this
+        // pass legitimately owns only four of the five.
+        builder.host_tensor(4, &[1]);
+        let plan = builder.finish(&[out]).expect("builds");
+        assert!(
+            plan.ops.iter().all(|op| !matches!(op, Op::Dispatch { kind: Kind::Add, .. })),
+            "the residual add should have folded: {:?}",
+            plan.ops
+        );
+        let fused = plan
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Dispatch { push, .. } if push.res != NO_FUSE => Some(push),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(fused.len(), 1, "exactly one fused store: {fused:?}");
+        // The fused convolution writes the add's own output tensor, and reads the skip
+        // side alongside its input.
+        assert_eq!(fused[0].out, plan.outputs[0].at);
+        // `x` is the first input, pinned at offset 0 — the case a zero sentinel could
+        // not distinguish from "no residual".
+        assert_eq!(fused[0].res, plan.inputs[0].at);
+    }
+
+    /// A timestep-style per-channel shift folds into the same store as the residual.
+    ///
+    /// `add_channel(conv_out, shift)` after the residual above: the convolution stores
+    /// `activate(acc + bias) + residual + shift[channel]` in one dispatch, and neither
+    /// binary survives.
+    #[test]
+    fn a_timestep_shift_folds_into_the_same_store() {
+        let source = Shapes::new(7);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let shift_in = builder.input(Shape::new(4, 1, 1));
+        let widened = builder.conv_same(x, 0, 8, 1, 1, Act::Relu);
+        let narrowed = builder.conv_same(widened, 2, 4, 1, 1, Act::None);
+        let residual = builder.add(x, narrowed);
+        let out = builder.add_channel(residual, shift_in);
+        // Tensors 4 and 5 are the file's spares; see the residual test above.
+        builder.host_tensor(4, &[1]);
+        builder.host_tensor(5, &[1]);
+        builder.host_tensor(6, &[1]);
+        let plan = builder.finish(&[out]).expect("builds");
+        assert!(
+            plan.ops.iter().all(|op| !matches!(
+                op,
+                Op::Dispatch { kind: Kind::Add | Kind::AddBroadcast, .. }
+            )),
+            "both binaries should have folded: {:?}",
+            plan.ops
+        );
+        let fused = plan
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Dispatch { push, .. } if push.shift != NO_FUSE => Some(push),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(fused.len(), 1, "exactly one shifted store: {fused:?}");
+        assert_eq!(fused[0].out, plan.outputs[0].at);
+        assert_eq!(fused[0].res, plan.inputs[0].at);
+        assert_eq!(fused[0].shift, plan.inputs[1].at);
+        // The shift tensor is one value per channel of the output.
+        assert_eq!(plan.inputs[1].shape, Shape::new(4, 1, 1));
+        assert_eq!(fused[0].out_c, 4);
+    }
+
+    /// An add whose convolution output has a second reader stays its own dispatch.
+    ///
+    /// Folding it would leave the other reader with no writer: the producer's old
+    /// output tensor is never allocated once the fold moves the sum.
+    #[test]
+    fn a_shared_convolution_output_keeps_its_add() {
+        let source = Shapes::new(5);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let narrowed = builder.conv_same(x, 0, 4, 1, 1, Act::None);
+        let summed = builder.add(x, narrowed);
+        // A second reader of the convolution's output: the folded store would orphan it.
+        let mixed = builder.mul(summed, narrowed);
+        // Tensors 2, 3 and 4 are the file's spares; see the residual test above.
+        builder.host_tensor(2, &[1]);
+        builder.host_tensor(3, &[1]);
+        builder.host_tensor(4, &[1]);
+        let plan = builder.finish(&[mixed]).expect("builds");
+        assert_eq!(
+            plan.ops.iter().filter(|op| matches!(op, Op::Dispatch { kind: Kind::Add, .. })).count(),
+            1,
+            "the shared add must survive: {:?}",
+            plan.ops
+        );
+    }
+
+    /// An add held as a plan output stays its own dispatch.
+    ///
+    /// Nothing downstream reads it, but the host does — folding the sum into the
+    /// convolution's store would leave the output binding pointing at an unwritten tensor.
+    #[test]
+    fn an_add_that_is_a_plan_output_keeps_its_dispatch() {
+        let source = Shapes::new(5);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let narrowed = builder.conv_same(x, 0, 4, 1, 1, Act::None);
+        let summed = builder.add(x, narrowed);
+        // Both the convolution's output and the sum escape: neither may fold.
+        // Tensors 2, 3 and 4 are the file's spares; see the residual test above.
+        builder.host_tensor(2, &[1]);
+        builder.host_tensor(3, &[1]);
+        builder.host_tensor(4, &[1]);
+        let plan = builder.finish(&[narrowed, summed]).expect("builds");
+        assert_eq!(
+            plan.ops.iter().filter(|op| matches!(op, Op::Dispatch { kind: Kind::Add, .. })).count(),
+            1,
+            "the output add must survive: {:?}",
+            plan.ops
+        );
+    }
+
+    /// An FPN-style `add(earlier, later)` stays its own dispatch.
+    ///
+    /// The skip side is downstream of the producing convolution, so reading it from
+    /// the producer's store would read an unwritten tensor. See `Builder::add`.
+    #[test]
+    fn an_add_of_a_downstream_tensor_does_not_fold() {
+        let source = Shapes::new(7);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 8));
+        let early = builder.conv_same(x, 0, 4, 1, 1, Act::None);
+        let later = builder.conv_same(early, 2, 4, 1, 1, Act::None);
+        let grown = builder.resize_to(later, 1, 8);
+        // `early` is upstream of the convolution that feeds `grown`'s side... but the
+        // addend that matters is `grown` itself, produced after `early`: folding the
+        // add into `early`'s store would read it before it is written.
+        let merged = builder.add(early, grown);
+        let out = builder.conv_same(merged, 4, 4, 1, 1, Act::None);
+        // Tensor 6 is the file's spare; see the residual test above.
+        builder.host_tensor(6, &[1]);
+        let plan = builder.finish(&[out]).expect("builds");
+        assert_eq!(
+            plan.ops.iter().filter(|op| matches!(op, Op::Dispatch { kind: Kind::Add, .. })).count(),
+            1,
+            "the FPN add must survive: {:?}",
+            plan.ops
+        );
+    }
+
+    /// A self-add never folds: the convolution would read the tensor it no longer writes.
+    #[test]
+    fn a_self_add_does_not_fold() {
+        let source = Shapes::new(3);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let narrowed = builder.conv_same(x, 0, 4, 1, 1, Act::None);
+        let doubled = builder.add(narrowed, narrowed);
+        // Tensor 2 is the file's spare; see the residual test above.
+        builder.host_tensor(2, &[1]);
+        let plan = builder.finish(&[doubled]).expect("builds");
+        assert_eq!(
+            plan.ops.iter().filter(|op| matches!(op, Op::Dispatch { kind: Kind::Add, .. })).count(),
+            1,
+            "the self-add must survive: {:?}",
+            plan.ops
+        );
+    }
+
+    /// The folded plan carries the residual and the shift into the store.
+    ///
+    /// `nets::reference` serves fused pushes from the same arms as unfolded ones. This
+    /// builds the residual-plus-shift graph over a real weights file — one tensor per
+    /// slot, no overlaps — runs it through the host interpreter, and checks the fused
+    /// store added both addends: outputs differ per position by exactly the input
+    /// differences, and per channel pair by exactly the shift difference. An addend the
+    /// fold dropped would show up as a missing difference.
+    #[test]
+    fn a_folded_plan_matches_its_unfolded_numbers() {
+        use crate::nets::reference;
+        // Four tensors, one per slot: two kernels and two biases. The shift input is
+        // a plan input rather than a weight. Built directly — `Offsets` has no public
+        // constructor — by parsing a hand-made `.maml` header, which also exercises
+        // the real `WeightSource` path instead of the `Shapes` stub.
+        let header = maml_header(&[
+            (&[4, 2, 1, 1], crate::weights::DTYPE_F16),
+            (&[4], crate::weights::DTYPE_F16),
+            (&[2, 4, 1, 1], crate::weights::DTYPE_F16),
+            (&[2], crate::weights::DTYPE_F16),
+        ]);
+        let parsed = crate::weights::Weights::parse(&header, crate::weights::graph::SELFIE)
+            .expect("the hand-made header parses");
+        let table = parsed.offsets();
+        let mut builder = Builder::new(&table);
+        let x = builder.input(Shape::new(2, 1, 2));
+        let shift_in = builder.input(Shape::new(2, 1, 1));
+        let widened = builder.conv_same(x, 0, 4, 1, 1, Act::None);
+        let narrowed = builder.conv_same(widened, 2, 2, 1, 1, Act::None);
+        let residual = builder.add(x, narrowed);
+        let out = builder.add_channel(residual, shift_in);
+        let plan = builder.finish(&[out]).expect("builds");
+        assert!(
+            plan.ops.iter().all(|op| !matches!(
+                op,
+                Op::Dispatch { kind: Kind::Add | Kind::AddBroadcast, .. }
+            )),
+            "test setup: both binaries should have folded: {:?}",
+            plan.ops
+        );
+        // Kernels all ones, biases all 0.5 — every value exactly representable in fp16.
+        // Laid out per the parsed table's own offsets: kernel0 at bytes 0..16, bias0
+        // at 16..24, kernel1 at 32..48, bias1 at 48..52. (Each tensor starts
+        // 16-aligned, so kernel1 pads to 32.)
+        let half = |v: f32| crate::preprocess::f32_to_f16(v).to_le_bytes();
+        let mut blob = vec![0u8; 52];
+        for (offset, count, value) in [(0, 8, 1.0f32), (16, 4, 0.5), (32, 8, 1.0), (48, 2, 0.5)] {
+            for e in 0..count {
+                blob[offset + e * 2..offset + e * 2 + 2].copy_from_slice(&half(value));
+            }
+        }
+        let x_values = [1.0f32, 2.0, 3.0, 4.0];
+        let shift_values = [10.0f32, 20.0];
+        let x_slice: &[f32] = &x_values;
+        let shift_slice: &[f32] = &shift_values;
+        let outputs =
+            reference::run_multi(&plan, &blob, &[x_slice, shift_slice]).expect("runs");
+        assert_eq!(outputs.len(), 1);
+        // widened[c][p] = sum(x) + 0.5 = 10.5; narrowed[o][p] = 2 * 10.5 + 0.5 = 21.5;
+        // out = narrowed + x + shift = 21.5 + x + shift, per channel: the contraction
+        // is over the input's 2 channels, not the output's 4.
+        //
+        // The residual (x) and the shift are separate addends in the fused store, so
+        // the differences pin each: positions in a channel differ by exactly the input
+        // difference, and channel pairs differ by exactly the shift difference plus
+        // the input difference. A dropped addend would zero one of those deltas.
+        // `outputs[0]` is `[c, 1, w]` flattened channel-major: index `c * w + p`.
+        // Hand-evaluated: x is channel 0 = [1, 2], channel 1 = [3, 4].
+        // widened[c][p] = x[0][p] + x[1][p] + 0.5 = 4.5 / 6.5 per position;
+        // narrowed[o][p] = 4 * widened + 0.5 = 18.5 / 26.5; out adds the residual
+        // x and the shift [10, 20]: [29.5, 38.5, 41.5, 50.5].
+        //
+        // Same channel, adjacent positions differ by the narrowed delta (8.0) plus
+        // the input delta (1.0); same position, adjacent channels differ by the
+        // shift (10.0) plus the input (2.0). A dropped addend would zero one of
+        // those deltas.
+        let deltas = [
+            (outputs[0][1] - outputs[0][0], 9.0),
+            (outputs[0][3] - outputs[0][2], 9.0),
+            (outputs[0][2] - outputs[0][0], 12.0),
+            (outputs[0][3] - outputs[0][1], 12.0),
+        ];
+        for (found, wanted) in deltas {
+            assert!((found - wanted).abs() < 0.06, "delta got {found}, want {wanted}");
+        }
+        // And the absolute level pins the convolution itself.
+        assert!((outputs[0][0] - 29.5).abs() < 0.06, "level {:?}", outputs[0]);
+    }
+
+    /// A `.maml` header + table for `shapes`, with an empty data section.
+    ///
+    /// Test-only builder for [`a_folded_plan_matches_its_unfolded_numbers`]: `Offsets`
+    /// has no public constructor, so the table is parsed the way a shipped asset is.
+    /// `graph::SELFIE` is arbitrary — the id only has to match the parse call.
+    ///
+    /// `Weights::parse` requires the file to end exactly where the data section does,
+    /// so the returned vector is padded with zeros to the declared length.
+    fn maml_header(shapes: &[(&[u32], u32)]) -> Vec<u8> {
+        use crate::weights::graph;
+        let count = shapes.len() as u32;
+        let table_bytes = shapes.len() * 32;
+        let mut data_len = 0usize;
+        for (dims, _) in shapes {
+            let len: usize = dims.iter().map(|&d| d as usize).product();
+            data_len = (data_len + len * 2).next_multiple_of(16);
+        }
+        let mut bytes = vec![0u8; 64 + table_bytes + data_len];
+        bytes[0..4].copy_from_slice(b"MAML");
+        bytes[4..8].copy_from_slice(&1u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&graph::SELFIE.to_le_bytes());
+        bytes[12..16].copy_from_slice(&count.to_le_bytes());
+        bytes[48..52].copy_from_slice(&(64 + table_bytes as u32).to_le_bytes());
+        for (i, (dims, dtype)) in shapes.iter().enumerate() {
+            let at = 64 + i * 32;
+            bytes[at..at + 4].copy_from_slice(&(dims.len() as u32).to_le_bytes());
+            for (d, dim) in dims.iter().enumerate() {
+                bytes[at + 4 + d * 4..at + 8 + d * 4].copy_from_slice(&dim.to_le_bytes());
+            }
+            bytes[at + 20..at + 24].copy_from_slice(&dtype.to_le_bytes());
+            // 16-aligned running offset: tensor 0 at 0, each later tensor after the
+            // previous one's padded end. Payloads are fp16 here, two bytes an element.
+            let mut offset = 0usize;
+            for (prev, _) in &shapes[..i] {
+                let prev_len: usize = prev.iter().map(|&d| d as usize).product();
+                offset = (offset + prev_len * 2).next_multiple_of(16);
+            }
+            let len: usize = dims.iter().map(|&d| d as usize).product();
+            bytes[at + 24..at + 28].copy_from_slice(&(offset as u32).to_le_bytes());
+            bytes[at + 28..at + 32].copy_from_slice(&(len as u32).to_le_bytes());
+        }
+        bytes[52..56].copy_from_slice(&(data_len as u32).to_le_bytes());
+        bytes
     }
 }

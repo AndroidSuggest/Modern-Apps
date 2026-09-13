@@ -4,14 +4,17 @@ import com.vayunmathur.auto.protocol.gal.AudioConfiguration
 import com.vayunmathur.auto.protocol.gal.AuthComplete
 import com.vayunmathur.auto.protocol.gal.ByeByeReason
 import com.vayunmathur.auto.protocol.gal.ByeByeRequest
+import com.vayunmathur.auto.protocol.gal.CallAvailabilityStatus
 import com.vayunmathur.auto.protocol.gal.ChannelOpenResponse
 import com.vayunmathur.auto.protocol.gal.ChannelOpenRequest
 import com.vayunmathur.auto.protocol.gal.MediaAck
 import com.vayunmathur.auto.protocol.gal.MediaCodecType
 import com.vayunmathur.auto.protocol.gal.MediaSinkService
+import com.vayunmathur.auto.protocol.gal.MicrophoneRequest
 import com.vayunmathur.auto.protocol.gal.PingRequest
 import com.vayunmathur.auto.protocol.gal.Service
 import com.vayunmathur.auto.protocol.gal.ServiceDiscoveryResponse
+import com.vayunmathur.auto.protocol.gal.UpdateUiConfigRequest
 import com.vayunmathur.auto.protocol.gal.VideoConfiguration
 import com.vayunmathur.auto.protocol.gal.VideoResolution
 import kotlin.test.Test
@@ -191,5 +194,72 @@ class GalProtoTest {
         )
         assertTrue(!parsed.hasAck())
         assertEquals(0, parsed.field3Count)
+    }
+
+    @Test
+    fun `CallAvailabilityStatus carries its flag in field 1`() {
+        // Control 24 (`control.proto:225-227`): `optional bool call_available=1`.
+        // True is 08 01, false is 08 00, absent stays absent.
+        assertContentEquals(
+            byteArrayOf(0x08, 0x01),
+            CallAvailabilityStatus.newBuilder().setCallAvailable(true).build().toByteArray(),
+        )
+        assertContentEquals(
+            byteArrayOf(0x08, 0x00),
+            CallAvailabilityStatus.newBuilder().setCallAvailable(false).build().toByteArray(),
+        )
+        assertContentEquals(
+            ByteArray(0),
+            CallAvailabilityStatus.newBuilder().build().toByteArray(),
+        )
+    }
+
+    @Test
+    fun `MicrophoneRequest pins the recovered xkt layout`() {
+        // 0x8006 (`xkt`): required int32 field 1, optional int32 field 2.
+        // 3000 encodes as varint B8 17.
+        val bytes = MicrophoneRequest.newBuilder()
+            .setField1(3000)
+            .setField2(7)
+            .build()
+            .toByteArray()
+        assertContentEquals(
+            byteArrayOf(
+                0x08, 0xB8.toByte(), 0x17, // field 1, varint, 3000
+                0x10, 0x07, //               field 2, varint, 7
+            ),
+            bytes,
+        )
+        val parsed = MicrophoneRequest.parseFrom(bytes)
+        assertEquals(3000, parsed.field1)
+        assertEquals(7, parsed.field2)
+    }
+
+    @Test
+    fun `MicrophoneRequest refuses to build without its required field`() {
+        assertFailsWith<Exception> {
+            MicrophoneRequest.newBuilder().setField2(7).build()
+        }
+    }
+
+    @Test
+    fun `UpdateUiConfigRequest is an empty envelope by default`() {
+        // 0x800A (`xow`): optional message field 1 carrying the unrecovered
+        // `xop`. The honest send is the empty envelope: zero bytes.
+        assertContentEquals(
+            ByteArray(0),
+            UpdateUiConfigRequest.newBuilder().build().toByteArray(),
+        )
+    }
+
+    @Test
+    fun `UpdateUiConfigRequest carries opaque config in field 1`() {
+        // Field 1 length-delimited: tag 0x0A, length, then the opaque bytes.
+        // The interior is never invented inner fields -- bytes only.
+        val bytes = UpdateUiConfigRequest.newBuilder()
+            .setConfig(com.google.protobuf.ByteString.copyFrom(byteArrayOf(0x01, 0x02)))
+            .build()
+            .toByteArray()
+        assertContentEquals(byteArrayOf(0x0A, 0x02, 0x01, 0x02), bytes)
     }
 }

@@ -217,7 +217,11 @@ mod tests {
         let plan = plan();
         assert_eq!(dispatches(&plan, Kind::Conv), 54);
         assert_eq!(dispatches(&plan, Kind::ConvTranspose), 1);
-        assert_eq!(dispatches(&plan, Kind::Add), 14);
+        // Two of the fourteen `Add`s fold into their producing convolution's store —
+        // the inverted-residual tails whose skip side is already written when the
+        // projection runs. The rest are FPN-style merges of a later tensor into an
+        // earlier lateral, which no store can read yet. See `Builder::add`.
+        assert_eq!(dispatches(&plan, Kind::Add), 12);
         assert_eq!(dispatches(&plan, Kind::MulBroadcast), 10);
         assert_eq!(dispatches(&plan, Kind::GlobalAvgPool), 10);
         assert_eq!(dispatches(&plan, Kind::Resize), 3);

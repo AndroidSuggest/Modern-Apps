@@ -16,6 +16,31 @@ import java.util.Properties
 abstract class RustToolchainLock : BuildService<BuildServiceParameters.None>
 
 /**
+ * Maximum lines per Rust source file, mirroring the Kotlin `FileLength`
+ * rule (which cannot see Rust — Android lint only visits Kotlin/Java).
+ * Long files hide the same brace-imbalance breakage and grab-bag rot;
+ * splitting along module lines keeps each file reviewable.
+ *
+ * Enforced as a build failure, like `ToastUsage`: files already over the
+ * limit must be split before the owning module builds.
+ */
+const val RUST_FILE_LENGTH_LIMIT = 500
+
+/**
+ * Exemptions by filename: long by design, not by accretion — same rationale
+ * as `LENGTH_EXEMPT_FILES` in the Kotlin rule. Test fixtures and examples
+ * are long by nature; generated files are not hand-written.
+ */
+private val RUST_LENGTH_EXEMPT_FILES = setOf(
+    "route_diff.rs", // maps example harness with inline fixtures
+)
+
+private fun isRustLengthExempt(path: String): Boolean =
+    path.contains("/tests/") || path.contains("/test_fixtures/") ||
+        path.contains("/examples/") || path.contains("/generated/") ||
+        path.contains("/third_party/")
+
+/**
  * An Android ABI paired with the Rust target triple and the NDK clang-wrapper prefix
  * used to cross-compile for it.
  *
@@ -193,7 +218,36 @@ fun Project.rustNativeLib(
         description = "Builds lib$crate.so for all Android ABIs."
         dependsOn(perAbi)
     }
+    // Rust file-length gate: fails the build on any *.rs over
+    // RUST_FILE_LENGTH_LIMIT lines, like the Kotlin FileLength rule (which
+    // cannot see Rust). Configuration-cache compatible: the source dir is
+    // resolved now, the walk happens in the task action.
+    val rustSrcDir = file("src/main/rust/src")
+    val rustFileLength = tasks.register("rustFileLength") {
+        description = "Fails on Rust files over $RUST_FILE_LENGTH_LIMIT lines."
+        inputs.dir(rustSrcDir)
+        doLast {
+            val over = rustSrcDir.walkTopDown()
+                .filter { it.isFile && it.extension == "rs" }
+                .map { it to it.readLines().size }
+                .filter { (f, n) ->
+                    n > RUST_FILE_LENGTH_LIMIT &&
+                        f.name !in RUST_LENGTH_EXEMPT_FILES &&
+                        !isRustLengthExempt(f.path)
+                }
+                .toList()
+            if (over.isNotEmpty()) {
+                val detail = over.joinToString("\n") { (f, n) ->
+                    "  $n ${f.relativeTo(projectDir)}"
+                }
+                throw org.gradle.api.GradleException(
+                    "Rust files exceed $RUST_FILE_LENGTH_LIMIT lines (split along module lines):\n$detail"
+                )
+            }
+        }
+    }
     tasks.matching { it.name == "preBuild" }.configureEach {
         dependsOn(cargoNdkBuild)
+        dependsOn(rustFileLength)
     }
 }

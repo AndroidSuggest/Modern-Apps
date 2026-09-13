@@ -316,6 +316,7 @@ impl Reference {
             let first_in = (oc / out_per_group) * in_per_group;
             let kernel_at = p.weight + oc * in_per_group * p.kh * p.kw;
             let slope = self.slope(p, oc)?;
+            let shift = self.fused_shift(p, oc)?;
             for oy in 0..p.out_h {
                 for ox in 0..p.out_w {
                     let mut acc = self.weight(p.bias, oc)?;
@@ -348,7 +349,10 @@ impl Reference {
                             }
                         }
                     }
-                    self.store(p.out, nchw(p, oc, oy, ox), activate(acc, p.act, slope))?;
+                    let index = nchw(p, oc, oy, ox);
+                    let folded =
+                        activate(acc, p.act, slope) + self.fused_res(p, index)? + shift;
+                    self.store(p.out, index, folded)?;
                 }
             }
         }
@@ -368,6 +372,7 @@ impl Reference {
             let kernel_at = oc * in_per_group * p.kh * p.kw;
             // One per output column, unlike the fp16 path's single `act_weight` slot.
             let scale = self.weight(p.act_weight, oc)?;
+            let shift = self.fused_shift(p, oc)?;
             for oy in 0..p.out_h {
                 for ox in 0..p.out_w {
                     let mut acc = 0.0f32;
@@ -393,8 +398,11 @@ impl Reference {
                         }
                     }
                     let biased = acc * scale + self.weight(p.bias, oc)?;
+                    let index = nchw(p, oc, oy, ox);
                     // PRelu is refused at build time for int8, so the slope is never read.
-                    self.store(p.out, nchw(p, oc, oy, ox), activate(biased, p.act, 0.0))?;
+                    let folded =
+                        activate(biased, p.act, 0.0) + self.fused_res(p, index)? + shift;
+                    self.store(p.out, index, folded)?;
                 }
             }
         }
@@ -412,6 +420,7 @@ impl Reference {
         let positions = p.out_h * p.out_w;
         for oc in 0..p.out_c {
             let kernel_at = oc * taps;
+            let shift = self.fused_shift(p, oc)?;
             for position in 0..positions {
                 let mut acc = 0.0f32;
                 for k in 0..taps {
@@ -422,7 +431,10 @@ impl Reference {
                     acc += self.load(p.in0, k * positions + position)? * w * scale;
                 }
                 let biased = acc + self.weight(p.bias, oc)?;
-                self.store(p.out, oc * positions + position, activate(biased, p.act, 0.0))?;
+                let index = oc * positions + position;
+                let folded =
+                    activate(biased, p.act, 0.0) + self.fused_res(p, index)? + shift;
+                self.store(p.out, index, folded)?;
             }
         }
         Ok(())
@@ -487,8 +499,44 @@ impl Reference {
         if p.group != 1 {
             return Err(format!("a transposed convolution in {} groups", p.group));
         }
+        // `fused_store` in `common.glsl` serves every convolution shader including this
+        // one, so the reference matches it here. `Builder` never folds into a transpose
+        // today — the selfie net's only one feeds the output directly — but if it ever
+        // does, both sides already agree on what the store means.
+        if p.res == super::NO_FUSE && p.shift == super::NO_FUSE {
+            for oc in 0..p.out_c {
+                let slope = self.slope(p, oc)?;
+                for oy in 0..p.out_h {
+                    for ox in 0..p.out_w {
+                        let mut acc = self.weight(p.bias, oc)?;
+                        for ic in 0..p.in_c {
+                            let plane = ic * p.in_h * p.in_w;
+                            let kernel_at = p.weight + (ic * p.out_c + oc) * p.kh * p.kw;
+                            for ky in 0..p.kh {
+                                let Some(iy) = source(oy + p.pad_t, ky, p.stride_h, p.in_h) else {
+                                    continue;
+                                };
+                                let row = plane + iy * p.in_w;
+                                let tap_at = kernel_at + ky * p.kw;
+                                for kx in 0..p.kw {
+                                    let Some(ix) = source(ox + p.pad_l, kx, p.stride_w, p.in_w)
+                                    else {
+                                        continue;
+                                    };
+                                    acc += self.load(p.in0, row + ix)?
+                                        * self.weight(tap_at, kx)?;
+                                }
+                            }
+                        }
+                        self.store(p.out, nchw(p, oc, oy, ox), activate(acc, p.act, slope))?;
+                    }
+                }
+            }
+            return Ok(());
+        }
         for oc in 0..p.out_c {
             let slope = self.slope(p, oc)?;
+            let shift = self.fused_shift(p, oc)?;
             for oy in 0..p.out_h {
                 for ox in 0..p.out_w {
                     let mut acc = self.weight(p.bias, oc)?;
@@ -511,7 +559,10 @@ impl Reference {
                             }
                         }
                     }
-                    self.store(p.out, nchw(p, oc, oy, ox), activate(acc, p.act, slope))?;
+                    let index = nchw(p, oc, oy, ox);
+                    let folded =
+                        activate(acc, p.act, slope) + self.fused_res(p, index)? + shift;
+                    self.store(p.out, index, folded)?;
                 }
             }
         }
@@ -657,6 +708,7 @@ impl Reference {
         let positions = p.out_h * p.out_w;
         for channel in 0..p.out_c {
             let bias = self.weight(p.bias, channel)?;
+            let shift = self.fused_shift(p, channel)?;
             for position in 0..positions {
                 let mut total = 0.0f32;
                 for input in 0..p.in_c {
@@ -664,8 +716,10 @@ impl Reference {
                         * self.load(p.in0, input * positions + position)?;
                 }
                 // `Builder::conv` refuses to route a PRelu here, so the slope is never read.
-                let value = activate(total + bias, p.act, 0.0);
-                self.store(p.out, channel * positions + position, value)?;
+                let index = channel * positions + position;
+                let folded =
+                    activate(total + bias, p.act, 0.0) + self.fused_res(p, index)? + shift;
+                self.store(p.out, index, folded)?;
             }
         }
         Ok(())
@@ -845,6 +899,32 @@ impl Reference {
             self.store(p.out, i, sum)?;
         }
         Ok(())
+    }
+
+    /// A folded residual addend, or 0.0 when the op stores its accumulator unfolded.
+    ///
+    /// Mirrors the `p.res` branch of the convolution shaders: `activate(acc + bias)` plus
+    /// the same-indexed element of a same-shaped tensor. The single fp16 rounding happens
+    /// in the caller's `store`, exactly as the single `float16_t()` in the shader — the
+    /// unfolded pair would round twice, so this is not spelled as `add` after the fact.
+    fn fused_res(&self, p: &Push, index: u32) -> Result<f32, String> {
+        if p.res == super::NO_FUSE {
+            Ok(0.0)
+        } else {
+            self.load(p.res, index)
+        }
+    }
+
+    /// A folded per-channel shift, or 0.0 when the op stores unfolded.
+    ///
+    /// Mirrors the `p.shift` branch: Supertonic's timestep conditioning adds one value per
+    /// output channel, broadcast over every position of that channel.
+    fn fused_shift(&self, p: &Push, channel: u32) -> Result<f32, String> {
+        if p.shift == super::NO_FUSE {
+            Ok(0.0)
+        } else {
+            self.load(p.shift, channel)
+        }
     }
 
     /// `S[h][i][j] = scale * sum_d Q[h][d][i] * K[h][d][j]`.
@@ -3932,6 +4012,49 @@ mod tests {
                 let inputs: &[&[f32]] =
                     &[latent, text, keys, style, shifts, query_angles, key_angles];
                 Ok(run_multi(&plan, self.ve.data(), inputs)?.remove(0))
+            }
+            #[allow(clippy::too_many_arguments)]
+            fn sampler_both(
+                &mut self,
+                latent: &[f32],
+                conditional_text: &[f32],
+                conditional_keys: &[f32],
+                conditional_style: &[f32],
+                unconditional_text: &[f32],
+                unconditional_keys: &[f32],
+                unconditional_style: &[f32],
+                shifts: &[f32],
+                query_angles: &[f32],
+                key_angles: &[f32],
+            ) -> Result<[Vec<f32>; 2], String> {
+                // The parity harness takes the same path as production: one dual plan,
+                // one interpreter run, two velocities out. A dual plan that diverged
+                // from two single plans would show here before it shows on a device.
+                let frames = (latent.len() / 144) as u32;
+                let chars = (conditional_text.len() / 256) as u32;
+                let plan = supertonic_sampler::build_dual(self.ve, frames, chars)?;
+                let inputs: &[&[f32]] = &[
+                    latent,
+                    conditional_text,
+                    conditional_keys,
+                    conditional_style,
+                    shifts,
+                    query_angles,
+                    key_angles,
+                    latent,
+                    unconditional_text,
+                    unconditional_keys,
+                    unconditional_style,
+                    shifts,
+                    query_angles,
+                    key_angles,
+                ];
+                let out = run_multi(&plan, self.ve.data(), inputs)?;
+                let [conditional, unconditional] =
+                    <[Vec<f32>; 2]>::try_from(out).map_err(|other| {
+                        format!("the dual sampler returned {} tensors, not two", other.len())
+                    })?;
+                Ok([conditional, unconditional])
             }
             fn vocoder(&mut self, latent: &[f32], frames: u32) -> Result<Vec<f32>, String> {
                 let plan = supertonic_vocoder::build(self.voc, frames)?;

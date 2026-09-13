@@ -272,9 +272,9 @@ private fun PasswordForm(
 
         if (preset.id == PROVIDER_CUSTOM) {
             Text(stringResource(R.string.imap_incoming), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            ServerRow(host = imapHost, onHostChange = { imapHost = it.trim() }, port = imapPort, onPortChange = { imapPort = it.filter(Char::isDigit) }, useSsl = imapUseSsl, onSslChange = { imapUseSsl = it })
+            AddAccountSection(host = imapHost, onHostChange = { imapHost = it.trim() }, port = imapPort, onPortChange = { imapPort = it.filter(Char::isDigit) }, useSsl = imapUseSsl, onSslChange = { imapUseSsl = it })
             Text(stringResource(R.string.smtp_outgoing), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            ServerRow(host = smtpHost, onHostChange = { smtpHost = it.trim() }, port = smtpPort, onPortChange = { smtpPort = it.filter(Char::isDigit) }, useSsl = smtpUseSsl, onSslChange = { smtpUseSsl = it })
+            AddAccountSection(host = smtpHost, onHostChange = { smtpHost = it.trim() }, port = smtpPort, onPortChange = { smtpPort = it.filter(Char::isDigit) }, useSsl = smtpUseSsl, onSslChange = { smtpUseSsl = it })
         }
 
         if (error != null) {
@@ -317,62 +317,8 @@ private fun InstructionsCard(preset: ProviderPreset) {
     }
 }
 
-@Composable
-private fun ServerRow(host: String, onHostChange: (String) -> Unit, port: String, onPortChange: (String) -> Unit, useSsl: Boolean, onSslChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(value = host, onValueChange = onHostChange, label = { Text(stringResource(R.string.host_label)) }, singleLine = true, modifier = Modifier.weight(2f))
-        OutlinedTextField(value = port, onValueChange = onPortChange, label = { Text(stringResource(R.string.port_label)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
-    }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(R.string.security), modifier = Modifier.padding(end = 8.dp))
-        FilterChip(selected = useSsl, onClick = { onSslChange(true) }, label = { Text(stringResource(R.string.ssl_tls)) })
-        Spacer(Modifier.width(8.dp))
-        FilterChip(selected = !useSsl, onClick = { onSslChange(false) }, label = { Text(stringResource(R.string.starttls)) })
-    }
-}
-
 private fun openUrl(context: Context, url: String) {
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
     }
-}
-
-private suspend fun testAndPersistAccount(
-    context: Context,
-    providerId: String,
-    email: String,
-    username: String,
-    password: String,
-    imap: ServerConfig,
-    smtp: ServerConfig,
-): String? = withContext(Dispatchers.IO) {
-    val loginUser = username.ifBlank { email }
-    try {
-        EmailManager().fetchFolders(server = imap, user = loginUser, auth = EmailManager.AuthType.Password(password))
-    } catch (e: Exception) {
-        val msg = e.message?.lowercase() ?: ""
-        val isAuth = e is com.vayunmathur.email.network.imap.ImapAuthException || msg.contains("auth") && (msg.contains("failed") || msg.contains("invalid") || msg.contains("no") || msg.contains("login"))
-        if (isAuth) return@withContext "Authentication failed — check your email and app password."
-        return@withContext "Couldn't reach ${imap.host}:${imap.port} — ${e.javaClass.simpleName}: ${e.message ?: "unknown"}"
-    }
-    val (cipher, iv) = try { CredentialCrypto.encrypt(password) } catch (e: Exception) { return@withContext "Couldn't store password: ${e.message}" }
-    val account = EmailAccount(
-        email = email,
-        username = username,
-        provider = providerId,
-        imapHost = imap.host,
-        imapPort = imap.port,
-        imapUseSsl = imap.useSsl,
-        smtpHost = smtp.host,
-        smtpPort = smtp.port,
-        smtpUseSsl = smtp.useSsl,
-        authType = "password",
-        passwordEncrypted = cipher,
-        passwordIv = iv,
-    )
-    EmailRepository.get(context).insertAccount(account)
-    EmailSyncWorker.scheduleHourlyNonInboxSync(context)
-    EmailSyncWorker.runOneOffSync(context)
-    ImapIdleService.start(context)
-    null
 }

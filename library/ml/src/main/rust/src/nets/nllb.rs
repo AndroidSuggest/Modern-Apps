@@ -689,8 +689,9 @@ mod tests {
         assert_eq!(counts.get("AttnScores"), Some(&ENCODER_LAYERS), "{counts:?}");
         assert_eq!(counts.get("Softmax"), Some(&ENCODER_LAYERS), "{counts:?}");
         assert_eq!(counts.get("AttnApply"), Some(&ENCODER_LAYERS), "{counts:?}");
-        // Two residuals per layer.
-        assert_eq!(counts.get("Add"), Some(&(ENCODER_LAYERS * 2)), "{counts:?}");
+        // Two residuals per layer — half of which fold into their producing
+        // convolution's store. See `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&12), "{counts:?}");
         assert_eq!(counts.len(), 6, "{counts:?}");
         // And the FFN inner projection folds ReLU — `config.json`'s `activation_function: relu` —
         // one per layer, on the `FFN`-wide projection only.
@@ -754,8 +755,9 @@ mod tests {
         assert_eq!(counts.get("SoftmaxPrefix"), Some(&DECODER_LAYERS), "{counts:?}");
         // K and V into the cache, per layer.
         assert_eq!(counts.get("CacheWrite"), Some(&(DECODER_LAYERS * 2)), "{counts:?}");
-        // Three residuals per layer.
-        assert_eq!(counts.get("Add"), Some(&(DECODER_LAYERS * 3)), "{counts:?}");
+        // Three residuals per layer — half of which fold into their producing
+        // convolution's store. See `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&18), "{counts:?}");
         assert_no_aliasing(&plan);
     }
 

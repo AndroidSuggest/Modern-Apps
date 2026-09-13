@@ -153,7 +153,7 @@ fun PasswordScreen(
                 Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
                         if (password.username.isNotBlank()) {
-                            CopyableRow(
+                            PasswordScreenSection(
                                 label = stringResource(R.string.label_username),
                                 value = password.username,
                                 onCopy = { actions.copyToClipboard("username", password.username) },
@@ -163,7 +163,7 @@ fun PasswordScreen(
                             Spacer(Modifier.height(8.dp))
                         }
                         if (password.email.isNotBlank()) {
-                            CopyableRow(
+                            PasswordScreenSection(
                                 label = stringResource(R.string.label_email),
                                 value = password.email,
                                 onCopy = { actions.copyToClipboard("email", password.email) },
@@ -337,18 +337,7 @@ private fun PasskeyRow(passkey: Passkey, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun CopyableRow(label: String, value: String, onCopy: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        IconButton(onClick = onCopy) {
-            IconCopy()
-        }
-    }
-}
+fun sanitizeUrl
 
 fun sanitizeUrl(input: String): String {
     val trimmed = input.trim()

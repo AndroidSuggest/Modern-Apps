@@ -78,7 +78,7 @@ class FlashcardsViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
-        launchIo { ensureBuiltInNoteTypes() }
+        launchIo { FlashcardsViewModelHelper.ensureBuiltInNoteTypes(repository) }
     }
 
     fun notesFor(deckId: Long): Flow<List<Note>> = repository.notesFor(deckId)
@@ -715,50 +715,6 @@ class FlashcardsViewModel(
     }
 
     // -- Built-in note types ----------------------------------------------
-
-    private suspend fun ensureBuiltInNoteTypes() {
-        if (repository.getAllNoteTypes().isNotEmpty()) return
-        seedNoteType(
-            id = BASIC_NOTE_TYPE_ID,
-            name = "Basic",
-            type = NoteTypeKind.STANDARD,
-            fields = listOf("Front", "Back"),
-            templates = listOf(TemplateDraft("Card 1", "{{Front}}", "{{FrontSide}}\n\n---\n\n{{Back}}")),
-        )
-        seedNoteType(
-            id = 2,
-            name = "Basic (and reversed card)",
-            type = NoteTypeKind.STANDARD,
-            fields = listOf("Front", "Back"),
-            templates = listOf(
-                TemplateDraft("Card 1", "{{Front}}", "{{FrontSide}}\n\n---\n\n{{Back}}"),
-                TemplateDraft("Card 2", "{{Back}}", "{{FrontSide}}\n\n---\n\n{{Front}}"),
-            ),
-        )
-        seedNoteType(
-            id = 3,
-            name = "Cloze",
-            type = NoteTypeKind.CLOZE,
-            fields = listOf("Text", "Back Extra"),
-            templates = listOf(
-                TemplateDraft("Cloze", "{{cloze:Text}}", "{{cloze:Text}}\n\n---\n\n{{Back Extra}}"),
-            ),
-        )
-    }
-
-    private suspend fun seedNoteType(
-        id: Long,
-        name: String,
-        type: Int,
-        fields: List<String>,
-        templates: List<TemplateDraft>,
-    ) {
-        repository.upsertNoteType(NoteType(id = id, name = name, type = type, mod = nowSeconds()))
-        repository.upsertNoteTypeFields(fields.mapIndexed { ord, f -> com.vayunmathur.flashcards.data.NoteTypeField(noteTypeId = id, ord = ord, name = f) })
-        repository.upsertCardTemplates(
-            templates.mapIndexed { ord, t -> CardTemplate(noteTypeId = id, ord = ord, name = t.name, qfmt = t.qfmt, afmt = t.afmt) },
-        )
-    }
 
     private fun launchIo(block: suspend () -> Unit) =
         viewModelScope.launch(Dispatchers.IO) { block() }

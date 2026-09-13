@@ -134,9 +134,7 @@ fun CropPhotoScreen(
 
     AppScaffold(
         title = stringResource(R.string.crop_photo),
-        navigationIcon = {
-            TextButton(onClick = onCancel) { Text(stringResource(UiR.string.cancel)) }
-        },
+        navigationIcon = { CropPhotoSection(onCancel) },
         actions = {
             TextButton(onClick = {
                 val bmp = bitmap ?: return@TextButton

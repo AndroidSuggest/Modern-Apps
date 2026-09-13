@@ -86,6 +86,34 @@ class InputChannel(
         onEvent(InputEvent.BindingRequested(keycodes.size))
     }
 
+    /**
+     * Phone -> HU: one input-stream feedback event (`xjs`, 0x8004) from the
+     * discovery-advertised set. Sent after the phone consumes an input report
+     * section (see the inject branches in [onMessage]): `ikb.n` sends one per
+     * `xji` event, so each successful inject echoes the whole advertised set.
+     * Never sent before the binding echo -- the head unit has not opened the
+     * dialogue yet -- and never on a failed inject (nothing was consumed).
+     */
+    fun sendFeedback(feedbackEvent: Int) {
+        if (!bound) return
+        val (type, payload) = InputCodec.encodeFeedback(feedbackEvent)
+        connection.send(channelId, type, payload)
+        Log.d(TAG, "input feedback sent: $feedbackEvent")
+        onEvent(InputEvent.FeedbackSent(feedbackEvent))
+    }
+
+    /**
+     * Echoes every discovery-advertised feedback event once, after one
+     * successfully injected report section. Empty when the head unit
+     * advertised no feedback set -- then feedback is a no-op and injection
+     * behaves exactly as before.
+     */
+    private fun sendInjectFeedback() {
+        val advertised = service.inputSource.feedbackEventsSupportedList
+        if (advertised.isEmpty()) return
+        for (event in advertised) sendFeedback(event)
+    }
+
     /** One message for this channel; anything else is ignored, never misparsed. */
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
@@ -138,7 +166,10 @@ class InputChannel(
                 },
                 actionIndex = touch.actionIndex,
             )
-            if (touchSink(scaled)) onEvent(InputEvent.Touch(scaled.action, scaled.pointers.size))
+            if (touchSink(scaled)) {
+                onEvent(InputEvent.Touch(scaled.action, scaled.pointers.size))
+                sendInjectFeedback()
+            }
         }
         events.keys.forEach { key ->
             // Volume keys are consumed, never injected: gearhead's car home
@@ -149,6 +180,7 @@ class InputChannel(
                 onEvent(InputEvent.VolumeKey(key.keycode, key.down))
             } else if (keySink(key)) {
                 onEvent(InputEvent.Key(key.keycode, key.down))
+                sendInjectFeedback()
             }
         }
         // Tap-as-select rides the absolute section: keycode 65541, value 1
@@ -156,13 +188,19 @@ class InputChannel(
         events.absolutes.forEach { (keycode, value) ->
             if (keycode == InputCodec.TAP_SELECT_KEYCODE) {
                 val key = InputKey(InputCodec.KEYCODE_DPAD_CENTER, value == 1)
-                if (keySink(key)) onEvent(InputEvent.Key(key.keycode, key.down))
+                if (keySink(key)) {
+                    onEvent(InputEvent.Key(key.keycode, key.down))
+                    sendInjectFeedback()
+                }
             } else {
                 Log.d(TAG, "ignoring absolute event keycode=$keycode value=$value")
             }
         }
         events.scrolls.forEach { (_, delta) ->
-            if (scrollSink(delta)) onEvent(InputEvent.Scroll(delta))
+            if (scrollSink(delta)) {
+                onEvent(InputEvent.Scroll(delta))
+                sendInjectFeedback()
+            }
         }
     }
 

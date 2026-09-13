@@ -473,6 +473,15 @@ fn shared_section_text(bytes: &[u8]) -> String {
         ("lane_turns", view.lane_turns.len()),
         ("id_runs", view.ids.len()),
         ("slim_refs", view.slim_refs.len()),
+        ("geometries", view.geometries.len()),
+        (
+            "geom_points",
+            view.geometries.iter().map(|g| g.points.len()).sum::<usize>(),
+        ),
+        (
+            "geom_masks",
+            view.geometries.iter().map(|g| g.masks.len()).sum::<usize>(),
+        ),
     ] {
         out.push_str(&format!("pool\t{kind}\tcount={count}\n"));
     }

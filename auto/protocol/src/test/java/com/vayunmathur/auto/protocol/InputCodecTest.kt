@@ -1,5 +1,6 @@
 package com.vayunmathur.auto.protocol
 
+import com.vayunmathur.auto.protocol.gal.InputFeedback
 import com.vayunmathur.auto.protocol.gal.InputReport
 import com.vayunmathur.auto.protocol.gal.KeyBindingRequest
 import com.vayunmathur.auto.protocol.gal.TouchAction
@@ -39,6 +40,17 @@ class InputCodecTest {
         // `xkc`: single int32 field 1. STATUS_SUCCESS = 0 encodes as 08 00.
         val parsed = InputCodec.decodeKeyBindingResponse(byteArrayOf(0x08, 0x00))
         assertEquals(0, parsed.status)
+    }
+
+    @Test
+    fun `FeedbackRequest carries the event id in field 1`() {
+        // `xjs`: `optional int32 feedback_event = 1` -- event 5 is 08 05,
+        // the same exact-bytes style as the keybinding echo above.
+        val (type, payload) = InputCodec.encodeFeedback(5)
+        assertEquals(GalMessage.Input.FEEDBACK, type)
+        assertContentEquals(byteArrayOf(0x08, 0x05), payload)
+        val parsed = InputFeedback.parseFrom(payload)
+        assertEquals(5, parsed.feedbackEvent)
     }
 
     @Test
@@ -215,5 +227,6 @@ class InputCodecTest {
         assertEquals(0x8001, GalMessage.Input.REPORT)
         assertEquals(0x8002, GalMessage.Input.KEY_BINDING_REQUEST)
         assertEquals(0x8003, GalMessage.Input.KEY_BINDING_RESPONSE)
+        assertEquals(0x8004, GalMessage.Input.FEEDBACK)
     }
 }

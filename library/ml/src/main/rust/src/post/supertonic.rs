@@ -365,6 +365,28 @@ pub trait Stages {
         key_angles: &[f32],
     ) -> Result<Vec<f32>, String>;
 
+    /// Both guidance branches in one call, returning `[conditional, unconditional]`.
+    ///
+    /// Provided, so a stage that can run them together overrides it to do one submit
+    /// for both — see `bridge.rs`, where the dual plan halves the sampler's submits.
+    /// There is no default body on purpose: the two-call spelling is three lines, and
+    /// a default would hide whether a stage actually fused them. Every implementor
+    /// spells out which path it takes.
+    #[allow(clippy::too_many_arguments)]
+    fn sampler_both(
+        &mut self,
+        latent: &[f32],
+        conditional_text: &[f32],
+        conditional_keys: &[f32],
+        conditional_style: &[f32],
+        unconditional_text: &[f32],
+        unconditional_keys: &[f32],
+        unconditional_style: &[f32],
+        shifts: &[f32],
+        query_angles: &[f32],
+        key_angles: &[f32],
+    ) -> Result<[Vec<f32>; 2], String>;
+
     /// The vocoder over a `[144, frames]` latent, returning `frames * SAMPLES_PER_FRAME` samples.
     fn vocoder(&mut self, latent: &[f32], frames: u32) -> Result<Vec<f32>, String>;
 }
@@ -486,17 +508,11 @@ pub fn synthesise(
             .shifts
             .get(step)
             .ok_or("the conditioning holds fewer shifts than there are steps")?;
-        let conditional = stages.sampler(
+        let [conditional, unconditional] = stages.sampler_both(
             &latent,
             &conditioning_text,
             &conditioning.conditional_keys,
             &voice.text,
-            shifts,
-            &query_angles,
-            &key_angles,
-        )?;
-        let unconditional = stages.sampler(
-            &latent,
             &unconditional_text,
             &conditioning.unconditional_keys,
             &conditioning.unconditional_style,
@@ -703,12 +719,16 @@ mod tests {
         assert!(Voice::read(&[]).is_err());
     }
 
-    /// Records what the pipeline asked of each stage, and answers with fixed shapes.
+    /// The GPU stages, as a trait, so the sequencing below is host-testable against stubs.
+    ///
+    /// `sampler_both` counts dual submits; the single-branch `sampler` counts single
+    /// submits. The `Recording` stub below tracks both through one counter.
     struct Recording {
         seconds: f32,
         chars: u32,
         frames: u32,
         sampler_calls: usize,
+        sampler_duals: usize,
         latents: Vec<Vec<f32>>,
         vocoded_frames: Vec<u32>,
     }
@@ -758,6 +778,45 @@ mod tests {
             Ok(vec![0.0; latent.len()])
         }
 
+        /// `synthesise` calls `sampler_both`, so the pipeline tests pin the dual
+        /// path: 16 `sampler_both` calls, each served here as two single submits.
+        /// `bridge.rs` serves the same calls as one dual submit per step.
+        #[allow(clippy::too_many_arguments)]
+        fn sampler_both(
+            &mut self,
+            latent: &[f32],
+            conditional_text: &[f32],
+            conditional_keys: &[f32],
+            conditional_style: &[f32],
+            unconditional_text: &[f32],
+            unconditional_keys: &[f32],
+            unconditional_style: &[f32],
+            shifts: &[f32],
+            query_angles: &[f32],
+            key_angles: &[f32],
+        ) -> Result<[Vec<f32>; 2], String> {
+            self.sampler_duals += 1;
+            let conditional = self.sampler(
+                latent,
+                conditional_text,
+                conditional_keys,
+                conditional_style,
+                shifts,
+                query_angles,
+                key_angles,
+            )?;
+            let unconditional = self.sampler(
+                latent,
+                unconditional_text,
+                unconditional_keys,
+                unconditional_style,
+                shifts,
+                query_angles,
+                key_angles,
+            )?;
+            Ok([conditional, unconditional])
+        }
+
         fn vocoder(&mut self, latent: &[f32], frames: u32) -> Result<Vec<f32>, String> {
             assert_eq!(latent.len(), net::LATENT as usize * frames as usize);
             self.vocoded_frames.push(frames);
@@ -798,8 +857,15 @@ mod tests {
         // "hello" is five mapped letters, and `<en>` and `</en>` are nine more. At one second the
         // duration predictor's answer becomes ceil(44100 / 1.05 / 3072) = 14 frames, and the
         // vocoder emits 3072 samples a frame.
-        let mut stages =
-            Recording { seconds: 1.0, chars: 14, frames: 14, sampler_calls: 0, latents: Vec::new(), vocoded_frames: Vec::new() };
+        let mut stages = Recording {
+            seconds: 1.0,
+            chars: 14,
+            frames: 14,
+            sampler_calls: 0,
+            sampler_duals: 0,
+            latents: Vec::new(),
+            vocoded_frames: Vec::new(),
+        };
         let voice = Voice { duration: vec![0.1; 128], text: vec![0.2; 256 * 50] };
         let samples = synthesise(
             &mut stages,
@@ -813,7 +879,9 @@ mod tests {
         .expect("synthesises");
         assert_eq!(samples.len(), 14 * 3072);
         assert_eq!(stages.vocoded_frames, vec![14]);
-        // Two guidance branches every step, which is the sampler's real cost.
+        // `synthesise` takes the dual path: 16 `sampler_both` calls, each served by
+        // the default as two single submits.
+        assert_eq!(stages.sampler_duals, STEPS as usize);
         assert_eq!(stages.sampler_calls, STEPS as usize * 2);
     }
 
@@ -822,8 +890,15 @@ mod tests {
         // The stub returns a velocity of zero, so every step is the identity and all 16 must see
         // the same latent. A `step` that scaled or reordered would show here rather than as
         // quiet noise on a device.
-        let mut stages =
-            Recording { seconds: 1.0, chars: 14, frames: 14, sampler_calls: 0, latents: Vec::new(), vocoded_frames: Vec::new() };
+        let mut stages = Recording {
+            seconds: 1.0,
+            chars: 14,
+            frames: 14,
+            sampler_calls: 0,
+            sampler_duals: 0,
+            latents: Vec::new(),
+            vocoded_frames: Vec::new(),
+        };
         let voice = Voice { duration: vec![0.1; 128], text: vec![0.2; 256 * 50] };
         synthesise(
             &mut stages,
@@ -846,8 +921,15 @@ mod tests {
         // Rather than synthesising silence, or a plan over zero characters that the nets refuse
         // with a message about frames. The language tag maps in `letters()`, so this also covers
         // the tag alone not being mistaken for content.
-        let mut stages =
-            Recording { seconds: 1.0, chars: 0, frames: 1, sampler_calls: 0, latents: Vec::new(), vocoded_frames: Vec::new() };
+        let mut stages = Recording {
+            seconds: 1.0,
+            chars: 0,
+            frames: 1,
+            sampler_calls: 0,
+            sampler_duals: 0,
+            latents: Vec::new(),
+            vocoded_frames: Vec::new(),
+        };
         let voice = Voice { duration: vec![0.1; 128], text: vec![0.2; 256 * 50] };
         let error = synthesise(
             &mut stages,

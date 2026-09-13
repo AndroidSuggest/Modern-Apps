@@ -35,6 +35,7 @@ mod corridor;
 mod dem;
 mod extract;
 mod lanefill;
+mod layercodec;
 mod rings;
 mod shapefile;
 mod schema;

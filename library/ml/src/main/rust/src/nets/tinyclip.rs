@@ -547,8 +547,10 @@ mod tests {
         // Not causal: an image's patches all see each other.
         assert_eq!(counts.get("Softmax"), Some(&VISION_LAYERS), "{counts:?}");
         assert_eq!(counts.get("SoftmaxCausal"), None, "{counts:?}");
-        // Two residuals per layer, plus the position table.
-        assert_eq!(counts.get("Add"), Some(&(VISION_LAYERS * 2 + 1)), "{counts:?}");
+        // Two residuals per layer, plus the position table — minus the ten whose
+        // skip side is already written when the producing convolution runs, which
+        // fold into its store. See `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&11), "{counts:?}");
         assert_eq!(counts.get("Constant"), Some(&2), "{counts:?}");
         assert_eq!(counts.len(), 7, "{counts:?}");
         assert_no_aliasing(&plan);
@@ -564,7 +566,9 @@ mod tests {
         // one would let one layer read the future, which is fluent and wrong.
         assert_eq!(counts.get("SoftmaxCausal"), Some(&TEXT_LAYERS), "{counts:?}");
         assert_eq!(counts.get("Softmax"), None, "{counts:?}");
-        assert_eq!(counts.get("Add"), Some(&(TEXT_LAYERS * 2)), "{counts:?}");
+        // Two residuals per layer, half of which fold into their producing
+        // convolution's store. See `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&3), "{counts:?}");
         // No class token and no device-side position table: the host built the input.
         assert_eq!(counts.get("Constant"), None, "{counts:?}");
         assert_eq!(counts.len(), 6, "{counts:?}");

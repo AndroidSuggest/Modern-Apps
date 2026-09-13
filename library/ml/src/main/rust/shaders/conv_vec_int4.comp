@@ -34,20 +34,38 @@
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #include "common.glsl"
 
-/// Output channels one workgroup owns. As `conv_vec_int8.comp`.
-// Output channels one workgroup owns.
-//
-// # Why this is small
-//
-// Eight meant a 1,536-wide projection launched 192 workgroups - about 12k threads, barely over a
-// Mali G715's capacity, so there was nothing queued to run while a workgroup waited on memory.
-// The logits head launches 32,768 and reaches 14.9 GB/s; the per-layer projections reached 3.6.
-// Two gives four times the workgroups for the same weight traffic, at the cost of re-reading the
-// 3 KB activation vector four times more often - which is cache-resident and cheap beside the
-// megabytes of weights each one streams.
-#define ROWS 2u
+/// Output channels one workgroup owns.
+///
+/// Eight, not two. At `I4_BLOCK` 32 a 64-lane workgroup strides 2048 taps, so the
+/// loop below runs once for every projection narrower than 2048 — which is 71% of a
+/// decode step's bytes — and a wave's whole life is two loads, one dependent ALU
+/// burst, a barrier, and exit, with nothing to overlap. Eight rows give the same
+/// workgroup eight independent (load, unpack, accumulate) chains per iteration, so
+/// iteration N+1's loads issue while iteration N's ALU runs. Measured on the probe
+/// harness (`analysis/gemv_probe`, variant H against G); unmeasured on a shipped
+/// device, which is why `report_gemv_scaling` exists.
+///
+/// Eight divides the workgroup count by four against `ROWS` 2. That costs occupancy
+/// where the output is narrow — see the table below — and buys the stream where it
+/// is wide, which is where the bytes are.
+///
+/// | `out` | workgroups | vs 448 warp slots | share of decode bytes |
+/// | ---: | ---: | :--- | :--- |
+/// | 256 | 32 | 0.3x — idle | 1.7%, gate/kv sliding |
+/// | 1536 | 192 | 1.7x thin | 29.3%, `down` + projections |
+/// | 12288+ | 1536+ | 13.7x+ comfortable | 69%, `gate_up` + head |
+///
+/// `CONV_VEC_ROWS` in `nets/mod.rs` must equal this: Rust dispatches `out / ROWS`
+/// workgroups, and disagreeing leaves channels never written. There is a test holding
+/// that (`the_gemv_row_count_matches_both_shaders`).
+#define ROWS 8u
 
 /// Per-lane partial sums, one row of 64 per output channel.
+///
+/// 8 KB at `ROWS` 8, against 16 KB of guaranteed `maxComputeSharedMemorySize`. Half
+/// the guarantee, and the reason `ROWS` stops here rather than at 16: doubling again
+/// would take the whole budget for the partials alone, before the driver accounts
+/// for anything else it stages.
 shared float partial[ROWS][64];
 
 void main() {
@@ -145,17 +163,15 @@ void main() {
     }
     // Reduce inside each subgroup first, then across the few subgroups a workgroup holds.
     //
-    // This was 64 lanes writing to shared memory, a barrier, and then **eight** lanes each
-    // adding 64 floats in series while the other fifty-six idled. On a Mali G715 the subgroup is
-    // 16 wide, so a 64-lane workgroup is four of them and that barrier is a real cross-subgroup
-    // sync - paid once per output tile, inside all 245 weight kernels of a decode step.
+    // On a Mali G715 the subgroup is 16 wide, so a 64-lane workgroup is four of them
+    // and the barrier below is a real cross-subgroup sync — paid once per output tile,
+    // inside every weight kernel of a decode step.
     //
-    // It showed up as bandwidth: the logits head, whose rows are enormous, reached 14.9 GB/s
-    // while the per-layer projections managed 3.6 GB/s. Same shader, same format - the
-    // difference was how much work there was to hide this tail behind.
+    // `subgroupAdd` does the first 16 in registers with no barrier, leaving
+    // `gl_NumSubgroups` values to combine instead of 64.
     //
-    // `subgroupAdd` does the first 16 in registers with no barrier, leaving `gl_NumSubgroups`
-    // values to combine instead of 64.
+    // At `ROWS` 8 the tail loop below reads `partial[lane][0..4]`, one row per
+    // finishing lane. Lanes 8..63 return after the barrier; only lanes 0..8 store.
     for (uint r = 0u; r < ROWS; r++) {
         float summed = subgroupAdd(acc[r]);
         if (subgroupElect()) {
@@ -176,5 +192,5 @@ void main() {
     }
     // Already scaled inside the loop, so only the bias is left.
     float offset = float(weights[p.bias + channel]);
-    arena[p.out_at + channel] = float16_t(activate(total + offset, p.act, channel));
+    arena[p.out_at + channel] = float16_t(fused_store(total + offset, p.act, channel, channel));
 }

@@ -25,10 +25,13 @@ import com.vayunmathur.library.util.IntentLauncher
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
+<<<<<<< Updated upstream
 import com.vayunmathur.maps.data.MapLink
 import com.vayunmathur.maps.data.MapLinkParser
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.data.google.GoogleSearchDataSource
+=======
+>>>>>>> Stashed changes
 import com.vayunmathur.maps.ui.MapPage
 import com.vayunmathur.maps.ui.SavedPlacesPage
 import com.vayunmathur.maps.ui.settings.MapSettingsPage
@@ -36,10 +39,13 @@ import com.vayunmathur.maps.data.MapPreferences
 import com.vayunmathur.maps.data.ThemeMode
 import com.vayunmathur.maps.util.MapTileCache
 import com.vayunmathur.maps.util.MapsSearchViewModel
+<<<<<<< Updated upstream
 import com.vayunmathur.maps.util.NavigationService
 import com.vayunmathur.maps.util.NavigationSessionManager
 import com.vayunmathur.maps.util.OfflineRouter
 import com.vayunmathur.maps.util.RouteService
+=======
+>>>>>>> Stashed changes
 import com.vayunmathur.maps.util.SavedPlacesViewModel
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
 import com.vayunmathur.maps.util.MapSettingsViewModel
@@ -309,6 +315,7 @@ fun Navigation(
 ) {
     val backStack = rememberNavBackStack<Route>(Route.MapPage)
     MainNavigation(backStack) {
+<<<<<<< Updated upstream
         // The map is the list pane and settings/saved-places are detail panes,
         // so medium widths show them side by side automatically. The map itself
         // never splits: its own expanded side panel is separate (see MapPage),
@@ -318,6 +325,12 @@ fun Navigation(
             MapPage(backStack, viewModel, savedPlacesViewModel, searchViewModel, settingsViewModel, parkingViewModel, transitViewModel)
         }
         entry<Route.SettingsPage>(metadata = ListDetailPage()) {
+=======
+        entry<Route.MapPage> {
+            MapPage(backStack, viewModel, savedPlacesViewModel, poiViewModel, searchViewModel, settingsViewModel, parkingViewModel, transitViewModel)
+        }
+        entry<Route.SettingsPage> {
+>>>>>>> Stashed changes
             MapSettingsPage(backStack, settingsViewModel)
         }
         entry<Route.SavedPlacesPage>(metadata = ListDetailPage()) {

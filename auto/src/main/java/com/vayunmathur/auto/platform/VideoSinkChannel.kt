@@ -9,10 +9,13 @@ import android.util.Log
 import android.view.Choreographer
 import android.view.Surface
 import com.vayunmathur.auto.BuildConfig
+import com.vayunmathur.auto.protocol.AudioCodec
 import com.vayunmathur.auto.protocol.DisplayRouteKind
 import com.vayunmathur.auto.protocol.DisplayRoutePolicy
 import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalMessage
+import com.vayunmathur.auto.protocol.NavSnapshot
+import com.vayunmathur.auto.protocol.VideoCodec
 import com.vayunmathur.auto.protocol.gal.MediaAck
 import com.vayunmathur.auto.protocol.gal.MediaSetupRequest
 import com.vayunmathur.auto.protocol.gal.MediaSetupResponse
@@ -71,12 +74,36 @@ class VideoSinkChannel(
     private var firstFrameSent = false
 
     /**
+     * Whether START went out this session. Gates the STOP in [release]: a
+     * channel that never started (setup refused, teardown before START) must
+     * not send STOP for a stream the head unit never opened. Written on the
+     * pump thread in [startStreaming], read on whatever thread calls
+     * [release]; volatile for visibility, no lock needed for one flag.
+     */
+    @Volatile
+    private var streamStarted = false
+
+    /**
+     * Forwards nav-card map surfaces to the session mirror when the render
+     * pair comes up after this was set. Cached like [nowPlayingSource] for
+     * displays created later.
+     */
+    @Volatile
+    private var mapSurfaceListener: ((Surface?, Int, Int) -> Unit)? = null
+
+    /**
      * Where the car card's now-playing comes from and where its taps go.
      * [get] is read when the render pair comes up (plus every snapshot pushed
      * via [setNowPlaying]); [onTap] toggles phone playback. `null` until the
      * service wires the media monitor -- unset means the card shows empty.
      */
     private var nowPlayingSource: NowPlayingSource? = null
+
+    /** Prev/next transport callbacks; see [setTransportCallbacks]. */
+    private var transportCallbacks: TransportCallbacks? = null
+
+    /** Map palette applier; see [setMapDarkApplier]. */
+    private var mapDarkApplier: ((Boolean) -> Unit)? = null
 
     /**
      * Frames emitted since the last vsync drain. `drain()` invokes [sendFrame]
@@ -121,6 +148,110 @@ class VideoSinkChannel(
         nowPlayingSource?.get()?.let { info ->
             if (info.shouldShowCard()) display?.setNowPlaying(info)
         }
+        // Late transport wiring must reach an already-up display too.
+        transportCallbacks?.let { callbacks ->
+            display?.onPreviousTap = callbacks.onPrevious
+            display?.onNextTap = callbacks.onNext
+        }
+    }
+
+    /**
+     * Wires the media transport callbacks (prev/next) from the media monitor.
+     * Stored like [nowPlayingSource] so a display created later still gets
+     * them; applied immediately when the render pair is already up.
+     */
+    fun setTransportCallbacks(onPrevious: () -> Unit, onNext: () -> Unit) {
+        transportCallbacks = TransportCallbacks(onPrevious, onNext)
+        display?.onPreviousTap = onPrevious
+        display?.onNextTap = onNext
+    }
+
+    /**
+     * Wires the map palette applier (`CarMapsMirror.setDark`) so one
+     * [setNightDark] call restyles the rail/cards/drawer and the map.
+     * Stored for displays created later; applied immediately when up.
+     */
+    fun setMapDarkApplier(applier: (Boolean) -> Unit) {
+        mapDarkApplier = applier
+        display?.mapDarkApplier = applier
+    }
+
+    /**
+     * Pushes night + parked state to the car UI. Night restyles the rail,
+     * cards, drawer and (via [setMapDarkApplier]) the map palette; parked
+     * raises the driving-restriction gate. No-ops with no display up; the
+     * display caches both for presentations created later.
+     */
+    fun setNightDark(dark: Boolean) {
+        display?.setNight(dark)
+    }
+
+    /** Pushes parked state to the driving-restriction gate; see [setNightDark]. */
+    fun setParkedBrowsingGate(parked: Boolean) {
+        display?.setParkedBrowsingGate(parked)
+    }
+
+    /** Closes the drawer at trip end; see `CarDisplay.setParked`. */
+    fun closeDrawerOnPark() {
+        display?.setParked(true)
+    }
+
+    /**
+     * Wires the phone-status feed for the rail cluster. Stored for displays
+     * created later; the cluster pulls the latest snapshot on its 1Hz tick.
+     * The source lambda is enough -- the display polls it, so nothing needs
+     * pushing here.
+     */
+    fun setPhoneStatusSource(get: () -> PhoneStatus?) {
+        phoneStatusSource = get
+        display?.phoneStatusSource = get
+    }
+
+    /**
+     * Wires the active-call feed + card actions. The snapshot pushes
+     * immediately when the render pair is up; actions route to the bound
+     * InCallService via the service. Stored for displays created later.
+     */
+    fun setCallSource(
+        get: () -> ActiveCallInfo?,
+        onAnswer: () -> Unit,
+        onEnd: () -> Unit,
+        onHold: () -> Unit,
+        onMute: () -> Unit,
+    ) {
+        callSource = get
+        storedCallActions = CallActions(onAnswer, onEnd, onHold, onMute)
+        display?.onAnswerCall = onAnswer
+        display?.onEndCall = onEnd
+        display?.onHoldToggle = onHold
+        display?.onMuteToggle = onMute
+        display?.setActiveCall(get())
+    }
+
+    /** Latest call snapshot getter; see [setCallSource]. */
+    private var callSource: (() -> ActiveCallInfo?)? = null
+
+    /**
+     * Pushes one active-call snapshot into the car card, if the render pair
+     * is up. The service calls this on every InCall callback so the card
+     * tracks ringing/active/held without waiting for a poll.
+     */
+    fun setActiveCall(info: ActiveCallInfo?) {
+        display?.setActiveCall(info)
+    }
+
+    /** Stored call actions for displays created later; see [setCallSource]. */
+    private var storedCallActions: CallActions? = null
+
+    /** Phone-status getter; see [setPhoneStatusSource]. */
+    private var phoneStatusSource: (() -> PhoneStatus?)? = null
+    fun setNavSource(
+        get: () -> NavSnapshot?,
+        onMapSurface: (Surface?, Int, Int) -> Unit,
+    ) {
+        display?.setMapSurfaceListener(onMapSurface)
+        mapSurfaceListener = onMapSurface
+        get()?.let { display?.setNavSnapshot(it) }
     }
 
     /**
@@ -140,6 +271,15 @@ class VideoSinkChannel(
             // still updates so resume re-shows instantly.
             display?.hideNowPlaying()
         }
+    }
+
+    /**
+     * Pushes one guidance snapshot to the nav banner, if the render pair is
+     * up. The service calls this on every guidance-monitor update; the banner
+     * itself decides show vs GONE.
+     */
+    fun setNavSnapshot(snapshot: NavSnapshot) {
+        display?.setNavSnapshot(snapshot)
     }
 
     /**
@@ -193,6 +333,11 @@ class VideoSinkChannel(
             GalMessage.Media.CONFIG -> onSetupResponse(payload)
             GalMessage.Video.FOCUS_INDICATION -> onFocus(payload)
             GalMessage.Media.ACK -> onAck(payload)
+            // The head unit's answer to our 0x800A UI-config update: no payload
+            // semantics were recovered (see VideoCodec), so it is observed like
+            // the 0x800B sync pulse -- never answered, never fatal.
+            GalMessage.Video.UPDATE_UI_CONFIG_REQUEST ->
+                Log.d(TAG, "update-ui-config response (${payload.size}B); observed")
             else -> Log.d(TAG, "unhandled video message 0x${type.toString(16)}")
         }
     }
@@ -294,8 +439,28 @@ class VideoSinkChannel(
         display = CarDisplay(context, width, height, density, trusted = trusted).also {
             val source = nowPlayingSource
             it.onMediaTap = source?.onTap
+            transportCallbacks?.let { callbacks ->
+                it.onPreviousTap = callbacks.onPrevious
+                it.onNextTap = callbacks.onNext
+            }
+            mapDarkApplier?.let { applier -> it.mapDarkApplier = applier }
+            phoneStatusSource?.let { source -> it.phoneStatusSource = source }
+            callSource?.let { source ->
+                // Call actions are service-owned; re-read the current
+                // callbacks from the stored source wiring (see setCallSource).
+                it.setActiveCall(source())
+            }
+            storedCallActions?.let { actions ->
+                it.onAnswerCall = actions.onAnswer
+                it.onEndCall = actions.onEnd
+                it.onHoldToggle = actions.onHold
+                it.onMuteToggle = actions.onMute
+            }
             source?.get()?.let { info ->
                 if (info.shouldShowCard()) it.setNowPlaying(info)
+            }
+            mapSurfaceListener?.let { forward ->
+                it.setMapSurfaceListener { surface, w, h -> forward(surface, w, h) }
             }
             it.show(surface)
             it.startFrameInvalidation(frameRate)
@@ -320,6 +485,27 @@ class VideoSinkChannel(
                 .build()
                 .toByteArray(),
         )
+        streamStarted = true
+        // The stream is live: tell the head unit the UI config it should
+        // render into (0x800A). The xop interior is unrecovered, so the honest
+        // empty envelope goes out (see VideoCodec); a stub that answers nothing
+        // is observed in onMessage and ignored, never fatal.
+        sendUpdateUiConfig()
+    }
+
+    /**
+     * Sends the 0x800A UI-config update for the live stream. Best-effort like
+     * every post-START send: the socket may already be going away, and an
+     * unanswered update is courtesy, not protocol -- never fail the session.
+     */
+    private fun sendUpdateUiConfig() {
+        val (type, payload) = runCatching { VideoCodec.encodeUpdateUiConfig() }.getOrNull()
+            ?: run {
+                Log.d(TAG, "update-ui-config stub; skipping 0x800A")
+                return
+            }
+        runCatching { connection.send(channelId, type, payload) }
+            .onFailure { Log.d(TAG, "update-ui-config send dropped", it) }
     }
 
     /**
@@ -413,8 +599,19 @@ class VideoSinkChannel(
      * Tears the render pair down on the main thread, ordered after the vsync chain:
      * callbacks are removed first, so no drain can run against a stopped codec, and
      * the pump thread never touches the codec. Fire-and-forget from any thread.
+     *
+     * Sends the shared 0x8002 STOP first (same empty `MediaStopRequest` the
+     * audio sinks send via `AudioCodec.encodeStop` -- the `jdk` sink shape is
+     * one wire message on every media channel), so the head unit releases a
+     * live stream rather than timing it out. Gated on [streamStarted]: a
+     * never-started channel parts with no STOP, like a never-bound input.
      */
     fun release() {
+        if (streamStarted) {
+            streamStarted = false
+            val (type, payload) = AudioCodec.encodeStop()
+            runCatching { connection.send(channelId, type, payload) }
+        }
         mainHandler.post {
             choreographer?.removeFrameCallback(vsyncCallback)
             choreographer = null
@@ -507,4 +704,24 @@ class VideoSinkChannel(
 data class NowPlayingSource(
     val get: () -> NowPlayingInfo?,
     val onTap: () -> Unit,
+)
+
+/**
+ * Prev/next transport callbacks for the media card's action row. Stored
+ * beside [NowPlayingSource] so late wiring reaches an already-up display.
+ */
+data class TransportCallbacks(
+    val onPrevious: () -> Unit,
+    val onNext: () -> Unit,
+)
+
+/**
+ * Call-card actions for the projected call card. Stored beside the call
+ * source so displays created later still get them.
+ */
+data class CallActions(
+    val onAnswer: () -> Unit,
+    val onEnd: () -> Unit,
+    val onHold: () -> Unit,
+    val onMute: () -> Unit,
 )

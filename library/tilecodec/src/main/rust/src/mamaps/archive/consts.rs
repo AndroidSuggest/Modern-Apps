@@ -1,0 +1,52 @@
+/// Magic opening every section directory is closed by: 8 bytes at the footer's head.
+pub const ARCHIVE_MAGIC: &[u8; 8] = b"MAMA8\0\0\0";
+/// Footer wire length. Fixed so a reader can slice it off the file's end.
+pub const ARCHIVE_FOOTER_LEN: usize = 32;
+/// One directory entry's wire length.
+pub const ARCHIVE_ENTRY_LEN: usize = 24 + 8;
+/// Directory header wire length (`u32` count).
+pub const ARCHIVE_DIR_HEADER_LEN: usize = 4;
+/// Alignment every sidecar payload starts on.
+pub const ARCHIVE_ALIGN: u64 = 8;
+
+/// Graph `metadata.bin` payload: `MARG` + version + counts.
+pub const ARCHIVE_KIND_GRAPH_META: u8 = 1;
+/// Graph `nodes.bin` payload: `NodeRec[N+1]`, 12 B each.
+pub const ARCHIVE_KIND_GRAPH_NODES: u8 = 2;
+/// Graph `edges.bin` payload: records + escape index + escape rows + name bitmap + name offs.
+pub const ARCHIVE_KIND_GRAPH_EDGES: u8 = 3;
+/// Graph `intermediate.bin` payload: blob + trailer.
+pub const ARCHIVE_KIND_GRAPH_INTERMEDIATE: u8 = 4;
+/// Graph `road_names.bin` payload: NUL-terminated string pool.
+pub const ARCHIVE_KIND_GRAPH_NAMES: u8 = 5;
+/// Graph `lanes.bin` payload: sparse lane index + blob.
+pub const ARCHIVE_KIND_GRAPH_LANES: u8 = 6;
+/// Graph `elevation.bin` payload: `i16[N]`.
+pub const ARCHIVE_KIND_GRAPH_ELEVATION: u8 = 7;
+/// POI `poi_index.bin` payload: 14 B records.
+pub const ARCHIVE_KIND_POI_INDEX: u8 = 8;
+/// POI `poi_names.bin` payload: NUL-terminated pool.
+pub const ARCHIVE_KIND_POI_NAMES: u8 = 9;
+/// POI `poi_attrs.bin` payload: optional attribute sidecar.
+pub const ARCHIVE_KIND_POI_ATTRS: u8 = 10;
+/// POI `poi_spatial.bin` payload: optional CSR grid.
+pub const ARCHIVE_KIND_POI_SPATIAL: u8 = 11;
+/// POI `poi_name_index.bin` payload: optional word index.
+pub const ARCHIVE_KIND_POI_WORDS: u8 = 12;
+/// Transit `<feed>.transit` payload: `TRIX` pack.
+pub const ARCHIVE_KIND_TRANSIT: u8 = 13;
+
+/// `metadata.bin` (`MARG`) magic, little-endian `u32`.
+pub const GRAPH_MAGIC: u32 = 0x4752_414D;
+/// Newest (and only, for the single archive) graph version.
+pub const GRAPH_VERSION: u32 = 6;
+/// `metadata.bin` wire length: magic + version + 4 counts.
+pub const GRAPH_META_LEN: u64 = 40;
+/// `transit` (`TRIX`) magic, little-endian `u32`.
+pub const TRANSIT_MAGIC: u32 = 0x5452_4958;
+/// Newest transit version accepted.
+pub const TRANSIT_VERSION: u32 = 6;
+/// Oldest transit version accepted.
+pub const TRANSIT_VERSION_MIN: u32 = 3;
+/// POI index record stride.
+pub const POI_RECORD_BYTES: u64 = 14;

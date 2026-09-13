@@ -451,14 +451,38 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
             let done = encode_batch(batch, settings.dem.as_ref(), store.conventions(), settings.shared_table)?;
             stats.encode_ms += encoding.elapsed().as_millis() as u64;
             let appending = std::time::Instant::now();
-            for (id, encoded, rings, lines, intents) in done {
+            for (id, encoded, rings, lines, intents, slim_inputs) in done {
                 stats.rings.add(rings);
                 stats.lines.add(lines);
                 // The serial half of shared interning: intents are per-tile pure (built in parallel),
                 // and this loop is tile-id ordered, so pushes reach the builder in first-use order.
                 // `None` when the flag is off — and then `intents` is always empty anyway.
-                if let Some(builder) = writer.shared_builder() {
-                    drain_shared_rows(builder, intents)?;
+                //
+                // Slim emission happens here, after the drain assigns this tile's logical ids:
+                // `emit_mixed_body` re-emits slim-mode layers through `serialize_mixed_body`,
+                // replacing the v7 bytes below. Without the flag the v7 bytes append untouched.
+                let mut encoded = encoded;
+                if writer.shared_builder().is_some() {
+                    // The tile's own zoom, from its id: keep-masks are per
+                    // (row, zoom) in lane A's pool.
+                    let (zoom, _, _) = tilecodec::pmtiles::tile_zxy(id);
+                    let builder = writer.shared_builder().expect("checked above");
+                    let logical_ids = drain_shared_rows(builder, intents, zoom)?;
+                    // Serial slim emit: a fresh scratch + compressor per tile
+                    // (the worker pool's are consumed by the batch). Slim
+                    // bodies are smaller than the v7 ones they replace, and
+                    // correctness comes before throughput here — a parallel
+                    // DEFLATE pass can move this later.
+                    let mut emit_scratch = tilecodec::mamaps::body::Scratch::default();
+                    let mut emit_deflate = tilecodec::gz::Compressor::new();
+                    encoded = emit_mixed_body(
+                        &logical_ids,
+                        &slim_inputs.intents,
+                        &slim_inputs,
+                        encoded,
+                        &mut emit_deflate,
+                        &mut emit_scratch,
+                    )?;
                 }
                 let Some((stored, raw_len)) = encoded else { continue };
                 // Uncompressed, as this column has always meant.
@@ -1293,13 +1317,35 @@ fn timed<R>(on: bool, counter: &std::sync::atomic::AtomicU64, f: impl FnOnce() -
 ///
 /// Folded by the caller in `tile_id` order rather than accumulated across workers, so the counters
 /// need no atomics and a million tiles do not contend on three cache lines.
+///
+/// The fused per-layer inputs slim emission needs ride alongside the encoded bytes: with the
+/// `--shared-table` flag on, the serial loop drains the tile's intents (assigning logical ids)
+/// and re-emits slim-mode layers through [`emit_mixed_body`], replacing the v7 bytes below.
+/// Without the flag the extra fields are empty and the v7 bytes append untouched.
 type Encoded = (
     u64,
     Option<(Vec<u8>, usize)>,
     crate::rings::Stats,
     crate::coalesce::Stats,
     Vec<SharedRowIntent>,
+    SlimEmitInputs,
 );
+
+/// Everything slim emission needs that the encoded v7 bytes no longer carry:
+/// the fused layers (features, parts, arena), side tables, names, heightmap
+/// and convention. Empty unless the `--shared-table` flag is on.
+#[derive(Default)]
+struct SlimEmitInputs {
+    layers: Vec<ChunkEntry>,
+    names: Vec<String>,
+    ids: Vec<(u8, Vec<u64>)>,
+    turn_lanes: Vec<(u8, Vec<tilecodec::mamaps::body::LaneTurns>)>,
+    buildings: Vec<(u8, Vec<BuildingAttrs>)>,
+    carriageways: Vec<(u8, Vec<tilecodec::mamaps::body::Carriageway>)>,
+    heightmap: Option<tilecodec::mamaps::body::Heightmap>,
+    convention: Option<tilecodec::mamaps::body::MarkingConvention>,
+    intents: Vec<SharedRowIntent>,
+}
 
 /// One tile's contribution to the v8 shared section, collected in parallel and drained in
 /// tile-id order.
@@ -1319,6 +1365,18 @@ struct SharedRowIntent {
     flags: u32,
     /// The stable identity this logical was keyed by (`ID_NONE` for junctions).
     stable_id: u64,
+    /// Lane C traffic codec: the stitched base plus this sighting's mask, or
+    /// `None` for every other layer and for an edge that did not stitch (the
+    /// drain then interns a plain shared row). Resolved in
+    /// [`shared_intents_for_tile`], where the tile-local points are in scope;
+    /// consumed in [`drain_shared_rows`], which interns the base into lane A's
+    /// geometry pool and emits the mask per (row, zoom).
+    traffic: Option<crate::layercodec::TrafficCodec>,
+    /// Where this intent's feature lives: the layer and its index within that
+    /// layer's feature vector. Slim emission zips intents back onto features
+    /// through this, so a layer goes slim only when every feature has a row.
+    layer_id: u8,
+    feature_index: usize,
 }
 
 /// The per-tile visibility mask for rows and slim refs, both.
@@ -1403,6 +1461,10 @@ fn fused_row<'a, T>(fused: &'a [(u8, Vec<T>)], layer_id: u8, index: usize) -> Op
 /// `ids`/`turn_lanes`/`buildings`/`carriageways` vectors) are the ones the body carries. One
 /// intent per shared feature, in layer/feature order; the drain turns first sightings into rows
 /// and every sighting into a slim ref.
+///
+/// Traffic sightings additionally resolve their lane C segment-delta codec
+/// attachments (see [`crate::layercodec::resolve_traffic_codecs`]): one entry
+/// per traffic intent, in order, consumed by [`drain_shared_rows`].
 fn shared_intents_for_tile(
     layers: &[ChunkEntry],
     names: &[String],
@@ -1413,6 +1475,10 @@ fn shared_intents_for_tile(
 ) -> Vec<SharedRowIntent> {
     use tilecodec::mamaps::body::NAME_NONE;
     use tilecodec::mamaps::dict::{LAYER_BUILDINGS, LAYER_JUNCTION, LAYER_ROADS, LAYER_TRAFFIC};
+    // Per-layer traffic positions within `intents`, so the delta resolution
+    // below can zip attachments back in sighting order.
+    let mut traffic_slots: Vec<usize> = Vec::new();
+    let mut traffic_sightings: Vec<(u64, Vec<(i16, i16)>)> = Vec::new();
     let mut intents = Vec::new();
     for entry in layers {
         let layer_id = entry.layer.layer_id;
@@ -1423,8 +1489,11 @@ fn shared_intents_for_tile(
             let stable_id =
                 fused_row(ids, layer_id, index).copied().unwrap_or(tilecodec::mamaps::body::ID_NONE);
             // Junction identity IS the geometry: every part's tile-local points, concatenated.
-            // Every other layer keys by id and never reads points.
-            let points: Vec<(i16, i16)> = if layer_id == LAYER_JUNCTION {
+            // Traffic needs the same tile-local points for its segment-delta
+            // codec; every other layer keys by id and never reads points.
+            let points: Vec<(i16, i16)> = if layer_id == LAYER_JUNCTION
+                || layer_id == LAYER_TRAFFIC
+            {
                 entry
                     .layer
                     .parts_of(feature)
@@ -1454,7 +1523,14 @@ fn shared_intents_for_tile(
             let Some(key) = shared_row_key(
                 layer_id,
                 stable_id,
-                &points,
+                // The shared row key never reads traffic geometry: traffic
+                // keys by component id, and the base polyline rides lane A's
+                // geometry pool instead.
+                if layer_id == LAYER_TRAFFIC {
+                    &[]
+                } else {
+                    &points
+                },
                 name,
                 feature.kind,
                 feature.kind_detail,
@@ -1465,13 +1541,151 @@ fn shared_intents_for_tile(
             ) else {
                 continue;
             };
-            intents.push(SharedRowIntent { key, flags, stable_id });
+            if layer_id == LAYER_TRAFFIC {
+                // Stitched in the second pass below, where the whole tile's
+                // traffic sightings are in scope.
+                traffic_slots.push(intents.len());
+                traffic_sightings.push((stable_id, points));
+            }
+            intents.push(SharedRowIntent {
+                key,
+                flags,
+                stable_id,
+                traffic: None,
+                layer_id,
+                feature_index: index,
+            });
+        }
+    }
+    // Per-lane-C: resolve one edge's stitched base plus each segment's mask.
+    // `None` per sighting (a gap, a degenerate shape) keeps the plain row.
+    if !traffic_slots.is_empty() {
+        let resolved = crate::layercodec::resolve_traffic_codecs(&traffic_sightings);
+        for (slot, codec) in traffic_slots.into_iter().zip(resolved) {
+            if let Some(codec) = &codec {
+                debug_assert_eq!(
+                    codec.mask.len(),
+                    codec.base.len(),
+                    "a lane C mask always covers its base: emit_keep_mask panics otherwise",
+                );
+            }
+            intents[slot].traffic = codec;
         }
     }
     intents
 }
 
-/// Push one tile's intents into the shared builder, in order.
+/// Re-emit slim-mode layers as a v8 mixed body, replacing v7 bytes.
+///
+/// Runs in `build`'s serial loop after [`drain_shared_rows`] assigns this
+/// tile's logical ids: `logical_ids[i]` is the id for `intents[i]`, and each
+/// intent carries its (layer, feature) position, so slim-mode layers zip
+/// features onto ids and emit 16 B instances plus the layer's own parts and
+/// arena through [`serialize_mixed_body`]. Layers stay full unless **every**
+/// feature has an intent (junction connectors and unattributed buildings have
+/// no shared row to slim to), every feature shares one geometry type (slim
+/// layers are homogeneous — resolve derives the type from the layer id), and
+/// only the numeric-detail flag travels (tunnel/bridge/link/oneway, lane
+/// counts and transit styling resolve as zero until rows grow fields).
+/// `encoded=None` (an emptied tile) passes through untouched; without slim
+/// layers the v7 bytes pass through untouched.
+#[allow(clippy::type_complexity)]
+fn emit_mixed_body(
+    logical_ids: &[u32],
+    intents: &[SharedRowIntent],
+    inputs: &SlimEmitInputs,
+    encoded: Option<(Vec<u8>, usize)>,
+    deflate: &mut tilecodec::gz::Compressor,
+    scratch: &mut tilecodec::mamaps::body::Scratch,
+) -> Result<Option<(Vec<u8>, usize)>> {
+    use tilecodec::mamaps::body::{MixedLayer, GEOM_LINE, GEOM_POINT, GEOM_POLYGON};
+    use tilecodec::mamaps::dict::*;
+    let Some((_, _)) = encoded.as_ref() else { return Ok(encoded) };
+    // (layer, feature) -> logical id, from intent positions.
+    let mut id_of: std::collections::HashMap<(u8, usize), u32> = std::collections::HashMap::new();
+    for (intent, &logical_id) in intents.iter().zip(logical_ids.iter()) {
+        // First sighting wins: repeat sightings share the row and the id.
+        id_of.entry((intent.layer_id, intent.feature_index)).or_insert(logical_id);
+    }
+    let mut layers: Vec<(u8, MixedLayer<'_>)> = Vec::new();
+    let mut any_slim = false;
+    for entry in &inputs.layers {
+        let layer_id = entry.layer.layer_id;
+        // Slim candidates: high-K shared layers only. K≈1 layers (junction,
+        // earth, water) and everything unattributed stay full v7 untouched.
+        let candidate = matches!(layer_id, LAYER_TRAFFIC | LAYER_BUILDINGS | LAYER_ROADS);
+        let geom = match layer_id {
+            LAYER_EARTH | LAYER_WATER | LAYER_LANDCOVER | LAYER_LANDUSE | LAYER_BUILDINGS => {
+                GEOM_POLYGON
+            }
+            LAYER_ROADS | LAYER_BOUNDARIES | LAYER_TRANSIT | LAYER_TRAFFIC | LAYER_JUNCTION => {
+                GEOM_LINE
+            }
+            LAYER_PLACES | LAYER_POI => GEOM_POINT,
+            _ => 0,
+        };
+        let homogeneous =
+            entry.layer.features.iter().all(|f| f.geom_type == geom) && geom != 0;
+        let unstyled = entry.layer.features.iter().all(|f| {
+            f.flags & !(tilecodec::mamaps::body::FLAG_DETAIL_NUMERIC) == 0
+                && f.lane_count == 0
+                && f.transit_color == 0
+                && f.transit_ordinal == 0
+                && f.transit_lanes == 0
+                && f.transit_taper == 0
+                && f.name_idx == tilecodec::mamaps::body::NAME_NONE
+        });
+        let mut refs: Vec<(u32, u32, u32, u32)> = Vec::new();
+        let slim = candidate
+            && homogeneous
+            && unstyled
+            && !entry.layer.features.is_empty()
+            && (0..entry.layer.features.len()).all(|index| {
+                match id_of.get(&(layer_id, index)) {
+                    Some(&logical_id) => {
+                        let feature = &entry.layer.features[index];
+                        refs.push((
+                            logical_id,
+                            SHARED_VIEW_BITS,
+                            feature.parts_offset,
+                            feature.part_count,
+                        ));
+                        true
+                    }
+                    None => false,
+                }
+            });
+        if slim {
+            any_slim = true;
+            layers.push((
+                layer_id,
+                MixedLayer::Slim {
+                    refs,
+                    parts: entry.layer.parts.clone(),
+                    coords: entry.layer.coords.clone(),
+                },
+            ));
+        } else {
+            layers.push((layer_id, MixedLayer::Full(&entry.layer)));
+        }
+    }
+    if !any_slim {
+        return Ok(encoded);
+    }
+    let mixed = tilecodec::mamaps::body::serialize_mixed_body(
+        tilecodec::mamaps::body::DEFAULT_EXTENT,
+        &layers,
+        inputs.convention,
+        inputs.heightmap.as_ref(),
+        scratch,
+    )?;
+    let raw_len = mixed.len();
+    let stored = tilecodec::mamaps::write::compress_body_with(deflate, mixed);
+    Ok(Some((stored, raw_len)))
+}
+
+/// Push one tile's intents into the shared builder, in order, returning one
+/// logical id per intent in order.
 ///
 /// The builder interns by full content key (sequential build-local id,
 /// first-sighting order); every sighting pushes a slim ref, so the slim pool
@@ -1479,11 +1693,26 @@ fn shared_intents_for_tile(
 /// sightings of one key share one row and different content is a different
 /// row: a misjoin is unrepresentable, and the old "two features, one id" build
 /// failure is gone with the fold that caused it.
+///
+/// The returned ids line up with `intents` positionally, so the caller zips
+/// them back onto (layer, feature) positions for slim emission.
+///
+/// Lane C traffic codec attachments ride the intents but emit nothing here:
+/// per-edge-per-tile bases do not dedup (tile-local clips differ, exactly
+/// like junctions), so interning them costs ~2 GB of pool for geometry the
+/// resolve path never reads — arenas stay per-tile. The geometry pool
+/// machinery (types, parse, `intern_geometry`, `emit_keep_mask`) stays for a
+/// future cross-zoom design where one canonical edge serves all tiles; the
+/// `traffic` field stays so the stitch tests keep pinning the codec.
+/// `zoom` is the tile's own zoom, unused for now.
 fn drain_shared_rows(
     builder: &mut tilecodec::mamaps::shared::SharedBuilder,
     intents: Vec<SharedRowIntent>,
-) -> Result<()> {
+    zoom: u8,
+) -> Result<Vec<u32>> {
     use tilecodec::mamaps::shared::SharedSlimRef;
+    let _ = zoom;
+    let mut ids = Vec::with_capacity(intents.len());
     for intent in intents {
         let (kind, kind_detail) = (intent.key.kind, intent.key.kind_detail);
         let logical_id =
@@ -1492,8 +1721,9 @@ fn drain_shared_rows(
             logical_id,
             view_bits: SHARED_VIEW_BITS,
         });
+        ids.push(logical_id);
     }
-    Ok(())
+    Ok(ids)
 }
 
 /// Derive the sea for one tile as the tile rectangle with land cut out of it.
@@ -1689,7 +1919,7 @@ fn encode_batch(
                         layers.retain(|entry| !entry.layer.features.is_empty());
                     });
                     if layers.is_empty() {
-                        return Ok((id, None, rings, lines, Vec::new()));
+                        return Ok((id, None, rings, lines, Vec::new(), SlimEmitInputs::default()));
                     }
                     // What the `u16` feature index in the body format has to hold. Sampled here
                     // because this is the shape that reaches the encoder: after coalescing merged
@@ -1849,6 +2079,47 @@ fn encode_batch(
                     } else {
                         Vec::new()
                     };
+                    // Slim emission inputs ride alongside for the serial loop: with
+                    // the flag on it drains this tile's intents (assigning
+                    // logical ids) and re-emits slim-mode layers through
+                    // `emit_mixed_body`, replacing the v7 bytes below. Without
+                    // the flag everything stays empty and the v7 bytes append
+                    // untouched.
+                    let slim_inputs = if shared {
+                        SlimEmitInputs {
+                            layers: layers
+                                .iter()
+                                .map(|entry| ChunkEntry {
+                                    layer: BodyLayer {
+                                        layer_id: entry.layer.layer_id,
+                                        features: entry.layer.features.clone(),
+                                        parts: entry.layer.parts.clone(),
+                                        coords: entry.layer.coords.clone(),
+                                    },
+                                    names: entry.names.clone(),
+                                    ids: entry.ids.clone(),
+                                    turn_lanes: entry.turn_lanes.clone(),
+                                    buildings: entry.buildings.clone(),
+                                    carriageways: entry.carriageways.clone(),
+                                })
+                                .collect(),
+                            names: names.clone(),
+                            ids: ids.clone(),
+                            turn_lanes: turn_lanes.clone(),
+                            buildings: buildings.clone(),
+                            carriageways: carriageways.clone(),
+                            heightmap: dem.and_then(|d| d.heightmap_for(z, x, y)),
+                            convention,
+                            intents: Vec::new(),
+                        }
+                    } else {
+                        SlimEmitInputs::default()
+                    };
+                    // The intents ride the emit inputs too: the serial loop
+                    // drains a clone for ids while emission zips the original
+                    // onto (layer, feature) positions.
+                    let mut slim_inputs = slim_inputs;
+                    slim_inputs.intents = shared_intents.clone();
                     let body = Body {
                         extent: EXTENT as u16,
                         layers: layers.into_iter().map(|entry| entry.layer).collect(),
@@ -1871,7 +2142,7 @@ fn encode_batch(
                     let stored = timed(on, &DEFLATE_NANOS, || {
                         tilecodec::mamaps::write::compress_body_with(deflate, encoded)
                     });
-                    Ok((id, Some((stored, raw_len)), rings, lines, shared_intents))
+                    Ok((id, Some((stored, raw_len)), rings, lines, shared_intents, slim_inputs))
                 },
             )
             .collect()
@@ -2790,6 +3061,9 @@ mod tests {
             key,
             flags: 0,
             stable_id,
+            traffic: None,
+            layer_id: 1,
+            feature_index: 0,
         };
         // Two tiles, one shared road each, plus a second road on the second:
         // three sightings, two rows, four slim refs.
@@ -2800,6 +3074,7 @@ mod tests {
                 intent(key("Market Street", 100), 100),
                 intent(key("Oak Ave", 200), 200),
             ],
+            14,
         )
         .expect("first tile");
         drain_shared_rows(
@@ -2808,6 +3083,7 @@ mod tests {
                 intent(key("Market Street", 100), 100),
                 intent(key("Elm St", 300), 300),
             ],
+            14,
         )
         .expect("second tile repeats one row");
         // The same content twice: shared, not refused.
@@ -2898,11 +3174,29 @@ mod tests {
         let first = build(&spilled(&features), &shared).expect("shared build").0;
         let second = build(&spilled(&features), &shared).expect("shared build").0;
         assert_eq!(first, second, "a shared build is deterministic");
+        // Bodies are mixed v8 (traffic goes slim): resolve through the shared
+        // section and compare against the v7 semantics below.
+        let (header, _, _) = tilecodec::mamaps::read::open_prefix(&first).expect("prefix");
+        let Some((off, len)) = header.shared_location() else {
+            panic!("a --shared-table build carries a shared section");
+        };
+        let view = tilecodec::mamaps::shared::SharedView::parse(
+            &first[off as usize..(off + len) as usize],
+        )
+        .expect("parse the shared section");
         let entries = tilecodec::mamaps::read::read_all(&first).expect("read");
         let mut segs = std::collections::BTreeSet::new();
         let mut connectors = 0usize;
         for (_, _, body) in &entries {
-            let body = Body::parse(body).expect("parse");
+            let body = if body.len() >= 4 && body[0..3] == *b"MBD" && body[3] == 8 {
+                tilecodec::mamaps::read::resolve_body(
+                    &view,
+                    &tilecodec::mamaps::read::SlimBody::parse(body).expect("slim parse"),
+                )
+                .expect("resolve")
+            } else {
+                Body::parse(body).expect("parse")
+            };
             if let Some(layer) = body.layer(dict::LAYER_TRAFFIC) {
                 for index in 0..layer.features.len() {
                     let id = body
@@ -2919,6 +3213,315 @@ mod tests {
         }
         assert_eq!(segs.len(), 1, "the traffic segment keeps its component id");
         assert_eq!(connectors, 2, "coalescing must not chain the two connectors");
+    }
+
+    /// **Lane C: traffic segment-delta through the full tiler.** Two segments
+    /// of one edge land in one shared section with one stitched base in lane
+    /// A's geometry pool and one keep-mask each: the base decodes (mask
+    /// applied) to each segment's own tile-local vertices, and the bodies
+    /// stay full v7 (lane B has not landed).
+    ///
+    /// Fail-watch: revert the resolve call in `shared_intents_for_tile` (drop
+    /// the `resolve_traffic_codecs` zip) and this quotes
+    /// `left: 1, right: 2` on the base count working backward from the parse;
+    /// restore after quoting.
+    #[test]
+    fn a_shared_traffic_build_stitches_one_base_per_edge() {
+        use crate::layercodec::{apply_mask, codec_for, LayerCodec};
+        use crate::schema::traffic::{pack_component_id, traffic_class, unpack_component_id};
+        use tilecodec::mamaps::dict::LAYER_TRAFFIC;
+        assert_eq!(
+            codec_for(LAYER_TRAFFIC),
+            LayerCodec::TrafficDelta,
+            "traffic rides the delta codec",
+        );
+        let segment = |seg: u32, x0: f64, x1: f64| Feature {
+            class: traffic_class(),
+            geometry: Geometry::Lines(vec![vec![(x0, 35.0), (x1, 35.0004)]]),
+            name: None,
+            id: pack_component_id(7, seg),
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        // Two segments of edge 7, chaining end to start like the graph emits.
+        let features = vec![
+            segment(0, -120.0, -119.9996),
+            // Starts where seg 0 ends: the same junction mouth.
+            Feature {
+                class: traffic_class(),
+                geometry: Geometry::Lines(vec![vec![
+                    (-119.9996, 35.0004),
+                    (-119.9992, 35.0008),
+                ]]),
+                name: None,
+                id: pack_component_id(7, 1),
+                transit_color: 0,
+                transit_ordinal: 0,
+                transit_lanes: 0,
+                transit_taper: 0,
+                lane_count: 0,
+                turn_fwd: Vec::new(),
+                turn_bwd: Vec::new(),
+                building: None,
+                carriageway: tilecodec::mamaps::body::Carriageway::default(),
+            },
+        ];
+        let shared = Settings { shared_table: true, ..settings(14, 14) };
+        let (bytes, _) = build(&spilled(&features), &shared).expect("shared build");
+        let (header, _, _) = tilecodec::mamaps::read::open_prefix(&bytes).expect("prefix");
+        let Some((off, len)) = header.shared_location() else {
+            panic!("a --shared-table build carries a shared section");
+        };
+        let view = tilecodec::mamaps::shared::SharedView::parse(
+            &bytes[off as usize..(off + len) as usize],
+        )
+        .expect("parse the shared section");
+        // Two traffic rows (one segment each), two slim refs, no geometry:
+        // per-edge-per-tile bases do not dedup, so the drain no longer
+        // interns them (the pool stays byte-identical to before lane A).
+        assert_eq!(view.header.row_count, 2, "one row per segment: {view:?}");
+        assert_eq!(view.slim_refs.len(), 2, "one slim ref per sighting");
+        assert_eq!(
+            view.geometries.len(),
+            1,
+            "only the empty entry: no geometry interned: {view:?}"
+        );
+        // Each row's segment survives the round trip through resolve.
+        let mut segs = std::collections::BTreeSet::new();
+        let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
+        for (_, _, body) in &entries {
+            let body = if body.len() >= 4 && body[0..3] == *b"MBD" && body[3] == 8 {
+                tilecodec::mamaps::read::resolve_body(
+                    &view,
+                    &tilecodec::mamaps::read::SlimBody::parse(body).expect("slim parse"),
+                )
+                .expect("resolve")
+            } else {
+                Body::parse(body).expect("parse")
+            };
+            let Some(layer) = body.layer(LAYER_TRAFFIC) else { continue };
+            for index in 0..layer.features.len() {
+                let id = body
+                    .feature_id(LAYER_TRAFFIC, index)
+                    .expect("the traffic layer must carry an id table");
+                let (edge, seg) = unpack_component_id(id);
+                assert_eq!(edge, 7, "a component_id must unpack to its source edge");
+                segs.insert(seg);
+                // Full bodies until lane B lands: the traffic layer is all
+                // line features with their own parts.
+                assert_eq!(layer.features[index].geom_type, GEOM_LINE);
+            }
+        }
+        assert_eq!(segs.len(), 2, "both segments keep their component ids");
+        // No keep-masks: the drain interns rows only, and the stitch codec
+        // still pins its own contract in `layercodec.rs` (`resolve_groups_by
+        // _edge_in_sighting_order`, `applying_a_mask_returns_the_segments_
+        // vertices`). Geometry lives in the per-tile arenas, as v8.0 specifies.
+    }
+
+    /// **Lane C: slim-or-full stays full through the tiler.** Buildings and
+    /// junction decode exactly as v7 with `--shared-table` on — the dispatch
+    /// says [`crate::layercodec::BodyMode::Slim`] now that lane B's
+    /// [`crate::layercodec::MIXED_BODIES`] flipped, but the tiler keeps a
+    /// layer full unless **every** feature has a shared intent (junction
+    /// connectors and unattributed buildings have no shared row to slim to),
+    /// and the bodies prove it.
+    ///
+    /// Fail-watch: force slim on a layer with unattributed features and the
+    /// resolve-equals-v7 assertion below quotes the mismatch; restore after.
+    #[test]
+    fn shared_buildings_and_junction_stay_full_v7() {
+        use crate::layercodec::{body_mode, BodyMode};
+        use crate::schema::junction::junction_class;
+        use tilecodec::mamaps::dict::{LAYER_BUILDINGS, LAYER_JUNCTION};
+        assert_eq!(body_mode(LAYER_BUILDINGS, true), BodyMode::Slim);
+        assert_eq!(body_mode(LAYER_JUNCTION, true), BodyMode::Slim);
+        let mut features = vec![Feature {
+            class: Class::area(LAYER_BUILDINGS, crate::schema::kind("building"), 14),
+            geometry: square(-120.005, 35.005, 0.002),
+            name: None,
+            id: tilecodec::mamaps::body::ID_NONE,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        }];
+        features.push(Feature {
+            class: junction_class(),
+            geometry: Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.9996, 35.0004)]]),
+            name: None,
+            id: tilecodec::mamaps::body::ID_NONE,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        });
+        let shared = Settings { shared_table: true, ..settings(14, 14) };
+        let (bytes, _) = build(&spilled(&features), &shared).expect("shared build");
+        let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
+        let mut saw_building = false;
+        let mut saw_junction = false;
+        for (_, _, body) in &entries {
+            let body = Body::parse(body).expect("parse");
+            if let Some(layer) = body.layer(LAYER_BUILDINGS) {
+                saw_building = saw_building || !layer.features.is_empty();
+                for feature in &layer.features {
+                    assert_eq!(feature.geom_type, GEOM_POLYGON, "buildings stay full polygons");
+                }
+            }
+            if let Some(layer) = body.layer(LAYER_JUNCTION) {
+                saw_junction = saw_junction || !layer.features.is_empty();
+                for feature in &layer.features {
+                    assert_eq!(feature.geom_type, GEOM_LINE, "junction stays full lines");
+                }
+            }
+        }
+        assert!(saw_building, "the building survives a shared build");
+        assert!(saw_junction, "the connector survives a shared build");
+    }
+
+    /// **Lane C: the widest tile-layer check covers all eleven content layers.**
+    /// A tile per layer is built through the real encode path and
+    /// [`widest_layers`] reports each one — so a codec that dropped a layer's
+    /// accounting would fail here rather than at the 65,535-feature cap on
+    /// device.
+    ///
+    /// Fail-watch: delete a layer's `fetch_max` sample in `encode_batch` and
+    /// this quotes `left: 0, right: 1` on that layer's widest count; restore
+    /// after quoting.
+    #[test]
+    fn widest_tile_layer_reports_all_eleven_layers() {
+        use tilecodec::mamaps::dict::LAYERS;
+        // Eleven content layers: earth..junction minus transit, whose geometry
+        // comes from a GTFS export the fixture path does not carry.
+        let layers: [(u8, Class, Geometry); 11] = [
+            (
+                dict::LAYER_EARTH,
+                Class::area(dict::LAYER_EARTH, crate::schema::kind("earth"), 0),
+                square(-120.0, 35.0, 0.5),
+            ),
+            (
+                dict::LAYER_WATER,
+                Class::area(dict::LAYER_WATER, crate::schema::kind("lake"), 0),
+                square(-120.0, 35.0, 0.4),
+            ),
+            (
+                dict::LAYER_LANDCOVER,
+                Class::area(dict::LAYER_LANDCOVER, crate::schema::kind("forest"), 0),
+                square(-120.0, 35.0, 0.3),
+            ),
+            (
+                dict::LAYER_LANDUSE,
+                Class::area(dict::LAYER_LANDUSE, crate::schema::kind("park"), 0),
+                square(-120.0, 35.0, 0.25),
+            ),
+            (
+                dict::LAYER_ROADS,
+                Class::line(dict::LAYER_ROADS, crate::schema::kind("minor_road"), 0),
+                Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.0, 36.0)]]),
+            ),
+            (
+                dict::LAYER_BOUNDARIES,
+                Class::line(dict::LAYER_BOUNDARIES, crate::schema::kind("country"), 0),
+                Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.0, 36.0)]]),
+            ),
+            (
+                dict::LAYER_BUILDINGS,
+                Class::area(dict::LAYER_BUILDINGS, crate::schema::kind("building"), 14),
+                square(-120.005, 35.005, 0.002),
+            ),
+            (
+                dict::LAYER_PLACES,
+                Class::line(dict::LAYER_PLACES, crate::schema::kind("locality"), 0),
+                Geometry::Points(vec![(-120.0, 35.0)]),
+            ),
+            (
+                dict::LAYER_POI,
+                Class::line(dict::LAYER_POI, crate::schema::kind("cafe"), 0),
+                Geometry::Points(vec![(-120.0, 35.0)]),
+            ),
+            (
+                dict::LAYER_TRAFFIC,
+                crate::schema::traffic::traffic_class(),
+                Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.9996, 35.0004)]]),
+            ),
+            (
+                dict::LAYER_JUNCTION,
+                crate::schema::junction::junction_class(),
+                Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.9996, 35.0004)]]),
+            ),
+        ];
+        assert_eq!(LAYERS.len(), 12, "twelve layers in the dictionary, eleven tiled here");
+        let mut seen = std::collections::BTreeSet::new();
+        for (layer_id, class, geometry) in layers {
+            let feature = Feature {
+                class,
+                geometry,
+                name: None,
+                id: if crate::extract::layer_tracks_ids(layer_id) {
+                    match layer_id {
+                        dict::LAYER_PLACES => {
+                            crate::extract::tagged_id(7, crate::extract::ELEMENT_NODE)
+                        }
+                        dict::LAYER_POI => {
+                            crate::extract::tagged_id(9, crate::extract::ELEMENT_NODE)
+                        }
+                        dict::LAYER_TRAFFIC => {
+                            crate::schema::traffic::pack_component_id(7, 0)
+                        }
+                        _ => tilecodec::mamaps::body::ID_NONE,
+                    }
+                } else {
+                    tilecodec::mamaps::body::ID_NONE
+                },
+                transit_color: 0,
+                transit_ordinal: 0,
+                transit_lanes: 0,
+                transit_taper: 0,
+                lane_count: 0,
+                turn_fwd: Vec::new(),
+                turn_bwd: Vec::new(),
+                building: None,
+                carriageway: tilecodec::mamaps::body::Carriageway::default(),
+            };
+            let (bytes, _) = build(&spilled(&[feature]), &settings(14, 14)).expect("build");
+            let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
+            let mut count = 0usize;
+            for (_, _, body) in &entries {
+                let body = Body::parse(body).expect("parse");
+                count += body.layer(layer_id).map(|l| l.features.len()).unwrap_or(0);
+            }
+            assert!(count >= 1, "layer {layer_id} tiles at least one feature");
+            seen.insert(layer_id);
+        }
+        // And the running maximum saw every one of them through the real path.
+        // `>= 1`: the static is process-global, so an earlier test's wider
+        // tile may have already raised a layer's maximum.
+        let widest: std::collections::BTreeMap<u8, u64> =
+            widest_layers().into_iter().collect();
+        for layer_id in seen {
+            assert!(
+                widest.get(&layer_id).copied().unwrap_or(0) >= 1,
+                "layer {layer_id} reported through widest_layers",
+            );
+        }
     }
 
     /// A measurement, not an assertion: build the same z14 region with and without a dense grid of

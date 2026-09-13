@@ -231,7 +231,7 @@ private fun OrderCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                StatusChip(order.displayStatus)
+                OrdersScreenSection(order.displayStatus)
             }
             Spacer(Modifier.height(8.dp))
             order.orderItems.forEach { item ->
@@ -278,26 +278,6 @@ private fun OrderCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun StatusChip(status: String) {
-    val color = when (status) {
-        "Delivered", "Picked up" -> MaterialTheme.colorScheme.primary
-        "In progress" -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.outline
-    }
-    Surface(
-        color = color.copy(alpha = 0.12f),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Text(
-            status,
-            color = color,
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
     }
 }
 

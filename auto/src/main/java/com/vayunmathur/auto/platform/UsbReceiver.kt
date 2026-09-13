@@ -13,12 +13,14 @@ import com.vayunmathur.auto.network.UsbConnector
  * the system dialog while the app is backgrounded — so the answer lands here rather
  * than in `MainActivity`. Both outcomes funnel into [UsbConnector], which owns the
  * [com.vayunmathur.auto.protocol.UsbSession] and mirrors it to the pairing UI.
+ * The force-start chain action (`CarStartupService` BT_START chain) funnels there too.
  */
 class UsbReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != UsbConnector.ACTION_USB_PERMISSION &&
-            intent.action != UsbManager.ACTION_USB_ACCESSORY_DETACHED
+            intent.action != UsbManager.ACTION_USB_ACCESSORY_DETACHED &&
+            intent.action != UsbConnector.ACTION_USB_ACCESSORY_FORCE_START
         ) {
             return
         }

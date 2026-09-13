@@ -507,9 +507,6 @@ mod tests {
 
     #[test]
     fn the_attention_bias_is_added_to_the_scaled_scores() {
-        // An `Add` of two `[HEADS, SQUARES, SQUARES]` operands, once per block, between the
-        // score map and the softmax. Adding the bias to `q` instead would divide it by
-        // `sqrt(head_dim)`.
         let plan = plan();
         let mut seen = 0;
         for pair in plan.ops.windows(3) {
@@ -611,5 +608,117 @@ mod tests {
         assert!(tokens(&planes[..10], &elo, &elo).is_err());
         assert!(tokens(&planes, &elo[..10], &elo).is_err());
         assert!(tokens(&planes, &elo, &elo[..10]).is_err());
+    }
+
+    /// The graph-section round trip over the token projection and the bias path.
+    ///
+    /// The equivalence gate for phase 1 on a real net: record through the same `build`
+    /// path the plan takes, emit the section bytes, parse and lower them from bytes
+    /// alone, and require the two plans to agree op for op. Covers the token
+    /// projection, the bias generator (pool, reshape, grouped conv), and the two
+    /// norms — everything phase 1 serialises — stopping before the first attention,
+    /// which is outside phase 1.
+    #[test]
+    fn the_token_projection_round_trips_through_a_graph_section() {
+        use crate::weights::Graph;
+        // The partial pass reads the elo pair, the token projection triple, and the
+        // bias generator (projection triple, norm pair, projection triple, norm pair,
+        // plus the shared smolgen kernel) — tensors 0..15, stopping before the first
+        // encoder block. `record` enforces the every-tensor rule over the source's
+        // count, so the stub is sized to that footprint rather than `TENSORS`: sizing
+        // it to the whole file would demand the 244 tensors only the rest of the net
+        // reads, which is the blanket naming the fixture comment above refuses.
+        let partial = SMOLGEN + 3 + 2 + 3 + 2;
+        let source = Shapes::new(partial);
+        let head = &mut Layers { next: TOKEN_PROJECTION };
+        let mut builder = Builder::new(&source);
+        let b = &mut builder;
+        b.host_tensor(ELO_LOW, &[1, ELO_DIM]);
+        b.host_tensor(ELO_HIGH, &[1, ELO_DIM]);
+        let tokens = b.input(Shape::new(INPUT, 1, SQUARES));
+        let projected = point(b, head, tokens, WIDTH, Act::None);
+        // The bias path of the first block: pool, two pointwise+GELU norms, grouped
+        // expansion, reshape to the score-map layout.
+        let bias = attention_bias(b, &mut Layers { next: SMOLGEN }, projected);
+        // No blanket host naming: the section's host list is derived by elimination
+        // from `Recorded.read`, and every named tensor must resolve in the table
+        // the emitter inverts through. The token projection, bias path, and the two
+        // elo tables are all consumed or named above; nothing else was asked, so
+        // nothing else needs naming for the every-tensor rule.
+        let table = source_table(&source);
+        let recorded = builder
+            .record(&[projected, bias], &table)
+            .expect("the fixture records");
+        let bytes =
+            Graph::emit(&recorded, &table, &[projected, bias]).expect("the fixture emits");
+        std::fs::write(
+            std::env::temp_dir().join("maia_section.bin"),
+            &bytes,
+        )
+        .expect("the section writes");
+        let parsed = Graph::parse(&bytes, &table_tensors(&table)).expect("the section parses");
+        let mut builder = Builder::new(&table);
+        let outputs = parsed.lower(&mut builder, &table).expect("the section lowers");
+        let plan = builder.finish(&outputs).expect("the lowered plan finishes");
+        assert_eq!(plan.ops, recorded.plan.ops);
+        assert_eq!(plan.inputs, recorded.plan.inputs);
+        assert_eq!(plan.outputs, recorded.plan.outputs);
+    }
+
+    /// The `Shapes` stub's asked table, as an `Offsets` the emitter can invert through.
+    ///
+    /// The stub resolves `shaped` tensor `i` at element offset `i` and
+    /// `shaped_words` tensor `i` at word offset `i` — but it does not record which
+    /// view each ask used. Reconstruct it the way the builder calls: `conv_quantised`
+    /// resolves the kernel through `shaped_words` and the scale/bias through
+    /// `shaped`, in that order — kernel ask, scale ask, bias ask. So within each
+    /// consecutive triple of asks where the first is 4-D, that triple is
+    /// (kernel-word, scale-elem, bias-elem). Everything else is the element view.
+    ///
+    /// This is fragile by construction — it pattern-matches the builder's call
+    /// sequence — and it is test-only: the real table never needs it, because real
+    /// offsets are byte-distinct per tensor. If the builder's ask order changes,
+    /// this breaks loudly (unresolvable emitter lookup), not silently.
+    fn source_table(source: &Shapes) -> crate::weights::Offsets {
+        use crate::weights::Dtype;
+        let asked = source.asked.borrow();
+        let is_kernel = |dims: &[u32]| dims.len() == 4;
+        let mut views = vec![false; asked.len()];
+        let mut i = 0;
+        while i < asked.len() {
+            if is_kernel(&asked[i].1)
+                && asked.get(i + 1).is_some_and(|(_, d)| !is_kernel(d))
+                && asked.get(i + 2).is_some_and(|(_, d)| !is_kernel(d))
+            {
+                views[i] = true;
+                i += 3;
+            } else {
+                i += 1;
+            }
+        }
+        let mut tensors = Vec::new();
+        for ((index, dims), word) in asked.iter().zip(views) {
+            let len: u32 = dims.iter().product();
+            let mut full = [0u32; 4];
+            for (d, dim) in dims.iter().enumerate().take(4) {
+                full[d] = *dim;
+            }
+            tensors.push(crate::weights::Tensor {
+                rank: dims.len() as u32,
+                dims: full,
+                offset: (*index as u32) * if word { 4 } else { 2 },
+                len,
+                dtype: if word { Dtype::I8 } else { Dtype::F16 },
+            });
+        }
+        // No padding to the file length: every table entry must be either a weight
+        // the nodes consume or a named host tensor, or `finish`'s every-tensor
+        // rule refuses the lowered plan. The real file's trailing tensors are a
+        // converter concern, not this fixture's.
+        crate::weights::Offsets::from_test(tensors)
+    }
+
+    fn table_tensors(table: &crate::weights::Offsets) -> Vec<crate::weights::Tensor> {
+        (0..table.len()).map(|i| table.tensor(i).expect("in range")).collect()
     }
 }

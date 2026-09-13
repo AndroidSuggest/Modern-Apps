@@ -84,6 +84,16 @@ message SensorBatch {
 // One reading. The declared type attributes the event; the payload present
 // carries the value. An event with no payload is counted but changes no
 // value -- the owner keeps its last-known rather than clobbering it.
+//
+// Envelope numbers (2-25) are MA sender-defined, continuing the existing
+// sequence. The payload INNER layouts below are teardown-exact where noted
+// (`dump_protos.py` over the `xnr` field classes): numbers, wire types and
+// cardinality recovered, names `fieldN` per the repo convention for
+// unrecovered names (see gal/input.proto). Two types carry no payload:
+// VEHICLE_ENERGY_MODEL_DATA(23) (`xgu` decodes as a proto3 single-message
+// anomaly, not a usable reading layout) and TRAILER_DATA(24) (`xon`
+// descriptor is empty) -- both fold to last-known with MISSING-payload
+// comments in SensorSnapshot.withEvents, never invented bytes.
 message SensorEvent {
   required SensorType sensor_type = 1;
   optional LocationReading location = 2;
@@ -91,6 +101,25 @@ message SensorEvent {
   optional SpeedReading speed = 4;
   optional NightReading night = 5;
   optional DrivingStatusReading driving_status = 6;
+  optional RpmReading rpm = 7;
+  optional OdometerReading odometer = 8;
+  optional FuelReading fuel = 9;
+  optional ParkingBrakeReading parking_brake = 10;
+  optional GearReading gear = 11;
+  optional ObdiiReading obdii = 12;
+  optional EnvironmentReading environment = 13;
+  optional HvacReading hvac = 14;
+  optional DeadReckoningReading dead_reckoning = 15;
+  optional PassengerReading passenger = 16;
+  optional DoorReading door = 17;
+  optional LightReading light = 18;
+  optional TirePressureReading tire_pressure = 19;
+  optional AccelerometerReading accelerometer = 20;
+  optional GyroscopeReading gyroscope = 21;
+  optional GpsSatelliteReading gps_satellite = 22;
+  optional TollCardReading toll_card = 23;
+  optional RawVehicleEnergyReading raw_vehicle_energy = 24;
+  optional RawEvTripReading raw_ev_trip = 25;
 }
 
 message LocationReading {
@@ -114,6 +143,144 @@ message NightReading {
 
 message DrivingStatusReading {
   optional bool parked = 1;
+}
+
+// RPM(4) body (`xnq`), from the teardown: required int32 field 1.
+message RpmReading {
+  required int32 field1 = 1;
+}
+
+// ODOMETER(5) body (`xlu`), from the teardown: required int32 field 1,
+// optional int32 field 2.
+message OdometerReading {
+  required int32 field1 = 1;
+  optional int32 field2 = 2;
+}
+
+// FUEL(6) body (`xjj`), from the teardown: three optional int32 fields.
+message FuelReading {
+  optional int32 field1 = 1;
+  optional int32 field2 = 2;
+  optional int32 field3 = 3;
+}
+
+// PARKING_BRAKE(7) body (`xly`), from the teardown: required bool field 1.
+message ParkingBrakeReading {
+  required bool field1 = 1;
+}
+
+// GEAR(8) body (`xjl`), from the teardown: required enum field 1. The enum
+// type itself is unidentified, so int32 here -- identical varint encoding on
+// the wire -- rather than an invented enum.
+message GearReading {
+  required int32 field1 = 1;
+}
+
+// OBDII_DIAGNOSTIC_CODE(9) body (`xjb`), from the teardown: optional bytes
+// field 1 (raw diagnostic payload).
+message ObdiiReading {
+  optional bytes field1 = 1;
+}
+
+// ENVIRONMENT_DATA(11) body (`xjg`), from the teardown: three optional
+// int32 fields.
+message EnvironmentReading {
+  optional int32 field1 = 1;
+  optional int32 field2 = 2;
+  optional int32 field3 = 3;
+}
+
+// HVAC_DATA(12) body (`xjr`), from the teardown: two optional int32 fields.
+message HvacReading {
+  optional int32 field1 = 1;
+  optional int32 field2 = 2;
+}
+
+// DEAD_RECKONING_DATA(14) body (`xja`), from the teardown: optional int32
+// field 1, repeated (unpacked) int32 field 2.
+message DeadReckoningReading {
+  optional int32 field1 = 1;
+  repeated int32 field2 = 2;
+}
+
+// PASSENGER_DATA(15) body (`xlz`), from the teardown: optional bool field 1.
+message PassengerReading {
+  optional bool field1 = 1;
+}
+
+// DOOR_DATA(16) body (`xjd`), from the teardown: two optional bools plus a
+// repeated bool field 3 (per-door states).
+message DoorReading {
+  optional bool field1 = 1;
+  optional bool field2 = 2;
+  repeated bool field3 = 3;
+}
+
+// LIGHT_DATA(17) body (`xkg`), from the teardown: two optional enums plus an
+// optional bool. Both enum types are unidentified, so int32 -- identical
+// varint encoding -- rather than invented enums.
+message LightReading {
+  optional int32 field1 = 1;
+  optional int32 field2 = 2;
+  optional bool field3 = 3;
+}
+
+// TIRE_PRESSURE_DATA(18) body (`xoj`), from the teardown: repeated
+// (unpacked) int32 field 1, one entry per wheel.
+message TirePressureReading {
+  repeated int32 field1 = 1;
+}
+
+// ACCELEROMETER_DATA(19) body (`xgy`), from the teardown: three optional
+// int32 fields (x/y/z axes).
+message AccelerometerReading {
+  optional int32 field1 = 1;
+  optional int32 field2 = 2;
+  optional int32 field3 = 3;
+}
+
+// GYROSCOPE_DATA(20) body (`xjp`), from the teardown: three optional int32
+// fields (x/y/z axes).
+message GyroscopeReading {
+  optional int32 field1 = 1;
+  optional int32 field2 = 2;
+  optional int32 field3 = 3;
+}
+
+// One satellite fix inside a GPS_SATELLITE_DATA body (`xjn`), from the
+// teardown: required int32 fields 1-2, required bool field 3, optional
+// int32 fields 4-5.
+message GpsSatelliteEntry {
+  required int32 field1 = 1;
+  required int32 field2 = 2;
+  required bool field3 = 3;
+  optional int32 field4 = 4;
+  optional int32 field5 = 5;
+}
+
+// GPS_SATELLITE_DATA(21) body (`xjo`), from the teardown: required int32
+// field 1, optional int32 field 2, repeated `xjn` entries field 3.
+message GpsSatelliteReading {
+  required int32 field1 = 1;
+  optional int32 field2 = 2;
+  repeated GpsSatelliteEntry field3 = 3;
+}
+
+// TOLL_CARD(22) body (`xok`), from the teardown: required bool field 1.
+message TollCardReading {
+  required bool field1 = 1;
+}
+
+// RAW_VEHICLE_ENERGY_MODEL(25) body (`xnk`), from the teardown: optional
+// bytes field 1 (opaque model blob).
+message RawVehicleEnergyReading {
+  optional bytes field1 = 1;
+}
+
+// RAW_EV_TRIP_SETTINGS(26) body (`xni`), from the teardown: optional bytes
+// field 1 (opaque settings blob).
+message RawEvTripReading {
+  optional bytes field1 = 1;
 }
 
 // 0x8004, HU -> phone: a subscription or stream failure. MA sender-defined,

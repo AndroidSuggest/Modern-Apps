@@ -57,6 +57,10 @@ name = "mamaps_dump"
 path = "src/bin/mamaps_dump.rs"
 
 [[bin]]
+name = "mamaps_pack"
+path = "src/bin/mamaps_pack.rs"
+
+[[bin]]
 name = "mamaps_from_pmtiles"
 path = "src/bin/mamaps_from_pmtiles.rs"
 [dependencies]

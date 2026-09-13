@@ -188,6 +188,21 @@ pub fn interleave(channelled: &[f32]) -> Vec<f32> {
 /// output is `[512, 1, 6 * frames]`, which the caller reads transposed as
 /// `frames * SAMPLES_PER_FRAME` samples.
 pub fn build(weights: &dyn WeightSource, frames: u32) -> Result<Plan, String> {
+    let l = &mut Layers { next: 0 };
+    let mut builder = Builder::new(weights);
+    let samples = sequence(&mut builder, l, frames)?;
+    if l.next != TENSORS {
+        return Err(format!("the forward pass claims {} tensors, not {TENSORS}", l.next));
+    }
+    builder.finish(&[samples])
+}
+
+/// The vocoder's graph with its inputs declared, returning the sample tensor.
+///
+/// Split out of [`build`] so the graph-section emitter can record the same sequence —
+/// see `emit` below. Takes the frame count rather than positions: the `6 *` expansion
+/// is part of the graph, not the caller's.
+fn sequence(b: &mut Builder, l: &mut Layers, frames: u32) -> Result<Id, String> {
     if frames == 0 {
         return Err("a vocoder pass over no frames".into());
     }
@@ -195,9 +210,6 @@ pub fn build(weights: &dyn WeightSource, frames: u32) -> Result<Plan, String> {
         .checked_mul(COMPRESS)
         .ok_or("a latent longer than an index can hold")?;
 
-    let l = &mut Layers { next: 0 };
-    let mut builder = Builder::new(weights);
-    let b = &mut builder;
     // Every convolution in this network replicates its border. See the module docs.
     b.edge_padding();
 
@@ -240,12 +252,7 @@ pub fn build(weights: &dyn WeightSource, frames: u32) -> Result<Plan, String> {
         Along { out: INNER, kernel: 3, dilation: 1, group: 1, act: Act::PRelu(slope) },
     );
     l.take_one();
-    let samples = point_int8(b, l, widened, SAMPLES_PER_POSITION, Act::None);
-
-    if l.next != TENSORS {
-        return Err(format!("the forward pass claims {} tensors, not {TENSORS}", l.next));
-    }
-    builder.finish(&[samples])
+    Ok(point_int8(b, l, widened, SAMPLES_PER_POSITION, Act::None))
 }
 
 /// A convolution along the sequence, padded so the length is unchanged.
@@ -258,6 +265,7 @@ pub fn build(weights: &dyn WeightSource, frames: u32) -> Result<Plan, String> {
 /// Implementing this symmetrically instead shifts the signal a little further at every one of
 /// the eleven padded convolutions. The output stays the right length and the right magnitude and
 /// correlates with the reference at 0.02, which sounds like noise rather than like a bug.
+#[derive(Clone, Copy)]
 struct Along {
     /// Output channels.
     out: u32,
@@ -475,7 +483,9 @@ mod tests {
         assert_eq!(counts.get("Conv"), Some(&(convolutions - INT8_CONVS)), "{counts:?}");
         assert_eq!(counts.get("ConvInt8"), Some(&INT8_CONVS), "{counts:?}");
         assert_eq!(counts.get("LayerNorm"), Some(&BLOCKS), "{counts:?}");
-        assert_eq!(counts.get("Add"), Some(&BLOCKS), "{counts:?}");
+        // Five of the ten ConvNeXt residuals fold into their narrowing pointwise's
+        // store; the rest stay dispatches — see `Builder::add`.
+        assert_eq!(counts.get("Add"), Some(&5), "{counts:?}");
         // No transposed convolution: the upsample is the output reinterpretation.
         assert_eq!(counts.get("ConvTranspose"), None, "{counts:?}");
         assert_eq!(counts.len(), 4, "{counts:?}");
