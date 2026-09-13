@@ -25,7 +25,7 @@ interface PhotoDao {
     // trash, people) groups/sorts by date descending anyway, so the composition
     // pass now groups pre-ordered rows instead of sorting the whole library on
     // the main thread — cutting first-load jank without changing what's shown.
-    @Query("SELECT id, name, uri, date, width, height, dateModified, exifSet, lat, `long`, duration, fullWidth, fullHeight, croppedWidth, croppedHeight, croppedLeft, croppedTop, projectionType, isTrashed, faceScanned, ocrScanned, clipScanned, mimeType FROM Photo ORDER BY date DESC")
+    @Query("SELECT id, name, uri, date, width, height, dateModified, exifSet, lat, `long`, duration, fullWidth, fullHeight, croppedWidth, croppedHeight, croppedLeft, croppedTop, projectionType, isTrashed, faceScanned, ocrScanned, clipScanned, mimeType, album FROM Photo ORDER BY date DESC")
     fun getAllFlow(): Flow<List<Photo>>
 
     @Query("SELECT * FROM Photo WHERE id = :id")
@@ -252,13 +252,13 @@ data class ExifResult(
     val pano: PanoData?,
 )
 
-@Database(entities = [Photo::class, Person::class, PhotoFace::class], version = 17, exportSchema = false)
+@Database(entities = [Photo::class, Person::class, PhotoFace::class], version = 18, exportSchema = false)
 abstract class PhotoDatabase : RoomDatabase() {
     abstract fun photoDao(): PhotoDao
     abstract fun faceDao(): FaceDao
 
     companion object : com.vayunmathur.library.util.DatabaseMigrations {
-        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+        override val migrations: List<Migration> = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
     }
 }
 
@@ -317,6 +317,14 @@ val MIGRATION_16_17 = Migration(16, 17) {
     // was on `date`, so all of them full-scanned the table — once per observer,
     // on every single write a scan made. No data changes.
     it.execSQL("CREATE INDEX IF NOT EXISTS `index_Photo_isTrashed_duration` ON `Photo` (`isTrashed`, `duration`)")
+}
+
+val MIGRATION_17_18 = Migration(17, 18) {
+    // Add the MediaStore bucket (BUCKET_DISPLAY_NAME) so the Albums view can
+    // group photos. Existing rows stay NULL until the next sync backfills
+    // them; the UI shows those as Unknown meanwhile. SQL mirrors Room's
+    // generated schema exactly so schema validation passes.
+    it.execSQL("ALTER TABLE Photo ADD COLUMN album TEXT")
 }
 
 val MIGRATION_8_9 = Migration(8, 9) {

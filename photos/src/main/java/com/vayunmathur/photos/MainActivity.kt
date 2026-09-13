@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import com.vayunmathur.library.util.AppMessages
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.LoadingIndicator
+import com.vayunmathur.library.ui.IconAlbum
 import com.vayunmathur.library.ui.IconGroup
 import com.vayunmathur.library.ui.IconLock
 import com.vayunmathur.library.ui.IconMap
@@ -72,6 +73,8 @@ import com.vayunmathur.library.widgets.updateWidgetPreviews
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.data.PhotosRepository
 import com.vayunmathur.photos.glance.PhotoGlanceWidgetReceiver
+import com.vayunmathur.photos.ui.AlbumDetailPage
+import com.vayunmathur.photos.ui.AlbumsPage
 import com.vayunmathur.photos.ui.GalleryPage
 import com.vayunmathur.photos.ui.MapPage
 import com.vayunmathur.photos.ui.PeoplePage
@@ -233,6 +236,12 @@ sealed interface Route: NavKey {
     data object People: Route
 
     @Serializable
+    data object Albums: Route
+
+    @Serializable
+    data class AlbumDetail(val albumName: String): Route
+
+    @Serializable
     data object Trash: Route
 
     @Serializable
@@ -317,6 +326,14 @@ fun Navigation(
             PeoplePage(backStack, galleryViewModel)
         }
 
+        entry<Route.Albums>(metadata = SiblingPage()) {
+            AlbumsPage(backStack, galleryViewModel)
+        }
+
+        entry<Route.AlbumDetail> {
+            AlbumDetailPage(backStack, galleryViewModel, it.albumName)
+        }
+
         entry<Route.PhotoPage>(metadata = ListDetailPage() + MorphPage()) {
             PhotoPage(galleryViewModel, photoMapViewModel, it.id, it.overridePhotosList, it.pendingUri, backStack)
         }
@@ -368,6 +385,7 @@ private enum class MainRoute(val route: Route, @StringRes val titleRes: Int, val
     Gallery(Route.Gallery, R.string.label_gallery, { IconPhotoLibrary() }),
     Map(Route.Map, R.string.label_map, { IconMap() }),
     People(Route.People, R.string.label_people, { IconGroup() }),
+    Albums(Route.Albums, R.string.label_albums, { IconAlbum() }),
     Trash(Route.Trash, R.string.label_trash, { IconDelete() }),
     SecureFolder(Route.SecureFolder, R.string.label_secure_folder, { IconLock() })
 }

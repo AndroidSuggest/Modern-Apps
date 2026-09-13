@@ -40,6 +40,11 @@ data class PeopleUiState(
     val faceTargetCount: Int = 0,
 )
 
+/** Everything the albums grid draws. */
+data class AlbumsUiState(
+    val albums: List<Album> = emptyList(),
+)
+
 /**
  * Gallery callbacks. Every method has a no-op default so a preview can render the screen
  * without supplying behaviour — [Noop] is the whole implementation a preview needs.

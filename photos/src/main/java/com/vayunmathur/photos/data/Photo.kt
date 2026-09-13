@@ -78,6 +78,10 @@ data class Photo(
     // text layer over the image. Null for videos, for photos with no text, and
     // for rows OCR'd before this column existed (the viewer backfills those).
     val ocrBoxes: String? = null,
+    // MediaStore bucket (BUCKET_DISPLAY_NAME): the album/folder the item lives
+    // in. Null only on rows written before the column existed, which the next
+    // sync backfills; the Albums view shows those as Unknown meanwhile.
+    val album: String? = null,
 ) : DatabaseItem {
     /** True for an animated image, which plays rather than showing a single frame. */
     val isGif: Boolean get() = mimeType.equals("image/gif", ignoreCase = true)

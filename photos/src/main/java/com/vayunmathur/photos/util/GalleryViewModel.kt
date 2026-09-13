@@ -170,6 +170,38 @@ class GalleryViewModel(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /**
+     * Photos grouped by MediaStore bucket (album), for the Albums view.
+     *
+     * Derived from the photos flow rather than a DAO distinct query, mirroring
+     * the [people] style: the cover photo (newest in the album) travels with
+     * the group so the tile needs no second lookup. Trashed photos are
+     * excluded, like the gallery grid. Null/blank buckets (rows written before
+     * the album column existed, or MediaStore rows with no bucket) fall back to
+     * [Album.UNKNOWN_NAME]; the screen resolves that to
+     * R.string.albums_unknown.
+     */
+    val albums: StateFlow<List<Album>> =
+        photoDao.getAllFlow()
+            .conflate()
+            .map { allPhotos ->
+                allPhotos.filter { !it.isTrashed }
+                    .groupBy { it.album?.takeIf { name -> name.isNotBlank() } ?: Album.UNKNOWN_NAME }
+                    .map { (name, albumPhotos) ->
+                        Album(
+                            name = name,
+                            // getAllFlow is ORDER BY date DESC, so the first row
+                            // is the album's newest photo — the cover.
+                            coverPhoto = albumPhotos.first(),
+                            photos = albumPhotos,
+                        )
+                    }
+                    .sortedBy { it.name.lowercase() }
+            }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
      * Face geometry per photo, for the viewer's face overlay. Combined with the
      * clusters because the label text lives on [com.vayunmathur.photos.data.Person],
      * not on the face row — which is also why [faceCountByPhoto] can't be reused.
@@ -409,6 +441,26 @@ data class PersonCluster(
     val faceBottom: Float,
     val photos: List<Photo>,
 )
+
+/**
+ * A MediaStore bucket (album) and the library photos in it, newest first.
+ *
+ * [name] is the BUCKET_DISPLAY_NAME, or [UNKNOWN_NAME] when the row has no
+ * bucket (see [GalleryViewModel.albums]); the screen resolves that sentinel
+ * to R.string.albums_unknown.
+ */
+data class Album(
+    val name: String,
+    val coverPhoto: Photo,
+    val photos: List<Photo>,
+) {
+    /** Photo count shown under the album tile. */
+    val count: Int get() = photos.size
+
+    companion object {
+        const val UNKNOWN_NAME = "__unknown__"
+    }
+}
 
 /**
  * The faces detected in one photo, plus the dimensions their boxes are
