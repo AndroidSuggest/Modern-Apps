@@ -1,11 +1,7 @@
 package com.vayunmathur.communicate.data.whatsapp
 
 import android.util.Log
-import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.ContactData
-import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.ContextInfoResult
-import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.LocationData
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.Node
-import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol.PollData
 
 // -- Message parsing: type/body extraction, inbound node parsing, WA formatting --
 

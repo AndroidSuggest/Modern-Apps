@@ -27,6 +27,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.vayunmathur.office.R
+import com.vayunmathur.office.util.OfficeViewModel.ViewState
 
 // --- Sync C: members / key epochs / ownership / titles (split from OfficeViewModel.kt for file length) ---
 

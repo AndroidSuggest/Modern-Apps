@@ -48,6 +48,62 @@ import com.vayunmathur.office.ui.InsertTableDialog
 import com.vayunmathur.office.ui.SettingsDialog
 import com.vayunmathur.office.ui.SpecialCharsDialog
 import com.vayunmathur.office.util.OfficeViewModel
+import com.vayunmathur.office.util.save
+import com.vayunmathur.office.util.needsSaveAs
+import com.vayunmathur.office.util.acceptAllChanges
+import com.vayunmathur.office.util.acceptChange
+import com.vayunmathur.office.util.addBookmark
+import com.vayunmathur.office.util.applyRunSpanStyle
+import com.vayunmathur.office.util.cellCommentText
+import com.vayunmathur.office.util.currentDocRole
+import com.vayunmathur.office.util.currentOnlineDocId
+import com.vayunmathur.office.util.documentMembers
+import com.vayunmathur.office.util.enableOnlineSharing
+import com.vayunmathur.office.util.initSync
+import com.vayunmathur.office.util.insertChart
+import com.vayunmathur.office.util.insertChartIntoSheet
+import com.vayunmathur.office.util.insertChartIntoSlide
+import com.vayunmathur.office.util.insertComment
+import com.vayunmathur.office.util.insertFootnote
+import com.vayunmathur.office.util.insertHyperlink
+import com.vayunmathur.office.util.insertTable
+import com.vayunmathur.office.util.insertTextInRun
+import com.vayunmathur.office.util.rejectAllChanges
+import com.vayunmathur.office.util.rejectChange
+import com.vayunmathur.office.util.renameDocument
+import com.vayunmathur.office.util.replaceSheetImage
+import com.vayunmathur.office.util.replaceSlideImage
+import com.vayunmathur.office.util.replaceTextImage
+import com.vayunmathur.office.util.resolveComment
+import com.vayunmathur.office.util.rotateSheetImage
+import com.vayunmathur.office.util.rotateSlideImage
+import com.vayunmathur.office.util.rotateTextImage
+import com.vayunmathur.office.util.securityCodeWith
+import com.vayunmathur.office.util.setCellBgColor
+import com.vayunmathur.office.util.setCellBorder
+import com.vayunmathur.office.util.setCellColor
+import com.vayunmathur.office.util.setCellComment
+import com.vayunmathur.office.util.setColumnWidth
+import com.vayunmathur.office.util.setFooterText
+import com.vayunmathur.office.util.setHeaderText
+import com.vayunmathur.office.util.setImageCrop
+import com.vayunmathur.office.util.setMemberRole
+import com.vayunmathur.office.util.setPageSetup
+import com.vayunmathur.office.util.setRowHeight
+import com.vayunmathur.office.util.setSheetImageCrop
+import com.vayunmathur.office.util.setSlideBackgroundColor
+import com.vayunmathur.office.util.setSlideElementColor
+import com.vayunmathur.office.util.setSlideElementFill
+import com.vayunmathur.office.util.setSlideElementStroke
+import com.vayunmathur.office.util.setSlideImageCrop
+import com.vayunmathur.office.util.setSlideNotes
+import com.vayunmathur.office.util.setSlideTransition
+import com.vayunmathur.office.util.shareCurrentDocument
+import com.vayunmathur.office.util.shareLinkFor
+import com.vayunmathur.office.util.slideNotesText
+import com.vayunmathur.office.util.transferOwnership
+import com.vayunmathur.office.util.updateChart
+import com.vayunmathur.office.util.updateMetadata
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -64,11 +120,15 @@ open class DocumentOverlayState {
     var showMetadata by mutableStateOf(false)
     var showShareDialog by mutableStateOf(false)
     var showEnableOnlineDialog by mutableStateOf(false)
-    var showUnsavedDialog by mutableStateOf(false)
+    val showUnsavedDialogState = mutableStateOf(false)
+    var showUnsavedDialog by showUnsavedDialogState
     var showSettings by mutableStateOf(false)
-    var showColorPicker by mutableStateOf(false)
-    var showFontSizePicker by mutableStateOf(false)
-    var showInsertTable by mutableStateOf(false)
+    val showColorPickerState = mutableStateOf(false)
+    var showColorPicker by showColorPickerState
+    val showFontSizePickerState = mutableStateOf(false)
+    var showFontSizePicker by showFontSizePickerState
+    val showInsertTableState = mutableStateOf(false)
+    var showInsertTable by showInsertTableState
     var showInsertLink by mutableStateOf(false)
     var showAddBookmark by mutableStateOf(false)
     var showSpecialChars by mutableStateOf(false)
@@ -78,24 +138,42 @@ open class DocumentOverlayState {
     var showChanges by mutableStateOf(false)
     var showPageSetup by mutableStateOf(false)
     var showHeaderFooter by mutableStateOf(false)
-    var showCellTextColor by mutableStateOf(false)
-    var showCellBgColor by mutableStateOf(false)
-    var showCellBorderColor by mutableStateOf(false)
-    var showSlideTextColor by mutableStateOf(false)
-    var showSlideFillColor by mutableStateOf(false)
-    var showSlideStrokeColor by mutableStateOf(false)
-    var showCellComment by mutableStateOf(false)
-    var showCellResize by mutableStateOf(false)
-    var showSlideNotes by mutableStateOf(false)
-    var showSlideBackground by mutableStateOf(false)
-    var showSlideTransition by mutableStateOf(false)
-    var showChartEditor by mutableStateOf(false)
-    var editingChartBlock by mutableIntStateOf(-1)
-    var chartForSlide by mutableStateOf(false)
-    var chartForSheet by mutableStateOf(false)
-    var cropImageBlock by mutableIntStateOf(-1)
-    var cropSlideTarget by mutableStateOf<Pair<Int, Int>?>(null)
-    var cropSheetTarget by mutableStateOf<Pair<Int, Int>?>(null)
+    val showCellTextColorState = mutableStateOf(false)
+    var showCellTextColor by showCellTextColorState
+    val showCellBgColorState = mutableStateOf(false)
+    var showCellBgColor by showCellBgColorState
+    val showCellBorderColorState = mutableStateOf(false)
+    var showCellBorderColor by showCellBorderColorState
+    val showSlideTextColorState = mutableStateOf(false)
+    var showSlideTextColor by showSlideTextColorState
+    val showSlideFillColorState = mutableStateOf(false)
+    var showSlideFillColor by showSlideFillColorState
+    val showSlideStrokeColorState = mutableStateOf(false)
+    var showSlideStrokeColor by showSlideStrokeColorState
+    val showCellCommentState = mutableStateOf(false)
+    var showCellComment by showCellCommentState
+    val showCellResizeState = mutableStateOf(false)
+    var showCellResize by showCellResizeState
+    val showSlideNotesState = mutableStateOf(false)
+    var showSlideNotes by showSlideNotesState
+    val showSlideBackgroundState = mutableStateOf(false)
+    var showSlideBackground by showSlideBackgroundState
+    val showSlideTransitionState = mutableStateOf(false)
+    var showSlideTransition by showSlideTransitionState
+    val showChartEditorState = mutableStateOf(false)
+    var showChartEditor by showChartEditorState
+    val editingChartBlockState = mutableIntStateOf(-1)
+    var editingChartBlock by editingChartBlockState
+    val chartForSlideState = mutableStateOf(false)
+    var chartForSlide by chartForSlideState
+    val chartForSheetState = mutableStateOf(false)
+    var chartForSheet by chartForSheetState
+    val cropImageBlockState = mutableIntStateOf(-1)
+    var cropImageBlock by cropImageBlockState
+    val cropSlideTargetState: MutableState<Pair<Int, Int>?> = mutableStateOf(null)
+    var cropSlideTarget by cropSlideTargetState
+    val cropSheetTargetState: MutableState<Pair<Int, Int>?> = mutableStateOf(null)
+    var cropSheetTarget by cropSheetTargetState
     var exportWarning by mutableStateOf<(() -> Unit)?>(null)
 }
 
@@ -374,7 +452,7 @@ fun DocumentOverlays(
     }
     if (state.showSlideTransition && isPresentation) {
         val types = listOf("none", "fade", "wipe", "dissolve", "push", "cover", "split", "blinds", "checkerboard", "circle", "wheel")
-        var type by remember(state.showSlideTransition) { mutableStateOf(document.slides.getOrNull(activeSlide.value)?.transitionType ?: "none") }
+        var type by remember(state.showSlideTransition) { mutableStateOf((document as? OdfDocument.Presentation)?.slides?.getOrNull(activeSlide.value)?.transitionType ?: "none") }
         var expanded by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { state.showSlideTransition = false },

@@ -18,7 +18,7 @@ import kotlin.coroutines.resume
 
 internal fun CameraViewModel.nightExtFailedRecently(): Boolean {
     val at = ds.getString("night_ext_failed_at")?.toLongOrNull() ?: return false
-    return System.currentTimeMillis() - at < NIGHT_EXT_FAILURE_TTL_MS
+    return System.currentTimeMillis() - at < CameraViewModel.NIGHT_EXT_FAILURE_TTL_MS
 }
 
 internal fun CameraViewModel.recordNightExtensionFailure() {
@@ -97,12 +97,12 @@ fun CameraViewModel.onLuminance(avg: Float) {
     val beforeOff = _nightModeOverriddenOff.value
     Log.d("NightPreview", "onLuminance() avg=$avg lowLightBefore=$beforeLow overriddenOff=$beforeOff lowFrames=$lowLumaFrames highFrames=$highLumaFrames nightActive=${nightModeActive.value} photoActive=${_photoSessionActive.value} nightPreviewActive=${_nightPreviewActive.value} thread=${Thread.currentThread().name}")
     if (_lowLightDetected.value) {
-        if (avg > NIGHT_DISENGAGE_LUMA) {
+        if (avg > CameraViewModel.NIGHT_DISENGAGE_LUMA) {
             highLumaFrames++
             lowLumaFrames = 0
-            Log.d("NightPreview", "onLuminance() currently in low-light, avg $avg > disengage ${NIGHT_DISENGAGE_LUMA}, highFrames=$highLumaFrames/${NIGHT_DEBOUNCE_FRAMES}")
-            if (highLumaFrames >= NIGHT_DEBOUNCE_FRAMES) {
-                Log.d("NightPreview", "onLuminance() DISENGAGING night – high luma for $NIGHT_DEBOUNCE_FRAMES frames, lowLight=true->false")
+            Log.d("NightPreview", "onLuminance() currently in low-light, avg $avg > disengage ${CameraViewModel.NIGHT_DISENGAGE_LUMA}, highFrames=$highLumaFrames/${CameraViewModel.NIGHT_DEBOUNCE_FRAMES}")
+            if (highLumaFrames >= CameraViewModel.NIGHT_DEBOUNCE_FRAMES) {
+                Log.d("NightPreview", "onLuminance() DISENGAGING night – high luma for ${CameraViewModel.NIGHT_DEBOUNCE_FRAMES} frames, lowLight=true->false")
                 _lowLightDetected.value = false
                 _nightModeOverriddenOff.value = false
                 highLumaFrames = 0
@@ -113,12 +113,12 @@ fun CameraViewModel.onLuminance(avg: Float) {
             highLumaFrames = 0
         }
     } else {
-        if (avg < NIGHT_ENGAGE_LUMA) {
+        if (avg < CameraViewModel.NIGHT_ENGAGE_LUMA) {
             lowLumaFrames++
             highLumaFrames = 0
-            Log.d("NightPreview", "onLuminance() avg $avg < engage ${NIGHT_ENGAGE_LUMA}, lowFrames=$lowLumaFrames/${NIGHT_DEBOUNCE_FRAMES}")
-            if (lowLumaFrames >= NIGHT_DEBOUNCE_FRAMES) {
-                Log.d("NightPreview", "onLuminance() ENGAGING night – low luma for $NIGHT_DEBOUNCE_FRAMES frames, lowLight=false->true")
+            Log.d("NightPreview", "onLuminance() avg $avg < engage ${CameraViewModel.NIGHT_ENGAGE_LUMA}, lowFrames=$lowLumaFrames/${CameraViewModel.NIGHT_DEBOUNCE_FRAMES}")
+            if (lowLumaFrames >= CameraViewModel.NIGHT_DEBOUNCE_FRAMES) {
+                Log.d("NightPreview", "onLuminance() ENGAGING night – low luma for ${CameraViewModel.NIGHT_DEBOUNCE_FRAMES} frames, lowLight=false->true")
                 _lowLightDetected.value = true
                 lowLumaFrames = 0
                 Log.d("NightPreview", "onLuminance() after ENGAGE lowLight=${_lowLightDetected.value} nightActive=${nightModeActive.value} overriddenOff=${_nightModeOverriddenOff.value} – if extension available, useNightPreview should become true and rebind to setupNightPreviewSession()")

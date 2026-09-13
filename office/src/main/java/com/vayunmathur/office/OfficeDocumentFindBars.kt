@@ -25,6 +25,8 @@ import com.vayunmathur.library.ui.TextField
 import com.vayunmathur.library.ui.TextFieldDefaults
 import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.office.util.OfficeViewModel
+import com.vayunmathur.office.util.findMatchBlocks
+import com.vayunmathur.office.util.replaceInDocument
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -75,7 +77,7 @@ fun DocumentFindBars(
                         s.findMatches = matches
                         if (matches.isEmpty()) return
                         s.findIndex = ((s.findIndex + delta) % matches.size + matches.size) % matches.size
-                        scope.launch { listState.animateScrollToItem(matches[s.findIndex].coerceIn(0, document.content.size - 1)) }
+                        scope.launch { listState.animateScrollToItem(matches[s.findIndex].coerceIn(0, (document as? OdfDocument.TextDocument)?.content?.size?.minus(1) ?: 0)) }
                     }
                     val total = remember(s.searchQuery, s.matchCase, s.wholeWord, document) { viewModel.findMatchBlocks(s.searchQuery, s.matchCase, s.wholeWord).size }
                     TextButton(onClick = { jump(-1) }) { Text(stringResource(R.string.prev)) }

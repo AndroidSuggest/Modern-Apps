@@ -28,6 +28,9 @@ import com.vayunmathur.library.ui.TabbedPagerScaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.office.util.OfficeViewModel
+import com.vayunmathur.office.util.createNewPresentation
+import com.vayunmathur.office.util.createNewSpreadsheet
+import com.vayunmathur.office.util.createNewTextDocument
 
 /**
  * The two bottom-nav tabs, hosted in a swipeable pager (see [TabbedPagerScaffold]).

@@ -417,7 +417,6 @@ class LocationTrackingService : Service(), SensorEventListener {
         internal const val BATTERY_CHANNEL_ID = "battery_channel"
         internal const val ENTRY_EXIT_CHANNEL_ID = "entry_exit_channel"
         internal const val UWB_REQUEST_CHANNEL_ID = "uwb_request_channel"
-    companion object {
         private const val NOTIFICATION_ID = 101
         internal const val TAG_DIRECT_BOOT = "FF-DirectBoot"
         internal const val TAG_POWERED_OFF = "FF-PoweredOff"

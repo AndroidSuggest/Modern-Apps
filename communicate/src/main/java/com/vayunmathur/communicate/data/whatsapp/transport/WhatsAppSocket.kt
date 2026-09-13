@@ -6,6 +6,10 @@ import android.util.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppAuthData
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppDiag
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol
+import com.vayunmathur.communicate.data.whatsapp.buildFramedMessage
+import com.vayunmathur.communicate.data.whatsapp.buildKeepalive
+import com.vayunmathur.communicate.data.whatsapp.encodeNode
+import com.vayunmathur.communicate.data.whatsapp.verifyServerCert
 import com.vayunmathur.communicate.data.whatsapp.proto.WhatsAppHandshakeProto
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.incrementAndFetch

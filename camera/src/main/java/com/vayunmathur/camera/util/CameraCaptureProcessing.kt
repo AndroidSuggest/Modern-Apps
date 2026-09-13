@@ -93,7 +93,7 @@ internal fun CameraViewModel.writeCaptureExif(uri: Uri, sourceJpeg: ByteArray?, 
         app.contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
             val dest = ExifInterface(pfd.fileDescriptor)
             source?.let { src ->
-                EXIF_TAGS_TO_COPY.forEach { tag ->
+                CameraViewModel.EXIF_TAGS_TO_COPY.forEach { tag ->
                     src.getAttribute(tag)?.let { dest.setAttribute(tag, it) }
                 }
             }

@@ -175,5 +175,5 @@ internal suspend fun LocationTrackingService.seedDirectBootMirror() {
         globalSharingEnabled = sharingOut,
     )
     lastSeededMirror = signature
-    Log.i(TAG_DIRECT_BOOT, "mirror seeded: ${targets.size} target(s) sharing=$sharingOut tracking=$trackingEnabled")
+    Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "mirror seeded: ${targets.size} target(s) sharing=$sharingOut tracking=$trackingEnabled")
 }

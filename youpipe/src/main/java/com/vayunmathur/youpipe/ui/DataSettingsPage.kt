@@ -29,6 +29,10 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.YouPipeViewModel
+import com.vayunmathur.youpipe.util.exportSubscriptions
+import com.vayunmathur.youpipe.util.importNewPipe
+import com.vayunmathur.youpipe.util.importYouTubeTakeout
+import com.vayunmathur.youpipe.util.restoreSubscriptions
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

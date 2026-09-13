@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vayunmathur.library.ui.odf.ContinuousParagraphEditor
 import com.vayunmathur.library.ui.odf.OdfContentBlock
 import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.library.ui.odf.OdfImage
@@ -57,7 +59,7 @@ import com.vayunmathur.office.R
 
 // --- Text Document (continuous editor) ---
 
-private sealed class DocSegment {
+internal sealed class DocSegment {
     data class Paragraphs(val start: Int, val endInclusive: Int) : DocSegment()
     data class Block(val index: Int) : DocSegment()
 }

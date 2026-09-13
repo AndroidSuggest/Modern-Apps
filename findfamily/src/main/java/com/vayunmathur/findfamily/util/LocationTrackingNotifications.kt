@@ -3,6 +3,7 @@ package com.vayunmathur.findfamily.util
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Context
 import android.app.PendingIntent
 import android.content.Intent
 import com.vayunmathur.findfamily.MainActivity
@@ -13,7 +14,7 @@ import androidx.core.app.NotificationCompat
 internal fun LocationTrackingService.setupNotificationChannels() {
     // 1. Create the Channel (Required for API 26+)
     val channel = NotificationChannel(
-        CHANNEL_ID,
+        LocationTrackingService.CHANNEL_ID,
         getString(R.string.notification_channel_location_tracking_name),
         NotificationManager.IMPORTANCE_LOW // Low importance so it doesn't "pop up" or make noise
     ).apply {
@@ -22,7 +23,7 @@ internal fun LocationTrackingService.setupNotificationChannels() {
 
     // 2. Battery Alerts Channel (High Importance for visibility)
     val batteryChannel = NotificationChannel(
-        BATTERY_CHANNEL_ID,
+        LocationTrackingService.BATTERY_CHANNEL_ID,
         getString(R.string.notification_channel_battery_name),
         NotificationManager.IMPORTANCE_DEFAULT
     ).apply {
@@ -31,7 +32,7 @@ internal fun LocationTrackingService.setupNotificationChannels() {
 
     // 3. Entry/Exit Channel
     val arrivalChannel = NotificationChannel(
-        ENTRY_EXIT_CHANNEL_ID,
+        LocationTrackingService.ENTRY_EXIT_CHANNEL_ID,
         getString(R.string.notification_channel_entry_exit_name),
         NotificationManager.IMPORTANCE_DEFAULT
     ).apply {
@@ -40,7 +41,7 @@ internal fun LocationTrackingService.setupNotificationChannels() {
 
     // 4. UWB Find Nearby (UWB) Request Channel
     val uwbChannel = NotificationChannel(
-        UWB_REQUEST_CHANNEL_ID,
+        LocationTrackingService.UWB_REQUEST_CHANNEL_ID,
         getString(R.string.notification_channel_uwb_request_name),
         NotificationManager.IMPORTANCE_HIGH
     ).apply {
@@ -48,7 +49,7 @@ internal fun LocationTrackingService.setupNotificationChannels() {
     }
 
     // Register all channels
-    val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.createNotificationChannels(listOf(channel, batteryChannel, arrivalChannel, uwbChannel))
 }
 
@@ -61,7 +62,7 @@ internal fun LocationTrackingService.createNotification(): Notification {
     )
 
     // 3. Build the notification
-    return NotificationCompat.Builder(this, CHANNEL_ID)
+    return NotificationCompat.Builder(this, LocationTrackingService.CHANNEL_ID)
         .setContentTitle(getString(R.string.notification_tracking_title))
         .setContentText(getString(R.string.notification_tracking_text))
         .setSmallIcon(R.drawable.ic_launcher_foreground) // Ensure this exists in your res/drawable
@@ -72,12 +73,12 @@ internal fun LocationTrackingService.createNotification(): Notification {
 }
 
 internal fun LocationTrackingService.createNotificationWithCategory(title: String, message: String, category: String, userId: Long) {
-    val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     val channelId = when (category) {
-        "BATTERY_LOW" -> BATTERY_CHANNEL_ID
-        "ENTRY_EXIT" -> ENTRY_EXIT_CHANNEL_ID
-        else -> CHANNEL_ID
+        "BATTERY_LOW" -> LocationTrackingService.BATTERY_CHANNEL_ID
+        "ENTRY_EXIT" -> LocationTrackingService.ENTRY_EXIT_CHANNEL_ID
+        else -> LocationTrackingService.CHANNEL_ID
     }
 
     val notification = NotificationCompat.Builder(this, channelId)
@@ -97,7 +98,7 @@ internal fun LocationTrackingService.createNotificationWithCategory(title: Strin
  * so its sound, vibration and DND behaviour can be tuned independently in system settings.
  */
 internal fun LocationTrackingService.notifyEntryExit(user: User, message: String, arrival: Boolean) {
-    val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     FindFamilyNotificationChannels.ensureEntryExitChannels(this, user.id, user.name)
     val channelId = FindFamilyNotificationChannels.entryExitChannelId(user.id, arrival)
     val notification = NotificationCompat.Builder(this, channelId)
@@ -117,7 +118,7 @@ internal fun LocationTrackingService.notifyEntryExit(user: User, message: String
  * ranging screen for the requesting user.
  */
 internal fun LocationTrackingService.createUwbRequestNotification(senderName: String, senderId: Long) {
-    val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     val openIntent = Intent(this, MainActivity::class.java).apply {
         putExtra(MainActivity.EXTRA_UWB_PEER_ID, senderId)
         flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -126,7 +127,7 @@ internal fun LocationTrackingService.createUwbRequestNotification(senderName: St
         this, senderId.hashCode(), openIntent,
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
-    val n = NotificationCompat.Builder(this, UWB_REQUEST_CHANNEL_ID)
+    val n = NotificationCompat.Builder(this, LocationTrackingService.UWB_REQUEST_CHANNEL_ID)
         .setContentTitle(getString(R.string.notification_uwb_request_title))
         .setContentText(getString(R.string.notification_uwb_request_text, senderName))
         .setSmallIcon(R.drawable.ic_launcher_foreground)

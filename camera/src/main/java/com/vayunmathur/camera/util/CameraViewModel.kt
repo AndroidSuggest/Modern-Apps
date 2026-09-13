@@ -129,34 +129,35 @@ fun buildColorAdjustmentMatrix(warmth: Float, shadows: Float): ColorMatrix = Col
     )
 )
 
-class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
+class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     companion object {
+        // Companions are public so same-module extension files resolve these constants.
 
         // Once the vendor NIGHT extension fails to bind on this device, don't try again for this
         // long (persisted). Re-probes after it expires in case a system update fixes the extender.
-        internal const val NIGHT_EXT_FAILURE_TTL_MS = 7L * 24 * 60 * 60 * 1000
+        const val NIGHT_EXT_FAILURE_TTL_MS = 7L * 24 * 60 * 60 * 1000
 
         // Night-mode auto-detection tuning. Engage once average Y stays below ENGAGE for a few
         // frames; disengage once it climbs above DISENGAGE for a few frames. The gap between the
         // two thresholds is the hysteresis band that stops the moon button from flickering.
-        internal const val NIGHT_ENGAGE_LUMA = 40f
-        internal const val NIGHT_DISENGAGE_LUMA = 55f
-        internal const val NIGHT_DEBOUNCE_FRAMES = 4
+        const val NIGHT_ENGAGE_LUMA = 40f
+        const val NIGHT_DISENGAGE_LUMA = 55f
+        const val NIGHT_DEBOUNCE_FRAMES = 4
 
         // Target night exposure/ISO used when night mode fires on an Auto exposure stop. The
         // single-frame emulation (fallback) uses the long ~1/4s target; the multi-frame burst uses
         // a shorter per-frame exposure so each frame has less motion blur and the merge recovers SNR.
-        internal const val NIGHT_TARGET_EXPOSURE_NANOS = 250_000_000L // ~1/4s
-        internal const val NIGHT_BURST_PER_FRAME_NANOS = 100_000_000L // ~1/10s, in the 1/15–1/8s range
-        internal const val NIGHT_ISO_FRACTION = 0.75f
+        const val NIGHT_TARGET_EXPOSURE_NANOS = 250_000_000L // ~1/4s
+        const val NIGHT_BURST_PER_FRAME_NANOS = 100_000_000L // ~1/10s, in the 1/15–1/8s range
+        const val NIGHT_ISO_FRACTION = 0.75f
 
         /** Safety cap on frames captured during a single press-and-hold burst. */
-        internal const val BURST_MAX = 30
+        const val BURST_MAX = 30
 
         // Motion-Photo ring buffer: keep ~1.5s of analysis frames, capped by count to bound memory
         // (analysis frames can be high-res, so this count is deliberately conservative).
-        internal const val MOTION_WINDOW_NANOS = 1_500_000_000L
-        internal const val MOTION_MAX_FRAMES = 12
+        const val MOTION_WINDOW_NANOS = 1_500_000_000L
+        const val MOTION_MAX_FRAMES = 12
 
         val EXPOSURE_TIME_STOPS = listOf(
             ExposureTimeStop("Auto", null),
@@ -182,7 +183,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
          * are set separately (see writeCaptureExif); dimension tags are omitted so they aren't
          * left inconsistent with the re-encoded JPEG.
          */
-        internal val EXIF_TAGS_TO_COPY = listOf(
+        val EXIF_TAGS_TO_COPY = listOf(
             ExifInterface.TAG_DATETIME,
             ExifInterface.TAG_DATETIME_ORIGINAL,
             ExifInterface.TAG_DATETIME_DIGITIZED,
@@ -380,6 +381,9 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     val nightExtensionUsable = _nightExtensionUsable.asStateFlow()
 
     // Night-mode detection lives in CameraNightMode.kt as extensions.
+    // Debounce counters for the luminance hysteresis filter (accessed from those extensions).
+    @Volatile internal var lowLumaFrames = 0
+    @Volatile internal var highLumaFrames = 0
 
     // Preferred night detection: CameraX's getNightModeIndicator() (1.7.0-alpha02) — the OS/vendor
     // reports when the scene is dark enough that night mode is RECOMMENDED. We observe the bound
@@ -440,6 +444,10 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     internal val panoramaEngine = PanoramaEngine(app)
+
+    // Guards panorama stitching so a second stop request can't start a concurrent stitch.
+    // Written from CameraVideoRecording.kt's finishPanoramaSweep() extension.
+    @Volatile internal var isFinishingPano = false
 
     // Unified manual session state (all modes bind through one CameraXViewfinder).
     internal val _surfaceRequest = MutableStateFlow<SurfaceRequest?>(null)
@@ -514,7 +522,7 @@ class CameraViewModel(private val app: Application) : AndroidViewModel(app) {
 
     // Motion-Photo ring buffer: the last ~MOTION_WINDOW of analysis frames (RGB copies), fed by the
     // PhotoAnalyzer off the shared analysis stream and drained when a Motion Photo is captured.
-    internal class MotionFrame(val bitmap: Bitmap, val timestampNanos: Long, val rotationDegrees: Int)
+    class MotionFrame(val bitmap: Bitmap, val timestampNanos: Long, val rotationDegrees: Int)
     internal val motionFrames = ArrayDeque<MotionFrame>()
     internal val motionLock = Any()
 

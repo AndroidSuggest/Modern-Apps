@@ -9,8 +9,7 @@ import com.vayunmathur.findfamily.tracker.PoweredOffReporting
 import com.vayunmathur.findfamily.tracker.PoweredOffScanner
 import com.vayunmathur.findfamily.tracker.TrackerBeaconScanner
 import com.vayunmathur.findfamily.tracker.TrackerReporting
-import kotlinx.coroutines.collectLatest
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
 
@@ -93,14 +92,14 @@ internal fun LocationTrackingService.startPoweredOffScanner() {
                     PoweredOffScanner(this@startPoweredOffScanner).sightings().collect { sighting ->
                         val loc = lastKnownLocation
                         if (loc == null) {
-                            Log.i(TAG_POWERED_OFF, "sighting dropped: no location fix yet")
+                            Log.i(LocationTrackingService.TAG_POWERED_OFF, "sighting dropped: no location fix yet")
                             return@collect
                         }
                         // A sighting is only ever "the finder was near here". Reporting one
                         // from a 500m-accurate fix would add noise the owner cannot tell
                         // apart from a good one, so drop it rather than dilute the answer.
                         if (loc.accuracy > 100f) {
-                            Log.i(TAG_POWERED_OFF, "sighting dropped: accuracy ${loc.accuracy}m > 100m")
+                            Log.i(LocationTrackingService.TAG_POWERED_OFF, "sighting dropped: accuracy ${loc.accuracy}m > 100m")
                             return@collect
                         }
                         val lv = LocationValue(
@@ -114,9 +113,9 @@ internal fun LocationTrackingService.startPoweredOffScanner() {
                             0f,
                         )
                         runCatching { PoweredOffReporting.reportSighting(sighting, lv) }
-                            .onFailure { Log.w(TAG_POWERED_OFF, "reportSighting failed", it) }
+                            .onFailure { Log.w(LocationTrackingService.TAG_POWERED_OFF, "reportSighting failed", it) }
                     }
-                }.onFailure { Log.w(TAG_POWERED_OFF, "powered-off scan collect failed", it) }
+                }.onFailure { Log.w(LocationTrackingService.TAG_POWERED_OFF, "powered-off scan collect failed", it) }
             }
     }
 }
@@ -126,7 +125,7 @@ internal fun LocationTrackingService.startPoweredOffScanner() {
  * and decrypt any sightings and feed them through the normal incoming pipeline. Finding
  * nothing is the ordinary case and is not worth logging at anything above debug.
  *
- * Rate-limited to [POWERED_OFF_POLL_INTERVAL_MS] rather than running on the 30s heartbeat.
+ * Rate-limited to [LocationTrackingService.POWERED_OFF_POLL_INTERVAL_MS] rather than running on the 30s heartbeat.
  * A query carries one handle per armed slot — 258 of them, about 4KB — and an EID only
  * rotates every 1024s, so polling every 30s would send that 34 times before there could
  * possibly be a new handle to ask about.
@@ -134,7 +133,7 @@ internal fun LocationTrackingService.startPoweredOffScanner() {
 internal suspend fun LocationTrackingService.pollPoweredOffSightings() {
     val store = poweredOffKeys ?: return
     val now = System.currentTimeMillis()
-    if (now - lastPoweredOffPollMs < POWERED_OFF_POLL_INTERVAL_MS) return
+    if (now - lastPoweredOffPollMs < LocationTrackingService.POWERED_OFF_POLL_INTERVAL_MS) return
     lastPoweredOffPollMs = now
     val users = runCatching { repository.getAllUsers() }.getOrDefault(emptyList())
     val locs = ArrayList<LocationValue>()
@@ -144,7 +143,7 @@ internal suspend fun LocationTrackingService.pollPoweredOffSightings() {
             .getOrDefault(emptyList())
     }
     if (locs.isNotEmpty()) {
-        Log.i(TAG_POWERED_OFF, "retrieved ${locs.size} network sighting(s)")
+        Log.i(LocationTrackingService.TAG_POWERED_OFF, "retrieved ${locs.size} network sighting(s)")
         processIncomingLocations(locs)
     }
 }

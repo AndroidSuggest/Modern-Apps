@@ -214,7 +214,7 @@ internal suspend fun LocationTrackingService.acceptPoweredOffGrant(envelope: Uwb
     val ownerId = envelope.sender.toLong()
     if (ownerId == 0L || ownerId == Networking.userid) return
     if (repository.getUser(ownerId) == null) {
-        Log.w(TAG_POWERED_OFF, "recovery grant from unknown sender, ignored")
+        Log.w(LocationTrackingService.TAG_POWERED_OFF, "recovery grant from unknown sender, ignored")
         return
     }
     val decoded = runCatching {
@@ -234,13 +234,13 @@ internal suspend fun LocationTrackingService.acceptPoweredOffGrant(envelope: Uwb
         recoveryPrivate = recoveryPriv,
     )
     if (!Networking.verifyFrom(ownerId, signed, signature)) {
-        Log.w(TAG_POWERED_OFF, "recovery grant signature did not verify, ignored")
+        Log.w(LocationTrackingService.TAG_POWERED_OFF, "recovery grant signature did not verify, ignored")
         return
     }
     if (grant.epoch < store.epoch(ownerId)) {
-        Log.i(TAG_POWERED_OFF, "ignoring superseded recovery grant (epoch ${grant.epoch})")
+        Log.i(LocationTrackingService.TAG_POWERED_OFF, "ignoring superseded recovery grant (epoch ${grant.epoch})")
         return
     }
     store.save(ownerId, secret, recoveryPriv, grant.epoch)
-    Log.i(TAG_POWERED_OFF, "stored recovery keys for a peer (epoch ${grant.epoch})")
+    Log.i(LocationTrackingService.TAG_POWERED_OFF, "stored recovery keys for a peer (epoch ${grant.epoch})")
 }

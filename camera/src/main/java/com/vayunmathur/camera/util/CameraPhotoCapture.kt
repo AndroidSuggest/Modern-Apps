@@ -63,7 +63,7 @@ fun CameraViewModel.startBurst() {
     val ts = MediaStoreSaver.timestamp()
 
     fun shootNext(n: Int) {
-        if (!_burstActive.value || n > BURST_MAX) {
+        if (!_burstActive.value || n > CameraViewModel.BURST_MAX) {
             _burstActive.value = false
             return
         }
@@ -104,21 +104,26 @@ fun CameraViewModel.stopBurst() {
 /** Appends an analysis frame to the Motion-Photo ring buffer, trimming by age then count. */
 fun CameraViewModel.addMotionFrame(bitmap: Bitmap, timestampNanos: Long, rotationDegrees: Int) {
     synchronized(motionLock) {
-        motionFrames.addLast(MotionFrame(bitmap, timestampNanos, rotationDegrees))
-        val cutoff = timestampNanos - MOTION_WINDOW_NANOS
+        motionFrames.addLast(CameraViewModel.MotionFrame(bitmap, timestampNanos, rotationDegrees))
+        val cutoff = timestampNanos - CameraViewModel.MOTION_WINDOW_NANOS
         while (motionFrames.size > 1 && motionFrames.first().timestampNanos < cutoff) {
             motionFrames.removeFirst().bitmap.recycle()
         }
-        while (motionFrames.size > MOTION_MAX_FRAMES) {
+        while (motionFrames.size > CameraViewModel.MOTION_MAX_FRAMES) {
             motionFrames.removeFirst().bitmap.recycle()
         }
     }
 }
 
-internal fun CameraViewModel.drainMotionFrames(): List<MotionFrame> = synchronized(motionLock) {
+internal fun CameraViewModel.drainMotionFrames(): List<CameraViewModel.MotionFrame> = synchronized(motionLock) {
     val list = motionFrames.toList()
     motionFrames.clear()
     list
+}
+
+internal fun CameraViewModel.clearMotionFrames() = synchronized(motionLock) {
+    motionFrames.forEach { it.bitmap.recycle() }
+    motionFrames.clear()
 }
 
 /**
@@ -163,7 +168,7 @@ internal fun CameraViewModel.captureMotionPhoto() {
 
 internal fun CameraViewModel.assembleAndSaveMotionPhoto(
     jpegBytes: ByteArray,
-    frames: List<MotionFrame>,
+    frames: List<CameraViewModel.MotionFrame>,
     degrees: Int
 ): Uri? {
     val values = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")

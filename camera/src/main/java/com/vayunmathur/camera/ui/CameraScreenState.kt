@@ -1,0 +1,225 @@
+package com.vayunmathur.camera.ui
+
+import android.graphics.Bitmap
+import androidx.camera.core.CameraSelector
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.vayunmathur.camera.util.AspectRatioOption
+import com.vayunmathur.camera.util.CameraMode
+import com.vayunmathur.camera.util.CameraViewModel
+import com.vayunmathur.camera.util.FlashMode
+import com.vayunmathur.camera.util.TimerDuration
+
+/**
+ * All UI state read by [CameraScreen], collected from [CameraViewModel] flows in one
+ * place so the screen itself stays a thin layout. Also owns the two pieces of
+ * composition-local state (open settings pane, portrait mask bitmap, orientation).
+ *
+ * Collection happens in [rememberCameraScreenState] (a @Composable context); this class is a
+ * plain snapshot holder so the screen stays a thin layout.
+ */
+internal class CameraScreenState(
+    val cameraMode: CameraMode,
+    val lensFacing: Int,
+    val flashMode: FlashMode,
+    val torchEnabled: Boolean,
+    val isRecording: Boolean,
+    val recordingDuration: Long,
+    val timerCountdown: Int,
+    val qrResult: String?,
+    val aspectRatio: AspectRatioOption,
+    val zoomRatio: Float,
+    val mirrorFront: Boolean,
+    val timerDuration: TimerDuration,
+    val isCapturing: Boolean,
+    val burstActive: Boolean,
+    val burstCount: Int,
+    val focusLocked: Boolean,
+    val recordingPaused: Boolean,
+    val micMuted: Boolean,
+    val videoSnapshotSupported: Boolean,
+    val lastCaptureUri: android.net.Uri?,
+    val gridEnabled: Boolean,
+    val levelEnabled: Boolean,
+    val roll: Float,
+    val blurStrength: Float,
+    val exposureComp: Float,
+    val warmth: Float,
+    val shadows: Float,
+    val exposureTimeIndex: Int,
+    val manualIsoIndex: Int,
+    val isoStops: List<Int>,
+    val longExposureProgress: Float,
+    val longExposureRemaining: String,
+    val lowLightDetected: Boolean,
+    val nightModeActive: Boolean,
+    val extensionStrength: Int?,
+    val sloMoSupported: Boolean?,
+    val highSpeedActive: Boolean,
+    val photoSessionActive: Boolean,
+    val analysisStreamActive: Boolean,
+    val nightExtAvailable: Boolean,
+    val surfaceRequest: androidx.camera.core.SurfaceRequest?,
+    val availableZoomLevels: List<Pair<String, Float>>,
+    val galleryBitmap: Bitmap?,
+    val panoSweeping: Boolean,
+    val panoStitching: Boolean,
+    val panoDots: List<com.vayunmathur.camera.util.GuideDot>,
+    val panoCurrentAngle: Float,
+    val panoDirection: Int,
+    val panoPitch: Float,
+) {
+    var activeSetting by mutableStateOf<CameraSetting?>(null)
+    var maskBitmap by mutableStateOf<Bitmap?>(null)
+    var deviceRotation by mutableIntStateOf(0)
+
+    val isPhotoType get() = cameraMode in listOf(CameraMode.PHOTO, CameraMode.PORTRAIT, CameraMode.PANORAMA, CameraMode.PHOTOSPHERE)
+    val isSloMo get() = cameraMode == CameraMode.SLOW_MO
+    val isVideoType get() = cameraMode == CameraMode.VIDEO || cameraMode == CameraMode.TIMELAPSE || cameraMode == CameraMode.CINEMATIC
+    val isPanoType get() = cameraMode == CameraMode.PANORAMA || cameraMode == CameraMode.PHOTOSPHERE
+    val isPortrait get() = cameraMode == CameraMode.PORTRAIT
+    val sessionKind get() = when {
+        isSloMo -> SessionKind.HIGH_SPEED
+        isVideoType -> SessionKind.VIDEO
+        isPanoType -> SessionKind.PANORAMA
+        isPortrait -> SessionKind.PORTRAIT
+        else -> SessionKind.PHOTO
+    }
+
+    // Auto night: when getNightModeIndicator()/luminance reports a dark scene (nightModeActive) in
+    // PHOTO mode and the extension is usable, bind the vendor NIGHT extension preview.
+    val useNightPreview get() = sessionKind == SessionKind.PHOTO && cameraMode == CameraMode.PHOTO &&
+        nightModeActive && nightExtAvailable
+
+    val previewAspectRatio get() = when (aspectRatio) {
+        AspectRatioOption.RATIO_16_9 -> 9f / 16f
+        AspectRatioOption.RATIO_4_3 -> 3f / 4f
+        AspectRatioOption.RATIO_1_1 -> 1f
+    }
+
+    val mirrorPreview get() = lensFacing == CameraSelector.LENS_FACING_FRONT && !mirrorFront
+}
+
+@Composable
+internal fun rememberCameraScreenState(viewModel: CameraViewModel): CameraScreenState {
+    val cameraMode by viewModel.cameraMode.collectAsState()
+    val lensFacing by viewModel.lensFacing.collectAsState()
+    val flashMode by viewModel.flashMode.collectAsState()
+    val torchEnabled by viewModel.torchEnabled.collectAsState()
+    val isRecording by viewModel.isRecording.collectAsState()
+    val recordingDuration by viewModel.recordingDurationSec.collectAsState()
+    val timerCountdown by viewModel.timerCountdown.collectAsState()
+    val qrResult by viewModel.qrResult.collectAsState()
+    val aspectRatio by viewModel.aspectRatio.collectAsState()
+    val zoomRatio by viewModel.zoomRatio.collectAsState()
+    val mirrorFront by viewModel.mirrorFront.collectAsState()
+    val timerDuration by viewModel.timerDuration.collectAsState()
+    val isCapturing by viewModel.isCapturing.collectAsState()
+    val burstActive by viewModel.burstActive.collectAsState()
+    val burstCount by viewModel.burstCount.collectAsState()
+    val focusLocked by viewModel.focusLocked.collectAsState()
+    val recordingPaused by viewModel.recordingPaused.collectAsState()
+    val micMuted by viewModel.micMuted.collectAsState()
+    val videoSnapshotSupported by viewModel.videoSnapshotSupported.collectAsState()
+    val lastCaptureUri by viewModel.lastCaptureUri.collectAsState()
+    val gridEnabled by viewModel.gridEnabled.collectAsState()
+    val levelEnabled by viewModel.levelEnabled.collectAsState()
+    val roll by viewModel.roll.collectAsState()
+    val blurStrength by viewModel.blurStrength.collectAsState()
+    val exposureComp by viewModel.exposureCompensation.collectAsState()
+    val warmth by viewModel.warmth.collectAsState()
+    val shadows by viewModel.shadows.collectAsState()
+    val exposureTimeIndex by viewModel.exposureTimeIndex.collectAsState()
+    val manualIsoIndex by viewModel.manualIsoIndex.collectAsState()
+    val isoStops by viewModel.isoStops.collectAsState()
+    val longExposureProgress by viewModel.longExposureProgress.collectAsState()
+    val longExposureRemaining by viewModel.longExposureRemaining.collectAsState()
+    val lowLightDetected by viewModel.lowLightDetected.collectAsState()
+    val nightModeActive by viewModel.nightModeActive.collectAsState()
+    val extensionStrength by viewModel.extensionStrength.collectAsState()
+    val sloMoSupported by viewModel.sloMoSupported.collectAsState()
+    val highSpeedActive by viewModel.highSpeedActive.collectAsState()
+    val photoSessionActive by viewModel.photoSessionActive.collectAsState()
+    val analysisStreamActive by viewModel.analysisStreamActive.collectAsState()
+    val nightExtAvailable by viewModel.nightExtensionUsable.collectAsState()
+    val surfaceRequest by viewModel.surfaceRequest.collectAsState()
+    val availableZoomLevels by viewModel.availableZoomLevels.collectAsState()
+    val galleryBitmap by viewModel.galleryThumbnail.collectAsState()
+
+    val panoSweeping by viewModel.panoramaEngine.isSweeping.collectAsState()
+    val panoStitching by viewModel.panoramaEngine.isStitching.collectAsState()
+    val panoDots by viewModel.panoramaEngine.guideDots.collectAsState()
+    val panoCurrentAngle by viewModel.panoramaEngine.currentAngle.collectAsState()
+    val panoDirection by viewModel.panoramaEngine.sweepDirection.collectAsState()
+    val panoPitch by viewModel.panoramaEngine.currentPitch.collectAsState()
+
+    return remember(
+        cameraMode, lensFacing, flashMode, torchEnabled, isRecording, recordingDuration,
+        timerCountdown, qrResult, aspectRatio, zoomRatio, mirrorFront, timerDuration,
+        isCapturing, burstActive, burstCount, focusLocked, recordingPaused, micMuted,
+        videoSnapshotSupported, lastCaptureUri, gridEnabled, levelEnabled, roll,
+        blurStrength, exposureComp, warmth, shadows, exposureTimeIndex, manualIsoIndex,
+        isoStops, longExposureProgress, longExposureRemaining, lowLightDetected,
+        nightModeActive, extensionStrength, sloMoSupported, highSpeedActive,
+        photoSessionActive, analysisStreamActive, nightExtAvailable, surfaceRequest,
+        availableZoomLevels, galleryBitmap, panoSweeping, panoStitching, panoDots,
+        panoCurrentAngle, panoDirection, panoPitch,
+    ) {
+        CameraScreenState(
+            cameraMode = cameraMode,
+            lensFacing = lensFacing,
+            flashMode = flashMode,
+            torchEnabled = torchEnabled,
+            isRecording = isRecording,
+            recordingDuration = recordingDuration,
+            timerCountdown = timerCountdown,
+            qrResult = qrResult,
+            aspectRatio = aspectRatio,
+            zoomRatio = zoomRatio,
+            mirrorFront = mirrorFront,
+            timerDuration = timerDuration,
+            isCapturing = isCapturing,
+            burstActive = burstActive,
+            burstCount = burstCount,
+            focusLocked = focusLocked,
+            recordingPaused = recordingPaused,
+            micMuted = micMuted,
+            videoSnapshotSupported = videoSnapshotSupported,
+            lastCaptureUri = lastCaptureUri,
+            gridEnabled = gridEnabled,
+            levelEnabled = levelEnabled,
+            roll = roll,
+            blurStrength = blurStrength,
+            exposureComp = exposureComp,
+            warmth = warmth,
+            shadows = shadows,
+            exposureTimeIndex = exposureTimeIndex,
+            manualIsoIndex = manualIsoIndex,
+            isoStops = isoStops,
+            longExposureProgress = longExposureProgress,
+            longExposureRemaining = longExposureRemaining,
+            lowLightDetected = lowLightDetected,
+            nightModeActive = nightModeActive,
+            extensionStrength = extensionStrength,
+            sloMoSupported = sloMoSupported,
+            highSpeedActive = highSpeedActive,
+            photoSessionActive = photoSessionActive,
+            analysisStreamActive = analysisStreamActive,
+            nightExtAvailable = nightExtAvailable,
+            surfaceRequest = surfaceRequest,
+            availableZoomLevels = availableZoomLevels,
+            galleryBitmap = galleryBitmap,
+            panoSweeping = panoSweeping,
+            panoStitching = panoStitching,
+            panoDots = panoDots,
+            panoCurrentAngle = panoCurrentAngle,
+            panoDirection = panoDirection,
+            panoPitch = panoPitch,
+        )
+    }
+}

@@ -29,7 +29,7 @@ private const val TAG = "YouPipeViewModel"
 fun YouPipeViewModel.loadVideo(videoID: Long, downloadedVideo: DownloadedVideo?) {
     videoJob?.cancel()
     sponsorJob?.cancel()
-    _videoState.value = VideoState()
+    _videoState.value = YouPipeViewModel.VideoState()
 
     // Sponsor segments load in parallel.
     sponsorJob = viewModelScope.launch(Dispatchers.IO) {

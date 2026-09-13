@@ -25,6 +25,42 @@ import com.vayunmathur.office.ui.PresentationView
 import com.vayunmathur.office.ui.SpreadsheetView
 import com.vayunmathur.office.ui.TextDocumentView
 import com.vayunmathur.office.util.OfficeViewModel
+import com.vayunmathur.office.util.addColumn
+import com.vayunmathur.office.util.addRow
+import com.vayunmathur.office.util.addSheet
+import com.vayunmathur.office.util.addSlide
+import com.vayunmathur.office.util.addTextBoxToSlide
+import com.vayunmathur.office.util.deleteBlockBefore
+import com.vayunmathur.office.util.deleteColumn
+import com.vayunmathur.office.util.deleteRow
+import com.vayunmathur.office.util.deleteSheet
+import com.vayunmathur.office.util.deleteSheetElement
+import com.vayunmathur.office.util.deleteSlide
+import com.vayunmathur.office.util.deleteSlideElement
+import com.vayunmathur.office.util.duplicateSlide
+import com.vayunmathur.office.util.handleListBackspace
+import com.vayunmathur.office.util.handleListEnter
+import com.vayunmathur.office.util.mergeCells
+import com.vayunmathur.office.util.moveSlideDown
+import com.vayunmathur.office.util.moveSlideUp
+import com.vayunmathur.office.util.renameSheet
+import com.vayunmathur.office.util.setCellAlignment
+import com.vayunmathur.office.util.setCellBgColor
+import com.vayunmathur.office.util.setCellBold
+import com.vayunmathur.office.util.setCellColor
+import com.vayunmathur.office.util.setCellItalic
+import com.vayunmathur.office.util.setCheckboxChecked
+import com.vayunmathur.office.util.setLocalLocation
+import com.vayunmathur.office.util.setSheetElementBounds
+import com.vayunmathur.office.util.setSheetFreeze
+import com.vayunmathur.office.util.setSlideElementBounds
+import com.vayunmathur.office.util.sortRows
+import com.vayunmathur.office.util.unmergeCells
+import com.vayunmathur.office.util.updateCellText
+import com.vayunmathur.office.util.updateParagraphRun
+import com.vayunmathur.office.util.updateSheetElementText
+import com.vayunmathur.office.util.updateSlideElementText
+import com.vayunmathur.office.util.updateTextTableCell
 
 /**
  * Document pane shared by the single-pane body (compact) and the wide layout (Expanded).

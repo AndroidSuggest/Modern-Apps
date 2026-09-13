@@ -12,7 +12,14 @@ import com.vayunmathur.communicate.data.googlevoice.GvMessage
 import com.vayunmathur.communicate.data.googlevoice.GvThread
 import com.vayunmathur.communicate.data.signal.SignalClient
 import com.vayunmathur.communicate.data.signal.SignalDatabase
+import com.vayunmathur.communicate.data.signal.poll
+import com.vayunmathur.communicate.data.signal.sendContactCard
+import com.vayunmathur.communicate.data.signal.sendPollVote
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppClient
+import com.vayunmathur.communicate.data.whatsapp.deleteChat
+import com.vayunmathur.communicate.data.whatsapp.sendContact
+import com.vayunmathur.communicate.data.whatsapp.sendPoll
+import com.vayunmathur.communicate.data.whatsapp.sendPollVote
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

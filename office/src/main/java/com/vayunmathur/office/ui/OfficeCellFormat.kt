@@ -26,6 +26,19 @@ import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.odf.OdfNumberFormat
 import com.vayunmathur.office.R
 import com.vayunmathur.office.util.OfficeViewModel
+import com.vayunmathur.office.util.duplicateSlideElement
+import com.vayunmathur.office.util.fillDownToEnd
+import com.vayunmathur.office.util.reorderSlideElement
+import com.vayunmathur.office.util.setCellAlignment
+import com.vayunmathur.office.util.setCellBold
+import com.vayunmathur.office.util.setCellItalic
+import com.vayunmathur.office.util.setCellNumberFormat
+import com.vayunmathur.office.util.setSlideElementAlignment
+import com.vayunmathur.office.util.setSlideElementRotation
+import com.vayunmathur.office.util.toggleSlideElementBold
+import com.vayunmathur.office.util.toggleSlideElementItalic
+import com.vayunmathur.office.util.toggleSlideElementUnderline
+import com.vayunmathur.office.util.unmergeCells
 
 // --- Spreadsheet cell branch ---
 

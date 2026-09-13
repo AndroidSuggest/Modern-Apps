@@ -39,6 +39,9 @@ import com.vayunmathur.youpipe.rememberIsInPipMode
 import com.vayunmathur.youpipe.util.VideoDetailActions
 import com.vayunmathur.youpipe.util.VideoDetailUiState
 import com.vayunmathur.youpipe.util.YouPipeViewModel
+import com.vayunmathur.youpipe.util.applyDownloadedStreams
+import com.vayunmathur.youpipe.util.clearVideoError
+import com.vayunmathur.youpipe.util.loadVideo
 import com.vayunmathur.youpipe.util.DownloadManager
 import kotlin.time.Instant
 

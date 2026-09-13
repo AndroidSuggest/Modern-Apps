@@ -112,7 +112,7 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
  */
 internal fun CameraViewModel.captureNightPhotoCustom() {
     _isCapturing.value = true
-    val perFrame = computeNightExposure(NIGHT_BURST_PER_FRAME_NANOS)
+    val perFrame = computeNightExposure(CameraViewModel.NIGHT_BURST_PER_FRAME_NANOS)
     // The countdown overlay shows the total burst duration.
     startLongExposureCountdown(perFrame.nanos * NightCaptureEngine.NIGHT_BURST_COUNT)
 
@@ -282,7 +282,7 @@ internal data class NightExposure(val nanos: Long, val iso: Int?)
  * Falls back to [targetNanos] (and auto ISO) if the characteristics are unavailable.
  */
 @OptIn(ExperimentalCamera2Interop::class)
-internal fun CameraViewModel.computeNightExposure(targetNanos: Long = NIGHT_TARGET_EXPOSURE_NANOS): NightExposure {
+internal fun CameraViewModel.computeNightExposure(targetNanos: Long = CameraViewModel.NIGHT_TARGET_EXPOSURE_NANOS): NightExposure {
     val fallback = NightExposure(targetNanos, null)
     return try {
         val cam = boundCamera ?: return fallback
@@ -297,7 +297,7 @@ internal fun CameraViewModel.computeNightExposure(targetNanos: Long = NIGHT_TARG
             targetNanos.coerceIn(it.lower, it.upper)
         } ?: targetNanos
         val iso = isoRange?.let {
-            (it.lower + ((it.upper - it.lower) * NIGHT_ISO_FRACTION).roundToInt())
+            (it.lower + ((it.upper - it.lower) * CameraViewModel.NIGHT_ISO_FRACTION).roundToInt())
                 .coerceIn(it.lower, it.upper)
         }
         NightExposure(nanos, iso)

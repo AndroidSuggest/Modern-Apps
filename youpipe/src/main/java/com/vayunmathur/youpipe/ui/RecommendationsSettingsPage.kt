@@ -35,6 +35,17 @@ import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.RecSource
 import com.vayunmathur.youpipe.util.RecommendationPreset
 import com.vayunmathur.youpipe.util.YouPipeViewModel
+import com.vayunmathur.youpipe.util.resetAlgorithm
+import com.vayunmathur.youpipe.util.setDiscoveryFamiliar
+import com.vayunmathur.youpipe.util.setFocusedDiverse
+import com.vayunmathur.youpipe.util.setFreshEvergreen
+import com.vayunmathur.youpipe.util.setHideLive
+import com.vayunmathur.youpipe.util.setHidePaid
+import com.vayunmathur.youpipe.util.setHideShorts
+import com.vayunmathur.youpipe.util.setMaxDuration
+import com.vayunmathur.youpipe.util.setMinDuration
+import com.vayunmathur.youpipe.util.setPreset
+import com.vayunmathur.youpipe.util.toggleSource
 
 private val SOURCE_TOGGLES = listOf(
     RecSource.RELATED to R.string.label_source_related,

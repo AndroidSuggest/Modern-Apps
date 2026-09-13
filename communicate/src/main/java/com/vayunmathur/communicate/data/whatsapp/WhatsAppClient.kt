@@ -10,6 +10,9 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.util.Log
 import com.vayunmathur.communicate.data.whatsapp.e2e.WhatsAppE2E
+import com.vayunmathur.communicate.data.whatsapp.buildMediaConnQuery
+import com.vayunmathur.communicate.data.whatsapp.buildMexQuery
+import com.vayunmathur.communicate.data.whatsapp.encodeNode
 import com.vayunmathur.communicate.data.whatsapp.transport.WhatsAppSocket
 import com.vayunmathur.communicate.data.whatsapp.call.WhatsAppCallManager
 import kotlinx.coroutines.CompletableDeferred

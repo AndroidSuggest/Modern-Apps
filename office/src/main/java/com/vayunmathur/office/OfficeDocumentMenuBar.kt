@@ -27,7 +27,16 @@ import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.odf.OdfDocument
+import com.vayunmathur.office.ui.extractHeadings
 import com.vayunmathur.office.util.OfficeViewModel
+import com.vayunmathur.office.util.save
+import com.vayunmathur.office.util.needsSaveAs
+import com.vayunmathur.office.util.exportAsPlainText
+import com.vayunmathur.office.util.fieldDisplayValue
+import com.vayunmathur.office.util.insertFieldInRun
+import com.vayunmathur.office.util.insertHorizontalLine
+import com.vayunmathur.office.util.insertPageBreak
+import com.vayunmathur.office.util.insertTableOfContents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

@@ -1,5 +1,6 @@
 package com.vayunmathur.communicate.data.signal
 
+import android.util.Base64 as AndroidBase64
 import android.util.Log
 import com.vayunmathur.communicate.data.signal.transport.SignalPayload
 import org.signal.libsignal.protocol.message.DecryptionErrorMessage
@@ -359,8 +360,8 @@ private suspend fun SignalClient.sendRetryReceipt(env: SignalProtocol.SignalEnve
             timestamp = System.currentTimeMillis(),
             urgent = false,
         )
-        when (val outcome = putMessages(sender, json, accessKey = null)) {
-            is SendOutcome.Success -> Log.i(TAG, "sent a retry receipt to $sender:${env.sourceDevice}")
+    when (val outcome = putMessages(sender, json, accessKey = null)) {
+            is SignalClient.SendOutcome.Success -> Log.i(TAG, "sent a retry receipt to $sender:${env.sourceDevice}")
             else -> Log.w(TAG, "could not send a retry receipt to $sender: $outcome")
         }
     } catch (t: Throwable) {

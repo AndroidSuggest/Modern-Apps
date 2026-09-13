@@ -196,7 +196,7 @@ internal suspend fun YouPipeViewModel.gatherCandidates(
 internal suspend fun YouPipeViewModel.cachedTrending(): List<VideoInfo> {
     val now = Clock.System.now()
     trendingCache?.let { (cachedAt, list) ->
-        if (now - cachedAt < TRENDING_TTL) return list
+        if (now - cachedAt < YouPipeViewModel.TRENDING_TTL) return list
     }
     val fresh = getTrendingVideos()
     trendingCache = now to fresh

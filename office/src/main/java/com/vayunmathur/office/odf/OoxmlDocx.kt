@@ -749,7 +749,7 @@ internal object OoxmlDocx {
         }
     }
 
-    private fun symChar(
+    private fun symChar(code: String?): String {
         val v = code?.removePrefix("F0")?.toIntOrNull(16) ?: code?.toIntOrNull(16) ?: return ""
         // Common Wingdings/Symbol mappings; fall back to the raw code point.
         return when (v) {

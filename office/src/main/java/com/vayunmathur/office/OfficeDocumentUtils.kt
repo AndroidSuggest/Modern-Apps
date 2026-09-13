@@ -30,7 +30,7 @@ import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.TextField
 import com.vayunmathur.library.ui.odf.OdfContentBlock
 import com.vayunmathur.library.ui.odf.OdfDocument
-import com.vayunmathur.library.ui.odf.OdfMath
+import com.vayunmathur.office.odf.OdfMath
 import com.vayunmathur.library.ui.odf.OdfMetadata
 import com.vayunmathur.library.ui.odf.OdfSlideElement
 import com.vayunmathur.library.ui.odf.ParagraphStyle

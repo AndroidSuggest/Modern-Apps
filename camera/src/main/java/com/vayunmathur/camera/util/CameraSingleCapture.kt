@@ -33,7 +33,7 @@ internal fun CameraViewModel.captureSinglePhoto() {
         contentValues
     ).setMetadata(metadata).build()
 
-    val stop = EXPOSURE_TIME_STOPS[_exposureTimeIndex.value]
+    val stop = CameraViewModel.EXPOSURE_TIME_STOPS[_exposureTimeIndex.value]
     // Manual shutter/ISO are already applied live via applyManualControls(); the only transient
     // per-capture override here is the night-mode emulation (fully-auto exposure + night active).
     // Skip it when the vendor NIGHT extension preview is bound: that session runs its own

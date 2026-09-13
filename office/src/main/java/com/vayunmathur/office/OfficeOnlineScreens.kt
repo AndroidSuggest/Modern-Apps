@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
@@ -53,6 +54,12 @@ import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.OfflineBanner
 import com.vayunmathur.library.util.rememberIsOnline
 import com.vayunmathur.office.util.OfficeViewModel
+import com.vayunmathur.office.util.approveJoinRequest
+import com.vayunmathur.office.util.denyRequest
+import com.vayunmathur.office.util.enableOnlineSharing
+import com.vayunmathur.office.util.initSync
+import com.vayunmathur.office.util.refreshOnline
+import com.vayunmathur.office.util.shareLinkFor
 import kotlinx.coroutines.launch
 
 /** Initializes online sync once when the Online tab first appears. */
@@ -86,18 +93,6 @@ private fun OnlineDisabledScreen(onEnable: () -> Unit) {
             Button(onClick = onEnable, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.enable_online_sharing_1)) }
         }
     }
-}
-
-/** Prompts the user to opt into online sharing before the first share (which generates keys + id). */
-@Composable
-fun EnableOnlineDialog(onEnable: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.enable_online_sharing)) },
-        text = { Text(stringResource(R.string.sharing_online_generates_your_encryption)) },
-        confirmButton = { TextButton(onClick = onEnable) { Text(stringResource(R.string.enable)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) } }
-    )
 }
 
 /** Dialog to copy the current document into the online folder and share it with a device id. */

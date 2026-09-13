@@ -132,6 +132,21 @@ import com.vayunmathur.office.odf.*
 import com.vayunmathur.library.ui.odf.*
 import com.vayunmathur.office.ui.*
 import com.vayunmathur.office.util.OfficeViewModel
+import com.vayunmathur.office.util.addShapeToSheet
+import com.vayunmathur.office.util.addShapeToSlide
+import com.vayunmathur.office.util.deleteSlideElement
+import com.vayunmathur.office.util.initSync
+import com.vayunmathur.office.util.clearDocument
+import com.vayunmathur.office.util.loadDocument
+import com.vayunmathur.office.util.needsSaveAs
+import com.vayunmathur.office.util.save
+import com.vayunmathur.office.util.insertImage
+import com.vayunmathur.office.util.insertImageIntoSheet
+import com.vayunmathur.office.util.insertImageIntoSlide
+import com.vayunmathur.office.util.openOnlineDocument
+import com.vayunmathur.office.util.requestToJoin
+import com.vayunmathur.office.util.runParagraphIndexAt
+import com.vayunmathur.office.util.setLocalCaret
 import kotlinx.coroutines.launch
 
 import com.vayunmathur.library.ui.appBarScrollBehavior
@@ -250,7 +265,7 @@ class MainActivity : ComponentActivity() {
                 if (startedWithIntent) finish()
                 else {
                     documentUri = null
-                    viewModel.clear()
+                    viewModel.clearDocument()
                     if (backStack.backStack.size > 1) backStack.pop()
                 }
             }

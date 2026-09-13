@@ -1,5 +1,7 @@
 package com.vayunmathur.office.odf
 
+import com.vayunmathur.library.ui.odf.OdfBorders
+import com.vayunmathur.library.ui.odf.OdfTabStop
 import org.xmlpull.v1.XmlPullParser
 
 /**

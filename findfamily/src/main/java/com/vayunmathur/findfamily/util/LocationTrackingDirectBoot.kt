@@ -30,7 +30,7 @@ internal fun LocationTrackingService.startDirectBootTracking() {
         registerReceiver(
             unlockReceiver,
             IntentFilter(Intent.ACTION_USER_UNLOCKED),
-            RECEIVER_NOT_EXPORTED,
+            Context.RECEIVER_NOT_EXPORTED,
         )
         unlockReceiverRegistered = true
     }
@@ -39,15 +39,15 @@ internal fun LocationTrackingService.startDirectBootTracking() {
         // Expected on the first boot after this ships, and after a factory reset: there is
         // nothing to publish with yet. Seeding happens below once the user unlocks.
         if (!DirectBootStore.isSeeded(ctx)) {
-            Log.i(TAG_DIRECT_BOOT, "no device-protected mirror yet; idle until first unlock")
+            Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "no device-protected mirror yet; idle until first unlock")
             return@launch
         }
         if (!DirectBootStore.isTrackingEnabled(ctx)) {
-            Log.i(TAG_DIRECT_BOOT, "tracking switched off by the user; staying idle")
+            Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "tracking switched off by the user; staying idle")
             return@launch
         }
         if (!Networking.initDirectBoot(DirectBootStore.store(ctx))) {
-            Log.w(TAG_DIRECT_BOOT, "identity unavailable from the mirror; staying idle")
+            Log.w(LocationTrackingService.TAG_DIRECT_BOOT, "identity unavailable from the mirror; staying idle")
             return@launch
         }
 
@@ -64,7 +64,7 @@ internal fun LocationTrackingService.startDirectBootTracking() {
         val sharing = DirectBootStore.isGlobalSharingEnabled(ctx)
         val targets = if (sharing) DirectBootStore.roster(ctx) else emptyList()
         publishRoster = targets
-        Log.i(TAG_DIRECT_BOOT, "running pre-unlock, sharing=$sharing targets=${targets.size}")
+        Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "running pre-unlock, sharing=$sharing targets=${targets.size}")
         while (isActive) {
             publishDirectBoot(targets)
             delay(30.seconds)
@@ -75,7 +75,7 @@ internal fun LocationTrackingService.startDirectBootTracking() {
 /** The pre-unlock equivalent of [syncHeartbeat]: publish only, no database, no enrichment. */
 internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<DirectBootStore.Target>) {
     val location = lastKnownLocation ?: run {
-        Log.d(TAG_DIRECT_BOOT, "no fix yet")
+        Log.d(LocationTrackingService.TAG_DIRECT_BOOT, "no fix yet")
         return
     }
     if (targets.isEmpty()) return
@@ -90,21 +90,21 @@ internal suspend fun LocationTrackingService.publishDirectBoot(targets: List<Dir
         Clock.System.now(),
         battery,
     )
-    Log.d(TAG_DIRECT_BOOT, "publishing ${location.latitude},${location.longitude} acc=${location.accuracy} to ${targets.size} peer(s)")
+    Log.d(LocationTrackingService.TAG_DIRECT_BOOT, "publishing ${location.latitude},${location.longitude} acc=${location.accuracy} to ${targets.size} peer(s)")
     targets.forEach {
         try {
             Networking.publishLocation(lv, it.id, it.bundle)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG_DIRECT_BOOT, "publish to ${it.id.toULong()} failed", e)
+            Log.w(LocationTrackingService.TAG_DIRECT_BOOT, "publish to ${it.id.toULong()} failed", e)
         }
     }
 }
 
 internal fun LocationTrackingService.onUserUnlocked() {
     serviceScope.launch {
-        Log.i(TAG_DIRECT_BOOT, "user unlocked; handing over to the normal path")
+        Log.i(LocationTrackingService.TAG_DIRECT_BOOT, "user unlocked; handing over to the normal path")
         directBootJob?.cancelAndJoin()
         directBootJob = null
         try {
@@ -116,7 +116,7 @@ internal fun LocationTrackingService.onUserUnlocked() {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG_DIRECT_BOOT, "handover failed", e)
+            Log.w(LocationTrackingService.TAG_DIRECT_BOOT, "handover failed", e)
         }
         startTracking()
     }

@@ -127,16 +127,13 @@ fun ChannelPage(
             } else {
                 LazyColumn {
                     items(videos, { it.videoID }) {
-interface ItemInfo
-@Serializable
-data class ChannelInfo(val name: String, val channelID: String, val subscribers: Long, val videos: Int, val avatar: String): ItemInfo {
-    fun toSubscription(): Subscription {
-        return Subscription(name = name, channelID = channelID, avatarURL = avatar)
+                        VideoItem(backStack, youPipeViewModel, it, false)
+                    }
+                }
+            }
+        }
     }
 }
-
-@Serializable
-data class VideoInfo(val name: String, val videoID: Long, val duration: Long, val views: Long, val uploadDate: Instant, val thumbnailURL: String, val author: String, val isPaid: Boolean = false): ItemInfo
 
 /**
  * The channel's identity block, and the far end of the morph that starts at a subscription row.

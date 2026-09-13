@@ -27,6 +27,7 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Slider
 import com.vayunmathur.library.ui.SliderDefaults
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.youpipe.util.SponsorSegment
 
 /**
  * The seek row pinned to the bottom of the controls overlay: elapsed/total times,

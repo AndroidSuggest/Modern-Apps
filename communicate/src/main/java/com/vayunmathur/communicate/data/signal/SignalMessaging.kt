@@ -1,7 +1,7 @@
 package com.vayunmathur.communicate.data.signal
 
 import android.util.Log
-import com.vayunmathur.communicate.data.signal.transport.SignalAttachmentCipher
+import com.vayunmathur.communicate.data.signal.SignalAttachmentCipher
 import com.vayunmathur.communicate.data.signal.transport.SignalAttachmentUpload
 import com.vayunmathur.communicate.data.signal.transport.SignalPayload
 import com.vayunmathur.library.network.NetworkClient

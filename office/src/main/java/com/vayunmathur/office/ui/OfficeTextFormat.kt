@@ -35,6 +35,33 @@ import com.vayunmathur.library.ui.odf.OdfDocument
 import com.vayunmathur.library.ui.odf.ParagraphStyle
 import com.vayunmathur.office.R
 import com.vayunmathur.office.util.OfficeViewModel
+import com.vayunmathur.office.util.applyRunSpanStyle
+import com.vayunmathur.office.util.changeListLevel
+import com.vayunmathur.office.util.clearRunFormatting
+import com.vayunmathur.office.util.deleteParagraph
+import com.vayunmathur.office.util.duplicateParagraph
+import com.vayunmathur.office.util.indentParagraph
+import com.vayunmathur.office.util.linkAt
+import com.vayunmathur.office.util.mergeTextTableCells
+import com.vayunmathur.office.util.moveParagraphDown
+import com.vayunmathur.office.util.moveParagraphUp
+import com.vayunmathur.office.util.mutateRunParagraphs
+import com.vayunmathur.office.util.outdentParagraph
+import com.vayunmathur.office.util.removeLinkInRun
+import com.vayunmathur.office.util.restartNumbering
+import com.vayunmathur.office.util.runParagraphIndexAt
+import com.vayunmathur.office.util.runRangeHasFormat
+import com.vayunmathur.office.util.runSelectedText
+import com.vayunmathur.office.util.setLink
+import com.vayunmathur.office.util.setTextTableCellSpanFormat
+import com.vayunmathur.office.util.textTableAddColumn
+import com.vayunmathur.office.util.textTableAddRow
+import com.vayunmathur.office.util.textTableDeleteColumn
+import com.vayunmathur.office.util.textTableDeleteRow
+import com.vayunmathur.office.util.toggleCheckbox
+import com.vayunmathur.office.util.toggleListItem
+import com.vayunmathur.office.util.toggleNumberedList
+import com.vayunmathur.office.util.unmergeTextTableCells
 import androidx.compose.ui.res.stringResource
 
 // --- Text document branch (ported from QuickFormatBar) ---

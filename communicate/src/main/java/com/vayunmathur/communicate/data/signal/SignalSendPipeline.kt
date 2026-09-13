@@ -288,9 +288,9 @@ private suspend fun SignalClient.sendEncryptedTo(
 
         val body = SignalPayload.buildPutMessagesBody(aci, messages, timestamp, urgent = urgent)
         when (val outcome = putMessages(aci, body, sealedSender?.accessKey)) {
-            is SendOutcome.Success -> return true
-            is SendOutcome.Failed -> return false
-            is SendOutcome.DeviceSetChanged -> {
+            is SignalClient.SendOutcome.Success -> return true
+            is SignalClient.SendOutcome.Failed -> return false
+            is SignalClient.SendOutcome.DeviceSetChanged -> {
                 if (!reconcileDevices(e, aci, outcome.status, outcome.body)) return false
                 Log.i(TAG, "device set for $aci changed (${outcome.status}), retrying send")
             }
@@ -304,7 +304,7 @@ private suspend fun SignalClient.sendEncryptedTo(
  * The certificate and access key needed to send sealed to [aci], or null when either is missing and
  * the send must be identified instead.
  */
-private suspend fun SignalClient.sealedSenderFor(aci: String): SealedSenderAccess? {
+private suspend fun SignalClient.sealedSenderFor(aci: String): SignalClient.SealedSenderAccess? {
     val database = db ?: return null
     val accessKey = SignalSealedSender.accessKeyFor(database, aci) ?: return null
     val certificate = SignalSealedSender.senderCertificate(
@@ -312,10 +312,10 @@ private suspend fun SignalClient.sealedSenderFor(aci: String): SealedSenderAcces
         authHeader = basicAuthHeader(),
         sslSocketFactory = signalTls(),
     ) ?: return null
-    return SealedSenderAccess(certificate, accessKey)
+    return SignalClient.SealedSenderAccess(certificate, accessKey)
 }
 
-internal suspend fun SignalClient.putMessages(aci: String, jsonBody: ByteArray, accessKey: ByteArray?): SendOutcome {
+internal suspend fun SignalClient.putMessages(aci: String, jsonBody: ByteArray, accessKey: ByteArray?): SignalClient.SendOutcome {
     // Sealed sends go over the credential-free socket. A 401 means the access key was refused, so
     // retry over the authenticated socket with the same body — the recipient still receives a sealed
     // envelope, which official clients expect on an identified channel (SignalServiceCipher logs
@@ -323,7 +323,7 @@ internal suspend fun SignalClient.putMessages(aci: String, jsonBody: ByteArray, 
     // alternative is not delivering at all.
     if (accessKey != null) {
         val outcome = putMessagesOverSocket(unauthSocket, aci, jsonBody, accessKey)
-        if (outcome != null && !(outcome is SendOutcome.Failed && outcome.status == 401)) return outcome
+        if (outcome != null && !(outcome is SignalClient.SendOutcome.Failed && outcome.status == 401)) return outcome
         if (outcome != null) Log.i(TAG, "sealed send to $aci refused with 401, retrying authenticated")
     }
     val identified = putMessagesOverSocket(socket, aci, jsonBody, accessKey = null)
@@ -337,7 +337,7 @@ private suspend fun SignalClient.putMessagesOverSocket(
     aci: String,
     jsonBody: ByteArray,
     accessKey: ByteArray?,
-): SendOutcome? {
+): SignalClient.SendOutcome? {
     if (sock == null) return null
     val headers = buildList {
         add("content-type:application/json")
@@ -350,17 +350,17 @@ private suspend fun SignalClient.putMessagesOverSocket(
     } catch (_: Exception) { null } ?: return null
 
     return when {
-        result.isSuccess -> SendOutcome.Success
-        result.status == 409 || result.status == 410 -> SendOutcome.DeviceSetChanged(result.status, result.body)
+        result.isSuccess -> SignalClient.SendOutcome.Success
+        result.status == 409 || result.status == 410 -> SignalClient.SendOutcome.DeviceSetChanged(result.status, result.body)
         else -> {
             Log.w(TAG, "PUT messages to $aci rejected: ${result.status} ${result.message}")
-            SendOutcome.Failed(result.status)
+            SignalClient.SendOutcome.Failed(result.status)
         }
     }
 }
 
 /** Fallback for when neither socket is connected. Authenticated transport, whatever the body holds. */
-private suspend fun SignalClient.putMessagesOverRest(aci: String, jsonBody: ByteArray): SendOutcome = try {
+private suspend fun SignalClient.putMessagesOverRest(aci: String, jsonBody: ByteArray): SignalClient.SendOutcome = try {
     val headers = mapOf(
         "Authorization" to "Basic ${basicAuthHeader()}",
         "Content-Type" to "application/json",
@@ -373,14 +373,14 @@ private suspend fun SignalClient.putMessagesOverRest(aci: String, jsonBody: Byte
         sslSocketFactory = signalTls(),
     )
     when {
-        resp.isSuccess -> SendOutcome.Success
-        resp.status == 409 || resp.status == 410 -> SendOutcome.DeviceSetChanged(resp.status, resp.bytes)
+        resp.isSuccess -> SignalClient.SendOutcome.Success
+        resp.status == 409 || resp.status == 410 -> SignalClient.SendOutcome.DeviceSetChanged(resp.status, resp.bytes)
         else -> {
             Log.w(TAG, "PUT messages to $aci rejected: ${resp.status} ${resp.statusMessage}")
-            SendOutcome.Failed(resp.status)
+            SignalClient.SendOutcome.Failed(resp.status)
         }
     }
-} catch (_: Exception) { SendOutcome.Failed(0) }
+} catch (_: Exception) { SignalClient.SendOutcome.Failed(0) }
 
 /**
  * Bring our device set for [aci] back in line with the server's. Returns whether anything actually

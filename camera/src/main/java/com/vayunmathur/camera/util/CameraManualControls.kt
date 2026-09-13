@@ -4,7 +4,7 @@ import android.util.Log
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 
 fun CameraViewModel.setExposureTimeIndex(index: Int) {
-    _exposureTimeIndex.value = index.coerceIn(0, EXPOSURE_TIME_STOPS.lastIndex)
+    _exposureTimeIndex.value = index.coerceIn(0, CameraViewModel.EXPOSURE_TIME_STOPS.lastIndex)
     applyManualControls()
 }
 
@@ -45,7 +45,7 @@ fun CameraViewModel.applyManualControls() {
 
     // Manual exposure / ISO with linkage: if either is manual, lock AE off and set both,
     // seeding the un-set one from the last auto-converged value (or a sensible default).
-    val manualShutter = EXPOSURE_TIME_STOPS[_exposureTimeIndex.value].nanos
+    val manualShutter = CameraViewModel.EXPOSURE_TIME_STOPS[_exposureTimeIndex.value].nanos
     val manualIso = manualIso()
     if (manualShutter != null || manualIso != null) {
         val exposure = manualShutter ?: lastAeExposureNanos ?: 16_666_667L // ~1/60s

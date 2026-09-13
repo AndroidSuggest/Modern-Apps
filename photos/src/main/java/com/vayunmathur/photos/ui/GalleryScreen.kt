@@ -314,7 +314,7 @@ fun GalleryScreen(
     }
 }
 
-private fun Modifier.pinchToZoomColumns(getColumnCount: () -> Float, setColumnCount: (Float) -> Unit): Modifier =
+internal fun Modifier.pinchToZoomColumns(getColumnCount: () -> Float, setColumnCount: (Float) -> Unit): Modifier =
     pointerInput(Unit) {
         awaitEachGesture {
             while (true) {

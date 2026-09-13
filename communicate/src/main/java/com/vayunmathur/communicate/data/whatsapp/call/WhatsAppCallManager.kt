@@ -3,6 +3,8 @@ package com.vayunmathur.communicate.data.whatsapp.call
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppProtocol
+import com.vayunmathur.communicate.data.whatsapp.padMessage
+import com.vayunmathur.communicate.data.whatsapp.unpadMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

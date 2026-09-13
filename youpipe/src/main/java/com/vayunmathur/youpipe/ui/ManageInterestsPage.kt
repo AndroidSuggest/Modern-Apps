@@ -20,7 +20,11 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.Route
 import com.vayunmathur.youpipe.util.YouPipeViewModel
+import com.vayunmathur.youpipe.util.clearChannelPreference
 import com.vayunmathur.youpipe.util.decodeHtml
+import com.vayunmathur.youpipe.util.pinChannel
+import com.vayunmathur.youpipe.util.removeInterest
+import com.vayunmathur.youpipe.util.unmuteKeyword
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

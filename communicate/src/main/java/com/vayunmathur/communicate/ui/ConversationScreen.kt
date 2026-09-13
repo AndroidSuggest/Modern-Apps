@@ -23,6 +23,11 @@ import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.LineChoice
 import com.vayunmathur.communicate.data.SmsMessage
 import com.vayunmathur.communicate.data.SmsThread
+import com.vayunmathur.communicate.data.canSendPoll
+import com.vayunmathur.communicate.data.canShareContact
+import com.vayunmathur.communicate.data.sendPoll
+import com.vayunmathur.communicate.data.shareContact
+import com.vayunmathur.communicate.data.updateGoogleVoiceThread
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.AppMessages

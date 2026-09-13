@@ -48,6 +48,11 @@ import com.vayunmathur.youpipe.util.SearchResultRow
 import com.vayunmathur.youpipe.util.SearchUiState
 import com.vayunmathur.youpipe.util.VideoRowState
 import com.vayunmathur.youpipe.util.YouPipeViewModel
+import com.vayunmathur.youpipe.util.blockChannel
+import com.vayunmathur.youpipe.util.boostChannel
+import com.vayunmathur.youpipe.util.loadRecommendations
+import com.vayunmathur.youpipe.util.pinChannel
+import com.vayunmathur.youpipe.util.removeInterest
 
 /**
  * Home: the recommendation feed, with search living in the top app bar.

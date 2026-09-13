@@ -26,10 +26,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.camera.R
-import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.camera.util.AudioInputSource
+import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.camera.util.CodecSupport
 import com.vayunmathur.camera.util.VideoCodec
+import com.vayunmathur.camera.util.setAudioInputSource
+import com.vayunmathur.camera.util.setLocationEnabled
+import com.vayunmathur.camera.util.setMirrorFront
+import com.vayunmathur.camera.util.setVideoCodec
+import com.vayunmathur.camera.util.updateLocation
 import com.vayunmathur.library.ui.IconArrowDropDown
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.OutlinedButton

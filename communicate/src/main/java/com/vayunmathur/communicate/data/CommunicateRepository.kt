@@ -29,12 +29,31 @@ import com.vayunmathur.communicate.data.signal.SignalDatabase
 import com.vayunmathur.communicate.data.signal.SignalFeature
 import com.vayunmathur.communicate.data.signal.SignalLineSession
 import com.vayunmathur.communicate.data.signal.SignalServiceData
+import com.vayunmathur.communicate.data.signal.acceptIdentityChange
+import com.vayunmathur.communicate.data.signal.createGroup
+import com.vayunmathur.communicate.data.signal.editMessage
+import com.vayunmathur.communicate.data.signal.pendingIdentityChange
+import com.vayunmathur.communicate.data.signal.poll
+import com.vayunmathur.communicate.data.signal.readReceipt
+import com.vayunmathur.communicate.data.signal.revoke
+import com.vayunmathur.communicate.data.signal.safetyNumber
+import com.vayunmathur.communicate.data.signal.sendMedia
+import com.vayunmathur.communicate.data.signal.sendMessage
+import com.vayunmathur.communicate.data.signal.sendPollVote
+import com.vayunmathur.communicate.data.signal.sendReaction
+import com.vayunmathur.communicate.data.signal.placeCall
+import com.vayunmathur.communicate.data.signal.placeGroupCall
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppCachedMessage
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppClient
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppConversation
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppDatabase
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession
 import com.vayunmathur.communicate.data.whatsapp.WhatsAppServiceData
+import com.vayunmathur.communicate.data.whatsapp.createGroup
+import com.vayunmathur.communicate.data.whatsapp.placeCall
+import com.vayunmathur.communicate.data.whatsapp.sendMedia
+import com.vayunmathur.communicate.data.whatsapp.sendMessage
+import com.vayunmathur.communicate.data.whatsapp.sendReadReceipt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.ui.ExternalIntents
@@ -585,7 +604,7 @@ object CommunicateRepository {
         threadRemoteId: String? = null,
         attachments: List<CommunicateAttachment> = emptyList(),
         participants: List<String> = emptyList(),
-    ): Boolean = when (choice) {
+    ): Boolean = with(CommunicateRepository) { when (choice) {
         is LineChoice.Sim -> withContext(Dispatchers.IO) {
             // Group (multi-recipient) or media messages go out as MMS so all replies land in one
             // thread; plain 1:1 text stays SMS.
@@ -617,17 +636,17 @@ object CommunicateRepository {
                 // For WhatsApp the conversation is addressed by JID: use the thread's remoteId when
                 // replying to an existing chat, else derive a 1:1 JID from the phone number.
                 val jid = threadRemoteId ?: toWhatsAppJid(context, address)
-                val sentId = if (attachments.isEmpty()) {
-                    WhatsAppClient.sendMessage(jid, body)
+                val sentId = with(WhatsAppClient) { if (attachments.isEmpty()) {
+                    sendMessage(jid, body)
                 } else {
                     // Attachments are sent here rather than left to a separate call: previously this branch
                     // returned success while sending nothing, so picking a photo silently did nothing.
                     val mediaOk = sendAttachments(context, attachments) { bytes, mime, name ->
-                        WhatsAppClient.sendMedia(jid, bytes, mime, name)
+                        sendMedia(jid, bytes, mime, name)
                     }
-                    val captionId = if (body.isNotBlank()) WhatsAppClient.sendMessage(jid, body) else ""
+                    val captionId = if (body.isNotBlank()) sendMessage(jid, body) else ""
                     if (mediaOk) captionId else null
-                }
+                } }
                 // Echo the outgoing message into the local cache so it shows in our own thread
                 // (a primary-only line gets no server echo of its own sends). Cache under the real
                 // WA message id so delivery/read receipts can advance its status ticks.
@@ -638,22 +657,25 @@ object CommunicateRepository {
             }.getOrDefault(false)
         }
         LineChoice.Signal -> withContext(Dispatchers.IO) {
+            val signal = SignalClient.get(context)
             runCatching {
                 val recipient = threadRemoteId ?: toSignalRecipient(context, address)
-                val sentId = if (attachments.isEmpty()) {
-                    if (body.isBlank()) null else SignalClient.get(context).sendMessage(recipient, body)
-                } else {
-                    // As with WhatsApp: send the attachments here, rather than reporting success and
-                    // dropping them.
-                    val mediaOk = sendAttachments(context, attachments) { bytes, mime, name ->
-                        SignalClient.get(context).sendMedia(recipient, bytes, mime, name) != null
-                    }
-                    val captionId = if (body.isNotBlank()) {
-                        SignalClient.get(context).sendMessage(recipient, body)
+                val sentId = with(signal) {
+                    if (attachments.isEmpty()) {
+                        if (body.isBlank()) null else this@with.sendMessage(recipient, body)
                     } else {
-                        ""
+                        // As with WhatsApp: send the attachments here, rather than reporting success and
+                        // dropping them.
+                        val mediaOk = sendAttachments(context, attachments) { bytes, mime, name ->
+                            sendMedia(recipient, bytes, mime, name) != null
+                        }
+                        val captionId = if (body.isNotBlank()) {
+                            this@with.sendMessage(recipient, body)
+                        } else {
+                            ""
+                        }
+                        if (mediaOk) captionId else null
                     }
-                    if (mediaOk) captionId else null
                 }
                 if (sentId != null && body.isNotBlank()) {
                     cacheOutgoingSignal(context, recipient, body, sentId.ifBlank { "local-${java.util.UUID.randomUUID()}" })
@@ -661,7 +683,7 @@ object CommunicateRepository {
                 sentId != null
             }.getOrDefault(false)
         }
-    }
+    } }
 
     /** Send an SMS from a specific SIM subscription and store it in the Sent box. */
     private fun sendSimSms(context: Context, subscriptionId: Int, address: String, body: String): Boolean {
@@ -1305,7 +1327,7 @@ object CommunicateRepository {
         return e164 ?: address
     }
 
-    private fun signalJidToDisplayAddress(conversationId: String): String {
+    fun signalJidToDisplayAddress(conversationId: String): String {
         // Group ids contain ':' or look like UUIDs — keep as-is for group rendering.
         if (conversationId.contains(":") || conversationId.contains("group")) return conversationId
         // ACI/PNI UUIDs are not phone numbers — keep as-is; UI will resolve via contacts.
@@ -1384,10 +1406,10 @@ object CommunicateRepository {
     }
 }
 
-private fun Context.hasPermission(permission: String): Boolean =
+internal fun Context.hasPermission(permission: String): Boolean =
     ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
-private fun Int.toCommunicateCallType(): CommunicateCallType = when (this) {
+internal fun Int.toCommunicateCallType(): CommunicateCallType = when (this) {
     CallLog.Calls.INCOMING_TYPE -> CommunicateCallType.Incoming
     CallLog.Calls.OUTGOING_TYPE -> CommunicateCallType.Outgoing
     CallLog.Calls.MISSED_TYPE -> CommunicateCallType.Missed
