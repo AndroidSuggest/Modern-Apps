@@ -20,7 +20,14 @@ data class NowPlayingInfo(
     val positionMs: Long,
     /** Track length in millis, or null when the session does not know it. */
     val durationMs: Long?,
-)
+) {
+    /**
+     * Whether the car card shows for this snapshot: playing always shows, and
+     * paused-with-a-title stays for instant resume. Idle (not playing, no
+     * title) hides so the car display never shows an empty card.
+     */
+    fun shouldShowCard(): Boolean = playing || !title.isNullOrBlank()
+}
 
 /**
  * Something the media monitor observed, forwarded to [AutoSessionState] for the phone UI.

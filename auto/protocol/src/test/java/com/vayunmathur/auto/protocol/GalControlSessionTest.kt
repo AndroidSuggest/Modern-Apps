@@ -10,6 +10,7 @@ import com.vayunmathur.auto.protocol.gal.PingResponse
 import com.vayunmathur.auto.protocol.gal.Service
 import com.vayunmathur.auto.protocol.gal.ServiceDiscoveryRequest
 import com.vayunmathur.auto.protocol.gal.ServiceDiscoveryResponse
+import com.vayunmathur.auto.protocol.gal.ServiceDiscoveryUpdate
 import java.io.File
 import java.nio.ByteBuffer
 import javax.net.ssl.SSLEngine
@@ -174,6 +175,80 @@ class GalControlSessionTest {
                 .build()
                 .toByteArray(),
         )
+    }
+
+    @Test
+    fun `a discovery update hot-adds a service absent from the initial list`() {
+        // The DHU offers services 1-7 with no input source; a later control-26
+        // update may add service 8, which the driver's open loop then picks up
+        // without a reconnect (FINDINGS.md control table, id 26).
+        val session = session(GalCredential.serverEngine(context()))
+        session.onMessage(
+            GalMessage.Control.SERVICE_DISCOVERY_RESPONSE,
+            ServiceDiscoveryResponse.newBuilder()
+                .addServices(Service.newBuilder().setId(GalService.VIDEO_SINK.id))
+                .build()
+                .toByteArray(),
+        )
+        assertEquals(listOf(GalService.VIDEO_SINK.id), session.services.map { it.id })
+
+        val outputs = session.onMessage(
+            GalMessage.Control.SERVICE_DISCOVERY_UPDATE,
+            ServiceDiscoveryUpdate.newBuilder()
+                .setService(Service.newBuilder().setId(GalService.INPUT_SOURCE.id))
+                .build()
+                .toByteArray(),
+        )
+        assertTrue(outputs.isEmpty(), "discovery update needs no reply")
+        assertEquals(
+            listOf(GalService.VIDEO_SINK.id, GalService.INPUT_SOURCE.id),
+            session.services.map { it.id },
+        )
+        assertNull(session.failure)
+    }
+
+    @Test
+    fun `a discovery update replaces the same-id service instead of duplicating`() {
+        val session = session(GalCredential.serverEngine(context()))
+        session.onMessage(
+            GalMessage.Control.SERVICE_DISCOVERY_RESPONSE,
+            headUnitServices().toByteArray(),
+        )
+        val before = session.services.size
+
+        session.onMessage(
+            GalMessage.Control.SERVICE_DISCOVERY_UPDATE,
+            ServiceDiscoveryUpdate.newBuilder()
+                .setService(
+                    Service.newBuilder()
+                        .setId(GalService.VIDEO_SINK.id)
+                        .setMediaSink(
+                            MediaSinkService.newBuilder()
+                                .setAvailableType(MediaCodecType.MEDIA_CODEC_VIDEO_H264_BP),
+                        ),
+                )
+                .build()
+                .toByteArray(),
+        )
+        assertEquals(before, session.services.size)
+        assertEquals(1, session.services.count { it.id == GalService.VIDEO_SINK.id })
+    }
+
+    @Test
+    fun `a discovery update without a service is ignored`() {
+        val session = session(GalCredential.serverEngine(context()))
+        session.onMessage(
+            GalMessage.Control.SERVICE_DISCOVERY_RESPONSE,
+            headUnitServices().toByteArray(),
+        )
+        val before = session.services.map { it.id }
+
+        val outputs = session.onMessage(
+            GalMessage.Control.SERVICE_DISCOVERY_UPDATE,
+            ServiceDiscoveryUpdate.newBuilder().build().toByteArray(),
+        )
+        assertTrue(outputs.isEmpty())
+        assertEquals(before, session.services.map { it.id })
     }
 
     @Test

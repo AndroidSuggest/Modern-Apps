@@ -115,10 +115,39 @@ class CarDisplay(
     /**
      * Refreshes the car now-playing card. Safe from any thread: the snapshot is
      * cached for presentations created later, and the view update hops to main.
+     *
+     * The snapshot is always cached, even when the card hides: a pause still
+     * pushes `playing=false`, which is what clears a stale "Playing" label.
      */
     fun setNowPlaying(info: NowPlayingInfo) {
         nowPlaying = info
         mainHandler.post { presentation?.updateNowPlaying(info) }
+    }
+
+    /**
+     * Hides the car now-playing card without touching the cached snapshot.
+     * Safe from any thread; the card re-shows on the next visible snapshot.
+     */
+    fun hideNowPlaying() {
+        mainHandler.post { presentation?.hideNowPlaying() }
+    }
+
+    /**
+     * Starts continuously invalidating the car UI at [fps] frames per second.
+     * Safe from any thread; hops to main like [setNowPlaying].
+     *
+     * Without this the virtual display only re-composites when a view changes
+     * on its own (the 1Hz clock tick), so the encoder sees ~1fps. Invalidating
+     * the decor view at the negotiated rate keeps pixels flowing; the encoder
+     * still paces output to its configured rate.
+     */
+    fun startFrameInvalidation(fps: Int) {
+        mainHandler.post { presentation?.startFrameInvalidation(fps) }
+    }
+
+    /** Stops the continuous invalidation started by [startFrameInvalidation]. */
+    fun stopFrameInvalidation() {
+        mainHandler.post { presentation?.stopFrameInvalidation() }
     }
 
     /**
@@ -127,8 +156,9 @@ class CarDisplay(
      * [x] and [y] are display pixels (what ch8 scales to), compared against the
      * card's on-screen bounds on the virtual display. Returns whether the tap
      * hit the card; a hit posts the toggle to the main thread because views may
-     * only be touched there. The ch8 owner calls this after scaling -- see the
-     * Phase 4 handoff to input-dev.
+     * only be touched there. Called from [dispatchTouch] for single-pointer
+     * DOWN inside the card bounds -- previously zero callers, now the card-tap
+     * path for ch8 touch.
      */
     fun handleCarTap(x: Float, y: Float): Boolean {
         val bounds = mediaCardBounds ?: return false
@@ -203,6 +233,14 @@ class CarDisplay(
         actionIndex: Int,
     ) {
         val view = presentation?.window?.decorView ?: return
+        // A tap on the now-playing card toggles playback directly: the tap
+        // coordinates are display pixels and the card bounds are too, so a
+        // DOWN inside them is an unambiguous card hit. Other gestures (and
+        // taps elsewhere) still dispatch normally so app tiles stay tappable.
+        if (action == android.view.MotionEvent.ACTION_DOWN && pointers.size == 1) {
+            val (x, y, _) = pointers[0]
+            if (handleCarTap(x, y)) return
+        }
         val now = android.os.SystemClock.uptimeMillis()
         val downTime = if (action == android.view.MotionEvent.ACTION_DOWN) {
             gestureDownTime = now
@@ -328,6 +366,36 @@ class CarDisplay(
             }
         }
 
+        /**
+         * Continuous re-render at [fps] so the encoder surface produces frames
+         * even when no view changes on its own. Main thread only. Backs off to
+         * a Choreographer-frame chain when [fps] is at/above display cadence.
+         */
+        private var invalidator: Runnable? = null
+        private var invalidatorFps = 0
+
+        fun startFrameInvalidation(fps: Int) {
+            stopFrameInvalidation()
+            val decor = window?.decorView ?: return
+            val intervalMs = (1000L / fps.coerceIn(1, MAX_INVALIDATE_FPS)).coerceAtLeast(0)
+            invalidatorFps = fps
+            val tick = object : Runnable {
+                override fun run() {
+                    decor.invalidate()
+                    decor.postDelayed(this, intervalMs)
+                }
+            }
+            invalidator = tick
+            decor.post(tick)
+        }
+
+        fun stopFrameInvalidation() {
+            val decor = window?.decorView
+            invalidator?.let { decor?.removeCallbacks(it) }
+            invalidator = null
+            invalidatorFps = 0
+        }
+
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
             val root = LinearLayout(context).apply {
@@ -351,8 +419,14 @@ class CarDisplay(
             }
         }
 
+        /** Hides the now-playing card; the cached snapshot is untouched. Main thread only. */
+        fun hideNowPlaying() {
+            mediaCard?.visibility = View.GONE
+        }
+
         override fun onStop() {
             clockView?.removeCallbacks(ticker)
+            stopFrameInvalidation()
             clockView = null
             mediaTitle = null
             mediaSubtitle = null
@@ -366,8 +440,16 @@ class CarDisplay(
          * Applies a snapshot to the now-playing card. Main thread only: called
          * from the posted update in [setNowPlaying], or from `onCreate` above
          * for a snapshot that arrived before the views existed.
+         *
+         * Also owns the card's visibility: `GONE` when idle (not playing and
+         * no title to show) so the car display shows no card with nothing
+         * playing; `VISIBLE` while playing, and while paused with a title so
+         * resume keeps its context. GAL 11/12 stay unspoken by design, so no
+         * head-unit contract drives this -- it is purely phone-side.
          */
         fun updateNowPlaying(info: NowPlayingInfo) {
+            val card = mediaCard ?: return
+            card.visibility = if (info.shouldShowCard()) View.VISIBLE else View.GONE
             val title = mediaTitle ?: return
             val subtitle = mediaSubtitle ?: return
             val state = mediaState ?: return
@@ -406,6 +488,9 @@ class CarDisplay(
                 layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
                 isClickable = true
                 isFocusable = true
+                // Starts hidden: the first snapshot decides, and with nothing
+                // playing there is nothing to show.
+                visibility = View.GONE
             }
             card.addView(
                 TextView(context).apply {
@@ -569,6 +654,13 @@ class CarDisplay(
             const val COLUMNS = 3
             const val UNDEFINED_COLUMN = GridLayout.UNDEFINED
             val FILL: GridLayout.Alignment = GridLayout.FILL
+
+            /**
+             * Ceiling for the continuous frame invalidator: the encoder paces
+             * output to its own configured rate, so invalidating faster only
+             * burns CPU compositing frames the encoder drops.
+             */
+            const val MAX_INVALIDATE_FPS = 60
 
             /** Progress fraction in [0,1]; half (indeterminate-ish) with no duration. */
             fun progressFraction(positionMs: Long, durationMs: Long?): Float {

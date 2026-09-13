@@ -85,9 +85,23 @@ class VideoSinkChannel(
      */
     private var framesOutSinceDrain = 0
 
-    /** Chosen from what the head unit advertised in discovery. */
-    private val configuration: VideoConfiguration? =
+    /**
+     * Chosen from what the head unit advertised in discovery. Starts at entry 0
+     * and is re-indexed by the head unit's answer in [onSetupResponse]: the
+     * accepted `configurationIndicesList` entry selects into `videoConfigsList`,
+     * and the head unit may pick any index -- entry 0 is only the pre-answer
+     * placeholder. Written on the pump thread, read on the input thread.
+     */
+    @Volatile
+    private var configuration: VideoConfiguration? =
         service.mediaSink.videoConfigsList.firstOrNull()
+
+    /**
+     * The frame rate the stream runs at, set in [startStreaming] from the
+     * accepted config (forced to 30 when the entry reports none). Restarting
+     * the frame invalidator on a focus flap reuses this, never re-reads discovery.
+     */
+    private var negotiatedFps = DEFAULT_FRAME_RATE
 
     val channelId: Int get() = service.id
 
@@ -104,22 +118,38 @@ class VideoSinkChannel(
     /** Wires the now-playing feed from the media monitor; see [nowPlayingSource]. */
     fun setNowPlayingSource(get: () -> NowPlayingInfo?, onTap: () -> Unit) {
         nowPlayingSource = NowPlayingSource(get, onTap)
-        nowPlayingSource?.get()?.let { display?.setNowPlaying(it) }
+        nowPlayingSource?.get()?.let { info ->
+            if (info.shouldShowCard()) display?.setNowPlaying(info)
+        }
     }
 
     /**
      * Pushes one snapshot to the car card, if the render pair is up. The
      * service calls this on every media-monitor update so the card tracks
      * playback without waiting for the encoder pump.
+     *
+     * The [NowPlayingInfo.shouldShowCard] gate lives in the card itself; this
+     * forwards unconditionally so a pause still clears a stale "Playing".
      */
     fun setNowPlaying(info: NowPlayingInfo) {
-        display?.setNowPlaying(info)
+        if (info.shouldShowCard()) {
+            display?.setNowPlaying(info)
+        } else {
+            // Second gate: never hand an idle snapshot to a render pair that
+            // came up later via [setNowPlayingSource] either. The cached source
+            // still updates so resume re-shows instantly.
+            display?.hideNowPlaying()
+        }
     }
 
     /**
      * Injects one scaled head-unit touch frame into the car UI, if the render
      * pair is up. The ch8 owner scales first; this only forwards. False means
      * "no display yet", and the frame is dropped rather than queued.
+     *
+     * Single-pointer DOWN on the now-playing card is consumed as a media
+     * toggle via [handleCarTap]; everything else dispatches into the view
+     * tree (app tiles, scroll) like before.
      */
     fun injectTouch(touch: ScaledTouch): Boolean =
         display?.injectTouch(
@@ -170,6 +200,21 @@ class VideoSinkChannel(
     private fun onSetupResponse(payload: ByteArray) {
         val response = MediaSetupResponse.parseFrom(payload)
         configurationIndex = response.configurationIndicesList.firstOrNull() ?: 0
+        // The answer selects INTO the offered list: re-index so geometry and
+        // rate come from the entry the head unit actually accepted, not entry 0.
+        // Out-of-range answers keep the discovery placeholder (entry 0).
+        val offered = service.mediaSink.videoConfigsList
+        logOfferedConfigs(offered, configurationIndex)
+        val accepted = offered.getOrNull(configurationIndex)
+        if (accepted != null) {
+            configuration = accepted
+        } else {
+            Log.w(
+                TAG,
+                "head unit accepted video config index $configurationIndex " +
+                    "of ${offered.size}; keeping entry 0",
+            )
+        }
         Log.i(TAG, "head unit accepted video, config index $configurationIndex")
 
         // Step 3: ask for the screen before starting the stream.
@@ -224,7 +269,11 @@ class VideoSinkChannel(
     private fun startStreaming() {
         val config = configuration
         val (width, height) = config?.codecResolution.dimensions()
-        val frameRate = config?.frameRate?.takeIf { it > 0 } ?: DEFAULT_FRAME_RATE
+        // Prefer a 30fps entry when the head unit offers one: several HUs
+        // advertise 60 but only ack ~30, and the negotiated rate caps the frame
+        // invalidator below. A non-positive entry falls back to 30.
+        val frameRate = negotiateFrameRate(config)
+        negotiatedFps = frameRate
         val density = config?.density?.takeIf { it > 0 } ?: DEFAULT_DENSITY
 
         Log.i(TAG, "starting video ${width}x$height @${frameRate} dpi $density")
@@ -245,8 +294,11 @@ class VideoSinkChannel(
         display = CarDisplay(context, width, height, density, trusted = trusted).also {
             val source = nowPlayingSource
             it.onMediaTap = source?.onTap
-            source?.get()?.let(it::setNowPlaying)
+            source?.get()?.let { info ->
+                if (info.shouldShowCard()) it.setNowPlaying(info)
+            }
             it.show(surface)
+            it.startFrameInvalidation(frameRate)
         }
         // The render pair is up: a private virtual display compositing straight into
         // the encoder's input surface. Validity dump for the Phase 0 probe.
@@ -366,12 +418,55 @@ class VideoSinkChannel(
         mainHandler.post {
             choreographer?.removeFrameCallback(vsyncCallback)
             choreographer = null
+            display?.stopFrameInvalidation()
             display?.release()
             display = null
             encoder?.stop()
             encoder = null
             onEvent(VideoEvent.SurfaceChanged(valid = false))
         }
+    }
+
+    /**
+     * Rate selection for the accepted config: its own rate wins when sane;
+     * otherwise a 30fps sibling from the same offered list wins over the
+     * flat 30 fallback, so a rate-less entry still streams at a sane cadence.
+     * Wire truth: `VideoConfiguration.frame_rate = 2` (gal/services.proto).
+     *
+     * The sanity floor matters: DHU 2.0 offers `VIDEO_800x480 @1`, a bogus
+     * rate it does not actually ack at. Honoring it paces both the encoder
+     * hint and the frame invalidator to 1fps -- the ~1fps bug by negotiation
+     * rather than starvation. Anything below [MIN_SANE_FPS] is treated as
+     * "no usable rate" and overridden to 30 with a log.
+     */
+    private fun negotiateFrameRate(accepted: VideoConfiguration?): Int {
+        accepted?.frameRate?.takeIf { it >= MIN_SANE_FPS }?.let { return it }
+        val sibling = service.mediaSink.videoConfigsList.firstOrNull { it.frameRate == 30 }
+        if (sibling != null) {
+            Log.i(TAG, "accepted config reports no usable rate; using offered 30fps entry")
+            configuration = sibling
+            return 30
+        }
+        Log.i(
+            TAG,
+            "accepted config reports rate ${accepted?.frameRate}; forcing 30fps " +
+                "(no 30fps sibling offered)",
+        )
+        return DEFAULT_FRAME_RATE
+    }
+
+    /**
+     * One-line dump of every offered `video_configs[]` entry for the Phase 0
+     * probe: resolution enum, rate, density, and which index the head unit
+     * picked. Dev builds only; release logcat stays quiet like [dumpSurfaces].
+     */
+    private fun logOfferedConfigs(offered: List<VideoConfiguration>, accepted: Int) {
+        if (!BuildConfig.DEV_BUILD) return
+        val entries = offered.mapIndexed { index, config ->
+            "$index:${config.codecResolution}:@${config.frameRate}:dpi${config.density}" +
+                if (index == accepted) "*" else ""
+        }
+        Log.i(TAG, "offered video configs [${entries.joinToString(", ")}]")
     }
 
     private fun VideoResolution?.dimensions(): Pair<Int, Int> = when (this) {
@@ -394,6 +489,13 @@ class VideoSinkChannel(
         const val MEDIA_TYPE_VIDEO = 3
         const val DEFAULT_FRAME_RATE = 30
         const val DEFAULT_DENSITY = 160
+
+        /**
+         * Floor for an offered rate we will honor. Below this the head unit
+         * is not telling the truth about its cadence (DHU 2.0 offers @1fps
+         * and acks far faster), so the stream forces 30 instead.
+         */
+        const val MIN_SANE_FPS = 15
     }
 }
 

@@ -63,13 +63,25 @@ class InputChannel(
             ?: (InputCodec.DEFAULT_HU_WIDTH to InputCodec.DEFAULT_HU_HEIGHT)
 
     /**
+     * Whether the binding echo has gone out. Set in [requestBinding], read in
+     * [onMessage] to log (not crash on) traffic that arrives with no owner
+     * bound yet -- e.g. a head unit that sends before the grant path runs.
+     */
+    @Volatile
+    private var bound = false
+
+    /**
      * The grant arrived: echo the discovery-advertised keycodes back so the
-     * head unit knows which keys we handle. Called once per channel open.
+     * head unit knows which keys we handle. Called once per channel open, and
+     * again when video focus flaps back to PROJECTED with input (a head unit
+     * that parked input may need the re-bind to resume sending reports).
+     * Idempotent: re-sending the same echo is harmless.
      */
     fun requestBinding() {
         val keycodes = service.inputSource.keycodesSupportedList
         val (type, payload) = InputCodec.encodeKeyBinding(keycodes)
         connection.send(channelId, type, payload)
+        bound = true
         Log.i(TAG, "input channel open; bound ${keycodes.size} keycodes")
         onEvent(InputEvent.BindingRequested(keycodes.size))
     }
@@ -78,6 +90,15 @@ class InputChannel(
     fun onMessage(channelId: Int, type: Int, payload: ByteArray) {
         if (channelId != this.channelId) {
             Log.w(TAG, "ignoring 0x${type.toString(16)} for channel $channelId")
+            return
+        }
+        if (!bound) {
+            // Traffic before the grant's binding echo: the head unit is
+            // talking on a channel we never bound (or the grant path never
+            // ran). Log, don't crash -- the binding goes out on the grant and
+            // on the focus flap back to input-allowed.
+            Log.w(TAG, "ch8 traffic before binding (0x${type.toString(16)}); dropping")
+            onEvent(InputEvent.DroppedNoFocus)
             return
         }
         if (type == GalMessage.Input.KEY_BINDING_RESPONSE) {

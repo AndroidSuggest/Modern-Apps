@@ -15,6 +15,7 @@ import com.vayunmathur.auto.protocol.gal.PingResponse
 import com.vayunmathur.auto.protocol.gal.Service
 import com.vayunmathur.auto.protocol.gal.ServiceDiscoveryRequest
 import com.vayunmathur.auto.protocol.gal.ServiceDiscoveryResponse
+import com.vayunmathur.auto.protocol.gal.ServiceDiscoveryUpdate
 import com.vayunmathur.auto.protocol.gal.VideoFocusIndication
 import com.vayunmathur.auto.protocol.gal.VideoFocusMode
 import java.nio.ByteBuffer
@@ -141,13 +142,17 @@ class GalControlSession(
             state = SessionState.CLOSED
             emptyList()
         }
-        // Call availability and discovery updates are observed by higher layers;
-        // the control channel itself has nothing to answer. Focus notifications
-        // feed [focus] instead (see below).
+        // Call availability is observed by higher layers; the control channel
+        // itself has nothing to answer. Focus notifications feed [focus]
+        // instead (see below).
         GalMessage.Control.CALL_AVAILABILITY_STATUS,
-        GalMessage.Control.SERVICE_DISCOVERY_UPDATE,
         GalMessage.Control.PING_RESPONSE,
         -> emptyList()
+        // Hot-add/update of one service after the initial discovery (FINDINGS.md
+        // control table, id 26): merged into [services] so the driver's
+        // wire-order open loop picks it up without a reconnect. This is how an
+        // input source that was absent from the initial 0x6 can still appear.
+        GalMessage.Control.SERVICE_DISCOVERY_UPDATE -> onServiceDiscoveryUpdate(payload)
         GalMessage.Control.AUDIO_FOCUS_NOTIFICATION -> onAudioFocusNotification(payload)
         GalMessage.Control.NAVIGATION_FOCUS_NOTIFICATION -> onNavigationFocusNotification(payload)
 
@@ -314,6 +319,22 @@ class GalControlSession(
     private fun onServiceDiscovery(payload: ByteArray): List<OutboundMessage> {
         services = ServiceDiscoveryResponse.parseFrom(payload).servicesList
         state = SessionState.ACTIVE
+        return emptyList()
+    }
+
+    /**
+     * Merges one hot-added (or replaced) service into [services].
+     *
+     * Same-id entries are replaced, not duplicated: an update may restate a
+     * service with new payloads (e.g. input source gains a touchscreen), and
+     * the driver's open loop keys on id membership. A payload without a
+     * service is ignored -- an absent field is "no update", never a removal.
+     */
+    private fun onServiceDiscoveryUpdate(payload: ByteArray): List<OutboundMessage> {
+        val update = ServiceDiscoveryUpdate.parseFrom(payload)
+        if (!update.hasService()) return emptyList()
+        val incoming = update.service
+        services = services.filter { it.id != incoming.id } + incoming
         return emptyList()
     }
 
