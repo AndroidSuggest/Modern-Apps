@@ -158,12 +158,18 @@ fn infer_graph(
     }
     // Weight tensors (buffer >= 0) and host tensors (no buffer, PLACEMENT host)
     // are file facts: seed from stored rows so node inference can read them.
+    // State tensors (KV caches, PINNED) seed the same way: capacity, not
+    // data — the loader allocates per session and the plan addresses the
+    // recorded maxima.
     for t in 0..tensors.len() as i32 {
         if shapes.contains_key(&t) {
             continue;
         }
         let tensor = tensors.get(t as usize);
-        if tensor.buffer() != -1 || tensor.placement() == fb::Placement::HOST {
+        if tensor.buffer() != -1
+            || tensor.placement() == fb::Placement::HOST
+            || tensor.state() != fb::StateKind::NONE
+        {
             shapes.insert(t, Inferred { dims: stored_dims(tensors, t)?, layout: tensor.layout() });
         }
     }
@@ -189,6 +195,40 @@ fn infer_graph(
                     node.op()
                 ));
             }
+        }
+        // CacheWrite appends to a state tensor rather than defining one: its
+        // output must be an already-defined state tensor (one writer per
+        // graph, persisting across submits). Digest and continue — no shape
+        // is derived, and the single-writer rule below does not apply.
+        if node.op() == fb::Op::CacheWrite {
+            if inputs.len() != 2 || outputs.len() != 1 {
+                return Err(format!(
+                    "graph {graph_index} ({name}): node {n} (CacheWrite) wants [row, cache] -> [cache]"
+                ));
+            }
+            if outputs[0] != inputs[1] {
+                return Err(format!(
+                    "graph {graph_index} ({name}): node {n} (CacheWrite) writes tensor {} but reads cache {}",
+                    outputs[0], inputs[1]
+                ));
+            }
+            let attrs = node.attrs().map(|v| Attrs { attrs: v });
+            if shapes.get(&outputs[0]).is_none() {
+                return Err(format!(
+                    "graph {graph_index} ({name}): node {n} (CacheWrite) targets undefined tensor {}",
+                    outputs[0]
+                ));
+            }
+            // The target must be a state tensor: appending to a computed
+            // tensor would fork SSA with no writer to blame.
+            if tensors.get(outputs[0] as usize).state() == fb::StateKind::NONE {
+                return Err(format!(
+                    "graph {graph_index} ({name}): node {n} (CacheWrite) targets non-state tensor {}",
+                    outputs[0]
+                ));
+            }
+            digest_node(&mut hasher, &node, attrs.as_ref())?;
+            continue;
         }
         // Single-writer SSA: no output may already be defined.
         for output in &outputs {
@@ -561,8 +601,43 @@ fn infer_node(
                     )));
                 }
                 Ok(vec![Inferred { dims: vec![v[0], 1, probs[1]], layout: computed_layout }])
+            } else if phase == 4 {
+                // One query against a position-major K cache: `[d, 1, 1]`
+                // and `[K, 1, kv_heads * head_dim]` give `[heads, 1, K]`.
+                // Live lengths arrive per submit as step uniforms; the plan
+                // is built at the recorded maxima.
+                if inputs.len() != 2 {
+                    return Err(err("cached Attention scores wants [q, cache]"));
+                }
+                let q = shape_of(inputs[0])?.dims.clone();
+                let cache = shape_of(inputs[1])?.dims.clone();
+                let heads = attrs.int("heads")?;
+                let kv_heads = attrs.opt_int("kv_heads")?.unwrap_or(heads);
+                if q.len() != 3 || cache.len() != 3 {
+                    return Err(err("cached Attention shapes are not [d, 1, 1] / [K, 1, w]"));
+                }
+                if q[1] != 1 || q[2] != 1 || cache[1] != 1 {
+                    return Err(err("a decode step is one query against [K, 1, w] positions"));
+                }
+                Ok(vec![Inferred { dims: vec![heads, 1, cache[0]], layout: computed_layout }])
+            } else if phase == 5 {
+                // A `[heads, 1, K]` probability row against a position-major
+                // V cache gives one `[d_model, 1, 1]` query result, where
+                // d_model is the query side's width (GQA: kv_heads <= heads).
+                if inputs.len() != 2 {
+                    return Err(err("cached Attention apply wants [probs, cache]"));
+                }
+                let probs = shape_of(inputs[0])?.dims.clone();
+                let cache = shape_of(inputs[1])?.dims.clone();
+                let heads = attrs.int("heads")?;
+                let kv_heads = attrs.opt_int("kv_heads")?.unwrap_or(heads);
+                if probs.len() != 3 || cache.len() != 3 {
+                    return Err(err("cached Attention shapes are not [heads, 1, K] / [K, 1, w]"));
+                }
+                let head_dim = cache[2] / kv_heads.max(1);
+                Ok(vec![Inferred { dims: vec![heads * head_dim, 1, 1], layout: computed_layout }])
             } else {
-                Err(err(&format!("Attention phase {phase} is not 0, 1, 2, or 3")))
+                Err(err(&format!("Attention phase {phase} is not 0..=5")))
             }
         }
         fb::Op::Embedding => {

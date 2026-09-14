@@ -92,7 +92,6 @@
 
 use super::{Act, Builder, Id, Plan, Shape, WeightSource};
 use crate::weights::Reader;
-use super::nllb_extra2::decode_step;
 
 /// Channels throughout: `d_model`.
 pub const D_MODEL: u32 = 1024;
@@ -268,14 +267,30 @@ pub(crate) fn feed_forward(b: &mut Builder, l: &mut Layers, x: Id) -> Id {
 
 /// Build one of NLLB's two passes. See [`Mode`].
 pub fn build(weights: &dyn WeightSource, mode: Mode) -> Result<Plan, String> {
+    Ok(record(weights, mode)?.plan)
+}
+
+/// Record one of NLLB's two passes: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the bodies verbatim. See [`Builder::record`].
+/// Each pass names the other's tensors host (the multi-pass file idiom);
+/// the union check lives in the v2 emitter, which holds both recordings.
+pub fn record(weights: &dyn WeightSource, mode: Mode) -> Result<crate::nets::Recorded, String> {
     match mode {
-        Mode::Encode { len } => encode(weights, len),
-        Mode::DecodeStep { src_len } => decode_step(weights, src_len),
+        Mode::Encode { len } => encode_record(weights, len),
+        Mode::DecodeStep { src_len } => super::nllb_extra2::decode_step_record(weights, src_len),
     }
 }
 
 /// The encoder over `len` already-embedded positions.
 fn encode(weights: &dyn WeightSource, len: u32) -> Result<Plan, String> {
+    Ok(encode_record(weights, len)?.plan)
+}
+
+/// The recording behind [`encode`].
+fn encode_record(weights: &dyn WeightSource, len: u32) -> Result<crate::nets::Recorded, String> {
     if len == 0 {
         return Err("an encoder pass over no tokens".into());
     }
@@ -304,7 +319,7 @@ fn encode(weights: &dyn WeightSource, len: u32) -> Result<Plan, String> {
     if l.next != DECODER {
         return Err(format!("the encoder norm ends at {}, not {DECODER}", l.next));
     }
-    builder.finish(&[out])
+    builder.record(&[out], &crate::weights::Offsets::empty())
 }
 
 /// Name every tensor **outside** `read` as one this pass does not touch.

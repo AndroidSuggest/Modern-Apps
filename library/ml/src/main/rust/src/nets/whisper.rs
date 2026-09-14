@@ -262,14 +262,30 @@ fn cross_kv(layer: usize) -> usize {
 
 /// Build one of whisper's two passes. See [`Mode`].
 pub fn build(weights: &dyn WeightSource, mode: Mode) -> Result<Plan, String> {
+    Ok(record(weights, mode)?.plan)
+}
+
+/// Record one of whisper's two passes: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the bodies verbatim. See [`Builder::record`].
+/// Each pass names the other's tensors host (the multi-pass file idiom);
+/// the union check lives in the v2 emitter, which holds both recordings.
+pub fn record(weights: &dyn WeightSource, mode: Mode) -> Result<crate::nets::Recorded, String> {
     match mode {
-        Mode::Encode => encode(weights),
-        Mode::DecodeStep => decode_step(weights),
+        Mode::Encode => encode_record(weights),
+        Mode::DecodeStep => decode_step_record(weights),
     }
 }
 
 /// The audio encoder over one 30-second window, plus the twelve cross-attention caches.
 fn encode(weights: &dyn WeightSource) -> Result<Plan, String> {
+    Ok(encode_record(weights)?.plan)
+}
+
+/// The recording behind [`encode`].
+fn encode_record(weights: &dyn WeightSource) -> Result<crate::nets::Recorded, String> {
     let mut builder = Builder::new(weights);
     let b = &mut builder;
     name_host_tensors(b, &device_tensors(Mode::Encode));
@@ -332,7 +348,7 @@ fn encode(weights: &dyn WeightSource) -> Result<Plan, String> {
             return Err(format!("layer {layer}'s cross cache ends at {}", cross.next));
         }
     }
-    builder.finish(&outputs)
+    builder.record(&outputs, &crate::weights::Offsets::empty())
 }
 
 /// One decoder step.
@@ -353,6 +369,11 @@ fn encode(weights: &dyn WeightSource) -> Result<Plan, String> {
 /// | :--- | :--- | :--- |
 /// | 0 | `[51865, 1, 1]` | the logits, which the host argmaxes |
 fn decode_step(weights: &dyn WeightSource) -> Result<Plan, String> {
+    Ok(decode_step_record(weights)?.plan)
+}
+
+/// The recording behind [`decode_step`].
+fn decode_step_record(weights: &dyn WeightSource) -> Result<crate::nets::Recorded, String> {
     let mut builder = Builder::new(weights);
     let b = &mut builder;
     name_host_tensors(b, &device_tensors(Mode::DecodeStep));
@@ -423,7 +444,7 @@ fn decode_step(weights: &dyn WeightSource) -> Result<Plan, String> {
         return Err(format!("the head claims {} tensors, not {DEC_POSITIONS}", head.next));
     }
     // The K and V rows are no longer outputs: they are in the cache, on the device.
-    builder.finish(&[logits])
+    builder.record(&[logits], &crate::weights::Offsets::empty())
 }
 
 include!("whisper_part1.rs");

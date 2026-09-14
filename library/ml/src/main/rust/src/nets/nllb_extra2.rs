@@ -36,6 +36,14 @@ use super::nllb::{Layers, feed_forward, name_host_tensors, point, split_classes}
 /// ~262 million multiply-accumulates against the whole decoder's ~200 million. Worth revisiting
 /// only after `Kind::ConvVecInt8` makes the head cheap.
 pub(crate) fn decode_step(weights: &dyn WeightSource, src_len: u32) -> Result<Plan, String> {
+    Ok(decode_step_record(weights, src_len)?.plan)
+}
+
+/// The recording behind [`decode_step`].
+pub(crate) fn decode_step_record(
+    weights: &dyn WeightSource,
+    src_len: u32,
+) -> Result<crate::nets::Recorded, String> {
     if src_len == 0 {
         return Err("a decode step with no source to attend over".into());
     }
@@ -116,5 +124,5 @@ pub(crate) fn decode_step(weights: &dyn WeightSource, src_len: u32) -> Result<Pl
     }
     // The K and V rows are no longer outputs: they are in the cache, on the device, and the host
     // never sees them again.
-    builder.finish(&outputs)
+    builder.record(&outputs, &crate::weights::Offsets::empty())
 }

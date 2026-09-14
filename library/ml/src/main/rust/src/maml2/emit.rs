@@ -72,6 +72,10 @@ struct EmittedTensor {
     /// Quantization descriptor. Scales reference the emitted scale tensor by
     /// its position in the emission order, filled in on a second pass.
     quant: WeightQuant,
+    /// State kind: KV_CACHE for persistent arena tensors, NONE otherwise.
+    state: fb::StateKind,
+    /// Dimension parameters `(axis, symbol, max)`, for state capacity axes.
+    dim_params: Vec<(u32, String, i32)>,
 }
 
 /// Weight payload of one v1 tensor, read from the data section.
@@ -161,6 +165,8 @@ fn emit_weight_tensor(
                 bytes,
                 elems,
                 quant: WeightQuant::None,
+                state: fb::StateKind::NONE,
+                dim_params: Vec::new(),
             });
         }
         (WeightPayload::F16(_), WeightQuant::Int8 { .. }) => {
@@ -177,6 +183,8 @@ fn emit_weight_tensor(
                 bytes: bytes.clone(),
                 elems: bytes.len() as u64,
                 quant,
+                state: fb::StateKind::NONE,
+                dim_params: Vec::new(),
             });
             // The scale follows as its own tensor: `[out]` fp16, contiguous.
             let (scale_tensor, scale_payload) = read_weight_payload(table, data, index + 1)?;
@@ -194,6 +202,8 @@ fn emit_weight_tensor(
                 bytes: scale_bytes,
                 elems: scale_words.len() as u64,
                 quant: WeightQuant::None,
+                state: fb::StateKind::NONE,
+                dim_params: Vec::new(),
             });
         }
         (WeightPayload::I8(_), WeightQuant::None) => {
@@ -434,6 +444,8 @@ fn emit_nodes(
             bytes: Vec::new(),
             elems: shape.len() as u64,
             quant: WeightQuant::None,
+                state: fb::StateKind::NONE,
+                dim_params: Vec::new(),
         });
         index
     };
@@ -853,6 +865,54 @@ fn emit_nodes(
                     attrs: vec![("rows".into(), AttrValue::Int(rows as i32))],
                 });
             }
+            Node::AttnScoresCached { q, cache, out, heads, kv_heads, scale, dynamic, sliding } => {
+                let x = computed(q.0, id_map, emit_tensors);
+                let c = computed(cache.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::Attention,
+                    inputs: vec![x, c],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("heads".into(), AttrValue::Int(heads as i32)),
+                        ("kv_heads".into(), AttrValue::Int(kv_heads as i32)),
+                        ("scale".into(), AttrValue::Float(scale)),
+                        ("phase".into(), AttrValue::Int(4)),
+                        ("dynamic".into(), AttrValue::Bool(dynamic)),
+                        ("sliding".into(), AttrValue::Bool(sliding)),
+                    ],
+                });
+            }
+            Node::AttnApplyCached { probs, cache, out, heads, kv_heads, dynamic, sliding } => {
+                let p = computed(probs.0, id_map, emit_tensors);
+                let c = computed(cache.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::Attention,
+                    inputs: vec![p, c],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("heads".into(), AttrValue::Int(heads as i32)),
+                        ("kv_heads".into(), AttrValue::Int(kv_heads as i32)),
+                        ("phase".into(), AttrValue::Int(5)),
+                        ("dynamic".into(), AttrValue::Bool(dynamic)),
+                        ("sliding".into(), AttrValue::Bool(sliding)),
+                    ],
+                });
+            }
+            Node::CacheWrite { row, cache } => {
+                let r = computed(row.0, id_map, emit_tensors);
+                let c = computed(cache.0, id_map, emit_tensors);
+                // The cache is both operand and output: one writer per graph
+                // (one CacheWrite per cache per submit), so SSA holds within
+                // the graph and the state persists across submits.
+                nodes.push(EmittedNode {
+                    op: fb::Op::CacheWrite,
+                    inputs: vec![r, c],
+                    outputs: vec![c],
+                    attrs: vec![],
+                });
+            }
             Node::Softmax { input, out, mode, sliding, window } => {
                 let x = computed(input.0, id_map, emit_tensors);
                 let y = computed(out.0, id_map, emit_tensors);
@@ -1195,6 +1255,8 @@ pub fn emit_graphs(
                 bytes: Vec::new(),
                 elems: u64::from(tensor.len),
                 quant: WeightQuant::None,
+                state: fb::StateKind::NONE,
+                dim_params: Vec::new(),
             });
             continue;
         }
@@ -1248,11 +1310,52 @@ pub fn emit_graphs(
                 bytes: Vec::new(),
                 elems: shape.len() as u64,
                 quant: WeightQuant::None,
+                state: fb::StateKind::NONE,
+                dim_params: Vec::new(),
             });
         }
-        // `emit_nodes` allocates computed tensors in first-use order and
-        // records tensor-id → v2-index in `seen`.
+        // State rows: persistent arena tensors (KV caches) are pinned, not
+        // inputs — pre-seed them like inputs so node emission hits the map.
+        // `pinned - inputs - outputs` is exactly the persistent set: inputs
+        // and outputs pin for binding stability, the rest persist across
+        // submits. Caches are POSITION_MAJOR with the live-length axis
+        // declared (`K`, capacity from the recorded shape); the loader
+        // allocates per session and never recycles them.
+        //
+        // `seen` is pre-seeded alongside: `CacheWrite` names the cache as
+        // its output, and the output mapping resolves through `seen`.
         let mut seen: HashMap<usize, i32> = HashMap::new();
+        {
+            let is_input_or_output = |id: usize| {
+                recorded.inputs.iter().any(|in_id| in_id.index() == id)
+                    || recorded.outputs.iter().any(|out_id| out_id.index() == id)
+            };
+            for pinned in &recorded.pinned {
+                let id = pinned.index();
+                if is_input_or_output(id) || id_map.computed.contains_key(&id) {
+                    continue;
+                }
+                let shape =
+                    recorded.shapes.get(id).copied().unwrap_or(Shape::new(0, 0, 0));
+                let v2 = id_map.alloc();
+                id_map.computed.insert(id, v2);
+                seen.insert(id, v2);
+                emit_tensors.push(EmittedTensor {
+                    name: format!("state{id}"),
+                    dims: vec![shape.c as i32, shape.h as i32, shape.w as i32],
+                    dtype: fb::DType::F16,
+                    layout: fb::Layout::POSITION_MAJOR,
+                    bytes: Vec::new(),
+                    elems: shape.len() as u64,
+                    quant: WeightQuant::None,
+                    state: fb::StateKind::KV_CACHE,
+                    dim_params: vec![(0, "K".to_string(), shape.c as i32)],
+                });
+            }
+        }
+        // `emit_nodes` allocates computed tensors in first-use order and
+        // records tensor-id → v2-index in `seen` (which already holds the
+        // pre-seeded state rows).
         let nodes = emit_nodes(recorded, &mut id_map, &weights, &mut emit_tensors, &mut seen)?;
 
         // Outputs: the v2 index of each recorded output tensor id. Exact —
@@ -1468,24 +1571,38 @@ fn assemble(
         };
         let placement =
             if tensor.bytes.is_empty() { fb::Placement::HOST } else { fb::Placement::DEVICE };
+        // State rows (KV caches) carry dim_params for their capacity axis;
+        // everything else carries none.
+        let mut param_offsets = Vec::with_capacity(tensor.dim_params.len());
+        for (axis, symbol, max) in &tensor.dim_params {
+            let symbol = builder.create_string(symbol);
+            param_offsets.push(fb::DimParam::create(
+                builder,
+                &fb::DimParamArgs { axis: *axis, symbol: Some(symbol), max: *max },
+            ));
+        }
+        let dim_params =
+            (!param_offsets.is_empty()).then(|| builder.create_vector(&param_offsets));
         tensors.push(fb::Tensor::create(
             builder,
             &fb::TensorArgs {
                 name: Some(name),
                 dtype: tensor.dtype,
                 dims: Some(dims),
-                dim_params: None,
+                dim_params,
                 layout: tensor.layout,
                 quantization: Some(&quant),
                 buffer,
                 buffer_offset,
                 elem_count: tensor.elems,
                 placement,
-                state: fb::StateKind::NONE,
+                state: tensor.state,
             },
         ));
     }
-    // Computed + input tensors: dtype F16, CB4, no buffer, no quant.
+    // Computed + input tensors: dtype F16, no buffer, no quant. State rows
+    // (KV caches) carry their state kind, layout, and dim_params from the
+    // emission; the rest are plain NCHW device tensors.
     // Their v2 indices continue after the weights; node refs already assume
     // that order (inputs allocated after weights, computed in first-use
     // order matching `emit_tensors` push order).
@@ -1493,20 +1610,30 @@ fn assemble(
         let name = builder.create_string(&tensor.name);
         let dims = builder.create_vector(&tensor.dims);
         let quant = fb::Quantization::new(fb::QuantKind::NONE, -1, -1, 0, 0);
+        let mut param_offsets = Vec::with_capacity(tensor.dim_params.len());
+        for (axis, symbol, max) in &tensor.dim_params {
+            let symbol = builder.create_string(symbol);
+            param_offsets.push(fb::DimParam::create(
+                builder,
+                &fb::DimParamArgs { axis: *axis, symbol: Some(symbol), max: *max },
+            ));
+        }
+        let dim_params =
+            (!param_offsets.is_empty()).then(|| builder.create_vector(&param_offsets));
         tensors.push(fb::Tensor::create(
             builder,
             &fb::TensorArgs {
                 name: Some(name),
                 dtype: tensor.dtype,
                 dims: Some(dims),
-                dim_params: None,
+                dim_params,
                 layout: tensor.layout,
                 quantization: Some(&quant),
                 buffer: -1,
                 buffer_offset: 0,
                 elem_count: tensor.elems,
                 placement: fb::Placement::DEVICE,
-                state: fb::StateKind::NONE,
+                state: tensor.state,
             },
         ));
     }

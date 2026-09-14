@@ -442,3 +442,40 @@ fn v2_tinyclip_text_matches_v1_bit_exact() {
         spread_inputs(&[(256usize, 1usize, 16usize)], 11.0),
     );
 }
+
+/// True numeric parity for whisper's encoder: entry 0 of the
+/// encode/decode file.
+#[test]
+fn v2_whisper_encode_matches_v1_bit_exact() {
+    use crate::nets::whisper;
+    assert_bit_exact(
+        "whisper encode",
+        "speech/src/main/assets/whisper-base/whisper_base.maml",
+        weights::graph::WHISPER,
+        "speech/src/main/assets/whisper-base/whisper_base.maml2",
+        0,
+        |offsets| whisper::build(offsets, whisper::Mode::Encode),
+        spread_inputs(&[(80usize, 1usize, 3000usize)], 12.0),
+    );
+}
+
+/// True numeric parity for one whisper decode step: entry 1. Caches start
+/// zeroed on both sides (the first step); the cross K/V arrive as inputs.
+#[test]
+fn v2_whisper_decode_matches_v1_bit_exact() {
+    use crate::nets::whisper;
+    let mut shapes = vec![(512usize, 1usize, 1usize)];
+    for _ in 0..whisper::DECODER_LAYERS {
+        shapes.push((512usize, 1usize, 1500usize));
+        shapes.push((512usize, 1usize, 1500usize));
+    }
+    assert_bit_exact(
+        "whisper decode step",
+        "speech/src/main/assets/whisper-base/whisper_base.maml",
+        weights::graph::WHISPER,
+        "speech/src/main/assets/whisper-base/whisper_base.maml2",
+        1,
+        |offsets| whisper::build(offsets, whisper::Mode::DecodeStep),
+        spread_inputs(&shapes, 13.0),
+    );
+}

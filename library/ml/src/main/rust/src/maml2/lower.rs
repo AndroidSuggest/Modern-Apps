@@ -611,6 +611,40 @@ fn rewrite_blocked_kinds(
     Ok(())
 }
 
+/// Resolve a cache tensor to its persistent builder Id, creating it first.
+///
+/// State tensors are arena storage, not values: the first node that names
+/// one (a `CacheWrite`, a cached attention) allocates it via
+/// [`Builder::persistent`] at the file's recorded shape, and later nodes
+/// reuse the Id. Anything else — a cache named with a non-state row, or a
+/// state row with a rank the arena cannot hold — is a corrupt file.
+fn persistent_of(
+    builder: &mut Builder<'_>,
+    tensors: &flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<fb::Tensor<'_>>>,
+    ids: &mut HashMap<i32, Id>,
+    t: i32,
+    node_index: usize,
+) -> Result<Id, String> {
+    let err = |what: &str| format!("node {node_index}: {what}");
+    if let Some(id) = ids.get(&t).copied() {
+        return Ok(id);
+    }
+    if tensors.get(t as usize).state() == fb::StateKind::NONE {
+        return Err(err(&format!("tensor {t} is not a state tensor")));
+    }
+    let dims = tensors
+        .get(t as usize)
+        .dims()
+        .map(|d| (0..d.len()).map(|i| d.get(i) as u32).collect::<Vec<u32>>())
+        .unwrap_or_default();
+    if dims.len() != 3 {
+        return Err(err(&format!("state tensor {t} is not [c, h, w]")));
+    }
+    let id = builder.persistent(Shape::new(dims[0], dims[1], dims[2]));
+    ids.insert(t, id);
+    Ok(id)
+}
+
 /// Lower one v2 node through the matching `*_raw` builder.
 fn lower_node(
     builder: &mut Builder<'_>,
@@ -978,9 +1012,50 @@ fn lower_node(
                     t,
                     offsets,
                 )
+            } else if phase == 4 {
+                if inputs.len() != 2 {
+                    return Err(err("cached Attention scores wants [q, cache]"));
+                }
+                let scale = attrs.float("scale")?;
+                let kv_heads = attrs.opt_int("kv_heads").unwrap_or(heads as i32) as u32;
+                let dynamic = attrs.opt_bool("dynamic");
+                let sliding = attrs.opt_bool("sliding");
+                // `id_of` before `persistent_of`: the closure borrows `ids`
+                // immutably, and the borrow must be dead before the mutable
+                // cache allocation on this path.
+                let q = id_of(inputs[0])?;
+                let cache = persistent_of(builder, tensors, ids, inputs[1], node_index)?;
+                builder.attn_scores_cached_raw(q, cache, heads, kv_heads, scale, dynamic, sliding)
+            } else if phase == 5 {
+                if inputs.len() != 2 {
+                    return Err(err("cached Attention apply wants [probs, cache]"));
+                }
+                let kv_heads = attrs.opt_int("kv_heads").unwrap_or(heads as i32) as u32;
+                let dynamic = attrs.opt_bool("dynamic");
+                let sliding = attrs.opt_bool("sliding");
+                let probs = id_of(inputs[0])?;
+                let cache = persistent_of(builder, tensors, ids, inputs[1], node_index)?;
+                builder.attn_apply_cached_raw(probs, cache, heads, kv_heads, dynamic, sliding)
             } else {
-                return Err(err(&format!("Attention phase {phase} is not 0, 1, 2, or 3")));
+                return Err(err(&format!("Attention phase {phase} is not 0..=5")));
             }
+        }
+        fb::Op::CacheWrite => {
+            if inputs.len() != 2 || outputs.len() != 1 {
+                return Err(err("CacheWrite wants [row, cache] -> [cache]"));
+            }
+            if outputs[0] != inputs[1] {
+                return Err(err("CacheWrite output is not its cache input"));
+            }
+            let row = id_of(inputs[0])?;
+            let cache =
+                persistent_of(builder, tensors, ids, inputs[1], node_index)?;
+            builder.cache_write(row, cache);
+            // The cache Id is the output: record it so downstream nodes and
+            // the graph-output mapping resolve. (The builder holds no new
+            // tensor — the cache persists.)
+            ids.insert(outputs[0], cache);
+            return Ok(());
         }
         fb::Op::Embedding => {
             if inputs.len() != 2 {

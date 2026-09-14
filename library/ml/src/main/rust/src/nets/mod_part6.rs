@@ -57,6 +57,28 @@ impl<'a> Builder<'a> {
         out
     }
 
+    /// [`Builder::attn_apply_cached`] with the key count and grouping carried
+    /// through rather than derived.
+    ///
+    /// The v2 form, beside [`Builder::attn_scores_cached_raw`]: dynamic,
+    /// sliding, and kv_heads ride the file, so the loader passes them
+    /// through rather than re-deciding them.
+    pub fn attn_apply_cached_raw(
+        &mut self,
+        probs: Id,
+        cache: Id,
+        heads: u32,
+        kv_heads: u32,
+        dynamic: bool,
+        sliding: bool,
+    ) -> Id {
+        let sc = self.shape_of(cache);
+        let head_dim = sc.w.checked_div(kv_heads.max(1)).unwrap_or(0);
+        let out = self.tensor(Shape::new(heads * head_dim, 1, 1));
+        self.nodes.push(Node::AttnApplyCached { probs, cache, out, heads, kv_heads, dynamic, sliding });
+        out
+    }
+
     /// The same elements under a different shape, as one contiguous copy.
     ///
     /// A projection writes `[d_model, 1, 1]` and a position-major cache is `[T, 1, d_model]`, so

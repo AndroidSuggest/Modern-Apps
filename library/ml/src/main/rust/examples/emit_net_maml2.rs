@@ -314,6 +314,56 @@ fn main() {
             println!("wrote {}", out_path.display());
             return;
         }
+        "whisper" => {
+            let asset = "speech/src/main/assets/whisper-base/whisper_base.maml";
+            let (data, tensors, offsets, sha) = load_v1(&root, asset, weights::graph::WHISPER);
+            let encode = modelrunner::nets::whisper::record(
+                &offsets,
+                modelrunner::nets::whisper::Mode::Encode,
+            )
+            .expect("record encode");
+            let decode = modelrunner::nets::whisper::record(
+                &offsets,
+                modelrunner::nets::whisper::Mode::DecodeStep,
+            )
+            .expect("record decode");
+            // 13 decode inputs: the token plus per-layer cross K/V pairs.
+            let mut decode_roles: Vec<String> = vec!["token".to_string()];
+            for layer in 0..modelrunner::nets::whisper::DECODER_LAYERS {
+                decode_roles.push(format!("cross_k{layer}"));
+                decode_roles.push(format!("cross_v{layer}"));
+            }
+            let decode_role_refs: Vec<&str> =
+                decode_roles.iter().map(|s| s.as_str()).collect();
+            let emitted = emit::emit_graphs(
+                &tensors,
+                &data,
+                "whisper-base int8 nchw (v2)",
+                "maml2 emit_net_maml2",
+                sha,
+                &[
+                    emit::GraphSpec {
+                        recorded: &encode,
+                        graph_name: "encode",
+                        entry_name: "encode",
+                        roles: &["mel"],
+                    },
+                    emit::GraphSpec {
+                        recorded: &decode,
+                        graph_name: "decode_step",
+                        entry_name: "decode_step",
+                        roles: &decode_role_refs,
+                    },
+                ],
+            )
+            .expect("emission succeeds");
+            let out_path = root.join(asset.replace(".maml", ".maml2"));
+            std::fs::write(&out_path, &emitted.bytes).expect("write the v2 file");
+            println!("whisper v2: {} nodes over 2 graphs", emitted.op_inventory.iter().map(|(_, n)| n).sum::<usize>());
+            println!("graph_digest: {}", hex(&emitted.graph_digest));
+            println!("wrote {}", out_path.display());
+            return;
+        }
         _ => usage(),
     };
     let _ = spec.graph;

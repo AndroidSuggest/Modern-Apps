@@ -450,6 +450,28 @@ impl<'a> Builder<'a> {
         out
     }
 
+    /// [`Builder::attn_scores_cached`] with a resolved scale and no derivation.
+    ///
+    /// The v2 form: the file carries the explicit `scale` (derived or folded
+    /// upstream at convert time), plus the dynamic/sliding flags, so the
+    /// loader passes everything through rather than re-deciding it. Shapes
+    /// were validated at inference; lowering only translates addressing.
+    pub fn attn_scores_cached_raw(
+        &mut self,
+        q: Id,
+        cache: Id,
+        heads: u32,
+        kv_heads: u32,
+        scale: f32,
+        dynamic: bool,
+        sliding: bool,
+    ) -> Id {
+        let sc = self.shape_of(cache);
+        let out = self.tensor(Shape::new(heads, 1, sc.c));
+        self.nodes.push(Node::AttnScoresCached { q, cache, out, heads, kv_heads, scale, dynamic, sliding });
+        out
+    }
+
     /// One query's attention output against a **position-major** V cache.
     ///
     /// `probs` is `[heads, 1, keys]` and `cache` is `[keys, 1, d_model]`, giving
