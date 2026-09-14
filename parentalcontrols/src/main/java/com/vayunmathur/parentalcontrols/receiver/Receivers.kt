@@ -55,7 +55,7 @@ class LimitReachedReceiver : BroadcastReceiver() {
     }
 }
 
-/** Fired at each bedtime boundary. Re-arms the next one through [Enforcer.reconcile]. */
+/** Fired at each supervised-window boundary. Re-arms the next one through [Enforcer]. */
 class BedtimeReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -63,9 +63,11 @@ class BedtimeReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                Enforcer(app).reconcile()
+                // reconcile plus entry notifications for windows that just opened - not a bare
+                // reconcile, or the child would never learn why apps just closed.
+                Enforcer(app).onWindowBoundary()
             } catch (t: Throwable) {
-                Log.e(TAG, "bedtime reconcile failed", t)
+                Log.e(TAG, "window boundary failed", t)
             } finally {
                 pending.finish()
             }

@@ -1,7 +1,5 @@
 package com.vayunmathur.parentalcontrols.ui
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -14,14 +12,14 @@ import com.vayunmathur.parentalcontrols.platform.SupervisionViewModel
  * The bedtime schedule, reached from Settings > Parental controls.
  *
  * Launched by a dashboard tile rather than a launcher icon - see the manifest. This app still
- * has no entry in the launcher, and these screens are the only UI it owns.
+ * has no entry in the launcher, and these screens are the only UI it owns. Parent-gated: only
+ * a verified parent may see or change the schedule.
  */
-class BedtimeActivity : ComponentActivity() {
+class BedtimeActivity : PinGatedActivity() {
 
     private val viewModel: SupervisionViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onPinVerifiedContent() {
         enableEdgeToEdge()
         setContent {
             DynamicTheme {

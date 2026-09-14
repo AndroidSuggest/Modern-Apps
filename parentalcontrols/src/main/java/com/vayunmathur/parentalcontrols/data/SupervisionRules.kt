@@ -13,10 +13,19 @@ import kotlinx.coroutines.flow.map
  * dependency: enforcement runs with no Activity alive.
  */
 class SupervisionRules private constructor(context: Context) :
-    RoomRepository<ParentalControlsDatabase>(context, ParentalControlsDatabase::class, DB_NAME) {
+    RoomRepository<ParentalControlsDatabase>(
+        context,
+        ParentalControlsDatabase::class,
+        DB_NAME,
+        migrations = listOf(MIGRATION_1_2),
+    ) {
 
     private val rules get() = db.appRuleDao()
     private val bedtime get() = db.bedtimeDao()
+    private val downtime get() = db.downtimeDao()
+    private val schoolTime get() = db.schoolTimeDao()
+    private val dailyLimit get() = db.dailyLimitDao()
+    private val bonus get() = db.bonusGrantDao()
 
     val allRules: Flow<List<AppRule>> = rules.allFlow()
 
@@ -44,6 +53,46 @@ class SupervisionRules private constructor(context: Context) :
     suspend fun scheduleNow(): BedtimeSchedule = bedtime.schedule() ?: BedtimeSchedule()
 
     suspend fun setSchedule(schedule: BedtimeSchedule) = bedtime.upsert(schedule)
+
+    /**
+     * The downtime window, defaulted rather than nullable.
+     *
+     * Same collapsing as [schedule]: a missing row and a disabled window mean the same thing
+     * to every caller.
+     */
+    val downtimeSchedule: Flow<DowntimeSchedule> =
+        downtime.scheduleFlow().map { it ?: DowntimeSchedule() }
+
+    suspend fun downtimeNow(): DowntimeSchedule = downtime.schedule() ?: DowntimeSchedule()
+
+    suspend fun setDowntime(schedule: DowntimeSchedule) = downtime.upsert(schedule)
+
+    /** The school-time window, defaulted rather than nullable. */
+    val schoolTimeSchedule: Flow<SchoolTimeSchedule> =
+        schoolTime.scheduleFlow().map { it ?: SchoolTimeSchedule() }
+
+    suspend fun schoolTimeNow(): SchoolTimeSchedule =
+        schoolTime.schedule() ?: SchoolTimeSchedule()
+
+    suspend fun setSchoolTime(schedule: SchoolTimeSchedule) = schoolTime.upsert(schedule)
+
+    /** The device-wide daily budget in minutes, or null for no device-wide cap. */
+    val dailyLimitMinutes: Flow<Int?> = dailyLimit.limitFlow().map { it?.dailyLimitMinutes }
+
+    suspend fun dailyLimitNow(): Int? = dailyLimit.limit()?.dailyLimitMinutes
+
+    suspend fun setDailyLimit(minutes: Int?) = dailyLimit.upsert(DailyLimit(dailyLimitMinutes = minutes))
+
+    /**
+     * Today's bonus grants, with foreign-day rows pruned first so a grant can never leak into
+     * tomorrow.
+     */
+    suspend fun bonusesToday(day: String): List<BonusGrant> {
+        bonus.pruneForeignDays(day)
+        return bonus.forDay(day)
+    }
+
+    suspend fun grantBonus(grant: BonusGrant) = bonus.upsert(grant)
 
     companion object {
         @Volatile private var instance: SupervisionRules? = null

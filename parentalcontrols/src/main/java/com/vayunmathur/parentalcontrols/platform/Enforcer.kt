@@ -3,7 +3,9 @@ package com.vayunmathur.parentalcontrols.platform
 import android.content.Context
 import android.util.Log
 import com.vayunmathur.parentalcontrols.data.AppRule
+import com.vayunmathur.parentalcontrols.data.BonusGrant
 import com.vayunmathur.parentalcontrols.data.SupervisionRules
+import com.vayunmathur.parentalcontrols.notifications.LockNotifier
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -20,9 +22,9 @@ private const val TAG = "ParentalControlsEnforcer"
  *
  * ## Precedence
  *
- * Bedtime wins over a daily limit. Both are reasons to block and neither is a reason to unblock
- * while the other holds, so the state is simply the OR of them; the ordering only matters for
- * the *reason* shown to the user.
+ * Bedtime > downtime > school time > device-wide daily limit > per-app limit. All are reasons
+ * to block and none is a reason to unblock while another holds, so the state is simply the OR
+ * of them; the ordering only matters for the *reason* shown to the user.
  *
  * ## Why a limit trip is remembered
  *
@@ -43,6 +45,61 @@ class Enforcer(private val context: Context) {
     suspend fun onLimitReached(packageName: String) {
         limitState.markReached(packageName)
         reconcile()
+        // The observer fires exactly once per trip, so this notifies exactly once: the child
+        // learns why the app just died. Window entries are notified by onWindowBoundary.
+        LockNotifier.notifyLocked(context, BlockReason.AppLimit, packageName)
+    }
+
+    /**
+     * Called from the window-boundary receiver after [reconcile].
+     *
+     * Notifies only for windows that just *opened* (closed a minute ago, open now), and only
+     * the apps that window blocks - so a boundary that ends a window stays silent, and an
+     * already-crying child is not re-notified for apps blocked all along by another reason.
+     */
+    suspend fun onWindowBoundary() {
+        reconcile()
+        val now = LocalDateTime.now()
+        val minuteAgo = now.minusMinutes(1)
+        val bedtime = rules.scheduleNow()
+        val downtime = rules.downtimeNow()
+        val school = rules.schoolTimeNow()
+        val all = rules.allRulesNow()
+        val day = LocalDate.now().toString()
+        val deviceOverBudget = deviceOverBudgetNow(rules.bonusesToday(day))
+        if (bedtime.activeAt(now) && !bedtime.activeAt(minuteAgo)) {
+            for (rule in all) {
+                if (rule.blockedAtBedtime) {
+                    LockNotifier.notifyLocked(context, BlockReason.Bedtime, rule.packageName)
+                }
+            }
+        }
+        if (downtime.activeAt(now) && !downtime.activeAt(minuteAgo)) {
+            for (rule in all) {
+                if (!rule.allowedInDowntime &&
+                    !(rule.blockedAtBedtime && bedtime.activeAt(now))
+                ) {
+                    LockNotifier.notifyLocked(context, BlockReason.Downtime, rule.packageName)
+                }
+            }
+        }
+        if (school.activeAt(now) && !school.activeAt(minuteAgo)) {
+            for (rule in all) {
+                if (!rule.allowedInDowntime &&
+                    !(rule.blockedAtBedtime && bedtime.activeAt(now)) &&
+                    !(downtime.activeAt(now))
+                ) {
+                    LockNotifier.notifyLocked(context, BlockReason.SchoolTime, rule.packageName)
+                }
+            }
+        }
+        // Device-wide budget crossing is detected here rather than by an observer (the
+        // platform has no device-total primitive): if the last minute pushed the total over,
+        // the child gets one notice. Per-app trips already notified via onLimitReached.
+        if (!deviceOverBudget) {
+            val overNow = deviceOverBudgetNow(rules.bonusesToday(LocalDate.now().toString()))
+            if (overNow) LockNotifier.notifyLocked(context, BlockReason.DailyLimit, null)
+        }
     }
 
     /**
@@ -56,17 +113,33 @@ class Enforcer(private val context: Context) {
             Log.w(TAG, "no supervision policy channel; nothing will be enforced")
             return
         }
-        val schedule = rules.scheduleNow()
+        val now = LocalDateTime.now()
+        val bedtimeSchedule = rules.scheduleNow()
+        val downtimeSchedule = rules.downtimeNow()
+        val schoolSchedule = rules.schoolTimeNow()
         val all = rules.allRulesNow()
-        val nightNow = schedule.activeAt(LocalDateTime.now())
+        val bedtimeNow = bedtimeSchedule.activeAt(now)
+        val downtimeNow = downtimeSchedule.activeAt(now)
+        val schoolNow = schoolSchedule.activeAt(now)
+        val day = LocalDate.now().toString()
+        val bonuses = rules.bonusesToday(day)
         limitState.pruneToToday()
         // Cheap and idempotent, and it has to happen before AppLimits.sync below: without the
         // usage-stats op an observer is armed with timeUsed = 0.
         UsageAccess.ensure(context)
 
+        val deviceOverBudget = deviceOverBudgetNow(bonuses)
+
         for (rule in all) {
-            val blocked = shouldBlock(rule, nightNow)
-            if (blocked) policies.block(rule.packageName) else policies.allow(rule.packageName)
+            val reason = blockReason(
+                rule = rule,
+                bedtimeNow = bedtimeNow,
+                downtimeNow = downtimeNow,
+                schoolNow = schoolNow,
+                deviceOverBudget = deviceOverBudget,
+            )
+            if (reason != null) policies.block(rule.packageName)
+            else policies.allow(rule.packageName)
         }
 
         // Record the parent's caps in the platform's own policy store. Does not enforce - see
@@ -76,12 +149,56 @@ class Enforcer(private val context: Context) {
             rule.dailyLimitMinutes?.let { policies.limit(rule.packageName, it) }
         }
 
-        limits.sync(all.filter { !shouldBlock(it, nightNow) })
-        bedtime.arm(schedule)
+        limits.sync(all.filter { blockReason(
+            rule = it,
+            bedtimeNow = bedtimeNow,
+            downtimeNow = downtimeNow,
+            schoolNow = schoolNow,
+            deviceOverBudget = deviceOverBudget,
+        ) == null }, bonuses)
+        bedtime.armAll(bedtimeSchedule, downtimeSchedule, schoolSchedule)
     }
 
-    private fun shouldBlock(rule: AppRule, nightNow: Boolean): Boolean =
-        (rule.blockedAtBedtime && nightNow) || limitState.hasReached(rule.packageName)
+    /**
+     * Why [rule]'s app is currently blocked, or null when it may run.
+     *
+     * Order is bedtime > downtime > school time > device daily limit > per-app limit; the first
+     * holding reason wins so the lock screen can name it.
+     */
+    private fun blockReason(
+        rule: AppRule,
+        bedtimeNow: Boolean,
+        downtimeNow: Boolean,
+        schoolNow: Boolean,
+        deviceOverBudget: Boolean,
+    ): BlockReason? {
+        if (rule.blockedAtBedtime && bedtimeNow) return BlockReason.Bedtime
+        if (downtimeNow && !rule.allowedInDowntime) return BlockReason.Downtime
+        if (schoolNow && !rule.allowedInDowntime) return BlockReason.SchoolTime
+        if (deviceOverBudget) return BlockReason.DailyLimit
+        if (limitState.hasReached(rule.packageName)) return BlockReason.AppLimit
+        return null
+    }
+
+    /** The user-facing reason an app is blocked. Ordering matches [blockReason] precedence. */
+    enum class BlockReason {
+        Bedtime,
+        Downtime,
+        SchoolTime,
+        DailyLimit,
+        AppLimit,
+    }
+
+    /**
+     * Whether the device-wide budget (cap plus today's device-wide bonuses) is spent.
+     *
+     * Takes the already-loaded bonuses so [reconcile] does not read the table twice.
+     */
+    private suspend fun deviceOverBudgetNow(bonuses: List<BonusGrant>): Boolean {
+        val deviceBonus = bonuses.filter { it.packageName == null }.sumOf { it.bonusMinutes }
+        val deviceLimit = rules.dailyLimitNow()?.let { it + deviceBonus } ?: return false
+        return limits.totalUsedToday() >= java.time.Duration.ofMinutes(deviceLimit.toLong())
+    }
 }
 
 /**

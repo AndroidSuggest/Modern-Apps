@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import com.vayunmathur.parentalcontrols.auth.ParentPin
 
 private const val TAG = "ParentalControlsSetup"
 
@@ -27,6 +28,12 @@ class SetupActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Imposed enforcement always has a gatekeeper: before the platform setup flow runs,
+        // make sure a parent PIN exists. First run lands on PIN creation; afterwards the
+        // platform flow proceeds as before.
+        if (!ParentPin.get(this).isSet()) {
+            startActivity(Intent(this, PinSetupActivity::class.java))
+        }
         val enable = Intent(ACTION_ENABLE_SUPERVISION).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

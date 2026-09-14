@@ -7,6 +7,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.parentalcontrols.data.AppRule
 import com.vayunmathur.parentalcontrols.data.BedtimeSchedule
+import com.vayunmathur.parentalcontrols.data.DowntimeSchedule
+import com.vayunmathur.parentalcontrols.data.SchoolTimeSchedule
 import com.vayunmathur.parentalcontrols.data.SupervisionRules
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,9 +28,12 @@ data class SupervisableApp(
     val isSupervised: Boolean get() = rule != null
 }
 
-/** Everything the bedtime and app-limit screens draw. */
+/** Everything the supervision screens draw. */
 data class SupervisionUiState(
     val schedule: BedtimeSchedule = BedtimeSchedule(),
+    val downtime: DowntimeSchedule = DowntimeSchedule(),
+    val schoolTime: SchoolTimeSchedule = SchoolTimeSchedule(),
+    val dailyLimitMinutes: Int? = null,
     val apps: List<SupervisableApp> = emptyList(),
     val loading: Boolean = true,
 )
@@ -40,12 +45,26 @@ class SupervisionViewModel(app: Application) : AndroidViewModel(app) {
 
     val state: StateFlow<SupervisionUiState> = combine(
         rules.schedule,
+        rules.downtimeSchedule,
+        rules.schoolTimeSchedule,
+        rules.dailyLimitMinutes,
         rules.allRules,
         installed,
-    ) { schedule, ruleList, apps ->
+    ) { flows ->
+        @Suppress("UNCHECKED_CAST")
+        val schedule = flows[0] as BedtimeSchedule
+        val downtime = flows[1] as DowntimeSchedule
+        val schoolTime = flows[2] as SchoolTimeSchedule
+        val dailyLimit = flows[3] as Int?
+        val ruleList = flows[4] as List<AppRule>
+        @Suppress("UNCHECKED_CAST")
+        val apps = flows[5] as List<Pair<String, String>>
         val byPackage = ruleList.associateBy { it.packageName }
         SupervisionUiState(
             schedule = schedule,
+            downtime = downtime,
+            schoolTime = schoolTime,
+            dailyLimitMinutes = dailyLimit,
             apps = apps.map { (pkg, label) -> SupervisableApp(pkg, label, byPackage[pkg]) },
             loading = apps.isEmpty(),
         )
@@ -73,9 +92,58 @@ class SupervisionViewModel(app: Application) : AndroidViewModel(app) {
         it.copy(dailyLimitMinutes = minutes)
     }
 
+    fun setAllowedInDowntime(packageName: String, allowed: Boolean) = editRule(packageName) {
+        it.copy(allowedInDowntime = allowed)
+    }
+
+    fun setDowntimeEnabled(enabled: Boolean) = editDowntime { it.copy(enabled = enabled) }
+
+    fun setDowntimeStart(hour: Int, minute: Int) =
+        editDowntime { it.copy(startMinute = hour * 60 + minute) }
+
+    fun setDowntimeEnd(hour: Int, minute: Int) =
+        editDowntime { it.copy(endMinute = hour * 60 + minute) }
+
+    fun toggleDowntimeDay(dayIndex: Int) = editDowntime {
+        it.copy(daysMask = it.daysMask xor (1 shl dayIndex))
+    }
+
+    fun setSchoolTimeEnabled(enabled: Boolean) = editSchoolTime { it.copy(enabled = enabled) }
+
+    fun setSchoolTimeStart(hour: Int, minute: Int) =
+        editSchoolTime { it.copy(startMinute = hour * 60 + minute) }
+
+    fun setSchoolTimeEnd(hour: Int, minute: Int) =
+        editSchoolTime { it.copy(endMinute = hour * 60 + minute) }
+
+    fun toggleSchoolTimeDay(dayIndex: Int) = editSchoolTime {
+        it.copy(daysMask = it.daysMask xor (1 shl dayIndex))
+    }
+
+    fun setDeviceDailyLimit(minutes: Int?) {
+        viewModelScope.launch {
+            rules.setDailyLimit(minutes)
+            reconcile()
+        }
+    }
+
     private fun edit(transform: (BedtimeSchedule) -> BedtimeSchedule) {
         viewModelScope.launch {
             rules.setSchedule(transform(rules.scheduleNow()))
+            reconcile()
+        }
+    }
+
+    private fun editDowntime(transform: (DowntimeSchedule) -> DowntimeSchedule) {
+        viewModelScope.launch {
+            rules.setDowntime(transform(rules.downtimeNow()))
+            reconcile()
+        }
+    }
+
+    private fun editSchoolTime(transform: (SchoolTimeSchedule) -> SchoolTimeSchedule) {
+        viewModelScope.launch {
+            rules.setSchoolTime(transform(rules.schoolTimeNow()))
             reconcile()
         }
     }
@@ -89,7 +157,7 @@ class SupervisionViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val existing = rules.rule(packageName) ?: AppRule(packageName)
             val next = transform(existing)
-            if (next.dailyLimitMinutes == null && !next.blockedAtBedtime) {
+            if (next.dailyLimitMinutes == null && !next.blockedAtBedtime && !next.allowedInDowntime) {
                 rules.delete(next)
             } else {
                 rules.upsert(next)

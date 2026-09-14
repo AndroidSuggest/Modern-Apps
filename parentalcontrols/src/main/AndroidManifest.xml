@@ -37,6 +37,8 @@
     <!-- The app-limits and bedtime screens list launchable apps to choose between. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+    <!-- Restriction notices (limit spent, window opened) tap through to the lock screens. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Not requested, deliberately: no INTERNET. Nothing here leaves the device - the schedule,
          the caps and which apps they cover are all local, and there is no account to sync to. -->
@@ -152,6 +154,70 @@
         </activity>
 
         <!--
+          The Family Link set: downtime, school time and the device-wide daily limit. Same
+          Settings-dashboard integration as bedtime and app limits - one row each, filled only
+          because of the supervision category tags. All three are parent-gated in code (see
+          PinGatedActivity); the MANAGE_SUPERVISION permission here keeps other apps from
+          opening them directly.
+        -->
+        <activity
+            android:name=".ui.DowntimeActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true"
+            android:label="@string/downtime_title"
+            android:permission="android.permission.MANAGE_SUPERVISION"
+            android:theme="@style/Theme.General">
+            <intent-filter>
+                <action android:name="com.vayunmathur.parentalcontrols.action.DOWNTIME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="com.android.settings.category"
+                android:value="com.android.settings.category.ia.supervision" />
+            <meta-data
+                android:name="com.android.settings.summary"
+                android:resource="@string/downtime_summary" />
+        </activity>
+
+        <activity
+            android:name=".ui.SchoolTimeActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true"
+            android:label="@string/school_title"
+            android:permission="android.permission.MANAGE_SUPERVISION"
+            android:theme="@style/Theme.General">
+            <intent-filter>
+                <action android:name="com.vayunmathur.parentalcontrols.action.SCHOOL_TIME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="com.android.settings.category"
+                android:value="com.android.settings.category.ia.supervision" />
+            <meta-data
+                android:name="com.android.settings.summary"
+                android:resource="@string/school_summary" />
+        </activity>
+
+        <activity
+            android:name=".ui.DailyLimitActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true"
+            android:label="@string/daily_title"
+            android:permission="android.permission.MANAGE_SUPERVISION"
+            android:theme="@style/Theme.General">
+            <intent-filter>
+                <action android:name="com.vayunmathur.parentalcontrols.action.DAILY_LIMIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="com.android.settings.category"
+                android:value="com.android.settings.category.ia.supervision" />
+            <meta-data
+                android:name="com.android.settings.summary"
+                android:resource="@string/daily_summary" />
+        </activity>
+
+        <!--
           Where Settings sends the user for "app settings" of a supervision app. Without an
           activity answering this, `createSupervisionAppPreference` throws IllegalStateException
           and the app never appears under "Apps managing this device". Bedtime is the most useful
@@ -208,5 +274,55 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!--
+          The parent-PIN challenge and its first-run setup. Neither is exported: both are
+          started explicitly by our own editors and lock screens, and the PIN must never be
+          reachable - or even visible - to another app. Both are guarded by MANAGE_SUPERVISION
+          as well, so even an explicit intent from elsewhere cannot open them.
+        -->
+        <activity
+            android:name=".ui.PinGateActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="false"
+            android:permission="android.permission.MANAGE_SUPERVISION"
+            android:theme="@style/Theme.General" />
+        <activity
+            android:name=".ui.PinSetupActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="false"
+            android:permission="android.permission.MANAGE_SUPERVISION"
+            android:theme="@style/Theme.General" />
+
+        <!--
+          Full-screen restriction notices, one per block reason. None exported: started
+          explicitly by our own receivers and notifications. showWhenLocked is set in code so
+          the child meets the reason over the keyguard, not a home screen.
+        -->
+        <activity
+            android:name=".ui.BedtimeLockActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.General" />
+        <activity
+            android:name=".ui.DowntimeLockActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.General" />
+        <activity
+            android:name=".ui.SchoolTimeLockActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.General" />
+        <activity
+            android:name=".ui.DailyLimitLockActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.General" />
+        <activity
+            android:name=".ui.AppLimitLockActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="false"
+            android:theme="@style/Theme.General" />
     </application>
 </manifest>

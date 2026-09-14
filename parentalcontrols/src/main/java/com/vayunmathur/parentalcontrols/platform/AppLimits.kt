@@ -6,6 +6,7 @@ import android.content.Context
 import android.util.Log
 import androidx.core.content.getSystemService
 import com.vayunmathur.parentalcontrols.data.AppRule
+import com.vayunmathur.parentalcontrols.data.BonusGrant
 import com.vayunmathur.parentalcontrols.receiver.LimitReachedReceiver
 import java.lang.reflect.Method
 import java.time.Duration
@@ -49,12 +50,65 @@ class AppLimits(private val context: Context) {
 
     /** Register an observer for every capped app, replacing any previous registration. */
     fun sync(rules: List<AppRule>) {
+        sync(rules, emptyList())
+    }
+
+    /**
+     * Register an observer for every capped app, with today's bonus grants extending budgets.
+     *
+     * A grant for [BonusGrant.packageName] adds [BonusGrant.bonusMinutes] to that app's cap; a
+     * grant with null package is device-wide and handled by the daily-limit path, not here.
+     */
+    fun sync(rules: List<AppRule>, bonuses: List<BonusGrant>) {
         val usage = usage ?: return
+        val bonusByPackage = bonuses.filter { it.packageName != null }
+            .groupBy { it.packageName!! }
+            .mapValues { (_, grants) -> grants.sumOf { it.bonusMinutes } }
         for (rule in rules) {
             val minutes = rule.dailyLimitMinutes ?: continue
-            register(usage, rule.packageName, minutes)
+            val budget = minutes + (bonusByPackage[rule.packageName] ?: 0)
+            register(usage, rule.packageName, budget)
         }
     }
+
+    /**
+     * Foreground time for [packageName] since local midnight.
+     *
+     * `queryAndAggregateUsageStats` is public SDK and needs `PACKAGE_USAGE_STATS`, which is an
+     * app-op rather than a role grant - see the manifest note. If it is not held this returns
+     * zero, and a cap then measures from the moment it was armed instead of from midnight.
+     */
+    fun timeUsedToday(packageName: String): Duration {
+        val usage = usage ?: return Duration.ZERO
+        val stats = runCatching {
+            usage.queryAndAggregateUsageStats(midnightMillis(), System.currentTimeMillis())
+        }.getOrElse {
+            Log.w(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
+            return Duration.ZERO
+        }
+        val millis = stats[packageName]?.totalTimeInForeground ?: 0L
+        return Duration.ofMillis(millis)
+    }
+
+    /**
+     * Total foreground time across all packages since local midnight.
+     *
+     * Used for the device-wide daily limit. Sums the same per-package map as [timeUsedToday],
+     * so both paths agree about what "used" means.
+     */
+    fun totalUsedToday(): Duration {
+        val usage = usage ?: return Duration.ZERO
+        val stats = runCatching {
+            usage.queryAndAggregateUsageStats(midnightMillis(), System.currentTimeMillis())
+        }.getOrElse {
+            Log.w(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
+            return Duration.ZERO
+        }
+        return Duration.ofMillis(stats.values.sumOf { it.totalTimeInForeground })
+    }
+
+    private fun midnightMillis(): Long =
+        LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
     fun unregister(packageName: String) {
         val usage = usage ?: return
@@ -89,26 +143,6 @@ class AppLimits(private val context: Context) {
                 pending,
             )
         }.onFailure { Log.w(TAG, "could not register an observer for $packageName", it) }
-    }
-
-    /**
-     * Foreground time for [packageName] since local midnight.
-     *
-     * `queryAndAggregateUsageStats` is public SDK and needs `PACKAGE_USAGE_STATS`, which is an
-     * app-op rather than a role grant - see the manifest note. If it is not held this returns
-     * zero, and a cap then measures from the moment it was armed instead of from midnight.
-     */
-    private fun timeUsedToday(packageName: String): Duration {
-        val usage = usage ?: return Duration.ZERO
-        val midnight = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val stats = runCatching {
-            usage.queryAndAggregateUsageStats(midnight, System.currentTimeMillis())
-        }.getOrElse {
-            Log.w(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
-            return Duration.ZERO
-        }
-        val millis = stats[packageName]?.totalTimeInForeground ?: 0L
-        return Duration.ofMillis(millis)
     }
 
     /**

@@ -36,6 +36,98 @@
     <!-- Shown in place of the app list while installed apps are still being read. -->
     <string name="apps_loading">Loading apps…</string>
 
+    <!-- PIN challenge: title of the gate shown before any parent-only surface. Noun phrase. -->
+    <string name="pin_title">Parent PIN</string>
+    <!-- PIN challenge: explanation of why the PIN is asked. -->
+    <string name="pin_challenge_hint">Enter the parent PIN to change these settings.</string>
+    <!-- PIN challenge: label of the PIN entry field. Noun. -->
+    <string name="pin_label">PIN</string>
+    <!-- PIN challenge: button that submits the entered PIN. Verb. -->
+    <string name="pin_unlock">Unlock</string>
+    <!-- PIN challenge: shown after a wrong entry while attempts remain. -->
+    <string name="pin_wrong">Wrong PIN. Try again.</string>
+    <!-- PIN challenge: shown while brute-force lockout is active. -->
+    <string name="pin_locked_out">Too many tries. Try again later.</string>
+
+    <!-- PIN setup: title of first-run creation and later change. Noun phrase. -->
+    <string name="pin_setup_title">Set parent PIN</string>
+    <!-- PIN setup: explanation shown above the two entry fields. -->
+    <string name="pin_setup_hint">Choose a PIN only a parent knows. It protects every limit, schedule and bonus.</string>
+    <!-- PIN setup: label of the first entry field. Noun phrase. -->
+    <string name="pin_new_label">New PIN</string>
+    <!-- PIN setup: label of the repeat field. Noun phrase. -->
+    <string name="pin_confirm_label">Repeat PIN</string>
+    <!-- PIN setup: shown under the repeat field when the two entries differ. -->
+    <string name="pin_mismatch">PINs do not match.</string>
+    <!-- PIN setup: confirmation shown after the PIN is stored. -->
+    <string name="pin_saved">Parent PIN saved.</string>
+
+    <!-- Lock screens: title shown for each block reason. Noun phrases. -->
+    <string name="lock_bedtime_title">Bedtime</string>
+    <string name="lock_downtime_title">Downtime</string>
+    <string name="lock_school_title">School time</string>
+    <string name="lock_daily_title">Daily limit reached</string>
+    <string name="lock_applimit_title">App limit reached</string>
+    <!-- Lock screens: explanation under each title. -->
+    <string name="lock_bedtime_hint">This app is unavailable during bedtime hours.</string>
+    <string name="lock_downtime_hint">This app is unavailable during downtime. Only approved apps can be opened.</string>
+    <string name="lock_school_hint">This app is unavailable during school hours. Only learning apps can be opened.</string>
+    <string name="lock_daily_hint">Today\'s screen-time budget is used up. Everything unlocks again at midnight.</string>
+    <string name="lock_applimit_hint">This app\'s time for today is used up. It unlocks again at midnight.</string>
+    <!-- Lock screens: button that starts the parent-PIN bonus flow. Verb phrase. -->
+    <string name="lock_ask_parent">Ask a parent for more time</string>
+    <!-- Lock screens: button that dismisses the notice. Verb. -->
+    <string name="lock_close">OK</string>
+    <!-- Notifications: channel for restriction notices. Noun phrase. -->
+    <string name="lock_channel_name">Restrictions</string>
+    <!-- Notifications: channel description. -->
+    <string name="lock_channel_description">Notices when bedtime, downtime, school time or a limit blocks an app.</string>
+
+    <!-- Downtime screen: title, also the label of its row in Settings > Parental controls. Noun. -->
+    <string name="downtime_title">Downtime</string>
+    <!-- One-line summary under the Downtime row in Settings. -->
+    <string name="downtime_summary">Choose hours when only approved apps open</string>
+    <!-- Downtime screen: the main on/off switch. Verb phrase. -->
+    <string name="downtime_enable">Use a downtime schedule</string>
+    <!-- Downtime screen: explanation under the main switch. -->
+    <string name="downtime_enable_hint">Everything except the apps you approve below stays closed during the hours you set.</string>
+    <!-- Downtime screen: row for the time the window opens. Noun phrase. -->
+    <string name="downtime_start">Starts at</string>
+    <!-- Downtime screen: row for the time the window closes. Noun phrase. -->
+    <string name="downtime_end">Ends at</string>
+    <!-- Downtime screen: heading above the day-of-week chips. Noun. -->
+    <string name="downtime_days">Days</string>
+    <!-- Downtime screen: heading above the list of apps that stay available. Noun phrase. -->
+    <string name="downtime_apps">Approved apps</string>
+
+    <!-- School time screen: title, also the label of its row in Settings > Parental controls. Noun phrase. -->
+    <string name="school_title">School time</string>
+    <!-- One-line summary under the School time row in Settings. -->
+    <string name="school_summary">Limit the device to learning apps during school</string>
+    <!-- School time screen: the main on/off switch. Verb phrase. -->
+    <string name="school_enable">Use a school time schedule</string>
+    <!-- School time screen: explanation under the main switch. -->
+    <string name="school_enable_hint">Only the learning apps you approve below can be opened during school hours.</string>
+    <!-- School time screen: row for the time the window opens. Noun phrase. -->
+    <string name="school_start">Starts at</string>
+    <!-- School time screen: row for the time the window closes. Noun phrase. -->
+    <string name="school_end">Ends at</string>
+    <!-- School time screen: heading above the day-of-week chips. Noun. -->
+    <string name="school_days">Days</string>
+    <!-- School time screen: heading above the list of learning apps. Noun phrase. -->
+    <string name="school_apps">Learning apps</string>
+
+    <!-- Daily limit screen: title, also the label of its row in Settings > Parental controls. Noun phrase. -->
+    <string name="daily_title">Daily limit</string>
+    <!-- One-line summary under the Daily limit row in Settings. -->
+    <string name="daily_summary">Set total screen time allowed per day</string>
+    <!-- Daily limit screen: heading of the explanatory row. Noun phrase. -->
+    <string name="daily_explainer">Whole-device time budget</string>
+    <!-- Daily limit screen: explanation of when the budget takes effect and resets. -->
+    <string name="daily_explainer_hint">Everything locks once the day\'s budget is used up, and unlocks again at midnight.</string>
+    <!-- Daily limit screen: row showing the current budget. Noun phrase. -->
+    <string name="daily_budget">Daily budget</string>
+
     <!-- Dialog button that stores the chosen value. Verb. -->
     <string name="save">Save</string>
     <!-- Dialog button that discards the change. Verb. -->
