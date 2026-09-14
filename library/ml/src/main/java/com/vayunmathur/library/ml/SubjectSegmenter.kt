@@ -58,8 +58,8 @@ class SubjectSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Au
                 SIZE, SIZE, OnnxPreprocess.IMAGENET,
             )
             val env = OrtEnvironment.getEnvironment()
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())).use { tensor ->
-                live.run(mapOf(INPUT to tensor), setOf(OUTPUT)).use { result ->
+            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())).useOrt { tensor ->
+                live.run(mapOf(INPUT to tensor), setOf(OUTPUT)).useOrt { result ->
                     val out = result[0] as OnnxTensor
                     val flat = FloatArray(SIZE * SIZE)
                     out.floatBuffer.get(flat)

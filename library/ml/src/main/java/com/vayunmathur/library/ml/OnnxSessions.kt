@@ -93,3 +93,28 @@ abstract class OnnxHandle protected constructor(private val sessionKey: String) 
     /** Release this handle's session. Idempotent. */
     override fun close() = OnnxSessions.close(sessionKey)
 }
+
+/**
+ * `use` for ORT values, which are only [AutoCloseable].
+ *
+ * The stdlib `use` needs `Closeable`; `OnnxTensor` and `OrtSession.Result` implement just
+ * `AutoCloseable`, so every tensor-owning call site goes through here.
+ */
+inline fun <T : AutoCloseable?, R> T.useOrt(block: (T) -> R): R {
+    var closed = false
+    try {
+        return block(this)
+    } catch (e: Throwable) {
+        closed = true
+        try {
+            this?.close()
+        } catch (closeException: Throwable) {
+            e.addSuppressed(closeException)
+        }
+        throw e
+    } finally {
+        if (!closed) {
+            this?.close()
+        }
+    }
+}

@@ -77,7 +77,7 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
         if (special.size != SPECIAL_IDS) return null
         return try {
             val env = OrtEnvironment.getEnvironment()
-            encode(enc, env, mel).use { hidden ->
+            encode(enc, env, mel).useOrt { hidden ->
                 val lang = if (languageToken < 0) {
                     detectLanguage(dec, env, hidden) ?: return null
                 } else {
@@ -106,8 +106,8 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
 
     private fun encode(enc: OrtSession, env: OrtEnvironment, mel: FloatArray): OnnxTensor {
         val shape = longArrayOf(1, MELS.toLong(), FRAMES.toLong())
-        OnnxTensor.createTensor(env, FloatBuffer.wrap(mel), shape).use { input ->
-            enc.run(mapOf("input_features" to input)).use { result ->
+        OnnxTensor.createTensor(env, FloatBuffer.wrap(mel), shape).useOrt { input ->
+            enc.run(mapOf("input_features" to input)).useOrt { result ->
                 val out = result.get(0) as OnnxTensor
                 val buf = FloatArray(out.info.shape.fold(1L) { a, b -> a * b }.toInt())
                 out.floatBuffer.get(buf)
@@ -122,8 +122,8 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
                 val ids = OnnxTensor.createTensor(
                     env, LongBuffer.wrap(longArrayOf(special[0].toLong())), longArrayOf(1, 1),
                 )
-                ids.use {
-                    dec.run(feeds(hidden, past, it, useCache = false)).use { result ->
+                ids.useOrt {
+                    dec.run(feeds(hidden, past, it, useCache = false)).useOrt { result ->
                         val logits = result.get(0) as OnnxTensor
                         val vocab = logits.info.shape.last().toInt()
                         val row = FloatArray(vocab)
@@ -166,7 +166,7 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
                 val idTensor = OnnxTensor.createTensor(
                     env, LongBuffer.wrap(longIds), longArrayOf(1, ids.size.toLong()),
                 )
-                val result = idTensor.use { dec.run(feeds(hidden, past, it, useCache = step > 0)) }
+                val result = idTensor.useOrt { dec.run(feeds(hidden, past, it, useCache = step > 0)) }
                 past.close()
                 next = argmax(
                     result.get(0) as OnnxTensor,
@@ -243,6 +243,12 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             runCatching { cacheFalse.close() }
             runCatching { cacheTrue.close() }
             runCatching { result?.close() }
+        }
+
+        inline fun <T> use(block: (Past) -> T): T = try {
+            block(this)
+        } finally {
+            close()
         }
     }
 

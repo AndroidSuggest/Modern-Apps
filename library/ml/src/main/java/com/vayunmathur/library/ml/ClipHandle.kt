@@ -113,14 +113,14 @@ class ClipHandle private constructor(private val source: String) : AutoCloseable
         val idShape = longArrayOf(1, ids.size.toLong())
         val idTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(longIds), idShape)
         val maskTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(mask), idShape)
-        pixelTensor.use {
-            idTensor.use {
-                maskTensor.use {
+        pixelTensor.useOrt {
+            idTensor.useOrt {
+                maskTensor.useOrt {
                     val inputs = LinkedHashMap<String, OnnxTensor>(3)
                     inputs[IN_PIXELS] = pixelTensor
                     inputs[IN_IDS] = idTensor
                     inputs[IN_MASK] = maskTensor
-                    session.run(inputs, setOf(wanted)).use { result ->
+                    session.run(inputs, setOf(wanted)).useOrt { result ->
                         val out = result.get(wanted).get() as OnnxTensor
                         val vec = FloatArray(out.info.shape.last().toInt())
                         out.floatBuffer.get(vec)

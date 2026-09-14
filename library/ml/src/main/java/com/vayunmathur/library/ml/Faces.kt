@@ -98,8 +98,8 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
                 pixels, readable.width, readable.height, LONG_SIDE, fit, OnnxPreprocess.SCRFD,
             )
             val env = OrtEnvironment.getEnvironment()
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, LONG_SIDE.toLong(), LONG_SIDE.toLong())).use { tensor ->
-                live.run(mapOf(INPUT to tensor)).use { result ->
+            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, LONG_SIDE.toLong(), LONG_SIDE.toLong())).useOrt { tensor ->
+                live.run(mapOf(INPUT to tensor)).useOrt { result ->
                     fun floats(name: String): FloatArray {
                         val out = FloatArray(sessionOutputSize(live, name))
                         ((result.get(name).get()) as OnnxTensor).floatBuffer.get(out)
@@ -294,8 +294,8 @@ class FaceEmbedder(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
                 SIZE, SIZE, OnnxPreprocess.FACE_EMBED,
             )
             val env = OrtEnvironment.getEnvironment()
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())).use { tensor ->
-                live.run(mapOf(INPUT to tensor)).use { result ->
+            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())).useOrt { tensor ->
+                live.run(mapOf(INPUT to tensor)).useOrt { result ->
                     val out = result[0] as OnnxTensor
                     val vec = FloatArray(EMBEDDING_LENGTH)
                     out.floatBuffer.get(vec)

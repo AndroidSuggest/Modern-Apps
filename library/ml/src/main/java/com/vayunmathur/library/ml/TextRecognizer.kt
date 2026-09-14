@@ -83,7 +83,7 @@ class TextRecognizer(
 
     init {
         try {
-            val text = app.assets.open(dictionaryAsset).use { it.readBytes() }.decodeToString()
+            val text = app.assets.open(dictionaryAsset).useOrt { it.readBytes() }.decodeToString()
             dictionary = parseDictionary(text)
         } catch (e: Throwable) {
             Log.e(TAG, "cannot open the PP-OCRv5 dictionary", e)
@@ -113,8 +113,8 @@ class TextRecognizer(
                 pixels, readable.width, readable.height, DET_SIDE, fit, OnnxPreprocess.PPOCR_DET,
             )
             val env = OrtEnvironment.getEnvironment()
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, DET_SIDE.toLong(), DET_SIDE.toLong())).use { tensor ->
-                detSession.run(mapOf(DET_INPUT to tensor)).use { result ->
+            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, DET_SIDE.toLong(), DET_SIDE.toLong())).useOrt { tensor ->
+                detSession.run(mapOf(DET_INPUT to tensor)).useOrt { result ->
                     val map = FloatArray(DET_SIDE * DET_SIDE)
                     ((result.get(DET_OUTPUT).get()) as OnnxTensor).floatBuffer.get(map)
                     val regions = dbnetRegions(map, DET_SIDE, DET_SIDE, fit)
@@ -432,8 +432,8 @@ class TextRecognizer(
                 }
             }
         }
-        OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, REC_HEIGHT.toLong(), REC_WIDTH.toLong())).use { tensor ->
-            recSession.run(mapOf(REC_INPUT to tensor)).use { result ->
+        OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, REC_HEIGHT.toLong(), REC_WIDTH.toLong())).useOrt { tensor ->
+            recSession.run(mapOf(REC_INPUT to tensor)).useOrt { result ->
                 val timesteps = REC_TIMESTEPS
                 val flat = FloatArray(timesteps * LOGITS)
                 ((result.get(REC_OUTPUT).get()) as OnnxTensor).floatBuffer.get(flat)

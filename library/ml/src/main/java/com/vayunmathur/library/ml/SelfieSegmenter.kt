@@ -58,8 +58,8 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
                 SIZE, SIZE, OnnxPreprocess.RESCALE_ONLY,
             )
             val env = OrtEnvironment.getEnvironment()
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())).use { tensor ->
-                live.run(mapOf(INPUT to tensor)).use { result ->
+            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())).useOrt { tensor ->
+                live.run(mapOf(INPUT to tensor)).useOrt { result ->
                     val out = result[0] as OnnxTensor
                     val flat = FloatArray(SIZE * SIZE)
                     out.floatBuffer.get(flat)
