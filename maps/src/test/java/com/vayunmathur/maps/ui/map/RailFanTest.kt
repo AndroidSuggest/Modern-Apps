@@ -70,4 +70,50 @@ class RailFanTest {
         val line = listOf(GeoPoint(-122.4, 37.7), GeoPoint(-122.4, 37.71))
         assertEquals(line, offsetPolyline(line, 0.0))
     }
+
+    @Test
+    fun `zoom out and back restores lines from cache`() {
+        val centre = 37.7 to -122.4
+        // First load: no fetch yet, so refetch.
+        assertEquals(
+            RailRefresh.REFETCH,
+            railRefreshDecision(10.0, centre, null, Double.NaN, Double.NaN, true, true),
+        )
+        // Zoomed out below the floor: clear, even with a warm cache.
+        assertEquals(
+            RailRefresh.CLEAR,
+            railRefreshDecision(8.0, centre, centre, 10.0, 10.0, false, false),
+        )
+        // Back at the fetched zoom with the overlay cleared: re-fan the
+        // cached spans even though the lane count never stepped.
+        assertEquals(
+            RailRefresh.REFAN,
+            railRefreshDecision(10.0, centre, centre, 10.0, Double.NaN, true, false),
+        )
+    }
+
+    @Test
+    fun `steady camera inside the footprint reuses without refan`() {
+        val centre = 37.7 to -122.4
+        // Same zoom, overlay live: nothing to do.
+        assertEquals(
+            RailRefresh.REUSE,
+            railRefreshDecision(10.0, centre, centre, 10.0, 10.0, false, false),
+        )
+        // Lane count stepped (z10 -> z12): re-fan cached geometry.
+        assertEquals(
+            RailRefresh.REFAN,
+            railRefreshDecision(12.0, centre, centre, 11.5, 10.0, false, false),
+        )
+        // Empty fetch stays empty: no pointless refan.
+        assertEquals(
+            RailRefresh.REUSE,
+            railRefreshDecision(10.0, centre, centre, 10.0, 10.0, true, true),
+        )
+        // Drifted past the recenter window: refetch the pack.
+        assertEquals(
+            RailRefresh.REFETCH,
+            railRefreshDecision(10.0, 37.8 to -122.4, centre, 10.0, 10.0, false, false),
+        )
+    }
 }

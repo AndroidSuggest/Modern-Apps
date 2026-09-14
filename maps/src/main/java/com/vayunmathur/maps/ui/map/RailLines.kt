@@ -155,6 +155,52 @@ internal fun offsetPolyline(
 }
 
 /**
+ * What the rail collector should do on a settled camera. The refetch /
+ * re-fan / restore decision, factored pure for tests. `CLEAR` drops the
+ * overlay at the zoom floor but keeps the fetch cache, so zooming back in
+ * restores via `REFAN` instead of re-querying the pack.
+ */
+internal enum class RailRefresh {
+    CLEAR,
+    REUSE,
+    REFAN,
+    REFETCH,
+}
+
+/**
+ * Pure form of the settle logic in [rememberRailLines]: below
+ * [RAIL_MIN_ZOOM] clear; outside the fetched footprint (or on first load)
+ * refetch; inside it re-fan when the lane count stepped, or when the overlay
+ * is null with cached spans (the zoom gate cleared it).
+ */
+internal fun railRefreshDecision(
+    zoom: Double,
+    centre: Pair<Double, Double>,
+    fetchedCentre: Pair<Double, Double>?,
+    fetchedZoom: Double,
+    fannedZoom: Double,
+    overlayNull: Boolean,
+    spansEmpty: Boolean,
+): RailRefresh {
+    if (zoom < RAIL_MIN_ZOOM) return RailRefresh.CLEAR
+    val last = fetchedCentre
+    if (last == null ||
+        kotlin.math.abs(centre.first - last.first) >= RAIL_RECENTER_DEGREES ||
+        kotlin.math.abs(centre.second - last.second) >= RAIL_RECENTER_DEGREES ||
+        kotlin.math.abs(zoom - fetchedZoom) >= 1.0
+    ) {
+        return RailRefresh.REFETCH
+    }
+    if (spansEmpty) return RailRefresh.REUSE
+    if (overlayNull) return RailRefresh.REFAN
+    return if (railLaneCount(zoom) != railLaneCount(fannedZoom)) {
+        RailRefresh.REFAN
+    } else {
+        RailRefresh.REUSE
+    }
+}
+
+/**
  * The pack-driven rail-lines network for the viewport, as a [RouteOverlay
  * ], or null when the transit layer is off, zoomed too far out, or the pack
  * carries no shapes for the area.
@@ -227,24 +273,23 @@ fun rememberRailLines(
             .collectLatest {
                 val bounds = camera.visibleBoundsOrWorld()
                 val zoom = camera.position.zoom
-                if (zoom < RAIL_MIN_ZOOM) {
-                    overlay = null
-                    return@collectLatest
-                }
                 val centre = (bounds.south + bounds.north) / 2.0 to
                     (bounds.west + bounds.east) / 2.0
-                val last = fetchedCentre
-                if (last != null &&
-                    kotlin.math.abs(centre.first - last.first) < RAIL_RECENTER_DEGREES &&
-                    kotlin.math.abs(centre.second - last.second) < RAIL_RECENTER_DEGREES &&
-                    kotlin.math.abs(zoom - fetchedZoom) < 1.0
-                ) {
-                    // Inside the fetched footprint: re-fan only when the
-                    // lane count stepped.
-                    if (railLaneCount(zoom) != railLaneCount(fannedZoom)) {
-                        fan(fetchedSpans, zoom, centre.first)
+                when (railRefreshDecision(
+                    zoom, centre, fetchedCentre, fetchedZoom,
+                    fannedZoom, overlay == null, fetchedSpans.isEmpty(),
+                )) {
+                    RailRefresh.CLEAR -> {
+                        overlay = null
+                        fannedZoom = Double.NaN
+                        return@collectLatest
                     }
-                    return@collectLatest
+                    RailRefresh.REFAN -> {
+                        fan(fetchedSpans, zoom, centre.first)
+                        return@collectLatest
+                    }
+                    RailRefresh.REUSE -> return@collectLatest
+                    RailRefresh.REFETCH -> Unit
                 }
                 // Pad the query past the viewport so small pans stay covered.
                 val padLat = (bounds.north - bounds.south) * 0.25 + 0.05
