@@ -25,6 +25,7 @@ pub struct Inferred {
 }
 
 /// The inference result for one graph.
+#[derive(Debug)]
 pub struct InferredGraph {
     /// Graph index in `Model.graphs`.
     pub graph: usize,
@@ -95,12 +96,30 @@ impl<'a> Attrs<'a> {
 
 /// Run shape/layout inference over every graph in the verified model.
 ///
-/// Returns one [`InferredGraph`] per graph, in model order.
+/// Returns one [`InferredGraph`] per graph, in model order. Also enforces
+/// the model-wide digest gate (spec section 9.2): the per-graph digests
+/// folded in model order must equal the stored `graph_digest`, or the file
+/// is rejected — a topology no emitter vouched for never reaches lowering.
 pub fn infer(verified: &Verified<'_>) -> Result<Vec<InferredGraph>, String> {
     let model = verified.model;
     let tensors = model.tensors().ok_or("a model with no tensors")?;
     let graphs = model.graphs().ok_or("a model with no graphs")?;
-    (0..graphs.len()).map(|g| infer_graph(&tensors, &graphs.get(g), g)).collect()
+    let inferred: Vec<InferredGraph> =
+        (0..graphs.len()).map(|g| infer_graph(&tensors, &graphs.get(g), g)).collect::<Result<_, _>>()?;
+    // Fold the per-graph digests in model order: the stored `graph_digest`
+    // is over the indexed graph sequences, so reordering graphs past the
+    // gate hashes differently.
+    let mut hasher = Sha256::new();
+    for graph in &inferred {
+        hasher.update(graph.graph_digest);
+    }
+    let recomputed: [u8; 32] = hasher.finalize().into();
+    let stored: Vec<u8> =
+        model.graph_digest().map(|d| (0..d.len()).map(|i| d.get(i)).collect()).unwrap_or_default();
+    if stored.as_slice() != recomputed {
+        return Err("the model digest does not match the recomputed graph digests".into());
+    }
+    Ok(inferred)
 }
 
 /// Stored dims of one tensor row.
@@ -150,6 +169,10 @@ fn infer_graph(
     }
 
     let mut hasher = Sha256::new();
+    // The graph index prefixes the digest (spec 9.2): the emitter hashes
+    // each graph's sequence under its index, so a graph reordered past the
+    // gate hashes differently. Must match `emit::digest_nodes`' caller.
+    hasher.update((graph_index as u32).to_le_bytes());
     // Defined tensors: inputs + file tensors. Anything else must be written
     // by a topologically earlier node (acyclicity by construction order).
     let mut defined: HashSet<i32> = shapes.keys().copied().collect();
@@ -463,4 +486,122 @@ fn digest_node(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::maml2::{FORMAT_VERSION, OPSET_VERSION};
+
+    /// Build a minimal one-graph model: `Add([2,1,1], [2,1,1]) -> [2,1,1]`,
+    /// carrying `digest` as its stored model digest.
+    fn tiny_model(digest: [u8; 32]) -> Vec<u8> {
+        let mut builder = flatbuffers::FlatBufferBuilder::new();
+        let mut tensors = Vec::new();
+        for name in ["a", "b", "y"] {
+            let name = builder.create_string(name);
+            let dims = builder.create_vector(&[2, 1, 1]);
+            let quant = fb::Quantization::new(fb::QuantKind::NONE, -1, -1, 0, 0);
+            tensors.push(fb::Tensor::create(
+                &mut builder,
+                &fb::TensorArgs {
+                    name: Some(name),
+                    dtype: fb::DType::F16,
+                    dims: Some(dims),
+                    dim_params: None,
+                    layout: fb::Layout::NCHW,
+                    quantization: Some(&quant),
+                    buffer: -1,
+                    buffer_offset: 0,
+                    elem_count: 2,
+                    placement: fb::Placement::DEVICE,
+                    state: fb::StateKind::NONE,
+                },
+            ));
+        }
+        let tensors = builder.create_vector(&tensors);
+        let inputs = builder.create_vector(&[0, 1]);
+        let outputs = builder.create_vector(&[2]);
+        let attrs = builder.create_vector::<flatbuffers::WIPOffset<fb::Attribute<'_>>>(&[]);
+        let node = fb::Node::create(
+            &mut builder,
+            &fb::NodeArgs {
+                op: fb::Op::Add,
+                inputs: Some(inputs),
+                outputs: Some(outputs),
+                attrs: Some(attrs),
+                payload: None,
+            },
+        );
+        let nodes = builder.create_vector(&[node]);
+        let graph_inputs = builder.create_vector(&[0, 1]);
+        let graph_outputs = builder.create_vector(&[2]);
+        let graph_name = builder.create_string("tiny");
+        let graph = fb::Graph::create(
+            &mut builder,
+            &fb::GraphArgs {
+                name: Some(graph_name),
+                tensors: None,
+                nodes: Some(nodes),
+                inputs: Some(graph_inputs),
+                outputs: Some(graph_outputs),
+            },
+        );
+        let graphs = builder.create_vector(&[graph]);
+        let digest = builder.create_vector(&digest);
+        let model = fb::Model::create(
+            &mut builder,
+            &fb::ModelArgs {
+                version: FORMAT_VERSION,
+                opset_version: OPSET_VERSION,
+                runtime_min_version: None,
+                converter_version: None,
+                source_sha256: None,
+                graph_digest: Some(digest),
+                description: None,
+                backends: None,
+                tensors: Some(tensors),
+                buffers: None,
+                graphs: Some(graphs),
+                entry_points: None,
+                metadata: None,
+            },
+        );
+        builder.finish(model, Some(fb::MODEL_IDENTIFIER));
+        builder.finished_data().to_vec()
+    }
+
+    /// The model-wide digest gate fires: a structurally valid file carrying a
+    /// wrong digest verifies but never reaches lowering.
+    #[test]
+    fn a_wrong_model_digest_is_rejected_at_inference() {
+        let bytes = tiny_model([0xAB; 32]);
+        let verified = crate::maml2::verify::verify(&bytes).expect("structure is valid");
+        let err = infer(&verified).expect_err("the digest must not match");
+        assert!(err.contains("digest"), "unexpected error: {err}");
+    }
+
+    /// The gate passes when the stored digest is the true fold: inference of
+    /// the same topology succeeds, proving the fold both sides compute is
+    /// the same one. The expected digests are hashed by hand from the spec
+    /// section 9.2 sequence (graph index, op byte, inputs, outputs, no
+    /// attrs) — emitter-independent.
+    #[test]
+    fn the_true_model_digest_passes_inference() {
+        let mut graph_hasher = Sha256::new();
+        graph_hasher.update(0u32.to_le_bytes());
+        graph_hasher.update([fb::Op::Add.0 as u8]);
+        graph_hasher.update(0i32.to_le_bytes());
+        graph_hasher.update(1i32.to_le_bytes());
+        graph_hasher.update(2i32.to_le_bytes());
+        let graph_digest: [u8; 32] = graph_hasher.finalize().into();
+        let mut model_hasher = Sha256::new();
+        model_hasher.update(graph_digest);
+        let model_digest: [u8; 32] = model_hasher.finalize().into();
+        let bytes = tiny_model(model_digest);
+        let verified = crate::maml2::verify::verify(&bytes).expect("structure is valid");
+        let inferred = infer(&verified).expect("the true digest passes");
+        assert_eq!(inferred.len(), 1);
+        assert_eq!(inferred[0].graph_digest, graph_digest);
+    }
 }

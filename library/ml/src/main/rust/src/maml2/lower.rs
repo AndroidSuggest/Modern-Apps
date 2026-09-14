@@ -36,12 +36,13 @@ fn act_from_code(code: i32) -> Result<Act, String> {
 
 /// A [`WeightSource`] over v2 weight tensors.
 ///
-/// v1 weight bytes are repacked (channel-blocked) in the v2 buffers, so the
-/// offsets the `*_raw` builders take are *payload-relative element indices*
-/// assigned here, not file offsets. The bridge owns the repacked payloads
-/// (kept alive for the caller to upload verbatim) and hands out indices into
-/// them. Quantized kernels are addressed by word index, mirroring the v1
-/// convention the shaders implement.
+/// The bridge lays the v2 payloads out in tensor order at 16-aligned byte
+/// offsets — v1's scheme — and hands out `byte / 2` element indices for
+/// fp16 tensors and `byte / 4` word indices for quantized ones, exactly as
+/// v1's `elem_offset` / `word_offset` do. One blob, two consistent address
+/// spaces: the interpreter and the device both read the plan's offsets
+/// against [`V2Weights::blob`], and an fp16 read at element `e` and a quant
+/// read at word `w` land at blob bytes `2e` and `4w` with no rebase.
 ///
 /// Read-marking lives in the loader, not here: `lower` marks every weight
 /// tensor the nodes name before finishing (host tensors via an explicit
@@ -54,13 +55,22 @@ pub struct V2Weights {
     /// `shaped` (the `host_tensor` path resolves through `weight`, which
     /// checks dims like any other tensor).
     dims: Vec<Vec<u32>>,
-    /// Element offset per v2 tensor index within its payload class.
+    /// Element offset per v2 tensor index (fp16): blob byte / 2.
     elem_offsets: HashMap<usize, u32>,
-    /// Word offset per v2 tensor index (quantized kernels).
+    /// Word offset per v2 tensor index (quantized kernels): blob byte / 4.
     word_offsets: HashMap<usize, u32>,
+    /// Blob byte offset per v2 tensor index, 16-aligned.
+    placements: HashMap<usize, u32>,
+    /// Blob length in bytes (end of the last payload, unpadded).
+    blob_len: usize,
     /// Tensor count (weights + computed), for the `count` gate.
     count: usize,
 }
+
+/// Payload start alignment in the blob, matching v1's tensor alignment so
+/// every fp16 payload starts on an even byte and every quantized payload on
+/// a word boundary.
+const BLOB_ALIGN: usize = 16;
 
 impl V2Weights {
     /// Build the bridge from the verified model: copy each buffered weight
@@ -73,8 +83,8 @@ impl V2Weights {
         let mut stored_dims: Vec<Vec<u32>> = Vec::with_capacity(tensors.len());
         let mut elem_offsets = HashMap::new();
         let mut word_offsets = HashMap::new();
-        let mut elem_cursor: u32 = 0;
-        let mut word_cursor: u32 = 0;
+        let mut placements = HashMap::new();
+        let mut cursor: usize = 0;
         for t in 0..tensors.len() {
             let tensor = tensors.get(t);
             stored_dims.push(
@@ -100,23 +110,34 @@ impl V2Weights {
             for i in 0..data.len() {
                 bytes.push(data.get(i));
             }
-            // Offsets are assigned per dtype class: fp16 payloads are
-            // addressed by element index, int8/int4 by word index. The two
-            // cursors mirror the v1 `elem_offset` / `word_offset` split.
+            // One address space, v1's way: the payload lands at the next
+            // 16-aligned blob byte, and the offset is that byte divided by
+            // the addressing unit — 2 for fp16 elements, 4 for quant words.
+            // 16-alignment keeps both divisions exact.
+            cursor = cursor.next_multiple_of(BLOB_ALIGN);
             match tensor.dtype() {
                 fb::DType::F16 => {
-                    elem_offsets.insert(t, elem_cursor);
-                    elem_cursor += (bytes.len() / 2) as u32;
+                    elem_offsets.insert(t, (cursor / 2) as u32);
                 }
                 fb::DType::I8 | fb::DType::I4 => {
-                    word_offsets.insert(t, word_cursor);
-                    word_cursor += (bytes.len() / 4).max(1) as u32;
+                    word_offsets.insert(t, (cursor / 4) as u32);
                 }
                 _ => return Err(format!("tensor {t} has a non-Phase-1 dtype")),
             }
+            placements.insert(t, cursor as u32);
+            cursor += bytes.len();
             payloads.push(bytes);
         }
-        Ok(V2Weights { payloads, dims: stored_dims, elem_offsets, word_offsets, count: tensors.len() })
+        let blob_len = cursor;
+        Ok(V2Weights {
+            payloads,
+            dims: stored_dims,
+            elem_offsets,
+            word_offsets,
+            placements,
+            blob_len,
+            count: tensors.len(),
+        })
     }
 
     /// Payload bytes for every v2 tensor index, in order. The caller uploads
@@ -126,30 +147,24 @@ impl V2Weights {
         &self.payloads
     }
 
-    /// Lay the payloads out the way the resolved plan addresses them: all
-    /// fp16 payloads concatenated (element-addressed), then all quantized
-    /// payloads concatenated (word-addressed). The interpreter and the
-    /// device both read the plan's offsets against a blob in this layout —
-    /// it is what `Net` uploads when the v2 bridge (not the v1 file) is the
-    /// weights source.
+    /// The payloads laid out the way the resolved plan addresses them: in
+    /// tensor order, each at its 16-aligned placement, zero padding between.
+    /// The interpreter and the device both read the plan's offsets against
+    /// this blob — it is what `Net` uploads when the v2 bridge (not the v1
+    /// file) is the weights source.
     ///
     /// Computed tensors (no buffer) contribute nothing; host tensors (no
     /// buffer) likewise — neither is addressed by the plan.
     pub fn blob(&self) -> Vec<u8> {
-        let mut fp16: Vec<u8> = Vec::new();
-        let mut quant: Vec<u8> = Vec::new();
+        let mut blob = vec![0u8; self.blob_len.next_multiple_of(BLOB_ALIGN)];
         for (t, payload) in self.payloads.iter().enumerate() {
             if payload.is_empty() {
                 continue;
             }
-            if self.word_offsets.contains_key(&t) {
-                quant.extend_from_slice(payload);
-            } else {
-                fp16.extend_from_slice(payload);
-            }
+            let at = self.placements.get(&t).copied().unwrap_or(0) as usize;
+            blob[at..at + payload.len()].copy_from_slice(payload);
         }
-        fp16.extend_from_slice(&quant);
-        fp16
+        blob
     }
 }
 

@@ -41,16 +41,15 @@ fn main() {
         println!("graph {}: {} shapes inferred", graph.graph, graph.shapes.len());
     }
 
-    // Digest check against the stored row: the recompute must equal what the
-    // emitter wrote, which is also what Python recomputed independently.
-    let model = verified.model;
-    let stored: Vec<u8> =
-        model.graph_digest().map(|d| d.iter().collect()).unwrap_or_default();
-    assert_eq!(&stored[..], &inferred[0].graph_digest[..], "digest matches stored");
+    // The model-wide digest gate already ran inside `infer` (a mismatch is a
+    // load error there, not an assert here). Report the per-graph digest for
+    // bisection; the stored model digest it folds into is what the emitter
+    // wrote. The mismatch arm has its own negative in `maml2::infer`'s
+    // unit tests, where a hand-built model carries a wrong digest.
     println!("digest: {}", hex(&inferred[0].graph_digest));
 
-    // Negative checks: truncated, flipped-version, and flipped-op files must
-    // all fail (never a wrong answer, never a silent pass).
+    // Negative checks: truncated and flipped-identifier files must fail
+    // (never a wrong answer, never a silent pass).
     let mut bad = bytes.clone();
     bad.truncate(bad.len() / 2);
     assert!(verify::verify(&bad).is_err(), "truncated file must fail");

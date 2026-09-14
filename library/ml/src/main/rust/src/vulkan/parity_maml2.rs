@@ -73,11 +73,12 @@ fn v2_sampler_on_device_agrees_with_the_reference() {
     let inputs = sampler_inputs();
     let refs: Vec<&[f32]> = inputs.iter().map(|v| v.as_slice()).collect();
     // The blob in the plan's own address space: the bridge payloads laid out
-    // as the resolved offsets address them (fp16 concatenated, then
-    // quantized). NOT the v1 data section — v1 file offsets and bridge
-    // cursors are different address spaces, and running the v2 plan against
-    // the v1 blob reads every weight from the wrong address (all-zeros
-    // output on both host and device, which the oracle below refuses).
+    // in tensor order at 16-aligned placements (v1's scheme), so an fp16
+    // element offset and a quant word offset both land without rebasing.
+    // NOT the v1 data section — v1 file offsets and bridge placements are
+    // different address spaces, and running the v2 plan against the v1 blob
+    // reads every weight from the wrong address (all-zeros output on both
+    // host and device, which the oracle below refuses).
     let blob = bridge.blob();
     let host = run_multi(&plan, &blob, &refs).expect("the interpreter runs the v2 plan");
     // The zero oracle: `report` (unlike `matches`) prints rather than

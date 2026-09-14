@@ -54,7 +54,12 @@ enum Op : byte {
   View = 25,
   Constant = 26,
   Copy = 27,
-  CustomOp = 28
+  CustomOp = 28,
+  // Transposed convolution (spec section 5.2): weights `[in_c, m/group, kh,
+  // kw]`. Appended for the vision nets' learned upsamples; opset stays 1 —
+  // the catalog grows together with its only loader until the first
+  // on-device ship (spec section 12.1).
+  ConvTranspose = 29
 }
 
 // Spec section 3.1. Integer dtypes are always quantised weights (section

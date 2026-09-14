@@ -24,10 +24,10 @@ use crate::weights::{self, Tensor as WeightTensor};
 fn v1_table() -> Option<(Vec<u8>, Vec<WeightTensor>)> {
     // The test binary runs with CWD = the crate dir; the asset path is
     // relative to the workspace root. `CARGO_MANIFEST_DIR` is the crate dir,
-    // so walk up four levels (src/main/rust → ml → library → root).
+    // so walk up five levels (src/main/rust → main → src → ml → library → root).
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(4)
+        .nth(5)
         .expect("workspace root")
         .to_path_buf();
     let path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml");
@@ -50,7 +50,7 @@ fn v1_table() -> Option<(Vec<u8>, Vec<WeightTensor>)> {
 fn v2_plan() -> Option<crate::nets::Plan> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(4)
+        .nth(5)
         .expect("workspace root")
         .to_path_buf();
     let path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml2");
@@ -72,7 +72,7 @@ fn v2_plan() -> Option<crate::nets::Plan> {
 fn lowering_proves_every_weight_read() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(4)
+        .nth(5)
         .expect("workspace root")
         .to_path_buf();
     let path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml2");
@@ -153,16 +153,25 @@ fn lowered_plan_schedules_like_v1() {
 /// Skips quietly when either asset is absent.
 #[test]
 fn v2_plan_matches_v1_bit_exact() {
-    let Some((v1data, tensors)) = v1_table() else {
-        return;
-    };
-    let source = crate::nets::tests::Shapes::new(tensors.len());
-    let v1plan = supertonic_sampler::build(&source, 49, 55).expect("build v1");
+    // The v1 plan must be built against the real `Offsets` table: the
+    // `Shapes` stub hands back tensor indices as addresses, which read
+    // wrong weights on a real blob (NaN within an op or two). Real
+    // addresses, real weights, same interpreter, same inputs.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(4)
+        .nth(5)
         .expect("workspace root")
         .to_path_buf();
+    let v1path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml");
+    let v1bytes = match std::fs::read(&v1path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => panic!("cannot read {}: {e}", v1path.display()),
+    };
+    let v1parsed = weights::Weights::parse(&v1bytes, weights::graph::SUPERTONIC_VE)
+        .expect("parse the v1 asset");
+    let v1data = v1parsed.data().to_vec();
+    let v1plan = supertonic_sampler::build(&v1parsed.offsets(), 49, 55).expect("build v1");
     let path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml2");
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,

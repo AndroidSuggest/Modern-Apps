@@ -306,18 +306,26 @@ fn softmax_mode_code(mode: SoftmaxMode) -> i32 {
 }
 
 /// One emitted v2 node: op, tensor refs, and attributes.
-struct EmittedNode {
-    op: fb::Op,
-    inputs: Vec<i32>,
-    outputs: Vec<i32>,
-    attrs: Vec<(String, AttrValue)>,
+pub struct EmittedNode {
+    /// The catalog op.
+    pub op: fb::Op,
+    /// Input tensor indices.
+    pub inputs: Vec<i32>,
+    /// Output tensor indices.
+    pub outputs: Vec<i32>,
+    /// Typed attributes in emission order (digest order).
+    pub attrs: Vec<(String, AttrValue)>,
 }
 
-/// Attribute values the Phase 1 emitter needs.
-enum AttrValue {
+/// Attribute values the emitter writes.
+pub enum AttrValue {
+    /// A single integer.
     Int(i32),
+    /// An integer vector.
     Ints(Vec<i32>),
+    /// A float.
     Float(f32),
+    /// A boolean.
     Bool(bool),
 }
 
@@ -654,6 +662,35 @@ fn emit_nodes(
     Ok(nodes)
 }
 
+/// Hash emitted nodes in the canonical order (spec 9.2): op byte, inputs,
+/// outputs, then per-attribute name + value bytes. [`infer::digest_graph`]
+/// must hash the same sequence from the file, including the caller's graph
+/// index prefix.
+pub fn digest_nodes(hasher: &mut Sha256, nodes: &[EmittedNode]) {
+    for node in nodes {
+        hasher.update([node.op.0 as u8]);
+        for input in &node.inputs {
+            hasher.update(input.to_le_bytes());
+        }
+        for output in &node.outputs {
+            hasher.update(output.to_le_bytes());
+        }
+        for (name, attr) in &node.attrs {
+            hasher.update(name.as_bytes());
+            match attr {
+                AttrValue::Int(v) => hasher.update(v.to_le_bytes()),
+                AttrValue::Ints(vs) => {
+                    for v in vs {
+                        hasher.update(v.to_le_bytes());
+                    }
+                }
+                AttrValue::Float(v) => hasher.update(v.to_le_bytes()),
+                AttrValue::Bool(v) => hasher.update([u8::from(*v)]),
+            }
+        }
+    }
+}
+
 /// A finished v2 model: the FlatBuffers bytes plus the checks the emitter ran.
 pub struct Emitted {
     /// The `MAM2` file bytes.
@@ -875,31 +912,19 @@ pub fn emit_sampler(
         })
         .collect::<Result<Vec<i32>, String>>()?;
 
-    // 6. Canonical digest over op/edge/attr sequence (spec section 9.2).
+    // 6. Canonical digest over the graph-indexed op/edge/attr sequences
+    // (spec section 9.2): the graph index first, then the nodes in the same
+    // order `infer` replays. Model-wide so a second graph (prefill +
+    // decode, twin towers) cannot smuggle an unaudited topology past the
+    // gate; single-graph files hash index 0, then fold once like every
+    // model with one graph.
     let mut hasher = Sha256::new();
-    for node in &nodes {
-        hasher.update([node.op.0 as u8]);
-        for input in &node.inputs {
-            hasher.update(input.to_le_bytes());
-        }
-        for output in &node.outputs {
-            hasher.update(output.to_le_bytes());
-        }
-        for (name, attr) in &node.attrs {
-            hasher.update(name.as_bytes());
-            match attr {
-                AttrValue::Int(v) => hasher.update(v.to_le_bytes()),
-                AttrValue::Ints(vs) => {
-                    for v in vs {
-                        hasher.update(v.to_le_bytes());
-                    }
-                }
-                AttrValue::Float(v) => hasher.update(v.to_le_bytes()),
-                AttrValue::Bool(v) => hasher.update([u8::from(*v)]),
-            }
-        }
-    }
-    let graph_digest: [u8; 32] = hasher.finalize().into();
+    hasher.update(0u32.to_le_bytes());
+    digest_nodes(&mut hasher, &nodes);
+    let graph0: [u8; 32] = hasher.finalize().into();
+    let mut model_hasher = Sha256::new();
+    model_hasher.update(graph0);
+    let graph_digest: [u8; 32] = model_hasher.finalize().into();
 
     // 7. Assemble the FlatBuffers model.
     let mut builder = flatbuffers::FlatBufferBuilder::new();
