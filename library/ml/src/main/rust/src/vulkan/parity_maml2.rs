@@ -88,5 +88,5 @@ fn v2_sampler_on_device_agrees_with_the_reference() {
         "the interpreter's sampler output is all zeros; the inputs never reached it"
     );
     let got = on_device(plan, blob, &refs);
-    report("the v2 sampler (NCHW) at 49 frames, 55 chars", &host, &got);
+    matches("the v2 sampler (NCHW) at 49 frames, 55 chars", &host, &got);
 }
