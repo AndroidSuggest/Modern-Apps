@@ -38,4 +38,10 @@
     <string name="aa">Aa</string>
     <string name="callout">Wywołanie</string>
     <string name="text">tekst</string>
+    <string name="searchable_ocr">Przeszukiwalny (OCR)</string>
+    <string name="sticky_note">Żółta karteczka</string>
+    <string name="line_width">Grubość linii <xliff:g id="width" example="2">%1$s</xliff:g></string>
+    <string name="outline">Spis treści</string>
+    <string name="sign">Podpisz</string>
+    <string name="pdf_page_failed">Nie można wyświetlić tej strony</string>
 </resources>
