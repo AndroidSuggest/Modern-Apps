@@ -125,6 +125,32 @@ impl V2Weights {
     pub fn payloads(&self) -> &[Vec<u8>] {
         &self.payloads
     }
+
+    /// Lay the payloads out the way the resolved plan addresses them: all
+    /// fp16 payloads concatenated (element-addressed), then all quantized
+    /// payloads concatenated (word-addressed). The interpreter and the
+    /// device both read the plan's offsets against a blob in this layout —
+    /// it is what `Net` uploads when the v2 bridge (not the v1 file) is the
+    /// weights source.
+    ///
+    /// Computed tensors (no buffer) contribute nothing; host tensors (no
+    /// buffer) likewise — neither is addressed by the plan.
+    pub fn blob(&self) -> Vec<u8> {
+        let mut fp16: Vec<u8> = Vec::new();
+        let mut quant: Vec<u8> = Vec::new();
+        for (t, payload) in self.payloads.iter().enumerate() {
+            if payload.is_empty() {
+                continue;
+            }
+            if self.word_offsets.contains_key(&t) {
+                quant.extend_from_slice(payload);
+            } else {
+                fp16.extend_from_slice(payload);
+            }
+        }
+        fp16.extend_from_slice(&quant);
+        fp16
+    }
 }
 
 impl WeightSource for V2Weights {
@@ -238,17 +264,47 @@ impl<'a> NodeAttrs<'a> {
 /// liveness, arena packing, `Op` emission. `weights` bridges the v2 tensor
 /// indices the nodes name; `shapes` supplies the graph-input shapes.
 ///
-/// Blocked-kernel selection happens here, after emission: nodes whose input,
-/// weight, and output layouts are all `CHANNEL_BLOCKED_4` have their
-/// tiled int8 dispatches rewritten to the blocked twin
-/// ([`Kind::ConvPointCb4Int8`]). Routing stays shape-driven in `emit`; this
-/// rewrite is layout-driven and lives with the layout knowledge. See
-/// [`BLOCKED_KINDS`].
+/// Blocked-kernel selection happens here, after emission, unless `nchw_only`
+/// is set: nodes whose input, weight, and output layouts are all
+/// `CHANNEL_BLOCKED_4` have their tiled int8 dispatches rewritten to the
+/// blocked twin ([`Kind::ConvPointCb4Int8`]). Routing stays shape-driven in
+/// `emit`; this rewrite is layout-driven and lives with the layout
+/// knowledge. See [`BLOCKED_KINDS`].
+///
+/// `nchw_only` is the NCHW-first device path: every dispatch keeps the
+/// kernel the device parity suite already covers, proving file → device
+/// execution plus the barrier win before the blocked-layout boundary design
+/// (transpose ops vs full-kernel port) lands. The file's blocked payloads
+/// are *not* consumed on this path — the caller must upload NCHW weights
+/// (the v1 blob) alongside the v2 plan.
 pub fn lower(
     verified: &Verified<'_>,
     inferred: &InferredGraph,
     weights: &V2Weights,
     entry_graph: usize,
+) -> Result<Plan, String> {
+    lower_with_options(verified, inferred, weights, entry_graph, false)
+}
+
+/// [`lower`] with the blocked-kernel rewrite forced off.
+///
+/// See `nchw_only` on [`lower`].
+pub fn lower_nchw(
+    verified: &Verified<'_>,
+    inferred: &InferredGraph,
+    weights: &V2Weights,
+    entry_graph: usize,
+) -> Result<Plan, String> {
+    lower_with_options(verified, inferred, weights, entry_graph, true)
+}
+
+/// [`lower`] with an explicit blocked-rewrite switch.
+fn lower_with_options(
+    verified: &Verified<'_>,
+    inferred: &InferredGraph,
+    weights: &V2Weights,
+    entry_graph: usize,
+    nchw_only: bool,
 ) -> Result<Plan, String> {
     let model = verified.model;
     let graphs = model.graphs().ok_or("a model with no graphs")?;
@@ -402,7 +458,9 @@ pub fn lower(
         builder.mark_read(&read);
     }
     let mut plan = builder.finish(&outputs)?;
-    rewrite_blocked_kinds(&mut plan, verified, entry_graph)?;
+    if !nchw_only {
+        rewrite_blocked_kinds(&mut plan, verified, entry_graph)?;
+    }
     Ok(plan)
 }
 

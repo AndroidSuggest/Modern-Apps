@@ -441,3 +441,5 @@ include!("parity_part2.rs");
 include!("parity_part3.rs");
 include!("parity_part4.rs");
 include!("parity_part5.rs");
+include!("parity_maml2.rs");
+include!("parity_barrier_ab.rs");
