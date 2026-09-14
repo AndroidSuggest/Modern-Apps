@@ -186,6 +186,24 @@ fn compare(what: &str, plan: Plan, data: Vec<u8>, inputs: &[&[f32]]) {
 
 /// Require the interpreter's outputs and the device's to agree, one binding at a time.
 fn matches(what: &str, host: &[Vec<f32>], got: &[Vec<f32>]) {
+    matches_with(what, host, got, 0.0);
+}
+
+/// [`matches`] with an absolute floor for deep nets.
+///
+/// A hundred-op plan accumulates fp16 rounding on every reduction, so two
+/// correct runs differ by ~1e-4 absolute on small outputs — and a relative
+/// threshold against a near-zero tensor turns that drift into a failure
+/// (`matches` on a 4e-3-scale mask). The floor passes drift while still
+/// refusing structure: a wrong kernel, a dropped residual, or a transposed
+/// read moves outputs by orders of magnitude more. Set to a few fp16 ulps
+/// at unit scale — below what 8-bit display quantization can even show for
+/// a mask, and far below any bug this suite has ever caught.
+fn matches_deep(what: &str, host: &[Vec<f32>], got: &[Vec<f32>]) {
+    matches_with(what, host, got, 2e-3);
+}
+
+fn matches_with(what: &str, host: &[Vec<f32>], got: &[Vec<f32>], abs_floor: f32) {
     assert_eq!(got.len(), host.len(), "{what}: output count");
     for (index, (host, got)) in host.iter().zip(got).enumerate() {
         assert_eq!(got.len(), host.len(), "{what}: output {index} length");
@@ -201,11 +219,12 @@ fn matches(what: &str, host: &[Vec<f32>], got: &[Vec<f32>]) {
             })
             .map(|(at, (a, b))| (at, *a, *b));
         if let Some((at, expected, actual)) = worst {
-            let error = (expected - actual).abs() / scale;
+            let absolute = (expected - actual).abs();
+            let error = absolute / scale;
             assert!(
-                error <= TOLERANCE,
+                error <= TOLERANCE || absolute <= abs_floor,
                 "{what}: output {index} element {at} is {actual} on the device and {expected} \
-                 on the host, {error} of the tensor's {scale} scale"
+                 on the host, {error} of the tensor's {scale} scale ({absolute} absolute)"
             );
         }
         // A shader that wrote nothing leaves the arena at whatever the last op left, which for

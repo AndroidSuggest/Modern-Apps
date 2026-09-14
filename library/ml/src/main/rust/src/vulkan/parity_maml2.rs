@@ -23,6 +23,7 @@
 // imported here.
 
 use crate::maml2::{infer, lower, verify};
+use crate::maml2::load::Model;
 
 /// The sampler's seven inputs at the recorded shape, invented values.
 ///
@@ -90,4 +91,60 @@ fn v2_sampler_on_device_agrees_with_the_reference() {
     );
     let got = on_device(plan, blob, &refs);
     matches("the v2 sampler (NCHW) at 49 frames, 55 chars", &host, &got);
+}
+
+/// The selfie net through the production v2 load path (`Model::load`), on
+/// device against the interpreter.
+///
+/// `#[ignore]`: needs a Vulkan device and the selfie v2 asset. This is the
+/// first bridge flip proven on hardware: the exact `Model::parse` +
+/// `load(0)` + `Net` sequence the JNI constructor runs, not the manual
+/// verify/infer/lower chain above.
+#[test]
+#[ignore = "needs a Vulkan device and the selfie v2 asset"]
+fn v2_selfie_load_path_on_device() {
+    // On-device the asset comes from MODELRUNNER_ASSETS; the checkout path
+    // is the host fallback (device builds have no checkout to walk to, so a
+    // missing dir skips rather than panicking on path arithmetic).
+    let bytes = match std::env::var("MODELRUNNER_ASSETS") {
+        Ok(dir) => match std::fs::read(std::path::PathBuf::from(dir).join("selfie_segmentation.maml2")) {
+            Ok(bytes) => bytes,
+            Err(_) => return,
+        },
+        Err(_) => {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .ancestors()
+                .nth(5)
+                .map(|p| p.to_path_buf());
+            let Some(root) = root else {
+                return;
+            };
+            match std::fs::read(root.join("camera/src/main/assets/selfie_segmentation.maml2")) {
+                Ok(bytes) => bytes,
+                Err(_) => return,
+            }
+        }
+    };
+    let model = Model::parse(bytes).expect("the v2 file parses");
+    let (plan, blob) = model.load(0).expect("entry 0 loads");
+    assert_eq!(plan.inputs.len(), 1, "one selfie input");
+    let input: Vec<f32> =
+        (0..3 * 256 * 256).map(|i| (i as f32 * 0.7).sin() * 0.8 + 0.1).collect();
+    let refs = [input.as_slice()];
+    let host_weights = read_blob(&blob);
+    let host = run_multi(&plan, &host_weights, &refs).expect("the interpreter runs");
+    assert!(
+        host.iter().flat_map(|v| v.iter()).any(|&v| v != 0.0),
+        "the interpreter's selfie output is all zeros"
+    );
+    let got = on_device(plan, host_weights, &refs);
+    matches_deep("the v2 selfie at 256x256", &host, &got);
+}
+
+/// Read a [`Blob`] fully into a vector, for the interpreter.
+fn read_blob(blob: &crate::maml2::load::WeightsBlob) -> Vec<u8> {
+    use crate::weights::Blob;
+    let mut out = vec![0u8; blob.data_len() as usize];
+    blob.read_at(0, &mut out).expect("the blob reads");
+    out
 }

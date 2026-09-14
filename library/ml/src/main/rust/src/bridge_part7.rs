@@ -181,8 +181,15 @@ impl crate::weights::Blob for ProbeBlob {
     fn data_len(&self) -> u64 {
         self.bytes.len() as u64
     }
-    fn tensors(&self) -> &[crate::weights::Tensor] {
-        &self.table
+    fn extents(&self) -> Vec<(u64, u64)> {
+        self.table
+            .iter()
+            .map(|tensor| {
+                let start = u64::from(tensor.offset);
+                let bytes = tensor.dtype.bytes(u64::from(tensor.len));
+                (start, bytes)
+            })
+            .collect()
     }
     fn read_at(&self, offset: u64, into: &mut [u8]) -> Result<(), String> {
         let from = offset as usize;

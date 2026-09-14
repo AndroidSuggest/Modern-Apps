@@ -143,6 +143,12 @@ fn build<'l>(
     let bytes = env
         .convert_byte_array(&weights)
         .map_err(|e| format!("cannot read the weights array: {e}"))?;
+    // v2 files (`MAM2` magic) load through the v2 pipeline; v1 files through
+    // the hand-written passes until each net flips. The magic decides, never
+    // the filename — both formats share the `.maml` extension by schema.
+    if crate::maml2::fb::model_buffer_has_identifier(&bytes) {
+        return build_v2(bytes, graph_id);
+    }
     let parsed = Weights::parse(&bytes, graph_id)?;
     // The device comes up lazily and is shared, so `:camera`'s two segmenters do not
     // create two `VkDevice`s.
@@ -161,6 +167,34 @@ fn build<'l>(
     };
     Ok(Handle {
         net: Net::new(shared, plan, &parsed, normalise)?,
+        pixels: Vec::new(),
+    })
+}
+
+/// Build a handle from a v2 file: verify, infer, lower entry 0, upload.
+///
+/// Fixed-shape nets land here first (selfie, u2netp, scrfd, mobilefacenet,
+/// ppocr, maia); variable-shape nets need the entry + live dims, which ride
+/// a per-net v2 constructor beside their v1 one until the flip.
+fn build_v2(bytes: Vec<u8>, graph_id: u32) -> Result<Handle, String> {
+    use crate::maml2::load::Model;
+    use crate::preprocess::{FACE_EMBED, IMAGENET, PPOCR_DET, PPOCR_REC, RESCALE_ONLY, SCRFD};
+    let model = Model::parse(bytes)?;
+    let shared = context::shared()?;
+    let normalise = match graph_id {
+        graph::SELFIE => RESCALE_ONLY,
+        graph::U2NETP => IMAGENET,
+        graph::SCRFD => SCRFD,
+        graph::MOBILEFACENET => FACE_EMBED,
+        graph::PPOCR_DET => PPOCR_DET,
+        graph::PPOCR_REC => PPOCR_REC,
+        other => return Err(format!("no v2 entry for graph {other}")),
+    };
+    // Single entry today; multi-entry nets (tinyclip, whisper) name theirs
+    // in their own v2 constructors.
+    let (plan, blob) = model.load(0)?;
+    Ok(Handle {
+        net: Net::new(shared, plan, &blob, normalise)?,
         pixels: Vec::new(),
     })
 }

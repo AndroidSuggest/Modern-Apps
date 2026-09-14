@@ -365,6 +365,87 @@ fn v2_maia_matches_v1_bit_exact() {
     );
 }
 
+/// A live rebuild at non-emitted dims matches v1 built at those dims.
+///
+/// The override path (`infer_shaped` + same lowering): marked axes accept
+/// smaller live lengths, computed shapes re-derive, and numerics must equal
+/// a v1 plan built natively at the live shape. This is the v2 equivalent of
+/// `Reshaped::at` — what variable-shape nets rebuild through per utterance.
+#[test]
+fn v2_rebuild_at_live_dims_matches_v1() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(5)
+        .expect("workspace root")
+        .to_path_buf();
+    let v1path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml");
+    let v1bytes = match std::fs::read(&v1path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => panic!("cannot read {}: {e}", v1path.display()),
+    };
+    let v1parsed =
+        weights::Weights::parse(&v1bytes, weights::graph::SUPERTONIC_VE).expect("parse v1");
+    // Live below the emitted 49/55: 40 frames, 50 chars.
+    let v1plan =
+        supertonic_sampler::build(&v1parsed.offsets(), 40, 50).expect("build v1 at live");
+    let path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml2");
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => panic!("cannot read {}: {e}", path.display()),
+    };
+    let verified = verify::verify(&bytes).expect("verify");
+    let live = [
+        [144, 1, 40],
+        [256, 1, 50],
+        [1024, 1, 50],
+        [256, 1, 50],
+        [2048, 1, 1],
+        [64, 1, 40],
+        [64, 1, 50],
+    ];
+    let inferred = infer::infer_shaped(&verified, 0, &live).expect("infer at live dims");
+    let inferred0 = inferred.iter().find(|g| g.graph == 0).expect("entry 0 inferred");
+    let bridge = lower::V2Weights::new(&verified).expect("bridge");
+    let plan = lower::lower(&verified, inferred0, &bridge, 0).expect("lower at live dims");
+    let inputs = spread_inputs(
+        &[
+            (144usize, 1usize, 40usize),
+            (256, 1, 50),
+            (1024, 1, 50),
+            (256, 1, 50),
+            (2048, 1, 1),
+            (64, 1, 40),
+            (64, 1, 50),
+        ],
+        0.0,
+    );
+    let refs: Vec<&[f32]> = inputs.iter().map(|v| v.as_slice()).collect();
+    let v1out =
+        crate::nets::reference::run_multi(&v1plan, v1parsed.data(), &refs).expect("run v1");
+    let v2out =
+        crate::nets::reference::run_multi(&plan, &bridge.blob(), &refs).expect("run v2");
+    assert_eq!(v2out.len(), v1out.len(), "same output count");
+    for (index, (a, b)) in v1out.iter().zip(v2out.iter()).enumerate() {
+        assert_eq!(a.len(), b.len(), "output {index} length");
+        for (at, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+            assert!(x == y, "output {index} element {at}: v1 {x} vs v2 {y}");
+        }
+    }
+    // Oversize and unmarked-axis violations fail loudly, never silently.
+    let too_big = [
+        [144, 1, 40],
+        [256, 1, 50],
+        [1024, 1, 50],
+        [256, 1, 50],
+        [2048, 1, 2],
+        [64, 1, 40],
+        [64, 1, 50],
+    ];
+    assert!(infer::infer_shaped(&verified, 0, &too_big).is_err());
+}
+
 /// True numeric parity for the supertonic vocoder at 49 frames.
 #[test]
 fn v2_vocoder_matches_v1_bit_exact() {
@@ -531,12 +612,14 @@ fn v2_shared_cache_rows_unify_and_match_v1() {
                 graph_name: "decode_a",
                 entry_name: "decode_a",
                 roles: &roles,
+                dims: &[],
             },
             GraphSpec {
                 recorded: &decode_b,
                 graph_name: "decode_b",
                 entry_name: "decode_b",
                 roles: &roles,
+                dims: &[],
             },
         ],
     )

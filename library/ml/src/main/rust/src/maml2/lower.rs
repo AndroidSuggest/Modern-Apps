@@ -168,6 +168,28 @@ impl V2Weights {
         }
         blob
     }
+
+    /// Consume the bridge into its blob. See [`V2Weights::blob`].
+    pub fn into_blob(self) -> Vec<u8> {
+        self.blob()
+    }
+
+    /// Byte `(start, len)` of every buffered payload, for segmentation.
+    ///
+    /// What `Net` hands `Segments::for_op`: an op's read bytes resolve
+    /// against these ranges, so a descriptor boundary never splits a
+    /// payload. Placements are 16-aligned by construction.
+    pub fn extents(&self) -> Vec<(u64, u64)> {
+        let mut extents = Vec::new();
+        for (t, payload) in self.payloads.iter().enumerate() {
+            if payload.is_empty() {
+                continue;
+            }
+            let at = self.placements.get(&t).copied().unwrap_or(0) as u64;
+            extents.push((at, payload.len() as u64));
+        }
+        extents
+    }
 }
 
 impl WeightSource for V2Weights {

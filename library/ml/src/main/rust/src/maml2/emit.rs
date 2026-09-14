@@ -1261,6 +1261,13 @@ pub struct GraphSpec<'a> {
     pub entry_name: &'a str,
     /// Input roles, positional over the graph inputs.
     pub roles: &'a [&'a str],
+    /// Variable input axes: `(graph-input position, axis, symbol, max)`.
+    /// A rebuild may supply a live length `<= max` on a marked axis; every
+    /// other axis must equal the recorded dims exactly. Unmarked inputs are
+    /// fixed-shape. Maxima of `i32::MAX` mean unbounded (rebuild per shape,
+    /// v1 semantics); finite maxima let the loader reject oversize rebuilds
+    /// loudly instead of planning an arena the device cannot hold.
+    pub dims: &'a [(usize, u32, &'a str, i32)],
 }
 
 /// Emit a MAML v2 model from one recorded single-graph pass.
@@ -1286,6 +1293,7 @@ pub fn emit_graph(
     graph_name: &str,
     entry_name: &str,
     roles: &[&str],
+    dims: &[(usize, u32, &str, i32)],
 ) -> Result<Emitted, String> {
     emit_graphs(
         table,
@@ -1293,7 +1301,7 @@ pub fn emit_graph(
         description,
         converter_version,
         source_sha256,
-        &[GraphSpec { recorded, graph_name, entry_name, roles }],
+        &[GraphSpec { recorded, graph_name, entry_name, roles, dims }],
     )
 }
 
@@ -1488,8 +1496,24 @@ pub fn emit_graphs(
             id_map.computed.insert(input.0, v2);
             input_ids.push(v2);
         }
-        for input in &recorded.inputs {
+        for (pos, input) in recorded.inputs.iter().enumerate() {
             let shape = recorded.shapes.get(input.0).copied().unwrap_or(Shape::new(0, 0, 0));
+            // Variable axes ride dim_params (see `GraphSpec::dims`); fixed
+            // axes carry none. Validate the marks: positions cover inputs,
+            // axes are in range.
+            let mut dim_params = Vec::new();
+            for (mark_pos, axis, symbol, max) in spec.dims {
+                if *mark_pos != pos {
+                    continue;
+                }
+                if *axis as usize >= 3 {
+                    return Err(format!(
+                        "graph {}: dim mark on axis {axis} of 3-dim input {pos}",
+                        spec.graph_name, axis = axis, pos = pos
+                    ));
+                }
+                dim_params.push((*axis, symbol.to_string(), *max));
+            }
             emit_tensors.push(EmittedTensor {
                 name: format!("in{}", input.0),
                 dims: vec![shape.c as i32, shape.h as i32, shape.w as i32],
@@ -1499,8 +1523,18 @@ pub fn emit_graphs(
                 elems: shape.len() as u64,
                 quant: WeightQuant::None,
                 state: fb::StateKind::NONE,
-                dim_params: Vec::new(),
+                dim_params,
             });
+        }
+        // Every mark must name a real input; a typo'd position would
+        // silently leave an axis fixed that the bridge rebuilds.
+        for (mark_pos, _, _, _) in spec.dims {
+            if *mark_pos >= recorded.inputs.len() {
+                return Err(format!(
+                    "graph {}: dim mark on input {mark_pos} of {} inputs",
+                    spec.graph_name, recorded.inputs.len()
+                ));
+            }
         }
         // State rows: persistent arena tensors (KV caches) are pinned, not
         // inputs. With shared shapes (see above), position maps to the
@@ -1645,8 +1679,10 @@ pub fn emit_graphs(
 /// Emit a MAML v2 model from one recorded sampler branch.
 ///
 /// Thin wrapper over [`emit_graph`] with the sampler's graph/entry names and
-/// its seven roles in `build` order. The dual-branch plan is two submits of
-/// the single branch, so one graph serves both.
+/// its seven roles in `build` order, plus the variable axes (frames `F` on
+/// the latent and query angles, chars `C` on the text and key angles). The
+/// dual-branch plan is two submits of the single branch, so one graph serves
+/// both.
 pub fn emit_sampler(
     recorded: &Recorded,
     table: &[WeightTensor],
@@ -1672,6 +1708,12 @@ pub fn emit_sampler(
             "shifts",
             "query_angles",
             "key_angles",
+        ],
+        &[
+            (0, 2, "F", i32::MAX),
+            (1, 2, "C", i32::MAX),
+            (5, 2, "F", i32::MAX),
+            (6, 2, "C", i32::MAX),
         ],
     )
 }

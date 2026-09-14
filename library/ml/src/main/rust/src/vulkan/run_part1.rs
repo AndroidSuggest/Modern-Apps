@@ -33,7 +33,7 @@ impl Net {
         let segments = Segments::plan(weights_bytes, &context.limits)?;
         // A few kilobytes, kept because `record` needs each tensor's extent to know which window
         // an op fits in, and `rebuild` installs plans this net was not constructed with.
-        let tensors = weights.tensors().to_vec();
+        let tensors = weights.extents();
 
         let weights_buffer = Buffer::device_local(&context, weights_bytes)?;
         let arena = Buffer::device_local(&context, arena_bytes)?;

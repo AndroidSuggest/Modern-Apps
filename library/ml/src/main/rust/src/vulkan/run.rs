@@ -266,8 +266,8 @@ pub struct Net {
     ///
     /// Almost always one window over the whole file. See [`super::segment`].
     segments: Segments,
-    /// The `.maml` tensor table, for [`Segments::for_op`].
-    tensors: Vec<crate::weights::Tensor>,
+    /// Weight payload extents, for [`Segments::for_op`].
+    tensors: Vec<(u64, u64)>,
     /// This net's own command pool, not the context's.
     ///
     /// A `VkCommandPool` is externally synchronised across *recording* as well as across

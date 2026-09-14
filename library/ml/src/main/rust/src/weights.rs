@@ -264,13 +264,13 @@ pub trait Blob {
     /// Bytes in the data section.
     fn data_len(&self) -> u64;
 
-    /// The tensor table, so `vulkan::segment` can find the extent of every tensor an op reads.
+    /// Byte `(start, len)` of every weight payload, in any order.
     ///
-    /// Nothing about *running* a net needs the table - a [`Plan`] carries every resolved offset,
-    /// which is what makes [`Weights`] and [`Streamed`] interchangeable. Segmenting the weights
-    /// buffer does: it has to know where each tensor ends to choose a boundary that does not fall
-    /// inside one, and only the table says that.
-    fn tensors(&self) -> &[Tensor];
+    /// What `vulkan::segment` consumes: an op's read bytes resolve
+    /// against these ranges to find the containing tensor's end, so a
+    /// descriptor boundary never splits a tensor. v1 derives them from the
+    /// tensor table; the v2 bridge from its placement map.
+    fn extents(&self) -> Vec<(u64, u64)>;
 
     /// Fill `into` from `offset` bytes into the data section.
     ///

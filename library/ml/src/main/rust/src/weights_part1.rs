@@ -190,8 +190,16 @@ impl Blob for Weights {
         self.data.len() as u64
     }
 
-    fn tensors(&self) -> &[Tensor] {
-        &self.table.tensors
+    fn extents(&self) -> Vec<(u64, u64)> {
+        self.table
+            .tensors
+            .iter()
+            .map(|tensor| {
+                let start = u64::from(tensor.offset);
+                let bytes = tensor.dtype.bytes(u64::from(tensor.len));
+                (start, bytes)
+            })
+            .collect()
     }
 
     fn read_at(&self, offset: u64, into: &mut [u8]) -> Result<(), String> {
@@ -310,8 +318,16 @@ impl Blob for Streamed {
         self.data_len
     }
 
-    fn tensors(&self) -> &[Tensor] {
-        &self.table.tensors
+    fn extents(&self) -> Vec<(u64, u64)> {
+        self.table
+            .tensors
+            .iter()
+            .map(|tensor| {
+                let start = u64::from(tensor.offset);
+                let bytes = tensor.dtype.bytes(u64::from(tensor.len));
+                (start, bytes)
+            })
+            .collect()
     }
 
     fn read_at(&self, offset: u64, into: &mut [u8]) -> Result<(), String> {

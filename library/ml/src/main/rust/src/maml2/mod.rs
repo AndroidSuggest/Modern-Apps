@@ -29,6 +29,7 @@ pub use generated::maml_2 as fb;
 
 pub mod emit;
 pub mod infer;
+pub mod load;
 pub mod lower;
 #[cfg(test)]
 pub mod parity;

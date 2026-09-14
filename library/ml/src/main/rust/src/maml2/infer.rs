@@ -101,14 +101,45 @@ impl<'a> Attrs<'a> {
 /// folded in model order must equal the stored `graph_digest`, or the file
 /// is rejected — a topology no emitter vouched for never reaches lowering.
 pub fn infer(verified: &Verified<'_>) -> Result<Vec<InferredGraph>, String> {
+    infer_with(verified, None)
+}
+
+/// Inference with live input shapes for one entry graph (a rebuild).
+///
+/// `overrides` names the entry graph and its live input dims, in graph-input
+/// order. Marked axes (dim_params) accept any live length `<= max`;
+/// unmarked axes — and every weight, host, and state row — must equal the
+/// stored dims exactly, so a bridge passing frames where chars belong fails
+/// loudly. Computed tensors skip the stored-equality check on this path
+/// (they derive from live dims); everything else — SSA, topology, digest —
+/// is checked identically, and the digest is shape-independent, so a
+/// topology the emitter never vouched for still fails the gate.
+///
+/// Fixed-shape nets never call this; they use [`infer`].
+pub fn infer_shaped(
+    verified: &Verified<'_>,
+    entry: usize,
+    live: &[[i32; 3]],
+) -> Result<Vec<InferredGraph>, String> {
+    infer_with(verified, Some((entry, live)))
+}
+
+fn infer_with(
+    verified: &Verified<'_>,
+    overrides: Option<(usize, &[[i32; 3]])>,
+) -> Result<Vec<InferredGraph>, String> {
     let model = verified.model;
     let tensors = model.tensors().ok_or("a model with no tensors")?;
     let graphs = model.graphs().ok_or("a model with no graphs")?;
-    let inferred: Vec<InferredGraph> =
-        (0..graphs.len()).map(|g| infer_graph(&tensors, &graphs.get(g), g)).collect::<Result<_, _>>()?;
-    // Fold the per-graph digests in model order: the stored `graph_digest`
-    // is over the indexed graph sequences, so reordering graphs past the
-    // gate hashes differently.
+    let inferred: Vec<InferredGraph> = (0..graphs.len())
+        .map(|g| {
+            let live = match overrides {
+                Some((entry, dims)) if entry == g => Some(dims),
+                _ => None,
+            };
+            infer_graph(&tensors, &graphs.get(g), g, live)
+        })
+        .collect::<Result<_, _>>()?;
     let mut hasher = Sha256::new();
     for graph in &inferred {
         hasher.update(graph.graph_digest);
@@ -139,22 +170,93 @@ fn stored_layout(
     tensors.get(index as usize).layout()
 }
 
+/// Dim params of one tensor row as `(axis, symbol, max)`.
+fn dim_params_of(
+    tensors: &flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<fb::Tensor<'_>>>,
+    index: i32,
+) -> Vec<(u32, String, i32)> {
+    tensors
+        .get(index as usize)
+        .dim_params()
+        .map(|params| {
+            (0..params.len())
+                .map(|i| {
+                    let p = params.get(i);
+                    (p.axis(), p.symbol().unwrap_or("?").to_string(), p.max())
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Infer one graph: propagate shapes, check SSA + acyclicity + digest.
+///
+/// `live` overrides the graph inputs' dims (a rebuild): `None` seeds from
+/// the stored rows and checks every computed row against them; `Some` seeds
+/// from the live dims (validated against dim_params below) and skips the
+/// stored check for computed tensors, whose shapes legitimately differ.
 fn infer_graph(
     tensors: &flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<fb::Tensor<'_>>>,
     graph: &fb::Graph<'_>,
     graph_index: usize,
+    live: Option<&[[i32; 3]]>,
 ) -> Result<InferredGraph, String> {
     let name = graph.name().unwrap_or("?");
     let nodes = graph.nodes().ok_or_else(|| format!("graph {graph_index} ({name}) has no nodes"))?;
     let mut shapes: HashMap<i32, Inferred> = HashMap::new();
     let mut writers: HashMap<i32, usize> = HashMap::new();
-    // Graph inputs are written by the caller: seed from stored rows.
+    // Graph inputs are written by the caller: seed from stored rows, or from
+    // the live dims on a rebuild. Live dims are checked axis by axis: marked
+    // (dim_param) axes accept `<= max`, unmarked axes must equal stored.
     if let Some(inputs) = graph.inputs() {
-        for i in 0..inputs.len() {
-            let t = inputs.get(i);
-            shapes.insert(t, Inferred { dims: stored_dims(tensors, t)?, layout: stored_layout(tensors, t) });
+        if let Some(live) = live {
+            if live.len() != inputs.len() {
+                return Err(format!(
+                    "graph {graph_index} ({name}): {} live inputs for {} graph inputs",
+                    live.len(),
+                    inputs.len()
+                ));
+            }
+            for i in 0..inputs.len() {
+                let t = inputs.get(i);
+                let stored = stored_dims(tensors, t)?;
+                let dims = [live[i][0], live[i][1], live[i][2]];
+                let params = dim_params_of(tensors, t);
+                for axis in 0..3 {
+                    let marked = params.iter().find(|(a, _, _)| *a as usize == axis);
+                    match marked {
+                        Some((_, _, max)) => {
+                            if dims[axis] <= 0 || dims[axis] > *max {
+                                return Err(format!(
+                                    "graph {graph_index} ({name}): live dim {axis} of input {t} is {}, outside (0, {max}]",
+                                    dims[axis], max = max
+                                ));
+                            }
+                        }
+                        None => {
+                            if stored.get(axis) != Some(&dims[axis]) {
+                                return Err(format!(
+                                    "graph {graph_index} ({name}): live dim {axis} of input {t} is {}, stored {} (axis not marked variable)",
+                                    dims[axis],
+                                    stored.get(axis).copied().unwrap_or(-1)
+                                ));
+                            }
+                        }
+                    }
+                }
+                shapes.insert(
+                    t,
+                    Inferred { dims: dims.to_vec(), layout: stored_layout(tensors, t) },
+                );
+            }
+        } else {
+            for i in 0..inputs.len() {
+                let t = inputs.get(i);
+                shapes.insert(t, Inferred { dims: stored_dims(tensors, t)?, layout: stored_layout(tensors, t) });
+            }
         }
+    } else if live.is_some() {
+        return Err(format!("graph {graph_index} ({name}) has no inputs to override"));
     }
     // Weight tensors (buffer >= 0) and host tensors (no buffer, PLACEMENT host)
     // are file facts: seed from stored rows so node inference can read them.
@@ -242,16 +344,28 @@ fn infer_graph(
         }
         let attrs = node.attrs().map(|v| Attrs { attrs: v });
         let inferred = infer_node(node.op(), &inputs, attrs.as_ref(), &shapes, n, name, graph_index)?;
-        // Every inferred output must equal the stored row (spec 7.2).
+        // Every inferred output must equal the stored row (spec 7.2) —
+        // except on a live rebuild, where computed shapes legitimately
+        // differ from the recorded maxima. Weights, host, and state rows
+        // still check: their dims never vary. Layouts always check.
+        let live_path = live.is_some();
         for (output, want) in outputs.iter().zip(inferred.iter()) {
-            let stored = stored_dims(tensors, *output)?;
-            if stored != want.dims {
-                return Err(format!(
-                    "graph {graph_index} ({name}): node {n} ({:?}) infers tensor {output} as {:?}, stored {:?}",
-                    node.op(),
-                    want.dims,
-                    stored
-                ));
+            let is_file_row = {
+                let tensor = tensors.get(*output as usize);
+                tensor.buffer() != -1
+                    || tensor.placement() == fb::Placement::HOST
+                    || tensor.state() != fb::StateKind::NONE
+            };
+            if !live_path || is_file_row {
+                let stored = stored_dims(tensors, *output)?;
+                if stored != want.dims {
+                    return Err(format!(
+                        "graph {graph_index} ({name}): node {n} ({:?}) infers tensor {output} as {:?}, stored {:?}",
+                        node.op(),
+                        want.dims,
+                        stored
+                    ));
+                }
             }
             let stored_layout = stored_layout(tensors, *output);
             if stored_layout != want.layout {

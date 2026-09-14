@@ -36,6 +36,8 @@ struct NetSpec {
     graph: u32,
     /// Entry roles, binding positionally to the graph inputs.
     roles: Vec<&'static str>,
+    /// Variable input axes: `(input position, axis, symbol, max)`.
+    dims: Vec<(usize, u32, &'static str, i32)>,
     /// Human description embedded in the file.
     description: &'static str,
 }
@@ -82,6 +84,7 @@ fn main() {
                     asset,
                     graph: weights::graph::SELFIE,
                     roles: vec!["pixels"],
+                    dims: vec![],
                     description: "selfie-segmentation fp16 nchw (v2 pilot)",
                 },
                 recorded,
@@ -100,6 +103,7 @@ fn main() {
                     asset,
                     graph: weights::graph::U2NETP,
                     roles: vec!["pixels"],
+                    dims: vec![],
                     description: "u2netp fp16 nchw (v2)",
                 },
                 recorded,
@@ -120,6 +124,7 @@ fn main() {
                     asset,
                     graph: weights::graph::SCRFD,
                     roles: vec!["pixels"],
+                    dims: vec![],
                     description: "scrfd-500m fp16 nchw (v2)",
                 },
                 recorded,
@@ -139,6 +144,7 @@ fn main() {
                     asset,
                     graph: weights::graph::MOBILEFACENET,
                     roles: vec!["pixels"],
+                    dims: vec![],
                     description: "mobilefacenet fp16 prelu nchw (v2)",
                 },
                 recorded,
@@ -159,6 +165,7 @@ fn main() {
                     asset,
                     graph: weights::graph::PPOCR_DET,
                     roles: vec!["pixels"],
+                    dims: vec![],
                     description: "ppocr-det fp16 nchw (v2)",
                 },
                 recorded,
@@ -183,6 +190,7 @@ fn main() {
                     asset,
                     graph: weights::graph::PPOCR_REC,
                     roles: vec!["crop"],
+                    dims: vec![],
                     description: "ppocr-rec fp16 nchw (v2)",
                 },
                 recorded,
@@ -201,6 +209,7 @@ fn main() {
                     asset,
                     graph: weights::graph::MAIA,
                     roles: vec!["tokens"],
+                    dims: vec![],
                     description: "maia3 int8 nchw (v2)",
                 },
                 recorded,
@@ -222,6 +231,7 @@ fn main() {
                     asset,
                     graph: weights::graph::SUPERTONIC_VOC,
                     roles: vec!["latent"],
+                    dims: vec![(0, 2, "F", i32::MAX)],
                     description: "supertonic-vocoder fp16/int8 nchw (v2)",
                 },
                 recorded,
@@ -243,6 +253,7 @@ fn main() {
                     asset,
                     graph: weights::graph::SUPERTONIC_DP,
                     roles: vec!["char_ids", "style"],
+                    dims: vec![(0, 2, "C", i32::MAX)],
                     description: "supertonic-duration fp16/int8 nchw (v2)",
                 },
                 recorded,
@@ -264,6 +275,7 @@ fn main() {
                     asset,
                     graph: weights::graph::SUPERTONIC_TTL,
                     roles: vec!["char_ids", "style"],
+                    dims: vec![(0, 2, "C", i32::MAX)],
                     description: "supertonic-text-encoder fp16 nchw (v2)",
                 },
                 recorded,
@@ -298,12 +310,14 @@ fn main() {
                         graph_name: "image",
                         entry_name: "image",
                         roles: &["pixels"],
+                        dims: &[],
                     },
                     emit::GraphSpec {
                         recorded: &text,
                         graph_name: "text",
                         entry_name: "text",
                         roles: &["embedded"],
+                        dims: &[(0, 2, "L", i32::MAX)],
                     },
                 ],
             )
@@ -348,12 +362,14 @@ fn main() {
                         graph_name: "encode",
                         entry_name: "encode",
                         roles: &["mel"],
+                        dims: &[],
                     },
                     emit::GraphSpec {
                         recorded: &decode,
                         graph_name: "decode_step",
                         entry_name: "decode_step",
                         roles: &decode_role_refs,
+                        dims: &[],
                     },
                 ],
             )
@@ -400,12 +416,19 @@ fn main() {
                         graph_name: "decode_step",
                         entry_name: "decode_step",
                         roles: &roles,
+                        dims: &[],
                     },
                     emit::GraphSpec {
                         recorded: &prefill,
                         graph_name: "prefill",
                         entry_name: "prefill",
                         roles: &roles,
+                        dims: &[
+                            (0, 2, "T", i32::MAX),
+                            (1, 2, "T", i32::MAX),
+                            (2, 2, "T", i32::MAX),
+                            (3, 2, "T", i32::MAX),
+                        ],
                     },
                 ],
             )
@@ -462,6 +485,7 @@ fn emit_and_check(
         spec.name,
         "encode",
         &spec.roles,
+        &spec.dims,
     )
     .expect("emission succeeds");
 
