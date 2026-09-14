@@ -250,22 +250,6 @@ fn v2_plan_matches_v1_bit_exact() {
     );
 }
 
-/// True numeric parity for selfie segmentation: the v2-lowered plan against
-/// the v1 plan at 256x256.
-#[test]
-fn v2_selfie_matches_v1_bit_exact() {
-    use crate::nets::selfie;
-    assert_bit_exact(
-        "selfie at 256x256",
-        "camera/src/main/assets/selfie_segmentation.maml",
-        weights::graph::SELFIE,
-        "camera/src/main/assets/selfie_segmentation.maml2",
-        0,
-        |offsets| selfie::build(offsets),
-        spread_inputs(&[(3usize, 256usize, 256usize)], 0.0),
-    );
-}
-
 /// True numeric parity for U^2-Net portable at 320x320.
 #[test]
 fn v2_u2netp_matches_v1_bit_exact() {

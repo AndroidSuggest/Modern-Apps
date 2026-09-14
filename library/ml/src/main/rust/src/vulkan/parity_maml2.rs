@@ -107,7 +107,7 @@ fn v2_selfie_load_path_on_device() {
     // is the host fallback (device builds have no checkout to walk to, so a
     // missing dir skips rather than panicking on path arithmetic).
     let bytes = match std::env::var("MODELRUNNER_ASSETS") {
-        Ok(dir) => match std::fs::read(std::path::PathBuf::from(dir).join("selfie_segmentation.maml2")) {
+        Ok(dir) => match std::fs::read(std::path::PathBuf::from(dir).join("selfie_segmentation.maml")) {
             Ok(bytes) => bytes,
             Err(_) => return,
         },
@@ -119,7 +119,7 @@ fn v2_selfie_load_path_on_device() {
             let Some(root) = root else {
                 return;
             };
-            match std::fs::read(root.join("camera/src/main/assets/selfie_segmentation.maml2")) {
+            match std::fs::read(root.join("camera/src/main/assets/selfie_segmentation.maml")) {
                 Ok(bytes) => bytes,
                 Err(_) => return,
             }

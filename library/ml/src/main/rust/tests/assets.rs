@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use modelrunner::nets::{
-    maia, mobilefacenet, ppocr_det, ppocr_rec, scrfd, selfie, supertonic_duration,
+    maia, mobilefacenet, ppocr_det, ppocr_rec, scrfd, supertonic_duration,
     supertonic_sampler, supertonic_text, supertonic_vocoder, tinyclip, u2netp, whisper,
 };
 use modelrunner::post::ctc;
@@ -45,10 +45,15 @@ fn load(relative: &str, graph_id: u32) -> Weights {
 }
 
 #[test]
-fn the_shipped_selfie_asset_builds_the_selfie_forward_pass() {
-    let weights = load("camera/src/main/assets/selfie_segmentation.maml", graph::SELFIE);
-    assert_eq!(weights.len(), selfie::TENSORS);
-    let plan = selfie::build(&weights).expect("the shipped asset matches nets::selfie");
+fn the_shipped_selfie_asset_loads_as_v2() {
+    // Flipped to v2: the asset bytes are a `MAM2` file, loaded through the
+    // production path (parse + entry 0), not the v1 reader.
+    let path = repo_root().join("camera/src/main/assets/selfie_segmentation.maml");
+    let bytes = std::fs::read(&path).expect("read the shipped asset");
+    let model = modelrunner::maml2::load::Model::parse(bytes).expect("a v2 selfie file");
+    let (plan, _blob) = model.load(0).expect("entry 0 loads");
+    assert_eq!(plan.inputs.len(), 1);
+    assert_eq!(plan.outputs.len(), 1);
     assert!(!plan.ops.is_empty());
 }
 
@@ -356,9 +361,10 @@ fn the_shipped_whisper_asset_embeds_a_token_on_the_host() {
 fn neither_asset_will_load_as_the_other_network() {
     // The `graph_id` in the header exists for exactly this: the two files are both
     // ordered fp16 tensor tables, so without it a swapped asset would parse.
-    let selfie = repo_root().join("camera/src/main/assets/selfie_segmentation.maml");
-    let bytes = std::fs::read(selfie).expect("the selfie asset");
-    assert!(Weights::parse(&bytes, graph::U2NETP).is_err());
+    // (Selfie is v2 now and covered by the digest gate instead; u2netp still v1.)
+    let u2netp = repo_root().join("photos/src/main/assets/u2netp.maml");
+    let bytes = std::fs::read(u2netp).expect("the u2netp asset");
+    assert!(Weights::parse(&bytes, graph::SELFIE).is_err());
 }
 
 #[test]
@@ -366,47 +372,50 @@ fn report_the_device_memory_each_net_needs() {
     // Not an assertion so much as the number a reviewer wants to see, printed by
     // `cargo test -- --nocapture`. Both are well inside what a phone will give a
     // background allocation, which is the point.
-    for (name, weights, arena) in [
+    for (name, (weight_bytes, arena)) in [
         (
             "selfie",
-            load("camera/src/main/assets/selfie_segmentation.maml", graph::SELFIE),
-            selfie::build(&load(
-                "camera/src/main/assets/selfie_segmentation.maml",
-                graph::SELFIE,
-            ))
-            .expect("selfie")
-            .arena_elems,
+            {
+                let path = repo_root().join("camera/src/main/assets/selfie_segmentation.maml");
+                let bytes = std::fs::read(&path).expect("the selfie asset");
+                let model = modelrunner::maml2::load::Model::parse(bytes)
+                    .expect("a v2 selfie file");
+                let (plan, blob) = model.load(0).expect("entry 0 loads");
+                use modelrunner::weights::Blob;
+                (blob.data_len() as usize, plan.arena_elems)
+            }
         ),
         (
             "u2netp",
-            load("photos/src/main/assets/u2netp.maml", graph::U2NETP),
-            u2netp::build(&load("photos/src/main/assets/u2netp.maml", graph::U2NETP))
-                .expect("u2netp")
-                .arena_elems,
+            {
+                let weights = load("photos/src/main/assets/u2netp.maml", graph::U2NETP);
+                let bytes = weights.data().len();
+                let arena = u2netp::build(&weights).expect("u2netp").arena_elems;
+                (bytes, arena)
+            }
         ),
         (
             "mobilefacenet",
-            load("photos/src/main/assets/w600k_mbf.maml", graph::MOBILEFACENET),
-            mobilefacenet::build(&load(
-                "photos/src/main/assets/w600k_mbf.maml",
-                graph::MOBILEFACENET,
-            ))
-            .expect("mobilefacenet")
-            .arena_elems,
+            {
+                let weights = load("photos/src/main/assets/w600k_mbf.maml", graph::MOBILEFACENET);
+                let bytes = weights.data().len();
+                let arena =
+                    mobilefacenet::build(&weights).expect("mobilefacenet").arena_elems;
+                (bytes, arena)
+            }
         ),
         (
             "scrfd@640",
-            load("photos/src/main/assets/scrfd_500m.maml", graph::SCRFD),
-            scrfd::build(
-                &load("photos/src/main/assets/scrfd_500m.maml", graph::SCRFD),
-                scrfd::LONG_SIDE,
-                scrfd::LONG_SIDE,
-            )
-            .expect("scrfd")
-            .arena_elems,
+            {
+                let weights = load("photos/src/main/assets/scrfd_500m.maml", graph::SCRFD);
+                let bytes = weights.data().len();
+                let arena = scrfd::build(&weights, scrfd::LONG_SIDE, scrfd::LONG_SIDE)
+                    .expect("scrfd")
+                    .arena_elems;
+                (bytes, arena)
+            }
         ),
     ] {
-        let weight_bytes = weights.data().len();
         let arena_bytes = arena as usize * 2;
         println!(
             "{name}: {} KiB weights + {} KiB arena = {} KiB",
