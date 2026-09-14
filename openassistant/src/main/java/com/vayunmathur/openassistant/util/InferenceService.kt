@@ -1,4 +1,25 @@
 package com.vayunmathur.openassistant.util
+import com.vayunmathur.library.ml.GEMMA_BOA_MARKER
+import com.vayunmathur.library.ml.GEMMA_BOI_MARKER
+import com.vayunmathur.library.ml.GEMMA_DEFAULT_REPLY
+import com.vayunmathur.library.ml.GEMMA_EOA_MARKER
+import com.vayunmathur.library.ml.GEMMA_EOI_MARKER
+import com.vayunmathur.library.ml.GEMMA_MARKERS
+import com.vayunmathur.library.ml.GEMMA_MAX_CONTEXT
+import com.vayunmathur.library.ml.GEMMA_SOFT_TOKEN_WIDTH
+import com.vayunmathur.library.ml.GEMMA_STOP
+import com.vayunmathur.library.ml.GemmaPart
+import com.vayunmathur.library.ml.GemmaRole
+import com.vayunmathur.library.ml.GemmaToolCall
+import com.vayunmathur.library.ml.GemmaToolDeclaration
+import com.vayunmathur.library.ml.GemmaOnnxHandle
+import com.vayunmathur.library.ml.GemmaTurn
+import com.vayunmathur.library.ml.declareGemmaTools
+import com.vayunmathur.library.ml.fitGemmaAudio
+import com.vayunmathur.library.ml.gemmaPromptCeiling
+import com.vayunmathur.library.ml.parseGemmaToolCall
+import com.vayunmathur.library.ml.renderGemmaPrompt
+import com.vayunmathur.library.ml.renderGemmaToolResponse
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -13,7 +34,6 @@ import android.os.ResultReceiver
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.IntentCompat
-import com.vayunmathur.library.ml.Gemma4Handle
 import com.vayunmathur.library.util.SecureResultReceiver
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.*
@@ -78,10 +98,10 @@ class InferenceService : Service() {
          * even nothing fits, which leaves `generate` to refuse exactly as it does today.
          */
         internal fun evict(
-            history: List<Gemma4Handle.Turn>,
+            history: List<GemmaTurn>,
             floor: Int = 0,
-            fits: (List<Gemma4Handle.Turn>) -> Boolean,
-        ): List<Gemma4Handle.Turn> {
+            fits: (List<GemmaTurn>) -> Boolean,
+        ): List<GemmaTurn> {
             var kept = history
             while (kept.size > floor && !fits(kept)) kept = kept.drop(oldestExchange(kept))
             return kept
@@ -94,10 +114,10 @@ class InferenceService : Service() {
          * The single-turn case is what a leading model turn needs - the remains of a pair whose
          * user half went in an earlier call.
          */
-        private fun oldestExchange(history: List<Gemma4Handle.Turn>): Int =
+        private fun oldestExchange(history: List<GemmaTurn>): Int =
             if (history.size > 1 &&
-                history[0].role == Gemma4Handle.Role.USER &&
-                history[1].role == Gemma4Handle.Role.MODEL
+                history[0].role == GemmaRole.USER &&
+                history[1].role == GemmaRole.MODEL
             ) 2 else 1
 
         /** The system prompt used when the user has not set a custom one. */
@@ -151,7 +171,7 @@ class InferenceService : Service() {
     private var currentConversationId: Long = -1L
 
     /** History for the conversation being served. */
-    private var currentHistory: List<Gemma4Handle.Turn> = emptyList()
+    private var currentHistory: List<GemmaTurn> = emptyList()
 
     /** The tool table, rebuilt per conversation because the tools capture its id. */
     private var currentTools: ToolRegistry? = null
@@ -358,7 +378,7 @@ class InferenceService : Service() {
         val live = engine ?: return
         val images = live.encodeImages(imagePaths.toList())
         val prompt = userText + attachmentNote(imagePaths.size - images.size, 0)
-        val turns = listOf(Gemma4Handle.Turn(Gemma4Handle.Role.USER, prompt, images))
+        val turns = listOf(GemmaTurn(GemmaRole.USER, prompt, images))
 
         // The early halt is the whole point of streaming here: the moment a complete object that
         // satisfies the schema has arrived, there is nothing to gain by letting the model write
@@ -434,7 +454,7 @@ class InferenceService : Service() {
 
         val directory = applicationContext.getExternalFilesDir(null)
             ?: throw Exception("no external files directory")
-        for (name in Gemma4Handle.FILES) {
+        for (name in GemmaOnnxHandle.FILES) {
             val file = File(directory, name)
             if (!file.isFile) throw Exception("$name is missing from $directory")
         }
@@ -470,7 +490,7 @@ class InferenceService : Service() {
             // Exactly `Gemma4Handle.render`'s opening, with no conversation and no generation
             // prompt - the part that never changes.
             val prefix = "<bos><|turn>system\n" + DEFAULT_SYSTEM_PROMPT +
-                Gemma4Handle.declareTools(declarations)
+                declareGemmaTools(declarations)
             val directory = applicationContext.getExternalFilesDir(null) ?: return
             File(directory, "prefix.txt").writeText(prefix)
             Log.i("InferenceService", "wrote prefix.txt, ${prefix.length} chars, " +
@@ -513,8 +533,8 @@ class InferenceService : Service() {
             .filter { it.role != ROLE_ERROR }
             .map { msg ->
                 val role =
-                    if (msg.role == "assistant") Gemma4Handle.Role.MODEL else Gemma4Handle.Role.USER
-                Gemma4Handle.Turn(role, msg.text)
+                    if (msg.role == "assistant") GemmaRole.MODEL else GemmaRole.USER
+                GemmaTurn(role, msg.text)
             }
         currentTools =
             ToolRegistry(AssistantToolSet(applicationContext, memoryDao, messageDao, id))
@@ -558,17 +578,17 @@ class InferenceService : Service() {
      */
     private fun evictToFit(
         live: Gemma4Engine,
-        history: List<Gemma4Handle.Turn>,
-        turn: Gemma4Handle.Turn,
+        history: List<GemmaTurn>,
+        turn: GemmaTurn,
         system: String?,
-    ): List<Gemma4Handle.Turn> {
+    ): List<GemmaTurn> {
         val bare = turn.copy(audio = emptyList())
         val ceiling = live.promptCeiling()
         // `positionsFor` trims audio into whatever the text leaves, so asking it about the whole
         // turn would always answer "fits" and history would never yield. The clip is added at its
         // full length instead, which is the question actually being asked: does it fit UNTRIMMED?
-        val clip = turn.audio.sumOf { it.size / Gemma4Handle.SOFT_TOKEN_WIDTH }
-        fun text(rest: List<Gemma4Handle.Turn>) =
+        val clip = turn.audio.sumOf { it.size / GEMMA_SOFT_TOKEN_WIDTH }
+        fun text(rest: List<GemmaTurn>) =
             live.positionsFor(rest + bare, system, currentTools)
 
         var kept = evict(history, HISTORY_FLOOR) { text(it) + clip <= ceiling }
@@ -611,8 +631,8 @@ class InferenceService : Service() {
         val audio = live.encodeAudio(present)
         val system = systemPrompt()
         val attachments = attachmentNote(unread, attached.size - audio.size)
-        fun turnOf(note: String) = Gemma4Handle.Turn(
-            Gemma4Handle.Role.USER, userText + attachments + note, images, audio,
+        fun turnOf(note: String) = GemmaTurn(
+            GemmaRole.USER, userText + attachments + note, images, audio,
         )
 
         // Fitted at most twice: the note telling the model it has forgotten something costs
@@ -669,7 +689,7 @@ class InferenceService : Service() {
             messageDao.deleteById(aiMsgId)
         } else {
             updateMessageInDb(aiMsgId, reply)
-            currentHistory = turns + Gemma4Handle.Turn(Gemma4Handle.Role.MODEL, reply)
+            currentHistory = turns + GemmaTurn(GemmaRole.MODEL, reply)
         }
     }
 

@@ -1,6 +1,25 @@
 package com.vayunmathur.openassistant.util
+import com.vayunmathur.library.ml.GEMMA_BOA_MARKER
+import com.vayunmathur.library.ml.GEMMA_BOI_MARKER
+import com.vayunmathur.library.ml.GEMMA_DEFAULT_REPLY
+import com.vayunmathur.library.ml.GEMMA_EOA_MARKER
+import com.vayunmathur.library.ml.GEMMA_EOI_MARKER
+import com.vayunmathur.library.ml.GEMMA_MARKERS
+import com.vayunmathur.library.ml.GEMMA_MAX_CONTEXT
+import com.vayunmathur.library.ml.GEMMA_SOFT_TOKEN_WIDTH
+import com.vayunmathur.library.ml.GEMMA_STOP
+import com.vayunmathur.library.ml.GemmaPart
+import com.vayunmathur.library.ml.GemmaRole
+import com.vayunmathur.library.ml.GemmaToolCall
+import com.vayunmathur.library.ml.GemmaToolDeclaration
+import com.vayunmathur.library.ml.GemmaTurn
+import com.vayunmathur.library.ml.declareGemmaTools
+import com.vayunmathur.library.ml.fitGemmaAudio
+import com.vayunmathur.library.ml.gemmaPromptCeiling
+import com.vayunmathur.library.ml.parseGemmaToolCall
+import com.vayunmathur.library.ml.renderGemmaPrompt
+import com.vayunmathur.library.ml.renderGemmaToolResponse
 
-import com.vayunmathur.library.ml.Gemma4Handle
 import kotlin.reflect.KFunction
 import kotlin.reflect.KParameter
 import kotlin.reflect.full.declaredMemberFunctions
@@ -62,14 +81,14 @@ class ToolRegistry(private val target: ToolSet) {
      * The order must be stable too, not merely the membership - two orderings of the same tools
      * are two different token sequences and share only their common head.
      */
-    val declarations: List<Gemma4Handle.ToolDeclaration> = byName.map { (name, function) ->
-        Gemma4Handle.ToolDeclaration(
+    val declarations: List<GemmaToolDeclaration> = byName.map { (name, function) ->
+        GemmaToolDeclaration(
             name = name,
             description = function.findAnnotation<Tool>()?.description.orEmpty(),
             parameters = function.parameters
                 .filter { it.kind == KParameter.Kind.VALUE }
                 .map { parameter ->
-                    Gemma4Handle.ToolDeclaration.Parameter(
+                    GemmaToolDeclaration.Parameter(
                         name = parameter.name.orEmpty(),
                         description = parameter.findAnnotation<ToolParam>()?.description.orEmpty(),
                         type = gemmaType(parameter),
@@ -87,7 +106,7 @@ class ToolRegistry(private val target: ToolSet) {
      * coerce all become a string the model reads back. The alternative is aborting the turn,
      * which loses the reply the user was waiting for over a tool that was optional anyway.
      */
-    fun invoke(call: Gemma4Handle.ToolCall): String {
+    fun invoke(call: GemmaToolCall): String {
         val function = byName[call.name] ?: return "error: no tool named ${call.name}"
         return runCatching {
             val arguments = HashMap<KParameter, Any?>()

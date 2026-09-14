@@ -1,10 +1,5 @@
 package com.vayunmathur.library.ml
 
-import com.vayunmathur.library.ml.Gemma4Handle.Companion.BOA_MARKER
-import com.vayunmathur.library.ml.Gemma4Handle.Companion.BOI_MARKER
-import com.vayunmathur.library.ml.Gemma4Handle.Companion.EOA_MARKER
-import com.vayunmathur.library.ml.Gemma4Handle.Companion.EOI_MARKER
-import com.vayunmathur.library.ml.Gemma4Handle.Companion.MARKERS
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -36,7 +31,7 @@ class Gemma4MarkersTest {
      * this.
      */
     private fun markerConstants(): Map<String, String> =
-        Gemma4Handle::class.java.declaredFields
+        GemmaTypesKt::class.java.declaredFields
             .filter { it.name.endsWith("_MARKER") }
             .onEach { it.isAccessible = true }
             .associate { it.name to (it.get(null) as String) }
@@ -54,14 +49,14 @@ class Gemma4MarkersTest {
             "reflection found ${found.size} *_MARKER constants, expected at least the four " +
                 "image and audio brackets - the enforcement below is vacuous: $found",
         )
-        for (name in listOf("BOI_MARKER", "EOI_MARKER", "BOA_MARKER", "EOA_MARKER")) {
+        for (name in listOf("GEMMA_BOI_MARKER", "GEMMA_EOI_MARKER", "GEMMA_BOA_MARKER", "GEMMA_EOA_MARKER")) {
             assertTrue(name in found, "$name was not found by reflection; found ${found.keys}")
         }
     }
 
     @Test
     fun `every marker constant is declared in MARKERS`() {
-        val declared = MARKERS.toSet()
+        val declared = GEMMA_MARKERS.toSet()
         val missing = markerConstants().filterValues { it !in declared }
         assertEquals(
             emptyMap(),
@@ -76,15 +71,15 @@ class Gemma4MarkersTest {
         // Pinned against config.json's boi/eoi/boa/eoa ids, so a typo in a constant fails here
         // rather than becoming an unrecognised delimiter at inference. The ids are 255999,
         // 258882, 256000 and 258883 respectively.
-        assertEquals("<|image>", BOI_MARKER)
-        assertEquals("<image|>", EOI_MARKER)
-        assertEquals("<|audio>", BOA_MARKER)
-        assertEquals("<audio|>", EOA_MARKER)
+        assertEquals("<|image>", GEMMA_BOI_MARKER)
+        assertEquals("<image|>", GEMMA_EOI_MARKER)
+        assertEquals("<|audio>", GEMMA_BOA_MARKER)
+        assertEquals("<audio|>", GEMMA_EOA_MARKER)
     }
 
     @Test
     fun `MARKERS has no duplicates`() {
-        val duplicated = MARKERS.groupingBy { it }.eachCount().filterValues { it > 1 }
+        val duplicated = GEMMA_MARKERS.groupingBy { it }.eachCount().filterValues { it > 1 }
         assertEquals(emptyMap(), duplicated, "duplicated markers: $duplicated")
     }
 }

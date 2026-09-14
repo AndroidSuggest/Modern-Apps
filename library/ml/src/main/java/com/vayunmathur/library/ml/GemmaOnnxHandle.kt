@@ -70,7 +70,7 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
      */
     fun generate(
         parts: List<PromptPart>,
-        limit: Int = Gemma4Handle.DEFAULT_REPLY,
+        limit: Int = GEMMA_DEFAULT_REPLY,
         onPiece: (String) -> Boolean = { true },
     ): String? {
         if (!ensure(requireTowers = parts.any { it is PromptPart.Media })) return null
@@ -112,6 +112,10 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
     /** Token ids for [text] as a user would write it (no markers honoured). */
     fun encodeText(text: String): IntArray =
         tokenizer?.encode(text) ?: IntArray(0)
+
+    /** Token ids for a rendered prompt, honouring the chat markers. */
+    fun encodePrompt(text: String): IntArray =
+        tokenizer?.encodePrompt(text) ?: IntArray(0)
 
     /** Text for token ids. */
     fun decode(ids: IntArray): String =

@@ -2,8 +2,21 @@ package com.vayunmathur.openassistant.util
 
 import android.graphics.BitmapFactory
 import android.util.Log
-import com.vayunmathur.library.ml.Gemma4Handle
+import com.vayunmathur.library.ml.GEMMA_BOA_MARKER
+import com.vayunmathur.library.ml.GEMMA_BOI_MARKER
+import com.vayunmathur.library.ml.GEMMA_DEFAULT_REPLY
+import com.vayunmathur.library.ml.GEMMA_EOA_MARKER
+import com.vayunmathur.library.ml.GEMMA_EOI_MARKER
+import com.vayunmathur.library.ml.GEMMA_SOFT_TOKEN_WIDTH
 import com.vayunmathur.library.ml.GemmaOnnxHandle
+import com.vayunmathur.library.ml.GemmaRole
+import com.vayunmathur.library.ml.GemmaToolCall
+import com.vayunmathur.library.ml.GemmaToolDeclaration
+import com.vayunmathur.library.ml.GemmaTurn
+import com.vayunmathur.library.ml.declareGemmaTools
+import com.vayunmathur.library.ml.gemmaPromptCeiling
+import com.vayunmathur.library.ml.parseGemmaToolCall
+import com.vayunmathur.library.ml.renderGemmaToolResponse
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -117,10 +130,10 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
      * a user can afford to lose.
      */
     fun positionsFor(
-        conversation: List<Gemma4Handle.Turn>,
+        conversation: List<GemmaTurn>,
         system: String?,
         tools: ToolRegistry?,
-        limit: Int = Gemma4Handle.DEFAULT_REPLY,
+        limit: Int = GEMMA_DEFAULT_REPLY,
     ): Int = lock.withLock {
         val live = handle ?: return@withLock 0
         // Same arithmetic `generate` performs: text runs encoded, media counted by length.
@@ -129,15 +142,15 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
             total += when (part) {
                 is GemmaOnnxHandle.PromptPart.Text -> live.encodePrompt(part.text).size
                 is GemmaOnnxHandle.PromptPart.Media ->
-                    (part.soft?.size ?: 0) / Gemma4Handle.SOFT_TOKEN_WIDTH
+                    (part.soft?.size ?: 0) / GEMMA_SOFT_TOKEN_WIDTH
             }
         }
         total
     }
 
     /** What [positionsFor] must not exceed if the reply is to keep its [limit]. */
-    fun promptCeiling(limit: Int = Gemma4Handle.DEFAULT_REPLY): Int =
-        Gemma4Handle.promptCeiling(limit)
+    fun promptCeiling(limit: Int = GEMMA_DEFAULT_REPLY): Int =
+        gemmaPromptCeiling(limit)
 
     /**
      * Run a turn, resolving any tool calls, and stream the visible reply to [onPartial].
@@ -155,10 +168,10 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
      * otherwise never return.
      */
     fun ask(
-        conversation: List<Gemma4Handle.Turn>,
+        conversation: List<GemmaTurn>,
         system: String?,
         tools: ToolRegistry?,
-        limit: Int = Gemma4Handle.DEFAULT_REPLY,
+        limit: Int = GEMMA_DEFAULT_REPLY,
         onPartial: (String) -> Boolean = { true },
     ): String? = lock.withLock {
         val live = handle ?: return@withLock null
@@ -183,7 +196,7 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
                 if (onPartial(shown)) {
                     // A complete call means this hop is over; stop rather than let the model
                     // carry on writing past a request it is waiting on.
-                    Gemma4Handle.parseToolCall(partial) == null
+                    parseGemmaToolCall(partial) == null
                 } else {
                     stopped = true
                     false
@@ -192,7 +205,7 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
 
             visible += strip(reply)
             if (stopped) return@withLock visible
-            val call = Gemma4Handle.parseToolCall(reply)
+            val call = parseGemmaToolCall(reply)
             if (call == null || tools == null) return@withLock visible
             if (hop == MAX_TOOL_HOPS) {
                 Log.w(TAG, "stopping after $MAX_TOOL_HOPS tool hops")
@@ -201,7 +214,7 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
             val result = tools.invoke(call)
             Log.d(TAG, "tool ${call.name}(${call.arguments}) -> ${result.take(120)}")
             pending += reply.substringBefore("<tool_call|>") + "<tool_call|>" +
-                Gemma4Handle.renderToolResponse(call.name, result)
+                renderGemmaToolResponse(call.name, result)
         }
         visible
     }
@@ -213,9 +226,9 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
      * exactly — only the encoding changes from ids to embedding segments.
      */
     private fun renderParts(
-        conversation: List<Gemma4Handle.Turn>,
+        conversation: List<GemmaTurn>,
         system: String?,
-        tools: List<Gemma4Handle.ToolDeclaration>,
+        tools: List<GemmaToolDeclaration>,
         continuation: String,
     ): List<GemmaOnnxHandle.PromptPart> {
         val parts = ArrayList<GemmaOnnxHandle.PromptPart>()
@@ -227,7 +240,7 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
             }
         }
         text.append("<bos>")
-        val declared = Gemma4Handle.declareTools(tools)
+        val declared = declareGemmaTools(tools)
         if (!system.isNullOrBlank() || declared.isNotEmpty()) {
             text.append("<|turn>system\n")
             if (!system.isNullOrBlank()) text.append(system)
@@ -235,21 +248,21 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
             text.append("<turn|>\n")
         }
         for (turn in conversation) {
-            val marker = if (turn.role == Gemma4Handle.Role.USER) "user" else "model"
+            val marker = if (turn.role == GemmaRole.USER) "user" else "model"
             text.append("<|turn>").append(marker).append('\n')
             for (image in turn.images) {
-                if (image.isEmpty() || image.size % Gemma4Handle.SOFT_TOKEN_WIDTH != 0) continue
-                text.append(Gemma4Handle.BOI_MARKER)
+                if (image.isEmpty() || image.size % GEMMA_SOFT_TOKEN_WIDTH != 0) continue
+                text.append(GEMMA_BOI_MARKER)
                 flush()
                 parts.add(GemmaOnnxHandle.PromptPart.Media(image))
-                text.append(Gemma4Handle.EOI_MARKER)
+                text.append(GEMMA_EOI_MARKER)
             }
             for (clip in turn.audio) {
-                if (clip.isEmpty() || clip.size % Gemma4Handle.SOFT_TOKEN_WIDTH != 0) continue
-                text.append(Gemma4Handle.BOA_MARKER)
+                if (clip.isEmpty() || clip.size % GEMMA_SOFT_TOKEN_WIDTH != 0) continue
+                text.append(GEMMA_BOA_MARKER)
                 flush()
                 parts.add(GemmaOnnxHandle.PromptPart.Media(clip))
-                text.append(Gemma4Handle.EOA_MARKER)
+                text.append(GEMMA_EOA_MARKER)
             }
             text.append(turn.text)
             text.append("<turn|>\n")

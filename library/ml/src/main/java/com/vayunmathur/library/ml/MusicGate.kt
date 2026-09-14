@@ -1,21 +1,19 @@
 package com.vayunmathur.library.ml
 
 /**
- * Google's always-on music gate, ported to the CPU.
+ * Google's always-on music gate.
  *
  * The cheap half of Now Playing. Feed it microphone PCM and it answers "is this music?"
  * once every 10 ms, from 8,200 int8 parameters. [NnfpHandle] is the other half - the
  * expensive fingerprinter you only run once this has said yes - and the two are different
  * networks with different shapes, not two entry points to one model.
  *
- * # Not on the GPU, unlike everything else here
+ * # Backend deferred
  *
- * Every other handle in this package dispatches Vulkan compute. This does not, and so it
- * has no asset, no file descriptor and no device: [inProcess] cannot fail for want of
- * hardware. At 100 Hz over ~8,200 multiply-accumulates the arithmetic is microseconds,
- * while a GPU dispatch would be 100 submit/fence/readback round trips a second on a
- * workload whose whole point is being cheap enough to leave running. Google ships it on a
- * DSP for the same reason.
+ * The gate ran on the CPU half of the deleted Vulkan crate (`gate.rs`). Until it is ported
+ * (pure integer arithmetic — no model file, no GPU), this handle is always unavailable:
+ * construction succeeds, [isAvailable] is false, and [push] returns null so callers degrade.
+ * The API is unchanged so the port drops in without touching callers.
  *
  * # Streaming, and the warm-up
  *
@@ -28,46 +26,30 @@ package com.vayunmathur.library.ml
  * # Not thread-safe
  *
  * One [push] at a time, and no [push] concurrent with [close]. Hold a lock across both.
- *
- * # What this is not
- *
- * It is not a reproduction of Google's shipped behaviour. The network and its
- * quantization are recovered exactly, but two links in the chain are inferences - the
- * sigmoid reading of the model's int16 score, and the smoothing inside the latching
- * classifier - and the runtime threshold overrides in `music_detector.descriptor` are
- * unrecoverable, because that file is a symbol and byte-offset table with no values in
- * it. Treat the probabilities as a well-founded signal to tune against, not as ground
- * truth. See `detector/ARCHITECTURE.md` section 3.
  */
 class MusicGate private constructor() : AutoCloseable {
-    private var handle: Long = 0L
-
-    /** False when the native library is missing. Every other member is then inert. */
-    val isAvailable: Boolean get() = handle != 0L
+    /** Always false until the CPU port lands. See the class docs. */
+    val isAvailable: Boolean get() = false
 
     /**
      * Feed [count] samples from the front of [pcm] and collect one probability in `0f..1f`
      * per completed hop, oldest first.
      *
-     * Empty when the call completed no hop or the gate is still warming up. Null only when
-     * the gate is unavailable or [count] does not fit [pcm].
+     * Currently always null: the backend is deferred.
      */
     fun push(pcm: ShortArray, count: Int = pcm.size): FloatArray? {
-        if (handle == 0L) return null
         if (count < 0 || count > pcm.size) return null
-        return MlNative.musicGatePush(handle, pcm, count)
+        return null
     }
 
     /** Discard the streaming state so the next [push] starts a fresh session. */
     fun reset() {
-        if (handle != 0L) MlNative.resetMusicGate(handle)
+        // Nothing held.
     }
 
     /** Free the gate. Idempotent. */
     override fun close() {
-        val live = handle
-        handle = 0L
-        if (live != 0L) MlNative.destroyMusicGate(live)
+        // Nothing held.
     }
 
     override fun toString(): String = "Now Playing music gate (CPU)"
@@ -93,10 +75,6 @@ class MusicGate private constructor() : AutoCloseable {
          * Named for the fact that there is nothing to open - no asset, no descriptor - to
          * distinguish it from [NnfpHandle.inAssets], which does have a file behind it.
          */
-        fun inProcess(): MusicGate {
-            val instance = MusicGate()
-            instance.handle = if (MlNative.isAvailable) MlNative.createMusicGate() else 0L
-            return instance
-        }
+        fun inProcess(): MusicGate = MusicGate()
     }
 }
