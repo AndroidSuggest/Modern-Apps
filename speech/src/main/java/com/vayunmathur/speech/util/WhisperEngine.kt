@@ -98,7 +98,7 @@ class WhisperEngine(context: Context) {
         val cfg = try {
             GenerationConfig(
                 JSONObject(
-                    app.assets.open("${WhisperModel.DIR}/$GEN_CONFIG").use {
+                    app.assets.open("${WhisperModel.ASSET_DIR}/$GEN_CONFIG").use {
                         it.bufferedReader().readText()
                     },
                 ),
@@ -108,21 +108,29 @@ class WhisperEngine(context: Context) {
             return false
         }
         val tok = try {
-            app.assets.open("${WhisperModel.DIR}/$VOCAB").use { WhisperTokenizer.load(it) }
+            app.assets.open("${WhisperModel.ASSET_DIR}/$VOCAB").use { WhisperTokenizer.load(it) }
         } catch (t: Throwable) {
             Log.e(TAG, "cannot read $VOCAB", t)
             return false
         }
-        // Construction never throws: an absent, compressed or malformed asset, a missing
-        // `libmodelrunner.so`, ids that do not describe this model, and a device without fp16
-        // compute all come back unavailable.
-        val handle = WhisperHandle.inAssets(
-            app.assets,
-            cfg.special,
-            cfg.langToId.values.toIntArray(),
-            cfg.suppress,
-            cfg.suppressAtBegin,
-        )
+        // Downloads first (77 MB stays out of the APK); bundled assets as fallback.
+        val handle = if (WhisperModel.isDownloaded(app)) {
+            WhisperHandle.inDirectory(
+                WhisperModel.modelDir(app),
+                cfg.special,
+                cfg.langToId.values.toIntArray(),
+                cfg.suppress,
+                cfg.suppressAtBegin,
+            )
+        } else {
+            WhisperHandle.inAssets(
+                app.assets,
+                cfg.special,
+                cfg.langToId.values.toIntArray(),
+                cfg.suppress,
+                cfg.suppressAtBegin,
+            )
+        }
         if (!handle.isAvailable) {
             Log.e(TAG, "cannot bring up $handle")
             handle.close()

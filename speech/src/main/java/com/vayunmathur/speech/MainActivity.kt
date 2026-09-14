@@ -49,8 +49,12 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconArrowDropDown
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.rememberPermissionRequest
+import com.vayunmathur.library.downloadservice.InitialModelDownloadChecker
+import com.vayunmathur.library.downloadservice.ModelDownloadWorker
+import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.speech.domain.SupertonicVoices
 import com.vayunmathur.speech.platform.SupertonicBundle
+import com.vayunmathur.speech.platform.SupertonicModel
 import com.vayunmathur.speech.service.WhisperRecognitionService
 import com.vayunmathur.speech.util.SpeechSetupActions
 import com.vayunmathur.speech.util.SpeechSetupUiState
@@ -62,9 +66,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val ds = DataStoreUtils.getInstance(this)
         setContent {
             DynamicTheme {
-                SetupScreen()
+                // Both model bundles download on first launch: Supertonic's plans (~395 MB)
+                // and Whisper's exports (~77 MB) stay out of the APK to keep it small.
+                InitialModelDownloadChecker(ds, SupertonicModel.FILES + WhisperModel.FILES) {
+                    SetupScreen()
+                }
             }
         }
     }

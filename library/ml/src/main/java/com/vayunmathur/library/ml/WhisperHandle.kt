@@ -98,9 +98,13 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
     override fun close() {
         encoder = null
         decoder = null
-        OnnxSessions.close("asset:$assetDir/$ENCODER")
-        OnnxSessions.close("asset:$assetDir/$DECODER")
+        OnnxSessions.close(sessionKey(ENCODER))
+        OnnxSessions.close(sessionKey(DECODER))
     }
+
+    private var sessionPrefix: String = ""
+
+    private fun sessionKey(name: String): String = "$sessionPrefix$assetDir/$name"
 
     override fun toString(): String = "whisper-base from $source"
 
@@ -295,6 +299,7 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
                 return instance
             }
             instance.assetDir = path
+            instance.sessionPrefix = "asset:"
             instance.special = special.copyOf()
             instance.languages = languages.copyOf()
             instance.suppress = suppress.toSet()
@@ -302,6 +307,39 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             instance.encoder = OnnxSessions.openAssetManager(assets, "$path/$ENCODER")
             instance.decoder = OnnxSessions.openAssetManager(assets, "$path/$DECODER")
             if (!instance.isAvailable) Log.e(TAG, "cannot open $path")
+            return instance
+        }
+
+        /**
+         * The model in a folder on disk, as a downloaded one is.
+         *
+         * Same arguments as [inAssets]; sessions open from files instead of APK assets.
+         */
+        fun inDirectory(
+            directory: java.io.File,
+            special: IntArray,
+            languages: IntArray,
+            suppress: IntArray,
+            suppressAtBegin: IntArray,
+        ): WhisperHandle {
+            val instance = WhisperHandle(directory.toString())
+            if (special.size != SPECIAL_IDS) {
+                Log.e(TAG, "${special.size} special ids, not $SPECIAL_IDS")
+                return instance
+            }
+            instance.assetDir = ""
+            instance.sessionPrefix = "file:${directory.absolutePath}/"
+            instance.special = special.copyOf()
+            instance.languages = languages.copyOf()
+            instance.suppress = suppress.toSet()
+            instance.suppressAtBegin = suppressAtBegin.toSet()
+            instance.encoder = OnnxSessions.open(instance.sessionKey(ENCODER)) {
+                java.io.File(directory, ENCODER).readBytes()
+            }
+            instance.decoder = OnnxSessions.open(instance.sessionKey(DECODER)) {
+                java.io.File(directory, DECODER).readBytes()
+            }
+            if (!instance.isAvailable) Log.e(TAG, "cannot open $directory")
             return instance
         }
 
