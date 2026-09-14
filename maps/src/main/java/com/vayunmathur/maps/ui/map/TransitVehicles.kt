@@ -40,6 +40,19 @@ private const val VEHICLE_TICK_MS = 1_000L
 private const val VEHICLE_MIN_ZOOM = 11.0
 
 /**
+ * Whether the simulated vehicle sprites draw at all. Currently false: the
+ * sprite atlas has no dedicated vehicle pictograms, so the vehicle ids borrow
+ * the ambient POI icons (`VEHICLE_BUS` draws the bus-stop pin,
+ * `VEHICLE_TRAM/TRAIN` the train-station pin) at 28 Dp against 19 Dp POIs
+ * with no labels. Vehicles dwell exactly on stops, so several trips at one
+ * station read as duplicated, misaligned, textless station POIs - which is
+ * what the transit toggle showed. Rail lines, departure boards and routing
+ * are unaffected (separate paths); flip this back on when dedicated vehicle
+ * sprites land in the atlas (see `marker::icon_sprite_name`).
+ */
+private const val VEHICLE_SPRITES_ENABLED = false
+
+/**
  * How far the bbox centre may drift (degrees) before a recompute is forced.
  * A degree of latitude is ~111 km, so this is ~50 m: a static camera reuses
  * the last enumeration rather than paying a JNI round-trip plus a full marker
@@ -93,7 +106,9 @@ fun rememberTransitVehicles(
     }
 
     LaunchedEffect(transitEnabled, started) {
-        if (!transitEnabled || !started) {
+        // See VEHICLE_SPRITES_ENABLED: the overlay draws no vehicle sprites
+        // until the atlas carries dedicated vehicle art. Clears any shown.
+        if (!transitEnabled || !started || !VEHICLE_SPRITES_ENABLED) {
             vehicles = emptyList()
             return@LaunchedEffect
         }
