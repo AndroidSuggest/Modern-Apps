@@ -1,2 +1,0 @@
-agency_id,agency_name,agency_url,agency_timezone,agency_phone,agency_lang,agency_fare_url,agency_email,agency_primary
-SLOT,City of San Luis Obispo Transit,https://www.slocity.org/government/department-directory/public-works/slo-transit-bus,America/Los_Angeles,(805) 541-2877,en,https://www.tokentransit.com/agency/slotransit,slotransit@slocity.org,1
