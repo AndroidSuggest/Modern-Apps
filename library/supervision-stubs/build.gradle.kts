@@ -5,7 +5,7 @@ plugins {
 // `android.app.supervision.*`. They exist at runtime on a MAOS build but are absent from the
 // public SDK. Depend on this with `compileOnly`; it must NOT be packaged into any APK.
 //
-// Only the surface :safefamily actually calls is declared. A stub is a compile-time promise
+// Only the surface :parentalcontrols actually calls is declared. A stub is a compile-time promise
 // about the runtime class, and every member here is one more thing that has to stay true.
 //
 // Signatures are copied verbatim from

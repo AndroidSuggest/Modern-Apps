@@ -118,7 +118,7 @@ include(":tuner")
 include(":setupwizard")
 include(":logviewer")
 include(":updater")
-include(":safefamily")
+include(":parentalcontrols")
 include(":auto")
 include(":auto:protocol")
 
