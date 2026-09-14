@@ -137,6 +137,7 @@ impl Shaders {
             conv_point_int4,
             mul_scalar,
             clamp,
+            conv_point_cb4_int8,
         ] = match <[vk::Pipeline; SPIRV.len()]>::try_from(built) {
             Ok(all) => all,
             Err(built) => {
@@ -191,6 +192,7 @@ impl Shaders {
             conv_point_int4,
             mul_scalar,
             clamp,
+            conv_point_cb4_int8,
         })
     }
 
@@ -221,6 +223,7 @@ impl Shaders {
             Kind::ConvPointInt4 => self.conv_point_int4,
             Kind::MulScalar => self.mul_scalar,
             Kind::Clamp => self.clamp,
+            Kind::ConvPointCb4Int8 => self.conv_point_cb4_int8,
             Kind::AttnApply => self.attn_apply,
             Kind::AttnScoresRelative => self.attn_scores_relative,
             Kind::AttnApplyRelative => self.attn_apply_relative,

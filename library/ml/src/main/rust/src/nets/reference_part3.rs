@@ -1,4 +1,5 @@
 
+impl Reference {
     /// Keys an op attends over, as an inclusive `[first, last]` range.
     ///
     /// The host mirror of `attn_first` / `attn_last` in `shaders/common.glsl`.
@@ -359,3 +360,4 @@
         }
         Ok(())
     }
+}

@@ -27,12 +27,15 @@ use std::process::Command;
 
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
-    let shader_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
-        .join("shaders");
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let shader_dir = manifest_dir.join("shaders");
 
     let glslc = find_glslc();
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=shaders");
+
+    compile_flatbuffers_schema(&manifest_dir, &out_dir);
 
     let mut compiled = 0;
     let mut entries: Vec<PathBuf> = std::fs::read_dir(&shader_dir)
@@ -90,6 +93,75 @@ fn main() {
 
 /// A SPIR-V module is a five-word header plus at least a few instructions.
 const MIN_SPIRV_BYTES: u64 = 64;
+
+/// Compiles `schema/maml2.fbs` to Rust with `flatc`, into `$OUT_DIR`.
+///
+/// The generated module is `include!`d by `src/maml2/mod.rs`. Same hard-fail
+/// philosophy as the shaders above: a missing `flatc` stops the build rather
+/// than producing a runtime that cannot read its own format.
+fn compile_flatbuffers_schema(manifest_dir: &Path, out_dir: &Path) {
+    let schema = manifest_dir.join("schema").join("maml2.fbs");
+    println!("cargo:rerun-if-changed=schema/maml2.fbs");
+    if !schema.is_file() {
+        panic!("{} is missing; it is the schema of record", schema.display());
+    }
+    let flatc = find_flatc();
+    let output = Command::new(&flatc)
+        .arg("--rust")
+        .arg("-o")
+        .arg(out_dir)
+        .arg(&schema)
+        .output()
+        .unwrap_or_else(|e| panic!("cannot run {}: {e}", flatc.display()));
+    if !output.status.success() {
+        panic!(
+            "flatc failed on {}:\n{}{}",
+            schema.display(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+    let generated = out_dir.join("maml2_generated.rs");
+    let written = std::fs::metadata(&generated).map(|m| m.len()).unwrap_or(0);
+    if written == 0 {
+        panic!(
+            "flatc produced no {} for {}; a real binding module is kilobytes",
+            generated.display(),
+            schema.display(),
+        );
+    }
+}
+
+/// `flatc` for the **host** platform.
+///
+/// Searched in order, mirroring [`find_glslc`]:
+///
+/// 1. `FLATC` — an explicit override, for a CI image that puts it elsewhere.
+/// 2. `flatc` on `PATH`.
+fn find_flatc() -> PathBuf {
+    if let Some(explicit) = env::var_os("FLATC").map(PathBuf::from) {
+        if explicit.is_file() {
+            return explicit;
+        }
+        panic!("FLATC is set to {explicit:?} but that is not a file");
+    }
+
+    let executable = if cfg!(windows) { "flatc.exe" } else { "flatc" };
+    if Command::new(executable)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return PathBuf::from(executable);
+    }
+
+    panic!(
+        "flatc not found. Install flatbuffers 25.12.19 (to match the `flatbuffers` \
+         crate pin in Cargo.toml) and put {executable} on PATH, or set FLATC. The \
+         MAML v2 schema cannot be compiled without it, so this build stops here.",
+    );
+}
 
 /// `glslc` for the **host** platform, from the NDK.
 ///

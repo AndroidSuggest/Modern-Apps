@@ -195,11 +195,15 @@ impl<'a> Builder<'a> {
     /// the emitter must see exactly the graph the plan would have been built from, or
     /// the equivalence test is circular.
     ///
+    /// `pub` (not `pub(crate)`): the MAML v2 emitter drives this from an example
+    /// binary, which is a separate crate. Same contract as the v1 graph-section
+    /// emitter; the only caller in-tree besides `finish` is that tooling.
+    ///
     /// `offsets` is unused today: nodes already carry resolved offsets and the emitter
     /// inverts them through its own table. It stays in the signature so the recording
     /// can later carry file indices directly (see the `Recorded` docs) without
     /// changing every call site again.
-    pub(crate) fn record(
+    pub fn record(
         mut self,
         outputs: &[Id],
         offsets: &crate::weights::Offsets,
@@ -235,6 +239,7 @@ impl<'a> Builder<'a> {
             nodes: self.nodes,
             shapes: self.shapes,
             inputs: self.inputs,
+            outputs: outputs.to_vec(),
             pinned: self.pinned,
             read: self.read,
         })

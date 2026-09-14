@@ -62,6 +62,7 @@ impl Net {
 
         let mut net = Net {
             context,
+            schedule: schedule::schedule(&plan),
             plan,
             normalise,
             weights: weights_buffer,
@@ -189,6 +190,9 @@ impl Net {
         }
         self.input_scratch.resize(input_elems, 0);
         self.output_scratch.resize(output_elems, 0);
+        // The schedule is a property of the plan's read/write ranges: a new
+        // plan needs a new schedule before the re-record that consumes it.
+        self.schedule = crate::nets::schedule::schedule(&plan);
         self.plan = plan;
 
         // A `record` that fails leaves the command buffer part-written, and submitting that is

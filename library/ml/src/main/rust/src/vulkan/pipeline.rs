@@ -82,9 +82,14 @@ const CONV_VEC_INT4: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/conv_vec_int4.comp.spv"));
 const CONV_POINT_INT4: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/conv_point_int4.comp.spv"));
+/// Channel-blocked int8 tiled pointwise: `conv_point_int8.comp` over
+/// `CHANNEL_BLOCKED_4` activations and kernels. Selected per lowered op kind
+/// (see `Kind::ConvPointCb4Int8`); the NCHW shader above is untouched.
+const CONV_POINT_CB4_INT8: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/conv_point_cb4_int8.comp.spv"));
 
 /// Every shader, in the order [`Pipelines::create`] destructures them.
-pub(crate) const SPIRV: [&[u8]; 40] = [
+pub(crate) const SPIRV: [&[u8]; 41] = [
     CONV,
     CONV_TRANSPOSE,
     MAXPOOL,
@@ -125,6 +130,7 @@ pub(crate) const SPIRV: [&[u8]; 40] = [
     CONV_POINT_INT4,
     MUL_SCALAR,
     CLAMP,
+    CONV_POINT_CB4_INT8,
 ];
 
 /// Descriptors in one set: the arena, the weights as fp16, the weights as words, the step params.
@@ -199,6 +205,7 @@ pub struct Shaders {
     pub(crate) mul_scalar: vk::Pipeline,
     pub(crate) clamp: vk::Pipeline,
     pub(crate) rmsnorm: vk::Pipeline,
+    pub(crate) conv_point_cb4_int8: vk::Pipeline,
 }
 
 /// One net's descriptor sets, over the device-wide [`Shaders`].

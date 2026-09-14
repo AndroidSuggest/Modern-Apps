@@ -36,6 +36,18 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 jni.workspace = true
 
+# Wire format for MAML v2 (`schema/maml2.fbs`, compiled by `flatc` in
+# `build.rs`). Exact pin: generated code and runtime rev together, so a caret
+# range drifting to a newer runtime than the `flatc` that emitted the bindings
+# would be a silent mismatch. Matches the `protobuf = "=3.7.2"` precedent in
+# the workspace root.
+flatbuffers = "=25.12.19"
+# Spec section 9.2: SHA-256 over the canonical op/edge/attr sequence is the
+# `graph_digest` that replaces v1's `graph_id` integer. Same major line as the
+# workspace pin (0.11.0); the workspace itself is not referenced because this
+# crate intentionally carries no other workspace deps beyond `jni`.
+sha2 = "0.11.0"
+
 # `default-features = false` drops the `linked` feature, so nothing links against
 # libvulkan at build time; `loaded` dlopens it, which is what an Android app must do
 # anyway. It is not android-gated: `loaded` finds the platform loader on the host too,

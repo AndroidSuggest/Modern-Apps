@@ -33,6 +33,7 @@ use std::sync::{Arc, OnceLock};
 use ash::vk;
 
 use crate::nets::{Op, Plan};
+use crate::nets::schedule::{self, Schedule};
 use crate::preprocess::{self, Normalise};
 use crate::weights::Blob;
 
@@ -247,6 +248,11 @@ impl StepParams {
 pub struct Net {
     context: Arc<Context>,
     plan: Plan,
+    /// Dependency-correct barrier placement for `plan`, computed once at
+    /// construction. `record` emits a barrier before an op exactly when the
+    /// schedule says one is needed — RAW, WAR, or WAW over recycled arena
+    /// offsets — rather than after every op. See [`crate::nets::schedule`].
+    schedule: Schedule,
     normalise: Normalise,
     weights: Buffer,
     arena: Buffer,

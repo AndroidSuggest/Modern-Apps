@@ -148,6 +148,11 @@ fun Project.rustNativeLib(
             // Optional because not every Rust module here has either.
             file("src/main/rust/build.rs").takeIf { it.isFile }?.let { inputs.file(it) }
             file("src/main/rust/shaders").takeIf { it.isDirectory }?.let { inputs.dir(it) }
+            // `:library:ml`'s build.rs also compiles `schema/maml2.fbs` to Rust via
+            // flatc and `include!`s the result, so a schema edit changes the .so too.
+            // Same staleness hazard as shaders above: without this the task stays up
+            // to date and the old bindings ship.
+            file("src/main/rust/schema").takeIf { it.isDirectory }?.let { inputs.dir(it) }
             // Root workspace unified (Cargo.toml + Cargo.lock + rust-toolchain.toml)
             inputs.file(rootProject.file("Cargo.toml"))
             inputs.file(rootProject.file("Cargo.lock"))

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::tests::{assert_no_aliasing, Shapes};
-    use super::super::{Kind, Op};
+    use super::super::{Kind, Op, Plan, Shape};
     use super::super::nllb::*;
 
     /// A short sentence: a language token, six pieces and `</s>`.

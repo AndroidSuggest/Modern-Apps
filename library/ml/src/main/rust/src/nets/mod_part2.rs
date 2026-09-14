@@ -141,9 +141,18 @@ impl WeightSource for crate::weights::Weights {
 ///
 /// The inner index is `pub(crate)`: the graph-section emitter in `weights.rs` maps ids
 /// to computed positions, and the section loader maps them back. Both are in other
-/// modules; external callers only pass ids through.
+/// modules; external callers only pass ids through. The MAML v2 emitter reads `.0`
+/// through the accessor below.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Id(pub(crate) usize);
+
+impl Id {
+    /// The tensor slot, for consumers that map ids to positions (the MAML v2
+    /// emitter, the v1 graph-section emitter).
+    pub fn index(self) -> usize {
+        self.0
+    }
+}
 
 /// A recorded forward pass: the resolved plan plus the graph it came from.
 ///
@@ -151,8 +160,11 @@ pub struct Id(pub(crate) usize);
 /// emitter can serialise the nodes — with weight file indices recovered through the
 /// read flags, shapes, and bindings — without re-deriving anything. The plan is what
 /// runs; the rest is what the converter needs to reproduce it.
+///
+/// `pub` (not `pub(crate)`): the MAML v2 emitter (`crate::maml2::emit`) is the
+/// second consumer of this contract, alongside the v1 graph-section emitter.
 #[derive(Debug)]
-pub(crate) struct Recorded {
+pub struct Recorded {
     /// The resolved plan, as `finish` has always returned.
     pub plan: Plan,
     /// The fused nodes, in execution order.
@@ -161,6 +173,10 @@ pub(crate) struct Recorded {
     pub shapes: Vec<Shape>,
     /// Input ids, in declaration order.
     pub inputs: Vec<Id>,
+    /// Output ids, in the order `finish`/`record` was given. The emitter maps
+    /// these to graph outputs; the plan bindings alone cannot identify them
+    /// (arena offsets, not tensor ids).
+    pub outputs: Vec<Id>,
     /// Pinned ids (inputs, outputs, persistent).
     pub pinned: Vec<Id>,
     /// Per-file-tensor read flags, so the emitter can name host tensors.
@@ -169,12 +185,12 @@ pub(crate) struct Recorded {
 
 /// An unresolved step, against [`Id`]s rather than offsets.
 ///
-/// `pub(crate)` rather than private: the graph-section emitter in `weights.rs` walks
-/// these to serialise the forward pass, and the section loader replays them through
-/// the `*_raw` builders. Both are in other modules; the variants stay non-exhaustive
-/// to them only by convention (see `emit_section`).
+/// `pub` (not `pub(crate)`): the MAML v2 emitter (`crate::maml2::emit`)
+/// serialises these, alongside the v1 graph-section emitter. The variants
+/// stay non-exhaustive to external consumers only by convention (see
+/// `emit_section`).
 #[derive(Clone, Debug)]
-pub(crate) enum Node {
+pub enum Node {
     Conv {
         input: Id,
         out: Id,

@@ -256,7 +256,22 @@ fn convnext(b: &mut Builder, l: &mut Layers, x: Id, dilation: u32) -> Id {
 /// The output is this branch's velocity, `[144, 1, frames]`. Combining the two branches and
 /// taking the Euler step is [`crate::post::supertonic::step`].
 pub fn build(weights: &dyn WeightSource, frames: u32, chars: u32) -> Result<Plan, String> {
-    build_at(weights, frames, chars, &mut Layers { next: 0 })
+    Ok(record(weights, frames, chars)?.plan)
+}
+
+/// Record one guidance branch of the sampler: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share `branch` verbatim — the emitter must see
+/// exactly the graph the plan would have been built from, or the equivalence
+/// check is circular. See [`Builder::record`].
+pub fn record(
+    weights: &dyn WeightSource,
+    frames: u32,
+    chars: u32,
+) -> Result<crate::nets::Recorded, String> {
+    build_at_record(weights, frames, chars, &mut Layers { next: 0 })
 }
 
 /// One branch of [`build`], sharing `builder` and replaying `layers`.
@@ -272,10 +287,24 @@ fn build_at(
     chars: u32,
     layers: &mut Layers,
 ) -> Result<Plan, String> {
+    Ok(build_at_record(weights, frames, chars, layers)?.plan)
+}
+
+/// The recording behind [`build_at`]: one branch shared by the plan path and
+/// the MAML v2 emitter.
+fn build_at_record(
+    weights: &dyn WeightSource,
+    frames: u32,
+    chars: u32,
+    layers: &mut Layers,
+) -> Result<crate::nets::Recorded, String> {
     let mut builder = Builder::new(weights);
     let velocity = branch(&mut builder, layers, frames, chars)?;
     branch_host_tensors(&mut builder);
-    builder.finish(&[velocity])
+    builder.record(
+        &[velocity],
+        &crate::weights::Offsets::empty(),
+    )
 }
 
 /// Both guidance branches in one plan, for one submit instead of two.

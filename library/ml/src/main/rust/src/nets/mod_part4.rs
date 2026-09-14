@@ -13,6 +13,43 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// Mark one file tensor read, for loaders that resolve weights without
+    /// passing through the indexed builders. See [`Builder::mark_read`].
+    pub fn mark_one(&mut self, index: usize) {
+        if let Some(slot) = self.read.get_mut(index) {
+            *slot = true;
+        } else {
+            self.fail(format!("tensor {index}: the file holds {}", self.read.len()));
+        }
+    }
+
+    /// Mark file tensors as read without resolving them.
+    ///
+    /// The `*_raw` entry points take resolved offsets, so they never touch
+    /// the `read` flags — but `record`/`finish` still gate on every flag
+    /// being set. A loader that proves coverage structurally (from the node
+    /// refs, as the MAML v2 loader does — and as the v1 graph-section loader
+    /// does for its host tensors) marks the proven set here before
+    /// finishing. The flags must be exactly the proven set: marking an
+    /// unread tensor silences the gate that catches dropped layers.
+    ///
+    /// Unlike [`Builder::host_tensor`], this checks nothing: the caller has
+    /// already validated shapes (the v1 section parser shape-checks at parse;
+    /// the v2 loader at inference). Prefer `host_tensor` wherever the dims
+    /// are at hand; use this only for tensors whose shape the loader
+    /// deliberately does not carry.
+    pub fn mark_read(&mut self, read: &[bool]) {
+        if read.len() == self.read.len() {
+            self.read.copy_from_slice(read);
+        } else {
+            self.fail(format!(
+                "marking {} tensors of a {}-tensor table",
+                read.len(),
+                self.read.len()
+            ));
+        }
+    }
+
     /// Make every convolution from here on replicate its border instead of reading zeros.
     ///
     /// A builder-level mode rather than an argument on [`Builder::conv`], because a network
@@ -171,6 +208,14 @@ impl<'a> Builder<'a> {
     /// the section deliberately does not carry. So this takes offsets (exactly what
     /// `Offsets::shaped` returns) and `m` (the output channels, from the section's
     /// computed table) and pushes the same `Node::Conv` the indexed path would have.
+    ///
+    /// `res`/`shift` replay a fused epilogue: the MAML v2 loader lowers files
+    /// whose producer already carries the folded store (the emitter ran after
+    /// fusion), so the addend must ride the node rather than a second Binary.
+    /// The readiness and single-consumer checks that `fuse_elementwise` ran at
+    /// record time are re-checked at load by inference (SSA + topological
+    /// order); passing an addend that is not ready is a read-before-write the
+    /// allocator cannot see.
     #[allow(clippy::too_many_arguments)]
     pub fn conv_raw(
         &mut self,
@@ -191,6 +236,55 @@ impl<'a> Builder<'a> {
             input, weight, bias, act_weight, m, kernel, stride, dilation, pads, group,
             act, false, pad_edge,
         )
+    }
+
+    /// [`Builder::conv_raw`] with a fused residual addend and per-channel shift.
+    ///
+    /// The MAML v2 form of the above: `res`/`shift` are tensor ids whose
+    /// contents the producer's store adds, exactly as `fuse_elementwise`
+    /// sets them. `None` behaves as `conv_raw`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn conv_raw_fused(
+        &mut self,
+        input: Id,
+        weight: u32,
+        bias: u32,
+        act_weight: u32,
+        m: u32,
+        act: Act,
+        kernel: (u32, u32),
+        stride: (u32, u32),
+        dilation: (u32, u32),
+        pads: (u32, u32, u32, u32),
+        group: u32,
+        pad_edge: bool,
+        res: Option<Id>,
+        shift: Option<Id>,
+    ) -> Id {
+        let in_shape = self.shape_of(input);
+        let (kh, kw) = kernel;
+        let (pad_t, pad_l, pad_b, pad_r) = pads;
+        let out_h = conv_out(in_shape.h, kh, stride.0, dilation.0, pad_t + pad_b);
+        let out_w = conv_out(in_shape.w, kw, stride.1, dilation.1, pad_l + pad_r);
+        let out = self.tensor(Shape::new(m, out_h, out_w));
+        self.nodes.push(Node::Conv {
+            input,
+            out,
+            weight,
+            bias,
+            kernel,
+            stride,
+            dilation,
+            pad: (pad_t, pad_l),
+            group,
+            act,
+            act_weight,
+            transpose: false,
+            pad_edge,
+            res,
+            shift,
+        });
+        out
     }
 
     /// [`Builder::conv`] with int8 weights and a per-output-channel dequantisation scale.
@@ -376,6 +470,52 @@ impl<'a> Builder<'a> {
             input, weight, scale, bias, m, kernel, stride, dilation, pads, group, act,
             quant,
         )
+    }
+
+    /// [`Builder::conv_int8_raw`] with a fused residual addend and per-channel
+    /// shift. The MAML v2 form: same contract as [`Builder::conv_raw_fused`],
+    /// for quantised kernels.
+    #[allow(clippy::too_many_arguments)]
+    pub fn conv_int8_raw_fused(
+        &mut self,
+        input: Id,
+        weight: u32,
+        scale: u32,
+        bias: u32,
+        m: u32,
+        act: Act,
+        kernel: (u32, u32),
+        stride: (u32, u32),
+        dilation: (u32, u32),
+        pads: (u32, u32, u32, u32),
+        group: u32,
+        quant: Quant,
+        res: Option<Id>,
+        shift: Option<Id>,
+    ) -> Id {
+        let in_shape = self.shape_of(input);
+        let (kh, kw) = kernel;
+        let (pad_t, pad_l, pad_b, pad_r) = pads;
+        let out_h = conv_out(in_shape.h, kh, stride.0, dilation.0, pad_t + pad_b);
+        let out_w = conv_out(in_shape.w, kw, stride.1, dilation.1, pad_l + pad_r);
+        let out = self.tensor(Shape::new(m, out_h, out_w));
+        self.nodes.push(Node::ConvInt8 {
+            input,
+            out,
+            weight,
+            scale,
+            bias,
+            kernel,
+            stride,
+            dilation,
+            pad: (pad_t, pad_l),
+            group,
+            act,
+            quant,
+            res,
+            shift,
+        });
+        out
     }
 
     /// Resolve [`Act::PRelu`]'s slope tensor, which is `[channels, 1, 1]` in the ONNX

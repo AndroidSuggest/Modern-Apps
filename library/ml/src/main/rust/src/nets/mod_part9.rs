@@ -64,10 +64,17 @@ impl<'a> Builder<'a> {
                         ))
                     }
                 };
+                // The v2 blocked twin is selected by the v2 loader, not here:
+                // `lower` replays through `conv_int8_raw_fused`, which lands on
+                // this same arm, and then rewrites the kind when the tensor
+                // layouts are blocked. Routing stays shape-driven in one place;
+                // layout selection lives with the layout knowledge. See
+                // `maml2::lower::BLOCKED_KINDS`.
                 // Workgroups for the staged kinds, output elements for the untiled one.
+                // The blocked twin tiles identically to the NCHW tiled kind.
                 let count = match kind {
                     Kind::ConvVecInt8 | Kind::ConvVecInt4 => rows,
-                    Kind::ConvPointInt8 | Kind::ConvPointInt4 => tiles,
+                    Kind::ConvPointInt8 | Kind::ConvPointInt4 | Kind::ConvPointCb4Int8 => tiles,
                     _ => so.len(),
                 };
                 ops.push(Op::Dispatch {
@@ -112,6 +119,7 @@ impl<'a> Builder<'a> {
                     invocations: match kind {
                         Kind::ConvVecInt8
                         | Kind::ConvPointInt8
+                        | Kind::ConvPointCb4Int8
                         | Kind::ConvVecInt4
                         | Kind::ConvPointInt4 => count * 64,
                         _ => count,

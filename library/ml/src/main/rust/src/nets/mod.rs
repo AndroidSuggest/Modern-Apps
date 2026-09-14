@@ -363,7 +363,7 @@ pub enum Kind {
     /// strictly more accurate. [`Push::weight`] is a **word** offset here, not an fp16 one, and
     /// [`Push::act_weight`] holds the scale tensor — which is why [`Act::PRelu`] is refused.
     ConvInt8,
-    /// [`Kind::ConvPoint`] with int8 weights: the tiled lowering of [`Kind::ConvInt8`].
+    /// [`Kind::ConvPointInt8`] with int8 weights: the tiled lowering of [`Kind::ConvInt8`].
     ///
     /// `Builder::emit` routes an int8 convolution here under exactly the conditions an fp16 one
     /// reaches [`Kind::ConvPoint`] under — ungrouped, `1 x 1`, stride 1, unpadded. Without it,
@@ -372,6 +372,15 @@ pub enum Kind {
     ///
     /// [`Push::count`] is the **tile** count here, as it is for [`Kind::ConvPoint`].
     ConvPointInt8,
+    /// [`Kind::ConvPointInt8`] over channel-blocked tensors.
+    ///
+    /// The MAML v2 kernel for the sampler's 1x1s: same tiling and arithmetic as
+    /// [`Kind::ConvPointInt8`], reading `CHANNEL_BLOCKED_4` activations and
+    /// kernels (see `conv_point_cb4_int8.comp`). Selected by the v2 lowering
+    /// when the tensor layouts are blocked; the NCHW kind above keeps serving
+    /// every v1 net unchanged. Same [`Push`] contract (word-indexed weight,
+    /// fp16 scale in `act_weight`, tile count in `count`).
+    ConvPointCb4Int8,
     /// `out[c][t] = table[id(t)][c]`, an embedding lookup.
     ///
     /// The only op here whose addresses depend on the data. Ids arrive as an ordinary fp16

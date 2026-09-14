@@ -267,7 +267,7 @@ impl Kind {
             }
             // As above, plus the dequantisation scale, which occupies `act_weight` and is why
             // `Builder::conv_int8` refuses `Act::PRelu`.
-            Kind::ConvInt8 | Kind::ConvPointInt8 | Kind::ConvVecInt8 => {
+            Kind::ConvInt8 | Kind::ConvPointInt8 | Kind::ConvVecInt8 | Kind::ConvPointCb4Int8 => {
                 reads.push(WeightRead { at: words(push.weight), field: "weight" });
                 reads.push(WeightRead { at: elems(push.bias), field: "bias" });
                 reads.push(WeightRead { at: elems(push.act_weight), field: "act_weight" });
@@ -410,6 +410,7 @@ impl Kind {
             | Kind::ConvInt8
             | Kind::ConvPoint
             | Kind::ConvPointInt8
+            | Kind::ConvPointCb4Int8
             | Kind::ConvVecInt8
             | Kind::ConvPointInt4
             | Kind::ConvVecInt4 => {

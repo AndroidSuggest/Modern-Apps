@@ -1,4 +1,5 @@
 
+impl Reference {
     /// Average pooling over an explicit window, floored and unpadded.
     ///
     /// The divisor is the window size rather than the number of elements actually read,
@@ -439,3 +440,4 @@
         }
         Ok(())
     }
+}

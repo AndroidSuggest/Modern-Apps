@@ -1,5 +1,9 @@
 impl Node {
-    pub(crate) fn out(&self) -> Id {
+    /// The tensor this node writes.
+    ///
+    /// `pub` (not `pub(crate)`): the MAML v2 emitter walks the graph from the
+    /// outside. Same visibility rationale as [`Node`] itself.
+    pub fn out(&self) -> Id {
         match self {
             Node::Conv { out, .. }
             | Node::MaxPool { out, .. }

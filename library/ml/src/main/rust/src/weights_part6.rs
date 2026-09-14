@@ -35,19 +35,23 @@ impl Graph {
         };
         // A file index, range-checked. The section parser already validated shapes
         // against the table; lowering resolves the same indices to offsets through it.
-        let offset = |table: &crate::weights::Offsets, index: u32| -> Result<u32, String> {
+        // Each resolution also marks the tensor read (see `mark_one` below):
+        // the `*_raw` builders take resolved offsets and never touch the
+        // `read` flags, so without this the every-tensor gate in `finish`
+        // would fail the lowered plan for reading nothing.
+        let offset = |table: &crate::weights::Offsets, index: u32| -> Result<(u32, usize), String> {
             let found = table.tensor(index as usize).map_err(|_| {
                 format!("file tensor {index} of {}", table.len())
             })?;
-            Ok(found.elem_offset())
+            Ok((found.elem_offset(), index as usize))
         };
         // A word-unit offset, for quantised kernels addressed through the 32-bit view.
         let word_offset =
-            |table: &crate::weights::Offsets, index: u32| -> Result<u32, String> {
+            |table: &crate::weights::Offsets, index: u32| -> Result<(u32, usize), String> {
                 let found = table.tensor(index as usize).map_err(|_| {
                     format!("file tensor {index} of {}", table.len())
                 })?;
-                Ok(found.word_offset())
+                Ok((found.word_offset(), index as usize))
             };
         let act_of = |code: u32| -> Result<Act, String> {
             match code {
@@ -94,8 +98,8 @@ impl Graph {
                         })?;
                     let produced = builder.conv_raw(
                         a,
-                        offset(table, *weight)?,
-                        offset(table, *bias)?,
+                        offset(table, *weight)?.0,
+                        offset(table, *bias)?.0,
                         NO_TENSOR,
                         out_shape[0],
                         activation,
@@ -106,6 +110,8 @@ impl Graph {
                         *group,
                         *pad_edge,
                     );
+                    builder.mark_one(*weight as usize);
+                    builder.mark_one(*bias as usize);
                     ids[*out as usize] = Some(produced);
                 }
                 GraphNode::ConvInt8 {
@@ -130,9 +136,9 @@ impl Graph {
                         })?;
                     let produced = builder.conv_int8_raw(
                         a,
-                        word_offset(table, *weight)?,
-                        offset(table, *scale)?,
-                        offset(table, *bias)?,
+                        word_offset(table, *weight)?.0,
+                        offset(table, *scale)?.0,
+                        offset(table, *bias)?.0,
                         out_shape[0],
                         activation,
                         *kernel,
@@ -142,6 +148,9 @@ impl Graph {
                         *group,
                         if *quant == 0 { crate::nets::Quant::I8 } else { crate::nets::Quant::I4 },
                     );
+                    builder.mark_one(*weight as usize);
+                    builder.mark_one(*scale as usize);
+                    builder.mark_one(*bias as usize);
                     ids[*out as usize] = Some(produced);
                 }
                 GraphNode::Add { a, b, out } => {
@@ -155,10 +164,12 @@ impl Graph {
                 GraphNode::LayerNorm { input, out, gamma, beta, epsilon_bits } => {
                     let produced = builder.layer_norm_raw(
                         id(&ids, *input)?,
-                        offset(table, *gamma)?,
-                        offset(table, *beta)?,
+                        offset(table, *gamma)?.0,
+                        offset(table, *beta)?.0,
                         f32::from_bits(*epsilon_bits),
                     );
+                    builder.mark_one(*gamma as usize);
+                    builder.mark_one(*beta as usize);
                     ids[*out as usize] = Some(produced);
                 }
                 GraphNode::GlobalAvgPool { input, out } => {

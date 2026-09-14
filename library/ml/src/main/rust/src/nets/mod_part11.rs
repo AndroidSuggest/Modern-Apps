@@ -81,7 +81,10 @@ pub(crate) mod tests {
             super::Kind::ConvPoint => "Conv".to_string(),
             // Both staged int8 lowerings are the same graph op as the untiled one. Which shader
             // serves a `1 x 1` is a lowering decision the op-inventory tests should not see.
-            super::Kind::ConvPointInt8 | super::Kind::ConvVecInt8 => "ConvInt8".to_string(),
+            // The channel-blocked kind joins them: same op, blocked layout.
+            super::Kind::ConvPointInt8 | super::Kind::ConvVecInt8 | super::Kind::ConvPointCb4Int8 => {
+                "ConvInt8".to_string()
+            }
             other => format!("{other:?}"),
         }
     }

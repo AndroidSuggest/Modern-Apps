@@ -1,3 +1,4 @@
+impl Reference {
     fn new(plan: &Plan, weights: &[u8], inputs: &[&[f32]]) -> Result<Reference, String> {
         if inputs.len() != plan.inputs.len() {
             return Err(format!(
@@ -83,7 +84,12 @@
                     // All three int8 lowerings compute exactly what the untiled one does, and
                     // `Builder::emit` fills the geometry fields in for every one of them, so there
                     // is one implementation rather than three that have to be kept agreeing.
-                    Kind::ConvInt8 | Kind::ConvPointInt8 | Kind::ConvVecInt8 => {
+                    // The channel-blocked kind joins them: the interpreter reads the
+                    // NCHW-addressed arena (it has no blocked layout), and the
+                    // arithmetic — scale, bias, activation, fused addends — is
+                    // identical. Blocked addressing is a device-kernel concern;
+                    // numeric parity is layout-independent by construction.
+                    Kind::ConvInt8 | Kind::ConvPointInt8 | Kind::ConvVecInt8 | Kind::ConvPointCb4Int8 => {
                         self.conv_int8(push)
                     }
                     Kind::ConvVecInt4 | Kind::ConvPointInt4 => self.conv_int4(push),
@@ -432,3 +438,4 @@
         }
         Ok(())
     }
+}

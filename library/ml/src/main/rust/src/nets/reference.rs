@@ -163,11 +163,16 @@ pub struct Reference {
     window_start: u32,
 }
 
-impl Reference {
+/// The method bodies behind [`Reference`], one file per group of ops.
+///
+/// Each part file holds a bare `impl Reference` block, so the split is
+/// invisible to callers: the pinned toolchain rejects `include!` *inside* an
+/// `impl` block in the test profile, and one block per file keeps every part
+/// compiling as the item it is. See `reference_part1.rs` (core), part2 (pooling,
+// resize, norms), part3 (attention, elementwise).
 include!("reference_part1.rs");
 include!("reference_part2.rs");
 include!("reference_part3.rs");
-}
 include!("reference_part4.rs");
 #[cfg(test)]
 mod tests {

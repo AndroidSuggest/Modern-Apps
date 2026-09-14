@@ -2158,7 +2158,9 @@ name = "modelrunner"
 version = "0.1.0"
 dependencies = [
  "ash",
+ "flatbuffers",
  "jni",
+ "sha2 0.11.0",
 ]
 
 [[package]]

@@ -1,6 +1,12 @@
 impl Net {
 
-    /// Record the whole plan: input copy, every op with a barrier between, output copy.
+    /// Record the whole plan: input copy, every op, output copy.
+    ///
+    /// Barriers follow the construction-time [`Schedule`](crate::nets::schedule):
+    /// a barrier precedes an op exactly when the schedule says a RAW, WAR, or
+    /// WAW hazard needs one — not after every op. Independent work between two
+    /// barriers is left for the GPU to overlap; that overlap is the entire
+    /// point of scheduling (see `analysis/maml_vs_litert.md` section 6).
     fn record(&self) -> Result<(), String> {
         let device = &self.context.device;
         let buffer = self.command_buffer;
@@ -56,6 +62,32 @@ impl Net {
             self.barrier(buffer);
 
             for (step, op) in self.plan.ops.iter().enumerate() {
+                // The schedule's barrier goes *before* the op that needs it.
+                // Step 0 never needs one: nothing has run yet in this submit
+                // (the weights/input copies above carry their own barriers).
+                if step > 0 {
+                    match self.schedule.steps.get(step) {
+                        Some(scheduled) if scheduled.barrier => {
+                            // Whole-arena ordering: the schedule proves *that* two
+                            // ops must be ordered, and the recorder orders them
+                            // with the same spelling the per-op barrier used
+                            // (transfer included — a copy is an op here). The
+                            // range narrowing stays dead: the sweep measured
+                            // all correct spellings within 0.45% of each other,
+                            // and a narrower range that drops TRANSFER is the
+                            // incorrect `Narrow` variant, not an optimisation.
+                            let _ = scheduled.transfer;
+                            self.barrier(buffer);
+                        }
+                        Some(_) => {}
+                        None => {
+                            return Err(format!(
+                                "step {step} of {} has no schedule entry",
+                                self.plan.ops.len()
+                            ));
+                        }
+                    }
+                }
                 match *op {
                     Op::Dispatch { kind, push, invocations } => {
                         device.cmd_bind_pipeline(
@@ -117,26 +149,16 @@ impl Net {
                         );
                     }
                 }
-                // Only what this op wrote. See `barrier_over`: the whole-arena form cost more
-                // than the arithmetic it was protecting.
-                let (offset, size) = match *op {
-                    Op::Dispatch { push, .. } => {
-                        let elems = u64::from(push.out_c)
-                            * u64::from(push.out_h.max(1))
-                            * u64::from(push.out_w.max(1));
-                        (u64::from(push.out) * 2, elems * 2)
-                    }
-                    Op::Copy { dst, elems, .. } => (u64::from(dst) * 2, u64::from(elems) * 2),
-                };
-                // A zero-length range is not a barrier at all, and a shape this could not read
-                // is a plan bug rather than something to guess around - so fall back to the
-                // whole arena, which is always correct if slower.
-                if size == 0 || offset + size > self.arena.size {
-                    self.barrier(buffer);
-                } else {
-                    self.barrier_over(buffer, offset, size);
-                }
             }
+
+            // Order the last op's writes before the readback copies below.
+            //
+            // The schedule places barriers *before* ops that need them, but the
+            // output copies are not ops in the plan — so no schedule entry covers
+            // the final write → transfer-read edge. The old per-op recorder got
+            // this for free (its barrier after the last op did exactly this);
+            // without it the readback is undefined and returns zeros on Mali.
+            self.barrier(buffer);
 
             let mut read_back = 0u64;
             for output in &self.plan.outputs {
