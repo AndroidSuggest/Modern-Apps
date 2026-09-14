@@ -31,7 +31,7 @@
     <!-- Hint: Search within document. Verb phrase. -->
     <string name="search_hint">Szukaj w dokumencie…</string>
     <!-- Tab title: Document outline/bookmarks. Noun. -->
-    <string name="outline">Konspekt</string>
+    <string name="outline">Spis treści</string>
     <!-- Button: Reset zoom/font size. Verb. -->
     <string name="reset">Resetuj</string>
     <!-- Dialog title: Unsaved changes warning -->
