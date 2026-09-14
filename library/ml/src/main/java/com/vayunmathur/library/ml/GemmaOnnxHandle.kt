@@ -168,8 +168,12 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
             val melTensor = OnnxTensor.createTensor(
                 env, FloatBuffer.wrap(mel), longArrayOf(1, frames.toLong(), N_MELS.toLong()),
             )
+            // Bool mask: one byte per element through the BOOL overload.
+            val maskBytes = java.nio.ByteBuffer.allocateDirect(frames)
+            for (i in 0 until frames) maskBytes.put(i, 1)
             val maskTensor = OnnxTensor.createTensor(
-                env, LongBuffer.wrap(LongArray(frames) { 1L }), longArrayOf(1, frames.toLong()),
+                env, maskBytes, longArrayOf(1, frames.toLong()),
+                ai.onnxruntime.OnnxJavaType.BOOL,
             )
             melTensor.useOrt {
                 maskTensor.useOrt {
@@ -518,17 +522,192 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
         private val empties = ArrayList<OnnxTensor>()
     }
 
-    // -- Tower front ends (to be filled against the downloaded weights) --------
+    // -- Tower front ends --------------------------------------------------------
 
+    /**
+     * Patchify [bitmap] for the vision tower: aspect-preserving fit to a 280-soft-token
+     * budget (grid sides rounded down to multiples of 48 px), bilinear resample, 1/255
+     * rescale, 16×16×3 patches, and column-first position ids.
+     */
     private fun preprocessImage(bitmap: Bitmap): Pair<FloatArray, LongArray>? {
-        // TODO: aspect-preserving fit to the 768-wide grid + pixel_position_ids, per the
-        // reference preprocessor (rescale 1/255, no normalize, patch 16, pool 3).
-        return null
+        val readable = if (bitmap.config == Bitmap.Config.HARDWARE || bitmap.config == null) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } else {
+            bitmap
+        } ?: return null
+        try {
+            val srcW = readable.width
+            val srcH = readable.height
+            if (srcW == 0 || srcH == 0) return null
+            // Budget: 280 soft tokens × 9 patches = 2520 patches of 16×16.
+            val budgetPx = 280.0 * 9 * 16 * 16
+            val factor = kotlin.math.sqrt(budgetPx / (srcW * srcH))
+            val side = 48.0
+            var targetW = (kotlin.math.floor(factor * srcW / side).toInt() * 48)
+            var targetH = (kotlin.math.floor(factor * srcH / side).toInt() * 48)
+            if (targetW == 0 && targetH == 0) return null
+            if (targetW == 0) {
+                targetW = 48
+                targetH = minOf(maxOf(((srcW.toDouble() / srcH).toInt()) * 48, 48), 280 * 48)
+            } else if (targetH == 0) {
+                targetH = 48
+                targetW = minOf(maxOf(((srcH.toDouble() / srcW).toInt()) * 48, 48), 280 * 48)
+            }
+            val rows = targetH / 16
+            val cols = targetW / 16
+            if (rows % 3 != 0 || cols % 3 != 0 || rows == 0 || cols == 0) return null
+            val pixels = IntArray(srcW * srcH)
+            readable.getPixels(pixels, 0, srcW, 0, 0, srcW, srcH)
+            val patches = FloatArray(rows * cols * 768)
+            val xScale = srcW.toFloat() / targetW
+            val yScale = srcH.toFloat() / targetH
+            for (py in 0 until targetH) {
+                val (y0, y1, wy) = sampleBilinear(py, yScale, srcH)
+                for (px in 0 until targetW) {
+                    val (x0, x1, wx) = sampleBilinear(px, xScale, srcW)
+                    val pr = py / 16
+                    val pc = px / 16
+                    val base = (pr * cols + pc) * 768 + ((py % 16) * 16 + (px % 16)) * 3
+                    for (c in 0..2) {
+                        val shift = (2 - c) * 8
+                        val top = lerpChan(pixels, srcW, x0, y0, x1, shift, wx)
+                        val bottom = lerpChan(pixels, srcW, x0, y1, x1, shift, wx)
+                        patches[base + c] = (top + (bottom - top) * wy) / 255f
+                    }
+                }
+            }
+            // Column-first: component 0 is the column.
+            val positions = LongArray(rows * cols * 2)
+            for (r in 0 until rows) {
+                for (c in 0 until cols) {
+                    positions[(r * cols + c) * 2] = c.toLong()
+                    positions[(r * cols + c) * 2 + 1] = r.toLong()
+                }
+            }
+            return Pair(patches, positions)
+        } finally {
+            if (readable !== bitmap) readable.recycle()
+        }
     }
 
+    private fun sampleBilinear(out: Int, scale: Float, extent: Int): Triple<Int, Int, Float> {
+        val source = (out + 0.5f) * scale - 0.5f
+        val clamped = maxOf(source, 0f)
+        val low = clamped.toInt()
+        val weight = clamped - low
+        val lo = minOf(low, extent - 1)
+        val hi = minOf(lo + 1, extent - 1)
+        return Triple(lo, hi, weight)
+    }
+
+    private fun lerpChan(
+        pixels: IntArray, width: Int, x0: Int, y0: Int, x1: Int, shift: Int, wx: Float,
+    ): Float {
+        fun channel(x: Int, y: Int): Float = ((pixels[y * width + x] shr shift) and 0xFF).toFloat()
+        return channel(x0, y0) + (channel(x1, y0) - channel(x0, y0)) * wx
+    }
+
+    /**
+     * 128-bin HTK log-mel for 16 kHz mono [samples], matching `logmel.rs`: 512-point
+     * transform at a 160-sample hop, triangles over all 257 bins, magnitude, plain log.
+     * Returns `frames * 128` row-major, or null when the clip is shorter than one window.
+     */
     private fun logMel(samples: FloatArray): FloatArray? {
-        // TODO: 128-bin HTK mel matching `logmel.rs` (16 kHz, hop 160), then frames.
-        return null
+        val hop = 160
+        val win = 512
+        if (samples.size < win) return null
+        val frames = (samples.size - win) / hop + 1
+        if (frames <= 0) return null
+        // Hann window.
+        val window = DoubleArray(win) { i ->
+            0.5 - 0.5 * kotlin.math.cos(2.0 * Math.PI * (i + 0.5) / win)
+        }
+        // HTK mel filterbank: 128 triangles over 257 bins, 0..8000 Hz.
+        val bins = win / 2 + 1
+        val hzPerBin = 16000.0 / win
+        fun hzToMel(hz: Double): Double = 2595.0 * kotlin.math.log10(1.0 + hz / 700.0)
+        val low = hzToMel(0.0)
+        val high = hzToMel(8000.0)
+        val centres = DoubleArray(N_MELS + 2) { i -> low + (high - low) * i / (N_MELS + 1) }
+        val filters = Array(N_MELS) { DoubleArray(bins) }
+        for (m in 0 until N_MELS) {
+            val left = centres[m]
+            val center = centres[m + 1]
+            val right = centres[m + 2]
+            for (k in 0 until bins) {
+                val mel = hzToMel(k * hzPerBin)
+                filters[m][k] = when {
+                    mel < left || mel > right -> 0.0
+                    mel <= center -> (mel - left) / (center - left)
+                    else -> (right - mel) / (right - center)
+                }
+            }
+        }
+        val out = FloatArray(frames * N_MELS)
+        val re = DoubleArray(win)
+        val im = DoubleArray(win)
+        for (f in 0 until frames) {
+            val off = f * hop
+            for (i in 0 until win) {
+                re[i] = samples[off + i] * window[i]
+                im[i] = 0.0
+            }
+            fft(re, im)
+            for (m in 0 until N_MELS) {
+                var energy = 0.0
+                for (k in 0 until bins) {
+                    val mag = re[k] * re[k] + im[k] * im[k]
+                    energy += mag * filters[m][k]
+                }
+                // Plain log, floored to avoid -inf on silence.
+                out[f * N_MELS + m] = kotlin.math.ln(maxOf(energy, 1e-10)).toFloat()
+            }
+        }
+        return out
+    }
+
+    /** In-place radix-2 FFT (length must be a power of two; 512 here). */
+    private fun fft(re: DoubleArray, im: DoubleArray) {
+        val n = re.size
+        var j = 0
+        for (i in 1 until n) {
+            var bit = n shr 1
+            while (j and bit != 0) {
+                j = j xor bit
+                bit = bit shr 1
+            }
+            j = j xor bit
+            if (i < j) {
+                val tr = re[i]; re[i] = re[j]; re[j] = tr
+                val ti = im[i]; im[i] = im[j]; im[j] = ti
+            }
+        }
+        var len = 2
+        while (len <= n) {
+            val angle = -2.0 * Math.PI / len
+            val wr = kotlin.math.cos(angle)
+            val wi = kotlin.math.sin(angle)
+            var i = 0
+            while (i < n) {
+                var cr = 1.0
+                var ci = 0.0
+                for (k in 0 until len / 2) {
+                    val ur = re[i + k]
+                    val ui = im[i + k]
+                    val vr = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci
+                    val vi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr
+                    re[i + k] = ur + vr
+                    im[i + k] = ui + vi
+                    re[i + k + len / 2] = ur - vr
+                    im[i + k + len / 2] = ui - vi
+                    val nr = cr * wr - ci * wi
+                    ci = cr * wi + ci * wr
+                    cr = nr
+                }
+                i += len
+            }
+            len = len shl 1
+        }
     }
 
     companion object {
