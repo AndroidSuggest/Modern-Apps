@@ -80,6 +80,7 @@ androidxTestCore = "1.7.0"
 androidxTestExtJunit = "1.3.0"
 
 # Google libraries
+# One key for the entire protobuf toolchain
 # One key for the entire protobuf toolchain — protobuf-java, protobuf-javalite and the protoc
 # compiler. Generated sources and the runtime that parses them must come from the same release,
 # so these are deliberately not separable: a bump here moves compiler and runtime together.
@@ -106,6 +107,10 @@ apksig = "8.7.3"
 
 # JavaScript engines & HTML
 quickjs = "1.0.15"
+
+# On-device AI
+onnxruntimeReduced = "1.27.0-r1"
+litertlmAndroid = "0.14.0"
 
 # Git
 jgit = "7.8.0.202609011348-r"
@@ -287,6 +292,17 @@ apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
 
 # JavaScript engines & HTML
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
+
+# On-device AI: reduced-operator ORT rebuild (arm64-only). Version tracks upstream plus an
+# -rN suffix for the operator-set revision, so a rebuild with different ops gets a new version.
+# Same source as onnxruntime-android, built with --include_ops_by_config: 10 MB of native code
+# instead of 28 MB. A model with an operator outside the configured set fails at session
+# creation, not at inference — regenerate the AAR rather than falling back to a full build.
+onnxruntime-reduced-android = { module = "io.github.vayun-mathur:onnxruntime-reduced-android", version.ref = "onnxruntimeReduced" }
+# Conversational LLM (Gemma) via LiteRT-LM. litertlm 0.14.0 is compiled against coroutines
+# 1.11.0 (close$default moved onto the SendChannel interface via -Xjvm-default=all); older
+# versions crash its JNI callback with NoSuchMethodError, so keep kotlinxCoroutines at 1.11.0.
+litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlmAndroid" }
 
 # Git
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }

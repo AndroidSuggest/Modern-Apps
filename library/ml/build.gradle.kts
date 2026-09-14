@@ -29,3 +29,10 @@ rustNativeLib(
         emptyList()
     },
 )
+
+dependencies {
+    // On-device inference executor going forward: reduced-operator ONNX Runtime rebuild
+    // (arm64-only, 10 MB native). Coexists with the modelrunner JNI below during migration;
+    // MAML deletion removes the rustNativeLib wiring above.
+    implementation(libs.onnxruntime.reduced.android)
+}

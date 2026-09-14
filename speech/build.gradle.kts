@@ -16,26 +16,20 @@ android {
     }
 
     androidResources {
-        // Load-bearing, not an optimisation. `AssetManager.openFd` throws for a deflated entry,
-        // and the fd is how Supertonic's ~105 MB and whisper-base's 70.6 MiB of weights reach the
-        // GPU without being copied through the Java heap three times - see
-        // SupertonicSynthesizer.inAssets and WhisperHandle.inAssets. It costs nothing on download
-        // size either: int8 and fp16 weights are already incompressible.
+        // Load-bearing, not an optimisation. The two whisper-base int8 ONNX exports are read
+        // straight out of the APK, and a compressed asset would have to be inflated into a
+        // heap buffer before ORT could open it. Int8 weights barely deflate, so it costs
+        // nothing on download size. (The remaining `maml` entry covers the Supertonic and
+        // legacy bundles until Phase 4 deletes them.)
         noCompress += "maml"
+        noCompress += "onnx"
     }
 }
 dependencies {
-    // Both directions run on :library:ml, our own Vulkan compute runtime, and this app links no
-    // third-party inference runtime at all.
-    //
-    // Text-to-speech is Supertonic 3: four networks for all 31 languages, every one of them on the
-    // GPU - the duration predictor, the text encoder, a flow-matching sampler and a ConvNeXt
-    // vocoder. Speech-to-text is whisper-base, one 70.6 MiB `.maml` holding a 6-layer audio encoder
-    // and a 6-layer KV-cached decoder, with the decode loop in `post::whisper`.
-    //
-    // Both bundles ship in `assets/` and are streamed from a file descriptor, which is what
-    // `noCompress += "maml"` above is for.
-    implementation(project(":library:ml"))
+    // Speech-to-text is whisper-base on the reduced ONNX Runtime build (two int8 exports in
+    // `assets/whisper-base/`, decode loop in WhisperHandle). Text-to-speech is Supertonic 3
+    // (§Phase 2 ports it next); until then it stays on :library:ml's Vulkan runtime.
+    implementation(libs.onnxruntime.reduced.android)
     // No `:library:downloadservice` and no DataStore: both models ship in the APK, so this app
     // downloads nothing and stores no preferences. They went when Piper's 1,834 MB of voices did.
 }

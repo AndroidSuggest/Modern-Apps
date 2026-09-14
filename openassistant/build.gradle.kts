@@ -29,9 +29,9 @@ dependencies {
     // display images
     implementation(project(":library:image"))
 
-    // ai: this repo's own Vulkan runtime, which replaced com.google.ai.edge.litertlm and
-    // its 19.83 MB liblitertlm_jni.so. The weights are the same Gemma 4 E2B, converted to
-    // .maml by scripts/ml/maml_convert.py.
+    // ai: conversational LLM (Gemma) via LiteRT-LM. Vision/OCR/speech models run on
+    // :library:ml's reduced ONNX Runtime build; see library/ml/build.gradle.kts.
+    implementation(libs.litertlm.android)
     implementation(project(":library:ml"))
     // ToolRegistry reflects over AssistantToolSet's @Tool methods. This used to arrive
     // transitively through the litertlm AAR, so removing that dependency took it away.
