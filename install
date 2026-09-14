@@ -13,35 +13,40 @@ Usage:
   ./install all                             # same, defaults to dev
 
 Description:
-  Ergonomic wrapper around ./gradlew :module:installDev / installRelease.
+  Ergonomic wrapper around ./gradlew :module:assembleDev + adb session install.
   - Variant is swappable and optional (defaults to dev)
   - Supports both slash and colon notations: games/voxels == games:voxels
   - Supports games shorthand: ./install voxels -> games:voxels (auto-prefixed if games/<name> is a game)
   - Supports personal shorthand: ./install dooraccess -> personal:dooraccess (auto-prefixed if personal/<name> is a personal app)
   - Supports "all" keyword: ./install all -> installs every app module
   - Supports multiple modules in one call (single gradlew invocation)
+  - Installs via adb package sessions with the .idsig sidecar staged, so
+    updates to preinstalled MAOS system apps get fs-verity (plain
+    installDev/installRelease and `adb install` never stage it and always fail
+    those updates). Auto-bumps -PversionCodeOverride when the on-device system
+    package is at the same versionCode as the build.
 
 Examples:
-  ./install dev contacts                    -> :contacts:installDev
-  ./install release games:voxels            -> :games:voxels:installRelease
-  ./install dev games/voxels                -> :games:voxels:installDev (slash normalized)
-  ./install dev :games:voxels:              -> :games:voxels:installDev (colon trimming)
-  ./install voxels                          -> :games:voxels:installDev (shorthand auto games:)
-  ./install chess                           -> :games:chess:installDev (shorthand auto games:)
-  ./install dooraccess                      -> :personal:dooraccess:installDev (shorthand auto personal:)
-  ./install all                             -> :contacts:installDev :games:chess:installDev ... (all modules)
+  ./install dev contacts                    -> :contacts:assembleDev + session install
+  ./install release games:voxels            -> :games:voxels:assembleRelease + session install
+  ./install dev games/voxels                -> :games:voxels:assembleDev (slash normalized)
+  ./install dev :games:voxels:              -> :games:voxels:assembleDev (colon trimming)
+  ./install voxels                          -> :games:voxels:assembleDev (shorthand auto games:)
+  ./install chess                           -> :games:chess:assembleDev (shorthand auto games:)
+  ./install dooraccess                      -> :personal:dooraccess:assembleDev (shorthand auto personal:)
+  ./install all                             -> :contacts:assembleDev :games:chess:assembleDev ... (all modules)
   ./install dev all                         -> same as above with dev variant
-  ./install contacts calendar               -> :contacts:installDev :calendar:installDev
-  ./install release contacts                -> :contacts:installRelease
-  ./install contacts dev                    -> :contacts:installDev (variant anywhere)
+  ./install contacts calendar               -> :contacts:assembleDev :calendar:assembleDev
+  ./install release contacts                -> :contacts:assembleRelease + session install
+  ./install contacts dev                    -> :contacts:assembleDev (variant anywhere)
   ./install --help
   ./install --dry-run dev contacts          # prints what would run without executing gradle
   ./install --dry-run all                   # preview all modules
 
-Variant rules (see .llms/rules/installing.md):
-  - dev (default): always use installDev unless explicitly asked for release
-  - release: use installRelease when explicitly requested
-  - debug: BLOCKED - never use installDebug
+Variant rules:
+  - dev (default): assembleDev + session install unless explicitly asked for release
+  - release: assembleRelease + session install when explicitly requested
+  - debug: BLOCKED - never use assembleDebug
 
 Notes:
   - NEVER uninstalls an app (no uninstall tasks)
@@ -200,10 +205,8 @@ fi
 if [[ "$VARIANT_LC" == "debug" ]]; then
   echo "Error: 'debug' variant is blocked."
   echo ""
-  echo "Per .llms/rules/installing.md:"
-  echo "  - NEVER uninstall an app EVER"
-  echo "  - Always install with the installDev task, unless specifically asked to installRelease task"
-  echo "  - never use installDebug"
+  echo "  - Never assemble or install a debug variant"
+  echo "  - Always install the dev build, unless specifically asked for release"
   echo ""
   echo "Use 'dev' (default) or 'release' instead:"
   echo "  ./install dev <module>"
@@ -337,13 +340,13 @@ if [[ ${#INVALID_MODULES[@]} -gt 0 ]]; then
   exit 1
 fi
 
-# --- Build Gradle tasks ---
+# --- Build Gradle tasks (assemble only; install happens below via adb sessions) ---
 VARIANT_CAP="$(echo "$VARIANT_LC" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
 TASKS=()
 idx=0
 while [[ $idx -lt ${#NORMALIZED_MODULES[@]} ]]; do
   mod="${NORMALIZED_MODULES[$idx]}"
-  TASKS+=(":${mod}:install${VARIANT_CAP}")
+  TASKS+=(":${mod}:assemble${VARIANT_CAP}")
   idx=$((idx + 1))
 done
 
@@ -369,7 +372,7 @@ while [[ $idx -lt ${#TASKS[@]} ]]; do
   idx=$((idx + 1))
 done
 
-echo "Variant: $VARIANT_LC (task suffix: install${VARIANT_CAP})"
+echo "Variant: $VARIANT_LC (assemble + adb session install)"
 echo "Modules (${#NORMALIZED_MODULES[@]}): $modules_str"
 echo "Gradle tasks: $tasks_str"
 echo ""
@@ -416,16 +419,136 @@ else
   exit 1
 fi
 
-# --- Extra Gradle args: cap R8 workers for 'release all' (whole-repo minified build) ---
-GRADLE_ARGS=()
-gradle_args_str=""
+# applicationId for a module (all are string literals in build.gradle.kts).
+module_application_id() {
+  sed -nE 's/^[[:space:]]*applicationId[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
+    "$ROOT/$(echo "$1" | tr ':' '/')/build.gradle.kts" | head -1
+}
+
+# APK built for a module; output-metadata.json names the file authoritatively
+# (nested modules like cast:tv build tv-dev.apk, not cast-tv-dev.apk).
+built_apk() {
+  local mod="$1" fs_path out_dir meta base_name file_name
+  fs_path="$(echo "$mod" | tr ':' '/')"
+  out_dir="$ROOT/$fs_path/build/outputs/apk/$VARIANT_LC"
+  meta="$out_dir/output-metadata.json"
+  base_name="${mod##*:}"
+  file_name="$base_name-$VARIANT_LC.apk"
+  if [[ -f "$meta" ]]; then
+    local found
+    found="$(grep -oE '"outputFile"[[:space:]]*:[[:space:]]*"[^"]+"' "$meta" | head -1 | sed -E 's/.*\"([^\"]+)\"$/\1/')"
+    [[ -n "$found" ]] && file_name="$found"
+  fi
+  if [[ -f "$out_dir/$file_name" ]]; then
+    echo "$out_dir/$file_name"
+    return 0
+  fi
+  return 1
+}
+
+# on-device versionCode for a package, empty when not installed.
+device_version_code() {
+  "$ADB_BIN" -s "$TARGET_SERIAL" shell pm list packages --show-versioncode "$1" 2>/dev/null \
+    | sed -nE 's/^package:\S+[[:space:]]+versionCode:([0-9]+).*/\1/p' | head -1
+}
+
+install_apk_via_session() {
+  local apk="$1" package_id="$2"
+  local apk_name apk_size session device_apk idsig device_idsig commit_out
+  apk_name="$(basename "$apk")"
+  apk_size="$(wc -c < "$apk" | tr -d ' ')"
+  device_apk="/data/local/tmp/install_${package_id}.apk"
+  echo "Installing $package_id ($apk_name)..."
+  "$ADB_BIN" -s "$TARGET_SERIAL" push "$apk" "$device_apk" >/dev/null 2>&1 || {
+    echo "  Error: adb push failed for $apk_name."; return 1
+  }
+  session="$("$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-create -r 2>&1 \
+    | sed -nE 's/.*created install session \[([0-9]+)\].*/\1/p')"
+  if [[ -z "$session" ]]; then
+    echo "  Error: could not create install session."
+    "$ADB_BIN" -s "$TARGET_SERIAL" shell rm -f "$device_apk" >/dev/null 2>&1
+    return 1
+  fi
+  # Stage the APK first, then its .idsig sidecar (V4 signature) under the
+  # matching name. PackageManager enables fs-verity from a staged idsig, which
+  # MAOS/GrapheneOS requires for updates to preinstalled system apps. Plain
+  # `adb install` never stages the sidecar, so those updates always fail.
+  "$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-write -S "$apk_size" "$session" base.apk "$device_apk" >/dev/null 2>&1 || {
+    echo "  Error: failed to stage $apk_name into session $session."
+    "$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-abandon "$session" >/dev/null 2>&1
+    "$ADB_BIN" -s "$TARGET_SERIAL" shell rm -f "$device_apk" >/dev/null 2>&1
+    return 1
+  }
+  idsig="$apk.idsig"
+  if [[ -f "$idsig" ]]; then
+    device_idsig="$device_apk.idsig"
+    if "$ADB_BIN" -s "$TARGET_SERIAL" push "$idsig" "$device_idsig" >/dev/null 2>&1; then
+      "$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-write -S "$(wc -c < "$idsig" | tr -d ' ')" \
+        "$session" base.apk.idsig "$device_idsig" >/dev/null 2>&1 || \
+        echo "  Warning: could not stage .idsig; system-app updates may fail fs-verity."
+    else
+      echo "  Warning: could not push .idsig; system-app updates may fail fs-verity."
+    fi
+    "$ADB_BIN" -s "$TARGET_SERIAL" shell rm -f "$device_idsig" >/dev/null 2>&1
+  else
+    echo "  Warning: no .idsig sidecar next to the APK; system-app updates may fail fs-verity."
+  fi
+  commit_out="$("$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-commit "$session" 2>&1)"
+  "$ADB_BIN" -s "$TARGET_SERIAL" shell rm -f "$device_apk" >/dev/null 2>&1
+  # `pm install-commit` prints "Success" but exits 0 either way; fail on absence.
+  if ! echo "$commit_out" | grep -qi "^Success"; then
+    echo "  Error: install failed for $package_id: $commit_out"
+    return 1
+  fi
+  echo "  Installed $package_id."
+}
+
+# --- Extra Gradle args: --continue so one broken module doesn't block the rest ---
+GRADLE_ARGS=(--continue)
+gradle_args_str=" --continue"
 if [[ "$VARIANT_LC" == "release" && $ALL_EXPANDED -eq 1 ]]; then
-  GRADLE_ARGS+=(-P"android.r8.maxWorkers=8" --continue)
-  gradle_args_str=" -Pandroid.r8.maxWorkers=8 --continue"
+  GRADLE_ARGS+=(-P"android.r8.maxWorkers=8")
+  gradle_args_str="$gradle_args_str -Pandroid.r8.maxWorkers=8"
+fi
+
+# --- versionCodeOverride: MAOS refuses to update a system package to the same
+# versionCode, so an APK built from the same version.txt as the on-device OS image
+# can never be installed over it. Query the device once; if any requested package
+# is installed at >= the repo version, bump every built APK by one (version.txt
+# itself stays untouched).
+REPO_VERSION="$(sed -n '1p' "$ROOT/version.txt" | tr -d '\r' | xargs)"
+NEED_BUMP="$REPO_VERSION"
+if [[ -n "$TARGET_SERIAL" ]]; then
+  idx=0
+  while [[ $idx -lt ${#NORMALIZED_MODULES[@]} ]]; do
+    pkg="$(module_application_id "${NORMALIZED_MODULES[$idx]}")"
+    if [[ -n "$pkg" ]]; then
+      dev_v="$(device_version_code "$pkg")"
+      if [[ -n "$dev_v" && "$dev_v" -ge "$NEED_BUMP" ]]; then
+        echo "Info: $pkg is at versionCode $dev_v on-device (>= repo $REPO_VERSION); will build with -PversionCodeOverride=$((dev_v + 1))."
+        NEED_BUMP=$((dev_v + 1))
+      fi
+    fi
+    idx=$((idx + 1))
+  done
+fi
+if [[ "$NEED_BUMP" -gt "$REPO_VERSION" ]]; then
+  GRADLE_ARGS+=(-P"versionCodeOverride=$NEED_BUMP")
+  gradle_args_str="$gradle_args_str -PversionCodeOverride=$NEED_BUMP"
 fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
   echo "[DRY-RUN] Would execute: $SCRIPT_DIR/gradlew $tasks_str$gradle_args_str"
+  idx=0
+  while [[ $idx -lt ${#NORMALIZED_MODULES[@]} ]]; do
+    mod="${NORMALIZED_MODULES[$idx]}"
+    if apk="$(built_apk "$mod")"; then
+      echo "[DRY-RUN] Would session-install $(module_application_id "$mod") from $apk"
+    else
+      echo "[DRY-RUN] Would session-install $(module_application_id "$mod") (APK expected after assemble)"
+    fi
+    idx=$((idx + 1))
+  done
   exit 0
 fi
 echo "Running: $SCRIPT_DIR/gradlew $tasks_str$gradle_args_str"
@@ -433,4 +556,27 @@ echo ""
 
 # Execute with all tasks expanded via index loop (preserving word splitting safety)
 set +u
-exec "$SCRIPT_DIR/gradlew" "${TASKS[@]}" "${GRADLE_ARGS[@]}"
+"$SCRIPT_DIR/gradlew" "${TASKS[@]}" "${GRADLE_ARGS[@]}"
+BUILD_EXIT=$?
+echo ""
+
+# Install whichever APKs were (re)built, even if sibling modules failed (--continue).
+FAILURES=0
+if [[ $BUILD_EXIT -ne 0 ]]; then
+  echo "Warning: assemble reported failures; installing whatever APKs exist."
+fi
+idx=0
+while [[ $idx -lt ${#NORMALIZED_MODULES[@]} ]]; do
+  mod="${NORMALIZED_MODULES[$idx]}"
+  if apk="$(built_apk "$mod")"; then
+    install_apk_via_session "$apk" "$(module_application_id "$mod")" || FAILURES=$((FAILURES + 1))
+  else
+    echo "Error: no APK found for :${mod} (assemble failed?)."
+    FAILURES=$((FAILURES + 1))
+  fi
+  idx=$((idx + 1))
+done
+if [[ $FAILURES -gt 0 ]]; then
+  exit 1
+fi
+exit $BUILD_EXIT

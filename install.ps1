@@ -10,6 +10,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# All adb invocations go through Invoke-Adb below, which scopes
+# $ErrorActionPreference to Continue around the call: adb writes transfer
+# progress to stderr even on success, and under the script-wide Stop that
+# would terminate every push. Explicit exit-code checks govern instead.
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = $ScriptDir
 
@@ -24,35 +29,40 @@ Usage:
   ./install all                             # same, defaults to dev
 
 Description:
-  Ergonomic wrapper around ./gradlew :module:installDev / installRelease.
+  Ergonomic wrapper around ./gradlew :module:assembleDev + adb session install.
   - Variant is swappable and optional (defaults to dev)
   - Supports both slash and colon notations: games/voxels == games:voxels
   - Supports games shorthand: ./install voxels -> games:voxels (auto-prefixed if games/<name> is a game)
   - Supports personal shorthand: ./install dooraccess -> personal:dooraccess (auto-prefixed if personal/<name> is a personal app)
   - Supports "all" keyword: ./install all -> installs every app module
   - Supports multiple modules in one call (single gradlew invocation)
+  - Installs via adb package sessions with the .idsig sidecar staged, so
+    updates to preinstalled MAOS system apps get fs-verity (plain
+    installDev/installRelease and `adb install` never stage it and always fail
+    those updates). Auto-bumps -PversionCodeOverride when the on-device system
+    package is at the same versionCode as the build.
 
 Examples:
-  ./install dev contacts                    -> :contacts:installDev
-  ./install release games:voxels            -> :games:voxels:installRelease
-  ./install dev games/voxels                -> :games:voxels:installDev (slash normalized)
-  ./install dev :games:voxels:              -> :games:voxels:installDev (colon trimming)
-  ./install voxels                          -> :games:voxels:installDev (shorthand auto games:)
-  ./install chess                           -> :games:chess:installDev (shorthand auto games:)
-  ./install dooraccess                      -> :personal:dooraccess:installDev (shorthand auto personal:)
-  ./install all                             -> :contacts:installDev :games:chess:installDev ... (all modules)
+  ./install dev contacts                    -> :contacts:assembleDev + session install
+  ./install release games:voxels            -> :games:voxels:assembleRelease + session install
+  ./install dev games/voxels                -> :games:voxels:assembleDev (slash normalized)
+  ./install dev :games:voxels:              -> :games:voxels:assembleDev (colon trimming)
+  ./install voxels                          -> :games:voxels:assembleDev (shorthand auto games:)
+  ./install chess                           -> :games:chess:assembleDev (shorthand auto games:)
+  ./install dooraccess                      -> :personal:dooraccess:assembleDev (shorthand auto personal:)
+  ./install all                             -> :contacts:assembleDev :games:chess:assembleDev ... (all modules)
   ./install dev all                         -> same as above with dev variant
-  ./install contacts calendar               -> :contacts:installDev :calendar:installDev
-  ./install release contacts                -> :contacts:installRelease
-  ./install contacts dev                    -> :contacts:installDev (variant anywhere)
+  ./install contacts calendar               -> :contacts:assembleDev :calendar:assembleDev
+  ./install release contacts                -> :contacts:assembleRelease + session install
+  ./install contacts dev                    -> :contacts:assembleDev (variant anywhere)
   ./install --help
   ./install --dry-run dev contacts          # prints what would run without executing gradle
   ./install --dry-run all                   # preview all modules
 
-Variant rules (see .llms/rules/installing.md):
-  - dev (default): always use installDev unless explicitly asked for release
-  - release: use installRelease when explicitly requested
-  - debug: BLOCKED - never use installDebug
+Variant rules:
+  - dev (default): assembleDev + session install unless explicitly asked for release
+  - release: assembleRelease + session install when explicitly requested
+  - debug: BLOCKED - never use assembleDebug
 
 Notes:
   - NEVER uninstalls an app (no uninstall tasks)
@@ -124,8 +134,26 @@ function Find-Adb {
     return $null
 }
 
+function Invoke-Adb([string]$adbBin, [string[]]$adbArgs) {
+    # Runs adb, capturing combined stdout+stderr as text without letting stderr
+    # kill the script. adb writes transfer progress to stderr even on success;
+    # with the script-wide $ErrorActionPreference='Stop' that would terminate
+    # every push. Scoped to Continue here (saved/restored) so explicit exit-code
+    # checks govern instead. Works on Windows PowerShell 5.1 and 7+.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = & $adbBin @adbArgs 2>&1 | ForEach-Object { "$_" }
+        return @{ Output = @($out); Exit = $LASTEXITCODE }
+    }
+    finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 function Select-TargetSerial([string]$adb) {
-    $out = & $adb devices 2>$null
+    $listed = Invoke-Adb $adb @('devices')
+    $out = @($listed.Output)
     foreach ($line in $out) {
         $line = $line.Trim()
         if ([string]::IsNullOrEmpty($line)) { continue }
@@ -209,10 +237,8 @@ if ([string]::IsNullOrEmpty($VariantLc)) { $VariantLc = 'dev' }
 if ($VariantLc -eq 'debug') {
     Write-Host "Error: 'debug' variant is blocked."
     Write-Host ''
-    Write-Host 'Per .llms/rules/installing.md:'
-    Write-Host '  - NEVER uninstall an app EVER'
-    Write-Host '  - Always install with the installDev task, unless specifically asked to installRelease task'
-    Write-Host '  - never use installDebug'
+    Write-Host '  - Never assemble or install a debug variant'
+    Write-Host '  - Always install the dev build, unless specifically asked for release'
     Write-Host ''
     Write-Host "Use 'dev' (default) or 'release' instead:"
     Write-Host '  ./install dev <module>'
@@ -318,17 +344,17 @@ if ($invalidModules.Count -gt 0) {
     exit 1
 }
 
-# --- Build Gradle tasks ---
+# --- Build Gradle tasks (assemble only; install happens below via adb sessions) ---
 $VariantCap = $VariantLc.Substring(0, 1).ToUpper() + $VariantLc.Substring(1)
 $tasks = @()
 foreach ($mod in $normalizedModules) {
-    $tasks += ":${mod}:install${VariantCap}"
+    $tasks += ":${mod}:assemble${VariantCap}"
 }
 
 $modulesStr = $normalizedModules -join ' '
 $tasksStr = $tasks -join ' '
 
-Write-Host "Variant: $VariantLc (task suffix: install${VariantCap})"
+Write-Host "Variant: $VariantLc (assemble + adb session install)"
 Write-Host "Modules ($($normalizedModules.Count)): $modulesStr"
 Write-Host "Gradle tasks: $tasksStr"
 Write-Host ''
@@ -362,18 +388,161 @@ else {
 }
 Write-Host ''
 
+function Get-RepoVersionCode {
+    $versionFile = Join-Path $Root 'version.txt'
+    $code = (Get-Content -LiteralPath $versionFile | Select-Object -First 1).Trim()
+    return [int]$code
+}
+
+function Get-ModuleApplicationId([string]$mod) {
+    $fsPath = $mod -replace ':', '/'
+    $buildFile = Join-Path $Root (Join-Path $fsPath 'build.gradle.kts')
+    $m = Select-String -LiteralPath $buildFile -Pattern 'applicationId\s*=\s*"([^"]+)"' | Select-Object -First 1
+    if ($m) { return $m.Matches[0].Groups[1].Value }
+    return $null
+}
+
+function Get-BuiltApk([string]$mod) {
+    # output-metadata.json is authoritative for the APK file name (nested modules
+    # like cast:tv build tv-dev.apk, not cast-tv-dev.apk).
+    $fsPath = $mod -replace ':', '/'
+    $outDir = Join-Path $Root (Join-Path $fsPath ("build/outputs/apk/$($VariantLc.ToLower())"))
+    $metaFile = Join-Path $outDir 'output-metadata.json'
+    $baseName = ($mod -split ':')[-1]
+    $fileName = "$baseName-$($VariantLc.ToLower()).apk"
+    $packageId = $null
+    if (Test-Path -LiteralPath $metaFile) {
+        $meta = Get-Content -LiteralPath $metaFile -Raw
+        $pm = [regex]::Match($meta, '"applicationId"\s*:\s*"([^"]+)"')
+        if ($pm.Success) { $packageId = $pm.Groups[1].Value }
+        $fm = [regex]::Match($meta, '"outputFile"\s*:\s*"([^"]+)"')
+        if ($fm.Success) { $fileName = $fm.Groups[1].Value }
+    }
+    if (-not $packageId) { $packageId = Get-ModuleApplicationId $mod }
+    $apk = Join-Path $outDir $fileName
+    if (-not (Test-Path -LiteralPath $apk)) { return $null }
+    return @{ Apk = $apk; PackageId = $packageId }
+}
+
+function Get-DeviceVersions([string]$adbBin, [string]$serial, [string[]]$packageIds) {
+    $versions = @{}
+    if (-not $adbBin -or -not $serial) { return $versions }
+    try {
+        $listed = Invoke-Adb $adbBin @('-s', $serial, 'shell', 'pm', 'list', 'packages', '--show-versioncode')
+        $out = @($listed.Output)
+        foreach ($line in $out) {
+            $m = [regex]::Match($line, '^package:(\S+)\s+versionCode:(\d+)')
+            if ($m.Success -and ($packageIds -contains $m.Groups[1].Value)) {
+                $versions[$m.Groups[1].Value] = [int]$m.Groups[2].Value
+            }
+        }
+    }
+    catch {
+        Write-Host 'Warning: could not query device package versions; proceeding without versionCodeOverride.'
+    }
+    return $versions
+}
+
+function Install-ApkViaSession([string]$adbBin, [string]$serial, [string]$apk, [string]$packageId) {
+    $apkSize = (Get-Item -LiteralPath $apk).Length
+    $apkName = Split-Path -Leaf $apk
+    $deviceApk = "/data/local/tmp/install_$packageId.apk"
+    Write-Host "Installing $packageId ($apkName)..."
+    $push = Invoke-Adb $adbBin @('-s', $serial, 'push', $apk, $deviceApk)
+    if ($push.Exit -ne 0) { Write-Host "  Error: adb push failed for $apkName."; return $false }
+    $created = Invoke-Adb $adbBin @('-s', $serial, 'shell', 'pm', 'install-create', '-r')
+    $sessionOut = @($created.Output) -join "`n"
+    $sm = [regex]::Match($sessionOut, 'created install session \[(\d+)\]')
+    if (-not $sm.Success) {
+        Write-Host "  Error: could not create install session: $sessionOut"
+        Invoke-Adb $adbBin @('-s', $serial, 'shell', 'rm', '-f', $deviceApk) | Out-Null
+        return $false
+    }
+    $session = $sm.Groups[1].Value
+    # Stage the APK first, then its .idsig sidecar (V4 signature) under the
+    # matching name. PackageManager enables fs-verity from a staged idsig, which
+    # MAOS/GrapheneOS requires for updates to preinstalled system apps. Plain
+    # `adb install` never stages the sidecar, so those updates always fail.
+    $staged = Invoke-Adb $adbBin @('-s', $serial, 'shell', 'pm', 'install-write', '-S', "$apkSize", $session, 'base.apk', $deviceApk)
+    if ($staged.Exit -ne 0) {
+        Write-Host "  Error: failed to stage $apkName into session $session."
+        Invoke-Adb $adbBin @('-s', $serial, 'shell', 'pm', 'install-abandon', $session) | Out-Null
+        Invoke-Adb $adbBin @('-s', $serial, 'shell', 'rm', '-f', $deviceApk) | Out-Null
+        return $false
+    }
+    $idsig = "$apk.idsig"
+    if (Test-Path -LiteralPath $idsig) {
+        $idsigSize = (Get-Item -LiteralPath $idsig).Length
+        $deviceIdsig = "$deviceApk.idsig"
+        $ipush = Invoke-Adb $adbBin @('-s', $serial, 'push', $idsig, $deviceIdsig)
+        if ($ipush.Exit -eq 0) {
+            $istaged = Invoke-Adb $adbBin @('-s', $serial, 'shell', 'pm', 'install-write', '-S', "$idsigSize", $session, 'base.apk.idsig', $deviceIdsig)
+            if ($istaged.Exit -ne 0) { Write-Host '  Warning: could not stage .idsig; system-app updates may fail fs-verity.' }
+        }
+        else { Write-Host '  Warning: could not push .idsig; system-app updates may fail fs-verity.' }
+        Invoke-Adb $adbBin @('-s', $serial, 'shell', 'rm', '-f', $deviceIdsig) | Out-Null
+    }
+    else {
+        Write-Host '  Warning: no .idsig sidecar next to the APK; system-app updates may fail fs-verity.'
+    }
+    $committed = Invoke-Adb $adbBin @('-s', $serial, 'shell', 'pm', 'install-commit', $session)
+    $commitOut = @($committed.Output) -join "`n"
+    Invoke-Adb $adbBin @('-s', $serial, 'shell', 'rm', '-f', $deviceApk) | Out-Null
+    # `pm install-commit` prints Success either way; fail on absence of it.
+    if ($committed.Exit -ne 0 -or $commitOut -notmatch '(?i)^Success') {
+        Write-Host "  Error: install failed for $packageId : $commitOut"
+        return $false
+    }
+    Write-Host "  Installed $packageId."
+    return $true
+}
+
 $gradlew = Join-Path $ScriptDir 'gradlew.bat'
 
 # --- Extra Gradle args: cap R8 workers for 'release all' (whole-repo minified build) ---
-$gradleArgs = @()
-$gradleArgsStr = ''
+$gradleArgs = @('--continue')
+$gradleArgsStr = ' --continue'
 if ($VariantLc -eq 'release' -and $allExpanded) {
-    $gradleArgs += @('-Pandroid.r8.maxWorkers=8', '--continue')
-    $gradleArgsStr = ' -Pandroid.r8.maxWorkers=8 --continue'
+    $gradleArgs += @('-Pandroid.r8.maxWorkers=8')
+    $gradleArgsStr += ' -Pandroid.r8.maxWorkers=8'
+}
+
+# --- versionCodeOverride: MAOS refuses to update a system package to the same
+# versionCode, so an APK built from the same version.txt as the on-device OS image
+# can never be installed over it. Query the device once; if any requested package
+# is installed at >= the repo version, bump every built APK by one (version.txt
+# itself stays untouched).
+$repoVersion = Get-RepoVersionCode
+$packageIds = @()
+$packageByModule = @{}
+foreach ($mod in $normalizedModules) {
+    $pkg = Get-ModuleApplicationId $mod
+    if ($pkg) {
+        $packageIds += $pkg
+        $packageByModule[$mod] = $pkg
+    }
+}
+$deviceVersions = Get-DeviceVersions $adb $target $packageIds
+$needBump = $false
+foreach ($pkg in $packageIds) {
+    if ($deviceVersions.ContainsKey($pkg) -and $deviceVersions[$pkg] -ge $repoVersion) {
+        Write-Host "Info: $pkg is at versionCode $($deviceVersions[$pkg]) on-device (>= repo $repoVersion); will build with -PversionCodeOverride=$($deviceVersions[$pkg] + 1)."
+        if (($deviceVersions[$pkg] + 1) -gt $repoVersion) { $repoVersion = $deviceVersions[$pkg] + 1; $needBump = $true }
+    }
+}
+if ($needBump) {
+    $gradleArgs += @("-PversionCodeOverride=$repoVersion")
+    $gradleArgsStr += " -PversionCodeOverride=$repoVersion"
 }
 
 if ($DryRun) {
     Write-Host "[DRY-RUN] Would execute: $gradlew $tasksStr$gradleArgsStr"
+    foreach ($mod in $normalizedModules) {
+        $built = Get-BuiltApk $mod
+        $pkg = $packageByModule[$mod]
+        if ($built) { Write-Host "[DRY-RUN] Would session-install $($built.PackageId) from $($built.Apk)" }
+        else { Write-Host "[DRY-RUN] Would session-install $pkg (APK expected after assemble)" }
+    }
     exit 0
 }
 
@@ -381,4 +550,22 @@ Write-Host "Running: $gradlew $tasksStr$gradleArgsStr"
 Write-Host ''
 
 & $gradlew @tasks @gradleArgs
-exit $LASTEXITCODE
+$buildExit = $LASTEXITCODE
+Write-Host ''
+
+# Install whichever APKs were (re)built, even if sibling modules failed (--continue).
+$failures = 0
+if ($buildExit -ne 0) {
+    Write-Host 'Warning: assemble reported failures; installing whatever APKs exist.'
+}
+foreach ($mod in $normalizedModules) {
+    $built = Get-BuiltApk $mod
+    if (-not $built) {
+        Write-Host "Error: no APK found for :${mod} (assemble failed?)."
+        $failures++
+        continue
+    }
+    if (-not (Install-ApkViaSession $adb $target $built.Apk $built.PackageId)) { $failures++ }
+}
+if ($failures -gt 0) { exit 1 }
+exit $buildExit
