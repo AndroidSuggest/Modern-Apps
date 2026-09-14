@@ -41,4 +41,5 @@
     <string name="audio_source_unprocessed_description">Töötlemata voog</string>
     <string name="settings_mirror_front">Peegepilt selfie jaoks</string>
     <string name="settings_mirror_front_description">Peegelda esikaamera pilti selfie jaoks nii eelvaates, kui salvestatud failides</string>
+    <string name="qr_scanning_paused">QR-koodi skaneerimine on peatatud</string>
 </resources>
