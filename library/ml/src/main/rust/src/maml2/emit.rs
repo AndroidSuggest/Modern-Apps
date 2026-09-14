@@ -209,11 +209,45 @@ fn emit_weight_tensor(
         (WeightPayload::I8(_), WeightQuant::None) => {
             return Err(format!("tensor {index} is int8 but read as a plain weight"));
         }
-        (WeightPayload::I4(bytes), _) => {
-            return Err(format!(
-                "tensor {index}: int4 repack is not implemented in Phase 1 ({} bytes)",
-                bytes.len()
-            ));
+        (WeightPayload::I4(bytes), WeightQuant::Int4 { .. }) => {
+            // Verbatim NCHW nibbles (low-first, v1 packing): the int4 twins
+            // unpack through the same word view as int8, so stored bytes are
+            // v1-order like everything else. `elems` is the logical count
+            // (v1 `len`), not twice the bytes — an odd length pads its last
+            // nibble, and verify checks `elem_count == product(dims)`.
+            out.push(EmittedTensor {
+                name: format!("w{index}.kernel"),
+                dims,
+                dtype: fb::DType::I4,
+                layout: fb::Layout::NCHW,
+                bytes: bytes.clone(),
+                elems: u64::from(tensor.len),
+                quant,
+                state: fb::StateKind::NONE,
+                dim_params: Vec::new(),
+            });
+            // The scale follows as its own tensor: `[out, blocks]` fp16.
+            let (scale_tensor, scale_payload) = read_weight_payload(table, data, index + 1)?;
+            let scale_dims = logical_dims(&scale_tensor);
+            let WeightPayload::F16(scale_words) = scale_payload else {
+                return Err(format!("tensor {} is not the fp16 scale of tensor {index}", index + 1));
+            };
+            let scale_bytes: Vec<u8> =
+                scale_words.iter().flat_map(|w| w.to_le_bytes()).collect();
+            out.push(EmittedTensor {
+                name: format!("w{index}.scale"),
+                dims: scale_dims,
+                dtype: fb::DType::F16,
+                layout: fb::Layout::NCHW,
+                bytes: scale_bytes,
+                elems: scale_words.len() as u64,
+                quant: WeightQuant::None,
+                state: fb::StateKind::NONE,
+                dim_params: Vec::new(),
+            });
+        }
+        (WeightPayload::I4(_), _) => {
+            return Err(format!("tensor {index} is int4 but read as a plain or int8 weight"));
         }
         (WeightPayload::I8(_), WeightQuant::Int4 { .. })
         | (WeightPayload::F16(_), WeightQuant::Int4 { .. }) => {
@@ -883,6 +917,40 @@ fn emit_nodes(
                     ],
                 });
             }
+            Node::AttnScoresBanded { q, k, out, heads, band, table, offsets, scale, cap } => {
+                let x = computed(q.0, id_map, emit_tensors);
+                let y_in = computed(k.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                let t = weights.fp16("banded table", table)?;
+                nodes.push(EmittedNode {
+                    op: fb::Op::Attention,
+                    inputs: vec![x, y_in, t],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("heads".into(), AttrValue::Int(heads as i32)),
+                        ("band".into(), AttrValue::Int(band as i32)),
+                        ("scale".into(), AttrValue::Float(scale)),
+                        ("cap".into(), AttrValue::Float(cap)),
+                        ("phase".into(), AttrValue::Int(6)),
+                        ("rel_offsets".into(), AttrValue::Int(offsets as i32)),
+                    ],
+                });
+            }
+            Node::AttnApplyBanded { probs, v, out, heads, band } => {
+                let p = computed(probs.0, id_map, emit_tensors);
+                let vv = computed(v.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::Attention,
+                    inputs: vec![p, vv],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("heads".into(), AttrValue::Int(heads as i32)),
+                        ("band".into(), AttrValue::Int(band as i32)),
+                        ("phase".into(), AttrValue::Int(7)),
+                    ],
+                });
+            }
             Node::AttnApplyCached { probs, cache, out, heads, kv_heads, dynamic, sliding } => {
                 let p = computed(probs.0, id_map, emit_tensors);
                 let c = computed(cache.0, id_map, emit_tensors);
@@ -911,6 +979,65 @@ fn emit_nodes(
                     inputs: vec![r, c],
                     outputs: vec![c],
                     attrs: vec![],
+                });
+            }
+            Node::Activate { input, out, act } => {
+                if matches!(act, Act::PRelu(_)) {
+                    return Err("a standalone PRelu carries no slope tensor".into());
+                }
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::Activate,
+                    inputs: vec![x],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("activation".into(), AttrValue::Int(act_code(act)?)),
+                    ],
+                });
+            }
+            Node::GatedActivate { input, out, act } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::GatedSwish,
+                    inputs: vec![x],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("activation".into(), AttrValue::Int(act_code(act)?)),
+                    ],
+                });
+            }
+            Node::MulScalar { input, out, scale } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                let s = weights.fp16("mul_scalar", scale)?;
+                nodes.push(EmittedNode {
+                    op: fb::Op::MulScalar,
+                    inputs: vec![x, s],
+                    outputs: vec![y],
+                    attrs: vec![],
+                });
+            }
+            Node::Clamp { input, out, bounds } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                let b = weights.fp16("clamp bounds", bounds)?;
+                nodes.push(EmittedNode {
+                    op: fb::Op::Clamp,
+                    inputs: vec![x, b],
+                    outputs: vec![y],
+                    attrs: vec![],
+                });
+            }
+            Node::Softcap { input, out, cap } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::Softcap,
+                    inputs: vec![x],
+                    outputs: vec![y],
+                    attrs: vec![("cap".into(), AttrValue::Float(cap))],
                 });
             }
             Node::Softmax { input, out, mode, sliding, window } => {
@@ -1282,14 +1409,75 @@ pub fn emit_graphs(
     // 3-5. Per graph: inputs (declaration order = binding order), nodes +
     // computed tensors in first-use order, exact outputs. Each graph gets a
     // fresh tensor-id map (recordings number their ids from zero) over the
-    // shared weight map and allocator, so ranges stay disjoint.
+    // shared weight map and allocator, so ranges stay disjoint — except
+    // shared state rows (below), which name one tensor from every graph.
+    //
+    // Shared caches: when every graph's persistent sequence is identical
+    // (same count, same shapes in pinned order — the v1 caches-first
+    // invariant: prefill fills the caches decode reads), the positions name
+    // ONE tensor each, so both plans address the same arena storage. Any
+    // difference (a graph with no caches, a debug pass with fewer) means no
+    // sharing: per-graph rows, which can only waste memory, never alias.
+    // The bit-exact gate per net proves the choice: spurious sharing fails
+    // numerics against the v1 oracle, which shares through arena offsets.
     struct PerGraph {
         nodes: Vec<EmittedNode>,
         input_ids: Vec<i32>,
         outputs: Vec<i32>,
         name: String,
     }
+    // Persistent tensor ids per graph, in pinned order, with shapes.
+    let persistent_seqs: Vec<Vec<(usize, Shape)>> = specs
+        .iter()
+        .map(|spec| {
+            let recorded = spec.recorded;
+            let is_input_or_output = |id: usize| {
+                recorded.inputs.iter().any(|in_id| in_id.index() == id)
+                    || recorded.outputs.iter().any(|out_id| out_id.index() == id)
+            };
+            recorded
+                .pinned
+                .iter()
+                .map(|pinned| pinned.index())
+                .filter(|id| !is_input_or_output(*id))
+                .map(|id| {
+                    let shape =
+                        recorded.shapes.get(id).copied().unwrap_or(Shape::new(0, 0, 0));
+                    (id, shape)
+                })
+                .collect()
+        })
+        .collect();
+    let shared_shapes: Option<Vec<Shape>> = {
+        let first = persistent_seqs.first().cloned().unwrap_or_default();
+        let all_equal = !first.is_empty()
+            && persistent_seqs.iter().all(|seq| {
+                seq.len() == first.len()
+                    && seq.iter().zip(first.iter()).all(|((_, a), (_, b))| a == b)
+            });
+        all_equal.then(|| first.into_iter().map(|(_, shape)| shape).collect())
+    };
+    // Shared v2 indices, allocated once up front so every graph maps its
+    // position to the same row.
+    let mut shared_state: Vec<i32> = Vec::new();
     let mut emit_tensors: Vec<EmittedTensor> = Vec::new();
+    if let Some(shapes) = &shared_shapes {
+        for (pos, shape) in shapes.iter().enumerate() {
+            let v2 = id_map.alloc();
+            shared_state.push(v2);
+            emit_tensors.push(EmittedTensor {
+                name: format!("state{pos}"),
+                dims: vec![shape.c as i32, shape.h as i32, shape.w as i32],
+                dtype: fb::DType::F16,
+                layout: fb::Layout::POSITION_MAJOR,
+                bytes: Vec::new(),
+                elems: shape.len() as u64,
+                quant: WeightQuant::None,
+                state: fb::StateKind::KV_CACHE,
+                dim_params: vec![(0, "K".to_string(), shape.c as i32)],
+            });
+        }
+    }
     let mut graphs: Vec<PerGraph> = Vec::with_capacity(specs.len());
     for spec in specs {
         let recorded = spec.recorded;
@@ -1315,17 +1503,21 @@ pub fn emit_graphs(
             });
         }
         // State rows: persistent arena tensors (KV caches) are pinned, not
-        // inputs — pre-seed them like inputs so node emission hits the map.
-        // `pinned - inputs - outputs` is exactly the persistent set: inputs
-        // and outputs pin for binding stability, the rest persist across
-        // submits. Caches are POSITION_MAJOR with the live-length axis
-        // declared (`K`, capacity from the recorded shape); the loader
-        // allocates per session and never recycles them.
-        //
-        // `seen` is pre-seeded alongside: `CacheWrite` names the cache as
-        // its output, and the output mapping resolves through `seen`.
+        // inputs. With shared shapes (see above), position maps to the
+        // shared row; otherwise each graph allocates its own rows in pinned
+        // order. Either way node emission hits the map, and `seen` is seeded
+        // alongside so `CacheWrite`'s cache output resolves.
         let mut seen: HashMap<usize, i32> = HashMap::new();
-        {
+        if !shared_state.is_empty() {
+            let seq = &persistent_seqs[graphs.len()];
+            if seq.len() != shared_state.len() {
+                return Err("shared cache count changed mid-emission".into());
+            }
+            for ((id, _), v2) in seq.iter().zip(shared_state.iter()) {
+                id_map.computed.insert(*id, *v2);
+                seen.insert(*id, *v2);
+            }
+        } else {
             let is_input_or_output = |id: usize| {
                 recorded.inputs.iter().any(|in_id| in_id.index() == id)
                     || recorded.outputs.iter().any(|out_id| out_id.index() == id)
@@ -1543,7 +1735,7 @@ fn assemble(
                 (fb::QuantKind::PER_CHANNEL, (position + 1) as i32, 0, 0)
             }
             WeightQuant::Int4 { .. } => {
-                (fb::QuantKind::PER_CHANNEL, (position + 1) as i32, 0, I4_BLOCK as i32)
+                (fb::QuantKind::BLOCKWISE, (position + 1) as i32, 0, I4_BLOCK as i32)
             }
         };
         let quant = fb::Quantization::new(

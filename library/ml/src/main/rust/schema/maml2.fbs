@@ -59,7 +59,11 @@ enum Op : byte {
   // kw]`. Appended for the vision nets' learned upsamples; opset stays 1 —
   // the catalog grows together with its only loader until the first
   // on-device ship (spec section 12.1).
-  ConvTranspose = 29
+  ConvTranspose = 29,
+  // A fused activation applied standalone, for values no convolution
+  // produced (the gated feed-forward's epilogue). Carries `activation` like
+  // the producer epilogues in section 5.2.
+  Activate = 30
 }
 
 // Spec section 3.1. Integer dtypes are always quantised weights (section

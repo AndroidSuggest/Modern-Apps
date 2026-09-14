@@ -44,9 +44,10 @@ fn usage() -> ! {
     eprintln!("usage: emit_net_maml2 <net> [dims...]");
     eprintln!("  single-graph: selfie u2netp scrfd mobilefacenet ppocr_det ppocr_rec maia");
     eprintln!("    vocoder duration text");
-    eprintln!("  multi-graph: tinyclip");
+    eprintln!("  multi-graph: tinyclip whisper gemma_text");
     eprintln!("  scrfd, ppocr_det take HEIGHT WIDTH; ppocr_rec takes WIDTH;");
-    eprintln!("  vocoder takes FRAMES; duration, text take CHARS; tinyclip takes LEN");
+    eprintln!("  vocoder takes FRAMES; duration, text take CHARS; tinyclip takes LEN;");
+    eprintln!("  gemma_text takes CONTEXT_TIER TOKENS");
     std::process::exit(1)
 }
 
@@ -360,6 +361,58 @@ fn main() {
             let out_path = root.join(asset.replace(".maml", ".maml2"));
             std::fs::write(&out_path, &emitted.bytes).expect("write the v2 file");
             println!("whisper v2: {} nodes over 2 graphs", emitted.op_inventory.iter().map(|(_, n)| n).sum::<usize>());
+            println!("graph_digest: {}", hex(&emitted.graph_digest));
+            println!("wrote {}", out_path.display());
+            return;
+        }
+        "gemma_text" => {
+            use modelrunner::nets::gemma4::{Mode, Pass};
+            let context: u32 = std::env::args()
+                .nth(2)
+                .map(|s| s.parse().unwrap_or_else(|_| usage()))
+                .unwrap_or(1024);
+            let tokens: u32 = std::env::args()
+                .nth(3)
+                .map(|s| s.parse().unwrap_or_else(|_| usage()))
+                .unwrap_or(4);
+            let asset = "analysis/models/gemma4_text.maml";
+            let (data, tensors, offsets, sha) = load_v1(&root, asset, weights::graph::GEMMA4_TEXT);
+            let decode = modelrunner::nets::gemma4::record(
+                &offsets,
+                Pass { mode: Mode::DecodeStep, context },
+            )
+            .expect("record decode");
+            let prefill = modelrunner::nets::gemma4::record(
+                &offsets,
+                Pass { mode: Mode::Prefill { tokens }, context },
+            )
+            .expect("record prefill");
+            let roles = ["token_embed", "per_layer", "angles_sliding", "angles_full"];
+            let emitted = emit::emit_graphs(
+                &tensors,
+                &data,
+                "gemma4-text int4 nchw (v2)",
+                "maml2 emit_net_maml2",
+                sha,
+                &[
+                    emit::GraphSpec {
+                        recorded: &decode,
+                        graph_name: "decode_step",
+                        entry_name: "decode_step",
+                        roles: &roles,
+                    },
+                    emit::GraphSpec {
+                        recorded: &prefill,
+                        graph_name: "prefill",
+                        entry_name: "prefill",
+                        roles: &roles,
+                    },
+                ],
+            )
+            .expect("emission succeeds");
+            let out_path = root.join(asset.replace(".maml", ".maml2"));
+            std::fs::write(&out_path, &emitted.bytes).expect("write the v2 file");
+            println!("gemma_text v2: {} nodes over 2 graphs", emitted.op_inventory.iter().map(|(_, n)| n).sum::<usize>());
             println!("graph_digest: {}", hex(&emitted.graph_digest));
             println!("wrote {}", out_path.display());
             return;

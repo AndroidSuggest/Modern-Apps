@@ -447,6 +447,43 @@ fn lower_with_options(
         }
         builder.mark_read(&read);
     }
+    // State tensors this graph names, pre-created in file order before any
+    // other allocation. Caches must land at identical arena offsets in every
+    // plan sharing the file (prefill fills what decode reads), and file
+    // order is the one order every lowering agrees on: the v1 caches-first
+    // invariant, now a loader rule rather than a net-module convention.
+    // Tensors this graph never names are not created — pinning another
+    // graph's caches would bloat the arena for nothing.
+    {
+        let mut state: Vec<i32> = Vec::new();
+        for n in 0..nodes.len() {
+            let node = nodes.get(n);
+            if let Some(inputs) = node.inputs() {
+                for i in 0..inputs.len() {
+                    let t = inputs.get(i);
+                    if t >= 0
+                        && tensors.get(t as usize).state() != fb::StateKind::NONE
+                        && !state.contains(&t)
+                    {
+                        state.push(t);
+                    }
+                }
+            }
+        }
+        state.sort_unstable();
+        for t in state {
+            let dims = tensors
+                .get(t as usize)
+                .dims()
+                .map(|d| (0..d.len()).map(|i| d.get(i) as u32).collect::<Vec<u32>>())
+                .unwrap_or_default();
+            if dims.len() != 3 {
+                return Err(format!("state tensor {t} is not [c, h, w]"));
+            }
+            let id = builder.persistent(Shape::new(dims[0], dims[1], dims[2]));
+            ids.insert(t, id);
+        }
+    }
     // Graph inputs first, in declaration order = binding order.
     if let Some(inputs) = graph.inputs() {
         for i in 0..inputs.len() {
@@ -936,6 +973,41 @@ fn lower_node(
             let shift = attrs.float("shift")?;
             builder.affine(id_of(inputs[0])?, scale, shift)
         }
+        fb::Op::Activate => {
+            if inputs.len() != 1 {
+                return Err(err("Activate wants [x]"));
+            }
+            let act = act_from_code(attrs.int("activation")?).map_err(|e| err(&e))?;
+            builder.activate(id_of(inputs[0])?, act)
+        }
+        fb::Op::GatedSwish => {
+            if inputs.len() != 1 {
+                return Err(err("GatedSwish wants [fused]"));
+            }
+            let act = act_from_code(attrs.int("activation")?).map_err(|e| err(&e))?;
+            builder.gated_activate(id_of(inputs[0])?, act)
+        }
+        fb::Op::MulScalar => {
+            if inputs.len() != 2 {
+                return Err(err("MulScalar wants [x, scale]"));
+            }
+            let s = weight_elem(inputs[1])?;
+            builder.mul_scalar_raw(id_of(inputs[0])?, s)
+        }
+        fb::Op::Clamp => {
+            if inputs.len() != 2 {
+                return Err(err("Clamp wants [x, bounds]"));
+            }
+            let b = weight_elem(inputs[1])?;
+            builder.clamp_raw(id_of(inputs[0])?, b)
+        }
+        fb::Op::Softcap => {
+            if inputs.len() != 1 {
+                return Err(err("Softcap wants [x]"));
+            }
+            let cap = attrs.float("cap")?;
+            builder.softcap(id_of(inputs[0])?, cap)
+        }
         fb::Op::Constant => {
             if inputs.len() != 1 {
                 return Err(err("Constant wants [weight]"));
@@ -1036,8 +1108,33 @@ fn lower_node(
                 let probs = id_of(inputs[0])?;
                 let cache = persistent_of(builder, tensors, ids, inputs[1], node_index)?;
                 builder.attn_apply_cached_raw(probs, cache, heads, kv_heads, dynamic, sliding)
+            } else if phase == 6 {
+                if inputs.len() != 3 {
+                    return Err(err("banded Attention scores wants [q, k, table]"));
+                }
+                let band = attrs.int("band")? as u32;
+                let scale = attrs.float("scale")?;
+                let cap = attrs.float("cap")?;
+                let offsets = attrs.int("rel_offsets")? as u32;
+                let t = weight_elem(inputs[2])?;
+                builder.attn_scores_banded_raw(
+                    id_of(inputs[0])?,
+                    id_of(inputs[1])?,
+                    heads,
+                    band,
+                    t,
+                    offsets,
+                    scale,
+                    cap,
+                )
+            } else if phase == 7 {
+                if inputs.len() != 2 {
+                    return Err(err("banded Attention apply wants [probs, v]"));
+                }
+                let band = attrs.int("band")? as u32;
+                builder.attn_apply_banded(id_of(inputs[0])?, id_of(inputs[1])?, heads, band)
             } else {
-                return Err(err(&format!("Attention phase {phase} is not 0..=5")));
+                return Err(err(&format!("Attention phase {phase} is not 0..=7")));
             }
         }
         fb::Op::CacheWrite => {

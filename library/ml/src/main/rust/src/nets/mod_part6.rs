@@ -190,12 +190,36 @@ impl<'a> Builder<'a> {
         out
     }
 
+    /// [`Builder::clamp`] with a resolved bounds offset rather than a table
+    /// index.
+    ///
+    /// As [`Builder::conv_raw`]: the loader validated shapes at inference, so
+    /// lowering only translates addressing.
+    pub fn clamp_raw(&mut self, input: Id, bounds: u32) -> Id {
+        let shape = self.shape_of(input);
+        let out = self.tensor(shape);
+        self.nodes.push(Node::Clamp { input, out, bounds });
+        out
+    }
+
     /// Multiply by a **scalar held in the weights**, a `[1]` tensor at `weight_index`.
     ///
     /// Distinct from [`Builder::affine`], whose scale is a compile-time constant. See
     /// [`Kind::MulScalar`].
     pub fn mul_scalar(&mut self, input: Id, weight_index: usize) -> Id {
         let scale = self.weight(weight_index, &[1]);
+        let shape = self.shape_of(input);
+        let out = self.tensor(shape);
+        self.nodes.push(Node::MulScalar { input, out, scale });
+        out
+    }
+
+    /// [`Builder::mul_scalar`] with a resolved scale offset rather than a
+    /// table index.
+    ///
+    /// As [`Builder::conv_raw`]: the loader validated shapes at inference, so
+    /// lowering only translates addressing.
+    pub fn mul_scalar_raw(&mut self, input: Id, scale: u32) -> Id {
         let shape = self.shape_of(input);
         let out = self.tensor(shape);
         self.nodes.push(Node::MulScalar { input, out, scale });

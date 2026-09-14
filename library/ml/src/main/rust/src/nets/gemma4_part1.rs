@@ -98,6 +98,19 @@ pub const INPUTS: usize = 4;
 /// `dynamic` too but must see the whole prefix. That is the one piece of this that does not yet
 /// have a home, and it is why [`Mode`] has a single variant rather than two.
 pub fn build(weights: &dyn WeightSource, pass: Pass) -> Result<Plan, String> {
+    Ok(record(weights, pass)?.plan)
+}
+
+/// Record one gemma pass: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+/// Decode and prefill recordings share their cache sequence (caches-first,
+/// layer order), which is what the v2 emitter unifies into shared state
+/// rows; trace recordings go in no shipped file (fewer caches would poison
+/// the unification).
+pub fn record(weights: &dyn WeightSource, pass: Pass) -> Result<crate::nets::Recorded, String> {
     let Pass { mode, context } = pass;
     if !CONTEXT_TIERS.contains(&context) {
         return Err(format!("a cache of {context} positions, which is not one of the tiers"));
@@ -214,7 +227,7 @@ pub fn build(weights: &dyn WeightSource, pass: Pass) -> Result<Plan, String> {
             name_layer(b, index);
         }
         name_head(b);
-        return builder.finish(&[x, per_layer_inputs]);
+        return builder.record(&[x, per_layer_inputs], &crate::weights::Offsets::empty());
     }
 
     if let Mode::Prefill { .. } = mode {
@@ -226,7 +239,7 @@ pub fn build(weights: &dyn WeightSource, pass: Pass) -> Result<Plan, String> {
         // product is the thirty caches, which are `persistent` and so are not outputs at all;
         // returning `x` costs nothing, since it is already in the arena, and gives the host
         // something to sanity-check a pass against.
-        return builder.finish(&[x]);
+        return builder.record(&[x], &crate::weights::Offsets::empty());
     }
 
     let state = b.rms_norm(x, FINAL_NORM, EPSILON);
@@ -237,7 +250,7 @@ pub fn build(weights: &dyn WeightSource, pass: Pass) -> Result<Plan, String> {
         let logits = point(b, at, state, CLASSES_PER_SPLIT);
         outputs.push(b.softcap(logits, LOGIT_CAP));
     }
-    builder.finish(&outputs)
+    builder.record(&outputs, &crate::weights::Offsets::empty())
 }
 
 /// Name the logits head and the final norm as host-read, for the modes that stop before them.

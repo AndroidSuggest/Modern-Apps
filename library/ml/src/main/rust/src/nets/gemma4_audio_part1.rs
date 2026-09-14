@@ -210,6 +210,17 @@ pub const MIN_TOKENS: u32 = ATTEND_SPAN;
 
 /// Build the pass `mode` describes.
 pub fn build(weights: &dyn WeightSource, mode: Mode) -> Result<Plan, String> {
+    Ok(record(weights, mode)?.plan)
+}
+
+/// Record the pass `mode` describes: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+/// Only `Clip` goes in shipped files (trace/sscp modes are parity tooling
+/// with different output counts, which would poison multi-graph emission).
+pub fn record(weights: &dyn WeightSource, mode: Mode) -> Result<crate::nets::Recorded, String> {
     let frames = mode.frames();
     let seq = tokens(frames);
     if frames == 0 {
@@ -256,7 +267,7 @@ pub fn build(weights: &dyn WeightSource, mode: Mode) -> Result<Plan, String> {
             name_layer(b, index);
         }
         name_tail(b);
-        return builder.finish(&[sscp_out, projected]);
+        return builder.record(&[sscp_out, projected], &crate::weights::Offsets::empty());
     }
 
     let mut x = projected;
@@ -276,14 +287,14 @@ pub fn build(weights: &dyn WeightSource, mode: Mode) -> Result<Plan, String> {
         b.host_tensor(EMBED_NORM, &[OUT_DIM]);
         b.host_tensor(EMBED_PROJECTION, &[OUT_DIM, OUT_DIM, 1, 1]);
         b.host_tensor(EMBED_PROJECTION + 1, &[OUT_DIM]);
-        return builder.finish(&[x, tail]);
+        return builder.record(&[x, tail], &crate::weights::Offsets::empty());
     }
 
     // The embedder, which the exporter traced through: the result is already in text-embedding
     // space and scatters straight into the decoder's prompt.
     let normed = b.rms_norm(tail, EMBED_NORM, EPSILON);
     let out = dense_point(b, EMBED_PROJECTION, normed, OUT_DIM);
-    builder.finish(&[out])
+    builder.record(&[out], &crate::weights::Offsets::empty())
 }
 
 /// One subsampling stage: `conv -> layer norm -> ReLU`, halving both axes.

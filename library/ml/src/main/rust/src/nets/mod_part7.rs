@@ -113,6 +113,30 @@ impl<'a> Builder<'a> {
         out
     }
 
+    /// [`Builder::attn_scores_banded`] with a resolved table offset rather
+    /// than a table index.
+    ///
+    /// As [`Builder::conv_raw`]: the loader validated shapes at inference, so
+    /// lowering only translates addressing.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attn_scores_banded_raw(
+        &mut self,
+        q: Id,
+        k: Id,
+        heads: u32,
+        band: u32,
+        table: u32,
+        offsets: u32,
+        scale: f32,
+        cap: f32,
+    ) -> Id {
+        let sq = self.shape_of(q);
+        let out = self.tensor(Shape::new(heads, sq.w, band));
+        self.nodes
+            .push(Node::AttnScoresBanded { q, k, out, heads, band, table, offsets, scale, cap });
+        out
+    }
+
     /// Apply a `[heads, T, band]` band of probabilities to `v`, a `[d_model, 1, T]` sequence.
     ///
     /// The value half of [`Builder::attn_scores_banded`], with the same window: column `j` of

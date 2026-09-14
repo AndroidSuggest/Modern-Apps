@@ -491,6 +491,34 @@ fn infer_node(
             let x = shape_of(inputs[0])?.dims.clone();
             Ok(vec![Inferred { dims: x, layout: computed_layout }])
         }
+        fb::Op::Activate | fb::Op::Softcap => {
+            if inputs.len() != 1 {
+                return Err(err("activation wants [x]"));
+            }
+            let x = shape_of(inputs[0])?.dims.clone();
+            Ok(vec![Inferred { dims: x, layout: computed_layout }])
+        }
+        fb::Op::GatedSwish => {
+            // `activate(gate) * up` over a fused `[gate | up]` projection:
+            // channels halve.
+            if inputs.len() != 1 {
+                return Err(err("GatedSwish wants [fused]"));
+            }
+            let x = shape_of(inputs[0])?.dims.clone();
+            if x.is_empty() || x[0] % 2 != 0 {
+                return Err(err(&format!("gated activation over {x:?}, whose channels are not a pair")));
+            }
+            let mut dims = x;
+            dims[0] /= 2;
+            Ok(vec![Inferred { dims, layout: computed_layout }])
+        }
+        fb::Op::MulScalar | fb::Op::Clamp => {
+            if inputs.len() != 2 {
+                return Err(err("scaled/clamped op wants [x, param]"));
+            }
+            let x = shape_of(inputs[0])?.dims.clone();
+            Ok(vec![Inferred { dims: x, layout: computed_layout }])
+        }
         fb::Op::Constant => {
             // A learned tensor copied to the arena: the output shape is the
             // stored row, checked by the caller against this echo.
@@ -636,8 +664,53 @@ fn infer_node(
                 }
                 let head_dim = cache[2] / kv_heads.max(1);
                 Ok(vec![Inferred { dims: vec![heads * head_dim, 1, 1], layout: computed_layout }])
+            } else if phase == 6 {
+                // Banded scores: `[d, 1, T]` queries and keys give
+                // `[heads, T, band]`, with the per-head relative table
+                // `[heads, offsets, head_dim]`.
+                if inputs.len() != 3 {
+                    return Err(err("banded Attention scores wants [q, k, table]"));
+                }
+                let q = shape_of(inputs[0])?.dims.clone();
+                let k = shape_of(inputs[1])?.dims.clone();
+                let table = shape_of(inputs[2])?.dims.clone();
+                let heads = attrs.int("heads")?;
+                let band = attrs.int("band")?;
+                let offsets = attrs.int("rel_offsets")?;
+                if q.len() != 3 || k.len() != 3 {
+                    return Err(err("banded Attention shapes are not sequences"));
+                }
+                if q[2] != k[2] {
+                    return Err(err("a band is a window into one sequence, not two lengths"));
+                }
+                if table.len() != 3 || table[0] != heads || table[1] != offsets {
+                    return Err(err(&format!(
+                        "banded table {table:?} is not [heads, {offsets}, head_dim]"
+                    )));
+                }
+                Ok(vec![Inferred { dims: vec![heads, q[2], band], layout: computed_layout }])
+            } else if phase == 7 {
+                // Banded apply: `[heads, T, band]` probabilities against a
+                // `[d, 1, T]` sequence give `[d, 1, T]`.
+                if inputs.len() != 2 {
+                    return Err(err("banded Attention apply wants [probs, v]"));
+                }
+                let probs = shape_of(inputs[0])?.dims.clone();
+                let v = shape_of(inputs[1])?.dims.clone();
+                let heads = attrs.int("heads")?;
+                let band = attrs.int("band")?;
+                if probs.len() != 3 || v.len() != 3 {
+                    return Err(err("banded Attention shapes are not [heads, T, band] / [d, 1, T]"));
+                }
+                if probs[0] != heads || probs[2] != band || probs[1] != v[2] {
+                    return Err(err(&format!(
+                        "banded probs {probs:?} do not match {heads} heads, band {band}, {T} queries",
+                        T = v[2]
+                    )));
+                }
+                Ok(vec![Inferred { dims: vec![v[0], 1, v[2]], layout: computed_layout }])
             } else {
-                Err(err(&format!("Attention phase {phase} is not 0..=5")))
+                Err(err(&format!("Attention phase {phase} is not 0..=7")))
             }
         }
         fb::Op::Embedding => {

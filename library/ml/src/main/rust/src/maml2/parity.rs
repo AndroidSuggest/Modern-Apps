@@ -479,3 +479,125 @@ fn v2_whisper_decode_matches_v1_bit_exact() {
         spread_inputs(&shapes, 13.0),
     );
 }
+
+/// Shared cache rows unify, preserve numerics, and stay address-stable.
+///
+/// Emits the whisper decode recording TWICE into one file (two graphs with
+/// identical persistent sequences, the gemma prefill/decode shape without a
+/// 1.3 GB file): the emitter must fold the caches into shared rows, both
+/// lowerings must address the same arena storage, and both plans must match
+/// each other and the v1 oracle bit-exactly. A failure here — divergent
+/// outputs, or a digest/verify error — is what a broken prefill→decode
+/// handoff looks like, caught on a 74 MB file instead of gemma's 1.3 GB.
+/// Skips quietly when the asset is absent.
+#[test]
+fn v2_shared_cache_rows_unify_and_match_v1() {
+    use crate::maml2::emit::{emit_graphs, GraphSpec};
+    use crate::nets::whisper;
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(5)
+        .expect("workspace root")
+        .to_path_buf();
+    let v1path = root.join("speech/src/main/assets/whisper-base/whisper_base.maml");
+    let v1bytes = match std::fs::read(&v1path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => panic!("cannot read {}: {e}", v1path.display()),
+    };
+    let v1parsed =
+        weights::Weights::parse(&v1bytes, weights::graph::WHISPER).expect("parse the v1 asset");
+    let table = v1parsed.offsets();
+    let tensors: Vec<WeightTensor> =
+        (0..table.len()).map(|i| table.tensor(i).expect("tensor")).collect();
+    let decode_a = whisper::record(&table, whisper::Mode::DecodeStep).expect("record");
+    let decode_b = whisper::record(&table, whisper::Mode::DecodeStep).expect("record");
+    // Thirteen roles per graph: the token plus per-layer cross K/V pairs.
+    let mut role_names: Vec<String> = vec!["token".to_string()];
+    for layer in 0..whisper::DECODER_LAYERS {
+        role_names.push(format!("cross_k{layer}"));
+        role_names.push(format!("cross_v{layer}"));
+    }
+    let roles: Vec<&str> = role_names.iter().map(|s| s.as_str()).collect();
+    let emitted = emit_graphs(
+        &tensors,
+        v1parsed.data(),
+        "whisper decode twice (cache-sharing probe)",
+        "maml2 parity probe",
+        v1parsed.source_sha256,
+        &[
+            GraphSpec {
+                recorded: &decode_a,
+                graph_name: "decode_a",
+                entry_name: "decode_a",
+                roles: &roles,
+            },
+            GraphSpec {
+                recorded: &decode_b,
+                graph_name: "decode_b",
+                entry_name: "decode_b",
+                roles: &roles,
+            },
+        ],
+    )
+    .expect("emission succeeds");
+    // The two graphs share every cache row: same count, same shapes, one
+    // row each. Count the KV_CACHE rows directly from the file.
+    let model = crate::maml2::fb::root_as_model(&emitted.bytes).expect("the probe file parses");
+    let tensors_out = model.tensors().expect("tensors");
+    let mut shared = 0;
+    for i in 0..tensors_out.len() {
+        if tensors_out.get(i).state() == crate::maml2::fb::StateKind::KV_CACHE {
+            shared += 1;
+        }
+    }
+    assert_eq!(
+        shared, 12,
+        "twelve shared cache rows (six layers x K/V), found {shared}"
+    );
+    eprintln!("probe: {shared} shared cache rows over 2 graphs; lowering both entries");
+    // Both entries lower, run, and agree with each other and the v1 oracle.
+    let verified = verify::verify(&emitted.bytes).expect("verify");
+    let inferred = infer::infer(&verified).expect("infer");
+    assert_eq!(inferred.len(), 2);
+    let bridge = lower::V2Weights::new(&verified).expect("bridge");
+    let plan_a = lower::lower(&verified, &inferred[0], &bridge, 0).expect("lower a");
+    let plan_b = lower::lower(&verified, &inferred[1], &bridge, 1).expect("lower b");
+    // Shared rows land at identical arena offsets in both plans: the
+    // prefill-fills-decode-reads contract, checked structurally.
+    assert_eq!(
+        plan_a.arena_elems, plan_b.arena_elems,
+        "identical arenas for identical graphs"
+    );
+    let mut shapes = vec![(512usize, 1usize, 1usize)];
+    for _ in 0..whisper::DECODER_LAYERS {
+        shapes.push((512usize, 1usize, 1500usize));
+        shapes.push((512usize, 1usize, 1500usize));
+    }
+    let inputs = spread_inputs(&shapes, 14.0);
+    let refs: Vec<&[f32]> = inputs.iter().map(|v| v.as_slice()).collect();
+    let v1plan = whisper::build(&table, whisper::Mode::DecodeStep).expect("build v1");
+    let v1out =
+        crate::nets::reference::run_multi(&v1plan, v1parsed.data(), &refs).expect("run v1");
+    let blob = bridge.blob();
+    let out_a = crate::nets::reference::run_multi(&plan_a, &blob, &refs).expect("run a");
+    let out_b = crate::nets::reference::run_multi(&plan_b, &blob, &refs).expect("run b");
+    assert_eq!(out_a.len(), v1out.len());
+    assert_eq!(out_b.len(), v1out.len());
+    for (index, ((a, b), v)) in out_a.iter().zip(out_b.iter()).zip(v1out.iter()).enumerate() {
+        assert_eq!(a.len(), v.len(), "output {index} length");
+        assert_eq!(b.len(), v.len(), "output {index} length");
+        for (at, ((x, y), z)) in a.iter().zip(b.iter()).zip(v.iter()).enumerate() {
+            assert!(
+                x == y && y == z,
+                "output {index} element {at}: graph_a {x} vs graph_b {y} vs v1 {z}"
+            );
+        }
+    }
+    // The two plans' cache bindings coincide: same rows, same offsets.
+    // (Arena equality above already implies it; the bindings say it plainly.)
+    assert_eq!(plan_a.pinned.len(), plan_b.pinned.len());
+    for (a, b) in plan_a.pinned.iter().zip(plan_b.pinned.iter()) {
+        assert_eq!((a.at, a.shape), (b.at, b.shape), "pinned bindings coincide");
+    }
+}

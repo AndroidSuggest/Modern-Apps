@@ -15,6 +15,17 @@ pub const INPUTS: usize = 3;
 
 /// Build the image pass.
 pub fn build(weights: &dyn WeightSource, mode: Mode) -> Result<Plan, String> {
+    Ok(record(weights, mode)?.plan)
+}
+
+/// Record the image pass: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+/// Only `Image` goes in shipped files (trace mode has different outputs,
+/// which would poison multi-graph emission).
+pub fn record(weights: &dyn WeightSource, mode: Mode) -> Result<crate::nets::Recorded, String> {
     let grid = mode.grid();
     let stop_after = match mode {
         Mode::Image(_) => LAYERS,
@@ -58,13 +69,13 @@ pub fn build(weights: &dyn WeightSource, mode: Mode) -> Result<Plan, String> {
         // Both sides of the pooling, so a tower that agrees and an output that does not can be
         // told apart from a tower that never agreed.
         let pooled = pool(b, x, grid);
-        return builder.finish(&[x, pooled]);
+        return builder.record(&[x, pooled], &crate::weights::Offsets::empty());
     }
 
     let pooled = pool(b, x, grid);
     let normed = b.rms_norm(pooled, FINAL_NORM, EPSILON);
     let out = dense_point(b, OUT_PROJECTION, normed, OUT_DIM);
-    builder.finish(&[out])
+    builder.record(&[out], &crate::weights::Offsets::empty())
 }
 
 /// Average each `POOL x POOL` block of patches into one soft token.
