@@ -329,6 +329,59 @@ pub fn lower_nchw(
     lower_with_options(verified, inferred, weights, entry_graph, true)
 }
 
+/// Every tensor any graph names: node inputs plus attribute-carried weight
+/// refs (PRelu's `slope`), plus host tensors (no buffer, read on the CPU).
+///
+/// File-wide union across all graphs: in a multi-graph file a weight the
+/// lowered graph never names may belong to another graph. Tensors named by
+/// nothing at all are dead weight the file refuses to carry — the same gate
+/// the emitter enforces, re-checked here so a hand-built file gets no free
+/// pass around emission.
+fn file_refs(model: fb::Model<'_>) -> Result<Vec<bool>, String> {
+    let tensors = model.tensors().ok_or("a model with no tensors")?;
+    let graphs = model.graphs().ok_or("a model with no graphs")?;
+    let mut read = vec![false; tensors.len()];
+    for g in 0..graphs.len() {
+        let nodes = graphs.get(g).nodes().ok_or_else(|| format!("graph {g} has no nodes"))?;
+        for n in 0..nodes.len() {
+            let node = nodes.get(n);
+            if let Some(inputs) = node.inputs() {
+                for i in 0..inputs.len() {
+                    let t = inputs.get(i) as usize;
+                    if t < read.len() {
+                        read[t] = true;
+                    }
+                }
+            }
+            if let Some(attrs) = node.attrs() {
+                for i in 0..attrs.len() {
+                    let attr = attrs.get(i);
+                    if attr.name() == Some("slope") {
+                        if let Some(v) = attr.value_as_attr_int() {
+                            let t = v.value() as usize;
+                            if t < read.len() {
+                                read[t] = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for t in 0..tensors.len() {
+        if tensors.get(t).buffer() == -1 {
+            read[t] = true;
+        }
+    }
+    if let Some(index) = read.iter().position(|&read| !read) {
+        return Err(format!(
+            "tensor {index} of {} is named by no graph; a v2 file carries no dead weights",
+            read.len()
+        ));
+    }
+    Ok(read)
+}
+
 /// [`lower`] with an explicit blocked-rewrite switch.
 fn lower_with_options(
     verified: &Verified<'_>,
@@ -358,51 +411,17 @@ fn lower_with_options(
     // dropped — the file loads, the pass runs, and one layer reads whatever
     // its neighbour's payload happens to be.
     //
+    // Coverage is file-wide, not per-graph: in a multi-graph file a weight
+    // the lowered graph never names may belong to another graph, and that
+    // is that graph's business. What this lowering must prove is that every
+    // tensor IT names resolves — the resolvability check below — while the
+    // union gate (every tensor named somewhere) already ran at emit time
+    // and re-runs here cheaply.
+    //
     // Marking happens up front (not after lowering) because `finish`
     // consumes the builder: the check must be armed before the nodes replay.
     {
-        let tensors = model.tensors().ok_or("a model with no tensors")?;
-        let nodes = graph.nodes().ok_or("a graph with no nodes")?;
-        let mut read: Vec<bool> = vec![false; tensors.len()];
-        for n in 0..nodes.len() {
-            let node = nodes.get(n);
-            if let Some(inputs) = node.inputs() {
-                for i in 0..inputs.len() {
-                    let t = inputs.get(i) as usize;
-                    if t < read.len() {
-                        read[t] = true;
-                    }
-                }
-            }
-            // Weight refs that ride attributes, not inputs: PRelu's `slope`.
-            // A slope names a buffered weight no input edge covers; without
-            // this the gate below mistakes it for a dropped layer.
-            if let Some(attrs) = node.attrs() {
-                for i in 0..attrs.len() {
-                    let attr = attrs.get(i);
-                    if attr.name() == Some("slope") {
-                        if let Some(v) = attr.value_as_attr_int() {
-                            let t = v.value() as usize;
-                            if t < read.len() {
-                                read[t] = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // Host tensors (placement HOST, no buffer) are read on the CPU.
-        for t in 0..tensors.len() {
-            if tensors.get(t).buffer() == -1 {
-                read[t] = true;
-            }
-        }
-        if let Some(index) = read.iter().position(|&read| !read) {
-            return Err(format!(
-                "the lowering never reads tensor {index} of {}. A v2 graph that names a weight no node reads is a dropped layer.",
-                read.len()
-            ));
-        }
+        let read = file_refs(model)?;
         // Resolvability: every named weight must resolve through the bridge
         // in its dtype class (word vs element addressing). A mismatch fails
         // here rather than silently binding the wrong payload.
@@ -464,60 +483,11 @@ fn lower_with_options(
                 .ok_or_else(|| format!("output tensor {t} was never written"))
         })
         .collect::<Result<Vec<Id>, String>>()?;
-    // Every-tensor rule (mirrors `Builder::record`): each buffered weight
-    // tensor must have been named by a node, and each host tensor must be
-    // declared. `Builder::record` enforces this from the `read` flags the
-    // indexed builders set; the `*_raw` door bypasses those flags (it takes
-    // resolved offsets), so the loader enforces the same rule here, from the
-    // node refs, before finishing. A skipped weight is a layer the lowering
-    // dropped — the file loads, the pass runs, and one layer reads whatever
-    // its neighbour's payload happens to be.
+    // File-wide coverage re-check before finishing (see the pre-pass): the
+    // `*_raw` door never sets the builder's read flags, so the union refs
+    // arm `finish`'s gate the same way up front.
     {
-        let tensors = model.tensors().ok_or("a model with no tensors")?;
-        let nodes = graph.nodes().ok_or("a graph with no nodes")?;
-        let mut read = vec![false; tensors.len()];
-        for n in 0..nodes.len() {
-            let node = nodes.get(n);
-            if let Some(inputs) = node.inputs() {
-                for i in 0..inputs.len() {
-                    let t = inputs.get(i) as usize;
-                    if t < read.len() && tensors.get(t).buffer() != -1 {
-                        read[t] = true;
-                    }
-                }
-            }
-            // Weight refs that ride attributes, not inputs: PRelu's `slope`
-            // (see the pre-pass above).
-            if let Some(attrs) = node.attrs() {
-                for i in 0..attrs.len() {
-                    let attr = attrs.get(i);
-                    if attr.name() == Some("slope") {
-                        if let Some(v) = attr.value_as_attr_int() {
-                            let t = v.value() as usize;
-                            if t < read.len() {
-                                read[t] = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // Host tensors (placement HOST, no buffer) are read on the CPU: mark
-        // them named so the rule below exempts them the way
-        // `Builder::host_tensor` exempts the v1 path.
-        for t in 0..tensors.len() {
-            let tensor = tensors.get(t);
-            if tensor.buffer() == -1 {
-                read[t] = true;
-            }
-        }
-        if let Some(index) = read.iter().position(|&read| !read) {
-            return Err(format!(
-                "the lowering never reads tensor {index} of {}. A v2 graph that names a weight no node reads is a dropped layer.",
-                read.len()
-            ));
-        }
-        builder.mark_read(&read);
+        builder.mark_read(&file_refs(model)?);
     }
     let mut plan = builder.finish(&outputs)?;
     if !nchw_only {
@@ -546,7 +516,7 @@ fn rewrite_blocked_kinds(
     verified: &Verified<'_>,
     entry_graph: usize,
 ) -> Result<(), String> {
-    use crate::nets::{Kind, Op};
+    use crate::nets::Op;
     let model = verified.model;
     let tensors = model.tensors().ok_or("a model with no tensors")?;
     let graphs = model.graphs().ok_or("a model with no graphs")?;
@@ -767,16 +737,27 @@ fn lower_node(
             )
         }
         fb::Op::MatMul => {
-            // Quantised 1x1: `[a, w, s, b]`. The loader routes by shape
-            // through `conv_int8_raw_fused`, which lowers to the
-            // tiled/GEMV/untiled kernels — including grouped 1x1s (maia's
-            // replicated smolgen expansion, group 8), which take the untiled
-            // path exactly as the hand-written pass does. Groups ride the
-            // node attrs; the kernel dims carry per-group taps.
+            // Quantised convolution: `[a, w, s, b]`. 1x1 projections take
+            // the tiled/GEMV kernels; strided, padded, or grouped kernels
+            // take the untiled one — `conv_int8_raw_fused` routes by shape
+            // exactly as the hand-written pass does, so the loader passes
+            // the file geometry through rather than re-deciding it.
             if inputs.len() != 4 {
                 return Err(err("MatMul wants [a, w, s, b]"));
             }
             let act = act_from_code(attrs.int("activation")?).map_err(|e| err(&e))?;
+            let quant = match attrs.int("quant")? {
+                1 => crate::nets::Quant::I8,
+                2 => crate::nets::Quant::I4,
+                q => return Err(err(&format!("MatMul quant {q} is not 1 (int8) or 2 (int4)"))),
+            };
+            let kernel = attrs.ints("kernel")?;
+            let stride = attrs.ints("stride")?;
+            let dilation = attrs.ints("dilation")?;
+            let pads = attrs.ints("pads")?;
+            if kernel.len() != 2 || stride.len() != 2 || dilation.len() != 2 || pads.len() != 4 {
+                return Err(err("MatMul geometry attrs are not kernel/stride/dilation/pads"));
+            }
             let groups = attrs.int("groups").unwrap_or(1) as u32;
             let m = tensors
                 .get(inputs[1] as usize)
@@ -788,7 +769,9 @@ fn lower_node(
                 .dims()
                 .map(|d| if d.len() > 1 { d.get(1) as u32 } else { 0 })
                 .unwrap_or(0);
-            let w = weight_word(inputs[1], &[m, in_c, 1, 1])?;
+            let kh = kernel[0] as u32;
+            let kw = kernel[1] as u32;
+            let w = weight_word(inputs[1], &[m, in_c, kh, kw])?;
             let s = weight_elem(inputs[2])?;
             let b = weight_elem(inputs[3])?;
             let res = attrs.opt_int("res").map(id_of).transpose()?;
@@ -800,12 +783,12 @@ fn lower_node(
                 b,
                 m,
                 act,
-                (1, 1),
-                (1, 1),
-                (1, 1),
-                (0, 0, 0, 0),
+                (kh, kw),
+                (stride[0] as u32, stride[1] as u32),
+                (dilation[0] as u32, dilation[1] as u32),
+                (pads[0] as u32, pads[1] as u32, pads[2] as u32, pads[3] as u32),
                 groups,
-                crate::nets::Quant::I8,
+                quant,
                 res,
                 shift,
             )
@@ -953,7 +936,8 @@ fn lower_node(
             builder.layer_norm_raw(id_of(inputs[0])?, g, be, epsilon)
         }
         fb::Op::Attention => {
-            // Phase 0 scores / phase 1 apply share one op; split by `phase`.
+            // Phases 0/1 scores/apply share builders with the relative
+            // phases 2/3; split by `phase`.
             let phase = attrs.opt_int("phase").unwrap_or(0);
             let heads = attrs.int("heads")? as u32;
             if phase == 0 {
@@ -961,18 +945,78 @@ fn lower_node(
                     return Err(err("Attention scores wants [q, k]"));
                 }
                 builder.attn_scores(id_of(inputs[0])?, id_of(inputs[1])?, heads)
-            } else {
+            } else if phase == 1 {
                 if inputs.len() != 2 {
                     return Err(err("Attention apply wants [probs, v]"));
                 }
                 builder.attn_apply(id_of(inputs[0])?, id_of(inputs[1])?, heads)
+            } else if phase == 2 {
+                if inputs.len() != 3 {
+                    return Err(err("relative Attention scores wants [q, k, table]"));
+                }
+                let scale = attrs.float("scale")?;
+                let offsets = attrs.int("rel_offsets")? as u32;
+                let t = weight_elem(inputs[2])?;
+                builder.attn_scores_relative_raw(
+                    id_of(inputs[0])?,
+                    id_of(inputs[1])?,
+                    heads,
+                    scale,
+                    t,
+                    offsets,
+                )
+            } else if phase == 3 {
+                if inputs.len() != 3 {
+                    return Err(err("relative Attention apply wants [probs, v, table]"));
+                }
+                let offsets = attrs.int("rel_offsets")? as u32;
+                let t = weight_elem(inputs[2])?;
+                builder.attn_apply_relative_raw(
+                    id_of(inputs[0])?,
+                    id_of(inputs[1])?,
+                    heads,
+                    t,
+                    offsets,
+                )
+            } else {
+                return Err(err(&format!("Attention phase {phase} is not 0, 1, 2, or 3")));
             }
+        }
+        fb::Op::Embedding => {
+            if inputs.len() != 2 {
+                return Err(err("Embedding wants [ids, table]"));
+            }
+            let rows = attrs.int("rows")? as u32;
+            // Rank 2 `[rows, channels]`, possibly padded to rank 3 by the
+            // emitter's uniform rank-3 weight rows.
+            let table_dims = tensors
+                .get(inputs[1] as usize)
+                .dims()
+                .map(|d| (0..d.len()).map(|i| d.get(i) as u32).collect::<Vec<u32>>())
+                .unwrap_or_default();
+            if table_dims.len() < 2 || table_dims[0] != rows {
+                return Err(err("embedding table is not [rows, channels]"));
+            }
+            let t = weight_elem(inputs[1])?;
+            builder.embed_raw(id_of(inputs[0])?, t, rows, table_dims[1])
         }
         fb::Op::Softmax => {
             if inputs.len() != 1 {
                 return Err(err("Softmax wants [x]"));
             }
-            builder.softmax(id_of(inputs[0])?)
+            // Full, causal, and prefix share one file op; the mode, window,
+            // and sliding attrs pick the pipeline. A sliding full softmax is
+            // still full (sliding only narrows causal and prefix bounds).
+            let mode = attrs.int("mode")?;
+            let window = attrs.opt_int("window").unwrap_or(0);
+            let sliding = attrs.opt_bool("sliding");
+            match (mode, window, sliding) {
+                (0, _, false) => builder.softmax(id_of(inputs[0])?),
+                (1, 0, false) => builder.softmax_causal(id_of(inputs[0])?),
+                (1, _, _) => builder.softmax_causal_windowed(id_of(inputs[0])?, window as u32),
+                (2, _, _) => builder.softmax_prefix(id_of(inputs[0])?, sliding),
+                _ => return Err(err(&format!("Softmax mode {mode} is not 0, 1, or 2"))),
+            }
         }
         fb::Op::RotaryEmbedding => {
             if inputs.len() != 2 {

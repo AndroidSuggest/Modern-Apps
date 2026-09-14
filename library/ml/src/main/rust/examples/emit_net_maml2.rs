@@ -41,8 +41,12 @@ struct NetSpec {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: emit_net_maml2 <selfie|u2netp|scrfd|mobilefacenet|ppocr_det|ppocr_rec|maia> [dims...]");
-    eprintln!("  scrfd, ppocr_det take HEIGHT WIDTH; ppocr_rec takes WIDTH");
+    eprintln!("usage: emit_net_maml2 <net> [dims...]");
+    eprintln!("  single-graph: selfie u2netp scrfd mobilefacenet ppocr_det ppocr_rec maia");
+    eprintln!("    vocoder duration text");
+    eprintln!("  multi-graph: tinyclip");
+    eprintln!("  scrfd, ppocr_det take HEIGHT WIDTH; ppocr_rec takes WIDTH;");
+    eprintln!("  vocoder takes FRAMES; duration, text take CHARS; tinyclip takes LEN");
     std::process::exit(1)
 }
 
@@ -204,10 +208,124 @@ fn main() {
                 sha,
             )
         }
+        "vocoder" => {
+            let frames: u32 = dim1(49);
+            let asset = "speech/src/main/assets/supertonic/supertonic_voc.maml";
+            let (data, tensors, offsets, sha) =
+                load_v1(&root, asset, weights::graph::SUPERTONIC_VOC);
+            let recorded =
+                modelrunner::nets::supertonic_vocoder::record(&offsets, frames).expect("record");
+            (
+                NetSpec {
+                    name: "vocoder",
+                    asset,
+                    graph: weights::graph::SUPERTONIC_VOC,
+                    roles: vec!["latent"],
+                    description: "supertonic-vocoder fp16/int8 nchw (v2)",
+                },
+                recorded,
+                tensors,
+                data,
+                sha,
+            )
+        }
+        "duration" => {
+            let chars: u32 = dim1(55);
+            let asset = "speech/src/main/assets/supertonic/supertonic_dp.maml";
+            let (data, tensors, offsets, sha) =
+                load_v1(&root, asset, weights::graph::SUPERTONIC_DP);
+            let recorded =
+                modelrunner::nets::supertonic_duration::record(&offsets, chars).expect("record");
+            (
+                NetSpec {
+                    name: "duration",
+                    asset,
+                    graph: weights::graph::SUPERTONIC_DP,
+                    roles: vec!["char_ids", "style"],
+                    description: "supertonic-duration fp16/int8 nchw (v2)",
+                },
+                recorded,
+                tensors,
+                data,
+                sha,
+            )
+        }
+        "text" => {
+            let chars: u32 = dim1(55);
+            let asset = "speech/src/main/assets/supertonic/supertonic_ttl.maml";
+            let (data, tensors, offsets, sha) =
+                load_v1(&root, asset, weights::graph::SUPERTONIC_TTL);
+            let recorded =
+                modelrunner::nets::supertonic_text::record(&offsets, chars).expect("record");
+            (
+                NetSpec {
+                    name: "text",
+                    asset,
+                    graph: weights::graph::SUPERTONIC_TTL,
+                    roles: vec!["char_ids", "style"],
+                    description: "supertonic-text-encoder fp16 nchw (v2)",
+                },
+                recorded,
+                tensors,
+                data,
+                sha,
+            )
+        }
+        "tinyclip" => {
+            let len: u32 = dim1(16);
+            let asset = "photos/src/main/assets/clip/tinyclip.maml";
+            let (data, tensors, offsets, sha) = load_v1(&root, asset, weights::graph::TINYCLIP);
+            let image = modelrunner::nets::tinyclip::record(
+                &offsets,
+                modelrunner::nets::tinyclip::Mode::Image,
+            )
+            .expect("record image");
+            let text = modelrunner::nets::tinyclip::record(
+                &offsets,
+                modelrunner::nets::tinyclip::Mode::Text { len },
+            )
+            .expect("record text");
+            let emitted = emit::emit_graphs(
+                &tensors,
+                &data,
+                "tinyclip int8 nchw (v2)",
+                "maml2 emit_net_maml2",
+                sha,
+                &[
+                    emit::GraphSpec {
+                        recorded: &image,
+                        graph_name: "image",
+                        entry_name: "image",
+                        roles: &["pixels"],
+                    },
+                    emit::GraphSpec {
+                        recorded: &text,
+                        graph_name: "text",
+                        entry_name: "text",
+                        roles: &["embedded"],
+                    },
+                ],
+            )
+            .expect("emission succeeds");
+            let out_path = root.join(asset.replace(".maml", ".maml2"));
+            std::fs::write(&out_path, &emitted.bytes).expect("write the v2 file");
+            println!("tinyclip v2: {} nodes over 2 graphs", emitted.op_inventory.iter().map(|(_, n)| n).sum::<usize>());
+            println!("graph_digest: {}", hex(&emitted.graph_digest));
+            println!("wrote {}", out_path.display());
+            return;
+        }
         _ => usage(),
     };
     let _ = spec.graph;
     emit_and_check(&root, &spec, &recorded, &table, &data, source_sha256);
+}
+
+/// One positional dim with a default, for the singly-shaped nets.
+fn dim1(default: u32) -> u32 {
+    std::env::args()
+        .nth(2)
+        .map(|s| s.parse().unwrap_or_else(|_| usage()))
+        .unwrap_or(default)
 }
 
 /// Two positional dims (HEIGHT WIDTH) with defaults, for the shaped nets.

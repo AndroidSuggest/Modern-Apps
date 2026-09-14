@@ -183,6 +183,15 @@ fn depthwise(b: &mut Builder, l: &mut Layers, x: Id) -> Id {
 /// `[64, 1, chars + 1]` state, which is the tensor worth checking for parity, and the one value
 /// [`seconds`] exponentiates.
 pub fn build(weights: &dyn WeightSource, chars: u32) -> Result<Plan, String> {
+    Ok(record(weights, chars)?.plan)
+}
+
+/// Record the duration pass for an utterance of `chars` characters.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(weights: &dyn WeightSource, chars: u32) -> Result<crate::nets::Recorded, String> {
     if chars == 0 {
         return Err("a duration pass over no characters".into());
     }
@@ -255,7 +264,7 @@ pub fn build(weights: &dyn WeightSource, chars: u32) -> Result<Plan, String> {
     if l.next != TENSORS {
         return Err(format!("the forward pass claims {} tensors, not {TENSORS}", l.next));
     }
-    builder.finish(&[encoded, log_seconds])
+    builder.record(&[encoded, log_seconds], &crate::weights::Offsets::empty())
 }
 
 #[cfg(test)]

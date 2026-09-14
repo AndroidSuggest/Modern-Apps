@@ -302,6 +302,11 @@ fn infer_node(
             Ok(vec![Inferred { dims: vec![m, out_h, out_w], layout: computed_layout }])
         }
         fb::Op::MatMul => {
+            // Quantised convolution in file vocabulary: 1x1 projections and
+            // heads, but also strided/padded/grouped kernels (the patch
+            // projection, maia's grouped expansion). Geometry rides the same
+            // attrs as `Conv`; lowering routes by shape exactly as the
+            // hand-written pass does.
             if inputs.len() != 4 && inputs.len() != 3 {
                 return Err(err("MatMul wants [a, w, s, b] or [a, w, b]"));
             }
@@ -310,8 +315,16 @@ fn infer_node(
             if a.len() != 3 || w.len() < 2 {
                 return Err(err("MatMul shapes are not [c, h, w] / [m, ...]"));
             }
-            // Pointwise: `[m, 1, positions]`.
-            Ok(vec![Inferred { dims: vec![w[0], a[1], a[2]], layout: computed_layout }])
+            let kernel = attrs.ints("kernel")?;
+            let stride = attrs.ints("stride")?;
+            let dilation = attrs.ints("dilation")?;
+            let pads = attrs.ints("pads")?;
+            if kernel.len() != 2 || stride.len() != 2 || dilation.len() != 2 || pads.len() != 4 {
+                return Err(err("MatMul geometry attrs are not kernel/stride/dilation/pads"));
+            }
+            let out_h = conv_out(a[1], kernel[0], stride[0], dilation[0], pads[0] + pads[2]);
+            let out_w = conv_out(a[2], kernel[1], stride[1], dilation[1], pads[1] + pads[3]);
+            Ok(vec![Inferred { dims: vec![w[0], out_h, out_w], layout: computed_layout }])
         }
         fb::Op::ConvTranspose => {
             // Learned upsample: weights `[in_c, m, kh, kw]`, output
@@ -477,8 +490,10 @@ fn infer_node(
             Ok(vec![Inferred { dims: x, layout: computed_layout }])
         }
         fb::Op::Attention => {
-            // Two phases share one op: phase 0 scores (q, k -> map), phase 1
-            // apply (probs, v -> mixed). The `phase` attr says which.
+            // Four phases share one op: 0 scores (q, k -> map), 1 apply
+            // (probs, v -> mixed), 2 relative scores, 3 relative apply. The
+            // `phase` attr says which; relative phases carry the learned
+            // offset table as a third input plus `rel_offsets`.
             let phase = attrs.opt_int("phase")?.unwrap_or(0);
             if phase == 0 {
                 if inputs.len() != 2 {
@@ -491,7 +506,7 @@ fn infer_node(
                     return Err(err("Attention shapes are not sequences"));
                 }
                 Ok(vec![Inferred { dims: vec![heads, q[2], k[2]], layout: computed_layout }])
-            } else {
+            } else if phase == 1 {
                 if inputs.len() != 2 {
                     return Err(err("Attention apply wants [probs, v]"));
                 }
@@ -506,7 +521,67 @@ fn infer_node(
                 let kv_heads = attrs.opt_int("kv_heads")?.unwrap_or(heads);
                 let head_dim = v[0] / kv_heads.max(1);
                 Ok(vec![Inferred { dims: vec![heads * head_dim, 1, probs[1]], layout: computed_layout }])
+            } else if phase == 2 {
+                if inputs.len() != 3 {
+                    return Err(err("relative Attention scores wants [q, k, table]"));
+                }
+                let q = shape_of(inputs[0])?.dims.clone();
+                let k = shape_of(inputs[1])?.dims.clone();
+                let table = shape_of(inputs[2])?.dims.clone();
+                let heads = attrs.int("heads")?;
+                let offsets = attrs.int("rel_offsets")?;
+                if q.len() != 3 || k.len() != 3 {
+                    return Err(err("Attention shapes are not sequences"));
+                }
+                if q[2] != k[2] {
+                    return Err(err("relative offsets need one sequence, not two lengths"));
+                }
+                // Table is `[offsets, head_dim]` shared across heads.
+                if table.len() < 2 || table[0] != offsets {
+                    return Err(err(&format!(
+                        "relative table {table:?} does not hold {offsets} offsets"
+                    )));
+                }
+                Ok(vec![Inferred { dims: vec![heads, q[2], k[2]], layout: computed_layout }])
+            } else if phase == 3 {
+                if inputs.len() != 3 {
+                    return Err(err("relative Attention apply wants [probs, v, table]"));
+                }
+                let probs = shape_of(inputs[0])?.dims.clone();
+                let v = shape_of(inputs[1])?.dims.clone();
+                let table = shape_of(inputs[2])?.dims.clone();
+                let heads = attrs.int("heads")?;
+                let offsets = attrs.int("rel_offsets")?;
+                if probs.len() != 3 || v.len() != 3 {
+                    return Err(err("Attention shapes are not sequences"));
+                }
+                if table.len() < 2 || table[0] != offsets {
+                    return Err(err(&format!(
+                        "relative table {table:?} does not hold {offsets} offsets"
+                    )));
+                }
+                Ok(vec![Inferred { dims: vec![v[0], 1, probs[1]], layout: computed_layout }])
+            } else {
+                Err(err(&format!("Attention phase {phase} is not 0, 1, 2, or 3")))
             }
+        }
+        fb::Op::Embedding => {
+            if inputs.len() != 2 {
+                return Err(err("Embedding wants [ids, table]"));
+            }
+            let ids = shape_of(inputs[0])?.dims.clone();
+            let table = shape_of(inputs[1])?.dims.clone();
+            let rows = attrs.int("rows")?;
+            if table.len() < 2 || table[0] != rows {
+                return Err(err(&format!("embedding table {table:?} has {rows} rows")));
+            }
+            // Ids split across two lanes past fp16-exact range (v1
+            // `EMBED_LANE`): `[lanes, 1, T]` with lanes 1 or 2.
+            let lanes = if rows > crate::nets::EMBED_LANE as i32 { 2 } else { 1 };
+            if ids.len() != 3 || ids[0] != lanes || ids[1] != 1 {
+                return Err(err(&format!("embedding ids {ids:?} are not [{lanes}, 1, T]")));
+            }
+            Ok(vec![Inferred { dims: vec![table[1], 1, ids[2]], layout: computed_layout }])
         }
         fb::Op::Softmax => {
             if inputs.len() != 1 {

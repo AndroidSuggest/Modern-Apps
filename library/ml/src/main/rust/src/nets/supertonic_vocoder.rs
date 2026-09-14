@@ -164,13 +164,22 @@ pub fn interleave(channelled: &[f32]) -> Vec<f32> {
 /// output is `[512, 1, 6 * frames]`, which the caller reads transposed as
 /// `frames * SAMPLES_PER_FRAME` samples.
 pub fn build(weights: &dyn WeightSource, frames: u32) -> Result<Plan, String> {
+    Ok(record(weights, frames)?.plan)
+}
+
+/// Record the vocoder for a latent of `frames` frames.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(weights: &dyn WeightSource, frames: u32) -> Result<crate::nets::Recorded, String> {
     let l = &mut Layers { next: 0 };
     let mut builder = Builder::new(weights);
     let samples = sequence(&mut builder, l, frames)?;
     if l.next != TENSORS {
         return Err(format!("the forward pass claims {} tensors, not {TENSORS}", l.next));
     }
-    builder.finish(&[samples])
+    builder.record(&[samples], &crate::weights::Offsets::empty())
 }
 
 /// The vocoder's graph with its inputs declared, returning the sample tensor.

@@ -145,13 +145,15 @@ fn lowered_plan_schedules_like_v1() {
 ///
 /// Builds the v1 plan against the real `Offsets` (never the `Shapes` stub,
 /// whose index-as-address reads wrong weights on a real blob), lowers the
-/// v2 file, and requires bit-exact outputs through the same interpreter on
-/// the same invented inputs. Skips quietly when either asset is absent.
+/// v2 file's `entry` graph, and requires bit-exact outputs through the same
+/// interpreter on the same invented inputs. Skips quietly when either asset
+/// is absent.
 fn assert_bit_exact(
     what: &str,
     v1asset: &str,
     graph_id: u32,
     v2asset: &str,
+    entry: usize,
     build_v1: impl FnOnce(&crate::weights::Offsets) -> Result<crate::nets::Plan, String>,
     inputs: Vec<Vec<f32>>,
 ) {
@@ -179,7 +181,7 @@ fn assert_bit_exact(
     let verified = verify::verify(&bytes).expect("verify");
     let inferred = infer::infer(&verified).expect("infer");
     let bridge = lower::V2Weights::new(&verified).expect("bridge");
-    let plan = lower::lower(&verified, &inferred[0], &bridge, 0).expect("lower");
+    let plan = lower::lower(&verified, &inferred[entry], &bridge, entry).expect("lower");
     let refs: Vec<&[f32]> = inputs.iter().map(|v| v.as_slice()).collect();
     assert_eq!(
         refs.len(),
@@ -231,6 +233,7 @@ fn v2_plan_matches_v1_bit_exact() {
         "speech/src/main/assets/supertonic/supertonic_ve.maml",
         weights::graph::SUPERTONIC_VE,
         "speech/src/main/assets/supertonic/supertonic_ve.maml2",
+        0,
         |offsets| supertonic_sampler::build(offsets, 49, 55),
         spread_inputs(
             &[
@@ -257,6 +260,7 @@ fn v2_selfie_matches_v1_bit_exact() {
         "camera/src/main/assets/selfie_segmentation.maml",
         weights::graph::SELFIE,
         "camera/src/main/assets/selfie_segmentation.maml2",
+        0,
         |offsets| selfie::build(offsets),
         spread_inputs(&[(3usize, 256usize, 256usize)], 0.0),
     );
@@ -271,6 +275,7 @@ fn v2_u2netp_matches_v1_bit_exact() {
         "photos/src/main/assets/u2netp.maml",
         weights::graph::U2NETP,
         "photos/src/main/assets/u2netp.maml2",
+        0,
         |offsets| u2netp::build(offsets),
         spread_inputs(&[(3usize, 320usize, 320usize)], 1.0),
     );
@@ -285,6 +290,7 @@ fn v2_scrfd_matches_v1_bit_exact() {
         "photos/src/main/assets/scrfd_500m.maml",
         weights::graph::SCRFD,
         "photos/src/main/assets/scrfd_500m.maml2",
+        0,
         |offsets| scrfd::build(offsets, 640, 640),
         spread_inputs(&[(3usize, 640usize, 640usize)], 2.0),
     );
@@ -300,6 +306,7 @@ fn v2_mobilefacenet_matches_v1_bit_exact() {
         "photos/src/main/assets/w600k_mbf.maml",
         weights::graph::MOBILEFACENET,
         "photos/src/main/assets/w600k_mbf.maml2",
+        0,
         |offsets| mobilefacenet::build(offsets),
         spread_inputs(&[(3usize, 112usize, 112usize)], 3.0),
     );
@@ -314,6 +321,7 @@ fn v2_ppocr_det_matches_v1_bit_exact() {
         "library/ocr/src/main/assets/ppocr_det.maml",
         weights::graph::PPOCR_DET,
         "library/ocr/src/main/assets/ppocr_det.maml2",
+        0,
         |offsets| ppocr_det::build(offsets, 960, 960),
         spread_inputs(&[(3usize, 960usize, 960usize)], 4.0),
     );
@@ -328,6 +336,7 @@ fn v2_ppocr_rec_matches_v1_bit_exact() {
         "library/ocr/src/main/assets/ppocr_rec.maml",
         weights::graph::PPOCR_REC,
         "library/ocr/src/main/assets/ppocr_rec.maml2",
+        0,
         |offsets| ppocr_rec_extra::build(offsets, 320),
         spread_inputs(&[(3usize, 48usize, 320usize)], 5.0),
     );
@@ -343,6 +352,7 @@ fn v2_maia_matches_v1_bit_exact() {
         "games/chess/src/main/assets/maia3-5m.maml",
         weights::graph::MAIA,
         "games/chess/src/main/assets/maia3-5m.maml2",
+        0,
         |offsets| maia::build(offsets),
         spread_inputs(
             &[(
@@ -352,5 +362,83 @@ fn v2_maia_matches_v1_bit_exact() {
             )],
             6.0,
         ),
+    );
+}
+
+/// True numeric parity for the supertonic vocoder at 49 frames.
+#[test]
+fn v2_vocoder_matches_v1_bit_exact() {
+    use crate::nets::supertonic_vocoder;
+    assert_bit_exact(
+        "vocoder at 49 frames",
+        "speech/src/main/assets/supertonic/supertonic_voc.maml",
+        weights::graph::SUPERTONIC_VOC,
+        "speech/src/main/assets/supertonic/supertonic_voc.maml2",
+        0,
+        |offsets| supertonic_vocoder::build(offsets, 49),
+        spread_inputs(&[(24usize, 1usize, 294usize)], 7.0),
+    );
+}
+
+/// True numeric parity for the supertonic duration predictor at 55 chars
+/// (two outputs: the encoder state and the log-seconds).
+#[test]
+fn v2_duration_matches_v1_bit_exact() {
+    use crate::nets::supertonic_duration;
+    assert_bit_exact(
+        "duration at 55 chars",
+        "speech/src/main/assets/supertonic/supertonic_dp.maml",
+        weights::graph::SUPERTONIC_DP,
+        "speech/src/main/assets/supertonic/supertonic_dp.maml2",
+        0,
+        |offsets| supertonic_duration::build(offsets, 55),
+        spread_inputs(&[(2usize, 1usize, 56usize), (128usize, 1usize, 1usize)], 8.0),
+    );
+}
+
+/// True numeric parity for the supertonic text encoder at 55 chars
+/// (exercises relative attention and embeddings through the file).
+#[test]
+fn v2_text_matches_v1_bit_exact() {
+    use crate::nets::supertonic_text;
+    assert_bit_exact(
+        "text at 55 chars",
+        "speech/src/main/assets/supertonic/supertonic_ttl.maml",
+        weights::graph::SUPERTONIC_TTL,
+        "speech/src/main/assets/supertonic/supertonic_ttl.maml2",
+        0,
+        |offsets| supertonic_text::build(offsets, 55),
+        spread_inputs(&[(2usize, 1usize, 55usize), (256usize, 1usize, 50usize)], 9.0),
+    );
+}
+
+/// True numeric parity for TinyCLIP's vision tower: entry 0 of the first
+/// multi-graph v2 file.
+#[test]
+fn v2_tinyclip_image_matches_v1_bit_exact() {
+    use crate::nets::tinyclip;
+    assert_bit_exact(
+        "tinyclip image at 224x224",
+        "photos/src/main/assets/clip/tinyclip.maml",
+        weights::graph::TINYCLIP,
+        "photos/src/main/assets/clip/tinyclip.maml2",
+        0,
+        |offsets| tinyclip::build(offsets, tinyclip::Mode::Image),
+        spread_inputs(&[(3usize, 224usize, 224usize)], 10.0),
+    );
+}
+
+/// True numeric parity for TinyCLIP's text tower at 16 positions: entry 1.
+#[test]
+fn v2_tinyclip_text_matches_v1_bit_exact() {
+    use crate::nets::tinyclip;
+    assert_bit_exact(
+        "tinyclip text at 16 positions",
+        "photos/src/main/assets/clip/tinyclip.maml",
+        weights::graph::TINYCLIP,
+        "photos/src/main/assets/clip/tinyclip.maml2",
+        1,
+        |offsets| tinyclip::build(offsets, tinyclip::Mode::Text { len: 16 }),
+        spread_inputs(&[(256usize, 1usize, 16usize)], 11.0),
     );
 }

@@ -189,6 +189,15 @@ fn depthwise(b: &mut Builder, l: &mut Layers, x: Id, dilation: u32) -> Id {
 /// and the voice's `style_ttl` **transposed** to `[256, 1, 50]`. The output is
 /// `[256, 1, chars]`, which the sampler conditions on.
 pub fn build(weights: &dyn WeightSource, chars: u32) -> Result<Plan, String> {
+    Ok(record(weights, chars)?.plan)
+}
+
+/// Record the encoder for an utterance of `chars` characters.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(weights: &dyn WeightSource, chars: u32) -> Result<crate::nets::Recorded, String> {
     if chars == 0 {
         return Err("a text encoder pass over no characters".into());
     }
@@ -254,7 +263,7 @@ pub fn build(weights: &dyn WeightSource, chars: u32) -> Result<Plan, String> {
     if l.next != TENSORS {
         return Err(format!("the forward pass claims {} tensors, not {TENSORS}", l.next));
     }
-    builder.finish(&[out])
+    builder.record(&[out], &crate::weights::Offsets::empty())
 }
 
 #[cfg(test)]

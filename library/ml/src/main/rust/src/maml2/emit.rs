@@ -605,9 +605,12 @@ fn emit_nodes(
                     ));
                 }
                 nodes.push(EmittedNode {
-                    // v2 stores quantised convolutions as MatMul when 1x1
-                    // (the loader lowers by shape); the kernel dims say so.
-                    op: if kernel == (1, 1) { fb::Op::MatMul } else { fb::Op::Conv },
+                    // Quantised convolutions are always `MatMul` in file
+                    // vocabulary; the kernel/stride/pads/groups attrs carry
+                    // the geometry and the loader routes by shape (tiled,
+                    // GEMV, or untiled) exactly as the hand-written pass
+                    // does.
+                    op: fb::Op::MatMul,
                     inputs: vec![a, w, s, b],
                     outputs: vec![y],
                     attrs,
@@ -806,14 +809,62 @@ fn emit_nodes(
                     ],
                 });
             }
-            Node::Softmax { input, out, mode, .. } => {
+            Node::AttnScoresRelative { q, k, out, heads, scale, table, offsets } => {
+                let x = computed(q.0, id_map, emit_tensors);
+                let y_in = computed(k.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                let t = weights.fp16("relative table", table)?;
+                nodes.push(EmittedNode {
+                    op: fb::Op::Attention,
+                    inputs: vec![x, y_in, t],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("heads".into(), AttrValue::Int(heads as i32)),
+                        ("scale".into(), AttrValue::Float(scale)),
+                        ("phase".into(), AttrValue::Int(2)),
+                        ("rel_offsets".into(), AttrValue::Int(offsets as i32)),
+                    ],
+                });
+            }
+            Node::AttnApplyRelative { probs, v, out, heads, table, offsets } => {
+                let p = computed(probs.0, id_map, emit_tensors);
+                let vv = computed(v.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                let t = weights.fp16("relative table", table)?;
+                nodes.push(EmittedNode {
+                    op: fb::Op::Attention,
+                    inputs: vec![p, vv, t],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("heads".into(), AttrValue::Int(heads as i32)),
+                        ("phase".into(), AttrValue::Int(3)),
+                        ("rel_offsets".into(), AttrValue::Int(offsets as i32)),
+                    ],
+                });
+            }
+            Node::Embed { ids, out, table, rows } => {
+                let ii = computed(ids.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                let t = weights.fp16("embed table", table)?;
+                nodes.push(EmittedNode {
+                    op: fb::Op::Embedding,
+                    inputs: vec![ii, t],
+                    outputs: vec![y],
+                    attrs: vec![("rows".into(), AttrValue::Int(rows as i32))],
+                });
+            }
+            Node::Softmax { input, out, mode, sliding, window } => {
                 let x = computed(input.0, id_map, emit_tensors);
                 let y = computed(out.0, id_map, emit_tensors);
                 nodes.push(EmittedNode {
                     op: fb::Op::Softmax,
                     inputs: vec![x],
                     outputs: vec![y],
-                    attrs: vec![("mode".into(), AttrValue::Int(softmax_mode_code(mode)))],
+                    attrs: vec![
+                        ("mode".into(), AttrValue::Int(softmax_mode_code(mode))),
+                        ("sliding".into(), AttrValue::Bool(sliding)),
+                        ("window".into(), AttrValue::Int(window as i32)),
+                    ],
                 });
             }
             Node::Rotary { input, angles, out, heads, axes } => {
@@ -898,38 +949,22 @@ pub struct Emitted {
     pub op_inventory: Vec<(fb::Op, usize)>,
 }
 
-/// Emit a MAML v2 model from one recorded single-graph pass.
+/// File tensors named by node offsets (kernels, biases, scales, gammas):
+/// collect every resolved offset the nodes carry, inverted to file indices.
+/// A tensor marked read but named by no node is host-side data (the v1
+/// `host_tensor` contract: read on the CPU, never bound). A tensor neither
+/// read nor named cannot reach here — `Builder::record` fails it first.
 ///
-/// `recorded` is the [`Builder::record`] output at a fixed shape; `table` +
-/// `data` are the v1 file's tensor table and data section, whose weight
-/// bytes are stored verbatim into the v2 buffers. `description` names the
-/// model for humans; `converter_version` and `source_sha256` trace
-/// provenance. `graph_name` / `entry_name` / `roles` name the single graph,
-/// its entry point, and the entry's input roles (positional over the graph
-/// inputs; must cover them exactly).
-///
-/// The sampler's `emit_sampler` is this with its seven roles; every
-/// single-graph net shares the core.
-#[allow(clippy::too_many_arguments)]
-pub fn emit_graph(
-    recorded: &Recorded,
+/// Returns the quantised-kernel map (merged by the caller across graphs)
+/// plus the full ref set. Scales ride beside their kernel: marked
+/// referenced so the host check does not misclassify them (they are skipped
+/// in emission order, not emitted as host rows).
+fn collect_refs(
+    nodes: &[Node],
     table: &[WeightTensor],
-    data: &[u8],
-    description: &str,
-    converter_version: &str,
-    source_sha256: [u8; 32],
-    graph_name: &str,
-    entry_name: &str,
-    roles: &[&str],
-) -> Result<Emitted, String> {
-    // 1. Which file tensors are quantised kernels, and which are their scales.
-    let kernels = quant_kernels(&recorded.nodes, table, data)?;
+) -> Result<(HashMap<usize, WeightQuant>, HashMap<usize, ()>), String> {
+    let kernels = quant_kernels(nodes, table, &[])?;
     let scales = scale_indices(&kernels);
-    // File tensors named by node offsets (kernels, biases, scales, gammas):
-    // collect every resolved offset the nodes carry, inverted to file indices.
-    // A tensor marked read but named by no node is host-side data (the v1
-    // `host_tensor` contract: read on the CPU, never bound). A tensor neither
-    // read nor named cannot reach here — `Builder::record` fails it first.
     let mut node_refs: HashMap<usize, ()> = HashMap::new();
     {
         let mut word_to_file: HashMap<u32, usize> = HashMap::new();
@@ -955,7 +990,7 @@ pub fn emit_graph(
                 elem_to_file.get(&offset).copied()
             }
         };
-        for node in &recorded.nodes {
+        for node in nodes {
             match node {
                 Node::Conv { weight, bias, act_weight, act, .. } => {
                     // The fp16 kernel/bias resolve through elem offsets; find
@@ -1027,6 +1062,107 @@ pub fn emit_graph(
             node_refs.insert(*scale, ());
         }
     }
+    Ok((kernels, node_refs))
+}
+/// One graph in a multi-graph emission: its recording plus its names.
+pub struct GraphSpec<'a> {
+    /// The recorded pass.
+    pub recorded: &'a Recorded,
+    /// Graph name in the file.
+    pub graph_name: &'a str,
+    /// Entry point name over this graph.
+    pub entry_name: &'a str,
+    /// Input roles, positional over the graph inputs.
+    pub roles: &'a [&'a str],
+}
+
+/// Emit a MAML v2 model from one recorded single-graph pass.
+///
+/// `recorded` is the [`Builder::record`] output at a fixed shape; `table` +
+/// `data` are the v1 file's tensor table and data section, whose weight
+/// bytes are stored verbatim into the v2 buffers. `description` names the
+/// model for humans; `converter_version` and `source_sha256` trace
+/// provenance. `graph_name` / `entry_name` / `roles` name the single graph,
+/// its entry point, and the entry's input roles (positional over the graph
+/// inputs; must cover them exactly).
+///
+/// Thin wrapper over [`emit_graphs`]; every single-graph net shares it, and
+/// the sampler's `emit_sampler` shares it with its seven roles.
+#[allow(clippy::too_many_arguments)]
+pub fn emit_graph(
+    recorded: &Recorded,
+    table: &[WeightTensor],
+    data: &[u8],
+    description: &str,
+    converter_version: &str,
+    source_sha256: [u8; 32],
+    graph_name: &str,
+    entry_name: &str,
+    roles: &[&str],
+) -> Result<Emitted, String> {
+    emit_graphs(
+        table,
+        data,
+        description,
+        converter_version,
+        source_sha256,
+        &[GraphSpec { recorded, graph_name, entry_name, roles }],
+    )
+}
+
+/// Emit a MAML v2 model from several recorded passes sharing one tensor table.
+///
+/// The multi-graph path (TinyCLIP's towers, whisper's encoder/decoder, an
+/// LLM's prefill/decode): weights emit ONCE from the union of the graphs'
+/// refs, then each graph's inputs/nodes/outputs emit into disjoint tensor
+/// ranges, and the model digest folds every graph in order. A weight shared
+/// by two graphs is one row; a tensor read by no graph is dead weight the
+/// file refuses to carry; a tensor marked by one graph but referenced by
+/// none is host data. Per-record `Builder::record` gates already proved each
+/// pass self-consistent; the union checks here prove the file is.
+pub fn emit_graphs(
+    table: &[WeightTensor],
+    data: &[u8],
+    description: &str,
+    converter_version: &str,
+    source_sha256: [u8; 32],
+    specs: &[GraphSpec<'_>],
+) -> Result<Emitted, String> {
+    if specs.is_empty() {
+        return Err("a model with no graphs".into());
+    }
+    // 1. Union refs across graphs: quantised kernels (with cross-graph kind
+    // agreement — one kernel, one quantisation), every node-named file
+    // tensor, and the read flags.
+    let mut kernels: HashMap<usize, WeightQuant> = HashMap::new();
+    let mut node_refs: HashMap<usize, ()> = HashMap::new();
+    let mut read_all = vec![false; table.len()];
+    for spec in specs {
+        let (kinds, refs) = collect_refs(&spec.recorded.nodes, table)?;
+        for (index, kind) in kinds {
+            match kernels.insert(index, kind) {
+                Some(previous) if previous != kind => {
+                    return Err(format!("tensor {index} read with two quant kinds"));
+                }
+                _ => {}
+            }
+        }
+        node_refs.extend(refs);
+        for (index, mark) in spec.recorded.read.iter().enumerate() {
+            if *mark && index < read_all.len() {
+                read_all[index] = true;
+            }
+        }
+    }
+    if let Some(index) = read_all.iter().position(|&read| !read) {
+        return Err(format!(
+            "tensor {index} of {} is read by no graph; a v2 file carries no dead weights",
+            read_all.len()
+        ));
+    }
+    let scales = scale_indices(&kernels);
+
+
 
     // 2. Emit the weight tensors in file order (skipping scales: they ride
     //    beside their kernel), assigning v2 tensor indices.
@@ -1039,10 +1175,11 @@ pub fn emit_graph(
             continue;
         }
         // Host tensors are read on the CPU, never bound: they still occupy a
-        // v2 tensor row (placement HOST, no buffer) so the graph can name them.
-        // Named by no node but marked read = the v1 `host_tensor` contract.
+        // v2 tensor row (placement HOST, no buffer) so the graphs can name
+        // them. Named by no graph but marked by one = the v1 `host_tensor`
+        // contract, unioned across graphs.
         let is_host = !node_refs.contains_key(&index)
-            && recorded.read.get(index).copied().unwrap_or(false);
+            && read_all.get(index).copied().unwrap_or(false);
         if is_host {
             let tensor = table.get(index).copied().ok_or_else(|| {
                 format!("tensor {index} of {}: out of range", table.len())
@@ -1080,56 +1217,90 @@ pub fn emit_graph(
     let _ = weight_rows;
     let weights = WeightLookup::new(table, &id_map.weights)?;
 
-    // 3. Graph inputs: declaration order = binding order.
-    let mut input_ids = Vec::with_capacity(recorded.inputs.len());
-    for input in &recorded.inputs {
-        let v2 = id_map.alloc();
-        id_map.computed.insert(input.0, v2);
-        input_ids.push(v2);
+    // 3-5. Per graph: inputs (declaration order = binding order), nodes +
+    // computed tensors in first-use order, exact outputs. Each graph gets a
+    // fresh tensor-id map (recordings number their ids from zero) over the
+    // shared weight map and allocator, so ranges stay disjoint.
+    struct PerGraph {
+        nodes: Vec<EmittedNode>,
+        input_ids: Vec<i32>,
+        outputs: Vec<i32>,
+        name: String,
     }
     let mut emit_tensors: Vec<EmittedTensor> = Vec::new();
-    for input in &recorded.inputs {
-        let shape = recorded.shapes.get(input.0).copied().unwrap_or(Shape::new(0, 0, 0));
-        emit_tensors.push(EmittedTensor {
-            name: format!("in{}", input.0),
-            dims: vec![shape.c as i32, shape.h as i32, shape.w as i32],
-            dtype: fb::DType::F16,
-            layout: fb::Layout::NCHW,
-            bytes: Vec::new(),
-            elems: shape.len() as u64,
-            quant: WeightQuant::None,
+    let mut graphs: Vec<PerGraph> = Vec::with_capacity(specs.len());
+    for spec in specs {
+        let recorded = spec.recorded;
+        id_map.computed = HashMap::new();
+        let mut input_ids = Vec::with_capacity(recorded.inputs.len());
+        for input in &recorded.inputs {
+            let v2 = id_map.alloc();
+            id_map.computed.insert(input.0, v2);
+            input_ids.push(v2);
+        }
+        for input in &recorded.inputs {
+            let shape = recorded.shapes.get(input.0).copied().unwrap_or(Shape::new(0, 0, 0));
+            emit_tensors.push(EmittedTensor {
+                name: format!("in{}", input.0),
+                dims: vec![shape.c as i32, shape.h as i32, shape.w as i32],
+                dtype: fb::DType::F16,
+                layout: fb::Layout::NCHW,
+                bytes: Vec::new(),
+                elems: shape.len() as u64,
+                quant: WeightQuant::None,
+            });
+        }
+        // `emit_nodes` allocates computed tensors in first-use order and
+        // records tensor-id → v2-index in `seen`.
+        let mut seen: HashMap<usize, i32> = HashMap::new();
+        let nodes = emit_nodes(recorded, &mut id_map, &weights, &mut emit_tensors, &mut seen)?;
+
+        // Outputs: the v2 index of each recorded output tensor id. Exact —
+        // no shape matching, no last-writer heuristics.
+        let plan_outputs: Vec<i32> = recorded
+            .outputs
+            .iter()
+            .map(|id| {
+                seen.get(&id.index()).copied().ok_or_else(|| {
+                    format!("output tensor {} was never emitted", id.index())
+                })
+            })
+            .collect::<Result<Vec<i32>, String>>()?;
+        // Roles must cover the graph inputs exactly: a missing role is an
+        // input the bridge cannot bind, an extra one a name with no tensor.
+        if spec.roles.len() != input_ids.len() {
+            return Err(format!(
+                "entry point {} declares {} roles for {} graph inputs",
+                spec.entry_name,
+                spec.roles.len(),
+                input_ids.len()
+            ));
+        }
+        graphs.push(PerGraph {
+            nodes,
+            input_ids,
+            outputs: plan_outputs,
+            name: spec.graph_name.to_string(),
         });
     }
-    // 4. Nodes + computed tensors.
-    // `emit_nodes` allocates computed tensors in first-use order and records
-    // tensor-id → v2-index in `seen`.
-    let mut seen: HashMap<usize, i32> = HashMap::new();
-    let nodes = emit_nodes(recorded, &mut id_map, &weights, &mut emit_tensors, &mut seen)?;
-
-    // 5. Outputs: the v2 index of each recorded output tensor id. Exact —
-    // no shape matching, no last-writer heuristics.
-    let plan_outputs: Vec<i32> = recorded
-        .outputs
-        .iter()
-        .map(|id| {
-            seen.get(&id.index()).copied().ok_or_else(|| {
-                format!("output tensor {} was never emitted", id.index())
-            })
-        })
-        .collect::<Result<Vec<i32>, String>>()?;
 
     // 6. Canonical digest over the graph-indexed op/edge/attr sequences
     // (spec section 9.2): the graph index first, then the nodes in the same
-    // order `infer` replays. Model-wide so a second graph (prefill +
-    // decode, twin towers) cannot smuggle an unaudited topology past the
-    // gate; single-graph files hash index 0, then fold once like every
-    // model with one graph.
-    let mut hasher = Sha256::new();
-    hasher.update(0u32.to_le_bytes());
-    digest_nodes(&mut hasher, &nodes);
-    let graph0: [u8; 32] = hasher.finalize().into();
+    // order `infer` replays, folded across graphs in model order. A second
+    // graph (prefill + decode, twin towers) cannot smuggle an unaudited
+    // topology past the gate; single-graph files hash index 0, then fold
+    // once like every model with one graph.
+    let mut graph_digests: Vec<[u8; 32]> = Vec::with_capacity(graphs.len());
+    for (index, graph) in graphs.iter().enumerate() {
+        let mut hasher = Sha256::new();
+        hasher.update((index as u32).to_le_bytes());
+        digest_nodes(&mut hasher, &graph.nodes);
+        graph_digests.push(hasher.finalize().into());
+    }
     let mut model_hasher = Sha256::new();
-    model_hasher.update(graph0);
+    for digest in &graph_digests {
+        model_hasher.update(digest);
+    }
     let graph_digest: [u8; 32] = model_hasher.finalize().into();
 
     // 7. Assemble the FlatBuffers model.
@@ -1138,40 +1309,37 @@ pub fn emit_graph(
     // reference no buffer.
     let buffer_offsets: Vec<flatbuffers::WIPOffset<fb::Buffer<'_>>> = Vec::new();
     let _ = buffer_offsets;
-    // Roles must cover the graph inputs exactly: a missing role is an input
-    // the bridge cannot bind, an extra one a name with no tensor.
-    if roles.len() != input_ids.len() {
-        return Err(format!(
-            "entry point {entry_name} declares {} roles for {} graph inputs",
-            roles.len(),
-            input_ids.len()
-        ));
-    }
     // NOTE: assembly continues below; tensor/buffer vectors need the payloads
     // built first. The full builder sequence is in `assemble`.
+    let assembled_graphs: Vec<AssembledGraph<'_>> = graphs
+        .iter()
+        .map(|graph| AssembledGraph {
+            nodes: &graph.nodes,
+            input_ids: &graph.input_ids,
+            outputs: &graph.outputs,
+            name: &graph.name,
+        })
+        .collect();
     let assembled = assemble(
         &mut builder,
         &emitted,
         &emit_tensors,
-        &nodes,
-        &input_ids,
-        &plan_outputs,
-        recorded,
+        &assembled_graphs,
+        specs,
         description,
         converter_version,
         source_sha256,
         graph_digest,
-        graph_name,
-        entry_name,
-        roles,
     )?;
     let _ = assembled;
 
     let mut op_inventory: Vec<(fb::Op, usize)> = Vec::new();
-    for node in &nodes {
-        match op_inventory.iter_mut().find(|(op, _)| *op == node.op) {
-            Some((_, n)) => *n += 1,
-            None => op_inventory.push((node.op, 1)),
+    for graph in &graphs {
+        for node in &graph.nodes {
+            match op_inventory.iter_mut().find(|(op, _)| *op == node.op) {
+                Some((_, n)) => *n += 1,
+                None => op_inventory.push((node.op, 1)),
+            }
         }
     }
     op_inventory.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
@@ -1213,23 +1381,30 @@ pub fn emit_sampler(
     )
 }
 
+/// One emitted graph: its nodes plus the tensor refs the file needs.
+struct AssembledGraph<'a> {
+    /// Nodes in file (topological) order.
+    nodes: &'a [EmittedNode],
+    /// Graph inputs, declaration order = binding order.
+    input_ids: &'a [i32],
+    /// Graph outputs.
+    outputs: &'a [i32],
+    /// Graph name.
+    name: &'a str,
+}
+
 /// Build the FlatBuffers vectors and finish the model.
 #[allow(clippy::too_many_arguments)]
 fn assemble(
     builder: &mut flatbuffers::FlatBufferBuilder<'_>,
     emitted: &[EmittedTensor],
     computed: &[EmittedTensor],
-    nodes: &[EmittedNode],
-    input_ids: &[i32],
-    outputs: &[i32],
-    recorded: &Recorded,
+    graphs: &[AssembledGraph<'_>],
+    specs: &[GraphSpec<'_>],
     description: &str,
     converter_version: &str,
     source_sha256: [u8; 32],
     graph_digest: [u8; 32],
-    graph_name: &str,
-    entry_name: &str,
-    roles: &[&str],
 ) -> Result<(), String> {
     // Weight payloads become Buffers; each emitted weight tensor points at
     // its buffer. Computed tensors (buffer -1) and host tensors (no bytes)
@@ -1251,7 +1426,6 @@ fn assemble(
     // Quantization structs are inline; build the per-tensor Tensor tables.
     // Scale refs: the kernel's `quant` names the v1 scale file index, which
     // the weight map already turned into a v2 tensor index.
-    let _ = recorded;
     let mut tensors: Vec<flatbuffers::WIPOffset<fb::Tensor<'_>>> = Vec::new();
     // v2 tensor index → position in `tensors`, for scale refs. Weights were
     // allocated in emission order starting at 0; inputs and computed follow.
@@ -1338,88 +1512,96 @@ fn assemble(
     }
     let tensors = builder.create_vector(&tensors);
 
-    // Nodes with typed attributes.
-    let mut node_offsets = Vec::with_capacity(nodes.len());
-    for node in nodes {
-        let inputs = builder.create_vector(&node.inputs);
-        let outputs = builder.create_vector(&node.outputs);
-        let mut attr_offsets = Vec::with_capacity(node.attrs.len());
-        for (name, attr) in &node.attrs {
-            let name = builder.create_string(name);
-            let (value_type, value) = match attr {
-                AttrValue::Int(v) => {
-                    let t = fb::AttrInt::create(builder, &fb::AttrIntArgs { value: *v });
-                    (fb::AttrValue::AttrInt, t.as_union_value())
-                }
-                AttrValue::Ints(vs) => {
-                    let v = builder.create_vector(vs);
-                    let t = fb::AttrInts::create(builder, &fb::AttrIntsArgs { value: Some(v) });
-                    (fb::AttrValue::AttrInts, t.as_union_value())
-                }
-                AttrValue::Float(v) => {
-                    let t = fb::AttrFloat::create(builder, &fb::AttrFloatArgs { value: *v });
-                    (fb::AttrValue::AttrFloat, t.as_union_value())
-                }
-                AttrValue::Bool(v) => {
-                    let t = fb::AttrBool::create(builder, &fb::AttrBoolArgs { value: *v });
-                    (fb::AttrValue::AttrBool, t.as_union_value())
-                }
-            };
-            attr_offsets.push(fb::Attribute::create(
+    // Nodes with typed attributes, per graph. Hoisted per graph (not one
+    // shared loop) because the builder borrows mutably per create call.
+    let mut graph_offsets = Vec::with_capacity(graphs.len());
+    for graph in graphs {
+        let mut node_offsets = Vec::with_capacity(graph.nodes.len());
+        for node in graph.nodes {
+            let inputs = builder.create_vector(&node.inputs);
+            let outputs = builder.create_vector(&node.outputs);
+            let mut attr_offsets = Vec::with_capacity(node.attrs.len());
+            for (name, attr) in &node.attrs {
+                let name = builder.create_string(name);
+                let (value_type, value) = match attr {
+                    AttrValue::Int(v) => {
+                        let t = fb::AttrInt::create(builder, &fb::AttrIntArgs { value: *v });
+                        (fb::AttrValue::AttrInt, t.as_union_value())
+                    }
+                    AttrValue::Ints(vs) => {
+                        let v = builder.create_vector(vs);
+                        let t = fb::AttrInts::create(builder, &fb::AttrIntsArgs { value: Some(v) });
+                        (fb::AttrValue::AttrInts, t.as_union_value())
+                    }
+                    AttrValue::Float(v) => {
+                        let t = fb::AttrFloat::create(builder, &fb::AttrFloatArgs { value: *v });
+                        (fb::AttrValue::AttrFloat, t.as_union_value())
+                    }
+                    AttrValue::Bool(v) => {
+                        let t = fb::AttrBool::create(builder, &fb::AttrBoolArgs { value: *v });
+                        (fb::AttrValue::AttrBool, t.as_union_value())
+                    }
+                };
+                attr_offsets.push(fb::Attribute::create(
+                    builder,
+                    &fb::AttributeArgs { name: Some(name), value_type, value: Some(value) },
+                ));
+            }
+            let attrs = builder.create_vector(&attr_offsets);
+            node_offsets.push(fb::Node::create(
                 builder,
-                &fb::AttributeArgs { name: Some(name), value_type, value: Some(value) },
+                &fb::NodeArgs {
+                    op: node.op,
+                    inputs: Some(inputs),
+                    outputs: Some(outputs),
+                    attrs: Some(attrs),
+                    payload: None,
+                },
             ));
         }
-        let attrs = builder.create_vector(&attr_offsets);
-        node_offsets.push(fb::Node::create(
+        let nodes = builder.create_vector(&node_offsets);
+        // The graph's tensor scope is every v2 tensor.
+        let tensor_count = emitted.len() + computed.len();
+        let scope: Vec<i32> = (0..tensor_count as i32).collect();
+        let scope = builder.create_vector(&scope);
+        let graph_inputs = builder.create_vector(graph.input_ids);
+        let graph_outputs = builder.create_vector(graph.outputs);
+        let graph_name = builder.create_string(graph.name);
+        graph_offsets.push(fb::Graph::create(
             builder,
-            &fb::NodeArgs {
-                op: node.op,
-                inputs: Some(inputs),
-                outputs: Some(outputs),
-                attrs: Some(attrs),
-                payload: None,
+            &fb::GraphArgs {
+                name: Some(graph_name),
+                tensors: Some(scope),
+                nodes: Some(nodes),
+                inputs: Some(graph_inputs),
+                outputs: Some(graph_outputs),
             },
         ));
     }
-    let nodes = builder.create_vector(&node_offsets);
-    // The graph's tensor scope is every v2 tensor.
-    let tensor_count = emitted.len() + computed.len();
-    let scope: Vec<i32> = (0..tensor_count as i32).collect();
-    let scope = builder.create_vector(&scope);
-    let graph_inputs = builder.create_vector(input_ids);
-    let graph_outputs = builder.create_vector(outputs);
-    let graph_name = builder.create_string(graph_name);
-    let graph = fb::Graph::create(
-        builder,
-        &fb::GraphArgs {
-            name: Some(graph_name),
-            tensors: Some(scope),
-            nodes: Some(nodes),
-            inputs: Some(graph_inputs),
-            outputs: Some(graph_outputs),
-        },
-    );
-    let graphs = builder.create_vector(&[graph]);
+    let graphs = builder.create_vector(&graph_offsets);
 
-    // Entry point over graph 0. Roles bind positionally to the graph inputs;
-    // the caller guarantees they cover the inputs exactly.
-    let entry_name = builder.create_string(entry_name);
-    let roles: Vec<flatbuffers::WIPOffset<&str>> = roles
-        .iter()
-        .map(|role| builder.create_string(role))
-        .collect();
-    let roles = builder.create_vector(&roles);
-    let entry_point = fb::EntryPoint::create(
-        builder,
-        &fb::EntryPointArgs {
-            name: Some(entry_name),
-            graph: 0,
-            inputs: Some(roles),
-            step_uniforms: None,
-        },
-    );
-    let entry_points = builder.create_vector(&[entry_point]);
+    // One entry point per spec, over its graph by model order. Roles bind
+    // positionally to the graph inputs; the driver checked coverage.
+    let mut entry_offsets = Vec::with_capacity(specs.len());
+    for (index, spec) in specs.iter().enumerate() {
+        let entry_name = builder.create_string(spec.entry_name);
+        let roles: Vec<flatbuffers::WIPOffset<&str>> = spec
+            .roles
+            .iter()
+            .map(|role| builder.create_string(role))
+            .collect();
+        let roles = builder.create_vector(&roles);
+        entry_offsets.push(fb::EntryPoint::create(
+            builder,
+            &fb::EntryPointArgs {
+                name: Some(entry_name),
+                graph: index as u32,
+                inputs: Some(roles),
+                step_uniforms: None,
+            },
+        ));
+    }
+    let entry_points = builder.create_vector(&entry_offsets);
 
     let description = builder.create_string(description);
     let converter_version = builder.create_string(converter_version);

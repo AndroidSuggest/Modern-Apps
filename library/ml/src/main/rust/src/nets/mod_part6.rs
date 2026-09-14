@@ -465,4 +465,36 @@ impl<'a> Builder<'a> {
         self.nodes.push(Node::AttnScoresRelative { q, k, out, heads, scale, table, offsets });
         out
     }
+
+    /// [`Builder::attn_scores_relative`] with a resolved table offset rather
+    /// than a table index.
+    ///
+    /// As [`Builder::conv_raw`]: the loader validated shapes at inference, so
+    /// lowering only translates addressing.
+    pub fn attn_scores_relative_raw(
+        &mut self,
+        q: Id,
+        k: Id,
+        heads: u32,
+        scale: f32,
+        table: u32,
+        offsets: u32,
+    ) -> Id {
+        let (out, _) = self.score_map(q, k, heads, heads);
+        self.nodes.push(Node::AttnScoresRelative { q, k, out, heads, scale, table, offsets });
+        out
+    }
+
+    /// [`Builder::embed`] with a resolved table offset rather than a table
+    /// index.
+    ///
+    /// As [`Builder::conv_raw`]: the loader validated shapes at inference, so
+    /// lowering only translates addressing. `rows`/`channels` are the table's
+    /// stored dims.
+    pub fn embed_raw(&mut self, ids: Id, table: u32, rows: u32, channels: u32) -> Id {
+        let shape = self.shape_of(ids);
+        let out = self.tensor(Shape::new(channels, 1, shape.w));
+        self.nodes.push(Node::Embed { ids, out, table, rows });
+        out
+    }
 }

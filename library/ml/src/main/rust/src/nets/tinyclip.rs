@@ -245,14 +245,30 @@ fn encoder_layer(b: &mut Builder, l: &mut Layers, x: Id, causal: bool) -> Id {
 
 /// Build one of TinyCLIP's two passes. See [`Mode`].
 pub fn build(weights: &dyn WeightSource, mode: Mode) -> Result<Plan, String> {
+    Ok(record(weights, mode)?.plan)
+}
+
+/// Record one of TinyCLIP's two passes: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the bodies verbatim. See [`Builder::record`].
+/// Each pass names the other's tensors host (the multi-pass file idiom);
+/// the union check lives in the v2 emitter, which holds both recordings.
+pub fn record(weights: &dyn WeightSource, mode: Mode) -> Result<crate::nets::Recorded, String> {
     match mode {
-        Mode::Image => image(weights),
-        Mode::Text { len } => text(weights, len),
+        Mode::Image => image_record(weights),
+        Mode::Text { len } => text_record(weights, len),
     }
 }
 
 /// The vision tower over one 224x224 image.
 fn image(weights: &dyn WeightSource) -> Result<Plan, String> {
+    Ok(image_record(weights)?.plan)
+}
+
+/// The recording behind [`image`].
+fn image_record(weights: &dyn WeightSource) -> Result<crate::nets::Recorded, String> {
     let mut builder = Builder::new(weights);
     let b = &mut builder;
     name_host_tensors(b, PATCH_CONV..TOKENS);
@@ -288,11 +304,16 @@ fn image(weights: &dyn WeightSource) -> Result<Plan, String> {
     if head.next != TOKENS {
         return Err(format!("the visual projection ends at {}, not {TOKENS}", head.next));
     }
-    builder.finish(&[projected])
+    builder.record(&[projected], &crate::weights::Offsets::empty())
 }
 
 /// The text tower over `len` already-embedded positions.
 fn text(weights: &dyn WeightSource, len: u32) -> Result<Plan, String> {
+    Ok(text_record(weights, len)?.plan)
+}
+
+/// The recording behind [`text`].
+fn text_record(weights: &dyn WeightSource, len: u32) -> Result<crate::nets::Recorded, String> {
     if len == 0 {
         return Err("a text pass over no tokens".into());
     }
@@ -318,7 +339,7 @@ fn text(weights: &dyn WeightSource, len: u32) -> Result<Plan, String> {
     if head.next != TENSORS {
         return Err(format!("the text projection ends at {}, not {TENSORS}", head.next));
     }
-    builder.finish(&[projected])
+    builder.record(&[projected], &crate::weights::Offsets::empty())
 }
 
 /// Name every tensor **outside** `read` as one this pass does not touch.

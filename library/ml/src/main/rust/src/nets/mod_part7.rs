@@ -24,6 +24,24 @@ impl<'a> Builder<'a> {
         out
     }
 
+    /// [`Builder::attn_apply_relative`] with a resolved table offset rather
+    /// than a table index.
+    ///
+    /// As [`Builder::conv_raw`]: the loader validated shapes at inference, so
+    /// lowering only translates addressing.
+    pub fn attn_apply_relative_raw(
+        &mut self,
+        probs: Id,
+        v: Id,
+        heads: u32,
+        table: u32,
+        offsets: u32,
+    ) -> Id {
+        let out = self.mixed(probs, v, heads);
+        self.nodes.push(Node::AttnApplyRelative { probs, v, out, heads, table, offsets });
+        out
+    }
+
     /// Attention scores over a backward sliding window of `band` keys, as a `[heads, T, band]`
     /// band, with the relative-position term and the `cap` logit softcap fused in.
     ///
