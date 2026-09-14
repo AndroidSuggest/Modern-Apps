@@ -124,4 +124,5 @@
     <string name="local_network_message">%1$s tundub olema seade või sait sinu kohtvõrgus. Enne selle lehe laadimist vajab Android luba kohtvõrgu päringute käivitamiseks.</string>
     <string name="toolbar_at_bottom">Tööriistariba all ääres</string>
     <string name="keeps_the_address_bar_within_thumb_reach">Kuvab aadressi- ja tööriistariba pöidlavajutuse kaugusel</string>
+    <string name="content_filter_blocked_html"><![CDATA[<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:sans-serif;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#111;color:#eee}main{max-width:22rem;padding:2rem;text-align:center}h1{font-size:1.25rem;font-weight:600;margin:0 0 .5rem}p{margin:0;opacity:.7;line-height:1.5}</style></head><body><main><h1>Site blocked</h1><p>Veebisisu filtreerimine on selles seadmes lülitatud sisse. Kui arvad, et see on viga, siis proovi küsida lisateavet sellelt, kes seda võis teha.</p></main></body></html>]]></string>
 </resources>
