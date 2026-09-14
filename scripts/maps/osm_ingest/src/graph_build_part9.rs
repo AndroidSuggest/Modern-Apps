@@ -447,4 +447,4 @@
         // node at another node's edge range and the build would report success.
         assert_eq!(cap_u32("directed edge", u64::from(u32::MAX)).unwrap(), u32::MAX);
         let err = cap_u32("directed edge", u64::from(u32::MAX) + 1).unwrap_err();
-        assert!(err.0.contains("directed edge"), "{}", err.0);
+        assert!(err.0.contains("directed edge"), "{}", err.0);    }

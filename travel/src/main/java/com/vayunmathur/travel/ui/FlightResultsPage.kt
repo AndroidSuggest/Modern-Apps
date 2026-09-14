@@ -45,6 +45,12 @@ import com.vayunmathur.travel.util.FlightResultsActions
 import com.vayunmathur.travel.util.FlightResultsState
 import com.vayunmathur.travel.util.OfferSort
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.searchFlights
+import com.vayunmathur.travel.util.selectOffer
+import com.vayunmathur.travel.util.setFareBrandFilter
+import com.vayunmathur.travel.util.setMaxStopsFilter
+import com.vayunmathur.travel.util.setSort
+import com.vayunmathur.travel.util.toggleAirlineFilter
 import androidx.compose.ui.res.stringResource
 
 /** Binds [TravelViewModel] and the back stack to the stateless [FlightResultsScreen]. */

@@ -28,7 +28,6 @@ import com.vayunmathur.auto.platform.MicSourceChannel
 import com.vayunmathur.auto.platform.CallCardPush
 import com.vayunmathur.auto.platform.MusicCaptureSinkHolder
 import com.vayunmathur.auto.platform.NavGuidanceMonitor
-import com.vayunmathur.auto.platform.CarMapsMirror
 import com.vayunmathur.auto.platform.NavStatusChannel
 import com.vayunmathur.auto.platform.NightSource
 import com.vayunmathur.auto.platform.PhoneStatusMonitor
@@ -307,12 +306,13 @@ class ProjectionService : Service() {
             onEvent = AutoSessionState::onAudioEvent,
         ).also { it.start() }
 
-        // Guidance + map mirror start with the session too: fixes flow
-        // from the first tick, and the mirror attaches when the nav
-        // card's TextureView is ready (or never, if the card is gone).
-        mapsMirror = CarMapsMirror(this)
+        // Guidance + the car-app host start with the session too: fixes flow
+        // from the first tick, and the host binds MapsCarAppService so the
+        // nav card renders whatever Maps publishes (its own surface +
+        // NavigationTemplate) instead of MA Auto re-rendering a second map.
+        // Owned by CarAppHostSession (split for the 800-line limit).
+        carAppHostSession.start()
         guidanceMonitor = NavGuidanceMonitor(this) { snapshot ->
-            mapsMirror?.render(snapshot)
             video?.setNavSnapshot(snapshot)
             // ch7 live values: the fix folds into the same last-known
             // snapshot the head-unit batches fold into (HANDOFF.md section
@@ -373,8 +373,7 @@ class ProjectionService : Service() {
             tts = null
             guidanceMonitor?.stop()
             guidanceMonitor = null
-            mapsMirror?.release()
-            mapsMirror = null
+            carAppHostSession.stop()
             MusicCaptureService.stop(this)
             MusicCaptureSinkHolder.sink = null
             // Unowned services need no teardown: their channels opened
@@ -573,13 +572,14 @@ class ProjectionService : Service() {
     private var phoneStatusMonitor: PhoneStatusMonitor? = null
 
     /**
-     * Session-scoped guidance + map mirror, like TTS: started with the
-     * session (position/puck are live from the first fix), stopped with it.
-     * Snapshots render into the mirror and push the nav banner; with no
-     * location permission the monitor holds last-known and the map stays put.
+     * Session-scoped guidance, like TTS: started with the session (position
+     * live from the first fix), stopped with it. Snapshots push the nav
+     * banner fallback; with no location permission the monitor holds
+     * last-known. The car-app host rides alongside through
+     * [carAppHostSession] (split for the 800-line limit).
      */
     private var guidanceMonitor: NavGuidanceMonitor? = null
-    private var mapsMirror: CarMapsMirror? = null
+    private val carAppHostSession = CarAppHostSession(this) { video }
 
     /**
      * Seeds the credential-expiry flow once per service start, off the pump thread.
@@ -634,9 +634,13 @@ class ProjectionService : Service() {
                         onPrevious = { mediaMonitor?.seekToPrevious() },
                         onNext = { mediaMonitor?.seekToNext() },
                     )
-                    // Night reaches the map palette through the same call
-                    // that restyles the rail/cards/drawer (see setNightDark).
-                    sink.setMapDarkApplier { dark -> mapsMirror?.setDark(dark) }
+                    // Night, map surface and map touches ride the session's
+                    // car-app host (owned by CarAppHostSession, split for
+                    // the 800-line limit).
+                    carAppHostSession.wireInto(
+                        sink,
+                        snapshots = { guidanceMonitor?.snapshots?.value },
+                    )
                     // Rail cluster + call card feeds: the display caches
                     // both for presentations created later.
                     sink.setPhoneStatusSource { phoneStatusMonitor?.snapshot }
@@ -646,14 +650,6 @@ class ProjectionService : Service() {
                         onEnd = { CarProjectionInCallService.endCall() },
                         onHold = { CarProjectionInCallService.toggleHold() },
                         onMute = { CarProjectionInCallService.toggleMute() },
-                    )
-                    sink.setNavSource(
-                        get = { guidanceMonitor?.snapshots?.value },
-                        onMapSurface = { surface, w, h ->
-                            val mirror = mapsMirror ?: return@setNavSource
-                            if (surface != null) mirror.setSurface(surface, w, h)
-                            else mirror.release()
-                        },
                     )
                 }
         }

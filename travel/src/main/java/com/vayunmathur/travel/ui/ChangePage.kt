@@ -41,6 +41,10 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.ChangeOfferDto
 import com.vayunmathur.travel.network.SliceDto
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.confirmChange
+import com.vayunmathur.travel.util.loadOrderDetail
+import com.vayunmathur.travel.util.requestChange
+import com.vayunmathur.travel.util.resetChange
 import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)

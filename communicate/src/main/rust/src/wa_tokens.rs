@@ -250,3 +250,4 @@ pub const SINGLE_BYTE_TOKENS: &[&str] = &[
 include!("wa_tokens_part1.rs");
 include!("wa_tokens_part2.rs");
 include!("wa_tokens_part3.rs");
+include!("wa_tokens_part4.rs");

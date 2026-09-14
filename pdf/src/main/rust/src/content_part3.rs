@@ -2,11 +2,11 @@
 mod tests {
     use super::*;
 
-    fn operators(ops: &[Operation]) -> Vec<String> {
+    pub(super) fn operators(ops: &[Operation]) -> Vec<String> {
         ops.iter().map(|o| o.operator.clone()).collect()
     }
 
-    fn num_operands(op: &Operation) -> Vec<f64> {
+    pub(super) fn num_operands(op: &Operation) -> Vec<f64> {
         op.operands
             .iter()
             .filter_map(|o| match o {
@@ -445,6 +445,4 @@ mod tests {
         assert_eq!(num_operands(&ops[0]), vec![600.0, 0.0]);
     }
 
-    /// §8.4.3.6 Table 52: a conforming `d` takes an ARRAY then a number, so the
-    /// repair must never touch one — including the empty-array "solid" form,
-    /// which has the same operand COUNT as a mangled `d0`.
+}

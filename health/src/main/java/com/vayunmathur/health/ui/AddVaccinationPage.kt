@@ -22,6 +22,7 @@ import androidx.core.net.toUri
 import com.vayunmathur.health.R
 import com.vayunmathur.health.Route
 import com.vayunmathur.health.platform.MedicalViewModel
+import com.vayunmathur.health.platform.saveVaccinationDraft
 import com.vayunmathur.health.ui.components.PickerField
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.DetailScaffold

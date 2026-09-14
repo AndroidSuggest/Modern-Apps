@@ -1,90 +1,11 @@
-            } else {
-                *lane_count
-            };
-            // Only a label way carries its id onward. A road or a building is merged with its
-            // neighbours by `coalesce`, which leaves the survivor's id arbitrary, and the id
-            // table exists for `poi` and `places` alone.
-            let id = if is_label(class.layer) {
-                tagged_id(*id, ELEMENT_WAY)
-            } else {
-                tilecodec::mamaps::body::ID_NONE
-            };
-            batch.push((
-                class,
-                name.clone(),
-                std::mem::take(&mut refs),
-                id,
-                lane_count,
-                turn_fwd.clone(),
-                turn_bwd.clone(),
-                *carriageway,
-                *building,
-            ));
-        }
-        // Flushed when full, and once more at the end with whatever is left.
-        if batch.len() >= MATERIALISE_BATCH || (more.is_none() && !batch.is_empty()) {
-            built.clear();
-            par::install(|| {
-                batch
-                    .par_iter()
-                    .map(|(class, _, refs, _, _, _, _, _, _)| {
-                        let line = table.line(refs);
-                        // A label layer's ways are centroided to points: a town mapped as an area
-                        // is still one label, not a loop. Everything else keeps its geometry.
-                        if is_label(class.layer) {
-                            centroid(&line).map(|point| Geometry::Points(vec![point]))
-                        } else {
-                            way_geometry(&line, class.area)
-                        }
-                    })
-                    .collect_into_vec(&mut built);
-            });
-            for (
-                (class, name, _, id, lane_count, turn_fwd, turn_bwd, carriageway, building),
-                geometry,
-            ) in batch.iter().zip(built.drain(..))
-            {
-                match geometry {
-                    Some(geometry) => {
-                        // A building carries its S3DB attributes; a road with lane data carries
-                        // those; everything else — and a plain road — goes the plain, named way.
-                        if let Some(b) = building {
-                            sink.push_building(class, &geometry, name.as_deref(), *b)?;
-                        } else if *lane_count > 0
-                            || !turn_fwd.is_empty()
-                            || !turn_bwd.is_empty()
-                            || !carriageway.is_empty()
-                        {
-                            sink.push_road(
-                                class,
-                                &geometry,
-                                name.as_deref(),
-                                *lane_count,
-                                turn_fwd,
-                                turn_bwd,
-                                *carriageway,
-                            )?;
-                        } else {
-                            sink.push_named(class, &geometry, name.as_deref(), *id)?;
-                        }
-                        stats.features += 1;
-                    }
-                    None => stats.geometry_failed += 1,
-                }
-                bar.tick("way(s)");
-            }
-            batch.clear();
-        }
-        if more.is_none() {
-            break;
-        }
-    }
-    bar.finish("way(s)");
-    // Nothing reads the ways spill after this: the relations below reach their members through
-    // `members`, which is why that table is kept at all.
-    drop(reader);
-    let _ = std::fs::remove_file(&ways_path);
-
+/// Materialise relations; returns the driving-side conventions. Moved whole.
+fn materialise_relations(
+    relations: &[Relation],
+    members: &HashMap<i64, Vec<i64>>,
+    table: &NodeLocations,
+    sink: &mut Sink,
+    stats: &mut Stats,
+) -> Result<schema::boundaries::Conventions> {
     let mut bar = Progress::new(
         "Materialise: relations".to_string(),
         relations.len(),
@@ -175,6 +96,20 @@
     }
     bar.finish("relation(s)");
 
+    Ok(conventions)
+}
+
+/// Coastline, transit, graph, then finish the store. Moved whole from `extract`.
+fn append_external_and_finish(
+    coastline: Option<&Path>,
+    transit_routes: Option<&Path>,
+    graph: Option<&Path>,
+    mut sink: Sink,
+    stats: &mut Stats,
+    conventions: schema::boundaries::Conventions,
+    spill_path: &Path,
+    mark: &dyn Fn(&str),
+) -> Result<Store> {
     // The mainland, last, because clipping it needs the extract's own bounding box and that is
     // only known once every OSM feature has been through the sink. Order in the file does not
     // matter: the tiler groups by layer id, so `earth` is the first layer of every body whenever it
@@ -236,7 +171,8 @@
     // build outside tiling: ~25 s of a 136 s California run. It is 170 M coordinate lookups through
     // the mapped node table plus 3.3 GB of spill written, all on one thread.
     mark("materialised and spilled");
-    Ok((store, stats))
+
+    Ok(store)
 }
 
 /// Node refs, duplicates included, above which the bitset replaces the sorted vector.
@@ -391,49 +327,4 @@ impl NeededBits {
             })
         })
     }
-}
-
-/// A node's location in lon/lat, which is the order [`rings::assemble`] and GeoJSON both want.
-///
-/// [`NodeLocations::get`] returns lat/lon, matching the PBF's own field order.
-fn locate(table: &NodeLocations, id: i64) -> Option<(f64, f64)> {
-    let (lat_e7, lon_e7) = table.get(id)?;
-    Some((lon_e7 as f64 * 1e-7, lat_e7 as f64 * 1e-7))
-}
-
-/// Is this a label layer (`places`/`poi`)? Labels are points with names: ways mapped as areas
-/// are centroided to one, relations likewise, and nodes spill directly.
-pub(crate) fn is_label(layer: u8) -> bool {
-    use tilecodec::mamaps::dict::{LAYER_PLACES, LAYER_POI};
-    layer == LAYER_PLACES || layer == LAYER_POI
-}
-
-/// Does this layer have an id side table at all?
-///
-/// Layer-level, and separate from [`tracks_ids`], because the table is indexed by feature
-/// position: every feature in such a layer needs an entry, `ID_NONE` included, or the table stops
-/// lining up with the features it describes.
-pub(crate) fn layer_tracks_ids(layer: u8) -> bool {
-    is_label(layer)
-        || layer == tilecodec::mamaps::dict::LAYER_BOUNDARIES
-        || layer == tilecodec::mamaps::dict::LAYER_TRAFFIC
-}
-
-/// May this feature carry a non-zero id?
-///
-/// Wider than [`is_label`], and deliberately a separate predicate: `is_label` also means
-/// "centroid this to a point", which a region's shape must not be. `boundaries` needs ids for
-/// a different reason — a region is stored as one clipped polygon per tile, so without an id
-/// there is nothing to say which pieces are the same region, and the mask can only punch out
-/// the piece under the finger.
-///
-/// Keyed on the whole class rather than the layer because `boundaries` holds both kinds of
-/// geometry: the region's shape, which is an area and keeps its id, and the border, which is a
-/// line and must not. `coalesce` merges adjacent border lines, and the survivor's id would be
-/// whichever member happened to come first.
-pub(crate) fn tracks_ids(class: &crate::schema::Class) -> bool {
-    use tilecodec::mamaps::dict::{LAYER_BOUNDARIES, LAYER_TRAFFIC};
-    is_label(class.layer)
-        || (class.layer == LAYER_BOUNDARIES && class.area)
-        || class.layer == LAYER_TRAFFIC
 }

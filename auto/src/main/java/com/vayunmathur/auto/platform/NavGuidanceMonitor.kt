@@ -27,11 +27,12 @@ import kotlin.math.roundToInt
  * the two APKs do not share a process singleton anyway. Points are
  * [MapRoutePoint] so the monitor can forward them without reshaping.
  *
- * The provider must return a stable list instance while the route is
- * unchanged: the monitor forwards the reference untouched, and
- * `CarMapsMirror` skips the (expensive, tessellating) route push when the
- * reference is identical. A provider that rebuilds the list per read would
- * re-tessellate a cross-city route on every GPS fix.
+ * The host path (`CarAppHost`) carries the real route inside the app; this
+ * provider feeds only the pre-host banner fallback plus the ch7/ch10 wire
+ * values, which still come from phone GPS. The provider must return a stable
+ * list instance while the route is unchanged: the monitor forwards the
+ * reference untouched. A provider that rebuilds the list per read would
+ * churn every GPS fix for nothing.
  */
 data class ActiveRoute(
     val points: List<MapRoutePoint>,
@@ -46,8 +47,8 @@ fun interface RouteProvider {
 }
 
 /**
- * Binds phone GPS (plus night state) into [NavSnapshot]s for the Phase 6
- * mirror and the ch7/ch10 live values.
+ * Binds phone GPS (plus night state) into [NavSnapshot]s for the pre-host
+ * nav banner fallback and the ch7/ch10 live values.
  *
  * Owns location collection the way `MediaPlaybackMonitor` owns its
  * controller: `start()` subscribes on the main thread, fixes arrive on the
@@ -66,7 +67,8 @@ fun interface RouteProvider {
  *   `SensorChannel`'s `onValues` seam (sensors-dev owns the channel).
  * - ch10: forward `MapsGuidance.toNavStatus(snapshot)` to
  *   `NavStatusChannel.postStatus` (sensors-dev owns the channel).
- * - `CarMapsMirror.render(snapshot)` drives the ch2 map picture.
+ * - nav banner: `CarNavCardView.update(snapshot)` until `CarAppHost`
+ *   connects, then the hosted `NavigationTemplate` takes over.
  */
 class NavGuidanceMonitor(
     private val context: Context,

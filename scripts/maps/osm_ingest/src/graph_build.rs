@@ -443,8 +443,10 @@ include!("graph_build_part2.rs");
 include!("graph_build_part3.rs");
 include!("graph_build_part4.rs");
 include!("graph_build_part5.rs");
+#[cfg(test)]
+mod tests {
 include!("graph_build_part6.rs");
 include!("graph_build_part7.rs");
 include!("graph_build_part8.rs");
 include!("graph_build_part9.rs");
-include!("graph_build_part10.rs");
+include!("graph_build_part10.rs");}

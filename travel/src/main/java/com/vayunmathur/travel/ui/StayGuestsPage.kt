@@ -40,6 +40,9 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.StayGuestInputDto
 import com.vayunmathur.travel.util.StayBookingState
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.bookStay
+import com.vayunmathur.travel.util.resetStayBooking
+import com.vayunmathur.travel.util.stayTotal
 import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)

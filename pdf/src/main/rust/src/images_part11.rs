@@ -1,3 +1,35 @@
+#[cfg(test)]
+mod mask_tests2 {
+    use super::*;
+    use super::mask_tests::{ccitt_stencil, half_black_g4};
+    /// `/Decode [1 0]` reverses a CCITT stencil EXACTLY ONCE. The raster loop
+    /// applies it via `black_bit` and `stencilize` is then called with
+    /// `invert = false`; if a future change also passes `mask_invert` here, the two
+    /// cancel and this test sees the un-inverted image.
+    #[test]
+    fn ccitt_stencil_decode_array_inverts_exactly_once() {
+        let plain = ccitt_stencil(false, false);
+        let inverted = ccitt_stencil(true, false);
+        // Only alpha is asserted for an unpainted pixel: `stencilize` zeroes alpha and
+        // leaves RGB as the raster left it, so the colour under a transparent pixel is
+        // not part of the contract. Here it is the white the raster is initialised to,
+        // because `/Decode [1 0]` makes the loop skip the black pels rather than write
+        // them — pinning it would pin which of the two stages inverts, not that exactly
+        // one does.
+        assert_eq!(
+            inverted.data[3], 0,
+            "/Decode [1 0] must stop painting the black pels"
+        );
+        assert_eq!(
+            &inverted.data[4 * 4..4 * 4 + 4], &[0, 255, 0, 255],
+            "and must paint the white half instead"
+        );
+        // Stated as a whole-raster complement so a partial inversion (one row, or
+        // only the fast path) cannot pass.
+        for px in 0..(8 * 2) {
+            assert_ne!(
+                plain.data[px * 4 + 3], inverted.data[px * 4 + 3],
+                "pixel {px} must flip under /Decode [1 0]"
             );
         }
     }
@@ -44,7 +76,7 @@
 
     /// An embedded JBIG2 stream holding one immediate lossless generic region coded
     /// with MMR (which is T.6, so the same G4 bytes a fax uses).
-    fn jbig2_mmr_stream(width: u32, height: u32, mmr: &[u8]) -> Vec<u8> {
+    pub(super) fn jbig2_mmr_stream(width: u32, height: u32, mmr: &[u8]) -> Vec<u8> {
         let mut page = Vec::new();
         page.extend_from_slice(&width.to_be_bytes());
         page.extend_from_slice(&height.to_be_bytes());
@@ -431,20 +463,4 @@
         let asked_inline = dictionary! { "W" => 8, "H" => 8, "IM" => true, "I" => true };
         assert!(image_should_interpolate(&doc, &asked_inline), "/I true is honoured");
     }
-
-    // §8.9.5.2 Table 90: an explicit /Decode on an Indexed image remaps the sample onto
-    // the index range, and the Indexed branch ignored it. The default [0 2^bpc-1] must
-    // stay the identity, so pin both directions.
-    #[test]
-    fn indexed_decode_array_remaps_the_palette_index() {
-        let mut doc = Document::with_version("1.7");
-        // 4-entry RGB palette: black, red, green, blue.
-        let pal: Vec<u8> = vec![0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255];
-        let cs = Object::Array(vec![
-            Object::Name(b"Indexed".to_vec()),
-            Object::Name(b"DeviceRGB".to_vec()),
-            Object::Integer(3),
-            Object::String(pal, lopdf::StringFormat::Literal),
-        ]);
-        let cs_id = doc.add_object(cs);
-        let mut res = HashMap::new();
+}

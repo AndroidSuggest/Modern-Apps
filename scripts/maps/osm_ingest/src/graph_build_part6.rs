@@ -1,5 +1,3 @@
-#[cfg(test)]
-mod tests {
     use super::*;
     use crate::tags::{LANE_LEFT, LANE_THROUGH};
     use crate::testpbf;
@@ -409,42 +407,3 @@ mod tests {
         assert_eq!(b.build_rank(64), 1);
     }
 
-    #[test]
-    fn synthetic_extract_produces_the_documented_layout() {
-        let (pbf_path, dir) = testpbf::write_sample("graph_build");
-        let stats = build(&pbf_path, &dir).unwrap();
-        let o = read_outputs(&dir);
-
-        // Nodes 1-4 come from the residential way, node 5 is the bus stop; the
-        // cafe node (6) is on no routable way and carries no stop tag, so it is
-        // not part of the graph at all. Node 3 is then collapsed: it has exactly
-        // two neighbours (2 and 4) reached by two Main St segments that agree on
-        // everything, so no route ever chooses anything there.
-        assert_eq!(stats.raw_node_count, 5);
-        assert_eq!(stats.node_count, 4);
-        assert_eq!(local_of(&o, 3), None, "node 3 should have been collapsed");
-        for id in [1, 2, 4, testpbf::STOP_NODE_ID] {
-            assert!(local_of(&o, id).is_some(), "node {id} should have survived");
-        }
-        assert_eq!(o.meta, {
-            let mut want = Vec::new();
-            want.extend(0x4752_414Du32.to_le_bytes());
-            want.extend(GRAPH_VERSION.to_le_bytes());
-            want.extend(4u64.to_le_bytes());
-            want.extend(stats.edge_count.to_le_bytes());
-            want.extend(stats.escape_count.to_le_bytes());
-            want.extend(stats.named_edges.to_le_bytes());
-            want
-        });
-
-        // nodes.bin holds node_count + 1 12-byte records; edges.bin is the record
-        // array padded to a section boundary, then the escape index and rows, then
-        // the sparse name table — exactly the length the reader computes, not merely
-        // a multiple of anything.
-        assert_eq!(o.nodes.len(), 12 * 5);
-        assert_eq!(o.edges.len(), Edges::of(&o).total_bytes());
-        assert_eq!(stats.escape_count, 0, "no fixture edge is long enough to escape");
-        // Main St runs 1-2 and 2-4 in both directions; the service road and the two
-        // synthetic stop connectors carry no name.
-        assert_eq!(stats.named_edges, 4);
-        let edge_count = edge_count(&o);

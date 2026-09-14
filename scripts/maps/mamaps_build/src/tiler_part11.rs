@@ -1,70 +1,9 @@
-        concatenate(&mut first, second);
-
-        assert_eq!(first, together, "two chunks concatenated are not the one-pass layer");
-        // Spelled out as well, because `assert_eq` on the whole layer would also pass if both were
-        // empty, and an arena its parts do not tile exactly is what the encoder rejects.
-        assert_eq!(first.layer.features.len(), 2);
-        assert_eq!(first.layer.features[1].parts_offset, 1);
-        assert_eq!(first.layer.parts[1].coord_start, first.layer.parts[0].point_count);
-        assert_eq!(first.layer.coords.len(), 10);
-    }
-
-    /// The merge's contract on its own, without a build around it: ascending tiles, and layers in id
-    /// order within a tile, with same-layer contributions from several chunks collapsed into one.
-    ///
-    /// Written through a [`ChunkSpill`] first, because that is the only way the merge is reachable
-    /// now — and so this doubles as the round-trip check on a chunk whose entries all have empty
-    /// arenas.
-    #[test]
-    fn the_merge_yields_ascending_tiles_with_their_layers_in_id_order() {
-        let mut early: Chunk = BTreeMap::new();
-        early.insert((10, 3), ChunkEntry::new(3));
-        early.insert((30, 1), ChunkEntry::new(1));
-        let mut middle: Chunk = BTreeMap::new();
-        middle.insert((10, 1), ChunkEntry::new(1));
-        middle.insert((20, 2), ChunkEntry::new(2));
-        let mut late: Chunk = BTreeMap::new();
-        late.insert((10, 3), ChunkEntry::new(3));
-
-        let spill = ChunkSpill::create(scratch()).expect("scratch");
-        let refs: Vec<ChunkRef> = [early, middle, late]
-            .into_iter()
-            .map(|chunk| spill.write_chunk(chunk).expect("spill a chunk"))
-            .collect();
-
-        let merged: Vec<(u64, Vec<u8>)> = merge(&refs, &spill)
-            .map(|tile| tile.expect("read a tile back"))
-            .map(|(id, layers)| (id, layers.iter().map(|l| l.layer.layer_id).collect()))
-            .collect();
-        // Tile 10 carries layer 1 before layer 3 even though layer 3 was read first, and its two
-        // separate layer-3 pieces arrive as one layer rather than two.
-        assert_eq!(merged, vec![(10, vec![1, 3]), (20, vec![2]), (30, vec![1])]);
-        spill.check_books().expect("the books balance");
-    }
-
-    /// The read window is a memory/syscall trade and must not be observable in the archive. Forced
-    /// here at both clamps and either side of one entry's header, because a real build only ever
-    /// reaches one clamp and which one depends on the extract.
-    #[test]
-    fn the_archive_is_identical_however_the_read_window_is_sized() {
-        let _guard = budget();
-        par::set_threads(4);
-        // Small chunks, so a zoom has many streams and a tile's layers really do come from several.
-        set_chunk_vertices(64);
-        let store = spilled(&a_crowd());
-
-        let want = build(&store, &settings(0, 14)).expect("build").0;
-        for window in [1usize, 23, 24, 25, 4096, tilespill::MIN_WINDOW, tilespill::MAX_WINDOW] {
-            tilespill::set_read_window(window);
-            let got = build(&store, &settings(0, 14)).expect("build").0;
-            assert_eq!(got, want, "a {window}-byte read window moved the archive");
-        }
-
-        tilespill::set_read_window(0);
-        set_chunk_vertices(0);
-        release_threads();
-    }
-
+#[cfg(test)]
+mod tests_part11 {
+    use super::*;
+    use super::tests::*;
+    use crate::schema::Class;
+    use tilecodec::mamaps::dict;
     /// PLANET z14 overflow reproduction: one tile-layer with >65535 bodies through the REAL
     /// encode+append+read path. This is the ONLY path north-america never exercised
     /// (NA max 38,239). Dense cities at z14 (Jakarta etc.) cross 65535 and hit the

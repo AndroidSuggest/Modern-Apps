@@ -1,3 +1,94 @@
+#[cfg(test)]
+/// A 6 km line, shared with one route over its first half and another over its second,
+/// on opposite sides of it, so the lane it takes really does have to change at the seam.
+fn back_to_back_corridors() -> Vec<Fixture> {
+    vec![
+        (0u32, 0x00_00_10u32, "Main", north(37.70, -122.40, 100.0, 61)),
+        (1, 0x00_00_20, "First", shifted(&north(37.70, -122.40, 100.0, 31), 8.0)),
+        (
+            2,
+            0x00_00_05,
+            "Last",
+            shifted(&north(37.70 + 3000.0 / 111_320.0, -122.40, 100.0, 31), -8.0),
+        ),
+    ]
+}
+
+#[cfg(test)]
+/// Two lines closing at a shallow angle: one runs 4 km north, the other comes in from a
+/// hundred metres west over the first kilometre of it and then runs alongside. They are
+/// one corridor from wherever they first come within [`CORRIDOR_M`], which is a long way
+/// before either could draw the other's geometry without it showing.
+fn a_shallow_merge() -> Vec<Fixture> {
+    let main = north(37.70, -122.40, 100.0, 41);
+    let cos_lat = 37.70_f64.to_radians().cos();
+    let east = |m: f64| (m / (111_320.0 * cos_lat) * 1e7) as i32;
+    let joining: Vec<(i32, i32)> = main
+        .iter()
+        .enumerate()
+        .map(|(i, &(lat, lon))| {
+            let closed = (i as f64 * 100.0 / 1000.0).min(1.0);
+            (lat, lon + east(8.0 - 108.0 * (1.0 - closed)))
+        })
+        .collect();
+    vec![(0u32, 0x00_00_10u32, "Main", main), (1, 0x00_00_20, "Join", joining)]
+}
+
+#[cfg(test)]
+/// The corridor a polyline would be the reference of, for measuring the output against.
+fn corridor_of(points: &[(i32, i32)]) -> Corridor {
+    let points = canonical(points);
+    let cum = cumulative(&points);
+    Corridor { points, cum, colours: Vec::new() }
+}
+
+#[cfg(test)]
+/// `n` services sharing `metres` of trunk running north and then leaving it in
+/// different directions for 20 km.
+fn trunk_then_branches(metres: f64, n: usize) -> Vec<Fixture> {
+    let steps = (metres / 100.0).round() as usize + 1;
+    let trunk = north(37.70, -122.40, 100.0, steps);
+    let top = *trunk.last().expect("a trunk");
+    let cos_lat = (top.0 as f64 * 1e-7).to_radians().cos();
+    let east = |m: f64| (m / (111_320.0 * cos_lat) * 1e7) as i32;
+    let up = |m: f64| (m / 111_320.0 * 1e7) as i32;
+    let branch = |dx: f64, dy: f64| -> Vec<(i32, i32)> {
+        let mut line = trunk.clone();
+        for i in 1..=200 {
+            line.push((top.0 + up(dy * i as f64), top.1 + east(dx * i as f64)));
+        }
+        line
+    };
+    let away = [(100.0, 0.0), (0.0, 100.0), (-100.0, 0.0), (70.0, 70.0)];
+    let names = ["A", "B", "C", "D"];
+    (0..n)
+        .map(|i| {
+            let (dx, dy) = away[i];
+            (i as u32, 0x11u32 * (i as u32 + 1), names[i], branch(dx, dy))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests_continued {
+    use super::*;
+
+    /// The pieces of one route meet: the span before a corridor is carried across to the
+    /// point on the reference the corridor span begins at, and so is the ease across to the
+    /// body it leads into.
+    #[test]
+    fn the_spans_of_one_route_share_their_boundary_vertex() {
+        for lines in
+            [trunk_then_branches(2000.0, 4), back_to_back_corridors(), a_shallow_merge()]
+        {
+            let spans = assign(&candidates(&lines));
+            for candidate in &spans {
+                for pair in candidate.windows(2) {
+                    assert_eq!(
+                        pair[0].points.last(),
+                        pair[1].points.first(),
+                        "a gap between two spans of one route",
+                    );
                 }
             }
         }

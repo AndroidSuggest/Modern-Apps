@@ -1,5 +1,3 @@
-#[cfg(test)]
-mod tests {
     use super::*;
     use crate::mvt::Tile;
     use crate::pmtiles::Archive;
@@ -448,3 +446,13 @@ mod tests {
         let (bytes, report) = build_archive(&features, &opts).unwrap();
         assert!(report[0].dropped > 0);
         assert!(
+            report[0].largest_tile_bytes <= 600,
+            "largest tile {} exceeds the 600-byte budget",
+            report[0].largest_tile_bytes
+        );
+        // The archive still reads, which is the thing a bad drop breaks.
+        let a = Archive::parse(&bytes).unwrap();
+        for (_, raw) in a.iter_tiles().unwrap() {
+            assert!(Tile::decode(&crate::gz::decompress(raw).unwrap()).is_ok());
+        }
+    }

@@ -32,6 +32,10 @@ import com.vayunmathur.travel.util.OrderDetailActions
 import com.vayunmathur.travel.util.OrderDetailUiState
 import com.vayunmathur.travel.util.PaymentActionState
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.loadOrderDetail
+import com.vayunmathur.travel.util.loadOrderEvents
+import com.vayunmathur.travel.util.payOrder
+import com.vayunmathur.travel.util.resetPaymentAction
 import androidx.compose.ui.res.stringResource
 
 /** Binds [TravelViewModel] and the back stack to the stateless [OrderDetailScreen]. */

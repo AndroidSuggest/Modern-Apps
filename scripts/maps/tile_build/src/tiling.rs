@@ -421,5 +421,8 @@ pub fn merge_archives_to<S: TileSource>(
 }
 
 include!("tiling_part1.rs");
-include!("tiling_part2.rs");
-include!("tiling_part3.rs");
+#[cfg(test)]
+mod tests {
+    include!("tiling_part2.rs");
+    include!("tiling_part3.rs");
+}

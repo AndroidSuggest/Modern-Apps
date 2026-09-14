@@ -447,3 +447,4 @@ impl TransitIndex {
         let off = unsafe { read_at::<u32>(self.sec_ptr(SEC_FEEDS), feed_idx as usize) };
         self.read_str(off)
     }
+}

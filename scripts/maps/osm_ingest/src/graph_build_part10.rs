@@ -1,4 +1,3 @@
-    }
 
     // ---- stop reconnection by component size ------------------------------
 
@@ -155,4 +154,3 @@
         assert!(parse_args(&["a".into(), "b".into()]).is_err());
         assert!(parse_args(&["--wat".into()]).is_err());
     }
-}

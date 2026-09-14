@@ -167,8 +167,8 @@ class VideoSinkChannel(
     }
 
     /**
-     * Wires the map palette applier (`CarMapsMirror.setDark`) so one
-     * [setNightDark] call restyles the rail/cards/drawer and the map.
+     * Wires the map palette applier (`CarAppHost.setNight`) so one
+     * [setNightDark] call restyles the rail/cards/drawer and the hosted map.
      * Stored for displays created later; applied immediately when up.
      */
     fun setMapDarkApplier(applier: (Boolean) -> Unit) {
@@ -243,6 +243,19 @@ class VideoSinkChannel(
     /** Stored call actions for displays created later; see [setCallSource]. */
     private var storedCallActions: CallActions? = null
 
+    /**
+     * Forwards the map-surface touch hookup to the display. Stored for
+     * displays created later; applied immediately when the render pair is
+     * already up.
+     */
+    fun setMapTouchForwarder(forward: (Int, Float, Float) -> Boolean) {
+        mapTouchForwarder = forward
+        display?.mapTouchForwarder = forward
+    }
+
+    /** Map-touch hookup for displays created later; see [setMapTouchForwarder]. */
+    private var mapTouchForwarder: ((Int, Float, Float) -> Boolean)? = null
+
     /** Phone-status getter; see [setPhoneStatusSource]. */
     private var phoneStatusSource: (() -> PhoneStatus?)? = null
     fun setNavSource(
@@ -252,6 +265,15 @@ class VideoSinkChannel(
         display?.setMapSurfaceListener(onMapSurface)
         mapSurfaceListener = onMapSurface
         get()?.let { display?.setNavSnapshot(it) }
+    }
+
+    /**
+     * Pushes one hosted template state into the car card, if the render pair
+     * is up. The session host calls this on every template invalidate so the
+     * header tracks the app without waiting for a poll.
+     */
+    fun setHostNavState(state: HostNavState) {
+        display?.setHostNavState(state)
     }
 
     /**
@@ -444,6 +466,7 @@ class VideoSinkChannel(
                 it.onNextTap = callbacks.onNext
             }
             mapDarkApplier?.let { applier -> it.mapDarkApplier = applier }
+            mapTouchForwarder?.let { forward -> it.mapTouchForwarder = forward }
             phoneStatusSource?.let { source -> it.phoneStatusSource = source }
             callSource?.let { source ->
                 // Call actions are service-owned; re-read the current

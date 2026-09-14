@@ -448,3 +448,7 @@ mod tests {
         assert_eq!(build(&weights, Mode::Sscp { frames }).expect("s").outputs.len(), 2);
         assert_eq!(
             build(&weights, Mode::Trace { frames, layers: 0 }).expect("t0").outputs.len(),
+            2
+        );
+    }
+}

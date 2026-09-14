@@ -10,6 +10,7 @@ import com.vayunmathur.health.R
 import com.vayunmathur.health.Route
 import com.vayunmathur.health.data.ConditionStatus
 import com.vayunmathur.health.platform.MedicalViewModel
+import com.vayunmathur.health.platform.saveConditionDraft
 import com.vayunmathur.health.ui.components.PickerField
 import com.vayunmathur.library.ui.DetailScaffold
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api

@@ -277,8 +277,6 @@
     <string name="car_drawer_glyph">▦</string>
     <!-- Decorative glyph on the facet dashboard button (goes home, closes drawer). -->
     <string name="car_home_glyph">⌂</string>
-    <!-- Shown on the car display when the media session reports no title. -->
-    <string name="car_now_playing_unknown">Unknown track</string>
 
     <!-- Heading of the session-card row showing the system sink (ch4, transient TTS/pings). -->
     <string name="session_audio_sys">System audio</string>
@@ -384,6 +382,9 @@
     <!-- Distance to the next maneuver on the nav card. %1$d is whole metres;
          translators own the unit so it can be spaced or abbreviated per locale. -->
     <string name="car_nav_distance_meters"><xliff:g example="500" id="meters">%1$d</xliff:g> m</string>
+    <!-- Empty-tile label on the nav card, shown only when no map backend
+         exists at all (maps missing or the car-app host bind failed). -->
+    <string name="car_nav_open_maps">Open Maps</string>
     <!-- Drawer empty state. Exact gearhead `appdecor_menu_empty` value. -->
     <string name="car_drawer_empty">No Items</string>
     <!-- Drawer lockout text shown while driving-restricted. Exact gearhead

@@ -1,3 +1,18 @@
+
+    /// Average pooling over an explicit window, floored and unpadded.
+    ///
+    /// The divisor is the window size rather than the number of elements actually read,
+    /// which is only correct because `Builder::avg_pool` refuses a window that overhangs.
+    fn avg_pool(&mut self, p: &Push) -> Result<(), String> {
+        let window = p.kh * p.kw;
+        if window == 0 {
+            return Err("an average pool over an empty window".into());
+        }
+        for oc in 0..p.out_c {
+            let plane = oc * p.in_h * p.in_w;
+            for oy in 0..p.out_h {
+                for ox in 0..p.out_w {
+                    let mut total = 0.0;
                     for ky in 0..p.kh {
                         let iy = oy * p.stride_h + ky;
                         if iy >= p.in_h {
@@ -424,27 +439,3 @@
         }
         Ok(())
     }
-
-    /// Keys an op attends over, as an inclusive `[first, last]` range.
-    ///
-    /// The host mirror of `attn_first` / `attn_last` in `shaders/common.glsl`.
-    /// The inclusive key range an attention op may read. Mirrors `attn_first` / `attn_last`.
-    ///
-    /// A dynamic op that does **not** slide attends the whole prefix: it shares a submit with
-    /// sliding layers, so `window_start` is set for them and it must ignore it.
-    fn attended(&self, p: &Push, stride: u32) -> (u32, u32) {
-        if p.dyn_keys != 0 {
-            let first = if p.sliding != 0 { self.window_start } else { 0 };
-            (first, self.prefix.min(stride.saturating_sub(1)))
-        } else {
-            (0, stride.saturating_sub(1))
-        }
-    }
-
-    /// The KV head a query head reads from. Mirrors `kv_head_of` in `shaders/common.glsl`.
-    fn kv_head_of(p: &Push, head: u32) -> u32 {
-        let kv = if p.kv_heads == 0 { p.group } else { p.kv_heads };
-        head / (p.group / kv.max(1)).max(1)
-    }
-
-    /// Channels one cache position occupies: `kv_heads * head_dim`.

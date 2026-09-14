@@ -20,6 +20,7 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.VerticalDivider
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
 import kotlin.time.Clock
 
 @Composable

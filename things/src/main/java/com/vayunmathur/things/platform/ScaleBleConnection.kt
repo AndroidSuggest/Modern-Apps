@@ -79,7 +79,7 @@ internal fun ScaleBleManager.startScanNow(scanCallback: ScanCallback) {
     scanner?.startScan(null, settings, scanCallback)
     DeviceController.scaleConnectionState.value = SCALE_SCANNING_STATE
     handler.removeCallbacks(scanTimeout)
-    handler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
+    handler.postDelayed(scanTimeout, ScaleBleManager.SCAN_TIMEOUT_MS)
 }
 
 @SuppressLint("MissingPermission")

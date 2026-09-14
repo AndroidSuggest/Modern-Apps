@@ -1,3 +1,27 @@
+#[cfg(test)]
+mod mask_tests4 {
+    use super::*;
+    use super::mask_tests::{g4_encode, half_black_g4};
+    use super::mask_tests2::jbig2_mmr_stream;
+    /// §8.7.4.3 Table 78 confines /Background to the area OUTSIDE the shading's bounds.
+    /// Two arms used it as the shading's own in-extent colour: `eval_func` returned it
+    /// when /Function was absent (making all 256 LUT slots the background, so the whole
+    /// area painted solid), and the per-pixel lookup fell back to it when no colour
+    /// could be computed. They had to go together — with `eval_func` fixed alone, every
+    /// LUT slot is empty and the second arm reproduces the identical flood.
+    /// (a-shading's finding.)
+    #[test]
+    fn background_is_never_used_as_the_shadings_own_colour() {
+        let doc = Document::with_version("1.7");
+        // Types 2/3 REQUIRE /Function (§8.7.4.5.3); this one has none. The axis spans
+        // only the middle fifth of the bbox, so the raster has both in-extent pixels
+        // (t in [0,1], centre) and out-of-extent ones (t < 0 / t > 1, edges).
+        let sh = Object::Dictionary(dictionary! {
+            "ShadingType" => 2,
+            "ColorSpace" => "DeviceRGB",
+            "Coords" => vec![0.4.into(), 0.into(), 0.6.into(), 0.into()],
+            "Extend" => vec![Object::Boolean(false), Object::Boolean(false)],
+            "BBox" => vec![0.into(), 0.into(), 1.into(), 1.into()],
             "Background" => vec![1.into(), 0.into(), 0.into()],
         });
         let (_, w, h, pat) =

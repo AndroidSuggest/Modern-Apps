@@ -48,7 +48,7 @@ import java.util.UUID
 class ScaleBleManager {
 
     companion object {
-        private const val TAG = "ScaleBle"
+        internal const val TAG = "ScaleBle"
 
         // Primary Qingniu GATT (covers Elis 1)
         val SERVICE_FFE0: UUID = UUID.fromString("0000FFE0-0000-1000-8000-00805F9B34FB")
@@ -77,7 +77,7 @@ class ScaleBleManager {
         private const val ACK_TO_START_MS = 250L
 
         /** ConnectionViewModel scans in a bounded window rather than indefinitely. */
-        private const val SCAN_TIMEOUT_MS = 20_000L
+        internal const val SCAN_TIMEOUT_MS = 20_000L
     }
 
     data class ScaleBleDevice(val name: String, val address: String)
@@ -225,7 +225,7 @@ class ScaleBleManager {
         lh20k = 0.0; lh100k = 0.0; rh20k = 0.0; rh100k = 0.0; t20k = 0.0; t100k = 0.0
     }
 
-    private val gattCallback = object : BluetoothGattCallback() {
+    internal val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             Log.d(TAG, "onConnectionStateChange status=$status newState=$newState")
             DeviceController.runOnMain {
@@ -411,7 +411,7 @@ class ScaleBleManager {
 
     private fun UUID.short(): String = toString().substring(4, 8)
 
-    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+    internal fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xFF) }
 
     /** CmdBuilder.buildCmd with this connection's scale type; see ScaleBleProtocol.kt. */
     private fun buildCmd(cmd: Int, vararg payload: Int): ByteArray =
@@ -754,10 +754,10 @@ class ScaleBleManager {
     private fun eightDouble(b1: Byte, b2: Byte): Double =
         eightDouble(b1, b2, useResistanceEncrypt)
 
-    private fun refreshCache(g: BluetoothGatt) {
+    internal fun refreshCache(g: BluetoothGatt) {
         runCatching { g.javaClass.getMethod("refresh").invoke(g) }
     }
 }
 
-private const val SCALE_SCANNING_STATE = "Scanning scales..."
-private const val SCALE_WAITING_STATE = "Waiting for scale"
+internal const val SCALE_SCANNING_STATE = "Scanning scales..."
+internal const val SCALE_WAITING_STATE = "Waiting for scale"

@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.vayunmathur.contacts.data.LOCAL_ACCOUNT_TYPE
 import com.vayunmathur.contacts.data.SIM_ACCOUNT_TYPE
 import com.vayunmathur.contacts.data.SimContactsDataSource
+import com.vayunmathur.contacts.data.isDefaultLocalAccount
+import com.vayunmathur.contacts.data.isLocalAccountType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch

@@ -18,6 +18,12 @@ jni.workspace = true
 libc.workspace = true
 # gzip for the traffic MVT tiles served to MapLibre (replaces the C++ zlib deflate).
 flate2.workspace = true
+# The single-archive reader (header + ArchiveView): the same code the renderer
+# reads .mamaps with, so the loader and the writer cannot drift. Read path
+# only — no `write` feature, keeping the interner out of the cdylib per the
+# crate's own rule. Path dep, not workspace: tilecodec is detached (see its
+# Cargo.toml), the same way library/map's Rust consumes it.
+tilecodec = { path = "../../../../library/tilecodec/src/main/rust" }
 
 # Patch inherited from workspace root Cargo.toml.
 

@@ -18,6 +18,8 @@ import com.vayunmathur.health.Route
 import com.vayunmathur.health.data.AllergyCriticality
 import com.vayunmathur.health.data.AllergyEntry
 import com.vayunmathur.health.platform.MedicalViewModel
+import com.vayunmathur.health.platform.deleteAllergy
+import com.vayunmathur.health.platform.importFromHealthConnect
 import com.vayunmathur.health.ui.components.MedicalStorageNotice
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.ConfirmDialog

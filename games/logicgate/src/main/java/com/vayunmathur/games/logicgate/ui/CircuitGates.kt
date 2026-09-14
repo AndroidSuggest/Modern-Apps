@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vayunmathur.games.logicgate.data.ChipDef
+import com.vayunmathur.games.logicgate.data.PlacedChip
+import com.vayunmathur.games.logicgate.data.WireEnd
 import kotlin.math.max
 
 // Logic-gate silhouettes (Turing-Complete style): triangle=NOT/buffer, D=AND/NAND,

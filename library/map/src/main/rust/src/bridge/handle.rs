@@ -3,7 +3,11 @@
 //! Pure move out of `bridge.rs`; no logic changes.
 use crate::style::{Layer, Palette, SharedToggles};
 use crate::tile::geometry::TileMesh;
+use crate::tile::select::TileId;
 use crate::tile::source::{basemap_origin, CachingRangeReader, JniRangeFetcher};
+use crate::vulkan::renderer::Renderer;
+use jni::sys::jlong;
+use std::collections::{HashMap, HashSet};
 use tilecodec::mamaps::MamapsArchive;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
@@ -82,7 +86,7 @@ pub(crate) const RESIDENT_TILE_CAP: usize = 64;
 pub(crate) const UPLOADS_PER_FRAME: usize = 4;
 
 /// What a worker reports back about a tile.
-enum TileResult {
+pub(crate) enum TileResult {
     /// Tessellated and ready to upload.
     Ready(TileMesh),
     /// The archive genuinely does not contain it — ordinary off the edge of coverage.
@@ -142,7 +146,7 @@ pub(crate) struct MapHandle {
 }
 
 /// Shared so Kotlin's connectivity callback can reach the reader on the worker thread.
-pub(crate) struct OnlineFlag(std::sync::atomic::AtomicBool);
+pub(crate) struct OnlineFlag(pub(crate) std::sync::atomic::AtomicBool);
 
 impl OnlineFlag {
     pub(crate) fn set(&self, online: bool) {

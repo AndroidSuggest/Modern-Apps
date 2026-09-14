@@ -16,9 +16,10 @@ dependencies {
     implementation(project(":auto:protocol"))
     // Media3 controller for the Phase 4 now-playing feed from the on-device media session.
     implementation(libs.androidx.media3.session)
-    // Phase 6 maps mirror: CarMapsMirror draws the :library:map basemap
-    // (SurfaceMapRenderer) into the car video path. No maps-app dependency --
-    // the mirror reads the renderer only, and guidance arrives as plain
-    // NavSnapshot data through NavGuidanceMonitor.
-    implementation(project(":library:map"))
+    // Car App Library host: CarAppHost binds the :maps car-app service and
+    // implements the host binders (ICarHost/IAppHost/INavigationHost/
+    // IConstraintHost) so the nav card renders whatever Maps publishes --
+    // its own SurfaceContainer surface plus its NavigationTemplate -- instead
+    // of MA Auto re-rendering a second map. Same 1.4.0 the maps app uses.
+    implementation(libs.androidx.car.app)
 }

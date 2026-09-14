@@ -67,6 +67,9 @@ internal class CarPresentation(
     /** Active call that arrived before `onCreate` built the card. */
     private var pendingActiveCall: ActiveCallInfo? = initialActiveCall
 
+    /** Hosted template state that arrived before `onCreate`. Consumed once there. */
+    private var hostNavState: HostNavState? = null
+
     /**
      * Phone status feed captured from the outer display at construction:
      * [CarDisplay.phoneStatusSource] may be wired after `show()` starts
@@ -183,6 +186,7 @@ internal class CarPresentation(
         val nav = CarNavCardView(context, apps)
         navCard = nav
         nav.mapSurfaceListener = mapSurfaceListener
+        mapTouchForwarder?.let { nav.mapTouchForwarder = it }
         val call = CarCallCardView(
             context,
             onAnswer = { outerOnAnswerCall() },
@@ -246,6 +250,8 @@ internal class CarPresentation(
 
         pendingNowPlaying?.let { media.update(it) }
         pendingNowPlaying = null
+        hostNavState?.let { nav.updateHost(it) }
+        hostNavState = null
         setDrivingRestricted(pendingDrivingRestricted)
         setNight(pendingNight)
         pendingActiveCall?.let { call.update(it) }
@@ -279,6 +285,16 @@ internal class CarPresentation(
      */
     fun updateNowPlaying(info: NowPlayingInfo) {
         mediaCard?.update(info)
+    }
+
+    /**
+     * Renders one hosted template state on the nav card. Main thread only.
+     * Called from `CarDisplay.setHostNavState` on every `CarAppHost`
+     * invalidate, and from `onCreate` above for a state that arrived before
+     * the views existed.
+     */
+    fun updateHostNav(state: HostNavState) {
+        navCard?.updateHost(state)
     }
 
     /**
@@ -395,6 +411,20 @@ internal class CarPresentation(
     fun setOnMuteToggle(tap: () -> Unit) {
         outerOnMuteToggle = tap
     }
+
+    /**
+     * Forwards ch8 touches that land on the map surface to the hosted app.
+     * Wired by the session host to `CarAppHost.injectMapTouch` through the
+     * display chain; cached for presentations created later like every other
+     * late-wired feed. Main thread only.
+     */
+    fun setMapTouchForwarder(forward: (Int, Float, Float) -> Boolean) {
+        mapTouchForwarder = forward
+        navCard?.mapTouchForwarder = forward
+    }
+
+    /** Forwarder cached for nav cards built later; see [setMapTouchForwarder]. */
+    private var mapTouchForwarder: ((Int, Float, Float) -> Boolean)? = null
 
     /** Late-wired phone-status feed; see the outer setter. Main thread only. */
     fun setInnerPhoneStatusSource(source: () -> PhoneStatus?) {

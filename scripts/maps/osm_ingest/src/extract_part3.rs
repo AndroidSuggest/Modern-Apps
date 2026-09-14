@@ -440,11 +440,4 @@ mod tests {
         assert_eq!(stats.outside_bbox, 1);
     }
 
-    #[test]
-    fn args_need_a_layer_and_an_out() {
-        let ok = parse_args(&[
-            "in.pbf".into(),
-            "--layer".into(),
-            "safety".into(),
-            "--out".into(),
-            "s.geojsonseq".into(),
+}

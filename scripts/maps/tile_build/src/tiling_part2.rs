@@ -1,5 +1,3 @@
-#[cfg(test)]
-mod tests {
     use super::*;
     use crate::mvt::{Feature, Layer};
 
@@ -448,3 +446,11 @@ mod tests {
 
         let merged = merge_archives(&[&sa, &fa]).unwrap();
         let meta = String::from_utf8(Archive::parse(&merged).unwrap().metadata).unwrap();
+
+        assert_eq!(
+            meta,
+            "{\"vector_layers\":[{\"id\":\"ma_pois\",\"minzoom\":12,\"maxzoom\":16}]}",
+            "listed once, at the rebuilt layer's zoom range"
+        );
+    }
+

@@ -1,3 +1,367 @@
+impl Graph {
+
+    /// Serialise a recorded forward pass to section bytes, for the converter.
+    ///
+    /// The inverse of [`Graph::lower`]: walks the fused [`Recorded`] nodes and writes
+    /// one section entry per node, with weight *file indices* recovered from the
+    /// builder's read flags. Only the phase-1 kinds serialise — anything else is an
+    /// error naming the node, which is how a net that outgrew the section refuses to
+    /// emit rather than emitting a partial graph.
+    ///
+    /// This is the emitter half of the equivalence loop: `maml_convert.py` will run it
+    /// (via a host harness) over each net and compare against its own emission. The
+    /// byte layout matches [`Graph::parse`] field for field; the two are tested by
+    /// round-trip (`emit` then `parse` then `lower` then `finish`).
+    ///
+    /// `outputs` are the plan's output ids — `Recorded` carries inputs and pins but
+    /// not which pins are outputs, and the section must name them.
+    pub fn emit(
+        recorded: &crate::nets::Recorded,
+        table: &Offsets,
+        outputs: &[crate::nets::Id],
+    ) -> Result<Vec<u8>, String> {
+        use crate::nets::{Act, Node, Quant};
+        let mut bytes = Vec::new();
+        let mut nodes_bytes: Vec<u8> = Vec::new();
+        let u32s = |bytes: &mut Vec<u8>, values: &[u32]| {
+            for v in values {
+                bytes.extend_from_slice(&v.to_le_bytes());
+            }
+        };
+        // Computed-index assignment: every tensor id in first-use order — inputs in
+        // declaration order (they are pinned first), then each node's output as it
+        // appears. The section's computed table is this order; node refs are positions
+        // in it.
+        //
+        // A plain helper, not a closure: the emission match below borrows `order`
+        // mutably per node while `file_index` borrows `table` immutably, and a
+        // `FnMut` closure holding `&mut order` will not share the scope with those.
+        fn position(order: &mut Vec<usize>, id: usize) -> u32 {
+            match order.iter().position(|&i| i == id) {
+                Some(at) => at as u32,
+                None => {
+                    order.push(id);
+                    (order.len() - 1) as u32
+                }
+            }
+        }
+        let mut order: Vec<usize> = Vec::new();
+        // Inputs first, in declaration order.
+        for id in &recorded.inputs {
+            position(&mut order, id.0);
+        }
+        // Weight file index for a resolved offset: invert through the table by byte
+        // offset. Element and word views address the same bytes — an fp16 element
+        // offset `e` is byte `2e`, a word offset `w` is byte `4w` — so normalise to
+        // bytes before comparing. Byte offsets are unique per tensor (blobs never
+        // alias), so the first match is the tensor. Unresolvable is an emitter bug.
+        //
+        // The `Shapes` test stub answers every tensor at its own index in both
+        // views, so several stub tensors can share one byte offset. Disambiguate by
+        // element count: the caller passes the length the node implies (kernel
+        // elements, bias channels), and the match must agree on it. The real table
+        // never collides at all; the stub is test-only, and a length mismatch there
+        // is still an emitter error rather than a guess.
+        let file_index =
+            |offset: u32, is_word: bool, len: u32, kind: &str| -> Result<u32, String> {
+                let bytes = if is_word { offset * 4 } else { offset * 2 };
+                table
+                    .tensors
+                    .iter()
+                    .position(|t| t.offset == bytes && t.len == len)
+                    .map(|i| i as u32)
+                    .ok_or_else(|| {
+                        format!("emitter: {kind} at offset {offset} names no tensor")
+                    })
+            };
+        let act_code = |act: Act| -> Result<u32, String> {
+            match act {
+                Act::None => Ok(0),
+                Act::Relu => Ok(1),
+                Act::HardSwish => Ok(2),
+                Act::Sigmoid => Ok(3),
+                Act::PRelu(_) => Err("emitter: a PReLU, which phase 1 does not serialise".into()),
+                Act::Clip01 => Ok(5),
+                Act::Swish => Ok(6),
+                Act::Gelu => Ok(8),
+            }
+        };
+        let mut nodes_bytes = Vec::new();
+        for (i, node) in recorded.nodes.iter().enumerate() {
+            match node {
+                Node::Conv {
+                    input,
+                    out,
+                    weight,
+                    bias,
+                    kernel,
+                    stride,
+                    dilation,
+                    pad,
+                    group,
+                    act,
+                    act_weight,
+                    transpose,
+                    pad_edge,
+                    res,
+                    shift,
+                } => {
+                    if *transpose {
+                        return Err(format!("emitter: node {i} is transposed, not in phase 1"));
+                    }
+                    if res.is_some() || shift.is_some() {
+                        return Err(format!(
+                            "emitter: node {i} carries a fused addend; emit before fusion"
+                        ));
+                    }
+                    let shape = recorded.shapes.get(out.0).copied().ok_or_else(|| {
+                        format!("emitter: node {i} output {} has no shape", out.0)
+                    })?;
+                    nodes_bytes.push(TAG_CONV);
+                    let input_at = position(&mut order, input.0);
+                    let out_at = position(&mut order, out.0);
+                    let in_shape =
+                        recorded.shapes.get(input.0).copied().ok_or_else(|| {
+                            format!("emitter: node {i} input {} has no shape", input.0)
+                        })?;
+                    let per_group = in_shape.c / group.max(&1);
+                    let w = file_index(
+                        *weight,
+                        false,
+                        shape.c * per_group * kernel.0 * kernel.1,
+                        "kernel",
+                    )?;
+                    let b = file_index(*bias, false, shape.c, "bias")?;
+                    let slope = match act {
+                        Act::PRelu(_) => {
+                            return Err(format!("emitter: node {i} is a PReLU"));
+                        }
+                        _ => {
+                            if *act_weight != 0 {
+                                return Err(format!(
+                                    "emitter: node {i} carries a slope without a PReLU"
+                                ));
+                            }
+                            NO_TENSOR
+                        }
+                    };
+                    u32s(
+                        &mut nodes_bytes,
+                        &[
+                            input_at,
+                            out_at,
+                            w,
+                            b,
+                            kernel.0,
+                            kernel.1,
+                            stride.0,
+                            stride.1,
+                            dilation.0,
+                            dilation.1,
+                            pad.0,
+                            pad.1,
+                            0,
+                            0,
+                            *group,
+                            act_code(*act)?,
+                            slope,
+                            u32::from(*pad_edge),
+                        ],
+                    );
+                }
+                Node::ConvInt8 {
+                    input,
+                    out,
+                    weight,
+                    scale,
+                    bias,
+                    kernel,
+                    stride,
+                    dilation,
+                    pad,
+                    group,
+                    act,
+                    quant,
+                    res,
+                    shift,
+                } => {
+                    if res.is_some() || shift.is_some() {
+                        return Err(format!(
+                            "emitter: node {i} carries a fused addend; emit before fusion"
+                        ));
+                    }
+                    if matches!(act, Act::PRelu(_)) {
+                        return Err(format!("emitter: node {i} is a PReLU"));
+                    }
+                    let shape = recorded.shapes.get(out.0).copied().ok_or_else(|| {
+                        format!("emitter: node {i} output {} has no shape", out.0)
+                    })?;
+                    nodes_bytes.push(TAG_CONV_INT8);
+                    let input_at = position(&mut order, input.0);
+                    let out_at = position(&mut order, out.0);
+                    // Quantised kernels are word-addressed: flag the lookup so it
+                    // normalises to bytes before comparing. Lengths are element
+                    // counts, as the table records them.
+                    let in_shape =
+                        recorded.shapes.get(input.0).copied().ok_or_else(|| {
+                            format!("emitter: node {i} input {} has no shape", input.0)
+                        })?;
+                    let per_group = in_shape.c / group.max(&1);
+                    let w = file_index(
+                        *weight,
+                        true,
+                        shape.c * per_group * kernel.0 * kernel.1,
+                        "kernel-int",
+                    )?;
+                    let s = file_index(*scale, false, shape.c, "scale")?;
+                    let b = file_index(*bias, false, shape.c, "bias")?;
+                    u32s(
+                        &mut nodes_bytes,
+                        &[
+                            input_at,
+                            out_at,
+                            w,
+                            s,
+                            b,
+                            kernel.0,
+                            kernel.1,
+                            stride.0,
+                            stride.1,
+                            dilation.0,
+                            dilation.1,
+                            pad.0,
+                            pad.1,
+                            0,
+                            0,
+                            *group,
+                            act_code(*act)?,
+                            match quant {
+                                Quant::I8 => 0,
+                                Quant::I4 => 1,
+                            },
+                        ],
+                    );
+                }
+                Node::Binary { kind, a, b, out } => {
+                    use crate::nets::Kind;
+                    match kind {
+                        Kind::Add => nodes_bytes.push(TAG_ADD),
+                        Kind::AddBroadcast => nodes_bytes.push(TAG_ADD_BROADCAST),
+                        other => {
+                            return Err(format!(
+                                "emitter: node {i} is {other:?}, not in phase 1"
+                            ));
+                        }
+                    }
+                    let a_at = position(&mut order, a.0);
+                    let b_at = position(&mut order, b.0);
+                    let out_at = position(&mut order, out.0);
+                    u32s(&mut nodes_bytes, &[a_at, b_at, out_at]);
+                }
+                Node::LayerNorm { input, out, gamma, beta, epsilon } => {
+                    nodes_bytes.push(TAG_LAYER_NORM);
+                    let input_at = position(&mut order, input.0);
+                    let out_at = position(&mut order, out.0);
+                    let shape =
+                        recorded.shapes.get(out.0).copied().ok_or_else(|| {
+                            format!("emitter: node {i} output {} has no shape", out.0)
+                        })?;
+                    let g = file_index(*gamma, false, shape.c, "gamma")?;
+                    let be = file_index(*beta, false, shape.c, "beta")?;
+                    u32s(
+                        &mut nodes_bytes,
+                        &[input_at, out_at, g, be, epsilon.to_bits()],
+                    );
+                }
+                Node::GlobalAvgPool { input, out } => {
+                    nodes_bytes.push(TAG_GLOBAL_AVG_POOL);
+                    let input_at = position(&mut order, input.0);
+                    let out_at = position(&mut order, out.0);
+                    u32s(&mut nodes_bytes, &[input_at, out_at]);
+                }
+                Node::Concat { parts, out } if parts.len() == 1 => {
+                    // `reshaped`: the single-part form is a relabelling, lowered as
+                    // one copy. Multi-part joins are real concatenations, not views.
+                    nodes_bytes.push(TAG_RESHAPE);
+                    let input_at = position(&mut order, parts[0].0);
+                    let out_at = position(&mut order, out.0);
+                    u32s(&mut nodes_bytes, &[input_at, out_at]);
+                }
+                other => {
+                    return Err(format!("emitter: node {i} is {other:?}, not in phase 1"));
+                }
+            }
+        }
+        // Header: node count, then payloads. (`bytes` is empty until here: node
+        // payloads accumulate in `nodes_bytes` first, so the count leads.)
+        bytes.extend_from_slice(&(recorded.nodes.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&nodes_bytes);
+        // Computed table in assignment order.
+        bytes.extend_from_slice(&(order.len() as u32).to_le_bytes());
+        for id in &order {
+            let shape = recorded.shapes.get(*id).copied().ok_or_else(|| {
+                format!("emitter: tensor {id} has no shape")
+            })?;
+            u32s(&mut bytes, &[shape.c, shape.h, shape.w]);
+        }
+        // Bindings: inputs and outputs as computed positions.
+        let pos = |order: &[usize], id: usize| -> Result<u32, String> {
+            order
+                .iter()
+                .position(|&i| i == id)
+                .map(|at| at as u32)
+                .ok_or_else(|| format!("emitter: binding {id} was never assigned"))
+        };
+        bytes.extend_from_slice(&(recorded.inputs.len() as u32).to_le_bytes());
+        for id in &recorded.inputs {
+            bytes.extend_from_slice(&pos(&order, id.0)?.to_le_bytes());
+        }
+        bytes.extend_from_slice(&(outputs.len() as u32).to_le_bytes());
+        for id in outputs {
+            bytes.extend_from_slice(&pos(&order, id.0)?.to_le_bytes());
+        }
+        // Host tensors: every read file tensor that no node consumed as a weight.
+        // `Recorded.read` marks every file tensor the pass touched; node emission
+        // above consumed the weights. The remainder are host-side by elimination —
+        // and that is exactly `Builder::host_tensor`'s contract from the other side:
+        // finish refuses an unread tensor, so every read tensor is either a weight
+        // above or named here.
+        //
+        // Re-derived from the section bytes just written rather than threaded through
+        // the emission match: every weight ref sits at a known payload slot per kind
+        // tag (slots 2..4 — see the match above), so one walk over `nodes_bytes`
+        // collects the used set without a second channel.
+        let mut used = vec![false; table.len()];
+        {
+            let mut at = 0usize;
+            for _ in &recorded.nodes {
+                let tag = nodes_bytes.get(at).copied().unwrap_or(255);
+                at += 1;
+                let base = at;
+                let slots: &[usize] = match tag {
+                    TAG_CONV => &[2, 3],
+                    TAG_CONV_INT8 => &[2, 3, 4],
+                    TAG_LAYER_NORM => &[2, 3],
+                    _ => &[],
+                };
+                for slot in slots {
+                    let o = base + slot * 4;
+                    if let Some(field) = nodes_bytes.get(o..o + 4) {
+                        let index = u32_of(field) as usize;
+                        if let Some(seen) = used.get_mut(index) {
+                            *seen = true;
+                        }
+                    }
+                }
+                at += match tag {
+                    TAG_CONV | TAG_CONV_INT8 => 18 * 4,
+                    TAG_ADD | TAG_ADD_BROADCAST => 3 * 4,
+                    TAG_LAYER_NORM => 5 * 4,
+                    TAG_GLOBAL_AVG_POOL | TAG_RESHAPE => 2 * 4,
+                    _ => 0,
+                };
+            }
+        }
         let mut host: Vec<(u32, u32, [u32; 4])> = Vec::new();
         for (index, was_read) in recorded.read.iter().enumerate() {
             if *was_read && !used.get(index).copied().unwrap_or(true) {
@@ -18,267 +382,5 @@
             }
         }
         Ok(bytes)
-    }
-}
-
-/// `floor((in + pad - dilation * (k - 1) - 1) / stride) + 1`, ONNX's convolution output
-/// size. Deliberately the same formula as `nets::conv_out` rather than a shared helper:
-/// the validator and the builder must agree, and sharing the function would make a change
-/// to one silently change the other's checks. Duplicated on purpose, tested by agreement
-/// (see the round-trip tests).
-fn conv_out_shape(input: u32, kernel: u32, stride: u32, dilation: u32, pad_total: u32) -> u32 {
-    let effective = dilation * (kernel - 1) + 1;
-    let padded = input + pad_total;
-    if padded < effective || stride == 0 {
-        return 0;
-    }
-    (padded - effective) / stride + 1
-}
-
-fn u32_of(bytes: &[u8]) -> u32 {
-    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
-}
-
-/// A cursor over the section bytes, refusing overruns with the field at fault.
-struct Cursor<'a> {
-    bytes: &'a [u8],
-}
-
-impl Cursor<'_> {
-    fn take(&mut self, n: usize, what: &str) -> Result<Vec<u8>, String> {
-        if self.bytes.len() < n {
-            return Err(format!("graph section ends in {what}"));
-        }
-        let (head, tail) = self.bytes.split_at(n);
-        self.bytes = tail;
-        Ok(head.to_vec())
-    }
-
-    fn u8(&mut self, what: &str) -> Result<u8, String> {
-        Ok(self.take(1, what)?[0])
-    }
-
-    fn u32(&mut self, what: &str) -> Result<u32, String> {
-        let f = self.take(4, what)?;
-        Ok(u32_of(&f))
-    }
-
-    fn indices(&mut self, what: &str) -> Result<Vec<u32>, String> {
-        let count = self.u32(&format!("{what} count"))? as usize;
-        if count > MAX_GRAPH_TENSORS {
-            return Err(format!("graph section claims {count} {what}"));
-        }
-        let mut out = Vec::with_capacity(count.min(64));
-        for i in 0..count {
-            out.push(self.u32(&format!("{what} {i}"))?);
-        }
-        Ok(out)
-    }
-
-    fn rest(&self) -> &[u8] {
-        self.bytes
-    }
-}
-
-#[cfg(test)]
-mod graph_tests {
-    use super::*;
-
-    /// A minimal section: one fp16 conv over a 2x2 input, then an output binding.
-    fn one_conv_section() -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&1u32.to_le_bytes());
-        bytes.push(TAG_CONV);
-        // input 0, out 1, weight 0, bias 1, 1x1, stride 1, dilation 1, no pads,
-        // group 1, act none, no slope, pad_edge 0: 18 u32s = 72 bytes, matching
-        // the parser's `take(72)` and the emitter's `18 * 4` stride.
-        for v in [0u32, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0] {
-            bytes.extend_from_slice(&v.to_le_bytes());
-        }
-        bytes.extend_from_slice(&NO_TENSOR.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        // computed: [2,1,2] in, [2,1,2] out.
-        bytes.extend_from_slice(&2u32.to_le_bytes());
-        for shape in [[2u32, 1, 2], [2, 1, 2]] {
-            for v in shape {
-                bytes.extend_from_slice(&v.to_le_bytes());
-            }
-        }
-        // inputs [0], outputs [1], no hosts.
-        bytes.extend_from_slice(&1u32.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes.extend_from_slice(&1u32.to_le_bytes());
-        bytes.extend_from_slice(&1u32.to_le_bytes());
-        bytes.extend_from_slice(&0u32.to_le_bytes());
-        bytes
-    }
-
-    fn one_conv_table() -> Vec<Tensor> {
-        vec![
-            Tensor { rank: 4, dims: [2, 2, 1, 1], offset: 0, len: 4, dtype: Dtype::F16 },
-            Tensor { rank: 1, dims: [2, 0, 0, 0], offset: 16, len: 2, dtype: Dtype::F16 },
-        ]
-    }
-
-    #[test]
-    fn a_minimal_section_parses_and_validates() {
-        let graph = Graph::parse(&one_conv_section(), &one_conv_table()).expect("parses");
-        assert_eq!(graph.nodes.len(), 1);
-        assert_eq!(graph.inputs, vec![0]);
-        assert_eq!(graph.outputs, vec![1]);
-    }
-
-    #[test]
-    fn an_unknown_kind_tag_is_refused() {
-        let mut bytes = one_conv_section();
-        bytes[4] = 9;
-        let error = Graph::parse(&bytes, &one_conv_table()).expect_err("bad tag");
-        assert!(error.contains("kind tag 9"), "{error}");
-    }
-
-    #[test]
-    fn a_weight_ref_past_the_table_is_refused() {
-        let mut bytes = one_conv_section();
-        // weight file index lives at payload offset 8.
-        bytes[5 + 8..5 + 12].copy_from_slice(&7u32.to_le_bytes());
-        let error = Graph::parse(&bytes, &one_conv_table()).expect_err("bad weight");
-        assert!(error.contains("file tensor 7"), "{error}");
-    }
-
-    #[test]
-    fn a_shape_mismatch_is_refused() {
-        // Bias table entry claims [3] but the node needs [2].
-        let mut table = one_conv_table();
-        table[1].dims = [3, 0, 0, 0];
-        table[1].len = 3;
-        let error = Graph::parse(&one_conv_section(), &table).expect_err("bad bias");
-        assert!(error.contains("as [2]"), "{error}");
-    }
-
-    #[test]
-    fn trailing_section_bytes_are_refused() {
-        let mut bytes = one_conv_section();
-        bytes.push(0);
-        let error = Graph::parse(&bytes, &one_conv_table()).expect_err("trailing");
-        assert!(error.contains("trailing"), "{error}");
-    }
-
-    #[test]
-    fn an_empty_section_is_refused() {
-        let error = Graph::parse(&[], &one_conv_table()).expect_err("empty");
-        assert!(error.contains("node count"), "{error}");
-    }
-
-    #[test]
-    fn a_version_two_file_without_a_section_parses_as_version_one() {
-        // Bytes 56..64 are the graph offset/len pair; zero length is absent even at
-        // version 2, so a v2 file with no emitted graph behaves exactly like v1.
-        // One fp16 tensor [4]: rank 1, dims [4,0,0,0], offset 0, len 4.
-        let mut bytes = vec![0u8; 64 + 32];
-        bytes[0..4].copy_from_slice(&MAGIC);
-        bytes[4..8].copy_from_slice(&2u32.to_le_bytes());
-        bytes[8..12].copy_from_slice(&graph::U2NETP.to_le_bytes());
-        bytes[12..16].copy_from_slice(&1u32.to_le_bytes());
-        bytes[48..52].copy_from_slice(&96u32.to_le_bytes());
-        bytes[52..56].copy_from_slice(&8u32.to_le_bytes());
-        bytes[64..68].copy_from_slice(&1u32.to_le_bytes());
-        bytes[68..72].copy_from_slice(&4u32.to_le_bytes());
-        bytes[84..88].copy_from_slice(&DTYPE_F16.to_le_bytes());
-        bytes[88..92].copy_from_slice(&0u32.to_le_bytes());
-        bytes[92..96].copy_from_slice(&4u32.to_le_bytes());
-        for v in [1.0f32, 2.0, 3.0, 4.0] {
-            bytes.extend_from_slice(&crate::preprocess::f32_to_f16(v).to_le_bytes());
-        }
-        let weights = Weights::parse(&bytes, graph::U2NETP).expect("a section-less v2 parses");
-        assert!(weights.graph_section().is_none());
-    }
-
-    #[test]
-    fn a_version_one_file_naming_a_section_is_refused() {
-        let mut bytes = vec![0u8; 64 + 32 + 8];
-        bytes[0..4].copy_from_slice(&MAGIC);
-        bytes[4..8].copy_from_slice(&1u32.to_le_bytes());
-        bytes[8..12].copy_from_slice(&graph::U2NETP.to_le_bytes());
-        bytes[12..16].copy_from_slice(&1u32.to_le_bytes());
-        bytes[48..52].copy_from_slice(&96u32.to_le_bytes());
-        bytes[52..56].copy_from_slice(&8u32.to_le_bytes());
-        bytes[56..60].copy_from_slice(&104u32.to_le_bytes());
-        bytes[60..64].copy_from_slice(&16u32.to_le_bytes());
-        let error = Weights::parse(&bytes, graph::U2NETP).expect_err("v1 with section");
-        assert!(error.contains("version-1"), "{error}");
-    }
-
-    #[test]
-    fn a_future_version_is_refused_loudly() {
-        let mut bytes = vec![0u8; 64 + 32 + 8];
-        bytes[0..4].copy_from_slice(&MAGIC);
-        bytes[4..8].copy_from_slice(&9u32.to_le_bytes());
-        let error = Weights::parse(&bytes, graph::U2NETP).expect_err("version 9");
-        assert!(error.contains("format version 9"), "{error}");
-    }
-
-    #[test]
-    fn a_section_past_the_blob_parses_with_the_file() {
-        // A full v2 file: header + table + blob + section, with the header's
-        // reserved pair naming the section. Tensor 0 at blob offset 0 ([2,2,1,1]),
-        // tensor 1 at 16 ([2]) — matching `one_conv_table`.
-        let section = one_conv_section();
-        let blob_len = 16 + 4;
-        let mut bytes = vec![0u8; 64 + 64 + blob_len];
-        bytes[0..4].copy_from_slice(&MAGIC);
-        bytes[4..8].copy_from_slice(&2u32.to_le_bytes());
-        bytes[8..12].copy_from_slice(&graph::U2NETP.to_le_bytes());
-        bytes[12..16].copy_from_slice(&2u32.to_le_bytes());
-        bytes[48..52].copy_from_slice(&128u32.to_le_bytes());
-        bytes[52..56].copy_from_slice(&(blob_len as u32).to_le_bytes());
-        bytes[56..60].copy_from_slice(&(128 + blob_len as u32).to_le_bytes());
-        bytes[60..64].copy_from_slice(&(section.len() as u32).to_le_bytes());
-        // table entries
-        bytes[64..68].copy_from_slice(&4u32.to_le_bytes());
-        for (o, d) in [2u32, 2, 1, 1].iter().enumerate() {
-            bytes[68 + o * 4..72 + o * 4].copy_from_slice(&d.to_le_bytes());
-        }
-        bytes[84..88].copy_from_slice(&DTYPE_F16.to_le_bytes());
-        bytes[88..92].copy_from_slice(&0u32.to_le_bytes());
-        bytes[92..96].copy_from_slice(&4u32.to_le_bytes());
-        bytes[96..100].copy_from_slice(&1u32.to_le_bytes());
-        bytes[100..104].copy_from_slice(&2u32.to_le_bytes());
-        bytes[116..120].copy_from_slice(&DTYPE_F16.to_le_bytes());
-        bytes[120..124].copy_from_slice(&16u32.to_le_bytes());
-        bytes[124..128].copy_from_slice(&2u32.to_le_bytes());
-        // blob payload: 4 fp16 then pad to 16 then 2 fp16.
-        let mut blob = vec![0u8; blob_len];
-        for (i, v) in [1.0f32, 1.0, 1.0, 1.0, 0.5, 0.5].iter().enumerate() {
-            let at = if i < 4 { i * 2 } else { 16 + (i - 4) * 2 };
-            blob[at..at + 2].copy_from_slice(&crate::preprocess::f32_to_f16(*v).to_le_bytes());
-        }
-        bytes[128..128 + blob_len].copy_from_slice(&blob);
-        bytes.extend_from_slice(&section);
-        let weights = Weights::parse(&bytes, graph::U2NETP).expect("a v2 file parses");
-        let graph = weights.graph_section().expect("a section");
-        assert_eq!(graph.nodes.len(), 1);
-    }
-
-    #[test]
-    fn a_misplaced_section_is_refused() {
-        // One fp16 tensor [4]: rank 1, dims [4,0,0,0], blob 8 bytes at 96..104,
-        // so naming the section at 100 points inside it — weights aliased as
-        // topology.
-        let mut bytes = vec![0u8; 64 + 32 + 8];
-        bytes[0..4].copy_from_slice(&MAGIC);
-        bytes[4..8].copy_from_slice(&2u32.to_le_bytes());
-        bytes[8..12].copy_from_slice(&graph::U2NETP.to_le_bytes());
-        bytes[12..16].copy_from_slice(&1u32.to_le_bytes());
-        bytes[48..52].copy_from_slice(&96u32.to_le_bytes());
-        bytes[52..56].copy_from_slice(&8u32.to_le_bytes());
-        bytes[56..60].copy_from_slice(&100u32.to_le_bytes());
-        bytes[60..64].copy_from_slice(&16u32.to_le_bytes());
-        bytes[64..68].copy_from_slice(&1u32.to_le_bytes());
-        bytes[68..72].copy_from_slice(&4u32.to_le_bytes());
-        bytes[84..88].copy_from_slice(&DTYPE_F16.to_le_bytes());
-        bytes[88..92].copy_from_slice(&0u32.to_le_bytes());
-        bytes[92..96].copy_from_slice(&4u32.to_le_bytes());
-        let error = Weights::parse(&bytes, graph::U2NETP).expect_err("misplaced");
-        assert!(error.contains("graph section at 100"), "{error}");
     }
 }

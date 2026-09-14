@@ -1,3 +1,426 @@
+impl<'a> Builder<'a> {
+    fn emit(
+        &self,
+        node: &Node,
+        at: &dyn Fn(Id) -> Result<u32, String>,
+        shape: &dyn Fn(Id) -> Shape,
+        ops: &mut Vec<Op>,
+    ) -> Result<(), String> {
+        match node {
+            Node::ConvInt8 {
+                input,
+                out,
+                weight,
+                scale,
+                bias,
+                kernel,
+                stride,
+                dilation,
+                pad,
+                group,
+                act,
+                quant,
+                res,
+                shift,
+            } => {
+                let (si, so) = (shape(*input), shape(*out));
+                // The same test `Node::Conv` applies below, less the two cases that cannot arise
+                // here: there is no transposed int8 convolution, and `Builder::conv_int8` refuses
+                // `Act::PRelu` outright because the scale occupies the offset a slope would need.
+                //
+                // It matters more here than it does there: Supertonic's sampler is 92% pointwise
+                // by parameter count and runs `2 * STEPS` times an utterance, so leaving it on the
+                // untiled shader would cost far more time than int8 saves space.
+                let tiled = *group == 1
+                    && kernel == &(1, 1)
+                    && stride == &(1, 1)
+                    && pad == &(0, 0)
+                    && si.h == so.h
+                    && si.w == so.w;
+                let positions = so.h * so.w;
+                // At one position the tiled shader pads 15 of every 16 columns and stores from 8 of
+                // every 64 invocations, so a single-position pointwise convolution goes to the gemv
+                // shader instead. It is the whole of a SMaLL-100 decode step.
+                let vector = tiled && positions == 1;
+                let tiles = so.c.div_ceil(CONV_POINT_TILE) * positions.div_ceil(CONV_POINT_TILE);
+                // One workgroup per row-group: 2 channels for int8, 8 for int4 — the
+                // two gemv shaders diverged, so each kind counts its own rows.
+                let rows = match quant {
+                    Quant::I8 => so.c.div_ceil(CONV_VEC_ROWS),
+                    Quant::I4 => so.c.div_ceil(CONV_VEC_INT4_ROWS),
+                };
+                let kind = match (quant, tiled, vector) {
+                    (Quant::I8, _, true) => Kind::ConvVecInt8,
+                    (Quant::I8, true, false) => Kind::ConvPointInt8,
+                    (Quant::I8, false, false) => Kind::ConvInt8,
+                    (Quant::I4, _, true) => Kind::ConvVecInt4,
+                    (Quant::I4, true, false) => Kind::ConvPointInt4,
+                    (Quant::I4, false, false) => {
+                        return Err(format!(
+                            "an int4 convolution with a {}x{} kernel or {group} groups: only the \
+                             two 1x1 lowerings are quantised to four bits, because the padded \
+                             and grouped shader has no int4 counterpart",
+                            kernel.0, kernel.1
+                        ))
+                    }
+                };
+                // Workgroups for the staged kinds, output elements for the untiled one.
+                let count = match kind {
+                    Kind::ConvVecInt8 | Kind::ConvVecInt4 => rows,
+                    Kind::ConvPointInt8 | Kind::ConvPointInt4 => tiles,
+                    _ => so.len(),
+                };
+                ops.push(Op::Dispatch {
+                    kind,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        // A word offset, not an fp16 one: int8 is unpacked through the
+                        // 32-bit view of the weights buffer.
+                        weight: *weight,
+                        bias: *bias,
+                        // The dequantisation scale rides in the field `PRelu` would use,
+                        // which is why the two cannot be combined.
+                        act_weight: *scale,
+                        in_c: si.c,
+                        in_h: si.h,
+                        in_w: si.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        // Neither staged shader reads these, unlike `Kind::ConvPoint`'s push block,
+                        // which leaves them at zero. They are filled in either way so that
+                        // `nets::reference` can serve all three kinds from one `conv_int8`, whose
+                        // arithmetic is identical once the geometry above holds.
+                        kh: kernel.0,
+                        kw: kernel.1,
+                        stride_h: stride.0,
+                        stride_w: stride.1,
+                        dil_h: dilation.0,
+                        dil_w: dilation.1,
+                        pad_t: pad.0,
+                        pad_l: pad.1,
+                        group: *group,
+                        act: act.code(),
+                        count,
+                        res: Self::fuse_offset(*res, &at)?,
+                        shift: Self::fuse_offset(*shift, &at)?,
+                        ..Push::default()
+                    },
+                    // One workgroup of 64 per unit for the staged shaders; one invocation per
+                    // output element for the untiled one.
+                    invocations: match kind {
+                        Kind::ConvVecInt8
+                        | Kind::ConvPointInt8
+                        | Kind::ConvVecInt4
+                        | Kind::ConvPointInt4 => count * 64,
+                        _ => count,
+                    },
+                });
+            }
+            Node::Conv {
+                input,
+                out,
+                weight,
+                bias,
+                kernel,
+                stride,
+                dilation,
+                pad,
+                group,
+                act,
+                act_weight,
+                transpose,
+                pad_edge,
+                res,
+                shift,
+            } => {
+                let (si, so) = (shape(*input), shape(*out));
+                // An ungrouped 1x1 goes to the tiled path. Its geometry is a matrix multiply
+                // over `out_h * out_w` positions, so stride, dilation and padding are all
+                // trivially identity and nothing else in the push block changes meaning.
+                let tiled = !*transpose
+                    && *group == 1
+                    && kernel == &(1, 1)
+                    && stride == &(1, 1)
+                    && pad == &(0, 0)
+                    && si.h == so.h
+                    && si.w == so.w
+                    && !matches!(act, Act::PRelu(_));
+                if tiled {
+                    let positions = so.h * so.w;
+                    let tiles =
+                        so.c.div_ceil(CONV_POINT_TILE) * positions.div_ceil(CONV_POINT_TILE);
+                    ops.push(Op::Dispatch {
+                        kind: Kind::ConvPoint,
+                        push: Push {
+                            in0: at(*input)?,
+                            out: at(*out)?,
+                            weight: *weight,
+                            bias: *bias,
+                            in_c: si.c,
+                            in_h: si.h,
+                            in_w: si.w,
+                            out_c: so.c,
+                            out_h: so.h,
+                            out_w: so.w,
+                            act: act.code(),
+                            // Tiles, not elements: one workgroup per tile.
+                            count: tiles,
+                            res: Self::fuse_offset(*res, &at)?,
+                            shift: Self::fuse_offset(*shift, &at)?,
+                            ..Push::default()
+                        },
+                        // 64 invocations a workgroup, so this asks for exactly `tiles` of them.
+                        invocations: tiles * 64,
+                    });
+                    return Ok(());
+                }
+                ops.push(Op::Dispatch {
+                    kind: if *transpose { Kind::ConvTranspose } else { Kind::Conv },
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        weight: *weight,
+                        bias: *bias,
+                        in_c: si.c,
+                        in_h: si.h,
+                        in_w: si.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        kh: kernel.0,
+                        kw: kernel.1,
+                        stride_h: stride.0,
+                        stride_w: stride.1,
+                        dil_h: dilation.0,
+                        dil_w: dilation.1,
+                        pad_t: pad.0,
+                        pad_l: pad.1,
+                        pad_edge: u32::from(*pad_edge),
+                        group: *group,
+                        act: act.code(),
+                        act_weight: *act_weight,
+                        count: so.len(),
+                        res: Self::fuse_offset(*res, &at)?,
+                        shift: Self::fuse_offset(*shift, &at)?,
+                        ..Push::default()
+                    },
+                    invocations: so.len(),
+                });
+            }
+            Node::MaxPool { input, out, kernel, stride } => {
+                let (si, so) = (shape(*input), shape(*out));
+                ops.push(Op::Dispatch {
+                    kind: Kind::MaxPool,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        in_c: si.c,
+                        in_h: si.h,
+                        in_w: si.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        kh: kernel.0,
+                        kw: kernel.1,
+                        stride_h: stride.0,
+                        stride_w: stride.1,
+                        count: so.len(),
+                        ..Push::default()
+                    },
+                    invocations: so.len(),
+                });
+            }
+            Node::AvgPool { input, out, kernel, stride } => {
+                let (si, so) = (shape(*input), shape(*out));
+                ops.push(Op::Dispatch {
+                    kind: Kind::AvgPool,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        in_c: si.c,
+                        in_h: si.h,
+                        in_w: si.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        kh: kernel.0,
+                        kw: kernel.1,
+                        stride_h: stride.0,
+                        stride_w: stride.1,
+                        count: so.len(),
+                        ..Push::default()
+                    },
+                    invocations: so.len(),
+                });
+            }
+            Node::Resize { input, out, nearest } => {
+                let (si, so) = (shape(*input), shape(*out));
+                ops.push(Op::Dispatch {
+                    kind: if *nearest { Kind::ResizeNearest } else { Kind::Resize },
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        in_c: si.c,
+                        in_h: si.h,
+                        in_w: si.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        count: so.len(),
+                        ..Push::default()
+                    },
+                    invocations: so.len(),
+                });
+            }
+            Node::GlobalAvgPool { input, out } => {
+                let (si, so) = (shape(*input), shape(*out));
+                ops.push(Op::Dispatch {
+                    kind: Kind::GlobalAvgPool,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        in_c: si.c,
+                        in_h: si.h,
+                        in_w: si.w,
+                        out_c: so.c,
+                        out_h: 1,
+                        out_w: 1,
+                        count: so.len(),
+                        ..Push::default()
+                    },
+                    invocations: so.len(),
+                });
+            }
+            Node::Binary { kind, a, b, out } => {
+                let so = shape(*out);
+                ops.push(Op::Dispatch {
+                    kind: *kind,
+                    push: Push {
+                        in0: at(*a)?,
+                        in1: at(*b)?,
+                        out: at(*out)?,
+                        in_c: so.c,
+                        in_h: so.h,
+                        in_w: so.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        count: so.len(),
+                        ..Push::default()
+                    },
+                    invocations: so.len(),
+                });
+            }
+            Node::Concat { parts, out } => {
+                let base = at(*out)?;
+                let mut written = 0;
+                for &part in parts {
+                    let len = shape(part).len();
+                    ops.push(Op::Copy {
+                        src: at(part)?,
+                        dst: base + written,
+                        elems: len,
+                    });
+                    written += len;
+                }
+            }
+            Node::Affine { input, out, scale, shift } => {
+                let so = shape(*out);
+                ops.push(Op::Dispatch {
+                    kind: Kind::Affine,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        in_c: so.c,
+                        in_h: so.h,
+                        in_w: so.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        param0_bits: scale.to_bits(),
+                        param1_bits: shift.to_bits(),
+                        count: so.len(),
+                        ..Push::default()
+                    },
+                    invocations: so.len(),
+                });
+            }
+            Node::LayerNorm { input, out, gamma, beta, epsilon } => {
+                let so = shape(*out);
+                // One invocation per position, each reducing over the channels, so the
+                // dispatch is the spatial extent rather than the element count.
+                let positions = so.h * so.w;
+                ops.push(Op::Dispatch {
+                    kind: Kind::LayerNorm,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        weight: *gamma,
+                        bias: *beta,
+                        in_c: so.c,
+                        in_h: so.h,
+                        in_w: so.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        param1_bits: epsilon.to_bits(),
+                        count: positions,
+                        ..Push::default()
+                    },
+                    invocations: positions,
+                });
+            }
+            Node::RmsNorm { input, out, gamma, epsilon, groups } => {
+                let so = shape(*out);
+                // One invocation per group per position, reducing over that group's channels.
+                let positions = so.h * so.w * groups.max(&1);
+                ops.push(Op::Dispatch {
+                    kind: Kind::RmsNorm,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        weight: *gamma,
+                        in_c: so.c,
+                        in_h: so.h,
+                        in_w: so.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        group: *groups,
+                        param1_bits: epsilon.to_bits(),
+                        count: positions,
+                        ..Push::default()
+                    },
+                    invocations: positions,
+                });
+            }
+            Node::AttnScores { q, k, out, heads, kv_heads, scale } => {
+                let (si, so) = (shape(*q), shape(*out));
+                ops.push(Op::Dispatch {
+                    kind: Kind::AttnScores,
+                    push: Push {
+                        in0: at(*q)?,
+                        in1: at(*k)?,
+                        out: at(*out)?,
+                        in_c: si.c,
+                        in_h: si.h,
+                        in_w: si.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        group: *heads,
+                        kv_heads: *kv_heads,
+                        param0_bits: scale.to_bits(),
+                        count: so.len(),
+                        ..Push::default()
+                    },
+                    invocations: so.len(),
+                });
+            }
+            Node::AttnScoresCached { q, cache, out, heads, kv_heads, scale, dynamic, sliding } => {
+                let (sq, so) = (shape(*q), shape(*out));
                 ops.push(Op::Dispatch {
                     kind: Kind::AttnScoresCached,
                     push: Push {
@@ -23,397 +446,8 @@
                     invocations: so.len(),
                 });
             }
-            Node::AttnApplyCached { probs, cache, out, heads, kv_heads, dynamic, sliding } => {
-                let (sc, so) = (shape(*cache), shape(*out));
-                ops.push(Op::Dispatch {
-                    kind: Kind::AttnApplyCached,
-                    push: Push {
-                        in0: at(*probs)?,
-                        in1: at(*cache)?,
-                        out: at(*out)?,
-                        // As above: the cache's stride is `d_model`, which is also the output's
-                        // channel count because attention preserves the width.
-                        in_c: so.c,
-                        in_h: 1,
-                        // The key stride, which is the cache's *channel* count in this layout.
-                        // When `dynamic`, only the leading `prefix + 1` of them are summed.
-                        in_w: sc.c,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        group: *heads,
-                        count: so.len(),
-                        dyn_keys: u32::from(*dynamic),
-                        kv_heads: *kv_heads,
-                        sliding: u32::from(*sliding),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::AttnScoresRelative { q, k, out, heads, scale, table, offsets } => {
-                let (si, so) = (shape(*q), shape(*out));
-                ops.push(Op::Dispatch {
-                    kind: Kind::AttnScoresRelative,
-                    push: Push {
-                        in0: at(*q)?,
-                        in1: at(*k)?,
-                        out: at(*out)?,
-                        weight: *table,
-                        in_c: si.c,
-                        in_h: si.h,
-                        in_w: si.w,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        // The offset count reads as a kernel width, because that is what a
-                        // band of `2 * window + 1` taps along the sequence is.
-                        kw: *offsets,
-                        group: *heads,
-                        param0_bits: scale.to_bits(),
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::AttnApplyRelative { probs, v, out, heads, table, offsets } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::AttnApplyRelative,
-                    push: Push {
-                        in0: at(*probs)?,
-                        in1: at(*v)?,
-                        out: at(*out)?,
-                        weight: *table,
-                        in_c: so.c,
-                        in_h: so.h,
-                        in_w: so.w,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        kw: *offsets,
-                        group: *heads,
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::AttnScoresBanded { q, k, out, heads, band, table, offsets, scale, cap } => {
-                let (si, so) = (shape(*q), shape(*out));
-                ops.push(Op::Dispatch {
-                    kind: Kind::AttnScoresBanded,
-                    push: Push {
-                        in0: at(*q)?,
-                        in1: at(*k)?,
-                        out: at(*out)?,
-                        weight: *table,
-                        in_c: si.c,
-                        in_h: si.h,
-                        in_w: si.w,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        // The band reads as a kernel height and the offset count as its width:
-                        // a window of taps along the sequence is what both of them are.
-                        kh: *band,
-                        kw: *offsets,
-                        group: *heads,
-                        param0_bits: scale.to_bits(),
-                        param1_bits: cap.to_bits(),
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::AttnApplyBanded { probs, v, out, heads, band } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::AttnApplyBanded,
-                    push: Push {
-                        in0: at(*probs)?,
-                        in1: at(*v)?,
-                        out: at(*out)?,
-                        in_c: so.c,
-                        in_h: so.h,
-                        in_w: so.w,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        kh: *band,
-                        group: *heads,
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::SliceChannels { input, out, start } => {
-                let so = shape(*out);
-                // A channel range is contiguous, so this is one element-range move.
-                ops.push(Op::Copy {
-                    src: at(*input)? + start * so.h * so.w,
-                    dst: at(*out)?,
-                    elems: so.len(),
-                });
-            }
-            Node::Embed { ids, out, table, rows } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::Embed,
-                    push: Push {
-                        in0: at(*ids)?,
-                        out: at(*out)?,
-                        weight: *table,
-                        // The table's row count, not the id tensor's extent: the shader
-                        // clamps against it so an unknown symbol mispronounces a word
-                        // rather than reading whatever follows the embedding.
-                        in_w: *rows,
-                        // Id lanes, 1 or 2. Not the output's channel count.
-                        in_c: shape(*ids).c,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::CacheWrite { row, cache } => {
-                let (sr, sc) = (shape(*row), shape(*cache));
-                ops.push(Op::Dispatch {
-                    kind: Kind::CacheWrite,
-                    push: Push {
-                        in0: at(*row)?,
-                        out: at(*cache)?,
-                        // The distance between cache rows, and the length of the one written.
-                        in_c: sc.w,
-                        // Positions the cache can hold, so a step past the end writes nothing.
-                        in_h: sc.c,
-                        in_w: 1,
-                        // The cache's real dimensions: their product is the region
-                        // `assert_no_aliasing` takes this op to write.
-                        out_c: sc.c,
-                        out_h: sc.h,
-                        out_w: sc.w,
-                        // Positions written at once. More than one is a prefill, whose K and V
-                        // are channel-major and need transposing into the cache.
-                        group: sr.len() / sc.w.max(1),
-                        count: sr.len(),
-                        ..Push::default()
-                    },
-                    invocations: sr.len(),
-                });
-            }
-            Node::Clamp { input, out, bounds } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::Clamp,
-                    push: Push {
-                        in0: at(*input)?,
-                        out: at(*out)?,
-                        act_weight: *bounds,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::MulScalar { input, out, scale } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::MulScalar,
-                    push: Push {
-                        in0: at(*input)?,
-                        out: at(*out)?,
-                        act_weight: *scale,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::Activate { input, out, act } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::Activate,
-                    push: Push {
-                        in0: at(*input)?,
-                        out: at(*out)?,
-                        in_c: so.c,
-                        in_h: so.h,
-                        in_w: so.w,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        act: act.code(),
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::GatedActivate { input, out, act } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::GatedActivate,
-                    push: Push {
-                        in0: at(*input)?,
-                        out: at(*out)?,
-                        // The distance from a gate element to its up partner: the whole gate
-                        // half, which is the output's element count.
-                        in_c: so.len(),
-                        in_h: so.h,
-                        in_w: so.w,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        act: act.code(),
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::Softcap { input, out, cap } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::Softcap,
-                    push: Push {
-                        in0: at(*input)?,
-                        out: at(*out)?,
-                        in_c: so.c,
-                        in_h: so.h,
-                        in_w: so.w,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        param0_bits: cap.to_bits(),
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::Softmax { input, out, mode, sliding, window } => {
-                let so = shape(*out);
-                // One invocation per row of the last axis, each normalising `out_w`
-                // contiguous elements, so the dispatch is rows rather than elements.
-                let rows = so.c * so.h;
-                ops.push(Op::Dispatch {
-                    kind: match mode {
-                        SoftmaxMode::Full => Kind::Softmax,
-                        SoftmaxMode::Causal => Kind::SoftmaxCausal,
-                        SoftmaxMode::Prefix => Kind::SoftmaxPrefix,
-                    },
-                    push: Push {
-                        in0: at(*input)?,
-                        out: at(*out)?,
-                        in_c: so.c,
-                        in_h: so.h,
-                        in_w: so.w,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        count: rows,
-                        dyn_keys: u32::from(*mode == SoftmaxMode::Prefix),
-                        sliding: u32::from(*sliding),
-                        // Only the causal shader reads it, and only when non-zero.
-                        kh: *window,
-                        ..Push::default()
-                    },
-                    invocations: rows,
-                });
-            }
-            Node::ConcatPositions { parts, out } => {
-                let so = shape(*out);
-                let base = at(*out)?;
-                let mut column = 0;
-                for &part in parts {
-                    let sp = shape(part);
-                    let src = at(part)?;
-                    // A part is a column range, so one run per channel row rather than the single
-                    // copy `Node::Concat` gets away with.
-                    for row in 0..sp.c * sp.h {
-                        ops.push(Op::Copy {
-                            src: src + row * sp.w,
-                            dst: base + row * so.w + column,
-                            elems: sp.w,
-                        });
-                    }
-                    column += sp.w;
-                }
-            }
-            Node::AttnApply { probs, v, out, heads, kv_heads } => {
-                let (sv, so) = (shape(*v), shape(*out));
-                ops.push(Op::Dispatch {
-                    kind: Kind::AttnApply,
-                    push: Push {
-                        in0: at(*probs)?,
-                        in1: at(*v)?,
-                        out: at(*out)?,
-                        in_c: so.c,
-                        in_h: so.h,
-                        // The **key** count, which is V's length. `out_w` is the query count,
-                        // and for a cross-attention those differ.
-                        in_w: sv.w,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        group: *heads,
-                        kv_heads: *kv_heads,
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::Rotary { input, angles, out, heads, axes } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::Rotary,
-                    push: Push {
-                        in0: at(*input)?,
-                        in1: at(*angles)?,
-                        out: at(*out)?,
-                        // The head width, which is what the frequency index wraps on. Not the
-                        // channel count.
-                        in_c: so.c / heads.max(&1),
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        group: *heads,
-                        rope_axes: *axes,
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
-            }
-            Node::Constant { out, weight } => {
-                let so = shape(*out);
-                ops.push(Op::Dispatch {
-                    kind: Kind::Constant,
-                    push: Push {
-                        out: at(*out)?,
-                        weight: *weight,
-                        out_c: so.c,
-                        out_h: so.h,
-                        out_w: so.w,
-                        count: so.len(),
-                        ..Push::default()
-                    },
-                    invocations: so.len(),
-                });
+            other => {
+                self.emit_continued(other, at, shape, ops)?;
             }
         }
         Ok(())

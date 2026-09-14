@@ -928,6 +928,17 @@ explicitly untinted, L728 comment). Constants: `MATCH` L1049, `WRAP` L1050,
   (`GearheadHostProbe.kt:37-49,56-73`), session default mirror
   (HANDOFF §10). Text format `"$turn · $road"` (`CarDisplay.kt:37-46`) vs
   gearhead step/lanes/ETA views — no field mapping exists.
+  - [x] RESOLVED (host rework): the mirror is deleted. `CarAppHost`
+    binds `MapsCarAppService`, implements the host binders
+    (`ICarHost`/`IAppHost`/`INavigationHost`/`IConstraintHost` per the
+    `app-1.4.0` contract), hands Maps the nav card's `TextureView` surface
+    as a `SurfaceContainer` (Maps draws its own map, same renderer/archive/
+    tile cache as the phone), and renders the real `NavigationTemplate`
+    into the step header: cue/road, distance, lane arrows from
+    `Step.lanes`/`LaneDirection`, remaining-time ETA, and the app's own
+    action strip through its `OnClickDelegate`. Ch8 map touches forward
+    into the app's `SurfaceCallback` (tap = click, drag = scroll). Empty
+    launch tile only when maps is missing or the bind fails.
 - [x] Nav banner typography is MA-invented. 18sp WHITE CENTER
   (`CarDisplay.kt:826-828`) — no gearhead token matches (gearhead nav text
   lives in unread `CarAppLayout`/template styles; see §9.1).

@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.zip.ZipFile
 
 /**
  * Migrated from okio FileSystem/Path/openZip to java.io.File + java.util.zip.ZipFile.
@@ -76,7 +77,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
     // ---- Navigation ----
     val rootDirectory: File = Environment.getExternalStorageDirectory()
 
-    private val _currentDirectory = MutableStateFlow(rootDirectory)
+    internal val _currentDirectory = MutableStateFlow(rootDirectory)
     val currentDirectory: StateFlow<File> = _currentDirectory.asStateFlow()
 
     private val _zipPath = MutableStateFlow<File?>(null)
@@ -100,7 +101,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
     val entries: StateFlow<Pair<List<FileBrowserItem>, List<FileBrowserItem>>> = _entries.asStateFlow()
 
     // ---- Selection (only valid in real FS mode) ----
-    private val _selectedPaths = MutableStateFlow<Set<FileBrowserItem>>(emptySet())
+    internal val _selectedPaths = MutableStateFlow<Set<FileBrowserItem>>(emptySet())
     val selectedPaths: StateFlow<Set<FileBrowserItem>> = _selectedPaths.asStateFlow()
 
     override fun clearSelection() {
@@ -391,7 +392,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
     private val _snackbarMessages = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val snackbarMessages: SharedFlow<String> = _snackbarMessages.asSharedFlow()
 
-    private val _intents = MutableSharedFlow<Intent>(extraBufferCapacity = 4)
+    internal val _intents = MutableSharedFlow<Intent>(extraBufferCapacity = 4)
     val intents: SharedFlow<Intent> = _intents.asSharedFlow()
 
     private var observerJob: Job? = null
@@ -724,8 +725,8 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
     }
 
     fun showMessage(message: String) { emit(message) }
-    private fun emit(message: String) { viewModelScope.launch { _snackbarMessages.emit(message) } }
-    private fun emitMoveFailed(e: Exception) {
+    internal fun emit(message: String) { viewModelScope.launch { _snackbarMessages.emit(message) } }
+    internal fun emitMoveFailed(e: Exception) {
         emit(getApplication<Application>().getString(R.string.move_failed, e.localizedMessage))
     }
 
@@ -755,7 +756,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
     private fun listZipDir(zipFile: File, internalDir: String): Pair<List<FileBrowserItem>, List<FileBrowserItem>> =
         listZipDirItems(zipFile, internalDir)
 
-    private fun File.atomicMoveTo(target: File) {
+    internal fun File.atomicMoveTo(target: File) {
         try {
             java.nio.file.Files.move(this.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
         } catch (_: Exception) {

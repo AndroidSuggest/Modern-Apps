@@ -16,12 +16,6 @@ import android.util.Log
  * the phone cannot complete.
  */
 class CarSetupService : Service() {
-
-    /** Setup handshake action, mirroring gearhead's `CAR_SETUP_SERVICE`. */
-    companion object {
-        const val ACTION_CAR_SETUP_SERVICE = "com.vayunmathur.auto.CAR_SETUP_SERVICE"
-    }
-
     override fun onBind(intent: Intent?): IBinder? {
         // Explicit no-op-with-comment: the HU setup-handshake bind is safely
         // rejected (null) -- MA setup is the pairing screen, not a bound
@@ -33,7 +27,6 @@ class CarSetupService : Service() {
     companion object {
         /** Setup handshake action, mirroring gearhead's `CAR_SETUP_SERVICE`. */
         const val ACTION_CAR_SETUP_SERVICE = "com.vayunmathur.auto.CAR_SETUP_SERVICE"
-
         private const val TAG = "MaAuto.CarSetup"
     }
 }

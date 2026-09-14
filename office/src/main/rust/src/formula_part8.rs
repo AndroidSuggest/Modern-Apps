@@ -444,7 +444,4 @@ impl<'a> Evaluator<'a> {
         }
         Ok(Value::Num(reduce(&matched)))
     }
-
-    fn lookup(&mut self, a: &[ArgThunk], horizontal: bool) -> R<Value> {
-        let key = self.t_value(&a[0])?;
-        let (r1, c1, r2, c2) = match self.t_arg(&a[1])? {
+}

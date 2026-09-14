@@ -448,3 +448,9 @@ pub(crate) fn font_info(doc: &Document, font: &lopdf::Dictionary) -> FontInfo {
         default_width,
         t3,
         style: FontStyle { bold, italic },
+        family,
+        base_font: base_font_name,
+        glyph_program: glyph_program.map(Arc::new),
+        glyph_names: Arc::new(glyph_names),
+    }
+}

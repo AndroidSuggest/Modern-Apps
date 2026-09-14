@@ -1,34 +1,38 @@
 #[cfg(test)]
+/// A straight line of `n` points, `metres` apart, running north from `(lat, lon)`.
+fn north(lat: f64, lon: f64, metres: f64, n: usize) -> Vec<(i32, i32)> {
+    let step = metres / 111_320.0 * 1e7;
+    (0..n).map(|i| (((lat * 1e7) + i as f64 * step) as i32, (lon * 1e7) as i32)).collect()
+}
+
+#[cfg(test)]
+/// The same line shifted `metres` east: a second track in one corridor.
+fn shifted(line: &[(i32, i32)], metres: f64) -> Vec<(i32, i32)> {
+    let cos_lat = (line[0].0 as f64 * 1e-7).to_radians().cos();
+    let d = (metres / (111_320.0 * cos_lat) * 1e7) as i32;
+    line.iter().map(|&(lat, lon)| (lat, lon + d)).collect()
+}
+
+#[cfg(test)]
+/// One line offered to [`assign`]: route, colour, name and geometry.
+type Fixture = (u32, u32, &'static str, Vec<(i32, i32)>);
+
+#[cfg(test)]
+fn candidates(lines: &[Fixture]) -> Vec<Candidate<'_>> {
+    lines
+        .iter()
+        .map(|(route, color, name, points)| Candidate {
+            points,
+            route: *route,
+            color: *color,
+            name,
+        })
+        .collect()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A straight line of `n` points, `metres` apart, running north from `(lat, lon)`.
-    fn north(lat: f64, lon: f64, metres: f64, n: usize) -> Vec<(i32, i32)> {
-        let step = metres / 111_320.0 * 1e7;
-        (0..n).map(|i| (((lat * 1e7) + i as f64 * step) as i32, (lon * 1e7) as i32)).collect()
-    }
-
-    /// The same line shifted `metres` east: a second track in one corridor.
-    fn shifted(line: &[(i32, i32)], metres: f64) -> Vec<(i32, i32)> {
-        let cos_lat = (line[0].0 as f64 * 1e-7).to_radians().cos();
-        let d = (metres / (111_320.0 * cos_lat) * 1e7) as i32;
-        line.iter().map(|&(lat, lon)| (lat, lon + d)).collect()
-    }
-
-    /// One line offered to [`assign`]: route, colour, name and geometry.
-    type Fixture = (u32, u32, &'static str, Vec<(i32, i32)>);
-
-    fn candidates(lines: &[Fixture]) -> Vec<Candidate<'_>> {
-        lines
-            .iter()
-            .map(|(route, color, name, points)| Candidate {
-                points,
-                route: *route,
-                color: *color,
-                name,
-            })
-            .collect()
-    }
 
     /// The lane inputs each candidate ends up with: the `(ordinal, count)` of the span
     /// furthest into its lane, which is the one the tapers lead into.
@@ -432,19 +436,4 @@ mod tests {
         assert!(step <= SNAP_M, "a handover step of {step} m");
     }
 
-    /// The pieces of one route meet: the span before a corridor is carried across to the
-    /// point on the reference the corridor span begins at, and so is the ease across to the
-    /// body it leads into.
-    #[test]
-    fn the_spans_of_one_route_share_their_boundary_vertex() {
-        for lines in
-            [trunk_then_branches(2000.0, 4), back_to_back_corridors(), a_shallow_merge()]
-        {
-            let spans = assign(&candidates(&lines));
-            for candidate in &spans {
-                for pair in candidate.windows(2) {
-                    assert_eq!(
-                        pair[0].points.last(),
-                        pair[1].points.first(),
-                        "a gap between two spans of one route",
-                    );
+}

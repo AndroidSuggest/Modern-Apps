@@ -105,7 +105,7 @@ fun WordGameOverlays(
                 )
         )
     }
-    val (size, fontSize): Pair<Dp, TextUnit> = Pair(35.dp * scale, 18.sp * scale)
+    val (size, fontSize) = Pair(35.dp * scale, 18.sp * scale)
     animatedLetters.forEach { letter ->
         val progress = letter.progress.value
         val offset = lerp(letter.startOffset, letter.endOffset, progress)

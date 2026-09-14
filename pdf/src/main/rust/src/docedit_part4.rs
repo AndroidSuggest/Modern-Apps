@@ -1,3 +1,27 @@
+#[cfg(test)]
+mod redaction_tests_cont {
+    use super::*;
+    use super::redaction_tests::{annot_exists, page_bytes, redactable_doc};
+
+    /// An inline image makes lopdf reject the whole stream, and the lenient tokenizer
+    /// cannot promise it saw every text-show operator. Redacting anyway would cover the
+    /// text with black, drop the annotation and still ship the text inside the file, so
+    /// the operation must refuse and leave the document exactly as it was.
+    #[test]
+    fn a_stream_only_the_lenient_tokenizer_can_read_is_not_redacted() {
+        // No /BPC, so lopdf's inline-image parser errors inside `cut(...)`.
+        let mut content = b"BT /F1 12 Tf 100 700 Td (secret) Tj ET\n".to_vec();
+        content.extend_from_slice(b"BI /W 2 /H 2 /CS /G ID ");
+        content.extend_from_slice(&[0x00, 0x40, 0x80, 0xFF]);
+        content.extend_from_slice(b" EI\n");
+        let (handle, page_id, annot_id) = redactable_doc(&content, [90, 690, 200, 720]);
+        {
+            let reg = registry().lock().unwrap_or_else(|e| e.into_inner());
+            let doc = reg.get(&handle).expect("handle is registered");
+            assert!(
+                doc.get_and_decode_page_content(page_id).is_err(),
+                "precondition: lopdf is expected to reject this content stream"
+            );
         }
 
         assert!(!apply_redactions(handle), "redaction must report failure, not success");

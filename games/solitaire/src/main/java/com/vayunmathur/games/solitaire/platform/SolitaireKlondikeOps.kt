@@ -2,7 +2,19 @@ package com.vayunmathur.games.solitaire.platform
 
 import androidx.compose.ui.geometry.Rect
 import com.vayunmathur.games.solitaire.data.Card
+import com.vayunmathur.games.solitaire.data.DrawMode
+import com.vayunmathur.games.solitaire.data.GameConfig
+import com.vayunmathur.games.solitaire.data.GameMode
+import com.vayunmathur.games.solitaire.data.KlondikeState
 import com.vayunmathur.games.solitaire.data.Rank
+import com.vayunmathur.games.solitaire.data.SolitaireUiState
+import com.vayunmathur.games.solitaire.data.Suit
+import com.vayunmathur.games.solitaire.data.TableauPile
+import com.vayunmathur.games.solitaire.data.alternatesColorWith
+import com.vayunmathur.games.solitaire.data.createShuffledDeck
+import com.vayunmathur.games.solitaire.data.isOneHigherThan
+import com.vayunmathur.games.solitaire.data.redeals
+import kotlinx.coroutines.flow.update
 
 // ---- Klondike ----
 // Moved from SolitaireViewModel.kt (FileLength split); behavior identical.

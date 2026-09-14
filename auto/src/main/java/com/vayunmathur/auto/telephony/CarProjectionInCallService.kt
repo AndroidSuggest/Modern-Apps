@@ -4,9 +4,11 @@ import android.content.Intent
 import android.os.IBinder
 import android.telecom.Call
 import android.telecom.InCallService
+import android.telecom.VideoProfile
 import android.util.Log
 import com.vayunmathur.auto.platform.ActiveCallInfo
 import com.vayunmathur.auto.platform.AutoSessionState
+import com.vayunmathur.auto.platform.CallCardPush
 
 /**
  * The car-projection call path: an [InCallService] the platform binds while
@@ -48,7 +50,7 @@ class CarProjectionInCallService : InCallService() {
         val info = snapshotOf(call, call.state)
         lastAcceptedMs = if (info.acceptedMs > 0L) info.acceptedMs else 0L
         AutoSessionState.onCallAdded(info)
-        pushToSession(info)
+        CallCardPush.push(info)
         Log.i(TAG, "car-projection call added")
     }
 
@@ -81,6 +83,10 @@ class CarProjectionInCallService : InCallService() {
         CallCardPush.push(info)
     }
 
+    override fun onCallAudioStateChanged(state: android.telecom.CallAudioState) {
+        lastMuted = state.isMuted
+    }
+
     private fun snapshotOf(call: Call, state: Int): ActiveCallInfo {
         val details = runCatching { call.details }.getOrNull()
         // The handle's scheme part is the dialable number; withheld handles
@@ -95,9 +101,12 @@ class CarProjectionInCallService : InCallService() {
             number = number,
             acceptedMs = if (state == Call.STATE_RINGING) 0L else lastAcceptedMs(call, state),
             held = held,
-            muted = muted,
+            muted = lastMuted,
         )
     }
+
+    /** Latest mute state from `onCallAudioStateChanged`; false until first report. */
+    @Volatile private var lastMuted = false
 
     private var lastAcceptedMs = 0L
 
@@ -131,7 +140,8 @@ class CarProjectionInCallService : InCallService() {
         fun answerCall() {
             val service = current ?: return
             runCatching {
-                service.calls.firstOrNull { it.state == Call.STATE_RINGING }?.answer()
+                service.calls.firstOrNull { it.state == Call.STATE_RINGING }
+                    ?.answer(VideoProfile.STATE_AUDIO_ONLY)
             }.onFailure { Log.w(TAG, "answer call failed", it) }
         }
 
@@ -147,7 +157,7 @@ class CarProjectionInCallService : InCallService() {
         /** Flips the InCall mute, no-op with nothing bound. */
         fun toggleMute() {
             val service = current ?: return
-            runCatching { service.setMuted(!service.muted) }
+            runCatching { service.setMuted(!(service.callAudioState?.isMuted ?: false)) }
                 .onFailure { Log.w(TAG, "mute toggle failed", it) }
         }
     }

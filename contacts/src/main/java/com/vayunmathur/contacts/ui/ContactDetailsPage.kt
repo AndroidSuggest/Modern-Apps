@@ -4,6 +4,7 @@ import android.media.RingtoneManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -127,6 +128,8 @@ fun ContactDetailsPage(
         showBackButton = showBackButton,
     )
 }
+
+private const val StaggerWindowMillis = 400L
 
 /**
  * The contact details page, with no dependency on the ViewModel so it can be rendered from

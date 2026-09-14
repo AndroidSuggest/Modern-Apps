@@ -146,7 +146,7 @@ mod synthesis_tests {
         );
     }
 
-    fn annot(subtype: &str) -> Dictionary {
+    pub(crate) fn annot(subtype: &str) -> Dictionary {
         let mut d = Dictionary::new();
         d.set("Type", name_obj("Annot"));
         d.set("Subtype", name_obj(subtype));
@@ -154,7 +154,7 @@ mod synthesis_tests {
     }
 
     /// Synthesize with an identity base matrix so device space == page space.
-    fn synth(dict: &Dictionary, rect: [f64; 4]) -> Vec<Prim> {
+    pub(crate) fn synth(dict: &Dictionary, rect: [f64; 4]) -> Vec<Prim> {
         let doc = Document::with_version("1.7");
         let mut prims = Vec::new();
         synthesize_annotation_appearance(&doc, dict, rect, &IDENTITY, &mut prims);
@@ -233,7 +233,7 @@ mod synthesis_tests {
     }
 
     /// `Prim` has no `Debug`, so failures report the primitive kinds instead.
-    fn kinds(prims: &[Prim]) -> Vec<&'static str> {
+    pub(crate) fn kinds(prims: &[Prim]) -> Vec<&'static str> {
         prims
             .iter()
             .map(|p| match p {
@@ -422,29 +422,4 @@ mod synthesis_tests {
         );
     }
 
-    /// §12.5.4 Table 166: "/W ... If this value is 0, no border shall be drawn."
-    /// The synthesized stroke floors its line width at 0.5, so without an explicit
-    /// check a filled Square or Circle came out ringed in a hairline outline the
-    /// file expressly asked not to have — and `set_shape_border` in this very file
-    /// writes `W 0` for every filled shape it authors.
-    #[test]
-    fn a_zero_border_width_draws_no_border() {
-        for subtype in ["Square", "Circle"] {
-            let mut d = annot(subtype);
-            d.set("C", Object::Array(vec![1.into(), 0.into(), 0.into()]));
-            d.set("IC", Object::Array(vec![0.into(), 0.into(), 1.into()]));
-            d.set("BS", dictionary! { "W" => 0 });
-            let prims = synth(&d, [0.0, 0.0, 60.0, 40.0]);
-            assert!(
-                !prims.iter().any(|p| matches!(p, Prim::Stroke { .. })),
-                "{subtype} with /BS /W 0 drew a border: {:?}",
-                kinds(&prims)
-            );
-            assert!(
-                prims.iter().any(|p| matches!(p, Prim::Fill { .. })),
-                "{subtype}: the /IC interior must still paint"
-            );
-            // A width the file did not suppress still strokes.
-            d.set("BS", dictionary! { "W" => 2 });
-            assert!(
-                synth(&d, [0.0, 0.0, 60.0, 40.0])
+}

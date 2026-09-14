@@ -380,7 +380,7 @@ mod mask_tests {
         (g4_encode(&[row.clone(), row], 8), 8)
     }
 
-    fn ccitt_stencil(decode_inverts: bool, black_is1: bool) -> ImageData {
+    pub(super) fn ccitt_stencil(decode_inverts: bool, black_is1: bool) -> ImageData {
         let doc = Document::with_version("1.7");
         let (data, w) = half_black_g4();
         let mut parms = dictionary! { "K" => -1, "Columns" => w as i64, "Rows" => 2 };
@@ -420,31 +420,4 @@ mod mask_tests {
         assert_eq!(img.data[4 * 12 + 3], 0, "row 1, x=4 is transparent");
     }
 
-    /// `/Decode [1 0]` reverses a CCITT stencil EXACTLY ONCE. The raster loop
-    /// applies it via `black_bit` and `stencilize` is then called with
-    /// `invert = false`; if a future change also passes `mask_invert` here, the two
-    /// cancel and this test sees the un-inverted image.
-    #[test]
-    fn ccitt_stencil_decode_array_inverts_exactly_once() {
-        let plain = ccitt_stencil(false, false);
-        let inverted = ccitt_stencil(true, false);
-        // Only alpha is asserted for an unpainted pixel: `stencilize` zeroes alpha and
-        // leaves RGB as the raster left it, so the colour under a transparent pixel is
-        // not part of the contract. Here it is the white the raster is initialised to,
-        // because `/Decode [1 0]` makes the loop skip the black pels rather than write
-        // them — pinning it would pin which of the two stages inverts, not that exactly
-        // one does.
-        assert_eq!(
-            inverted.data[3], 0,
-            "/Decode [1 0] must stop painting the black pels"
-        );
-        assert_eq!(
-            &inverted.data[4 * 4..4 * 4 + 4], &[0, 255, 0, 255],
-            "and must paint the white half instead"
-        );
-        // Stated as a whole-raster complement so a partial inversion (one row, or
-        // only the fast path) cannot pass.
-        for px in 0..(8 * 2) {
-            assert_ne!(
-                plain.data[px * 4 + 3], inverted.data[px * 4 + 3],
-                "pixel {px} must flip under /Decode [1 0]"
+}

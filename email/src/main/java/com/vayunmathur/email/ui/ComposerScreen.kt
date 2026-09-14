@@ -86,7 +86,7 @@ fun ComposerScreen(
             )
         }
     }
-    val pickContact = { target: Int ->
+    val pickContact: (Int) -> Unit = { target ->
         pickTarget = target
         pickTick++
     }

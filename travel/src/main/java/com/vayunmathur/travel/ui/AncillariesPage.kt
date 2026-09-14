@@ -36,6 +36,9 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.OfferDto
 import com.vayunmathur.travel.network.ServiceDto
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.initPassengers
+import com.vayunmathur.travel.util.setBaggageQuantity
+import com.vayunmathur.travel.util.setExtraQuantity
 import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)

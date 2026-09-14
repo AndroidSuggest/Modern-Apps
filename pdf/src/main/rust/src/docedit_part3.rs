@@ -4,7 +4,7 @@ mod redaction_tests {
 
     /// One-page document whose `/Contents` is `content`, carrying a single `/PdfRedact`
     /// annotation over `rect`. Returns its registry handle plus the page and annot ids.
-    fn redactable_doc(content: &[u8], rect: [i64; 4]) -> (i64, ObjectId, ObjectId) {
+    pub(super) fn redactable_doc(content: &[u8], rect: [i64; 4]) -> (i64, ObjectId, ObjectId) {
         let mut doc = Document::with_version("1.5");
         let content_id = doc.add_object(Stream::new(dictionary! {}, content.to_vec()));
         let pages_id = doc.new_object_id();
@@ -41,7 +41,7 @@ mod redaction_tests {
 
     /// Decoded bytes of the page's current `/Contents`, which `apply_redactions` writes
     /// uncompressed.
-    fn page_bytes(handle: i64, page_id: ObjectId) -> Vec<u8> {
+    pub(super) fn page_bytes(handle: i64, page_id: ObjectId) -> Vec<u8> {
         let reg = registry().lock().unwrap_or_else(|e| e.into_inner());
         let doc = reg.get(&handle).expect("handle is registered");
         let mut out = Vec::new();
@@ -53,7 +53,7 @@ mod redaction_tests {
         out
     }
 
-    fn annot_exists(handle: i64, annot_id: ObjectId) -> bool {
+    pub(super) fn annot_exists(handle: i64, annot_id: ObjectId) -> bool {
         let reg = registry().lock().unwrap_or_else(|e| e.into_inner());
         let doc = reg.get(&handle).expect("handle is registered");
         doc.get_dictionary(annot_id).is_ok()
@@ -429,22 +429,4 @@ mod redaction_tests {
         m
     }
 
-    /// An inline image makes lopdf reject the whole stream, and the lenient tokenizer
-    /// cannot promise it saw every text-show operator. Redacting anyway would cover the
-    /// text with black, drop the annotation and still ship the text inside the file, so
-    /// the operation must refuse and leave the document exactly as it was.
-    #[test]
-    fn a_stream_only_the_lenient_tokenizer_can_read_is_not_redacted() {
-        // No /BPC, so lopdf's inline-image parser errors inside `cut(...)`.
-        let mut content = b"BT /F1 12 Tf 100 700 Td (secret) Tj ET\n".to_vec();
-        content.extend_from_slice(b"BI /W 2 /H 2 /CS /G ID ");
-        content.extend_from_slice(&[0x00, 0x40, 0x80, 0xFF]);
-        content.extend_from_slice(b" EI\n");
-        let (handle, page_id, annot_id) = redactable_doc(&content, [90, 690, 200, 720]);
-        {
-            let reg = registry().lock().unwrap_or_else(|e| e.into_inner());
-            let doc = reg.get(&handle).expect("handle is registered");
-            assert!(
-                doc.get_and_decode_page_content(page_id).is_err(),
-                "precondition: lopdf is expected to reject this content stream"
-            );
+}

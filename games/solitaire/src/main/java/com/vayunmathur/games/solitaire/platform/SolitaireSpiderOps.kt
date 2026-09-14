@@ -1,7 +1,14 @@
 package com.vayunmathur.games.solitaire.platform
 
 import com.vayunmathur.games.solitaire.data.Card
+import com.vayunmathur.games.solitaire.data.GameConfig
+import com.vayunmathur.games.solitaire.data.GameMode
 import com.vayunmathur.games.solitaire.data.Rank
+import com.vayunmathur.games.solitaire.data.SolitaireUiState
+import com.vayunmathur.games.solitaire.data.SpiderState
+import com.vayunmathur.games.solitaire.data.TableauPile
+import com.vayunmathur.games.solitaire.data.createSpiderDeck
+import com.vayunmathur.games.solitaire.data.isOneHigherThan
 import kotlinx.coroutines.flow.update
 
 // ---- Spider ----

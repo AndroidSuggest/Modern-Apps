@@ -1,49 +1,3 @@
-                    name: "FastA",
-                    color: 0x00FF00,
-                    route_type: 0,
-                    feed: 0,
-                    pattern: vec![0, 1],
-                    trips: vec![Trip {
-                        start: 28_800,
-                        stoptimes: vec![(28_800, 28_800), (29_400, 29_400)],
-                        service: 0,
-                        headsign: "Feeder",
-                    }],
-                    shape: None,
-                },
-                Route {
-                    name: "FastB",
-                    color: 0xFF0000,
-                    route_type: 0,
-                    feed: 0,
-                    pattern: vec![1, 2],
-                    trips: vec![Trip {
-                        start: 30_000,
-                        stoptimes: vec![(30_000, 30_000), (30_600, 30_600)],
-                        service: 0,
-                        headsign: "Onward",
-                    }],
-                    shape: None,
-                },
-            ],
-            services: vec![weekdays()],
-            exceptions: Vec::new(),
-            feeds: vec![("sfmuni", "America/Los_Angeles", "us-ca-SFMTA")],
-        };
-        let idx = pack.index();
-        // 07:46, not 08:00: the sub-metre access walk rounds up to one second, which
-        // would put `ready` a second past an 08:00 departure.
-        let legs = plan(&idx, 37.700, -122.400, 37.720, -122.400, 28_000, sched(wednesday()))
-            .expect("a journey exists");
-
-        let rides: Vec<&TransitLeg> = legs.iter().filter(|l| l.kind == LegKind::Ride).collect();
-        assert_eq!(
-            rides.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(),
-            vec!["FastA", "FastB"],
-            "took the direct route the pruning bound was first set from"
-        );
-        assert_eq!(rides.last().unwrap().arr_secs, 30_600, "08:30, not the direct 10:00");
-    }
 
     #[test]
     fn a_previous_day_trip_that_never_crosses_midnight_is_ignored() {
@@ -448,3 +402,24 @@
         assert_eq!(ride.name, "N");
         assert_eq!(ride.feed, "mini");
         assert_eq!(ride.from_stop, "Alpha");
+        assert_eq!(ride.to_stop, "Gamma");
+        assert_eq!(ride.dep_secs, 28_800);
+        assert_eq!(ride.arr_secs, 29_400);
+        assert_eq!(ride.stop_count, 2);
+
+        // The v4 sections the ingester wrote must decode into real geometry: more
+        // vertices than the three stops, and a longer path than the straight line.
+        assert!(
+            ride.coords.len() > 6,
+            "expected shape geometry, got {} coords",
+            ride.coords.len()
+        );
+        let lons: Vec<f64> = ride.coords.chunks(2).map(|c| c[0]).collect();
+        assert!(
+            lons.iter().any(|&lon| lon > -122.395),
+            "the eastward detour is missing: {lons:?}"
+        );
+        let crow = dist_m(37.700, -122.400, 37.720, -122.400);
+        assert!(ride.dist_m > crow, "shape distance {} must exceed {crow}", ride.dist_m);
+    }
+

@@ -1,10 +1,3 @@
-#[cfg(test)]
-mod tests {
-    use super::super::{
-        embed_lanes, maia, mobilefacenet, ppocr_det, ppocr_rec, scrfd, selfie, supertonic_duration, supertonic_sampler,
-        supertonic_text, supertonic_vocoder, tinyclip, u2netp, whisper, Act, Builder, EMBED_LANE,
-    };
-    use super::*;
 
     /// Build a plan whose only ops come from `record`, run it, and return the output.
     ///
@@ -439,12 +432,3 @@ mod tests {
         });
         close(&got, &[0.0, 0.0, 4.0, 4.0]);
     }
-
-    #[test]
-    fn a_nearest_resize_upsamples_both_axes_together() {
-        // A 2x2 doubled to 4x4. Each source pixel becomes a 2x2 block, so a row/column
-        // transposition in the index arithmetic changes the answer.
-        let got = one(Shape::new(1, 2, 2), &[1.0, 2.0, 3.0, 4.0], &[], |b, x| {
-            let like = b.resize_to(x, 4, 4);
-            b.resize_nearest_like(x, like)
-        });

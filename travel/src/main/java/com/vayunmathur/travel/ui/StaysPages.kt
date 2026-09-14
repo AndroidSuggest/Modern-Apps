@@ -11,6 +11,7 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.StaySearchResultDto
 import com.vayunmathur.travel.util.StayResultsActions
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.searchStays
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** Binds [TravelViewModel] and the back stack to the stateless [StayResultsScreen]. */

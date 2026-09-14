@@ -1,321 +1,225 @@
-            "Tw" => {
-                if let Some(v) = numop(o, 0) {
-                    gs.word_spacing = v;
-                }
-            }
-            "Tz" => {
-                if let Some(v) = numop(o, 0) {
-                    gs.h_scale = v / 100.0;
-                }
-            }
-            "Ts" => {
-                if let Some(v) = numop(o, 0) {
-                    gs.rise = v;
-                }
-            }
-            "Tr" => {
-                if let Some(v) = numop(o, 0) {
-                    // §9.3.6 defines modes 0..7 only.
-                    gs.render_mode = (v as i64).clamp(0, 7);
-                }
-            }
-            "Td" => {
-                if let (Some(tx), Some(ty)) = (numop(o, 0), numop(o, 1)) {
-                    line_matrix = mat_mul(&translate(tx, ty), &line_matrix);
-                    text_matrix = line_matrix;
-                }
-            }
-            "TD" => {
-                if let (Some(tx), Some(ty)) = (numop(o, 0), numop(o, 1)) {
-                    gs.leading = -ty;
-                    line_matrix = mat_mul(&translate(tx, ty), &line_matrix);
-                    text_matrix = line_matrix;
-                }
-            }
-            "Tm" => {
-                if let Some(m) = read_matrix(o) {
-                    line_matrix = m;
-                    text_matrix = m;
-                }
-            }
-            "T*" => {
-                line_matrix = mat_mul(&translate(0.0, -gs.leading), &line_matrix);
-                text_matrix = line_matrix;
-            }
-            "Tj" => {
-                if let Some(Object::String(bytes, _)) = o.first() {
-                    let sm_start = prims.len();
-                    // §8.11.2: content in a disabled optional-content group shall
-                    // not be drawn — text as much as paths. Render mode 3 is
-                    // precisely "neither fill nor stroke" (§9.3.6), so borrow it for
-                    // the duration of the show rather than discarding the glyphs:
-                    // the layer is hidden, not absent, and `search::build_index`
-                    // runs this same code, so dropping them would silently remove
-                    // the text from the search index too.
-                    let oc_hidden = oc_stack.last().copied().unwrap_or(false);
-                    let shown_mode = gs.render_mode;
-                    if oc_hidden { gs.render_mode = hidden_render_mode(gs.render_mode); }
-                    let adv = show_string_in(doc, prims, &gs, &fonts, &text_matrix, bytes, depth, resources);
-                    gs.render_mode = shown_mode;
-                    if latches_text_clip(shown_mode, &fonts, &gs.font_key, bytes) { text_clip_used = true; }
-                    if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
-                        text_matrix = mat_mul(&translate(0.0, adv), &text_matrix);
-                    } else {
-                        text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
-                    }
-                    // Soft-mask must also cover invisible-clip modes 4-6, not only 0-2.
-                    // `!text_only` matches every other painting site: in the
-                    // search-index mode nothing here is consumed, and expanding the
-                    // mask group anyway re-interprets its content stream (rasterizing
-                    // any shading in it) and spends the shared [`MAX_PRIMITIVES`]
-                    // budget that `show_string`'s Text records are also drawn from —
-                    // so a mask-heavy document silently indexed less of its own text.
-                    if !text_only && !oc_hidden && matches!(gs.render_mode, 0|1|2|4|5|6) {
-                        if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth, &mut mask_bracket, current_clip_bbox); }
+impl SeededInterp {
+    fn handle_color_ops(&mut self, op: &lopdf::content::Operation, o: &[Object], doc: &Document, resources: Option<&lopdf::Dictionary>, prims: &mut Vec<Prim>, depth: u32, text_only: bool) {
+        match op.operator.as_str() {
+                "rg" => {
+                    let n: Vec<f64> = o.iter().filter_map(num).collect();
+                    if n.len() == 3 {
+                        self.gs.fill = rgb_to_argb(n[0], n[1], n[2]);
+                        self.gs.non_stroke_cs = CsKind::DeviceRGB;
+                        self.gs.fill_pattern = None;
                     }
                 }
-            }
-            "'" => {
-                line_matrix = mat_mul(&translate(0.0, -gs.leading), &line_matrix);
-                text_matrix = line_matrix;
-                if let Some(Object::String(bytes, _)) = o.first() {
-                    // P0 fix #24: soft-mask must apply to ' operator
-                    let sm_start = prims.len();
-                    let oc_hidden = oc_stack.last().copied().unwrap_or(false);
-                    let shown_mode = gs.render_mode;
-                    if oc_hidden { gs.render_mode = hidden_render_mode(gs.render_mode); }
-                    let adv = show_string_in(doc, prims, &gs, &fonts, &text_matrix, bytes, depth, resources);
-                    gs.render_mode = shown_mode;
-                    if latches_text_clip(shown_mode, &fonts, &gs.font_key, bytes) { text_clip_used = true; }
-                    if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
-                        text_matrix = mat_mul(&translate(0.0, adv), &text_matrix);
-                    } else {
-                        text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
-                    }
-                    if !text_only && !oc_hidden && matches!(gs.render_mode, 0|1|2|4|5|6) {
-                        if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth, &mut mask_bracket, current_clip_bbox); }
+                "RG" => {
+                    let n: Vec<f64> = o.iter().filter_map(num).collect();
+                    if n.len() == 3 {
+                        self.gs.stroke = rgb_to_argb(n[0], n[1], n[2]);
+                        self.gs.stroke_cs = CsKind::DeviceRGB;
+                        self.gs.stroke_pattern = None;
                     }
                 }
-            }
-            "\"" => {
-                if let Some(aw) = numop(o, 0) { gs.word_spacing = aw; }
-                if let Some(ac) = numop(o, 1) { gs.char_spacing = ac; }
-                line_matrix = mat_mul(&translate(0.0, -gs.leading), &line_matrix);
-                text_matrix = line_matrix;
-                if let Some(Object::String(bytes, _)) = o.get(2) {
-                    // P0 fix #24: soft-mask must apply to " operator
-                    let sm_start = prims.len();
-                    let oc_hidden = oc_stack.last().copied().unwrap_or(false);
-                    let shown_mode = gs.render_mode;
-                    if oc_hidden { gs.render_mode = hidden_render_mode(gs.render_mode); }
-                    let adv = show_string_in(doc, prims, &gs, &fonts, &text_matrix, bytes, depth, resources);
-                    gs.render_mode = shown_mode;
-                    if latches_text_clip(shown_mode, &fonts, &gs.font_key, bytes) { text_clip_used = true; }
-                    if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
-                        text_matrix = mat_mul(&translate(0.0, adv), &text_matrix);
-                    } else {
-                        text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
-                    }
-                    if !text_only && !oc_hidden && matches!(gs.render_mode, 0|1|2|4|5|6) {
-                        if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth, &mut mask_bracket, current_clip_bbox); }
+                "g" => {
+                    if let Some(v) = o.first().and_then(num) {
+                        self.gs.fill = gray_to_argb(v);
+                        self.gs.non_stroke_cs = CsKind::DeviceGray;
+                        self.gs.fill_pattern = None;
                     }
                 }
-            }
-            "TJ" => {
-                let sm_start = prims.len();
-                let oc_hidden = oc_stack.last().copied().unwrap_or(false);
-                let shown_mode = gs.render_mode;
-                if oc_hidden { gs.render_mode = hidden_render_mode(gs.render_mode); }
-                if let Some(Object::Array(arr)) = o.first() {
-                    for el in arr {
-                        match el {
-                            Object::String(bytes, _) => {
-                                // §9.4.3: the clip accumulates the outlines of the
-                                // glyphs SHOWN. Latching outside this destructure
-                                // made `7 Tr [] TJ` — and any TJ whose operand is
-                                // not an array — claim a clip built from no glyphs
-                                // at all, which `ET` then applies.
-                                let adv = show_string_in(doc, prims, &gs, &fonts, &text_matrix, bytes, depth, resources);
-                                if latches_text_clip(shown_mode, &fonts, &gs.font_key, bytes) { text_clip_used = true; }
-                                if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
-                        text_matrix = mat_mul(&translate(0.0, adv), &text_matrix);
-                    } else {
-                        text_matrix = mat_mul(&translate(adv, 0.0), &text_matrix);
+                "G" => {
+                    if let Some(v) = o.first().and_then(num) {
+                        self.gs.stroke = gray_to_argb(v);
+                        self.gs.stroke_cs = CsKind::DeviceGray;
+                        self.gs.stroke_pattern = None;
                     }
-                            }
-                            Object::Integer(_) | Object::Real(_) => {
-                                // A non-finite adjustment poisons the text matrix and
-                                // with it every glyph origin after it; treat it as no
-                                // adjustment (§7.3.3, see `numop`).
-                                let n = num(el).filter(|v| v.is_finite()).unwrap_or(0.0);
-                                // TJ adjustment applies along the writing axis.
-                                if fonts.get(&gs.font_key).map(|f| f.wmode == 1).unwrap_or(false) {
-                                    let ty = -n / 1000.0 * gs.font_size;
-                                    text_matrix = mat_mul(&translate(0.0, ty), &text_matrix);
-                                } else {
-                                    let tx = -n / 1000.0 * gs.font_size * gs.h_scale;
-                                    text_matrix = mat_mul(&translate(tx, 0.0), &text_matrix);
-                                }
-                            }
-                            _ => {}
+                }
+                "k" => {
+                    let n: Vec<f64> = o.iter().filter_map(num).collect();
+                    if n.len() == 4 {
+                        self.gs.fill = cmyk_to_argb(n[0], n[1], n[2], n[3]);
+                        self.gs.non_stroke_cs = CsKind::DeviceCMYK;
+                        self.gs.fill_pattern = None;
+                    }
+                }
+                "K" => {
+                    let n: Vec<f64> = o.iter().filter_map(num).collect();
+                    if n.len() == 4 {
+                        self.gs.stroke = cmyk_to_argb(n[0], n[1], n[2], n[3]);
+                        self.gs.stroke_cs = CsKind::DeviceCMYK;
+                        self.gs.stroke_pattern = None;
+                    }
+                }
+                "CS" => {
+                    if let Some(cs_name) = o.first() {
+                        if let Some(kind) = parse_named_cs(doc, cs_name, resources, &self.colorspaces) {
+                            // Selecting a color space resets the current color to its
+                            // initial value (PDF 8.6.8).
+                            if let Some(c) = cs_initial_color(doc, &kind, &self.colorspaces) { self.gs.stroke = c; }
+                            self.gs.stroke_cs = kind;
+                        }
+                        self.gs.stroke_pattern = None;
+                    }
+                }
+                "cs" => {
+                    if let Some(cs_name) = o.first() {
+                        if let Some(kind) = parse_named_cs(doc, cs_name, resources, &self.colorspaces) {
+                            if let Some(c) = cs_initial_color(doc, &kind, &self.colorspaces) { self.gs.fill = c; }
+                            self.gs.non_stroke_cs = kind;
+                        }
+                        self.gs.fill_pattern = None;
+                    }
+                }
+                "SC" => {
+                    let comps: Vec<f64> = o.iter().filter_map(num).collect();
+                    if let Some(rgb) = eval_cs_to_rgb(doc, &self.gs.stroke_cs, &comps, &self.colorspaces) {
+                        self.gs.stroke = rgb;
+                    }
+                }
+                "sc" => {
+                    let comps: Vec<f64> = o.iter().filter_map(num).collect();
+                    if let Some(rgb) = eval_cs_to_rgb(doc, &self.gs.non_stroke_cs, &comps, &self.colorspaces) {
+                        self.gs.fill = rgb;
+                    }
+                }
+                "SCN" => {
+                    let comps: Vec<f64> = o.iter().filter_map(num).collect();
+                    if matches!(self.gs.stroke_cs, CsKind::Pattern { .. }) {
+                        self.gs.stroke_pattern = o.last().and_then(|obj| obj.as_name().ok()).and_then(|pn| self.patterns.get(pn).copied());
+                        if !comps.is_empty() {
+                            self.gs.stroke = uncolored_pattern_argb(doc, &self.gs.stroke_cs, &comps, &self.colorspaces);
+                        }
+                    } else if !comps.is_empty() {
+                        if let Some(rgb) = eval_cs_to_rgb(doc, &self.gs.stroke_cs, &comps, &self.colorspaces) {
+                            self.gs.stroke = rgb;
                         }
                     }
                 }
-                if oc_hidden { gs.render_mode = shown_mode; }
-                if !text_only && !oc_hidden && matches!(gs.render_mode, 0|1|2|4|5|6) {
-                    if let Some(m) = gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth, &mut mask_bracket, current_clip_bbox); }
+                "scn" => {
+                    let comps: Vec<f64> = o.iter().filter_map(num).collect();
+                    if matches!(self.gs.non_stroke_cs, CsKind::Pattern { .. }) {
+                        self.gs.fill_pattern = o.last().and_then(|obj| obj.as_name().ok()).and_then(|pn| self.patterns.get(pn).copied());
+                        if !comps.is_empty() {
+                            self.gs.fill = uncolored_pattern_argb(doc, &self.gs.non_stroke_cs, &comps, &self.colorspaces);
+                        }
+                    } else if !comps.is_empty() {
+                        if let Some(rgb) = eval_cs_to_rgb(doc, &self.gs.non_stroke_cs, &comps, &self.colorspaces) {
+                            self.gs.fill = rgb;
+                        }
+                    }
                 }
-            }
-            // Explicit no-ops (documented): rendering intent, and compatibility
-            // sections have no effect on our flat-primitive output.
-            "ri" | "BX" | "EX" | "EI" => {}
-            _ => {}
+                "sh" => {
+                    // Capture the clip extent (device space) that bounds this shading
+                    // so it can be rasterized at device resolution and, when the
+                    // shading has no /BBox, cover the whole clip.
+                    let clip_bbox_device: Option<[f64;4]> = self.pending_clip.as_ref().map(|pc| {
+                        let mut x0 = f64::INFINITY; let mut y0 = f64::INFINITY;
+                        let mut x1 = f64::NEG_INFINITY; let mut y1 = f64::NEG_INFINITY;
+                        for poly in pc.polys.iter() {
+                            for &(x,y) in poly.iter() {
+                                x0 = x0.min(x); y0 = y0.min(y); x1 = x1.max(x); y1 = y1.max(y);
+                            }
+                        }
+                        [x0, y0, x1, y1]
+                    }).filter(|b| b[2] > b[0] && b[3] > b[1])
+                    // Fall back to the already-committed clip region (the common
+                    // `re W n /Sh sh` case, where pending_clip is None by now).
+                    .or(self.current_clip_bbox);
+                    if let Some(pc) = self.pending_clip.take() {
+                        emit_one_clip(prims, pc, &mut self.clip_depth, &mut self.current_clip_bbox, text_only);
+                    }
+                    if !text_only {
+                        if let Some(Object::Name(name)) = o.first() {
+                            // §8.7.4.2: a /Shading resource is "a dictionary or a
+                            // stream", and §7.3.8.1 requires only the stream form to
+                            // be indirect — so ShadingTypes 1-3 are legally written
+                            // DIRECTLY in the resource dictionary and never reach the
+                            // reference-only `shadings` map.
+                            let shading = self.shadings
+                                .get(name)
+                                .and_then(|&id| doc.get_object(id).ok())
+                                .or_else(|| resolve_named_resource(doc, resources, b"Shading", name));
+                            if let Some(obj) = shading {
+                                if let Some((ctm,w,h,data)) = rasterize_shading(doc, obj, &self.gs.ctm, &self.colorspaces, 0, clip_bbox_device) {
+                                    if prims.len() < MAX_PRIMITIVES && !self.oc_stack.last().copied().unwrap_or(false) {
+                                        let sm_start = prims.len();
+                                        prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: self.gs.alpha_fill as f32, blend: self.gs.blend_mode });
+                                        if let Some(m) = self.gs.soft_mask.clone() { wrap_with_soft_mask(prims, sm_start, doc, resources, &m, depth, &mut self.mask_bracket, self.current_clip_bbox); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                "BMC" => {
+                    let hidden = self.oc_stack.last().copied().unwrap_or(false);
+                    if self.oc_stack.len() < MAX_OC_STACK { self.oc_stack.push(hidden); } else { self.oc_overflow += 1; }
+                }
+                "BDC" => {
+                    // Optional content: `/OC <props> BDC`, where <props> is the OCG/OCMD
+                    // itself (an inline dict or a name resolved via /Properties). The
+                    // property list IS the group — there is no nested /OC key.
+                    let mut should_hide = false;
+                    let tag = o.first().and_then(|t| t.as_name().ok());
+                    if tag == Some(b"OC") {
+                        if let Some(prop_obj) = o.get(1) {
+                            match prop_obj {
+                                Object::Name(n) => {
+                                    // Resolve via the /Properties resource, keeping the
+                                    // indirect reference so ON/OFF lists can match it.
+                                    if let Some(&cached) = self.oc_cache.get(&OcKey::Named(n.clone())) {
+                                        should_hide = cached;
+                                    } else if let Some(res_dict) = resources {
+                                        if let Some(prop_dict) = res_dict.get(b"Properties").ok().and_then(|ob| deref(doc, ob)).and_then(|ob| ob.as_dict().ok()) {
+                                            if let Ok(oc_ref) = prop_dict.get(n) {
+                                                let cfg = self.oc_config.get_or_insert_with(|| OcConfig::from_doc(doc));
+                                                should_hide = cfg.object_hidden(doc, oc_ref);
+                                                self.oc_cache.insert(OcKey::Named(n.clone()), should_hide);
+                                            }
+                                        }
+                                    }
+                                }
+                                Object::Reference(id) => {
+                                    should_hide = match self.oc_cache.get(&OcKey::Ref(*id)) {
+                                        Some(&cached) => cached,
+                                        None => {
+                                            let cfg = self.oc_config.get_or_insert_with(|| OcConfig::from_doc(doc));
+                                            let v = cfg.object_hidden(doc, prop_obj);
+                                            self.oc_cache.insert(OcKey::Ref(*id), v);
+                                            v
+                                        }
+                                    };
+                                }
+                                other => {
+                                    let cfg = self.oc_config.get_or_insert_with(|| OcConfig::from_doc(doc));
+                                    should_hide = cfg.object_hidden(doc, other);
+                                }
+                            }
+                        }
+                    }
+                    // Hiding is inherited: a visible OCG nested inside a hidden
+                    // region stays hidden (§8.11.4.5).
+                    let hidden = self.oc_stack.last().copied().unwrap_or(false) || should_hide;
+                    if self.oc_stack.len() < MAX_OC_STACK { self.oc_stack.push(hidden); } else { self.oc_overflow += 1; }
+                }
+                "MP" | "DP" => {
+                    // Marked-content point operators: no matching EMC, so they must not
+                    // affect the marked-content / optional-content stack.
+                }
+                "EMC" => {
+                    // Exactly one frame per EMC (§14.6). Unmatched EMCs are ignored.
+                    if self.oc_overflow > 0 { self.oc_overflow -= 1; } else { self.oc_stack.pop(); }
+                }
+                "d0" | "d1" => {
+                    // §9.6.5 Table 113: `wx wy d0` and `wx wy llx lly urx ury d1` declare
+                    // the glyph's advance (and, for `d1`, its bbox). The advance comes
+                    // from the font's /Widths array, which §9.6.5 requires to agree, so
+                    // there is nothing to apply here — but `d1` additionally makes the
+                    // glyph SHAPE ONLY, which `type3_shape_only` above acts on.
+                    //
+                    // Reachable only since `content::repair_d0_d1`: lopdf 0.36 ends an
+                    // operator token at the first digit, so this arm was dead code and
+                    // the `"d"` arm ran instead, clearing the dash pattern the glyph
+                    // inherits.
+                }
+                _ => {}
         }
     }
-    while group_depth > 0 { if !text_only { prims.push(Prim::GroupPop); } group_depth-=1; }
-    while clip_depth > 0 {
-        if !text_only {
-            prims.push(Prim::ClipPop);
-        }
-        clip_depth -= 1;
-    }
-}
-
-pub(crate) fn read_matrix(operands: &[Object]) -> Option<Mat> {
-    let n: Vec<f64> = operands.iter().filter_map(num).collect();
-    if n.len() != 6 {
-        return None;
-    }
-    let m = [n[0], n[1], n[2], n[3], n[4], n[5]];
-    // §8.3.3 defines a matrix as six NUMBERS. lopdf's `Object::Real` is an f32, so a
-    // file carrying `1e40` yields INFINITY here, and every coordinate derived from
-    // the matrix is then non-finite. `read_rect` already rejects a non-finite
-    // rectangle for the same reason; this is the other half of the same boundary,
-    // and it was the one still open.
-    //
-    // Rejecting rather than patching, because every caller already has a correct
-    // meaning for `None`: `cm` and `Tm` leave the current matrix alone (matching the
-    // `cm` arm's existing guard on its own product), and the four `/Matrix` reads —
-    // form XObject §8.10.2, tiling and shading patterns §8.7.3.1, soft-mask group
-    // §11.6.5.2 — all fall back to IDENTITY, which is precisely what the spec says an
-    // ABSENT `/Matrix` means. A malformed optional entry is treated as absent.
-    //
-    // `Tm` is the one that was not covered transitively: `cm` guards the product it
-    // computes, but `Tm` assigns the matrix straight to the text matrix, so a
-    // non-finite one placed every subsequent glyph at a non-finite origin.
-    if m.iter().all(|v| v.is_finite()) {
-        Some(m)
-    } else {
-        None
-    }
-}
-
-/// Resolve the ARGB base color for an uncolored (`/PaintType 2`) pattern's
-/// operands. When the Pattern colorspace declares an underlying base space
-/// (`[/Pattern base]`), the operands are interpreted in that space; otherwise
-/// they are approximated as Gray/RGB/CMYK by arity.
-pub(crate) fn uncolored_pattern_argb(
-    doc: &Document,
-    cs: &CsKind,
-    comps: &[f64],
-    cs_resources: &HashMap<Vec<u8>, ObjectId>,
-) -> u32 {
-    if let CsKind::Pattern { base: Some(base) } = cs {
-        if let Some(rgb) = eval_cs_to_rgb(doc, base, comps, cs_resources) {
-            return rgb;
-        }
-    }
-    match comps.len() {
-        1 => gray_to_argb(comps[0]),
-        3 => rgb_to_argb(comps[0], comps[1], comps[2]),
-        4 => cmyk_to_argb(comps[0], comps[1], comps[2], comps[3]),
-        _ => 0xFF00_0000,
-    }
-}
-
-/// Paint a pattern fill within the region described by `polys` (device space).
-/// Handles PatternType 2 (shading) and PatternType 1 (tiling), bounded by
-/// [`MAX_PATTERN_RECURSION`] and a per-pattern tile cap.
-/// Build stroke-outline quadrilaterals (device space) for a set of polyline
-/// subpaths, offsetting each segment by `hw` (half the device line width) on
-/// both sides, plus a small square at every vertex so joints/caps don't leave
-/// gaps. Each quad is painted independently so the segments union correctly.
-fn stroke_outline_quads(subpaths: &[Vec<(f64, f64)>], hw: f64) -> Vec<Vec<(f64, f64)>> {
-    let mut quads: Vec<Vec<(f64, f64)>> = Vec::new();
-    for sp in subpaths {
-        if sp.len() < 2 { continue; }
-        for w in sp.windows(2) {
-            let (x0, y0) = w[0];
-            let (x1, y1) = w[1];
-            let dx = x1 - x0;
-            let dy = y1 - y0;
-            let len = (dx*dx + dy*dy).sqrt();
-            if len < 1e-9 { continue; }
-            let nx = -dy / len * hw;
-            let ny = dx / len * hw;
-            quads.push(vec![
-                (x0 + nx, y0 + ny),
-                (x1 + nx, y1 + ny),
-                (x1 - nx, y1 - ny),
-                (x0 - nx, y0 - ny),
-            ]);
-        }
-        for &(x, y) in sp.iter() {
-            quads.push(vec![
-                (x - hw, y - hw),
-                (x + hw, y - hw),
-                (x + hw, y + hw),
-                (x - hw, y + hw),
-            ]);
-        }
-    }
-    quads
-}
-
-/// Identity of a soft mask, used to decide whether an already-emitted bracket
-/// can absorb another painting operation.
-///
-/// §11.6.5.2 renders the mask group with the CTM in effect when `gs` set the
-/// mask, so the CTM is part of the identity: the same group under two different
-/// CTMs is two different masks. `/BC` changes the rendered group and `/TR` the
-/// push record, so both are included.
-#[derive(PartialEq)]
-pub(crate) struct MaskKey {
-    group_id: ObjectId,
-    mask_type: u8,
-    ctm: [u64; 6],
-    backdrop: Option<Vec<u64>>,
-    tr: Option<[u8; 256]>,
-}
-
-impl MaskKey {
-    fn of(mask: &SoftMask) -> Self {
-        let mut ctm = [0u64; 6];
-        for (dst, src) in ctm.iter_mut().zip(mask.ctm.iter()) {
-            *dst = src.to_bits();
-        }
-        MaskKey {
-            group_id: mask.group_id,
-            mask_type: mask.mask_type,
-            ctm,
-            backdrop: mask
-                .backdrop
-                .as_ref()
-                .map(|b| b.iter().map(|v| v.to_bits()).collect()),
-            tr: mask.tr,
-        }
-    }
-}
-
-/// The soft-mask bracket most recently emitted into `prims`, so a following
-/// painting operation under the same mask can extend it.
-pub(crate) struct MaskBracket {
-    key: MaskKey,
-    /// Index of the `SoftMaskPush`.
-    push: usize,
-    /// Index of the `SoftMaskContent` separator.
-    content: usize,
-    /// `prims.len()` when the bracket was closed. Coalescing is only sound while
-    /// the bracket is still the tail of `prims`.
-    end: usize,
 }

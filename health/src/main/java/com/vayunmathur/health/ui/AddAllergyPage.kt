@@ -11,6 +11,7 @@ import com.vayunmathur.health.Route
 import com.vayunmathur.health.data.AllergyCategory
 import com.vayunmathur.health.data.AllergyCriticality
 import com.vayunmathur.health.platform.MedicalViewModel
+import com.vayunmathur.health.platform.saveAllergyDraft
 import com.vayunmathur.health.ui.components.PickerField
 import com.vayunmathur.library.ui.DetailScaffold
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api

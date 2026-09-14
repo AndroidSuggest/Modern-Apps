@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.health.R
 import com.vayunmathur.health.Route
 import com.vayunmathur.health.platform.MedicalViewModel
+import com.vayunmathur.health.platform.importFromHealthConnect
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.IconChevronRight

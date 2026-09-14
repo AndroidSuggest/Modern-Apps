@@ -56,6 +56,7 @@ class SabrNgSegmentDataSource(
                 data = ByteArray(0)
                 availableRemaining = 0
             } else {
+                session.updatePlayheadForSegment(itag, sequence)
                 val stream = segment.openStream()
                 dataStream = stream
                 val skipped = skipFully(stream, maxOf(0, dataSpec.position))

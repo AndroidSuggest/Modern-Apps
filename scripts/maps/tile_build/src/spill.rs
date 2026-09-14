@@ -448,5 +448,8 @@ pub fn encode_props(props: &[(String, Value)], out: &mut Vec<u8>) -> Result<()> 
 
 include!("spill_part1.rs");
 include!("spill_part2.rs");
-include!("spill_part3.rs");
-include!("spill_part4.rs");
+#[cfg(test)]
+mod tests {
+    include!("spill_part3.rs");
+    include!("spill_part4.rs");
+}

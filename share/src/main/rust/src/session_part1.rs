@@ -448,3 +448,18 @@ impl Session {
                     self.phase, self.paired_key_result_sent, self.peer_paired_key_result_seen,
                 );
                 self.fail(&reason);
+                return -2;
+            }
+            return 0;
+        }
+        if v1.r#type != OfflineFrameType::PayloadTransfer as i32 {
+            // BANDWIDTH_UPGRADE_NEGOTIATION and the auth frames are not implemented;
+            // ignoring them keeps a GMS peer's optional traffic from killing the session.
+            return 0;
+        }
+        let Some(pt) = v1.payload_transfer else {
+            return 0;
+        };
+        self.handle_payload_transfer(pt)
+    }
+}

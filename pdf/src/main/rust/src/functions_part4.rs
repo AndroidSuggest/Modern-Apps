@@ -1,6 +1,6 @@
-        let f3 = PdfFunction::parse(&doc, &Object::Reference(t3)).expect("parses");
-        assert!(f3.eval(&[0.5])[0].is_finite());
-    }
+#[cfg(test)]
+mod tests_cont {
+    use super::*;
 
     // A non-monotonic /TR must be carried faithfully; only the FIRST output component is
     // used, per 11.6.5.2's one-in/one-out requirement.

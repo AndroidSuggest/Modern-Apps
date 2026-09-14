@@ -1,3 +1,6 @@
+    /// An empty geometry, and one entirely off the grid, produce nothing rather than
+    /// panicking on a start cell that does not exist.
+    #[test]
     fn nothing_to_tile_emits_nothing() {
         let mut hit = 0usize;
         for g in [
@@ -36,4 +39,3 @@
             assert_eq!(*got, Geometry::Points(want.clone()))
         });
     }
-}

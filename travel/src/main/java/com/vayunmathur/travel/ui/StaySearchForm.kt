@@ -20,6 +20,7 @@ import com.vayunmathur.library.ui.ElevatedCard
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.staySuggestions
 import androidx.compose.ui.res.stringResource
 
 /**

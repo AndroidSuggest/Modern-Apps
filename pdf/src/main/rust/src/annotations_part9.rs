@@ -1,3 +1,39 @@
+#[cfg(test)]
+mod synthesis_tests3 {
+    use super::synthesis_tests::{annot, synth};
+    use super::synthesis_tests2::{fill_ap, form_doc, painted_text, text_widget};
+    use crate::*;
+
+    /// The same §7.9.5 corner-ordering trap as the sticky-note marker, but here
+    /// it silently swallowed the annotation's MESSAGE: on an inverted /Rect
+    /// `rect[3]` is the bottom, so the first line started below the box and the
+    /// `y < rect[1]` guard — against what is really the top — broke the loop on
+    /// iteration one. The /IC box still painted, so it read as an empty box
+    /// rather than as anything wrong.
+    #[test]
+    fn freetext_contents_survive_an_inverted_rect() {
+        let mut ft = annot("FreeText");
+        ft.set("IC", Object::Array(vec![1.into(), 1.into(), 0.into()]));
+        ft.set("Contents", Object::string_literal("first\nsecond"));
+
+        let upright = synth(&ft, [0.0, 0.0, 100.0, 40.0]);
+        assert_eq!(painted_text(&upright), "firstsecond", "precondition: upright draws both lines");
+
+        // The same box, every other corner ordering.
+        for rect in [
+            [100.0, 40.0, 0.0, 0.0],
+            [0.0, 40.0, 100.0, 0.0],
+            [100.0, 0.0, 0.0, 40.0],
+        ] {
+            let prims = synth(&ft, rect);
+            assert_eq!(painted_text(&prims), "firstsecond", "/Rect {rect:?} lost its /Contents");
+            let baselines: Vec<(f32, f32)> = prims
+                .iter()
+                .filter_map(|p| match p {
+                    Prim::Text { x, y, .. } => Some((*x, *y)),
+                    _ => None,
+                })
+                .collect();
             for (x, y) in &baselines {
                 assert!(
                     *x >= -0.01 && *x <= 100.01 && *y >= -0.01 && *y <= 40.01,
@@ -392,3 +428,4 @@
         );
     }
 }
+

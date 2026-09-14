@@ -207,23 +207,6 @@ private const val NudgeCells = 0.3f
 /** How long the arrow stays red at the far end before returning. */
 private const val BlockedHoldMillis = 180L
 
-/**
- * The route a blocked arrow tried to take, drawn as a trail of dots behind the arrows.
- *
- * Dots rather than a line, so it reads as an attempt rather than another arrow, and stops on the cell
- * that turned it back — which is the cell the player needs to look at.
- */
-private fun DrawScope.drawRoute(route: List<Int>, cols: Int, cell: Float, color: Color) {
-    val faded = color.copy(alpha = 0.55f)
-    for (index in route) {
-        drawCircle(
-            color = faded,
-            radius = cell * 0.09f,
-            center = Offset((index % cols + 0.5f) * cell, (index / cols + 0.5f) * cell),
-        )
-    }
-}
-
 /** Spoken name for a direction, for the board's accessibility description. */
 val Direction.spokenNameRes: Int
     get() = when (this) {

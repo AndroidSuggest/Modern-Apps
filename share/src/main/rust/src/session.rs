@@ -284,6 +284,130 @@ fn random_endpoint_id() -> String {
         .collect()
 }
 
+#[cfg(test)]
+/// Split a drained outbound buffer back into its individual framed messages.
+fn split_frames(raw: &[u8]) -> Vec<Vec<u8>> {
+    let mut buf = raw.to_vec();
+    let mut out = Vec::new();
+    loop {
+        match frame::try_consume_frame(&mut buf) {
+            ConsumeResult::Frame(body) => out.push(body),
+            ConsumeResult::Incomplete => break,
+            ConsumeResult::Invalid => panic!("drained buffer is not well framed"),
+        }
+    }
+    assert!(buf.is_empty(), "trailing bytes after the last frame");
+    out
+}
+
+#[cfg(test)]
+/// The `V1Frame` of `body`, if `body` really is a plaintext `OfflineFrame`.
+///
+/// Re-encoding and requiring byte equality is what makes this a *proof* rather
+/// than a guess: `prost` will happily decode many byte strings into a mostly
+/// empty message, but an encrypted body will not round-trip.
+fn plaintext_offline(body: &[u8]) -> Option<frame::OfflineV1Frame> {
+    let offline = payload::parse_offline_frame(body).ok()?;
+    if prost::Message::encode_to_vec(&offline) != body {
+        return None;
+    }
+    offline.v1
+}
+
+#[cfg(test)]
+fn frame_types(raw: &[u8]) -> Vec<Option<i32>> {
+    split_frames(raw)
+        .iter()
+        .map(|f| plaintext_offline(f).map(|v1| v1.r#type))
+        .collect()
+}
+
+#[cfg(test)]
+/// One decoded `drain_received` record.
+struct Drained {
+    payload_id: i64,
+    offset: i64,
+    total_size: i64,
+    last: bool,
+    name: String,
+    body: Vec<u8>,
+}
+
+#[cfg(test)]
+fn decode_received_record(raw: &[u8]) -> Drained {
+    fn i64_at(raw: &[u8], at: usize) -> i64 {
+        i64::from_be_bytes(raw[at..at + 8].try_into().expect("8 bytes"))
+    }
+    assert_eq!(raw[0], RECEIVED_RECORD_VERSION, "record version");
+    let payload_id = i64_at(raw, 1);
+    let offset = i64_at(raw, 9);
+    let total_size = i64_at(raw, 17);
+    let flags = raw[25];
+    let name_len = u16::from_be_bytes(raw[26..28].try_into().expect("2 bytes")) as usize;
+    let name = String::from_utf8(raw[28..28 + name_len].to_vec()).expect("utf8 name");
+    let body_at = 28 + name_len;
+    let body_len =
+        u32::from_be_bytes(raw[body_at..body_at + 4].try_into().expect("4 bytes")) as usize;
+    let body = raw[body_at + 4..body_at + 4 + body_len].to_vec();
+    assert_eq!(body_at + 4 + body_len, raw.len(), "record has trailing bytes");
+    Drained {
+        payload_id,
+        offset,
+        total_size,
+        last: (flags & RECEIVED_FLAG_LAST) != 0,
+        name,
+        body,
+    }
+}
+
+#[cfg(test)]
+fn drain_all_received(s: &mut Session) -> Vec<Drained> {
+    let mut out = Vec::new();
+    while let Some(raw) = s.drain_received() {
+        out.push(decode_received_record(&raw));
+    }
+    out
+}
+
+#[cfg(test)]
+/// Pump both sides until neither has anything left to send.
+fn settle(a: &mut Session, b: &mut Session) {
+    for _ in 0..32 {
+        let mut moved = false;
+        if let Some(out) = a.outbound_drain() {
+            assert!(b.feed_inbound(&out) >= 0, "b failed: {:?}", b.failed_reason.as_deref());
+            moved = true;
+        }
+        if let Some(out) = b.outbound_drain() {
+            assert!(a.feed_inbound(&out) >= 0, "a failed: {:?}", a.failed_reason.as_deref());
+            moved = true;
+        }
+        if !moved {
+            return;
+        }
+    }
+    panic!("sessions did not settle");
+}
+
+#[cfg(test)]
+/// A session with a random endpoint id, which the empty-id fallback supplies.
+fn test_session(role: Role, local_name: &str, local_endpoint_info: Vec<u8>) -> Session {
+    Session::new(
+        role,
+        local_name.to_string(),
+        local_endpoint_info,
+        String::new(),
+    )
+}
+
+#[cfg(test)]
+fn connected_pair() -> (Session, Session) {
+    let mut initiator = test_session(Role::Initiator, "Alice", b"alice-info".to_vec());
+    let mut responder = test_session(Role::Responder, "Bob", b"bob-info".to_vec());
+    settle(&mut initiator, &mut responder);
+    (initiator, responder)
+}
+
 include!("session_part1.rs");
 include!("session_part2.rs");
 include!("session_part3.rs");

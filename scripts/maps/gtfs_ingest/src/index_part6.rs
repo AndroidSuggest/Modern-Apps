@@ -1,3 +1,28 @@
+#[cfg(test)]
+mod shape_tests {
+    use super::*;
+    use super::tests::{ShapeSpec, agency, assert_shape_invariants, one_feed, shape_map, shaped_feed};
+    use crate::gtfs::parse_csv;
+    use crate::reader::{Reader, SEC_SHAPE_COORDS};
+
+    #[test]
+    fn a_mismatched_shape_is_dropped_to_the_stop_to_stop_fallback() {
+        let t = shaped_feed(false);
+        let ag = agency("America/Los_Angeles");
+        // The same shape_id, but 4000 km east.
+        let sh = shape_map(vec![(
+            "SH1",
+            vec![(40.700, -74.000), (40.710, -74.000), (40.720, -74.000)],
+            None,
+        )]);
+        let (blob, stats) =
+            build_index("world", &one_feed(&t, &ag, Some(&sh))).expect("build");
+        let r = Reader::new(blob).expect("read back the pack");
+        assert_eq!(stats.shaped_routes, 0);
+        assert_eq!(stats.dropped_shape_routes, 1);
+        assert!(r.route_shape_off(0).is_none(), "a bad shape must not be stored");
+        assert_eq!(r.sec_bytes(SEC_SHAPE_COORDS).len(), 0);
+        assert_shape_invariants(&r);
     }
 
     #[test]

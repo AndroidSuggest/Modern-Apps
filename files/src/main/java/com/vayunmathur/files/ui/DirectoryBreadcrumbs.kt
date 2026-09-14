@@ -78,7 +78,7 @@ internal fun DirectoryTitle(
         )
         LaunchedEffect(Unit) { searchFocus.requestFocus() }
     } else if (isCategory) {
-        Text(state.categoryTitle, style = MaterialTheme.typography.titleLarge)
+        Text(state.categoryTitle.orEmpty(), style = MaterialTheme.typography.titleLarge)
     } else {
         Row(
             verticalAlignment = Alignment.CenterVertically,

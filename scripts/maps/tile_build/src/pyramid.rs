@@ -428,6 +428,9 @@ include!("pyramid_part1.rs");
 include!("pyramid_part2.rs");
 include!("pyramid_part3.rs");
 include!("pyramid_part4.rs");
-include!("pyramid_part5.rs");
-include!("pyramid_part6.rs");
-include!("pyramid_part7.rs");
+#[cfg(test)]
+mod tests {
+    include!("pyramid_part5.rs");
+    include!("pyramid_part6.rs");
+    include!("pyramid_part7.rs");
+}

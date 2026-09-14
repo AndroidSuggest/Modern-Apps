@@ -1,5 +1,5 @@
 use super::slim::{BodyLayer, SlimBody, SlimInstance};
-use crate::mamaps::body::{Body, BuildingAttrs, Carriageway, Feature, GEOM_LINE, GEOM_POLYGON, ID_NONE, LaneTurns, Layer, NAME_NONE, Part, FLAG_DETAIL_NUMERIC};
+use crate::mamaps::body::{Body, BuildingAttrs, Carriageway, Feature, GEOM_LINE, GEOM_POINT, GEOM_POLYGON, ID_NONE, LaneTurns, Layer, NAME_NONE, Part, FLAG_DETAIL_NUMERIC};
 use crate::mamaps::shared::{SHARED_FLAG_DETAIL_NUMERIC, SharedLogicalRow, SharedView};
 use crate::proto::{Error, Result, err};
 

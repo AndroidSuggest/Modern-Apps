@@ -31,6 +31,10 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.network.OfferDto
 import com.vayunmathur.travel.util.FlightQuery
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.loadPartialFares
+import com.vayunmathur.travel.util.loadPartialReturn
+import com.vayunmathur.travel.util.selectOffer
+import com.vayunmathur.travel.util.startPartialSearch
 import androidx.compose.ui.res.stringResource
 
 /**

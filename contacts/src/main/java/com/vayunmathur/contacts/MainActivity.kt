@@ -39,6 +39,7 @@ import com.vayunmathur.contacts.data.PrefillValue
 import com.vayunmathur.contacts.ui.*
 import com.vayunmathur.contacts.ui.dialogs.*
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.contacts.util.setEditDraftPhotoFromBitmap
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.*
 import kotlinx.datetime.LocalDate

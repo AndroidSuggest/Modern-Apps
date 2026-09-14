@@ -1,5 +1,3 @@
-#[cfg(test)]
-mod tests {
     use super::*;
     use crate::tile::glyph::fonts_staged;
 
@@ -437,14 +435,3 @@ mod tests {
         let centre_px = ((lo + hi) * 0.5 - 0.5) * span;
         assert!(centre_px.abs() < 3.0, "a two-line block sits {centre_px:.1}px off centre");
     }
-
-    /// The anchor decides which side of the point the label sits on, and the offset pushes
-    /// it further that way. `Left` means the block's left edge is at the point, so the text
-    /// runs to the **right** — MapLibre's sense, and the one that reads backwards.
-    #[test]
-    fn the_anchor_puts_the_block_on_the_right_side_of_the_point() {
-        let Some(atlas) = atlas() else { return };
-        let (text_px, span) = (32.0f32, 512.0f32);
-        let lines = shape_wrapped(&atlas, Weight::Regular, "Cafe", false, 8.0);
-        let bounds = |anchor: Anchor, offset: f32| {
-            let (mut v, mut idx) = (Vec::new(), Vec::new());

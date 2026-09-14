@@ -1,3 +1,35 @@
+#[cfg(test)]
+mod synthesis_tests2 {
+    use super::stamp_label;
+    use super::synthesis_tests::{annot, synth};
+    use crate::*;
+
+    /// §12.5.4 Table 166: "/W ... If this value is 0, no border shall be drawn."
+    /// The synthesized stroke floors its line width at 0.5, so without an explicit
+    /// check a filled Square or Circle came out ringed in a hairline outline the
+    /// file expressly asked not to have — and `set_shape_border` in this very file
+    /// writes `W 0` for every filled shape it authors.
+    #[test]
+    fn a_zero_border_width_draws_no_border() {
+        for subtype in ["Square", "Circle"] {
+            let mut d = annot(subtype);
+            d.set("C", Object::Array(vec![1.into(), 0.into(), 0.into()]));
+            d.set("IC", Object::Array(vec![0.into(), 0.into(), 1.into()]));
+            d.set("BS", dictionary! { "W" => 0 });
+            let prims = synth(&d, [0.0, 0.0, 60.0, 40.0]);
+            assert!(
+                !prims.iter().any(|p| matches!(p, Prim::Stroke { .. })),
+                "{subtype} with /BS /W 0 drew a border: {:?}",
+                kinds(&prims)
+            );
+            assert!(
+                prims.iter().any(|p| matches!(p, Prim::Fill { .. })),
+                "{subtype}: the /IC interior must still paint"
+            );
+            // A width the file did not suppress still strokes.
+            d.set("BS", dictionary! { "W" => 2 });
+            assert!(
+                synth(&d, [0.0, 0.0, 60.0, 40.0])
                     .iter()
                     .any(|p| matches!(p, Prim::Stroke { .. })),
                 "{subtype}: a nonzero /W must still draw"
@@ -179,7 +211,7 @@
     /// Everything a run of `Prim::Text` would paint, concatenated in emission
     /// order: the interpreter emits one prim per glyph, so a value only exists
     /// as the whole run.
-    fn painted_text(prims: &[Prim]) -> String {
+    pub(crate) fn painted_text(prims: &[Prim]) -> String {
         prims
             .iter()
             .filter_map(|p| match p {
@@ -191,7 +223,7 @@
 
     /// A single-page document whose catalog carries an `/AcroForm`, optionally
     /// with `/NeedAppearances` set.
-    fn form_doc(need_appearances: bool) -> Document {
+    pub(crate) fn form_doc(need_appearances: bool) -> Document {
         let mut doc = Document::with_version("1.7");
         let pages_id = doc.new_object_id();
         let page = doc.add_object(dictionary! {
@@ -221,7 +253,7 @@
         doc
     }
 
-    fn text_widget(value: &str) -> Dictionary {
+    pub(crate) fn text_widget(value: &str) -> Dictionary {
         let mut w = annot("Widget");
         w.set("Rect", rect_obj([10.0, 10.0, 110.0, 30.0]));
         w.set("FT", name_obj("Tx"));
@@ -233,7 +265,7 @@
 
     /// An `/AP /N` stream painting one unmistakable fill, to tell "the file's
     /// appearance ran" apart from "we synthesized one".
-    fn fill_ap(doc: &mut Document) -> Dictionary {
+    pub(crate) fn fill_ap(doc: &mut Document) -> Dictionary {
         let ap = doc.add_object(Stream::new(
             dictionary! {
                 "Type" => name_obj("XObject"),
@@ -418,33 +450,4 @@
         );
     }
 
-    /// The same §7.9.5 corner-ordering trap as the sticky-note marker, but here
-    /// it silently swallowed the annotation's MESSAGE: on an inverted /Rect
-    /// `rect[3]` is the bottom, so the first line started below the box and the
-    /// `y < rect[1]` guard — against what is really the top — broke the loop on
-    /// iteration one. The /IC box still painted, so it read as an empty box
-    /// rather than as anything wrong.
-    #[test]
-    fn freetext_contents_survive_an_inverted_rect() {
-        let mut ft = annot("FreeText");
-        ft.set("IC", Object::Array(vec![1.into(), 1.into(), 0.into()]));
-        ft.set("Contents", Object::string_literal("first\nsecond"));
-
-        let upright = synth(&ft, [0.0, 0.0, 100.0, 40.0]);
-        assert_eq!(painted_text(&upright), "firstsecond", "precondition: upright draws both lines");
-
-        // The same box, every other corner ordering.
-        for rect in [
-            [100.0, 40.0, 0.0, 0.0],
-            [0.0, 40.0, 100.0, 0.0],
-            [100.0, 0.0, 0.0, 40.0],
-        ] {
-            let prims = synth(&ft, rect);
-            assert_eq!(painted_text(&prims), "firstsecond", "/Rect {rect:?} lost its /Contents");
-            let baselines: Vec<(f32, f32)> = prims
-                .iter()
-                .filter_map(|p| match p {
-                    Prim::Text { x, y, .. } => Some((*x, *y)),
-                    _ => None,
-                })
-                .collect();
+}

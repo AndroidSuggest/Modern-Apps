@@ -20,6 +20,9 @@
          (NEARBY_WIFI_DEVICES covers the WiFi half on S+). -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <!-- Android 12+ requires COARSE alongside FINE; the guidance monitor
+         degrades to last-known without either (fail-closed), never crashes. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
     <!-- Restart the projection listener after a reboot; the session is bound to
@@ -34,13 +37,14 @@
          is mediaProjection. The capture runs only while consented in-app AND granted
          here; either off means fail-closed silence on the head unit. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <!-- Background mic (ch6) and location (ch7) must survive without a visible
-         activity on API 34+: the projection service declares the Chimera triple
-         (microphone|connectedDevice|location) and each type needs its own
-         foreground-service permission. Without these the platform kills the
-         background mic/location legs and the channels starve. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Background survival on API 34+ without a visible activity: the
+         projection service declares the connectedDevice type (permission
+         declared up top with the base FOREGROUND_SERVICE). The old
+         microphone/location types are gone (see the service declaration):
+         nothing captures device audio or reads device location directly,
+         and claiming them crashed cold start on fresh installs. The runtime
+         RECORD_AUDIO / location grants still gate their own features (ch6
+         retention, ch7 phone seed) and are requested in-app. -->
     <!-- Wireless bring-up (BT_START -> RFCOMM -> TCP): discovery, association
          and the socket all need the Bluetooth family. The CDM trigger
          (CarCompanionDeviceService) additionally needs the association trio
@@ -119,7 +123,7 @@
          CHANGE_COMPONENT_ENABLED_STATE, MANAGE_USERS,
          CAPTURE_SECURE_VIDEO_OUTPUT, BLUETOOTH_PRIVILEGED,
          CONTROL_INCALL_EXPERIENCE and MODIFY_PHONE_STATE. Both halves are
-         boot-fatal if wrong -- land one at a time. Gearhead's GMS-signed
+         boot-fatal if wrong: land one at a time. Gearhead's GMS-signed
          host permissions (NAVIGATION_TEMPLATES, ACCESS_SURFACE,
          GEARHEAD_SERVICE, START_PROJECTED_ACTIVITY) are not declarable by
          third parties and stay absent on purpose. -->
@@ -170,10 +174,18 @@
                 android:resource="@xml/usb_accessory_filter" />
         </activity>
 
+        <!-- No `microphone`/`location` types: the service never captures
+             device audio or reads device location directly. The ch6 mic path
+             reads GAL chunks off the socket (acked/counted permission-free;
+             RECORD_AUDIO gates only in-memory retention), and the ch7 phone
+             seed flows through `NavGuidanceMonitor` (all `runCatching`-
+             guarded, degrades to last-known). Claiming either type crashes
+             cold start on a fresh install (no grant yet) with
+             SecurityException: that was the recurring crash. -->
         <service
             android:name=".service.ProjectionService"
             android:exported="false"
-            android:foregroundServiceType="microphone|connectedDevice|location" />
+            android:foregroundServiceType="connectedDevice" />
         <!-- Holds the media-projection token while music capture runs. Started
              only after the user grants the consent dialog (see MusicCaptureGrant):
              on API 34+ an FGS with type mediaProjection cannot start before the
@@ -314,7 +326,7 @@
         </service>
 
         <!-- Head-unit compositor/decor bind targets (exported, like
-             gearhead's): binds are safely rejected -- MA renders CarDisplay
+             gearhead's): binds are safely rejected: MA renders CarDisplay
              into ch2 video rather than hosting HU-composited windows. -->
         <service
             android:name=".platform.CarSystemUiControllerService"
@@ -324,12 +336,13 @@
             android:exported="true" />
 
         <!-- Chimera entry point (GMS-compat car.service.START): funnels into
-             the projection service. Triple foreground type for background
-             mic/location survival. -->
+             the projection service. Same single type as ProjectionService
+             (no mic/location types: nothing here captures device audio or
+             reads device location either). -->
         <service
             android:name=".platform.CarChimeraService"
             android:exported="true"
-            android:foregroundServiceType="microphone|connectedDevice|location">
+            android:foregroundServiceType="connectedDevice">
             <intent-filter>
                 <action android:name="car.service.START" />
             </intent-filter>

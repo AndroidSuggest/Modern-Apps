@@ -37,6 +37,13 @@ class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
 
+    // The live playhead for SABR session pacing, read by each SABR source's pump thread.
+    // @Volatile: written on main, read off-thread by every SABR pump. A plain var lets a
+    // pump thread cache a stale null forever, which used to surface as playhead=0 and meter
+    // the session to death.
+    @Volatile
+    private var servicePlayer: ExoPlayer? = null
+
     companion object {
         const val EXTRA_AUDIO_URI = "extra_audio_uri"
         const val EXTRA_AUDIO_TRACK_ID = "extra_audio_track_id"
@@ -73,6 +80,18 @@ class PlaybackService : MediaSessionService() {
         }
 
         val dataSourceFactory = DefaultDataSource.Factory(this, resolvingFactory)
+
+        // Kept nullable (never coalesced to 0) so a missing player falls back to
+        // segment-tracked progress in SabrNgSession instead of shadowing it with 0.
+        val sabrPlayheadMsProvider: () -> Long? = {
+            try {
+                val position = servicePlayer?.currentPosition
+                if (position == null || position == C.TIME_UNSET) null
+                else position.coerceAtLeast(0L)
+            } catch (_: Exception) {
+                null
+            }
+        }
 
         // 1. Use delegation instead of inheritance
         val defaultMediaSourceFactory = DefaultMediaSourceFactory(this)
@@ -131,7 +150,7 @@ class PlaybackService : MediaSessionService() {
                         }
                         SabrNgDashMediaSource(
                             this@PlaybackService, mediaItem, videoId, specSupplier,
-                            tokenMinter
+                            tokenMinter, sabrPlayheadMsProvider
                         )
                     }
                     return if (subtitleSources.isNotEmpty()) {
@@ -235,6 +254,7 @@ class PlaybackService : MediaSessionService() {
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .build()
+        servicePlayer = player
 
         val callback = object : MediaSession.Callback {
             override fun onAddMediaItems(

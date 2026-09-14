@@ -1,20 +1,367 @@
-pub(crate) fn paint_pattern_fill(
+impl MaskKey {
+    fn of(mask: &SoftMask) -> Self {
+        let mut ctm = [0u64; 6];
+        for (dst, src) in ctm.iter_mut().zip(mask.ctm.iter()) {
+            *dst = src.to_bits();
+        }
+        MaskKey {
+            group_id: mask.group_id,
+            mask_type: mask.mask_type,
+            ctm,
+            backdrop: mask
+                .backdrop
+                .as_ref()
+                .map(|b| b.iter().map(|v| v.to_bits()).collect()),
+            tr: mask.tr,
+        }
+    }
+}
+
+/// The soft-mask bracket most recently emitted into `prims`, so a following
+/// painting operation under the same mask can extend it.
+pub(crate) struct MaskBracket {
+    key: MaskKey,
+    /// Index of the `SoftMaskPush`.
+    push: usize,
+    /// Index of the `SoftMaskContent` separator.
+    content: usize,
+    /// `prims.len()` when the bracket was closed. Coalescing is only sound while
+    /// the bracket is still the tail of `prims`.
+    end: usize,
+}
+
+/// Render an ExtGState soft-mask group into `prims` as the mask content of a
+/// SoftMaskPush/Content/Pop bracket. The group is placed at the CTM captured
+/// when the mask was set.
+///
+/// `masked_extent` is the device-space clip extent the masked content is being
+/// painted under. §11.6.5.2 composites the group against a FULLY OPAQUE backdrop
+/// of `/BC` and converts the result to luminosity, so the mask value at every
+/// point the group does not paint — including everywhere outside its `/BBox` —
+/// is the luminosity of `/BC`, not zero. Painting the backdrop only over the
+/// `/BBox` left the rest of the mask surface at luminosity 0, which for a bright
+/// `/BC` HIDES content that the file asked to be revealed. Reported by
+/// `a-shading`.
+///
+/// Returns `false` when the group could NOT be rendered — over the recursion or
+/// primitive cap, or `/G` missing or not a stream. That is NOT the same as a group
+/// that legitimately paints nothing, and the caller must tell them apart: §11.6.5.2
+/// makes the mask value 0 wherever the group paints nothing, and the renderer
+/// composites the mask with `DST_IN`, so a bracket left EMPTY deletes every
+/// primitive inside it. "Too deeply nested to expand the mask" must degrade to
+/// unmasked, not to erased.
+pub(crate) fn render_soft_mask_group(
+    doc: &Document,
+    resources: Option<&lopdf::Dictionary>,
+    mask: &SoftMask,
+    prims: &mut Vec<Prim>,
+    depth: u32,
+    masked_extent: Option<[f64; 4]>,
+) -> bool {
+    if depth >= MAX_PATTERN_RECURSION || prims.len() >= MAX_PRIMITIVES {
+        return false;
+    }
+    let mstream = match doc.get_object(mask.group_id) {
+        Ok(Object::Stream(s)) => s.clone(),
+        _ => return false,
+    };
+    let mmatrix = mstream.dict.get(b"Matrix").ok().and_then(|o| read_matrix_obj(deref(doc, o).unwrap_or(o))).unwrap_or(IDENTITY);
+    let group_ctm = mat_mul(&mmatrix, &mask.ctm);
+    let mres = mstream.dict.get(b"Resources").ok()
+        .and_then(|o| deref(doc, o))
+        .and_then(|o| o.as_dict().ok())
+        .cloned();
+    // §11.6.5.2 backdrop for luminosity masks. `/BC` is OPTIONAL and its default
+    // is "the colour representing a zero luminosity in the group's colour space"
+    // — BLACK, not "no backdrop at all". Gating the whole fill on `/BC` being
+    // PRESENT treated a defaulted value as an absent feature.
+    //
+    // The clause says to composite the group against a FULLY OPAQUE backdrop and
+    // take the result's luminosity, so the fill also supplies the alpha the
+    // consumer's luminosity filter cannot: that filter is an affine ColorMatrix
+    // whose alpha row has a 0 coefficient in the A column, and A_out = A_in x
+    // luma(RGB) is not expressible as one, so this cannot be fixed on that side.
+    // Worked by `hunt-wrong2`: a white group rect at `/ca 0.5` over no backdrop
+    // reads as luminosity 1.0 under straight alpha — twice as opaque as the 0.5
+    // the clause gives — while over an opaque black backdrop it reads 0.5. Under
+    // premultiplied alpha the two already agree, so this is a no-op there and a
+    // fix under straight alpha; it cannot make either worse.
+    if mask.mask_type == 1 {
+        let argb = match &mask.backdrop {
+            Some(bc) => {
+                let cs = mstream.dict.get(b"Group").ok().and_then(|o| deref(doc, o))
+                    .and_then(|o| o.as_dict().ok())
+                    .and_then(|gd| gd.get(b"CS").ok().and_then(|o| parse_cs_kind(doc, Some(o), &HashMap::new())));
+                cs.as_ref()
+                    .and_then(|k| eval_cs_to_rgb(doc, k, bc, &HashMap::new()))
+                    .unwrap_or_else(|| match bc.len() {
+                        1 => gray_to_argb(bc[0]),
+                        3 => rgb_to_argb(bc[0], bc[1], bc[2]),
+                        4 => cmyk_to_argb(bc[0], bc[1], bc[2], bc[3]),
+                        _ => 0xFF00_0000,
+                    })
+            }
+            // Zero luminosity is black in every colour space this renders
+            // through, so the default needs no `/CS` round trip.
+            None => 0xFF00_0000,
+        };
+        // The backdrop covers everything the mask is applied to, not just the
+        // group's /BBox — see this function's doc comment. The /BBox quad is only
+        // the FALLBACK for when there is no extent: that reproduces the OLD,
+        // known-wrong behaviour in a case that already had it, whereas an
+        // unbounded fill would flood the page with the backdrop colour, which is
+        // a worse new failure.
+        //
+        // So the /BBox is required only on that fallback path. Gating the whole
+        // block on it — which is what reading `rect` before this match did —
+        // meant a group with no /BBox got no backdrop even when `masked_extent`
+        // was Some and the extent needed to paint one was right there. §8.10.2
+        // makes /BBox mandatory and a mask group is a form XObject, so that is
+        // malformed input, but producers omit it. Residual found by `hunt-wrong2`
+        // on the /BC fix below it.
+        //
+        // Capturing the extent at bracket creation is sound even though
+        // `wrap_with_soft_mask` later splices more content into the SAME
+        // bracket, because coalescing requires `b.end == start` — the
+        // bracket must still be the tail of `prims`. The only operator
+        // that can GROW the clip is `Q`, and it pushes a `Prim::ClipPop`
+        // per level before restoring the saved bbox, so any growth emits
+        // a prim, fails that check and forces a fresh bracket with a
+        // freshly sized backdrop. The extent therefore cannot go stale
+        // for anything that coalesces in. (Sizing it to the masked
+        // CONTENT's extent has no such guarantee and silently
+        // under-covers every operation after the first.)
+        let poly: Option<Vec<(f64, f64)>> = match masked_extent {
+            Some([x0, y0, x1, y1]) => Some(vec![(x0, y0), (x1, y0), (x1, y1), (x0, y1)]),
+            None => mstream.dict.get(b"BBox").ok().and_then(|o| read_rect(doc, o)).map(|rect| {
+                vec![
+                    transform(&group_ctm, rect[0], rect[1]),
+                    transform(&group_ctm, rect[2], rect[1]),
+                    transform(&group_ctm, rect[2], rect[3]),
+                    transform(&group_ctm, rect[0], rect[3]),
+                ]
+            }),
+        };
+        if let Some(poly) = poly {
+            emit_fill(prims, std::slice::from_ref(&poly), argb, false, 1.0, BlendMode::Normal);
+        }
+    }
+    let msub_ops = crate::content::stream_operations(doc, &mstream);
+    if !msub_ops.is_empty() {
+        let mgs = GraphicsState {
+            ctm: group_ctm,
+            soft_mask: None,
+            blend_mode: BlendMode::Normal,
+            alpha_fill: 1.0,
+            alpha_stroke: 1.0,
+            ..Default::default()
+        };
+        let mres_ref = mres.as_ref().or(resources);
+        // Same §8.7.4.1 hazard as the `Do` arm: a mask group is a form XObject
+        // (§11.6.5.2), so its `/BBox` is the clip its content is drawn under, and a
+        // `sh` inside it paints nothing at all without that extent. A mask that
+        // paints nothing is uniformly black, which for a luminosity mask hides
+        // ALL of the masked content rather than merely mis-toning it.
+        let bbox_corners = mstream
+            .dict
+            .get(b"BBox")
+            .ok()
+            .and_then(|o| read_rect(doc, o))
+            .map(|bb| {
+                [
+                    transform(&group_ctm, bb[0], bb[1]),
+                    transform(&group_ctm, bb[2], bb[1]),
+                    transform(&group_ctm, bb[2], bb[3]),
+                    transform(&group_ctm, bb[0], bb[3]),
+                ]
+            });
+        let mask_clip_bbox = bbox_corners.as_ref().and_then(quad_device_bbox);
+        // Seeding the extent only tells a `sh` how big to rasterize; it does not
+        // BOUND anything the group paints. §11.6.5.2 makes the group a form
+        // XObject, so §8.10.1's rule applies unchanged — content outside the
+        // `/BBox` must read as backdrop — and the `Do` arm already emits this
+        // clip. Without it a group whose content overruns its box put mask
+        // luminosity where the file said there was none, revealing masked content
+        // it should have hidden.
+        //
+        // Deliberately after the `/BC` backdrop fill above, which covers
+        // everything the mask is applied to rather than just the `/BBox`.
+        let mut bbox_clipped = false;
+        if let Some(c) = bbox_corners {
+            if prims.len() < MAX_PRIMITIVES {
+                let pts: Vec<(f32, f32)> = c.iter().map(|&(x, y)| (x as f32, y as f32)).collect();
+                let po = vec![
+                    PathOp::Move(c[0].0 as f32, c[0].1 as f32),
+                    PathOp::Line(c[1].0 as f32, c[1].1 as f32),
+                    PathOp::Line(c[2].0 as f32, c[2].1 as f32),
+                    PathOp::Line(c[3].0 as f32, c[3].1 as f32),
+                    PathOp::Close,
+                ];
+                prims.push(Prim::ClipPush { even_odd: false, pts, path_ops: Some(po) });
+                bbox_clipped = true;
+            }
+        }
+        interpret_content_seeded(
+            doc,
+            &msub_ops,
+            mres_ref,
+            mgs,
+            prims,
+            depth + 1,
+            false,
+            mask_clip_bbox,
+        );
+        if bbox_clipped {
+            // Balanced even if the prim cap was hit inside, to keep the clip stack sane.
+            prims.push(Prim::ClipPop);
+        }
+    }
+    true
+}
+
+/// Bracket the primitives appended since `start` with the given soft mask so
+/// they are drawn only where the mask is opaque/luminous. No-op if nothing was
+/// emitted. Reuses the SoftMaskPush/Content/Pop wire prims.
+///
+/// §11.6.5.1 makes the soft mask a graphics-state PARAMETER: one mask covers
+/// every operation painted while it is set. So when the bracket in `bracket` is
+/// still the tail of `prims` and carries the same mask, this operation's
+/// primitives are moved inside it instead of opening a second bracket. Opening
+/// one per operation re-interprets the mask's whole content stream every time,
+/// which on a page with one gradient mask over hundreds of shapes expands the
+/// mask hundreds of times and pushes the page past [`MAX_PRIMITIVES`], dropping
+/// real content.
+///
+/// The merge composites the coalesced operations against each other inside the
+/// masked layer before the mask is applied, rather than masking each one
+/// separately against the backdrop. Those agree exactly for a fully opaque or
+/// fully transparent mask and for non-overlapping content — which is what a run
+/// of shapes under one mask is in practice — and differ only in the alpha
+/// arithmetic where partially-masked content overlaps itself.
+pub(crate) fn wrap_with_soft_mask(
+    prims: &mut Vec<Prim>,
+    start: usize,
+    doc: &Document,
+    resources: Option<&lopdf::Dictionary>,
+    mask: &SoftMask,
+    depth: u32,
+    bracket: &mut Option<MaskBracket>,
+    masked_extent: Option<[f64; 4]>,
+) {
+    if start >= prims.len() || prims.len() >= MAX_PRIMITIVES {
+        return;
+    }
+    let key = MaskKey::of(mask);
+    // Structural re-validation rather than invalidating on every other push: the
+    // recorded indices must still name the bracket's own prims, and the bracket
+    // must end exactly where this operation began.
+    if let Some(b) = bracket.as_mut() {
+        if b.key == key
+            && b.end == start
+            && b.push < b.content
+            && b.content < b.end
+            && matches!(prims.get(b.push), Some(Prim::SoftMaskPush { .. }))
+            && matches!(prims.get(b.content), Some(Prim::SoftMaskContent))
+            && matches!(prims.get(b.end - 1), Some(Prim::SoftMaskPop))
+        {
+            let added: Vec<Prim> = prims.drain(start..).collect();
+            let n = added.len();
+            prims.splice(b.content..b.content, added);
+            b.content += n;
+            b.end += n;
+            return;
+        }
+    }
+    prims.insert(start, Prim::SoftMaskPush { mask_type: mask.mask_type });
+    // §11.6.5.2: the mask value is passed through `/TR` before use. `model.rs`
+    // specifies this immediately after the push, and it is `None` for `/Identity`.
+    let tr_inserted = mask.tr.is_some();
+    if let Some(lut) = mask.tr {
+        prims.insert(start + 1, Prim::SoftMaskTransfer(Box::new(lut)));
+    }
+    let content = prims.len();
+    prims.push(Prim::SoftMaskContent);
+    if !render_soft_mask_group(doc, resources, mask, prims, depth, masked_extent) {
+        // The group could not be expanded (recursion cap, primitive cap, or a `/G`
+        // that is missing or not a stream). Leaving the bracket in place would ship
+        // an EMPTY mask, and an empty mask is not "no mask": the renderer's mask
+        // layer composites with `DST_IN`, so mask alpha 0 everywhere DELETES every
+        // primitive between the push and the separator. Unwind instead and paint the
+        // content unmasked, which is the §11.6.5.1 no-mask default and the direction
+        // that loses an effect rather than the artwork.
+        //
+        // A group that legitimately paints nothing is NOT this case — it returns
+        // true, keeps its bracket, and correctly hides the content.
+        prims.truncate(content);
+        prims.remove(start);
+        if tr_inserted {
+            prims.remove(start);
+        }
+        *bracket = None;
+        return;
+    }
+    prims.push(Prim::SoftMaskPop);
+    *bracket = Some(MaskBracket { key, push: start, content, end: prims.len() });
+}
+
+/// Axis-aligned device-space bbox of a transformed `/BBox` quad, or `None` when the
+/// quad is degenerate or non-finite.
+///
+/// §8.7.4.1 makes `sh` fill the whole current clip, and `rasterize_shading` paints
+/// nothing rather than guess an extent, so every nested content stream has to hand
+/// down the box its content is clipped to. Shared by the three that have one: a form
+/// XObject's `/BBox` (§8.10.1), a soft-mask group's (§11.6.5.2), a tiling-pattern
+/// cell's (§8.7.3.1) and an annotation appearance stream's (§12.5.5).
+pub(crate) fn quad_device_bbox(c: &[(f64, f64); 4]) -> Option<[f64; 4]> {
+    let xs = c.iter().map(|p| p.0);
+    let ys = c.iter().map(|p| p.1);
+    let b = [
+        xs.clone().fold(f64::INFINITY, f64::min),
+        ys.clone().fold(f64::INFINITY, f64::min),
+        xs.fold(f64::NEG_INFINITY, f64::max),
+        ys.fold(f64::NEG_INFINITY, f64::max),
+    ];
+    if b.iter().all(|v| v.is_finite()) && b[2] > b[0] && b[3] > b[1] {
+        Some(b)
+    } else {
+        None
+    }
+}
+
+/// Bounding box (device space) of a set of polygons, or `None` if empty.
+fn polys_device_bbox(polys: &[Vec<(f64, f64)>]) -> Option<[f64;4]> {
+    let mut x0 = f64::INFINITY; let mut y0 = f64::INFINITY;
+    let mut x1 = f64::NEG_INFINITY; let mut y1 = f64::NEG_INFINITY;
+    for poly in polys {
+        for &(x,y) in poly.iter() {
+            x0 = x0.min(x); y0 = y0.min(y); x1 = x1.max(x); y1 = y1.max(y);
+        }
+    }
+    if x1 > x0 && y1 > y0 { Some([x0, y0, x1, y1]) } else { None }
+}
+
+/// the segments (matching how a real stroke covers the path).
+pub(crate) fn paint_pattern_stroke(
     doc: &Document,
     pattern_id: ObjectId,
-    polys: &[Vec<(f64, f64)>],
-    even_odd: bool,
+    subpaths: &[Vec<(f64, f64)>],
+    gs: &GraphicsState,
     pattern_base_ctm: &Mat,
-    base_argb: u32,
-    alpha_fill: f32,
-    blend: BlendMode,
-    // See [`paint_pattern_stroke`]: the invoking stream's `/Resources
-    // /ColorSpace` map, without which a shading whose `/ColorSpace` is a NAME
-    // falls back to DeviceRGB.
+    // The invoking stream's `/Resources /ColorSpace` map. §8.6.1 lets any
+    // non-device colour space be written as a NAME, and Table 78 puts no
+    // restriction on the form a shading's `/ColorSpace` takes — a PatternType 2
+    // dictionary has no `/Resources` of its own (only tiling patterns do), so a
+    // name in its shading resolves against the stream that invoked the pattern.
+    // Passing an empty map made every such lookup miss and silently substitute
+    // DeviceRGB. Found by `r5-color`.
     cs_resources: &HashMap<Vec<u8>, ObjectId>,
     prims: &mut Vec<Prim>,
     depth: u32,
     clip_depth: usize,
 ) {
+    // These clips are pushed and popped inside this function, so they never
+    // unbalance the stream — but they DO consume renderer clip levels, so they
+    // have to respect the same ceiling as `emit_one_clip`.
     if clip_depth >= MAX_CLIP_DEPTH {
         return;
     }
@@ -34,21 +381,36 @@ pub(crate) fn paint_pattern_fill(
     let matrix = dict.get(b"Matrix").ok().and_then(|o| read_matrix_obj(deref(doc, o).unwrap_or(o))).unwrap_or(IDENTITY);
     let pmat = mat_mul(&matrix, pattern_base_ctm);
 
-    // ONE clip for the whole fill region.
-    // per contour made a path with disjoint subpaths paint nothing at all, and
-    // more than 63 contours tripped the renderer's clip-depth guard and discarded
-    // the rest of the page. path_ops carries every contour so holes survive.
+    // Half stroke width in device space (CTM average axis scale).
+    let ctm = &gs.ctm;
+    let sx = (ctm[0]*ctm[0] + ctm[1]*ctm[1]).sqrt();
+    let sy = (ctm[2]*ctm[2] + ctm[3]*ctm[3]).sqrt();
+    let scale = (sx + sy) / 2.0;
+    // P0 fix medium #23: don't enlarge hairlines via min 0.35 – keep true width, Kotlin handles 1 device px hairline
+    let hw = (gs.line_width * scale) / 2.0;
+
+    // Build ONE clip covering every stroke quad, then paint the pattern ONCE.
+    // Rasterizing the shading per quad allocated a full bbox-sized image for each
+    // of the ~2N quads of an N-point path (up to ~4 MB each), i.e. multi-GB on any
+    // gradient-stroked curve.
+    const MAX_STROKE_QUADS: usize = 4096;
+    let mut quads = stroke_outline_quads(subpaths, hw);
+    if quads.len() > MAX_STROKE_QUADS {
+        quads.truncate(MAX_STROKE_QUADS);
+    }
+    let stroke_bbox = polys_device_bbox(subpaths);
     let mut path_ops: Vec<PathOp> = Vec::new();
-    let mut first: Option<&Vec<(f64, f64)>> = None;
-    for poly in polys {
-        if poly.len() < 3 {
-            continue;
+    for quad in &quads {
+        if quad.len() < 3 || shoelace_area(quad).abs() < 1e-3 { continue; }
+        // The quads deliberately overlap (segment bodies plus vertex squares).
+        // Normalize each to positive winding so they UNION under the nonzero rule
+        // rather than cancelling each other into holes.
+        let mut q: Vec<(f64, f64)> = quad.clone();
+        if shoelace_area(&q) < 0.0 {
+            q.reverse();
         }
-        if first.is_none() {
-            first = Some(poly);
-        }
-        path_ops.push(PathOp::Move(poly[0].0 as f32, poly[0].1 as f32));
-        for &(x, y) in &poly[1..] {
+        path_ops.push(PathOp::Move(q[0].0 as f32, q[0].1 as f32));
+        for &(x, y) in &q[1..] {
             path_ops.push(PathOp::Line(x as f32, y as f32));
         }
         path_ops.push(PathOp::Close);
@@ -56,308 +418,26 @@ pub(crate) fn paint_pattern_fill(
     if path_ops.is_empty() || prims.len() >= MAX_PRIMITIVES {
         return;
     }
-    let pts: Vec<(f32, f32)> = first
-        .map(|p| p.iter().map(|&(x, y)| (x as f32, y as f32)).collect())
+    let pts: Vec<(f32, f32)> = quads
+        .first()
+        .map(|q| q.iter().map(|&(x, y)| (x as f32, y as f32)).collect())
         .unwrap_or_default();
-    prims.push(Prim::ClipPush { even_odd, pts, path_ops: Some(path_ops) });
-
+    prims.push(Prim::ClipPush { even_odd: false, pts, path_ops: Some(path_ops) });
     if ptype == 2 {
         if let Some(shobj) = dict.get(b"Shading").ok().and_then(|o| deref(doc, o)) {
-            let fill_bbox = polys_device_bbox(polys);
-            // §8.7.4.3 Table 78: see `paint_pattern_stroke` — PatternType 2 honours
-            // `/Background`, the `sh` operator ignores it.
-            if let Some((ctm, w, h, data)) = rasterize_shading_as_pattern(doc, shobj, &pmat, cs_resources, 0, fill_bbox) {
+            // §8.7.4.3 Table 78: `/Background` fills the parts of the painted area
+            // outside the shading's own extent, and applies ONLY when the shading is
+            // painted as a shading pattern — it "shall be ignored by the `sh`
+            // operator". This is PatternType 2, so it opts in; the `sh` arm keeps the
+            // plain entry point.
+            if let Some((ctm, w, h, data)) = rasterize_shading_as_pattern(doc, shobj, &pmat, cs_resources, 0, stroke_bbox) {
                 if prims.len() < MAX_PRIMITIVES {
-                    prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: alpha_fill, blend });
+                    prims.push(Prim::Image { ctm, w, h, format: 0, data, alpha: gs.alpha_stroke as f32, blend: gs.blend_mode });
                 }
             }
         }
     } else if ptype == 1 {
-        paint_tiling_pattern(doc, obj, dict, &pmat, base_argb, polys, prims, depth, alpha_fill, blend);
+        paint_tiling_pattern(doc, obj, dict, &pmat, gs.stroke, &quads, prims, depth, gs.alpha_stroke as f32, gs.blend_mode);
     }
-
     prims.push(Prim::ClipPop);
-}
-
-fn paint_tiling_pattern(
-    doc: &Document,
-    obj: &Object,
-    dict: &lopdf::Dictionary,
-    pmat: &Mat,
-    base_argb: u32,
-    polys: &[Vec<(f64, f64)>],
-    prims: &mut Vec<Prim>,
-    depth: u32,
-    alpha: f32,
-    blend: BlendMode,
-) {
-    let stream = match obj {
-        Object::Stream(s) => s,
-        _ => return,
-    };
-    let paint_type = dict.get(b"PaintType").ok().and_then(num).unwrap_or(1.0) as i64;
-    let bbox = dict.get(b"BBox").ok().and_then(|o| read_rect(doc, o)).unwrap_or([0.0, 0.0, 1.0, 1.0]);
-    let xstep = dict.get(b"XStep").ok().and_then(num).unwrap_or(bbox[2] - bbox[0]);
-    let ystep = dict.get(b"YStep").ok().and_then(num).unwrap_or(bbox[3] - bbox[1]);
-    // The tile lattice spacing is a magnitude; a negative /XStep or /YStep made
-    // i0 > i1 so the loop body never ran and the pattern painted nothing.
-    let xstep = xstep.abs();
-    let ystep = ystep.abs();
-    // §8.7.4.1: `sh` fills the whole current clip, and `rasterize_shading` paints NOTHING
-    // for a shading with no `/BBox` of its own when handed no clip extent. §8.7.3.1 clips a
-    // cell to the pattern `/BBox`, so that box is the extent for every path below that
-    // interprets the cell. Two of them are the malformed-pattern fallbacks, which paint the
-    // cell once at `pmat`; the third (the periodic-raster path) works in cell space and
-    // needs the box unmapped, computed separately at its own site.
-    let cell_bbox_device = quad_device_bbox(&[
-        transform(pmat, bbox[0], bbox[1]),
-        transform(pmat, bbox[2], bbox[1]),
-        transform(pmat, bbox[2], bbox[3]),
-        transform(pmat, bbox[0], bbox[3]),
-    ]);
-    // Zero-step pattern is malformed — show bbox once instead of blanking
-    if xstep.abs() < 1e-6 || ystep.abs() < 1e-6 {
-        let res = dict
-            .get(b"Resources")
-            .ok()
-            .and_then(|o| deref(doc, o))
-            .and_then(|o| o.as_dict().ok())
-            .cloned();
-        // Same all-or-nothing hazard as a page or a form: one inline image lopdf
-        // rejects would otherwise blank the whole cell.
-        let cell_ops = crate::content::stream_operations(doc, stream);
-        if !cell_ops.is_empty() {
-            let mut tile_gs = GraphicsState { ctm: *pmat, alpha_fill: alpha as f64, alpha_stroke: alpha as f64, blend_mode: blend, ..GraphicsState::default() };
-            if paint_type == 2 { tile_gs.fill = base_argb; tile_gs.stroke = base_argb; }
-            interpret_content_seeded(doc, &cell_ops, res.as_ref(), tile_gs, prims, depth + 1, false, cell_bbox_device);
-        }
-        return;
-    }
-    let res = dict
-        .get(b"Resources")
-        .ok()
-        .and_then(|o| deref(doc, o))
-        .and_then(|o| o.as_dict().ok())
-        .cloned();
-    let content_ops = crate::content::stream_operations(doc, stream);
-    if content_ops.is_empty() {
-        return;
-    }
-
-    // Device-space bounding box of the fill region.
-    let (mut minx, mut miny, mut maxx, mut maxy) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    for poly in polys {
-        for &(x, y) in poly {
-            minx = minx.min(x);
-            miny = miny.min(y);
-            maxx = maxx.max(x);
-            maxy = maxy.max(y);
-        }
-    }
-    if !minx.is_finite() {
-        return;
-    }
-
-    // Map that box into pattern space to bound the tile index range.
-    let inv = mat_inverse(pmat);
-    // Singular pattern matrix — degrade to single tile instead of blank.
-    if (inv[0]*inv[3] - inv[1]*inv[2]).abs() < 1e-12 {
-        let mut tile_gs = GraphicsState { ctm: *pmat, alpha_fill: alpha as f64, alpha_stroke: alpha as f64, blend_mode: blend, ..GraphicsState::default() };
-        if paint_type == 2 { tile_gs.fill = base_argb; tile_gs.stroke = base_argb; }
-        interpret_content_seeded(doc, &content_ops, res.as_ref(), tile_gs, prims, depth + 1, false, cell_bbox_device);
-        return;
-    }
-    let (mut pminx, mut pminy, mut pmaxx, mut pmaxy) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    for (x, y) in [(minx, miny), (maxx, miny), (minx, maxy), (maxx, maxy)] {
-        let (px, py) = transform(&inv, x, y);
-        pminx = pminx.min(px);
-        pminy = pminy.min(py);
-        pmaxx = pmaxx.max(px);
-        pmaxy = pmaxy.max(py);
-    }
-    let i0 = ((pminx - bbox[2]) / xstep).floor() as i64;
-    let i1 = ((pmaxx - bbox[0]) / xstep).ceil() as i64;
-    let j0 = ((pminy - bbox[3]) / ystep).floor() as i64;
-    let j1 = ((pmaxy - bbox[1]) / ystep).ceil() as i64;
-    let total_i = (i1 - i0 + 1).max(0);
-    let total_j = (j1 - j0 + 1).max(0);
-
-    // §8.7.3.3 requires the cell replicated across the WHOLE region. Rasterizing
-    // the cell ONCE and emitting a periodic bitmap makes the tile count
-    // irrelevant, which is the only way to satisfy that: the per-tile path below
-    // has to cap the count, and any cap leaves part of a large hatched region
-    // blank.
-    //
-    // Restricted to cells made only of fills and strokes, because
-    // `rasterize_prims_to_rgba` has no glyph rasterizer and ignores images, clips
-    // and groups — a cell containing any of those would silently lose it, so it
-    // keeps the per-tile path. `rasterize_pattern_cell` owns the other gates (the
-    // period being the step and not the bbox, and bounding the copies-per-period
-    // needed to honour §8.7.3.1 overlap).
-    let mut cell_prims: Vec<Prim> = Vec::new();
-    let mut cell_gs = GraphicsState {
-        ctm: IDENTITY,
-        // §11.6.7 treats the pattern as a transparency group: alpha and blend ride
-        // on the composited result, not on each element inside the cell.
-        alpha_fill: 1.0,
-        alpha_stroke: 1.0,
-        ..GraphicsState::default()
-    };
-    if paint_type == 2 { cell_gs.fill = base_argb; cell_gs.stroke = base_argb; }
-    // This cell is interpreted at IDENTITY, so its "device" space IS pattern space and the
-    // extent is the `/BBox` unmapped. Seeding it is not cosmetic: it decides the GATE below.
-    // Unseeded, a cell whose only content is `sh` produced no Image prim, `cell_prims` came
-    // out all-Fill/Stroke, the periodic-raster path was taken, and the gradient was silently
-    // dropped from every tile. Seeded, the Image appears, the gate correctly rejects it, and
-    // the per-tile path (also seeded) paints it.
-    let cell_space_bbox = quad_device_bbox(&[
-        (bbox[0], bbox[1]),
-        (bbox[2], bbox[1]),
-        (bbox[2], bbox[3]),
-        (bbox[0], bbox[3]),
-    ]);
-    interpret_content_seeded(doc, &content_ops, res.as_ref(), cell_gs, &mut cell_prims, depth + 1, false, cell_space_bbox);
-    if !cell_prims.is_empty()
-        && cell_prims.iter().all(|p| matches!(p, Prim::Fill { .. } | Prim::Stroke { .. }))
-        && prims.len() < MAX_PRIMITIVES
-    {
-        // Pattern-space -> device scale, so the cell is rasterized at display
-        // resolution instead of an arbitrary fixed size.
-        let sx = (pmat[0] * pmat[0] + pmat[1] * pmat[1]).sqrt();
-        let sy = (pmat[2] * pmat[2] + pmat[3] * pmat[3]).sqrt();
-        if let Some((cw, ch, data)) =
-            rasterize_pattern_cell(&cell_prims, bbox, xstep, ystep, sx.max(sy))
-        {
-            // The unit square maps onto ONE CELL — one period of the lattice —
-            // anchored at the bbox origin, matching `rasterize_pattern_cell`'s
-            // step rect.
-            let cell_mat: Mat = [xstep, 0.0, 0.0, ystep, bbox[0], bbox[1]];
-            // For a PERIODIC bitmap the extent is counted in whole periods
-            // relative to the region: cell `i` spans pattern x in
-            // [bbox[0] + i*xstep, bbox[0] + (i+1)*xstep). That differs from the
-            // per-tile loop's `i0`/`i1`, which are in bbox-overlap terms and
-            // deliberately start a cell early — here that would report an extent
-            // a period wider than the region on every side.
-            let ti0 = ((pminx - bbox[0]) / xstep).floor();
-            let tj0 = ((pminy - bbox[1]) / ystep).floor();
-            let tnx = (((pmaxx - bbox[0]) / xstep).ceil() - ti0).max(1.0);
-            let tny = (((pmaxy - bbox[1]) / ystep).ceil() - tj0).max(1.0);
-            prims.push(Prim::ImageTiled {
-                ctm: mat_mul(&cell_mat, pmat),
-                w: cw,
-                h: ch,
-                data,
-                xstep: xstep as f32,
-                ystep: ystep as f32,
-                i0: ti0.clamp(i32::MIN as f64, i32::MAX as f64) as i32,
-                j0: tj0.clamp(i32::MIN as f64, i32::MAX as f64) as i32,
-                nx: tnx.clamp(1.0, u32::MAX as f64) as u32,
-                ny: tny.clamp(1.0, u32::MAX as f64) as u32,
-                alpha,
-                blend,
-            });
-            return;
-        }
-    }
-
-    // Per-tile fallback. Reached when the cell contains text, an image or its own
-    // clipping (see the gate above), and when `rasterize_pattern_cell` declines:
-    // a degenerate step, or a `/BBox` so much larger than the step that honouring
-    // §8.7.3.1 overlap would need more than its copies-per-period budget. Plain
-    // overlap is NOT a fallback case — that path composites the cell at each
-    // reaching lattice offset and stays periodic.
-    //
-    // Each cell is REPLAYED as primitives here, so the count has to be capped.
-    const MAX_TILES: i64 = 20_000;
-    // §8.7.3.3 requires the cell replicated across the WHOLE region, so when the
-    // lattice exceeds the budget, thin it out UNIFORMLY. Taking a dense square
-    // patch anchored at one corner instead — which is what this used to do — left
-    // the rest of the region empty, and a 2pt lattice over a 400x400 region is
-    // 40,401 tiles, so it covered barely half. A lower-density cell over the whole
-    // region still reads as the texture that was asked for; a correct patch beside
-    // a blank area reads as missing content.
-    //
-    // f64 for the product: `i1`/`j1` come from a division by a step that may be
-    // tiny, so `total_i * total_j` can overflow `i64` and panic in a debug build.
-    let need = total_i as f64 * total_j as f64;
-    let stride = if need > MAX_TILES as f64 {
-        ((need / MAX_TILES as f64).sqrt().ceil() as i64).max(1)
-    } else {
-        1
-    };
-    let mut count = 0i64;
-    'outer: for j in (j0..=j1).step_by(stride as usize) {
-        for i in (i0..=i1).step_by(stride as usize) {
-            if count >= MAX_TILES || prims.len() >= MAX_PRIMITIVES {
-                break 'outer;
-            }
-            count += 1;
-            let translate: Mat = [1.0, 0.0, 0.0, 1.0, i as f64 * xstep, j as f64 * ystep];
-            let tile_ctm = mat_mul(&translate, pmat);
-            // Clip each cell to the pattern /BBox (PDF 8.7.3.1) so content that
-            // overflows the cell — or a cell smaller than XStep/YStep — cannot
-            // bleed into neighboring cells.
-            let bc = [
-                transform(&tile_ctm, bbox[0], bbox[1]),
-                transform(&tile_ctm, bbox[2], bbox[1]),
-                transform(&tile_ctm, bbox[2], bbox[3]),
-                transform(&tile_ctm, bbox[0], bbox[3]),
-            ];
-            let cell_pts: Vec<(f32, f32)> = bc.iter().map(|&(x, y)| (x as f32, y as f32)).collect();
-            let cell_po = vec![
-                PathOp::Move(bc[0].0 as f32, bc[0].1 as f32),
-                PathOp::Line(bc[1].0 as f32, bc[1].1 as f32),
-                PathOp::Line(bc[2].0 as f32, bc[2].1 as f32),
-                PathOp::Line(bc[3].0 as f32, bc[3].1 as f32),
-                PathOp::Close,
-            ];
-            prims.push(Prim::ClipPush { even_odd: false, pts: cell_pts, path_ops: Some(cell_po) });
-            let mut tile_gs = GraphicsState { ctm: tile_ctm, alpha_fill: alpha as f64, alpha_stroke: alpha as f64, blend_mode: blend, ..GraphicsState::default() };
-            if paint_type == 2 {
-                tile_gs.fill = base_argb;
-                tile_gs.stroke = base_argb;
-            }
-            // §8.7.3.1 clips the cell to the pattern `/BBox`, which is therefore the
-            // clip extent a `sh` inside the cell must fill (§8.7.4.1). Without it
-            // `rasterize_shading` declines and a gradient-filled hatch cell paints
-            // nothing — the `bc` corners just used for the ClipPush are that extent.
-            let cell_clip = quad_device_bbox(&bc);
-            interpret_content_seeded(doc, &content_ops, res.as_ref(), tile_gs, prims, depth + 1, false, cell_clip);
-            prims.push(Prim::ClipPop);
-        }
-    }
-}
-
-/// Read a 6-element matrix from an array object.
-pub(crate) fn read_matrix_obj(obj: &Object) -> Option<Mat> {
-    match obj {
-        Object::Array(a) => read_matrix(a),
-        _ => None,
-    }
-}
-
-/// Read a 4-number array (e.g. `/Rect`, `/BBox`) resolving references.
-pub(crate) fn read_rect(doc: &Document, obj: &Object) -> Option<[f64; 4]> {
-    let arr = deref(doc, obj)?.as_array().ok()?;
-    if arr.len() != 4 {
-        return None;
-    }
-    let mut out = [0.0; 4];
-    for (i, v) in arr.iter().enumerate() {
-        out[i] = deref(doc, v).and_then(num)?;
-    }
-    // §7.9.5 defines a rectangle as four NUMBERS; NaN and the infinities are not
-    // numbers a rectangle can be made of. Rejecting the whole rect rather than
-    // patching a component matches the `cm` arm's treatment of a non-finite CTM,
-    // and for the same reason: one poisoned coordinate propagates through every
-    // transform derived from it, and the rasterizer drops a path containing a
-    // NaN point silently, so a region of the page vanishes with no error
-    // anywhere. Every caller already handles `None` — as an absent /BBox, an
-    // unclipped form, or a skipped annotation — which are all visibly wrong in
-    // the way a malformed file should be, instead of invisibly wrong.
-    if out.iter().all(|v| v.is_finite()) {
-        Some(out)
-    } else {
-        None
-    }
 }

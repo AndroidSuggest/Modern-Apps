@@ -47,6 +47,8 @@ import com.vayunmathur.travel.network.SeatRowDto
 import com.vayunmathur.travel.util.SeatMapActions
 import com.vayunmathur.travel.util.SeatMapState
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.loadSeatMaps
+import com.vayunmathur.travel.util.toggleSeat
 import androidx.compose.ui.res.stringResource
 
 private val CELL = 44.dp

@@ -434,8 +434,8 @@ impl<'a> Builder<'a> {
         let (pad_t, pad_l, pad_b, pad_r) = pads;
         let out_h = deconv_out(in_shape.h, kh, stride.0, pad_t + pad_b);
         let out_w = deconv_out(in_shape.w, kw, stride.1, pad_l + pad_r);
-        let act_weight = self.act_weight(act, m);
         let out = self.tensor(Shape::new(m, out_h, out_w));
+        let act_weight = self.act_weight(act, m);
         self.nodes.push(Node::Conv {
             input,
             out,
@@ -448,3 +448,11 @@ impl<'a> Builder<'a> {
             group: 1,
             act,
             act_weight,
+            transpose: true,
+            pad_edge: false,
+            res: None,
+            shift: None,
+        });
+        out
+    }
+}

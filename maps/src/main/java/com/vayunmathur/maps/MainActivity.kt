@@ -25,13 +25,10 @@ import com.vayunmathur.library.util.IntentLauncher
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.library.util.rememberNavBackStack
-<<<<<<< Updated upstream
 import com.vayunmathur.maps.data.MapLink
 import com.vayunmathur.maps.data.MapLinkParser
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.data.google.GoogleSearchDataSource
-=======
->>>>>>> Stashed changes
 import com.vayunmathur.maps.ui.MapPage
 import com.vayunmathur.maps.ui.SavedPlacesPage
 import com.vayunmathur.maps.ui.settings.MapSettingsPage
@@ -39,13 +36,10 @@ import com.vayunmathur.maps.data.MapPreferences
 import com.vayunmathur.maps.data.ThemeMode
 import com.vayunmathur.maps.util.MapTileCache
 import com.vayunmathur.maps.util.MapsSearchViewModel
-<<<<<<< Updated upstream
 import com.vayunmathur.maps.util.NavigationService
 import com.vayunmathur.maps.util.NavigationSessionManager
 import com.vayunmathur.maps.util.OfflineRouter
 import com.vayunmathur.maps.util.RouteService
-=======
->>>>>>> Stashed changes
 import com.vayunmathur.maps.util.SavedPlacesViewModel
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
 import com.vayunmathur.maps.util.MapSettingsViewModel
@@ -94,43 +88,23 @@ class MainActivity : ComponentActivity() {
             val themeMode by ds.stringFlow(MapPreferences.KEY_THEME_MODE)
                 .collectAsState(initial = ds.getString(MapPreferences.KEY_THEME_MODE))
             DynamicTheme(darkTheme = ThemeMode.from(themeMode).darkOverride) {
+                // One download: the single-archive `.mamaps` carries the tiles
+                // plus every former side file as sections (graph metadata /
+                // nodes / edges / intermediate / names / lanes / elevation,
+                // POI index / names / attrs / spatial / words, transit),
+                // appended 8-aligned with a section directory + MAMA8 footer
+                // by `mamaps_pack`. Each loader maps the one file once and
+                // falls back to its legacy side files when the archive is
+                // absent or lacks its sections, so a tiles-only archive
+                // degrades exactly as missing side files do today — but the
+                // published archive packs all thirteen, and this gate lists
+                // only it.
+                //
+                // Hosting hazard (unchanged): this entry gates app start, so
+                // the URL must be live before the version ships. An `adb push`
+                // to the same filename satisfies the gate, which is how a
+                // locally built archive is sideloaded.
                 InitialDownloadChecker(ds, listOf(
-                    Triple("https://data.vayunmathur.com/metadata.bin", "metadata.bin", getString(R.string.downloading_navigation_metadata)),
-                    Triple("https://data.vayunmathur.com/road_names.bin", "road_names.bin", getString(R.string.downloading_road_data)),
-                    Triple("https://data.vayunmathur.com/nodes.bin", "nodes.bin", getString(R.string.downloading_road_data)),
-                    Triple("https://data.vayunmathur.com/edges.bin", "edges.bin", getString(R.string.downloading_road_data)),
-                    Triple("https://data.vayunmathur.com/lanes.bin", "lanes.bin", getString(R.string.downloading_road_data)),
-                    // Per-edge geometry. Mandatory: the generator collapses
-                    // degree-2 chains, so one edge is a whole road and this file
-                    // is the only record of its shape. Graph.load refuses a pack
-                    // without it rather than snapping to straight chords.
-                    Triple("https://data.vayunmathur.com/intermediate.bin", "intermediate.bin", getString(R.string.downloading_road_data)),
-                    Triple("https://data.vayunmathur.com/poi_index.bin", "poi_index.bin", getString(R.string.downloading_poi_data)),
-                    Triple("https://data.vayunmathur.com/poi_names.bin", "poi_names.bin", getString(R.string.downloading_poi_data)),
-                    // The POI attribute sidecar (opening hours / phone / website /
-                    // address). REQUIRED here like the other two, so it must be
-                    // hosted BEFORE this app version ships: InitialDownloadChecker
-                    // gates on every file being present, and an entry with nothing
-                    // behind it strands users on the download screen. PoiIndex
-                    // itself treats the file as optional, so a device that somehow
-                    // lacks it degrades to no attributes rather than breaking.
-                    Triple("https://data.vayunmathur.com/poi_attrs.bin", "poi_attrs.bin", getString(R.string.downloading_poi_data)),
-                    // The two POI lookup indexes: a spatial grid so a tap or a viewport
-                    // refresh is cell-local, and a word index so name search is a binary
-                    // search. Same hosting order hazard as the sidecar above — both must
-                    // be published before this version ships. Both are optional to
-                    // PoiIndex, which falls back to the Morton walk and the name scan, so
-                    // a device that ends up without them is slow rather than broken.
-                    Triple("https://data.vayunmathur.com/poi_spatial.bin", "poi_spatial.bin", getString(R.string.downloading_poi_data)),
-                    Triple("https://data.vayunmathur.com/poi_name_index.bin", "poi_name_index.bin", getString(R.string.downloading_poi_data)),
-                    Triple("https://data.vayunmathur.com/world.transit", "world.transit", getString(R.string.downloading_transit_data)),
-                    // The basemap itself. It used to be range-requested for the life of the
-                    // install, which made every pan over cold ground a network round trip and
-                    // the map unusable off-grid; fetched once it is a plain file the renderer
-                    // mmaps. Same hosting hazard as the sidecars above, and a much larger one
-                    // here: this entry gates app start, so the URL must be live before the
-                    // version ships. An `adb push` to the same filename satisfies the gate,
-                    // which is how a locally built archive is sideloaded.
                     Triple(MapTileCache.BASEMAP_ARCHIVE_URL, MapTileCache.BASEMAP_ARCHIVE_FILE, getString(R.string.downloading_basemap))
                 )) {
                     val perms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -315,7 +289,6 @@ fun Navigation(
 ) {
     val backStack = rememberNavBackStack<Route>(Route.MapPage)
     MainNavigation(backStack) {
-<<<<<<< Updated upstream
         // The map is the list pane and settings/saved-places are detail panes,
         // so medium widths show them side by side automatically. The map itself
         // never splits: its own expanded side panel is separate (see MapPage),
@@ -325,12 +298,6 @@ fun Navigation(
             MapPage(backStack, viewModel, savedPlacesViewModel, searchViewModel, settingsViewModel, parkingViewModel, transitViewModel)
         }
         entry<Route.SettingsPage>(metadata = ListDetailPage()) {
-=======
-        entry<Route.MapPage> {
-            MapPage(backStack, viewModel, savedPlacesViewModel, poiViewModel, searchViewModel, settingsViewModel, parkingViewModel, transitViewModel)
-        }
-        entry<Route.SettingsPage> {
->>>>>>> Stashed changes
             MapSettingsPage(backStack, settingsViewModel)
         }
         entry<Route.SavedPlacesPage>(metadata = ListDetailPage()) {

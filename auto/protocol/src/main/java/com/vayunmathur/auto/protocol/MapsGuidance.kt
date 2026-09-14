@@ -12,8 +12,8 @@ import kotlin.math.roundToLong
  * One point of the active route polyline, in degrees.
  *
  * Own data class rather than `:library:map`'s `GeoPoint`: `auto/protocol`
- * stays Android-free and must not take a renderer dependency. The car mirror
- * (`CarMapsMirror`) maps these onto `GeoPoint` one for one.
+ * stays Android-free and must not take a renderer dependency. The pre-host
+ * nav banner reads road/maneuver/distance straight off the snapshot.
  */
 data class MapRoutePoint(
     val longitude: Double,
@@ -27,7 +27,9 @@ data class MapRoutePoint(
  * maps-module route provider) and consumed three ways: folded into
  * [SensorSnapshot] through [MapsGuidance.toSensorEvents] for the ch7 live
  * values, posted onto ch10 through [NavStatusUpdate] for the cluster, and
- * rendered by `CarMapsMirror` into the ch2 video stream.
+ * shown on the pre-host nav banner until the hosted `NavigationTemplate`
+ * takes over (the hosted map surface itself comes from the maps app, not
+ * from this snapshot).
  *
  * Plain data, no Android types, so the whole mapping is host-testable. A
  * snapshot with [guidanceActive] false and a null [route] is the idle map:

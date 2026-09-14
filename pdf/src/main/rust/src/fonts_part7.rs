@@ -1,319 +1,478 @@
-#[cfg(test)]
-mod type1_tests {
-    use super::*;
+pub(crate) mod cmap {
+    use std::collections::HashMap;
 
-    #[test]
-    fn type1_encoding_scan() {
-        let text = b"/Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\ndup 65 /A put\ndup 97 /a put\ndup 233 /eacute put\nreadonly def";
-        let m = parse_type1_encoding_text(text);
-        assert_eq!(m.get(&65), Some(&'A'));
-        assert_eq!(m.get(&97), Some(&'a'));
-        assert_eq!(m.get(&233), Some(&'\u{00E9}'));
+    enum Token {
+        Hex(Vec<u8>),
+        ArrayOpen,
+        ArrayClose,
+        Keyword(String),
     }
 
-    #[test]
-    fn rksj_codespace_segments_mixed_width_codes() {
-        // 90ms-RKSJ-H interleaves 1-byte and 2-byte codes. Decoding as fixed
-        // 2-byte codes would pair 'A' with the kanji lead byte and desynchronize
-        // the rest of the string.
-        let cs = cmap::predefined_codespace("90ms-RKSJ-H").expect("RKSJ recognized");
-        let cm = cmap::EncodingCMap { codespace: cs, ..Default::default() };
-        assert_eq!(cm.code_len(b'A'), 1, "ASCII is single-byte");
-        assert_eq!(cm.code_len(0x82), 2, "kanji lead byte is double-byte");
-        assert_eq!(cm.code_len(0xB0), 1, "half-width katakana is single-byte");
-        assert_eq!(cm.code_len(0xE0), 2, "second kanji lead range is double-byte");
-    }
-
-    #[test]
-    fn ucs2_cmaps_are_not_given_a_codespace() {
-        // Pure 2-byte families already decode correctly via the Identity path.
-        assert!(cmap::predefined_codespace("UniJIS-UCS2-H").is_none());
-        assert!(cmap::predefined_codespace("UniGB-UCS2-H").is_none());
-        assert!(cmap::predefined_codespace("UniKS-UCS2-H").is_none());
-        assert!(cmap::predefined_codespace("Identity-H").is_none());
-        assert!(cmap::predefined_codespace("Identity-V").is_none());
-        // The ISO-2022 families are <2121>-<7E7E>, i.e. pure 2-byte.
-        assert!(cmap::predefined_codespace("Add-H").is_none());
-        assert!(cmap::predefined_codespace("Ext-V").is_none());
-    }
-
-    #[test]
-    fn mixed_width_cmap_families_are_recognized() {
-        // Each of these has 1-byte ranges alongside its 2-byte ranges, so a fixed
-        // 2-byte decode desynchronizes the byte stream (PDF 9.7.6.2).
-        let len = |name: &str, b: u8| {
-            let cs = cmap::predefined_codespace(name).unwrap_or_else(|| panic!("{name} recognized"));
-            cmap::EncodingCMap { codespace: cs, ..Default::default() }.code_len(b)
-        };
-        // Big5, GBK, EUC-CN, UHC, EUC-KR: ASCII single-byte, lead byte double.
-        for (name, lead) in [
-            ("ETen-B5-H", 0xA1u8),
-            ("B5pc-H", 0xA1),
-            ("GBK-EUC-H", 0x81),
-            ("GB-EUC-H", 0xA1),
-            ("GBpc-EUC-V", 0xA1),
-            ("KSCms-UHC-H", 0x81),
-            ("KSC-EUC-H", 0x81),
-            ("KSCpc-EUC-H", 0x81),
-        ] {
-            assert_eq!(len(name, b'A'), 1, "{name}: ASCII must be single-byte");
-            assert_eq!(len(name, lead), 2, "{name}: lead byte must be double-byte");
-        }
-        // Japanese EUC: 1-byte ASCII, 2-byte for both the 0x8E single-shift form
-        // and the standard 0xA1.. plane.
-        assert_eq!(len("EUC-H", b'A'), 1);
-        assert_eq!(len("EUC-H", 0x8E), 2);
-        assert_eq!(len("EUC-H", 0xA1), 2);
-    }
-
-    #[test]
-    fn utf8_and_utf16_cmaps_segment_by_lead_byte() {
-        // UniJIS-UTF8-H etc. are 1-4 bytes; a fixed 2-byte read desynchronizes on
-        // the first ASCII character.
-        let cs = cmap::predefined_codespace("UniJIS-UTF8-H").expect("UTF8 recognized");
-        let cm = cmap::EncodingCMap { codespace: cs, ..Default::default() };
-        assert_eq!(cm.code_len(b'A'), 1);
-        assert_eq!(cm.code_len(0xC3), 2);
-        assert_eq!(cm.code_len(0xE3), 3);
-        assert_eq!(cm.code_len(0xF0), 4);
-        // UTF-16 is 2 bytes except surrogate pairs, which are 4.
-        let cs = cmap::predefined_codespace("UniGB-UTF16-H").expect("UTF16 recognized");
-        let cm = cmap::EncodingCMap { codespace: cs, ..Default::default() };
-        assert_eq!(cm.code_len(0x00), 2);
-        assert_eq!(cm.code_len(0xD8), 4, "high surrogate starts a 4-byte code");
-        assert_eq!(cm.code_len(0xE0), 2);
-    }
-
-    #[test]
-    fn gb18030_four_byte_plane_needs_the_second_byte() {
-        // GBK2K-H is GB18030: <81 30 81 30>-<FE 39 FE 39> is a FOUR-byte code, and it is
-        // distinguished from the two-byte plane only by the second byte being 0x30-0x39.
-        // Reading it as two 2-byte codes desynchronizes the rest of the string.
-        let cs = cmap::predefined_codespace("GBK2K-H").expect("GBK2K recognized");
-        let cm = cmap::EncodingCMap { codespace: cs, ..Default::default() };
-        assert_eq!(cm.code_len_at(&[0x81, 0x30, 0x81, 0x30]), 4);
-        assert_eq!(cm.code_len_at(&[0x81, 0x40]), 2, "the two-byte plane is untouched");
-        assert_eq!(cm.code_len_at(&[0x41]), 1, "ASCII is still single-byte");
-        // The lookahead is a strict refinement: every other predefined codespace answers
-        // exactly what the first-byte-only `code_len` answers.
-        for name in ["GBK-EUC-H", "90ms-RKSJ-H", "UniJIS-UTF8-H", "UniGB-UTF16-H", "ETen-B5-H"] {
-            let cs = cmap::predefined_codespace(name).unwrap();
-            let cm = cmap::EncodingCMap { codespace: cs, ..Default::default() };
-            for b1 in 0u16..=255 {
-                for b2 in [0x00u8, 0x30, 0x39, 0x40, 0x80, 0xA0, 0xFE, 0xFF] {
-                    assert_eq!(
-                        cm.code_len_at(&[b1 as u8, b2]),
-                        cm.code_len(b1 as u8),
-                        "{name} changed segmentation at {b1:#04x} {b2:#04x}"
-                    );
+    /// Parse a `/ToUnicode` CMap stream into a `code -> string` map, handling
+    /// `beginbfchar`/`endbfchar` and `beginbfrange`/`endbfrange`.
+    pub fn parse(data: &[u8]) -> HashMap<u32, String> {
+        let tokens = tokenize(data);
+        let mut map = HashMap::new();
+        let mut i = 0;
+        while i < tokens.len() {
+            match &tokens[i] {
+                Token::Keyword(k) if k == "beginbfchar" => {
+                    i += 1;
+                    while i < tokens.len() {
+                        if let Token::Keyword(e) = &tokens[i] {
+                            if e == "endbfchar" {
+                                break;
+                            }
+                        }
+                        if let (Token::Hex(src), Some(Token::Hex(dst))) =
+                            (&tokens[i], tokens.get(i + 1))
+                        {
+                            map.insert(code(src), utf16be(dst));
+                            i += 2;
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    i += 1; // skip endbfchar
                 }
+                Token::Keyword(k) if k == "beginbfrange" => {
+                    i += 1;
+                    while i < tokens.len() {
+                        if let Token::Keyword(e) = &tokens[i] {
+                            if e == "endbfrange" {
+                                break;
+                            }
+                        }
+                        match (tokens.get(i), tokens.get(i + 1), tokens.get(i + 2)) {
+                            (Some(Token::Hex(lo)), Some(Token::Hex(hi)), Some(Token::Hex(dst))) => {
+                                let (lo, hi) = (code(lo), code(hi));
+                                // A single bfrange cannot sanely span more than the
+                                // 16-bit code space; clamp so a corrupt 4-byte `hi`
+                                // cannot allocate billions of strings.
+                                let hi = hi.min(lo.saturating_add(super::MAX_CID));
+                                let base = utf16be_units(dst);
+                                for (n, c) in (lo..=hi).enumerate() {
+                                    map.insert(c, units_to_string_incremented(&base, n as u32));
+                                }
+                                i += 3;
+                            }
+                            (Some(Token::Hex(lo)), Some(Token::Hex(hi)), Some(Token::ArrayOpen)) => {
+                                let lo = code(lo);
+                                // 9.10.3: the array holds one destination per code in
+                                // lo..=hi. Clamped like the incrementing form so a
+                                // corrupt `hi` cannot be outrun by a longer array.
+                                let hi = code(hi).min(lo.saturating_add(super::MAX_CID));
+                                i += 3; // skip lo, hi, '['
+                                let mut n = 0u32;
+                                while i < tokens.len() {
+                                    match &tokens[i] {
+                                        Token::ArrayClose => {
+                                            i += 1;
+                                            break;
+                                        }
+                                        Token::Hex(dst) => {
+                                            // `lo` comes from the file and the array
+                                            // may be longer than hi-lo+1, so cap the
+                                            // walk at `hi` instead of letting it run
+                                            // past the range and wrap.
+                                            let c = lo.saturating_add(n);
+                                            if c > hi {
+                                                i += 1;
+                                                continue;
+                                            }
+                                            map.insert(c, utf16be(dst));
+                                            n += 1;
+                                            i += 1;
+                                        }
+                                        _ => i += 1,
+                                    }
+                                }
+                            }
+                            _ => i += 1,
+                        }
+                    }
+                    i += 1; // skip endbfrange
+                }
+                _ => i += 1,
             }
         }
+        map
     }
 
-    #[test]
-    fn for_each_code_resegments_a_mixed_width_string() {
-        // End-to-end: the whole point of the codespace is that a 1-byte code in
-        // the middle of a CJK string does not shift every following code by one
-        // byte. "A" + 2-byte kanji + "B" must yield exactly three codes.
-        let cs = cmap::predefined_codespace("90ms-RKSJ-H").unwrap();
-        let fi = FontInfo {
-            two_byte: true,
-            cmap: Some(Arc::new(cmap::EncodingCMap { codespace: cs, ..Default::default() })),
-            ..simple_font_with_encoding()
-        };
-        let mut got = Vec::new();
-        fi.for_each_code(&[0x41, 0x82, 0xA0, 0x42], |c, sp| got.push((c, sp)));
-        assert_eq!(got, vec![(0x41, false), (0x82A0, false), (0x42, false)]);
-        // A single-byte code 32 still reports as a word-spacing space, and a
-        // 2-byte code whose value happens to be 0x20 does not (PDF 9.3.3).
-        let mut spaces = Vec::new();
-        fi.for_each_code(&[0x20, 0x82, 0x20], |c, sp| spaces.push((c, sp)));
-        assert_eq!(spaces, vec![(0x20, true), (0x8220, false)]);
+    fn tokenize(data: &[u8]) -> Vec<Token> {
+        let mut tokens = Vec::new();
+        let mut i = 0;
+        while i < data.len() {
+            let b = data[i];
+            match b {
+                b'<' => {
+                    let mut hex = String::new();
+                    i += 1;
+                    while i < data.len() && data[i] != b'>' {
+                        if !data[i].is_ascii_whitespace() {
+                            hex.push(data[i] as char);
+                        }
+                        i += 1;
+                    }
+                    i += 1; // consume '>'
+                    tokens.push(Token::Hex(hex_to_bytes(&hex)));
+                }
+                b'[' => {
+                    tokens.push(Token::ArrayOpen);
+                    i += 1;
+                }
+                b']' => {
+                    tokens.push(Token::ArrayClose);
+                    i += 1;
+                }
+                _ if b.is_ascii_alphabetic() => {
+                    let mut kw = String::new();
+                    while i < data.len()
+                        && (data[i].is_ascii_alphanumeric() || data[i] == b'*')
+                    {
+                        kw.push(data[i] as char);
+                        i += 1;
+                    }
+                    tokens.push(Token::Keyword(kw));
+                }
+                _ => i += 1,
+            }
+        }
+        tokens
     }
 
-    #[test]
-    fn w_range_form_cannot_allocate_unbounded_widths() {
-        // A hostile `cLast` must not drive a multi-billion-iteration insert loop.
-        let mut doc = Document::new();
-        let desc = doc.add_object(lopdf::dictionary! {
-            "Type" => "Font",
-            "Subtype" => "CIDFontType2",
-            "W" => vec![0.into(), 4_000_000_000u32.into(), 500.into()],
-        });
-        let font = lopdf::dictionary! {
-            "Type" => "Font",
-            "Subtype" => "Type0",
-            "DescendantFonts" => vec![desc.into()],
-        };
-        let (widths, _) = cid_widths(&doc, &font);
-        assert!(widths.len() <= MAX_CID as usize + 1);
-        assert_eq!(widths.get(&0), Some(&0.5));
-        assert_eq!(widths.get(&MAX_CID), Some(&0.5));
+    fn hex_to_bytes(hex: &str) -> Vec<u8> {
+        let mut h = hex.to_string();
+        if h.len() % 2 == 1 {
+            h.push('0');
+        }
+        (0..h.len())
+            .step_by(2)
+            .filter_map(|i| u8::from_str_radix(&h[i..i + 2], 16).ok())
+            .collect()
     }
 
-    #[test]
-    fn bfrange_cannot_allocate_unbounded_strings() {
-        // A 4-byte `hi` in a bfrange must be clamped, not expanded to 4 billion
-        // entries.
-        let map = cmap::parse(b"1 beginbfrange\n<00000000> <FFFFFFFF> <0041>\nendbfrange");
-        assert!(map.len() <= MAX_CID as usize + 1);
-        assert_eq!(map.get(&0).map(String::as_str), Some("A"));
+    fn code(bytes: &[u8]) -> u32 {
+        let mut c = 0u32;
+        for &b in bytes {
+            c = (c << 8) | b as u32;
+        }
+        c
     }
 
-    #[test]
-    fn tw_applies_only_to_single_byte_code_32() {
-        // PDF 9.3.3: Tw applies to code 32 and nothing else -- notably not NBSP,
-        // which must not stretch under justification.
-        let fi = simple_font_with_encoding();
-        let mut seen = Vec::new();
-        fi.for_each_code(&[32, 0xA0, b'A'], |code, is_space| seen.push((code, is_space)));
-        assert_eq!(seen, vec![(32, true), (0xA0, false), (65, false)]);
+    /// Codespace ranges for the predefined mixed-width CMap families (PDF 9.7.5.2,
+    /// Table 118). These interleave 1-byte and 2-byte codes, so decoding them as
+    /// fixed 2-byte codes desynchronizes the byte stream for the rest of the
+    /// string. The CID mapping itself still needs the real compiled table, but
+    /// getting the segmentation right makes `/ToUnicode` (which is keyed by CODE)
+    /// resolve correctly, which is what most such files rely on.
+    ///
+    /// Returning `None` means "fixed 2-byte", which is right for Identity-H/V,
+    /// the `Uni*-UCS2-*` families, and the pure-2-byte ISO-2022 families
+    /// (`H`, `V`, `Add-H`, `Ext-H`, whose codespace is <2121>-<7E7E>).
+    pub fn predefined_codespace(name: &str) -> Option<Vec<(u32, u32, u8)>> {
+        // UTF-8 (UniJIS-UTF8-H, UniGB-UTF8-H, UniCNS-UTF8-H, UniKS-UTF8-H): 1-4
+        // bytes, so a fixed 2-byte read desynchronizes on the very first ASCII
+        // character. Checked before the region families because the names
+        // overlap (e.g. "UniGB-UTF8-H" also contains "GB").
+        if name.contains("UTF8") {
+            return Some(vec![
+                (0x00, 0x7F, 1),
+                (0xC080, 0xDFBF, 2),
+                (0xE08080, 0xEFBFBF, 3),
+                (0xF0808080, 0xF7BFBFBF, 4),
+            ]);
+        }
+        // UTF-16: 2 bytes, except surrogate pairs which are 4.
+        if name.contains("UTF16") {
+            return Some(vec![
+                (0x0000, 0xD7FF, 2),
+                (0xD800DC00, 0xDBFFDFFF, 4),
+                (0xE000, 0xFFFF, 2),
+            ]);
+        }
+        // Shift-JIS: 90ms-RKSJ-H, 90msp-RKSJ-V, 90pv-RKSJ-H, Add-RKSJ-H, Ext-RKSJ-H
+        if name.contains("RKSJ") {
+            return Some(vec![
+                (0x00, 0x80, 1),
+                (0x8140, 0x9FFC, 2),
+                (0xA0, 0xDF, 1),
+                (0xE040, 0xFCFC, 2),
+            ]);
+        }
+        // Japanese EUC: EUC-H, EUC-V. The 0x8E single-shift form is a 2-byte code.
+        if name.starts_with("EUC-") {
+            return Some(vec![(0x00, 0x80, 1), (0x8EA0, 0x8EFE, 2), (0xA1A1, 0xFEFE, 2)]);
+        }
+        // GBK: GBK-EUC-H, GBKp-EUC-H, GBK2K-H
+        if name.contains("GBK") {
+            let mut cs = vec![(0x00, 0x80, 1), (0x8140, 0xFEFE, 2)];
+            // GBK2K-H/V is GB18030, which adds a four-byte plane distinguished from the
+            // two-byte plane only by the SECOND byte (0x30-0x39). `code_len` dispatches on
+            // the first byte alone and cannot see it, so `code_len_at` resolves this range
+            // with a one-byte lookahead. It is listed AFTER the two-byte range so
+            // `code_len` still answers 2 for a bare first byte. Plain GBK-EUC has no such
+            // plane and must not get the range.
+            if name.contains("GBK2K") {
+                cs.push((0x8130_8130, 0xFE39_FE39, 4));
+            }
+            return Some(cs);
+        }
+        // EUC-CN: GB-EUC-H, GBpc-EUC-H (checked after GBK, whose names also
+        // contain "GB").
+        if name.contains("GB") && name.contains("EUC") {
+            return Some(vec![(0x00, 0x80, 1), (0xA1A1, 0xFEFE, 2)]);
+        }
+        // Big5: ETen-B5-H, ETenms-B5-H, B5pc-H, HKscs-B5-H
+        if name.contains("-B5") || name.starts_with("B5") {
+            return Some(vec![(0x00, 0x80, 1), (0xA140, 0xFEFE, 2)]);
+        }
+        // Korean UHC / EUC-KR: KSCms-UHC-H, KSCms-UHC-HW-V, KSC-EUC-H, KSCpc-EUC-H
+        if name.contains("UHC") || name.contains("KSC") {
+            return Some(vec![(0x00, 0x80, 1), (0x8141, 0xFEFE, 2)]);
+        }
+        None
     }
 
-    #[test]
-    fn font_cache_shares_parsed_fonts_only_inside_a_scope() {
-        // The cache exists because `fonts_from_resources` runs per page and
-        // re-parses each font's embedded program every time. Assert on Arc
-        // identity rather than on equality: equal contents would also hold if the
-        // font had been re-parsed, which is exactly the bug being fixed.
-        let mut doc = Document::with_version("1.7");
-        let tu = doc.add_object(Stream::new(
-            dictionary! {},
-            b"1 beginbfchar\n<41> <0041>\nendbfchar".to_vec(),
-        ));
-        let font = doc.add_object(dictionary! {
-            "Type" => "Font",
-            "Subtype" => "TrueType",
-            "BaseFont" => "Helvetica",
-            "ToUnicode" => tu,
-        });
-        let res = dictionary! { "Font" => dictionary! { "F1" => font } };
-
-        // No scope active: the default must stay uncached, so nothing can ever go
-        // stale in a mutated document.
-        let a = fonts_from_resources(&doc, &res);
-        let b = fonts_from_resources(&doc, &res);
-        let (au, bu) = (
-            a[b"F1".as_ref()].to_unicode.as_ref().unwrap(),
-            b[b"F1".as_ref()].to_unicode.as_ref().unwrap(),
-        );
-        assert_eq!(au.get(&0x41).map(String::as_str), Some("A"), "parse still works");
-        assert!(!Arc::ptr_eq(au, bu), "must not cache without an active scope");
-
-        // Inside a scope the second lookup reuses the first parse.
-        let _scope = FontCacheScope::new();
-        let c = fonts_from_resources(&doc, &res);
-        let d = fonts_from_resources(&doc, &res);
-        assert!(
-            Arc::ptr_eq(
-                c[b"F1".as_ref()].to_unicode.as_ref().unwrap(),
-                d[b"F1".as_ref()].to_unicode.as_ref().unwrap()
-            ),
-            "font should be parsed once per scope"
-        );
+    /// A Type0 `/Encoding` CMap: variable-length codespace ranges plus code->CID
+    /// mappings (from `begincidrange`/`begincidchar`), and the writing mode.
+    #[derive(Default, Clone)]
+    pub struct EncodingCMap {
+        /// (lo, hi, byte_len) codespace ranges.
+        pub codespace: Vec<(u32, u32, u8)>,
+        pub single: HashMap<u32, u32>,
+        /// (lo, hi, cid_of_lo) contiguous ranges.
+        pub ranges: Vec<(u32, u32, u32)>,
+        pub wmode: u8,
     }
 
-    // The font cache is keyed by the font's OBJECT ID, not by its resource name. Two
-    // pages may each bind /F1 to a different font object, so a name-keyed cache would
-    // render page 2's text in page 1's font. This is the cross-page leak the interaction
-    // review was looking for; it asserts the key, since a name-keyed regression here
-    // would be silent.
-    #[test]
-    fn font_cache_does_not_confuse_two_fonts_that_share_a_resource_name() {
-        let mut doc = Document::with_version("1.7");
-        let mut font_named_f1 = |ch: u8, uni: &str| {
-            let tu = doc.add_object(Stream::new(
-                dictionary! {},
-                format!("1 beginbfchar\n<{ch:02X}> <{uni}>\nendbfchar").into_bytes(),
-            ));
-            let font = doc.add_object(dictionary! {
-                "Type" => "Font",
-                "Subtype" => "TrueType",
-                "BaseFont" => "Helvetica",
-                "ToUnicode" => tu,
-            });
-            dictionary! { "Font" => dictionary! { "F1" => font } }
-        };
-        let res_a = font_named_f1(0x41, "0041");
-        let res_b = font_named_f1(0x41, "0042");
-        let _scope = FontCacheScope::new();
-        let a = fonts_from_resources(&doc, &res_a);
-        let b = fonts_from_resources(&doc, &res_b);
-        let (au, bu) = (
-            a[b"F1".as_ref()].to_unicode.as_ref().unwrap(),
-            b[b"F1".as_ref()].to_unicode.as_ref().unwrap(),
-        );
-        assert_eq!(au.get(&0x41).map(String::as_str), Some("A"));
-        assert_eq!(
-            bu.get(&0x41).map(String::as_str),
-            Some("B"),
-            "the second /F1 is a different font object and must not be served from the cache"
-        );
-        assert!(!Arc::ptr_eq(au, bu));
+    impl EncodingCMap {
+        /// Map a character code to a CID (identity fallback if unmapped).
+        pub fn to_cid(&self, code: u32) -> u32 {
+            if let Some(c) = self.single.get(&code) {
+                return *c;
+            }
+            for &(lo, hi, c0) in &self.ranges {
+                if code >= lo && code <= hi {
+                    return c0 + (code - lo);
+                }
+            }
+            code
+        }
+
+        /// Byte length of the code beginning with `first_byte`, using the
+        /// codespace ranges (defaults to 2 bytes, the Identity case).
+        pub fn code_len(&self, first_byte: u8) -> usize {
+            for &(lo, hi, n) in &self.codespace {
+                let shift = (n.saturating_sub(1)) * 8;
+                let flo = (lo >> shift) & 0xFF;
+                let fhi = (hi >> shift) & 0xFF;
+                if (first_byte as u32) >= flo && (first_byte as u32) <= fhi {
+                    return n as usize;
+                }
+            }
+            if self.codespace.is_empty() { 2 } else { self.codespace[0].2 as usize }
+        }
+
+        /// Byte length of the code beginning at `bytes[0]`, using the following byte to
+        /// disambiguate where the codespace needs it.
+        ///
+        /// §9.7.6.2 matches a code against the codespace ranges byte by byte, so two
+        /// ranges may share a first byte and differ in length. GB18030 (GBK2K-H/V) is the
+        /// case that matters in practice: its four-byte plane differs from its two-byte
+        /// plane only in the SECOND byte.
+        ///
+        /// This is a strict refinement of [`Self::code_len`] — it only ever chooses a
+        /// LONGER range, and only when that range also matches the second byte. No other
+        /// predefined codespace has two ranges of different length sharing a first byte,
+        /// so for every font but GB18030 the answer is identical to `code_len`.
+        pub fn code_len_at(&self, bytes: &[u8]) -> usize {
+            let Some(&first) = bytes.first() else { return 1 };
+            let n = self.code_len(first);
+            let Some(&second) = bytes.get(1) else { return n };
+            for &(lo, hi, len) in &self.codespace {
+                let len = len as usize;
+                if len <= n || len > 4 {
+                    continue;
+                }
+                let s1 = (len - 1) * 8;
+                if !((lo >> s1) & 0xFF..=(hi >> s1) & 0xFF).contains(&(first as u32)) {
+                    continue;
+                }
+                let s2 = (len - 2) * 8;
+                if ((lo >> s2) & 0xFF..=(hi >> s2) & 0xFF).contains(&(second as u32)) {
+                    return len;
+                }
+            }
+            n
+        }
     }
 
-    // A colliding object id from a DIFFERENT document must not be served. The cache used
-    // to key on the `Document`'s raw ADDRESS, which is not an identity: overwriting a
-    // `Box<Document>` in place puts the replacement at the same address, and a scope
-    // spanning both then rendered the second document with the first one's font metrics.
-    // A hit now also has to match the dictionary the id resolves to.
-    #[test]
-    fn font_cache_rejects_a_colliding_id_from_another_document() {
-        let build = |base: &str| {
-            let mut doc = Document::with_version("1.7");
-            // Burn object 1 so the font lands on the same id in both documents.
-            doc.add_object(Object::Null);
-            let font = doc.add_object(dictionary! {
-                "Type" => "Font",
-                "Subtype" => "Type1",
-                "BaseFont" => base,
-            });
-            let res = dictionary! { "Font" => dictionary! { "F1" => font } };
-            (doc, res, font)
-        };
-        let (doc_a, res_a, id_a) = build("Helvetica");
-        let (doc_b, res_b, id_b) = build("Courier");
-        assert_eq!(id_a, id_b, "precondition: the two fonts share an object id");
-
-        let _scope = FontCacheScope::new();
-        let a = fonts_from_resources(&doc_a, &res_a);
-        let b = fonts_from_resources(&doc_b, &res_b);
-        // Courier is monospaced, Helvetica is not: a stale hit shows up as `i` and `M`
-        // having different widths, which is what the address-keyed cache produced.
-        let wi = b[b"F1".as_ref()].widths.get(&(b'i' as u32)).copied();
-        let wm = b[b"F1".as_ref()].widths.get(&(b'M' as u32)).copied();
-        assert_eq!(wi, wm, "the second document must get Courier's uniform advance");
-        assert_ne!(
-            a[b"F1".as_ref()].widths.get(&(b'i' as u32)).copied(),
-            a[b"F1".as_ref()].widths.get(&(b'M' as u32)).copied(),
-            "precondition: Helvetica is proportional, so the two are distinguishable"
-        );
+    /// Parse a Type0 `/Encoding` CMap stream. Handles `codespacerange`,
+    /// `cidrange`, `cidchar`, and `/WMode`. Numeric CID operands are decimal.
+    pub fn parse_encoding_cmap(data: &[u8]) -> EncodingCMap {
+        let mut cm = EncodingCMap::default();
+        // Lightweight token scan: hex strings <..>, decimal integers, keywords.
+        #[derive(PartialEq)]
+        enum T { Hex(Vec<u8>), Int(u32), Kw(String) }
+        let mut toks: Vec<T> = Vec::new();
+        let mut i = 0;
+        while i < data.len() {
+            let b = data[i];
+            if b == b'<' {
+                let mut hex = String::new();
+                i += 1;
+                while i < data.len() && data[i] != b'>' {
+                    if !data[i].is_ascii_whitespace() { hex.push(data[i] as char); }
+                    i += 1;
+                }
+                i += 1;
+                toks.push(T::Hex(hex_to_bytes(&hex)));
+            } else if b.is_ascii_digit() {
+                let s = i;
+                while i < data.len() && data[i].is_ascii_digit() { i += 1; }
+                let n: u32 = std::str::from_utf8(&data[s..i]).ok().and_then(|x| x.parse().ok()).unwrap_or(0);
+                toks.push(T::Int(n));
+            } else if b.is_ascii_alphabetic() || b == b'/' {
+                let s = i;
+                i += 1;
+                // '-' is part of predefined CMap names (`/90ms-RKSJ-H usecmap`), so
+                // it must not terminate the token.
+                while i < data.len() && (data[i].is_ascii_alphanumeric() || data[i] == b'/' || data[i] == b'.' || data[i] == b'-') { i += 1; }
+                toks.push(T::Kw(String::from_utf8_lossy(&data[s..i]).into_owned()));
+            } else {
+                i += 1;
+            }
+        }
+        let byte_len = |bytes: &[u8]| -> u8 { bytes.len().clamp(1, 4) as u8 };
+        let mut j = 0;
+        while j < toks.len() {
+            match &toks[j] {
+                // `/SomeCMap usecmap` inherits the referenced CMap. Only a
+                // predefined name can be inherited here (an embedded one would have
+                // to be reachable through the stream's own /UseCMap, which lopdf
+                // does not hand us), and only its codespace ranges are recoverable,
+                // so inherit those and let this stream's own ranges override.
+                T::Kw(k) if k == "usecmap" => {
+                    if let Some(T::Kw(name)) = j.checked_sub(1).and_then(|p| toks.get(p)) {
+                        let base = name.trim_start_matches('/');
+                        if let Some(cs) = predefined_codespace(base) {
+                            for r in cs {
+                                if !cm.codespace.contains(&r) {
+                                    cm.codespace.push(r);
+                                }
+                            }
+                        }
+                        if base.ends_with("-V") {
+                            cm.wmode = 1;
+                        }
+                    }
+                    j += 1;
+                }
+                T::Kw(k) if k == "/WMode" => {
+                    if let Some(T::Int(w)) = toks.get(j + 1) { cm.wmode = if *w >= 1 { 1 } else { 0 }; }
+                    j += 1;
+                }
+                T::Kw(k) if k == "begincodespacerange" => {
+                    j += 1;
+                    while j + 1 < toks.len() {
+                        if let (T::Hex(lo), T::Hex(hi)) = (&toks[j], &toks[j + 1]) {
+                            cm.codespace.push((code(lo), code(hi), byte_len(lo)));
+                            j += 2;
+                        } else { break; }
+                    }
+                }
+                T::Kw(k) if k == "begincidrange" => {
+                    j += 1;
+                    while j + 2 < toks.len() {
+                        match (&toks[j], &toks[j + 1], &toks[j + 2]) {
+                            (T::Hex(lo), T::Hex(hi), T::Int(cid)) => {
+                                cm.ranges.push((code(lo), code(hi), *cid));
+                                j += 3;
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+                T::Kw(k) if k == "begincidchar" => {
+                    j += 1;
+                    while j + 1 < toks.len() {
+                        match (&toks[j], &toks[j + 1]) {
+                            (T::Hex(c), T::Int(cid)) => {
+                                cm.single.insert(code(c), *cid);
+                                j += 2;
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+                _ => { j += 1; }
+            }
+        }
+        cm
     }
 
-    fn simple_font_with_encoding() -> FontInfo {
-        FontInfo {
-            two_byte: false,
-            wmode: 0,
-            vertical_metrics: Arc::default(),
-            default_vertical: (0.880, -1.0),
-            cid_to_gid: None,
-            to_unicode: None,
-            encoding: Arc::new(encoding::win_ansi()),
-            cmap_uni: Arc::default(),
-            cmap: None,
-            widths: Arc::default(),
-            default_width: 0.5,
-            t3: None,
-            style: FontStyle::default(),
-            family: 0,
-            base_font: String::new(),
-            glyph_program: None,
-            glyph_names: Arc::default(),
+    fn utf16be_units(bytes: &[u8]) -> Vec<u16> {
+        bytes
+            .chunks(2)
+            .map(|c| {
+                let hi = c[0] as u16;
+                let lo = *c.get(1).unwrap_or(&0) as u16;
+                (hi << 8) | lo
+            })
+            .collect()
+    }
+
+    fn utf16be(bytes: &[u8]) -> String {
+        String::from_utf16_lossy(&utf16be_units(bytes))
+    }
+
+    /// Increment the last UTF-16 code unit by `n` (per PDF bfrange semantics)
+    /// and decode the result.
+    fn units_to_string_incremented(units: &[u16], n: u32) -> String {
+        let mut u = units.to_vec();
+        if let Some(last) = u.last_mut() {
+            *last = last.wrapping_add(n as u16);
+        }
+        String::from_utf16_lossy(&u)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn parses_bfchar_single_byte() {
+            let cmap = b"2 beginbfchar\n<41> <0041>\n<42> <0042>\nendbfchar";
+            let map = parse(cmap);
+            assert_eq!(map.get(&0x41).map(String::as_str), Some("A"));
+            assert_eq!(map.get(&0x42).map(String::as_str), Some("B"));
+        }
+
+        #[test]
+        fn parses_bfchar_two_byte() {
+            let cmap = b"1 beginbfchar\n<0003> <0048>\nendbfchar";
+            let map = parse(cmap);
+            assert_eq!(map.get(&0x0003).map(String::as_str), Some("H"));
+        }
+
+        #[test]
+        fn parses_bfrange_incrementing() {
+            let cmap = b"1 beginbfrange\n<0041> <0043> <0061>\nendbfrange";
+            let map = parse(cmap);
+            assert_eq!(map.get(&0x41).map(String::as_str), Some("a"));
+            assert_eq!(map.get(&0x42).map(String::as_str), Some("b"));
+            assert_eq!(map.get(&0x43).map(String::as_str), Some("c"));
+        }
+
+        #[test]
+        fn parses_bfrange_after_preamble() {
+            // A realistic ToUnicode with a dict/codespace preamble before the
+            // bfrange block (regression for a token double-increment bug).
+            let cmap = b"/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n<< /Registry (TTX+0) /Ordering (T1) /Supplement 0 >> def\n1 begincodespacerange\n<0000><FFFF>\nendcodespacerange\n2 beginbfrange\n<0033><0033><0050>\n<0055><0055><0072>\nendbfrange\nendcmap";
+            let map = parse(cmap);
+            assert_eq!(map.get(&0x33).map(String::as_str), Some("P"));
+            assert_eq!(map.get(&0x55).map(String::as_str), Some("r"));
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// ToUnicode CMap parsing
-// ---------------------------------------------------------------------------

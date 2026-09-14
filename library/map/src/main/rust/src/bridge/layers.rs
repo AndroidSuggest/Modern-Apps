@@ -6,7 +6,7 @@ use jni::objects::{JClass, JIntArray, JLongArray, JString};
 use jni::sys::{jboolean, jlong};
 use jni::JNIEnv;
 use super::handle::handle_mut;
-use super::log::log_info;
+use super::log::{log, log_info};
 /// Turn the optional layers on or off, and narrow POI to a set of kinds.
 ///
 /// Not free, unlike [`setPalette`](Java_com_vayunmathur_library_map_MapNative_setPalette):

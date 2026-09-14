@@ -228,6 +228,7 @@ object AutoSessionState {
     val audioAcks: StateFlow<Long> = _audioAcks.asStateFlow()
 
     /** TTS utterances that reached the car this session. */
+    private val _ttsSpoken = MutableStateFlow(0L)
     val ttsSpoken: StateFlow<Long> = _ttsSpoken.asStateFlow()
 
     /** TTS utterances dropped (no sink, bad wav, dead engine) this session. */
@@ -239,6 +240,7 @@ object AutoSessionState {
     val micTurns: StateFlow<Long> = _micTurns.asStateFlow()
 
     /** ch6 mic chunks acked upstream this session. */
+    private val _micAcks = MutableStateFlow(0L)
     val micAcks: StateFlow<Long> = _micAcks.asStateFlow()
 
     /** Live telecom calls currently tracked by the InCall owners; 0 with none. */

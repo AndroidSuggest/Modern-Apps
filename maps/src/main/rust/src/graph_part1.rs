@@ -1,12 +1,24 @@
 /// The whole-world routing dataset. Immutable after construction.
 pub struct Graph {
-    // mmap regions kept alive for the lifetime of the graph.
-    _nodes_region: MmapRegion,
-    _edges_region: MmapRegion,
-    _intermediate_region: MmapRegion,
+    // mmap regions kept alive for the lifetime of the graph. The three
+    // mandatory ones are `Some` on the multi-file path (one region per file)
+    // and `None` on the single-archive path (the one archive region below
+    // backs everything instead); exactly one side is populated, checked in
+    // `assemble`.
+    _nodes_region: Option<MmapRegion>,
+    _edges_region: Option<MmapRegion>,
+    _intermediate_region: Option<MmapRegion>,
     _road_names_region: Option<MmapRegion>,
     _lanes_region: Option<MmapRegion>,
     _elevation_region: Option<MmapRegion>,
+    // The single-archive file on the `load_archive` path, which backs every
+    // pointer above instead of the six per-file regions. `None` on the
+    // multi-file `load` path.
+    _archive_region: Option<MmapRegion>,
+    // Owned byte backing for host tests (the host stub cannot mmap): the
+    // graph keeps these alive exactly like the regions. Always empty in
+    // production.
+    _owned_buffers: Vec<Vec<u8>>,
 
     nodes: *const u8,
     pub node_count: u32, // real nodes; nodes.bin has node_count + 1 (sentinel)

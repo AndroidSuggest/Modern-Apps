@@ -283,76 +283,6 @@ pub(crate) fn parse_dash_extgstate(doc: &Document, obj: &Object) -> (Vec<f64>, f
     }
 }
 
-pub(crate) fn interpret_page(doc: &Document, page_id: ObjectId) -> Result<PageData, String> {
-    let (width, height) = page_display_size(doc, page_id);
-    let base = page_base_matrix(doc, page_id);
-
-    // `fonts_from_resources` runs on EVERY `interpret_content` call — the page,
-    // every form XObject it reaches, every tiling-pattern cell and every
-    // annotation appearance stream — and re-parses the whole embedded font
-    // program each time. One scope per page collapses that to once per font.
-    let _font_cache = crate::FontCacheScope::new();
-
-    // §7.7.3.3: /Contents is optional, and a tokenizer failure must not lose the
-    // whole page. `page_operations` returns lopdf's strict parse unchanged when it
-    // succeeds and only re-tokenizes leniently when it fails, which is the
-    // all-or-nothing inline-image case (§8.9.7) that used to blank a whole page.
-    let (ops, recovered) = crate::content::page_operations(doc, page_id);
-    if recovered && cfg!(debug_assertions) {
-        eprintln!(
-            "[pdf_render/interpret] page {page_id:?}: strict content parse failed, \
-             recovered {} operations leniently",
-            ops.len()
-        );
-    }
-    let res = resources_dict(doc, page_id);
-
-    let mut prims = Vec::new();
-    let init = GraphicsState { ctm: base, ..Default::default() };
-    // One budget for the whole page, annotations included. Each appearance
-    // stream is a separate top-level entry into the interpreter, so without this
-    // outer scope a page carrying N annotations would get N+1 full budgets —
-    // the branching blow-up [`MAX_FORM_INVOCATIONS`] exists to bound, multiplied
-    // by however many annotations the file declares.
-    let _form_budget = FormBudgetScope::enter();
-    // §8.7.4.1: with no clipping path, `sh` paints across the whole page, so seed
-    // the clip extent with the page box. Prims are emitted in page space, so that
-    // box is simply [0, 0, width, height].
-    interpret_content_seeded(
-        doc,
-        &ops,
-        res.as_ref(),
-        init,
-        &mut prims,
-        0,
-        false,
-        Some([0.0, 0.0, width as f64, height as f64]),
-    );
-    render_annotations(doc, page_id, &base, &mut prims);
-
-    Ok(PageData {
-        width,
-        height,
-        prims,
-    })
-}
-
-/// Interpret a content stream (`ops`) against a `resources` dictionary into
-/// drawing primitives, starting from `init` graphics state. Reused for page
-/// content, form XObjects (`Do`), and annotation appearance streams. `depth`
-/// bounds recursion through nested form XObjects.
-pub(crate) fn interpret_content(
-    doc: &Document,
-    ops: &[lopdf::content::Operation],
-    resources: Option<&lopdf::Dictionary>,
-    init: GraphicsState,
-    prims: &mut Vec<Prim>,
-    depth: u32,
-    text_only: bool,
-) {
-    interpret_content_seeded(doc, ops, resources, init, prims, depth, text_only, None);
-}
-
 include!("interpret_part1.rs");
 include!("interpret_part2.rs");
 include!("interpret_part3.rs");
@@ -367,4 +297,3 @@ include!("interpret_part11.rs");
 include!("interpret_part12.rs");
 include!("interpret_part13.rs");
 include!("interpret_part14.rs");
-include!("interpret_part15.rs");

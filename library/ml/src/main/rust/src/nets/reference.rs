@@ -163,13 +163,23 @@ pub struct Reference {
     window_start: u32,
 }
 
+impl Reference {
 include!("reference_part1.rs");
 include!("reference_part2.rs");
 include!("reference_part3.rs");
+}
 include!("reference_part4.rs");
+#[cfg(test)]
+mod tests {
+    use super::super::{
+        embed_lanes, maia, mobilefacenet, ppocr_det, ppocr_rec, scrfd, selfie, supertonic_duration, supertonic_sampler,
+        supertonic_text, supertonic_vocoder, tinyclip, u2netp, whisper, Act, Builder, EMBED_LANE,
+    };
+    use super::*;
 include!("reference_part5.rs");
 include!("reference_part6.rs");
 include!("reference_part7.rs");
 include!("reference_part8.rs");
 include!("reference_part9.rs");
 include!("reference_part10.rs");
+}

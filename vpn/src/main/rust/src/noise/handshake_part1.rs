@@ -448,3 +448,38 @@ impl Handshake {
         );
         // responder.chaining_key = HMAC(temp, 0x1)
         chaining_key = b2s_hmac(&temp, &[0x01]);
+        // temp = HMAC(responder.chaining_key, preshared_key)
+        let temp = b2s_hmac(
+            &chaining_key,
+            &self.params.preshared_key.unwrap_or([0u8; 32])[..],
+        );
+        // responder.chaining_key = HMAC(temp, 0x1)
+        chaining_key = b2s_hmac(&temp, &[0x01]);
+        // temp2 = HMAC(temp, responder.chaining_key || 0x2)
+        let temp2 = b2s_hmac2(&temp, &chaining_key, &[0x02]);
+        // key = HMAC(temp, temp2 || 0x3)
+        let key = b2s_hmac2(&temp, &temp2, &[0x03]);
+        // responder.hash = HASH(responder.hash || temp2)
+        hash = b2s_hash(&hash, &temp2);
+        // msg.encrypted_nothing = AEAD(key, 0, [empty], responder.hash)
+        aead_chacha20_seal(resp.encrypted_nothing.as_mut_bytes(), &key, 0, &[], &hash);
+
+        // Derive keys
+        // temp1 = HMAC(initiator.chaining_key, [empty])
+        // temp2 = HMAC(temp1, 0x1)
+        // temp3 = HMAC(temp1, temp2 || 0x2)
+        // initiator.sending_key = temp2
+        // initiator.receiving_key = temp3
+        // initiator.sending_key_counter = 0
+        // initiator.receiving_key_counter = 0
+        let temp1 = b2s_hmac(&chaining_key, &[]);
+        let temp2 = b2s_hmac(&temp1, &[0x01]);
+        let temp3 = b2s_hmac2(&temp1, &temp2, &[0x02]);
+
+        self.init_mac1_and_mac2(&mut resp, local_index_val);
+
+        let packet = buf.overwrite_with(&resp);
+
+        (packet, Session::new(local_index, peer_index, temp2, temp3))
+    }
+}

@@ -47,7 +47,7 @@ struct Staged {
     extra: u64,
 }
 
-fn load_sidecars(graph: &Path, poi: &Path, transit: &Path) -> Result<Vec<Staged>, String> {
+fn load_sidecars(graph: &Path, poi: &Path, transit: Option<&Path>) -> Result<Vec<Staged>, String> {
     let g = |name: &str| read_file(&graph.join(name));
     let p = |name: &str| read_file(&poi.join(name));
     let mut out = Vec::new();
@@ -81,7 +81,12 @@ fn load_sidecars(graph: &Path, poi: &Path, transit: &Path) -> Result<Vec<Staged>
     if let Ok(b) = p("poi_name_index.bin") {
         out.push(Staged { kind: ARCHIVE_KIND_POI_WORDS, bytes: b, extra: 0 });
     }
-    out.push(Staged { kind: ARCHIVE_KIND_TRANSIT, bytes: read_file(transit)?, extra: 0 });
+    // Transit is optional like the other sidecars: omitted when no pack is
+    // staged (a tiles+graph+POI archive still exercises every loader's
+    // degrade path on device). Callers that need it pass --transit.
+    if let Some(t) = transit {
+        out.push(Staged { kind: ARCHIVE_KIND_TRANSIT, bytes: read_file(t)?, extra: 0 });
+    }
     Ok(out)
 }
 
@@ -208,10 +213,8 @@ fn main() -> ExitCode {
         }
         i += 2;
     }
-    let (Some(tiles), Some(graph), Some(poi), Some(transit), Some(out)) =
-        (tiles, graph, poi, transit, out)
-    else {
-        eprintln!("usage: mamaps_pack --tiles IN.mamaps --graph GRAPH_DIR --poi POI_DIR --transit WORLD.transit --out OUT.mamaps [--build-id N]");
+    let (Some(tiles), Some(graph), Some(poi), Some(out)) = (tiles, graph, poi, out) else {
+        eprintln!("usage: mamaps_pack --tiles IN.mamaps --graph GRAPH_DIR --poi POI_DIR [--transit WORLD.transit] --out OUT.mamaps [--build-id N]");
         return ExitCode::from(2);
     };
     let tile_bytes = match read_file(&tiles) {
@@ -221,7 +224,7 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let staged = match load_sidecars(&graph, &poi, &transit) {
+    let staged = match load_sidecars(&graph, &poi, transit.as_deref()) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("mamaps_pack: {e}");

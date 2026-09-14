@@ -448,3 +448,8 @@ mod tests {
             "Bounds" => Vec::<Object>::new(),
             "Encode" => vec![0.into(), 1.into()],
         });
+        let f3 = PdfFunction::parse(&doc, &Object::Reference(t3)).expect("parses");
+        assert!(f3.eval(&[0.5])[0].is_finite());
+    }
+
+}

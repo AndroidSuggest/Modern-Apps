@@ -2,7 +2,7 @@
 <!-- Mirror filter for MessageMirrorService (see its meta-data): which
      notifications may leave the phone. Only CATEGORY_MESSAGE (SMS and chat
      apps tag theirs); everything else stays local. The dual gate (system
-     listener binding + in-app consent in MessagingPrefs) applies on top --
+     listener binding + in-app consent in MessagingPrefs) applies on top:
      either off means fail-closed silence regardless of this filter. -->
 <notification-filter xmlns:android="http://schemas.android.com/apk/res/android">
     <category android:name="android.app.Notification.CATEGORY_MESSAGE" />

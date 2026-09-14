@@ -1,12 +1,3 @@
-                out.extend_from_slice(s);
-            }
-            out
-        }
-
-        fn index(&self) -> TransitIndex {
-            TransitIndex::from_bytes(self.build_with_version(VERSION)).expect("index loads")
-        }
-    }
 
     /// Weekdays Mon-Fri, all of 2024.
     fn weekdays() -> Service {
@@ -448,3 +439,50 @@
                     shape: None,
                 },
                 Route {
+                    name: "FastA",
+                    color: 0x00FF00,
+                    route_type: 0,
+                    feed: 0,
+                    pattern: vec![0, 1],
+                    trips: vec![Trip {
+                        start: 28_800,
+                        stoptimes: vec![(28_800, 28_800), (29_400, 29_400)],
+                        service: 0,
+                        headsign: "Feeder",
+                    }],
+                    shape: None,
+                },
+                Route {
+                    name: "FastB",
+                    color: 0xFF0000,
+                    route_type: 0,
+                    feed: 0,
+                    pattern: vec![1, 2],
+                    trips: vec![Trip {
+                        start: 30_000,
+                        stoptimes: vec![(30_000, 30_000), (30_600, 30_600)],
+                        service: 0,
+                        headsign: "Onward",
+                    }],
+                    shape: None,
+                },
+            ],
+            services: vec![weekdays()],
+            exceptions: Vec::new(),
+            feeds: vec![("sfmuni", "America/Los_Angeles", "us-ca-SFMTA")],
+        };
+        let idx = pack.index();
+        // 07:46, not 08:00: the sub-metre access walk rounds up to one second, which
+        // would put `ready` a second past an 08:00 departure.
+        let legs = plan(&idx, 37.700, -122.400, 37.720, -122.400, 28_000, sched(wednesday()))
+            .expect("a journey exists");
+
+        let rides: Vec<&TransitLeg> = legs.iter().filter(|l| l.kind == LegKind::Ride).collect();
+        assert_eq!(
+            rides.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(),
+            vec!["FastA", "FastB"],
+            "took the direct route the pruning bound was first set from"
+        );
+        assert_eq!(rides.last().unwrap().arr_secs, 30_600, "08:30, not the direct 10:00");
+    }
+

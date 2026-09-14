@@ -1,3 +1,24 @@
+#[cfg(test)]
+mod mask_tests3 {
+    use super::*;
+    use super::mask_tests::half_black_g4;
+
+    // §8.9.5.2 Table 90: an explicit /Decode on an Indexed image remaps the sample onto
+    // the index range, and the Indexed branch ignored it. The default [0 2^bpc-1] must
+    // stay the identity, so pin both directions.
+    #[test]
+    fn indexed_decode_array_remaps_the_palette_index() {
+        let mut doc = Document::with_version("1.7");
+        // 4-entry RGB palette: black, red, green, blue.
+        let pal: Vec<u8> = vec![0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255];
+        let cs = Object::Array(vec![
+            Object::Name(b"Indexed".to_vec()),
+            Object::Name(b"DeviceRGB".to_vec()),
+            Object::Integer(3),
+            Object::String(pal, lopdf::StringFormat::Literal),
+        ]);
+        let cs_id = doc.add_object(cs);
+        let mut res = HashMap::new();
         res.insert(b"Cs".to_vec(), cs_id);
 
         // One 8-bpc sample of 255. With the default decode that is index 255, clamped to
@@ -429,22 +450,4 @@
         );
     }
 
-    /// §8.7.4.3 Table 78 confines /Background to the area OUTSIDE the shading's bounds.
-    /// Two arms used it as the shading's own in-extent colour: `eval_func` returned it
-    /// when /Function was absent (making all 256 LUT slots the background, so the whole
-    /// area painted solid), and the per-pixel lookup fell back to it when no colour
-    /// could be computed. They had to go together — with `eval_func` fixed alone, every
-    /// LUT slot is empty and the second arm reproduces the identical flood.
-    /// (a-shading's finding.)
-    #[test]
-    fn background_is_never_used_as_the_shadings_own_colour() {
-        let doc = Document::with_version("1.7");
-        // Types 2/3 REQUIRE /Function (§8.7.4.5.3); this one has none. The axis spans
-        // only the middle fifth of the bbox, so the raster has both in-extent pixels
-        // (t in [0,1], centre) and out-of-extent ones (t < 0 / t > 1, edges).
-        let sh = Object::Dictionary(dictionary! {
-            "ShadingType" => 2,
-            "ColorSpace" => "DeviceRGB",
-            "Coords" => vec![0.4.into(), 0.into(), 0.6.into(), 0.into()],
-            "Extend" => vec![Object::Boolean(false), Object::Boolean(false)],
-            "BBox" => vec![0.into(), 0.into(), 1.into(), 1.into()],
+}

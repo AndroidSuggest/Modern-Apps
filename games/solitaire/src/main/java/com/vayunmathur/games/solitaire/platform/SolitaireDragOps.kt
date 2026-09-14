@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.IntSize
 import com.vayunmathur.games.solitaire.data.Card
+import com.vayunmathur.games.solitaire.data.GameMode
 import kotlinx.coroutines.flow.update
 
 // ---- Shared: drag, drop, auto-move, drag state ----
@@ -45,9 +46,9 @@ internal fun SolitaireViewModel.tryMoveByDragImpl(sourceId: String, dropOffset: 
     for (targetId in candidateDropTargets(dropOffset, cardSize)) {
         val before = _uiState.value
         when (mode) {
-            GameMode.KLONDIKE -> handleKlondikeDrop(sourceId, targetId)
-            GameMode.SPIDER -> handleSpiderDrop(sourceId, targetId)
-            GameMode.FREECELL -> handleFreeCellDrop(sourceId, targetId)
+            GameMode.KLONDIKE -> handleKlondikeDropImpl(sourceId, targetId)
+            GameMode.SPIDER -> handleSpiderDropImpl(sourceId, targetId)
+            GameMode.FREECELL -> handleFreeCellDropImpl(sourceId, targetId)
             GameMode.PYRAMID -> return // Pyramid is tap-based, not drag-based.
         }
         if (_uiState.value !== before) return
@@ -86,8 +87,8 @@ internal fun SolitaireViewModel.candidateDropTargets(dropOffset: Offset, cardSiz
 
 internal fun SolitaireViewModel.autoMoveImpl(sourceId: String) {
     when (_uiState.value.gameMode) {
-        GameMode.KLONDIKE -> klondikeAutoMove(sourceId)
-        GameMode.FREECELL -> freeCellAutoMove(sourceId)
+        GameMode.KLONDIKE -> klondikeAutoMoveImpl(sourceId)
+        GameMode.FREECELL -> freeCellAutoMoveImpl(sourceId)
         else -> {} // Spider has no foundations; Pyramid is already tap-based.
     }
 }

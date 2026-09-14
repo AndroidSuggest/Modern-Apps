@@ -1,3 +1,22 @@
+
+    #[test]
+    fn softmax_subtracts_the_row_maximum_rather_than_exponentiating_directly() {
+        // exp overflows fp32 a little past 88, so a row containing 100 sums to infinity
+        // and every probability in it becomes a NaN. Subtracting the maximum first makes
+        // the largest term exp(0), which cannot overflow and also floors the denominator
+        // at 1.
+        let got = one(Shape::new(1, 1, 3), &[100.0, 99.0, -100.0], &[], |b, x| b.softmax(x));
+        assert!(got.iter().all(|v| v.is_finite()), "{got:?}");
+        let expected = 1.0 / (1.0 + (-1.0f32).exp());
+        close(&got, &[expected, 1.0 - expected, 0.0]);
+    }
+
+    #[test]
+    fn a_causal_softmax_gives_position_zero_a_point_distribution() {
+        // The fixture that fails if the row bound is off by one in either direction. One head,
+        // T 3, so three rows of three: query 0 sees key 0 alone, query 1 keys 0-1, query 2 all
+        // three.
+        //
         // Row 0's scores are (0, 100, 100). Its distribution must be exactly (1, 0, 0) — a bound
         // of `query + 2` would let the 100 in and give (0, 1, 0), and a bound of `query` would
         // leave an empty row and divide by zero.
@@ -425,26 +444,3 @@
             .collect();
         close(&got, &want);
     }
-
-    #[test]
-    fn a_value_mix_over_two_different_lengths_is_one_vector_per_query() {
-        // Two queries, four keys, two channels of values. The probabilities pick key 3 for
-        // query 0 and key 0 for query 1, so the answer is two of V's columns swapped — an
-        // output width taken from V instead of from the queries would be four wide.
-        let queries = 2u32;
-        let keys = 4u32;
-        let mut probs = vec![0.0f32; (queries * keys) as usize];
-        probs[3] = 1.0;
-        probs[keys as usize] = 1.0;
-        let v: Vec<f32> = vec![10.0, 11.0, 12.0, 13.0, 20.0, 21.0, 22.0, 23.0];
-        let got = two(
-            (Shape::new(1, queries, keys), Shape::new(2, 1, keys)),
-            (&probs, &v),
-            |b, p, v| b.attn_apply(p, v, 1),
-        );
-        // `[2, 1, 2]`: channel 0 then channel 1, each (query 0, query 1).
-        close(&got, &[13.0, 10.0, 23.0, 20.0]);
-    }
-
-    #[test]
-    fn a_relative_score_map_refuses_two_different_lengths() {

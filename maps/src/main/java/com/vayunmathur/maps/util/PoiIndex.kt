@@ -189,6 +189,9 @@ object PoiIndex {
         /** The word index, or null when absent or mismatched. */
         internal val nameIdx: MappedByteBuffer? = null,
         internal val entryCount: Int = 0,
+        /** The whole archive mapping, when loaded from one file: pins every slice above. */
+        @Suppress("unused")
+        val archive: MappedByteBuffer? = null,
     ) {
         internal fun latE7(i: Int): Int = index.getInt(i * RECORD_BYTES)
         internal fun lonE7(i: Int): Int = index.getInt(i * RECORD_BYTES + 4)
@@ -303,10 +306,12 @@ object PoiIndex {
     val recordCount: Int get() = mapped?.count ?: 0
 
     /**
-     * Map both side files from [Context.getExternalFilesDir]. Idempotent and
-     * safe to call repeatedly; returns false (and stays a no-op) when either
-     * file is missing. Not retried automatically after a failure unless
-     * [reload] is called (e.g. after the download completes).
+     * Map the POI data from [Context.getExternalFilesDir]. Idempotent and
+     * safe to call repeatedly. Prefers the single-archive `.mamaps` file when
+     * present (one download carries tiles, graph, POI and transit), falling
+     * back to the side files. Returns false (and stays a no-op) when neither
+     * is present. Not retried automatically after a failure unless [reload]
+     * is called (e.g. after the download completes).
      */
     @Synchronized
     fun initialize(context: Context): Boolean {
@@ -314,14 +319,37 @@ object PoiIndex {
         if (tried) return false
         tried = true
         val dir = context.getExternalFilesDir(null) ?: return false
+        if (tryArchive(dir)) return true
         return open(dir)
     }
 
-    /** Force a re-map after the side files finish downloading. */
+    /** Force a re-map after the download completes (archive preferred, then side files). */
     @Synchronized
     fun reload(context: Context): Boolean {
         val dir = context.getExternalFilesDir(null) ?: return false
+        mapped = null
+        tried = true
+        if (tryArchive(dir)) return true
         return reload(dir)
+    }
+
+    /** Map the single archive when present, leaving [mapped] null otherwise. */
+    private fun tryArchive(dir: File): Boolean {
+        val archive = File(dir, MapTileCache.BASEMAP_ARCHIVE_FILE)
+        if (!archive.isFile) return false
+        val fromArchive = PoiArchive.openArchive(archive) ?: return false
+        mapped = fromArchive
+        return true
+    }
+
+    /** Re-map from a single-archive `.mamaps` file (see [PoiArchive]). */
+    @Synchronized
+    fun reloadArchive(file: File): Boolean {
+        mapped = null
+        tried = true
+        val fromArchive = PoiArchive.openArchive(file) ?: return false
+        mapped = fromArchive
+        return true
     }
 
     /**
@@ -398,8 +426,13 @@ object PoiIndex {
             Log.d(TAG, "POI attribute sidecar absent")
             return null
         }
+        return attrsFromBuffer(mapReadOnly(file), count)
+    }
+
+    /** Buffer core of [openAttrs], reused by the single-archive path. */
+    internal fun attrsFromBuffer(buf: MappedByteBuffer, count: Int): Pair<MappedByteBuffer, Int>? {
+        buf.order(ByteOrder.LITTLE_ENDIAN)
         try {
-            val buf = mapReadOnly(file).also { it.order(ByteOrder.LITTLE_ENDIAN) }
             if (buf.capacity() < ATTRS_HEADER_BYTES) {
                 Log.w(TAG, "$ATTRS_FILE is truncated")
                 return null
@@ -436,7 +469,7 @@ object PoiIndex {
     }
 
     /** The mapped spatial grid plus the parameters read out of its header. */
-    private class Grid(
+    internal class Grid(
         val buf: MappedByteBuffer,
         val cellCount: Int,
         val lat0E7: Int,
@@ -454,8 +487,13 @@ object PoiIndex {
      */
     private fun openSpatial(file: File, count: Int): Grid? {
         if (!file.isFile) return null
+        return spatialFromBuffer(mapReadOnly(file), count)
+    }
+
+    /** Buffer core of [openSpatial], reused by the single-archive path. */
+    internal fun spatialFromBuffer(buf: MappedByteBuffer, count: Int): Grid? {
+        buf.order(ByteOrder.LITTLE_ENDIAN)
         return try {
-            val buf = mapReadOnly(file).also { it.order(ByteOrder.LITTLE_ENDIAN) }
             if (buf.capacity() < SPATIAL_HEADER_BYTES) return null
             for (i in SPATIAL_MAGIC.indices) {
                 if (buf.get(i) != SPATIAL_MAGIC[i]) {
@@ -490,8 +528,13 @@ object PoiIndex {
     /** Map `poi_name_index.bin` and its entry count, or null when unusable. */
     private fun openNameIndex(file: File, count: Int): Pair<MappedByteBuffer, Int>? {
         if (!file.isFile) return null
+        return nameIndexFromBuffer(mapReadOnly(file), count)
+    }
+
+    /** Buffer core of [openNameIndex], reused by the single-archive path. */
+    internal fun nameIndexFromBuffer(buf: MappedByteBuffer, count: Int): Pair<MappedByteBuffer, Int>? {
+        buf.order(ByteOrder.LITTLE_ENDIAN)
         return try {
-            val buf = mapReadOnly(file).also { it.order(ByteOrder.LITTLE_ENDIAN) }
             if (buf.capacity() < NAME_INDEX_HEADER_BYTES) return null
             for (i in NAME_INDEX_MAGIC.indices) {
                 if (buf.get(i) != NAME_INDEX_MAGIC[i]) {
@@ -525,7 +568,7 @@ object PoiIndex {
         }
     }
 
-    private fun mapReadOnly(file: File): MappedByteBuffer =
+    internal fun mapReadOnly(file: File): MappedByteBuffer =
         RandomAccessFile(file, "r").use { raf ->
             raf.channel.use { ch ->
                 // Demo side files fit in a single mapping; cap defensively at 2GB.

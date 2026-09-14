@@ -3,6 +3,7 @@
 //! Pure move out of `bridge.rs`; no logic changes.
 use crate::style::{self, LayerToggles, Palette, SharedToggles};
 use crate::tile::select::TileId;
+use crate::tile::source::BASEMAP_ARCHIVE_URL;
 use crate::vulkan::context::{ANativeWindow_acquire, ANativeWindow_fromSurface};
 use crate::vulkan::renderer::Renderer;
 use jni::objects::{JClass, JObject, JString};
@@ -11,7 +12,7 @@ use jni::JNIEnv;
 use std::collections::{HashMap, HashSet};
 use std::os::raw::c_void;
 use std::sync::{Arc, Mutex};
-use super::handle::{handle_mut, MapHandle, OnlineFlag, ZoomRange, WORKER_COUNT};
+use super::handle::{handle_mut, MapHandle, OnlineFlag, TileResult, ZoomRange, WORKER_COUNT};
 use super::log::log;
 use super::workers::{ArchiveSource, normalize_local_archive_path, spawn_file_worker, spawn_worker};
 /// Create the renderer for `surface`. Returns 0 on failure, having logged why.

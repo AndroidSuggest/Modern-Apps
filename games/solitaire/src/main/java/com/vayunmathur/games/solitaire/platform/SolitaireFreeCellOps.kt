@@ -1,6 +1,12 @@
 package com.vayunmathur.games.solitaire.platform
 
 import com.vayunmathur.games.solitaire.data.Card
+import com.vayunmathur.games.solitaire.data.FreeCellState
+import com.vayunmathur.games.solitaire.data.GameMode
+import com.vayunmathur.games.solitaire.data.SolitaireUiState
+import com.vayunmathur.games.solitaire.data.alternatesColorWith
+import com.vayunmathur.games.solitaire.data.createShuffledDeck
+import com.vayunmathur.games.solitaire.data.isOneHigherThan
 import kotlinx.coroutines.flow.update
 
 // ---- FreeCell ----

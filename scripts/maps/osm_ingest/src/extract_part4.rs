@@ -1,3 +1,15 @@
+#[cfg(test)]
+mod tests_part4 {
+    use super::*;
+
+    #[test]
+    fn args_need_a_layer_and_an_out() {
+        let ok = parse_args(&[
+            "in.pbf".into(),
+            "--layer".into(),
+            "safety".into(),
+            "--out".into(),
+            "s.geojsonseq".into(),
             "--bbox".into(),
             "-122.6,37.2,-121.7,37.9".into(),
         ])

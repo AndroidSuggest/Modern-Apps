@@ -1,5 +1,6 @@
+
 #[cfg(test)]
-mod blind_reaudit_r5_tests {
+mod blind_reaudit_r5_tests_2 {
     use crate::*;
     use lopdf::content::Operation;
     use lopdf::{dictionary, Stream};
@@ -23,336 +24,6 @@ mod blind_reaudit_r5_tests {
                 _ => None,
             })
             .expect("a fill must be emitted")
-    }
-
-    /// §8.5.2.1 Table 59, `h`: "This operator shall terminate the current subpath.
-    /// Appending another segment to the current path shall begin a new subpath, even
-    /// if the new segment begins at the endpoint reached by the h operation." `re` is
-    /// defined in the same table as `x y m … l h`, so it closes too.
-    ///
-    /// Appending to the already-closed contour instead merges the two shapes into one
-    /// polygon: the closing edge disappears from the fill and the merged region winds
-    /// differently, so a `h`-then-`l` path fills as a single blob. The two internal
-    /// representations of the same path also disagreed — `clip_path_ops` records a
-    /// `Close`, and a `lineTo` after a `close` starts a fresh contour, so `W f` clipped
-    /// to two contours while filling one.
-    #[test]
-    fn a_segment_after_a_close_begins_a_new_subpath() {
-        // `h` form.
-        let prims = run(&[
-            op("m", vec![0.into(), 0.into()]),
-            op("l", vec![10.into(), 0.into()]),
-            op("l", vec![0.into(), 10.into()]),
-            op("h", vec![]),
-            op("l", vec![20.into(), 20.into()]),
-            op("l", vec![30.into(), 20.into()]),
-            op("l", vec![20.into(), 30.into()]),
-            op("f", vec![]),
-        ]);
-        let c = contours(&prims);
-        assert_eq!(c.len(), 2, "`h` must terminate the subpath, got {c:?}");
-        assert_eq!(c[0].len(), 4, "the closed triangle keeps its closing point");
-        assert_eq!(
-            c[1][0],
-            (0.0, 0.0),
-            "the new subpath starts at the closepoint, not at the first operand"
-        );
-
-        // `re` form: the implicit `h` closes just the same.
-        let prims = run(&[
-            op("re", vec![0.into(), 0.into(), 100.into(), 100.into()]),
-            op("l", vec![200.into(), 200.into()]),
-            op("l", vec![250.into(), 200.into()]),
-            op("l", vec![250.into(), 250.into()]),
-            op("f", vec![]),
-        ]);
-        let c = contours(&prims);
-        assert_eq!(c.len(), 2, "`re` closes its subpath, got {c:?}");
-        assert_eq!(c[0].len(), 5, "the rectangle must not absorb the later segments");
-
-        // A curve after the close is the same rule (§8.5.2.1 covers every segment
-        // operator, not just `l`).
-        let prims = run(&[
-            op("re", vec![0.into(), 0.into(), 10.into(), 10.into()]),
-            op("c", vec![5.into(), 20.into(), 15.into(), 20.into(), 20.into(), 0.into()]),
-            op("f", vec![]),
-        ]);
-        assert_eq!(contours(&prims).len(), 2, "`c` after a close starts a new subpath");
-
-        // And the two representations of the same path must now agree: one `Move`
-        // per contour.
-        let prims = run(&[
-            op("m", vec![0.into(), 0.into()]),
-            op("l", vec![10.into(), 0.into()]),
-            op("l", vec![0.into(), 10.into()]),
-            op("h", vec![]),
-            op("l", vec![20.into(), 20.into()]),
-            op("l", vec![30.into(), 20.into()]),
-            op("l", vec![20.into(), 30.into()]),
-            op("W", vec![]),
-            op("f", vec![]),
-        ]);
-        let moves = prims
-            .iter()
-            .find_map(|p| match p {
-                Prim::ClipPush { path_ops: Some(po), .. } => Some(
-                    po.iter().filter(|o| matches!(o, PathOp::Move(..))).count(),
-                ),
-                _ => None,
-            })
-            .expect("the clip must be emitted");
-        assert_eq!(moves, contours(&prims).len(), "clip and fill describe different paths");
-    }
-
-    /// What the page LOOKS LIKE at [`MAX_SUBPATHS`]. `m` used to drop the subpath at
-    /// the cap while still moving the current point, so every following `l` was
-    /// appended to the LAST subpath that did fit — drawing a stray line from it out to
-    /// each dropped point and back. One overrun therefore corrupted a contour that had
-    /// already been built correctly, which is worse than losing the tail. Truncation
-    /// must be clean.
-    #[test]
-    fn overrunning_the_subpath_cap_truncates_cleanly_instead_of_joining_up() {
-        let mut ops = Vec::new();
-        for i in 0..(MAX_SUBPATHS + 5) {
-            let x = (i % 500) as i64;
-            let y = (i / 500) as i64;
-            ops.push(op("m", vec![x.into(), y.into()]));
-            ops.push(op("l", vec![(x + 1).into(), y.into()]));
-        }
-        ops.push(op("S", vec![]));
-        let prims = run(&ops);
-        let strokes: Vec<&Vec<(f32, f32)>> = prims
-            .iter()
-            .filter_map(|p| match p {
-                Prim::Stroke { pts, .. } => Some(pts),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(strokes.len(), MAX_SUBPATHS, "the cap must bound the subpath count");
-        for (i, pts) in strokes.iter().enumerate() {
-            assert_eq!(
-                pts.len(),
-                2,
-                "subpath {i} picked up {} points: segments past the cap were appended \
-                 to it, drawing a stray line across the page",
-                pts.len()
-            );
-        }
-    }
-
-    /// §8.11.3.3 makes an OFF optional-content group's content UNDRAWN. `W`/`W*` are
-    /// clipping-path operators (§8.5.4) and `n` is the no-op path-painting operator
-    /// (§8.5.3 Table 60), so `W n` marks nothing at all — it sets the clipping path,
-    /// which §8.4.1 Table 52 lists as a graphics-state parameter. Suppressing it is
-    /// suppressing a state change, not suppressing drawing, and the clip survives the
-    /// `EMC` to bound the VISIBLE content after it. Dropping it painted that content
-    /// unclipped, i.e. ink outside the box the file drew for it.
-    ///
-    /// Consistency argument as much as a spec one: `q`, `Q`, `cm`, `gs` and the colour
-    /// operators inside the same hidden run were never suppressed here.
-    #[test]
-    fn a_clip_set_inside_a_hidden_oc_section_still_applies_afterwards() {
-        let mut doc = Document::with_version("1.7");
-        let ocg = doc.add_object(dictionary! {
-            "Type" => "OCG", "Name" => Object::string_literal("off"),
-        });
-        let catalog = doc.add_object(dictionary! {
-            "Type" => "Catalog",
-            "OCProperties" => dictionary! {
-                "OCGs" => vec![Object::Reference(ocg)],
-                "D" => dictionary! { "OFF" => vec![Object::Reference(ocg)] },
-            },
-        });
-        doc.trailer.set("Root", Object::Reference(catalog));
-        let res = dictionary! {
-            "Properties" => dictionary! { "P1" => Object::Reference(ocg) },
-        };
-        let ops = vec![
-            op("BDC", vec![Object::Name(b"OC".to_vec()), Object::Name(b"P1".to_vec())]),
-            op("re", vec![0.into(), 0.into(), 50.into(), 50.into()]),
-            op("W", vec![]),
-            op("n", vec![]),
-            op("EMC", vec![]),
-            // Visible, and much larger than the clip the hidden run established.
-            op("re", vec![0.into(), 0.into(), 200.into(), 200.into()]),
-            op("f", vec![]),
-        ];
-        let mut prims = Vec::new();
-        interpret_content(&doc, &ops, Some(&res), GraphicsState::default(), &mut prims, 0, false);
-
-        let clip = prims
-            .iter()
-            .position(|p| matches!(p, Prim::ClipPush { .. }))
-            .expect("`W n` in a hidden section still sets the clipping path");
-        let fill = prims
-            .iter()
-            .position(|p| matches!(p, Prim::Fill { .. }))
-            .expect("the visible fill must still paint");
-        assert!(clip < fill, "the clip must be in force for the content after EMC");
-
-        // The hidden run must still not PAINT: no fill from inside the BDC/EMC.
-        assert_eq!(
-            prims.iter().filter(|p| matches!(p, Prim::Fill { .. })).count(),
-            1,
-            "only the visible fill may paint"
-        );
-
-        // Balanced, as `Q`/end-of-stream accounting depends on.
-        let mut d = 0i32;
-        for p in &prims {
-            match p {
-                Prim::ClipPush { .. } | Prim::TextClipApply => d += 1,
-                Prim::ClipPop => d -= 1,
-                _ => {}
-            }
-            assert!(d >= 0, "clip stack underflowed");
-        }
-        assert_eq!(d, 0, "{d} clip level(s) left open");
-    }
-
-    /// `text_only` is `search::build_index`, which reads only `Prim::Text` and throws
-    /// the rest away. Every path, image and shading site gates soft-mask expansion on
-    /// it; the four text-showing operators did not, so a `Tj` under an ExtGState
-    /// `/SMask` re-interpreted the whole mask group — rasterizing any shading in it —
-    /// and spent the shared [`MAX_PRIMITIVES`] budget that `show_string`'s own Text
-    /// records are gated on. A mask-heavy document therefore indexed less of its text
-    /// the deeper into the page it got.
-    #[test]
-    fn building_the_text_index_does_not_expand_soft_mask_groups() {
-        let mut doc = Document::with_version("1.7");
-        let mask_group = doc.add_object(Stream::new(
-            dictionary! {
-                "Type" => "XObject", "Subtype" => "Form",
-                "Group" => dictionary! { "S" => "Transparency", "CS" => "DeviceGray" },
-                "BBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
-            },
-            b"1 g 0 0 100 100 re f".to_vec(),
-        ));
-        let egs = doc.add_object(dictionary! {
-            "SMask" => dictionary! {
-                "S" => "Luminosity",
-                "G" => Object::Reference(mask_group),
-            },
-        });
-        let font = doc.add_object(dictionary! {
-            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica",
-            "FirstChar" => 65, "LastChar" => 66,
-            "Widths" => vec![1000.into(), 1000.into()],
-        });
-        let res = dictionary! {
-            "ExtGState" => dictionary! { "GS1" => Object::Reference(egs) },
-            "Font" => dictionary! { "F1" => Object::Reference(font) },
-        };
-        let ops = vec![
-            op("gs", vec![Object::Name(b"GS1".to_vec())]),
-            op("BT", vec![]),
-            op("Tf", vec![Object::Name(b"F1".to_vec()), 12.into()]),
-            op("Tj", vec![Object::string_literal("AB")]),
-            op("ET", vec![]),
-        ];
-
-        let go = |text_only: bool| -> Vec<Prim> {
-            let mut prims = Vec::new();
-            interpret_content(&doc, &ops, Some(&res), GraphicsState::default(), &mut prims, 0, text_only);
-            prims
-        };
-
-        let indexed = go(true);
-        assert!(
-            indexed.iter().any(|p| matches!(p, Prim::Text { .. })),
-            "the run must still reach the search index"
-        );
-        assert!(
-            !indexed.iter().any(|p| matches!(p, Prim::SoftMaskPush { .. })),
-            "the index path must not expand the mask group"
-        );
-
-        // The render path must be unchanged: the mask still brackets the glyphs.
-        let rendered = go(false);
-        assert!(
-            rendered.iter().any(|p| matches!(p, Prim::SoftMaskPush { .. })),
-            "the render path must still apply the soft mask to text"
-        );
-    }
-
-    /// A soft-mask bracket whose mask group could not be expanded must be UNWOUND,
-    /// not shipped empty.
-    ///
-    /// §11.6.5.2 makes the mask value 0 everywhere the group does not paint, and the
-    /// renderer composites the mask layer with `DST_IN`, so `SoftMaskPush` …
-    /// `SoftMaskContent` `SoftMaskPop` with nothing between the separator and the pop
-    /// erases every primitive inside the bracket. `wrap_with_soft_mask` opened the
-    /// bracket whenever `depth < MAX_GROUP_DEPTH` (10) while `render_soft_mask_group`
-    /// refused to fill it at `MAX_PATTERN_RECURSION` (4) — and refused outright for a
-    /// `/G` that is missing or not a stream. Both turned "cannot mask this" into
-    /// "delete this", invisibly and in the content-disappears direction. Unmasked is
-    /// the §11.6.5.1 no-mask default and the right degradation.
-    #[test]
-    fn a_soft_mask_that_cannot_be_expanded_paints_unmasked_rather_than_erasing() {
-        let mut doc = Document::with_version("1.7");
-        let group = doc.add_object(Stream::new(
-            dictionary! {
-                "Type" => "XObject", "Subtype" => "Form",
-                "Group" => dictionary! { "S" => "Transparency", "CS" => "DeviceGray" },
-                "BBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
-            },
-            b"1 g 0 0 100 100 re f".to_vec(),
-        ));
-        let fill_under = |mask: SoftMask, depth: u32| -> Vec<Prim> {
-            let mut prims = vec![Prim::Fill {
-                argb: 0xFF00_0000,
-                even_odd: false,
-                contours: vec![vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]],
-                blend: BlendMode::Normal,
-            }];
-            let mut bracket = None;
-            wrap_with_soft_mask(&mut prims, 0, &doc, None, &mask, depth, &mut bracket, None);
-            prims
-        };
-        let good = SoftMask {
-            group_id: group,
-            mask_type: 1,
-            ctm: IDENTITY,
-            backdrop: None,
-            tr: None,
-        };
-
-        // Below the expansion cap: a real bracket with real mask content.
-        let ok = fill_under(good.clone(), 0);
-        assert!(matches!(ok.first(), Some(Prim::SoftMaskPush { .. })), "expected a bracket");
-        let sep = ok
-            .iter()
-            .position(|p| matches!(p, Prim::SoftMaskContent))
-            .expect("separator");
-        assert!(
-            ok[sep + 1..].iter().any(|p| matches!(p, Prim::Fill { .. })),
-            "the mask group must contribute mask content"
-        );
-
-        // At the expansion cap the bracket must be gone, and the fill must survive.
-        let capped = fill_under(good.clone(), MAX_PATTERN_RECURSION);
-        assert!(
-            !capped.iter().any(|p| matches!(p, Prim::SoftMaskPush { .. })),
-            "an unfillable bracket erases the content it was supposed to mask"
-        );
-        assert_eq!(
-            capped.iter().filter(|p| matches!(p, Prim::Fill { .. })).count(),
-            1,
-            "the masked content must still be painted, unmasked"
-        );
-
-        // Same for a dangling /G, which is the malformed-file route to the same
-        // erasure. A `/TR` makes the unwind remove two inserted prims, not one.
-        let dangling = SoftMask {
-            group_id: (9999, 0),
-            mask_type: 1,
-            ctm: IDENTITY,
-            backdrop: None,
-            tr: Some([7u8; 256]),
-        };
-        let broken = fill_under(dangling, 0);
-        assert_eq!(broken.len(), 1, "the bracket must be unwound completely");
-        assert!(matches!(broken[0], Prim::Fill { .. }));
     }
 
     /// §8.11.3.3 bars DRAWING inside an OFF optional-content group, not state
@@ -448,3 +119,302 @@ mod blind_reaudit_r5_tests {
                 "FunctionType" => 2,
                 "Domain" => vec![0.into(), 1.into()],
                 "C0" => vec![0.0.into(), 0.0.into(), 1.0.into()],
+                "C1" => vec![0.0.into(), 0.0.into(), 1.0.into()],
+                "N" => 1,
+            });
+            let sep = doc.add_object(Object::Array(vec![
+                Object::Name(b"Separation".to_vec()),
+                Object::Name(b"Spot".to_vec()),
+                Object::Name(b"DeviceRGB".to_vec()),
+                Object::Reference(tint),
+            ]));
+            let func = doc.add_object(dictionary! {
+                "FunctionType" => 2,
+                "Domain" => vec![0.into(), 1.into()],
+                "C0" => vec![1.0.into()],
+                "C1" => vec![1.0.into()],
+                "N" => 1,
+            });
+            let shading = doc.add_object(dictionary! {
+                "ShadingType" => 2,
+                // The whole point: a NAME, resolvable only through /Resources.
+                "ColorSpace" => if cs_named {
+                    Object::Name(b"CS0".to_vec())
+                } else {
+                    Object::Reference(sep)
+                },
+                "Coords" => vec![0.into(), 0.into(), 100.into(), 0.into()],
+                "Extend" => vec![true.into(), true.into()],
+                "Function" => Object::Reference(func),
+            });
+            let pat = doc.add_object(dictionary! {
+                "Type" => "Pattern",
+                "PatternType" => 2,
+                "Shading" => Object::Reference(shading),
+            });
+            let res = dictionary! {
+                "Pattern" => dictionary! { "P0" => Object::Reference(pat) },
+                "ColorSpace" => dictionary! { "CS0" => Object::Reference(sep) },
+            };
+            let ops = vec![
+                op("cs", vec![Object::Name(b"Pattern".to_vec())]),
+                op("scn", vec![Object::Name(b"P0".to_vec())]),
+                op("re", vec![0.into(), 0.into(), 100.into(), 100.into()]),
+                op("f", vec![]),
+            ];
+            let mut prims = Vec::new();
+            interpret_content_seeded(
+                &doc, &ops, Some(&res), GraphicsState::default(), &mut prims, 0, false,
+                Some([0.0, 0.0, 100.0, 100.0]),
+            );
+            prims
+        };
+
+        // The reference: the same space written inline, which never needed the map.
+        let inline = build(false);
+        let named = build(true);
+        let opaque_px = |prims: &[Prim]| -> Vec<[u8; 4]> {
+            prims
+                .iter()
+                .filter_map(|p| match p {
+                    Prim::Image { data, .. } => Some(data),
+                    _ => None,
+                })
+                .flat_map(|d| d.chunks(4))
+                .filter(|px| px[3] > 128)
+                .map(|px| [px[0], px[1], px[2], px[3]])
+                .collect()
+        };
+        let want = opaque_px(&inline);
+        let got = opaque_px(&named);
+        assert!(!want.is_empty(), "precondition: the inline-space pattern must rasterize");
+        assert_eq!(
+            got.len(),
+            want.len(),
+            "the named-space pattern rasterized a different number of pixels"
+        );
+        assert_eq!(
+            got.first(),
+            want.first(),
+            "a named /Separation in a shading PATTERN resolved to something other \
+             than the inline form — the /Resources /ColorSpace map is not reaching \
+             rasterize_shading_as_pattern, so it fell back to DeviceRGB"
+        );
+    }
+
+    /// §7.3.3 bounds a real to the implementation limit, and lopdf's `Object::Real`
+    /// is an `f32`, so a long enough literal parses to INFINITY. Matrices, rects and
+    /// path operands were all guarded; the SCALAR operands were not, and they feed
+    /// the text state directly.
+    ///
+    /// NaN is the half that matters and it needs no malformed syntax: an infinite
+    /// `Tfs` times the zero scale of a perfectly legal `0 0 0 0 0 0 cm` is
+    /// `inf * 0` = NaN. NaN is not a wrong number, it is an invisible one — every
+    /// comparison against it is false, so it survives `f64::clamp` here and
+    /// `coerceIn` on the Kotlin side, and the first thing that notices is the
+    /// rasterizer, which drops the geometry silently. Reported by `r5-text` and
+    /// `r5-kotlin` from a non-finite `Prim::Text.h_scale`.
+    #[test]
+    fn non_finite_scalar_operands_never_reach_the_graphics_state() {
+        let doc = Document::with_version("1.7");
+        let font = {
+            let mut d = Document::with_version("1.7");
+            let f = d.add_object(dictionary! {
+                "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica",
+                "FirstChar" => 65, "LastChar" => 66,
+                "Widths" => vec![1000.into(), 1000.into()],
+            });
+            (d, f)
+        };
+        let inf = Object::Real(f32::INFINITY);
+        let nan = Object::Real(f32::NAN);
+
+        // Stroke parameters: width, miter, dash and phase all ride on Prim::Stroke.
+        for bad in [inf.clone(), nan.clone()] {
+            let ops = vec![
+                op("w", vec![bad.clone()]),
+                op("M", vec![bad.clone()]),
+                op("d", vec![Object::Array(vec![bad.clone(), 2.into()]), bad.clone()]),
+                op("m", vec![0.into(), 0.into()]),
+                op("l", vec![10.into(), 10.into()]),
+                op("S", vec![]),
+            ];
+            let mut prims = Vec::new();
+            interpret_content(&doc, &ops, None, GraphicsState::default(), &mut prims, 0, false);
+            for p in &prims {
+                if let Prim::Stroke { width, dash, dash_phase, miter, .. } = p {
+                    assert!(width.is_finite(), "stroke width {width} reached the wire");
+                    assert!(miter.is_finite(), "miter {miter} reached the wire");
+                    assert!(dash_phase.is_finite(), "dash phase {dash_phase} reached the wire");
+                    assert!(dash.iter().all(|d| d.is_finite()), "non-finite dash segment");
+                }
+            }
+        }
+
+        // Text state. `0 0 0 0 0 0 cm` is the inf -> NaN multiplier, and it is a
+        // legal operator, so this is the whole route with no malformed syntax.
+        let (doc, fid) = font;
+        let res = dictionary! { "Font" => dictionary! { "F1" => Object::Reference(fid) } };
+        for bad in [inf.clone(), nan.clone()] {
+            for setter in [
+                op("Tf", vec![Object::Name(b"F1".to_vec()), bad.clone()]),
+                op("Tz", vec![bad.clone()]),
+                op("Tc", vec![bad.clone()]),
+                op("Tw", vec![bad.clone()]),
+                op("Ts", vec![bad.clone()]),
+                op("TL", vec![bad.clone()]),
+            ] {
+                let ops = vec![
+                    op("cm", vec![0.into(), 0.into(), 0.into(), 0.into(), 0.into(), 0.into()]),
+                    op("BT", vec![]),
+                    op("Tf", vec![Object::Name(b"F1".to_vec()), 12.into()]),
+                    setter.clone(),
+                    op("Td", vec![bad.clone(), bad.clone()]),
+                    op("TJ", vec![Object::Array(vec![
+                        Object::string_literal("A"),
+                        bad.clone(),
+                        Object::string_literal("B"),
+                    ])]),
+                    op("T*", vec![]),
+                    op("Tj", vec![Object::string_literal("AB")]),
+                    op("ET", vec![]),
+                ];
+                let mut prims = Vec::new();
+                interpret_content(&doc, &ops, Some(&res), GraphicsState::default(), &mut prims, 0, false);
+                for p in &prims {
+                    if let Prim::Text { x, y, size, advance, h_scale, .. } = p {
+                        for (name, v) in [
+                            ("x", *x), ("y", *y), ("size", *size),
+                            ("advance", *advance), ("h_scale", *h_scale),
+                        ] {
+                            assert!(
+                                v.is_finite(),
+                                "{} left Prim::Text.{name} = {v}",
+                                setter.operator
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // The guard must reject the operand, not the operator: finite values still
+        // take effect.
+        let ops = vec![
+            op("BT", vec![]),
+            op("Tf", vec![Object::Name(b"F1".to_vec()), 12.into()]),
+            op("Tz", vec![200.into()]),
+            op("Tj", vec![Object::string_literal("AB")]),
+            op("ET", vec![]),
+        ];
+        let mut prims = Vec::new();
+        interpret_content(&doc, &ops, Some(&res), GraphicsState::default(), &mut prims, 0, false);
+        let hs = prims.iter().find_map(|p| match p {
+            Prim::Text { h_scale, .. } => Some(*h_scale),
+            _ => None,
+        });
+        assert_eq!(hs, Some(2.0), "a finite Tz must still be applied");
+    }
+
+    /// q/Q must round-trip the COMPLETE graphics state. It does so structurally —
+    /// `q` clones the whole struct and `Q` assigns it back — but that is only worth
+    /// relying on if nothing is copied field-by-field, so this exercises one operator
+    /// per §8.4.1 Table 52 parameter the interpreter models and checks the emitted
+    /// primitive is back to the default afterwards. A field added to the struct and
+    /// forgotten in a hand-written save reads perfectly fine and leaks permanently.
+    #[test]
+    fn q_and_q_round_trip_every_modelled_state_parameter() {
+        let mut doc = Document::with_version("1.7");
+        let egs = doc.add_object(dictionary! {
+            "ca" => 0.25, "CA" => 0.25, "BM" => "Multiply",
+        });
+        let res = dictionary! {
+            "ExtGState" => dictionary! { "GS1" => Object::Reference(egs) },
+        };
+        let stroke_of = |prims: &[Prim]| -> (u32, f32, usize, u8, u8, f32, BlendMode) {
+            prims
+                .iter()
+                .rev()
+                .find_map(|p| match p {
+                    Prim::Stroke { argb, width, dash, cap, join, miter, blend, .. } => {
+                        Some((*argb, *width, dash.len(), *cap, *join, *miter, *blend))
+                    }
+                    _ => None,
+                })
+                .expect("a stroke must be emitted")
+        };
+
+        let line = vec![
+            op("m", vec![0.into(), 0.into()]),
+            op("l", vec![50.into(), 50.into()]),
+            op("S", vec![]),
+        ];
+        let mut baseline_ops = Vec::new();
+        baseline_ops.extend(line.iter().cloned());
+        let mut prims = Vec::new();
+        interpret_content(&doc, &baseline_ops, Some(&res), GraphicsState::default(), &mut prims, 0, false);
+        let expected = stroke_of(&prims);
+
+        // Change every stroke-visible parameter inside a q/Q, then repeat the
+        // identical line outside it.
+        let mut ops = vec![op("q", vec![])];
+        ops.extend([
+            op("cm", vec![3.into(), 0.into(), 0.into(), 3.into(), 7.into(), 7.into()]),
+            op("w", vec![9.into()]),
+            op("J", vec![2.into()]),
+            op("j", vec![2.into()]),
+            op("M", vec![2.into()]),
+            op("d", vec![Object::Array(vec![4.into(), 4.into()]), 1.into()]),
+            op("RG", vec![1.into(), 0.into(), 0.into()]),
+            op("gs", vec![Object::Name(b"GS1".to_vec())]),
+        ]);
+        ops.extend(line.iter().cloned());
+        ops.push(op("Q", vec![]));
+        ops.extend(line.iter().cloned());
+        let mut prims = Vec::new();
+        interpret_content(&doc, &ops, Some(&res), GraphicsState::default(), &mut prims, 0, false);
+        assert_eq!(
+            stroke_of(&prims),
+            expected,
+            "a graphics-state parameter leaked past its `Q`"
+        );
+
+        // An unbalanced `Q` must be ignored, not underflow (§8.4.2), and must not
+        // resurrect the pre-`q` state from an earlier bracket.
+        let mut ops = vec![op("Q", vec![]), op("Q", vec![])];
+        ops.extend(line.iter().cloned());
+        let mut prims = Vec::new();
+        interpret_content(&doc, &ops, Some(&res), GraphicsState::default(), &mut prims, 0, false);
+        assert_eq!(stroke_of(&prims), expected, "an unmatched `Q` disturbed the state");
+    }
+}
+
+#[cfg(test)]
+mod stroke_pattern_tests {
+    use super::stroke_outline_quads;
+
+    // A single horizontal segment yields one segment quad plus two vertex
+    // squares, all offset by the half width.
+    #[test]
+    fn horizontal_segment_quad_offsets_by_half_width() {
+        let sp = vec![vec![(0.0, 0.0), (10.0, 0.0)]];
+        let quads = stroke_outline_quads(&sp, 2.0);
+        // 1 segment quad + 2 vertex squares.
+        assert_eq!(quads.len(), 3);
+        let seg = &quads[0];
+        assert_eq!(seg.len(), 4);
+        // Normal to a horizontal segment is vertical: y offset = +/-hw.
+        assert!(seg.iter().any(|&(_, y)| (y - 2.0).abs() < 1e-9));
+        assert!(seg.iter().any(|&(_, y)| (y + 2.0).abs() < 1e-9));
+    }
+
+    // Zero-length segments are skipped (no NaN normals), but the vertex square
+    // still covers the point.
+    #[test]
+    fn degenerate_segment_is_skipped() {
+        let sp = vec![vec![(5.0, 5.0), (5.0, 5.0)]];
+        let quads = stroke_outline_quads(&sp, 1.0);
+        // No segment quad, just the two coincident vertex squares.
+        assert_eq!(quads.len(), 2);
+    }
+}

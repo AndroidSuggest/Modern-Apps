@@ -1,38 +1,4 @@
-        let points: Vec<Pt> = grid
-            .iter()
-            .map(|&n| (n as f64 * 1e-7, -n as f64 * 1e-7))
-            .collect();
-        let feature = NormalizedFeature {
-            geometry: Geometry::Points(points.clone()),
-            props: every_value(),
-        };
 
-        let mut w = NormalizedWriter::create(&path).unwrap();
-        w.push(&feature.geometry, &feature.props).unwrap();
-        w.finish().unwrap();
-
-        let back = NormalizedReader::open(&path)
-            .unwrap()
-            .next()
-            .unwrap()
-            .expect("a feature");
-        assert_eq!(back, feature, "an e7-grid coordinate must not move at all");
-
-        // Eight bytes a vertex, not sixteen. The whole point of the encoding.
-        let bytes = std::fs::metadata(&path).unwrap().len() as usize;
-        let props = {
-            let mut buf = Vec::new();
-            encode_props(&feature.props, &mut buf).unwrap();
-            buf.len()
-        };
-        assert_eq!(
-            bytes,
-            NORM_HEADER_BYTES + 4 + points.len() * 8 + props,
-            "a vertex must cost eight bytes"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 
     #[test]
     fn the_normalized_file_round_trips_and_folds_its_summary() {
@@ -281,4 +247,3 @@
         assert!(!path.exists(), "the guard must remove it");
         let _ = std::fs::remove_dir_all(&dir);
     }
-}

@@ -448,3 +448,9 @@ pub(crate) mod tests {
         assert_eq!(
             plan.ops.iter().filter(|op| matches!(op, Op::Dispatch { kind: Kind::Add, .. })).count(),
             1,
+            "the self-add must survive: {:?}",
+            plan.ops
+        );
+    }
+
+}

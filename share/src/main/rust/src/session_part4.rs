@@ -1,22 +1,6 @@
-        assert_eq!(sender.write_chunk(&a), 0);
-        sender.close_file();
-        assert_eq!(
-            sender.state,
-            State::Transferring,
-            "one of two announced payloads is not a completed send",
-        );
-
-        assert_eq!(sender.open_file("b.bin", b.len() as i64), 0);
-        assert_eq!(sender.write_chunk(&b), 0);
-        sender.close_file();
-        assert_eq!(sender.state, State::Completed);
-
-        // A peer hanging up on a completed send is normal, not a failure: a terminal session
-        // reads nothing more, so the DISCONNECTION handler cannot fire.
-        assert_eq!(sender.feed_inbound(&frame::frame_with_length(b"anything at all")), 0);
-        assert_eq!(sender.state, State::Completed);
-        assert_eq!(sender.failure_reason(), None);
-    }
+#[cfg(test)]
+mod tests2 {
+    use super::*;
 
     #[test]
     fn a_truncated_send_does_not_complete() {

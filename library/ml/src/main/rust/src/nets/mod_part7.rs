@@ -1,3 +1,4 @@
+impl<'a> Builder<'a> {
     /// [`Builder::attn_apply`] plus the value-side relative term.
     pub fn attn_apply_relative(
         &mut self,
@@ -448,3 +449,4 @@
         self.nodes.remove(i);
         true
     }
+}

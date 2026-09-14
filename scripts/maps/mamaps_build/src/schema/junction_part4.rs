@@ -1,3 +1,10 @@
+#[cfg(test)]
+mod tests2 {
+    use super::*;
+    use super::tests::{crossroads, stream};
+    use crate::schema::traffic_extra::tests::{write_graph, EdgeSpec, GraphFixture};
+
+    /// A movement several approach lanes share stays several ribbons wide, which is the whole
     /// reason [`exit_lane`] takes a rank at all: without it a dual left turn puts both its lanes on
     /// the exit's leftmost and draws one connector twice on top of itself.
     ///

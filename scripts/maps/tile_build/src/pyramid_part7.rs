@@ -1,8 +1,3 @@
-        let a = Archive::parse(&bytes).unwrap();
-        assert_eq!(a.header.addressed_tiles, 0);
-        assert_eq!(a.header.min_lat_e7, -850_511_290, "Builder's default, not StreamBuilder's");
-        assert_eq!(a.header.max_lat_e7, 850_511_290);
-    }
 
     #[test]
     fn two_streaming_runs_are_byte_identical() {
@@ -206,4 +201,3 @@
             "the file-backed source must produce the same bytes"
         );
     }
-}

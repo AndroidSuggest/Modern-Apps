@@ -3,7 +3,7 @@ mod tests {
     use super::*;
     use tilecodec::mamaps::body::{GEOM_LINE, GEOM_POLYGON, WINDING_HOLE, WINDING_OUTER};
 
-    fn tmp(name: &str) -> PathBuf {
+    pub(super) fn tmp(name: &str) -> PathBuf {
         use std::sync::atomic::AtomicU64;
         static NEXT: AtomicU64 = AtomicU64::new(0);
         std::env::temp_dir().join(format!(
@@ -13,7 +13,7 @@ mod tests {
         ))
     }
 
-    fn feature(kind: u16, detail: u16, geom: u8, flags: u8, at: u32, n: u32) -> BodyFeature {
+    pub(super) fn feature(kind: u16, detail: u16, geom: u8, flags: u8, at: u32, n: u32) -> BodyFeature {
         BodyFeature {
             kind,
             kind_detail: detail,
@@ -68,7 +68,7 @@ mod tests {
     /// Every shape an entry can take, including the empty ones that a naive length check would let
     /// through and a naive decode would trip on — plus a named entry, because names are the one
     /// variable-length arena in the spill.
-    fn every_layer() -> Vec<((u64, u8), ChunkEntry)> {
+    pub(super) fn every_layer() -> Vec<((u64, u8), ChunkEntry)> {
         let plain = |layer_id: u8, features: Vec<BodyFeature>| ChunkEntry {
             layer: BodyLayer { layer_id, features, parts: Vec::new(), coords: Vec::new() },
             names: Vec::new(),
@@ -189,7 +189,7 @@ mod tests {
         ]
     }
 
-    fn drain(spill: &ChunkSpill, at: &ChunkRef, window: usize) -> Vec<((u64, u8), ChunkEntry)> {
+    pub(super) fn drain(spill: &ChunkSpill, at: &ChunkRef, window: usize) -> Vec<((u64, u8), ChunkEntry)> {
         let mut reader = spill.reader(at, window);
         let mut out = Vec::new();
         while let Some(entry) = reader.next().expect("read an entry back") {
@@ -437,14 +437,4 @@ mod tests {
         head[16..20].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(entry_header(&head).is_err(), "a gigabyte-plus entry decoded");
     }
-
-    /// Byte-identity, at the level the format can state it: what a reader yields does not depend on
-    /// how much it buffers. This is what pins "the window size is not observable".
-    #[test]
-    fn a_chunk_reads_the_same_however_the_window_is_sized() {
-        let spill = ChunkSpill::create(tmp("windows")).expect("create");
-        let mut map: BTreeMap<(u64, u8), ChunkEntry> = every_layer().into_iter().collect();
-        // One entry far larger than the smallest window, so at least one read has to be the
-        // oversize path rather than the buffered one.
-        let mut big = ChunkEntry::new(4);
-        big.layer.features = vec![feature(1, 1, GEOM_LINE, 0, 0, 1)];
+}

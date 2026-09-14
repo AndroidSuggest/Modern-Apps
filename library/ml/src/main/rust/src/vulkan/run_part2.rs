@@ -1,3 +1,121 @@
+impl Net {
+
+    /// Record the whole plan: input copy, every op with a barrier between, output copy.
+    fn record(&self) -> Result<(), String> {
+        let device = &self.context.device;
+        let buffer = self.command_buffer;
+        // SAFETY: `buffer` is a primary command buffer from this device's pool, not
+        // currently pending, and every handle referenced below outlives it (they are all
+        // fields of `self`, dropped after it in `Drop`).
+        unsafe {
+            device
+                .begin_command_buffer(buffer, &vk::CommandBufferBeginInfo::default())
+                .map_err(|e| format!("begin_command_buffer {e:?}"))?;
+
+            // The weights were written by `upload_weights`, in a different submission. A
+            // fence wait between submissions orders them but is not a memory dependency, so
+            // making that TRANSFER_WRITE visible to every SHADER_READ below needs a real
+            // barrier. Recorded once at the top rather than folded into `barrier`, because
+            // the weights buffer is never written again.
+            let weights_visible = vk::BufferMemoryBarrier::default()
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .buffer(self.weights.buffer)
+                .offset(0)
+                .size(vk::WHOLE_SIZE);
+            device.cmd_pipeline_barrier(
+                buffer,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::DependencyFlags::empty(),
+                &[],
+                std::slice::from_ref(&weights_visible),
+                &[],
+            );
+
+            // One copy per input, packed end to end in the staging buffer in declaration
+            // order. Both shipping nets have exactly one; SCRFD's nine outputs come back
+            // the same way below.
+            let mut staged = 0u64;
+            for input in &self.plan.inputs {
+                let bytes = (input.shape.len() as vk::DeviceSize) * 2;
+                let region = vk::BufferCopy::default()
+                    .src_offset(staged)
+                    .dst_offset((input.at as vk::DeviceSize) * 2)
+                    .size(bytes);
+                device.cmd_copy_buffer(
+                    buffer,
+                    self.staging.buffer,
+                    self.arena.buffer,
+                    std::slice::from_ref(&region),
+                );
+                staged += bytes;
+            }
+            self.barrier(buffer);
+
+            for (step, op) in self.plan.ops.iter().enumerate() {
+                match *op {
+                    Op::Dispatch { kind, push, invocations } => {
+                        device.cmd_bind_pipeline(
+                            buffer,
+                            vk::PipelineBindPoint::COMPUTE,
+                            self.pipelines.for_kind(kind),
+                        );
+                        // The window an op's weights are visible through, and the push rebased
+                        // into it. Both are the identity unless the file was larger than one
+                        // descriptor's range, so the common case records what it always did.
+                        let segment =
+                            self.segments.for_op(step, kind, &push, &self.tensors)?.unwrap_or(0);
+                        let set = match self.pipelines.descriptor_sets.get(segment) {
+                            Some(&set) => set,
+                            None => return Err(format!("step {step} wants segment {segment}")),
+                        };
+                        device.cmd_bind_descriptor_sets(
+                            buffer,
+                            vk::PipelineBindPoint::COMPUTE,
+                            self.pipelines.layout(),
+                            0,
+                            &[set],
+                            &[],
+                        );
+                        let push = self.segments.rebase(segment, kind, &push);
+                        device.cmd_push_constants(
+                            buffer,
+                            self.pipelines.layout(),
+                            vk::ShaderStageFlags::COMPUTE,
+                            0,
+                            push_bytes(&push),
+                        );
+                        // Split across x and y: the widest layer here needs 102,400
+                        // workgroups and `maxComputeWorkGroupCount` is only guaranteed to
+                        // be 65,535 per dimension. `global_index()` in the shaders
+                        // flattens the grid back, and the grid over-covers, which is what
+                        // `push.count` is checked against.
+                        let groups = invocations.div_ceil(WORKGROUP);
+                        device.cmd_dispatch(
+                            buffer,
+                            groups.min(MAX_WORKGROUPS_PER_DIM),
+                            groups.div_ceil(MAX_WORKGROUPS_PER_DIM),
+                            1,
+                        );
+                    }
+                    Op::Copy { src, dst, elems } => {
+                        // Same buffer for source and destination. The spec allows that as
+                        // long as the regions do not overlap, which the arena allocator
+                        // guarantees and `nets::u2netp` asserts.
+                        let region = vk::BufferCopy::default()
+                            .src_offset((src as vk::DeviceSize) * 2)
+                            .dst_offset((dst as vk::DeviceSize) * 2)
+                            .size((elems as vk::DeviceSize) * 2);
+                        device.cmd_copy_buffer(
+                            buffer,
+                            self.arena.buffer,
+                            self.arena.buffer,
+                            std::slice::from_ref(&region),
+                        );
+                    }
                 }
                 // Only what this op wrote. See `barrier_over`: the whole-arena form cost more
                 // than the arithmetic it was protecting.
@@ -338,113 +456,4 @@
         }
         Ok(outputs)
     }
-
-    /// Upload `input_scratch`, submit the recorded buffer, and read `output_scratch` back.
-    ///
-    /// Factored out of the two `infer` variants because it is the whole of the unsafe,
-    /// order-sensitive part: everything about poisoning, the fence and the queue lock is
-    /// here once rather than twice.
-    fn submit(&mut self) -> Result<(), String> {
-        if self.poisoned {
-            return Err("this network is unusable after an earlier failure".into());
-        }
-        // SAFETY: the scratch buffer is exactly the fp16 elements the recorded copy
-        // regions move, and `u16` has no padding or invalid bit patterns.
-        let bytes = unsafe {
-            std::slice::from_raw_parts(
-                self.input_scratch.as_ptr().cast::<u8>(),
-                std::mem::size_of_val(self.input_scratch.as_slice()),
-            )
-        };
-        self.staging.write(bytes)?;
-
-        let device = &self.context.device;
-        let buffers = [self.command_buffer];
-        let submit = vk::SubmitInfo::default().command_buffers(&buffers);
-        // SAFETY: the fence is reset before the submit and waited on after it, so the
-        // command buffer is never resubmitted while pending and the staging buffer is
-        // never read while the GPU is writing it. `poisoned` is what keeps that true when
-        // the wait times out. The queue and the pool are shared process-wide, hence the
-        // lock around the submit; the fence wait is deliberately outside it.
-        unsafe {
-            device.reset_fences(&[self.fence]).map_err(|e| format!("reset_fences {e:?}"))?;
-            // Poison first: from here until the wait returns, a submission may be pending,
-            // and every path out of that state other than a successful wait is one this
-            // net cannot recover from.
-            self.poisoned = true;
-            let guard = self.context.lock_queue();
-            let submitted = device
-                .queue_submit(self.context.queue, std::slice::from_ref(&submit), self.fence)
-                .map_err(|e| format!("queue_submit {e:?}"));
-            drop(guard);
-            submitted?;
-            device
-                .wait_for_fences(&[self.fence], true, FENCE_TIMEOUT_NS)
-                .map_err(|e| format!("wait_for_fences {e:?}"))?;
-            self.poisoned = false;
-        }
-
-        self.staging.read_f16(&mut self.output_scratch)
-    }
-
-    /// The mask's dimensions, which is what the Kotlin wrapper reports to its caller.
-    /// Copy the current arena into `into`, which must be at least as large.
-    ///
-    /// # Safety
-    ///
-    /// `into` must be a live device-local buffer of at least `self.arena.size` bytes, and no
-    /// work may be in flight on this net.
-    unsafe fn copy_arena(&mut self, into: &Buffer) -> Result<(), String> {
-        if self.arena.size == 0 {
-            return Ok(());
-        }
-        let device = &self.context.device;
-        // SAFETY: the caller guarantees `into` is live and large enough, and the command buffer
-        // is recorded and waited on entirely within this call.
-        unsafe {
-            device
-                .begin_command_buffer(self.command_buffer, &vk::CommandBufferBeginInfo::default())
-                .map_err(|e| format!("begin: {e:?}"))?;
-            let region = vk::BufferCopy::default().src_offset(0).dst_offset(0).size(self.arena.size);
-            device.cmd_copy_buffer(
-                self.command_buffer,
-                self.arena.buffer,
-                into.buffer,
-                std::slice::from_ref(&region),
-            );
-            device.end_command_buffer(self.command_buffer).map_err(|e| format!("end: {e:?}"))?;
-            self.run_once()
-        }
-    }
-
-    /// Copy arena ranges out, as raw fp16 bytes, concatenated in the order given.
-    ///
-    /// Its own submit rather than a hook in the inference path: this runs twice in a process at
-    /// most - once to produce a cache, once to check one - so the simplest correct thing wins
-    /// over anything folded into the hot path.
-    fn read_arena(&mut self, ranges: &[(u32, u32)]) -> Result<Vec<u8>, String> {
-        // Chunked to the staging buffer, which is half a megabyte against caches that run to
-        // tens. One submit per chunk: this runs twice in a process, so the cost of the extra
-        // submits is irrelevant beside not needing a second large allocation.
-        let mut out = Vec::new();
-        for batch in batches(ranges, self.staging.size) {
-            out.extend_from_slice(&self.read_batch(&batch)?);
-        }
-        Ok(out)
-    }
-
-    /// One staging-sized batch of arena ranges, as raw fp16 bytes.
-    fn read_batch(&mut self, ranges: &[(u32, u32)]) -> Result<Vec<u8>, String> {
-        let total: u64 = ranges.iter().map(|&(_, elems)| u64::from(elems) * 2).sum();
-        if total == 0 {
-            return Ok(Vec::new());
-        }
-        let device = &self.context.device;
-        // SAFETY: one command buffer, recorded and submitted here and waited on before return,
-        // so nothing else observes it and the fence outlives the work.
-        unsafe {
-            device
-                .begin_command_buffer(self.command_buffer, &vk::CommandBufferBeginInfo::default())
-                .map_err(|e| format!("begin: {e:?}"))?;
-            let mut at = 0u64;
-            for &(from, elems) in ranges {
+}

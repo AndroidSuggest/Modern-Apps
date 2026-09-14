@@ -253,6 +253,14 @@ pub struct TransitLeg {
 /// enum does, so `base` stays valid).
 enum Backing {
     Mmap(MmapRegion),
+    // A transit pack section inside a single-archive mapping: `region` is the
+    // whole file, `offset`/`len` the pack. The index reads the pack in place,
+    // exactly as from its own file — no copy, no second download.
+    Archive {
+        region: MmapRegion,
+        offset: usize,
+        len: usize,
+    },
     #[cfg(test)]
     Owned(Vec<u8>),
 }
@@ -261,6 +269,7 @@ impl Backing {
     fn base(&self) -> *const u8 {
         match self {
             Backing::Mmap(r) => r.base(),
+            Backing::Archive { region, offset, .. } => unsafe { region.base().add(*offset) },
             #[cfg(test)]
             Backing::Owned(v) => v.as_ptr(),
         }
@@ -268,6 +277,7 @@ impl Backing {
     fn len(&self) -> usize {
         match self {
             Backing::Mmap(r) => r.len,
+            Backing::Archive { len, .. } => *len,
             #[cfg(test)]
             Backing::Owned(v) => v.len(),
         }
@@ -306,7 +316,11 @@ include!("transit_part2.rs");
 include!("transit_part3.rs");
 include!("transit_part4.rs");
 include!("transit_part5.rs");
-include!("transit_part6.rs");
-include!("transit_part7.rs");
-include!("transit_part8.rs");
-include!("transit_part9.rs");
+include!("transit_part10.rs");
+#[cfg(test)]
+mod tests {
+    include!("transit_part6.rs");
+    include!("transit_part7.rs");
+    include!("transit_part8.rs");
+    include!("transit_part9.rs");
+}

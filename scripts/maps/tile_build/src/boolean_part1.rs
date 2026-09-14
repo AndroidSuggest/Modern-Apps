@@ -448,3 +448,33 @@ impl Sweep {
         &self,
         result: &[usize],
         used: &[bool],
+        pos: usize,
+        start: usize,
+    ) -> Option<usize> {
+        let p = self.events[result[pos]].p;
+        let mut i = pos + 1;
+        while i < result.len() && pt_eq(self.events[result[i]].p, p) {
+            if !used[i] {
+                return Some(i);
+            }
+            i += 1;
+        }
+        let mut j = pos;
+        while j > start {
+            j -= 1;
+            if !pt_eq(self.events[result[j]].p, p) {
+                return None;
+            }
+            if !used[j] {
+                return Some(j);
+            }
+        }
+        None
+    }
+
+    /// A segment with no horizontal extent, which `compute_fields` must not treat as a crossing.
+    fn is_vertical(&self, index: usize) -> bool {
+        self.events[index].p.0 == self.events[self.events[index].other].p.0
+    }
+
+}

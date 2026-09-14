@@ -1,30 +1,3 @@
-    /// The no-metrics fallback returns a run advance of `len * 0.5 * Tfs * Th` but
-    /// used to put ONE glyph's `size` on the wire as the run's device advance. A
-    /// non-painted run (mode 3 — the OCR layer of a scan with an unresolvable font
-    /// resource) is aligned to that field by the selection layer, so every glyph's
-    /// selection rectangle piled up on the first character.
-    #[test]
-    fn a_run_with_no_font_metrics_reports_the_whole_runs_advance() {
-        let doc = Document::with_version("1.7");
-        let fonts: HashMap<Vec<u8>, FontInfo> = HashMap::new();
-        let gs = GraphicsState { font_key: b"F1".to_vec(), font_size: 10.0, ..Default::default() };
-        let mut prims = Vec::new();
-        let pen = show_string(&doc, &mut prims, &gs, &fonts, &IDENTITY, b"ABCD", 0);
-        let advance = prims
-            .iter()
-            .find_map(|p| match p {
-                Prim::Text { advance, .. } => Some(*advance),
-                _ => None,
-            })
-            .expect("the run must still reach the text index");
-        assert!((pen - 20.0).abs() < 1e-9, "4 codes at 0.5 em of 10 Tf");
-        assert!(
-            (advance - pen as f32).abs() < 1e-3,
-            "the wire advance must span the whole run ({pen}), got {advance}"
-        );
-    }
-}
-
 #[cfg(test)]
 mod type3_cap_tests {
     use super::MAX_TYPE3_DEPTH;

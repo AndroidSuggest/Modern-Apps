@@ -1,23 +1,3 @@
-        assert_eq!(ride.to_stop, "Gamma");
-        assert_eq!(ride.dep_secs, 28_800);
-        assert_eq!(ride.arr_secs, 29_400);
-        assert_eq!(ride.stop_count, 2);
-
-        // The v4 sections the ingester wrote must decode into real geometry: more
-        // vertices than the three stops, and a longer path than the straight line.
-        assert!(
-            ride.coords.len() > 6,
-            "expected shape geometry, got {} coords",
-            ride.coords.len()
-        );
-        let lons: Vec<f64> = ride.coords.chunks(2).map(|c| c[0]).collect();
-        assert!(
-            lons.iter().any(|&lon| lon > -122.395),
-            "the eastward detour is missing: {lons:?}"
-        );
-        let crow = dist_m(37.700, -122.400, 37.720, -122.400);
-        assert!(ride.dist_m > crow, "shape distance {} must exceed {crow}", ride.dist_m);
-    }
 
     // --- WS-F: simulated in-service vehicle positions ---
 
@@ -178,4 +158,153 @@
         // 09:20: after the 09:00 trip has reached its terminus (09:10).
         assert!(active_vehicles(&idx, 33_600, sched(wednesday()), m0, m1, m2, m3).is_empty());
     }
-}
+
+    // --- Single-archive container: the transit pack as section 13 ---
+
+    use tilecodec::mamaps::archive::{
+        ARCHIVE_ALIGN, ARCHIVE_KIND_TRANSIT, ArchiveEntry, ArchiveFooter,
+    };
+    use tilecodec::mamaps::header::Header;
+
+    const ARCHIVE_BUILD_ID: u64 = 0x0123_4567_89AB_CDEF;
+
+    fn archive_header(file_len: u64) -> Header {
+        Header {
+            flags: 0,
+            compression: 0,
+            layer_count: 12,
+            min_zoom: 0,
+            max_zoom: 14,
+            build_id: ARCHIVE_BUILD_ID,
+            file_len,
+            dict_offset: 128,
+            dict_len: 64,
+            leaf_entry_capacity: 4096,
+            root_offset: 192,
+            root_len: 32,
+            leaf_count: 1,
+            leaf_offset: 224,
+            leaf_len: 16,
+            data_offset: 240,
+            data_len: 3856,
+            tiles_addressed: 1,
+            bodies_written: 1,
+            min_lon_e7: 0,
+            min_lat_e7: 0,
+            max_lon_e7: 0,
+            max_lat_e7: 0,
+            shared_offset: 0,
+            shared_len: 0,
+            shared_flags: 0,
+            shared_pools: 0,
+        }
+    }
+
+    // Whole file: tile prefix (zeroes under a real serialized header) + the
+    // pack laid out 8-aligned + directory + footer.
+    fn archive_with_pack(pack: &[u8]) -> Vec<u8> {
+        let mut header = archive_header(0);
+        let mut out = vec![0u8; 4096];
+        while out.len() as u64 % ARCHIVE_ALIGN != 0 {
+            out.push(0);
+        }
+        let offset = out.len() as u64;
+        out.extend_from_slice(pack);
+        let entries = vec![ArchiveEntry {
+            kind: ARCHIVE_KIND_TRANSIT,
+            flags: 0,
+            offset,
+            len: pack.len() as u64,
+            extra: 0,
+        }];
+        while out.len() as u64 % ARCHIVE_ALIGN != 0 {
+            out.push(0);
+        }
+        let dir_offset = out.len() as u64;
+        let (dir, _) = tilecodec::mamaps::archive::serialize_dir(&entries, ARCHIVE_BUILD_ID, dir_offset);
+        out.extend_from_slice(&dir);
+        let footer = ArchiveFooter {
+            dir_offset,
+            dir_len: dir.len() as u64,
+            build_id: ARCHIVE_BUILD_ID,
+        };
+        out.extend_from_slice(&footer.serialize());
+        header.file_len = out.len() as u64;
+        let head = header.serialize();
+        out[..head.len()].copy_from_slice(&head);
+        out
+    }
+
+    fn pack_section(bytes: &[u8]) -> Vec<u8> {
+        let header = Header::parse(bytes).expect("header parses");
+        let view = tilecodec::mamaps::archive::ArchiveView::parse(bytes, &header)
+            .expect("sidecar parses");
+        view.section(bytes, ARCHIVE_KIND_TRANSIT).expect("a transit section").to_vec()
+    }
+
+    #[test]
+    fn a_pack_sliced_from_the_archive_plans_the_same_journey() {
+        // The pack bytes through the container must read exactly as from the
+        // pack's own file: same journey, same 08:00 trip.
+        let pack = one_route_pack().build_with_version(VERSION);
+        let bytes = archive_with_pack(&pack);
+        let idx = TransitIndex::from_bytes(pack_section(&bytes)).expect("section parses");
+        let legs = plan(&idx, 37.700, -122.400, 37.720, -122.400, 25_000, sched(wednesday()))
+            .expect("a journey exists");
+        let ride = legs.iter().find(|l| l.kind == LegKind::Ride).expect("a ride leg");
+        assert_eq!(ride.name, "N");
+        assert_eq!(ride.from_stop, "Alpha");
+        assert_eq!(ride.to_stop, "Gamma");
+        assert_eq!(ride.dep_secs, 28_800);
+        assert_eq!(ride.arr_secs, 29_400);
+    }
+
+    #[test]
+    fn an_archive_without_a_transit_section_yields_no_index() {
+        // A tiles-only archive (no section 13) is not a transit failure: the
+        // caller degrades to no-transit, the same as a missing .transit file.
+        let mut header = archive_header(0);
+        let mut out = vec![0u8; 4096];
+        while out.len() as u64 % ARCHIVE_ALIGN != 0 {
+            out.push(0);
+        }
+        let dir_offset = out.len() as u64;
+        let (dir, _) = tilecodec::mamaps::archive::serialize_dir(&[], ARCHIVE_BUILD_ID, dir_offset);
+        out.extend_from_slice(&dir);
+        let footer = ArchiveFooter {
+            dir_offset,
+            dir_len: dir.len() as u64,
+            build_id: ARCHIVE_BUILD_ID,
+        };
+        out.extend_from_slice(&footer.serialize());
+        header.file_len = out.len() as u64;
+        let head = header.serialize();
+        out[..head.len()].copy_from_slice(&head);
+        let view = tilecodec::mamaps::archive::ArchiveView::parse(&out, &header)
+            .expect("sidecar parses");
+        assert!(
+            view.location(ARCHIVE_KIND_TRANSIT).is_none(),
+            "no section 13, no transit"
+        );
+    }
+
+    // File-backed `load_archive` end to end, Unix only: the host stub cannot
+    // mmap, so this is where the mapping half is exercised (CI runs it).
+    #[cfg(unix)]
+    #[test]
+    fn load_archive_maps_one_file_and_plans() {
+        let pack = one_route_pack().build_with_version(VERSION);
+        let bytes = archive_with_pack(&pack);
+        let path = std::env::temp_dir().join(format!(
+            "transit_archive_{}.mamaps",
+            std::process::id()
+        ));
+        std::fs::write(&path, &bytes).unwrap();
+        let idx =
+            TransitIndex::load_archive(path.to_str().unwrap()).expect("an archived pack loads");
+        let legs = plan(&idx, 37.700, -122.400, 37.720, -122.400, 25_000, sched(wednesday()))
+            .expect("a journey exists");
+        let ride = legs.iter().find(|l| l.kind == LegKind::Ride).expect("a ride leg");
+        assert_eq!((ride.dep_secs, ride.arr_secs), (28_800, 29_400));
+        std::fs::remove_file(&path).ok();
+    }

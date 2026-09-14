@@ -9,7 +9,7 @@ mod tests {
     ///
     /// Built with the traffic layer's own byte-for-byte v6 writer, so the reader here is exercised
     /// against the same layout the contract specifies rather than a mock.
-    fn crossroads(lanes: &[(u32, Vec<u16>)]) -> GraphFixture {
+    pub(super) fn crossroads(lanes: &[(u32, Vec<u16>)]) -> GraphFixture {
         crossroads_at(350_000_000, 12_000, lanes)
     }
 
@@ -47,7 +47,7 @@ mod tests {
         )
     }
 
-    fn stream(fixture: &GraphFixture) -> (u64, Vec<Vec<(f64, f64)>>) {
+    pub(super) fn stream(fixture: &GraphFixture) -> (u64, Vec<Vec<(f64, f64)>>) {
         let spill = fixture.dir.join("features.tmp");
         let mut sink = Sink::create(&spill).expect("sink");
         let emitted =
@@ -447,4 +447,4 @@ mod tests {
         assert_eq!(exit_lane(Turn::Right, 2, 3, 1, 1, 2), 0);
     }
 
-    /// A movement several approach lanes share stays several ribbons wide, which is the whole
+}

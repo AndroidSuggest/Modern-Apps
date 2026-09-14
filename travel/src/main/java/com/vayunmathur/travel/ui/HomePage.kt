@@ -38,6 +38,7 @@ import com.vayunmathur.travel.Route
 import com.vayunmathur.travel.data.BookedTrip
 import com.vayunmathur.travel.data.RecentSearch
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.clearRecents
 import androidx.compose.ui.res.stringResource
 import androidx.annotation.StringRes
 import com.vayunmathur.travel.R

@@ -606,7 +606,10 @@ internal class DrawerContainer(context: Context) : FrameLayout(context) {
     private var downX = 0f
 
     init {
-        isFocusable = View.NOT_FOCUSABLE
+        // NOT_FOCUSABLE is an int constant for `focusable` XML / focusable
+        // mode APIs, not the boolean setter: the container must not take
+        // focus so head-unit keys keep reaching the content behind it.
+        focusable = View.NOT_FOCUSABLE
     }
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {

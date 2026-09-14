@@ -1,3 +1,62 @@
+#[cfg(test)]
+mod tests_part9 {
+    use super::*;
+    use super::tests::*;
+    use crate::schema::Class;
+    use tilecodec::mamaps::dict;
+    /// **Lane C: traffic segment-delta through the full tiler.** Two segments
+    /// of one edge land in one shared section with one stitched base in lane
+    /// A's geometry pool and one keep-mask each: the base decodes (mask
+    /// applied) to each segment's own tile-local vertices, and the bodies
+    /// stay full v7 (lane B has not landed).
+    ///
+    /// Fail-watch: revert the resolve call in `shared_intents_for_tile` (drop
+    /// the `resolve_traffic_codecs` zip) and this quotes
+    /// `left: 1, right: 2` on the base count working backward from the parse;
+    /// restore after quoting.
+    #[test]
+    fn a_shared_traffic_build_stitches_one_base_per_edge() {
+        use crate::layercodec::{apply_mask, codec_for, LayerCodec};
+        use crate::schema::traffic::{pack_component_id, traffic_class, unpack_component_id};
+        use tilecodec::mamaps::dict::LAYER_TRAFFIC;
+        assert_eq!(
+            codec_for(LAYER_TRAFFIC),
+            LayerCodec::TrafficDelta,
+            "traffic rides the delta codec",
+        );
+        let segment = |seg: u32, x0: f64, x1: f64| Feature {
+            class: traffic_class(),
+            geometry: Geometry::Lines(vec![vec![(x0, 35.0), (x1, 35.0004)]]),
+            name: None,
+            id: pack_component_id(7, seg),
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        // Two segments of edge 7, chaining end to start like the graph emits.
+        let features = vec![
+            segment(0, -120.0, -119.9996),
+            // Starts where seg 0 ends: the same junction mouth.
+            Feature {
+                class: traffic_class(),
+                geometry: Geometry::Lines(vec![vec![
+                    (-119.9996, 35.0004),
+                    (-119.9992, 35.0008),
+                ]]),
+                name: None,
+                id: pack_component_id(7, 1),
+                transit_color: 0,
+                transit_ordinal: 0,
+                transit_lanes: 0,
+                transit_taper: 0,
+                lane_count: 0,
+                turn_fwd: Vec::new(),
                 turn_bwd: Vec::new(),
                 building: None,
                 carriageway: tilecodec::mamaps::body::Carriageway::default(),
@@ -334,6 +393,7 @@
             delta as f64 / without.len() as f64 * 100.0,
         );
     }
+
     /// polygon per tile, so the id is the only thing that says those pieces are one region. This
     /// pins both halves: the id survives into `boundaries`, and it is the *same* id in every tile
     /// the region touches. Without the second half a mask can only punch out one tile.
@@ -413,38 +473,4 @@
             "the region should be clipped across several tiles, got {tiles_with_the_region}",
         );
     }
-
-    /// A tile with no land is all sea, and a tile with land has that land cut out of it.
-    ///
-    /// The reason the sea needs geometry at all: it used to be the renderer's background colour,
-    /// so nothing was ever drawn over it and marine protected areas — real `landuse` polygons,
-    /// hundreds of kilometres across — painted green across open water.
-    #[test]
-    fn the_sea_is_the_tile_minus_the_land() {
-        let _budget = budget();
-        let land_at = |lon: f64, lat: f64| Feature {
-            class: Class::area(dict::LAYER_EARTH, tilecodec::mamaps::dict::NONE, 0),
-            geometry: square(lon, lat, 0.05),
-            name: None,
-            id: tilecodec::mamaps::body::ID_NONE,
-            transit_color: 0,
-            transit_ordinal: 0,
-            transit_lanes: 0,
-            transit_taper: 0,
-            lane_count: 0,
-                    turn_fwd: Vec::new(),
-            turn_bwd: Vec::new(),
-            building: None,
-            carriageway: tilecodec::mamaps::body::Carriageway::default(),
-        };
-        // One patch of land, and a lake sitting on it so the water layer already exists. Plus a
-        // marine protected area out at sea with no land under it at all — a real `landuse` polygon
-        // over open water, which is the exact shape of the bug this exists to fix.
-        let features = vec![
-            land_at(-120.0, 35.0),
-            Feature {
-                class: Class::area(dict::LAYER_WATER, crate::schema::kind("lake"), 0),
-                geometry: square(-119.99, 35.01, 0.005),
-                name: None,
-                id: tilecodec::mamaps::body::ID_NONE,
-                transit_color: 0,
+}

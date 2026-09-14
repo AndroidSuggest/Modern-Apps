@@ -1,18 +1,4 @@
-                return -2;
-            }
-            return 0;
-        }
-        if v1.r#type != OfflineFrameType::PayloadTransfer as i32 {
-            // BANDWIDTH_UPGRADE_NEGOTIATION and the auth frames are not implemented;
-            // ignoring them keeps a GMS peer's optional traffic from killing the session.
-            return 0;
-        }
-        let Some(pt) = v1.payload_transfer else {
-            return 0;
-        };
-        self.handle_payload_transfer(pt)
-    }
-
+impl Session {
     fn handle_payload_transfer(&mut self, pt: frame::PayloadTransferFrame) -> i32 {
         if pt.packet_type != PayloadPacketType::Data as i32 {
             return 0;

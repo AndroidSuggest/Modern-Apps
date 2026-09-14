@@ -1,3 +1,36 @@
+
+    /// Run a shipped net on an input from disk and write its output back, for
+    /// `scripts/ml/onnx_parity.py` to compare against onnxruntime.
+    ///
+    /// Ignored, and a no-op without `PARITY_DIR`: it exists to be driven by that script,
+    /// which needs the export's ONNX and an `onnxruntime` install that CI does not have.
+    /// See the script's header for what the comparison is worth and what it has caught.
+    #[test]
+    #[ignore = "driven by scripts/ml/onnx_parity.py"]
+    fn dump_reference_output() {
+        let Ok(dir) = std::env::var("PARITY_DIR") else {
+            return;
+        };
+        let dir = std::path::PathBuf::from(dir);
+        let graph = std::env::var("PARITY_GRAPH").expect("PARITY_GRAPH");
+        let width: u32 = std::env::var("PARITY_WIDTH")
+            .expect("PARITY_WIDTH")
+            .parse()
+            .expect("a width");
+        let raw = std::fs::read(dir.join("input.f32")).expect("the input");
+        let input: Vec<f32> = raw
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+
+        // A voice is a runtime download rather than a bundled asset, so the vocoder's
+        // `.maml` is given by path instead of being looked up in the tree.
+        if graph == "supertonic_voc" {
+            let path = std::env::var("PARITY_MAML").expect("PARITY_MAML");
+            let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+            let weights =
+                crate::weights::Weights::parse(&bytes, crate::weights::graph::SUPERTONIC_VOC)
+                    .expect("the vocoder asset parses");
             let plan = supertonic_vocoder::build(&weights, width).expect("the vocoder builds");
             // The latent arrives `[144, L]` and the plan wants `[24, 6L]`, and that is NOT a flat
             // reinterpretation: the export reshapes to `[24, 6, L]`, transposes the last two axes
@@ -381,70 +414,3 @@
         );
         assert_usable_mask("u2netp", &plan, weights.data());
     }
-
-    #[test]
-    #[ignore = "runs the full shipped nets; minutes in a debug build"]
-    fn the_shipped_scrfd_net_produces_usable_detection_maps() {
-        let Some(bytes) = asset("photos/src/main/assets/scrfd_500m.maml") else {
-            return;
-        };
-        let weights = crate::weights::Weights::parse(&bytes, crate::weights::graph::SCRFD)
-            .expect("the shipped scrfd asset parses");
-        // 128x128 rather than the 640 it runs at on device: the plan lowers at any
-        // multiple of 32, and a 1/25th-area run exercises every one of the 60 layers,
-        // both nearest upsamples and all nine heads for a twenty-fifth of the arithmetic.
-        let plan = scrfd::build(&weights, 128, 128).expect("scrfd builds at 128x128");
-        let shape = plan.input().expect("one input").shape;
-        let got = run_multi(&plan, weights.data(), &[&blob(shape)]).expect("scrfd runs");
-
-        assert_eq!(got.len(), 9);
-        for (group, stride) in got.chunks_exact(3).zip(scrfd::STRIDES) {
-            let [score, bbox, keypoints] = match group {
-                [a, b, c] => [a, b, c],
-                other => panic!("stride {stride}: {} maps", other.len()),
-            };
-            // Scores come through a sigmoid, so they are probabilities. Boxes and
-            // keypoints are raw distances in stride units and only have to be finite.
-            for (i, &value) in score.iter().enumerate() {
-                assert!((0.0..=1.0).contains(&value), "stride {stride} score {i} is {value}");
-            }
-            for (name, map) in [("box", bbox), ("keypoint", keypoints)] {
-                for (i, &value) in map.iter().enumerate() {
-                    assert!(value.is_finite(), "stride {stride} {name} {i} is {value}");
-                }
-            }
-            let peak = score.iter().fold(0.0f32, |a, &b| a.max(b));
-            let spread = bbox.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
-            println!("scrfd/{stride}: peak score {peak:.4} largest box distance {spread:.3}");
-            // A box map that is identically zero means the regression branch never ran,
-            // which is what reading the wrong tensor index for a head produces.
-            assert!(spread > 1e-3, "stride {stride} predicts no box extent at all");
-        }
-    }
-
-    #[test]
-    #[ignore = "runs the full shipped nets; minutes in a debug build"]
-    fn the_shipped_mobilefacenet_net_embeds_two_faces_differently() {
-        let Some(bytes) = asset("photos/src/main/assets/w600k_mbf.maml") else {
-            return;
-        };
-        let weights = crate::weights::Weights::parse(&bytes, crate::weights::graph::MOBILEFACENET)
-            .expect("the shipped mobilefacenet asset parses");
-        let plan = mobilefacenet::build(&weights).expect("mobilefacenet builds");
-        let shape = plan.input().expect("one input").shape;
-        assert_eq!(
-            plan.output().expect("one output").shape,
-            Shape::new(mobilefacenet::EMBEDDING, 1, 1)
-        );
-
-        let first = run(&plan, weights.data(), &ramp(shape)).expect("embeds a ramp");
-        let second = run(&plan, weights.data(), &blob(shape)).expect("embeds a blob");
-        for (label, embedding) in [("ramp", &first), ("blob", &second)] {
-            assert_eq!(embedding.len(), mobilefacenet::EMBEDDING as usize);
-            for (i, &value) in embedding.iter().enumerate() {
-                assert!(value.is_finite(), "{label} component {i} is {value}");
-            }
-            let norm = embedding.iter().map(|v| v * v).sum::<f32>().sqrt();
-            println!("mobilefacenet/{label}: L2 norm {norm:.4}");
-            // Unnormalised on purpose — `FaceRecognizer` L2-normalises in Kotlin — so
-            // this only has to be a vector rather than the origin. A collapsed net,

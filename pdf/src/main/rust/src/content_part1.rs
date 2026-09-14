@@ -448,3 +448,26 @@ impl<'a> Lexer<'a> {
                 }
                 if let Some(after) = ei_at(self.d, end) {
                     let data = self.d[s..end].to_vec();
+                    self.p = after;
+                    return InlineResult::Image(Stream::new(dict, data));
+                }
+            }
+        }
+
+        // 4. A computable length whose `EI` did not verify, or no computable length
+        //    at all (a filtered image without `/L`). Scan — but validate.
+        if let Some((data_end, after)) = scan_for_ei(self.d, data_start) {
+            let data = self.d[data_start..data_end].to_vec();
+            self.p = after;
+            return InlineResult::Image(Stream::new(dict, data));
+        }
+
+        // 5. No credible `EI` anywhere. The stream is very likely truncated inside
+        //    the image. Keep the data we have and stop: resuming here would mean
+        //    tokenizing pixel data.
+        let end = self.d.len().min(data_start.saturating_add(MAX_INLINE_DATA));
+        let data = self.d[data_start.min(end)..end].to_vec();
+        self.p = self.d.len();
+        InlineResult::Image(Stream::new(dict, data))
+    }
+}

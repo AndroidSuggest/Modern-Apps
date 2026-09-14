@@ -1,3 +1,48 @@
+/// A node's location in lon/lat, which is the order [`rings::assemble`] and GeoJSON both want.
+///
+/// [`NodeLocations::get`] returns lat/lon, matching the PBF's own field order.
+fn locate(table: &NodeLocations, id: i64) -> Option<(f64, f64)> {
+    let (lat_e7, lon_e7) = table.get(id)?;
+    Some((lon_e7 as f64 * 1e-7, lat_e7 as f64 * 1e-7))
+}
+
+/// Is this a label layer (`places`/`poi`)? Labels are points with names: ways mapped as areas
+/// are centroided to one, relations likewise, and nodes spill directly.
+pub(crate) fn is_label(layer: u8) -> bool {
+    use tilecodec::mamaps::dict::{LAYER_PLACES, LAYER_POI};
+    layer == LAYER_PLACES || layer == LAYER_POI
+}
+
+/// Does this layer have an id side table at all?
+///
+/// Layer-level, and separate from [`tracks_ids`], because the table is indexed by feature
+/// position: every feature in such a layer needs an entry, `ID_NONE` included, or the table stops
+/// lining up with the features it describes.
+pub(crate) fn layer_tracks_ids(layer: u8) -> bool {
+    is_label(layer)
+        || layer == tilecodec::mamaps::dict::LAYER_BOUNDARIES
+        || layer == tilecodec::mamaps::dict::LAYER_TRAFFIC
+}
+
+/// May this feature carry a non-zero id?
+///
+/// Wider than [`is_label`], and deliberately a separate predicate: `is_label` also means
+/// "centroid this to a point", which a region's shape must not be. `boundaries` needs ids for
+/// a different reason — a region is stored as one clipped polygon per tile, so without an id
+/// there is nothing to say which pieces are the same region, and the mask can only punch out
+/// the piece under the finger.
+///
+/// Keyed on the whole class rather than the layer because `boundaries` holds both kinds of
+/// geometry: the region's shape, which is an area and keeps its id, and the border, which is a
+/// line and must not. `coalesce` merges adjacent border lines, and the survivor's id would be
+/// whichever member happened to come first.
+pub(crate) fn tracks_ids(class: &crate::schema::Class) -> bool {
+    use tilecodec::mamaps::dict::{LAYER_BOUNDARIES, LAYER_TRAFFIC};
+    is_label(class.layer)
+        || (class.layer == LAYER_BOUNDARIES && class.area)
+        || class.layer == LAYER_TRAFFIC
+}
+
 /// The centroid of a coordinate list: the arithmetic mean, or `None` when there is nothing.
 ///
 /// A label anchor, not a geometric centroid — cheap and exactly what a basemap needs. Area

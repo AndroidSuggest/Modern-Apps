@@ -1,11 +1,5 @@
-    /// the delta form would have to handle both an escaped record that could still
-    /// match and a `want − source` outside `i16` range, and the saving over one
-    /// sign-extend and one add is nothing.
-    #[inline]
-    pub fn edge_targets(&self, idx: u64, source: u32, want: u32) -> bool {
-        self.edge(source, idx).target == want
-    }
 
+impl Graph {
     /// Byte offset of edge `idx`'s name in the string pool, or `None` when it has
     /// none.
     ///

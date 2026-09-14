@@ -4,13 +4,15 @@ mod tests {
 
     /// The tests hold features in memory and the tiler reads them from a file, so they spill
     /// first. Keeps a test about tiling from reading like a test about plumbing.
-    fn spilled(features: &[Feature]) -> crate::store::Store {
+    pub(super) fn spilled(features: &[Feature]) -> crate::store::Store {
         crate::store::Store::of(features).expect("spill")
     }
+
     use crate::schema::Class;
+
     use tilecodec::mamaps::dict;
 
-    fn square(lon: f64, lat: f64, size: f64) -> Geometry {
+    pub(super) fn square(lon: f64, lat: f64, size: f64) -> Geometry {
         Geometry::Polygons(vec![vec![vec![
             (lon, lat),
             (lon + size, lat),
@@ -20,7 +22,7 @@ mod tests {
         ]]])
     }
 
-    fn lake(lon: f64, lat: f64, size: f64, min_zoom: u8) -> Feature {
+    pub(super) fn lake(lon: f64, lat: f64, size: f64, min_zoom: u8) -> Feature {
         Feature {
             class: Class::area(dict::LAYER_WATER, crate::schema::kind("lake"), min_zoom),
             geometry: square(lon, lat, size),
@@ -32,7 +34,7 @@ mod tests {
         }
     }
 
-    fn shed(lon: f64, lat: f64, size: f64) -> Feature {
+    pub(super) fn shed(lon: f64, lat: f64, size: f64) -> Feature {
         Feature {
             class: Class {
                 min_area_px: crate::schema::buildings::MIN_AREA_PX,
@@ -47,7 +49,7 @@ mod tests {
         }
     }
 
-    fn buildings_in_archive(bytes: &[u8]) -> usize {
+    pub(super) fn buildings_in_archive(bytes: &[u8]) -> usize {
         tilecodec::mamaps::read::read_all(bytes)
             .expect("read")
             .iter()
@@ -59,6 +61,92 @@ mod tests {
                     .unwrap_or(0)
             })
             .sum()
+    }
+
+    pub(super) fn settings(min_zoom: u8, max_zoom: u8) -> Settings {
+        Settings {
+            min_zoom,
+            max_zoom,
+            simplification: DEFAULT_SIMPLIFICATION,
+            build_id: 7,
+            scratch: scratch(),
+            // Off by default here: these fixtures carry no coastline, so "no land in this tile"
+            // would flood every one of them. `ocean_fills_a_tile_with_no_land` opts in.
+            ocean: false,
+            dem: None,
+            // Off: the shared-table tests opt in per test, so every existing test keeps asserting
+            // byte-identical v7.
+            shared_table: false,
+        }
+    }
+
+    /// A scratch path of this test's own. The tiler truncates and removes it per zoom, so two tests
+    /// sharing one would tile each other's chunks.
+    pub(super) fn scratch() -> PathBuf {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        std::env::temp_dir().join(format!(
+            "mamaps_test_{}_{}.tilechunks",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed),
+        ))
+    }
+
+    /// The thread budget and the chunk size are process-wide, and `cargo test` runs these tests in
+    /// one process on several threads. The tests that set either take this lock against each other —
+    /// not for safety, an `AtomicUsize` is safe, but so that a test asserting "this is what one
+    /// thread produces" really is running on one thread when it says so.
+    ///
+    /// A poisoned lock is taken anyway: poisoning means another test panicked, and *its* failure is
+    /// the one worth reading rather than a cascade of lock errors on top of it.
+    pub(super) static BUDGET: Mutex<()> = Mutex::new(());
+
+    pub(super) fn budget() -> std::sync::MutexGuard<'static, ()> {
+        let guard = BUDGET.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Trip the once-only environment adoption here, *before* the test sets its own count. Left
+        // to `build`, the first call would run it after `set_threads(1)` and could quietly put
+        // `RAYON_NUM_THREADS` back — leaving a test that says "one thread" asserting nothing.
+        adopt_thread_budget();
+        guard
+    }
+
+    /// `par::clear_threads` is `#[cfg(test)]` *inside* `tile_build`, so it does not exist from here.
+    /// Putting the box's own count back is the same thing for a test process.
+    pub(super) fn release_threads() {
+        par::set_threads(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4));
+    }
+
+    /// Enough features, spread over enough tiles, that every zoom has several chunks to merge and
+    /// several tiles per chunk. A single-tile fixture would pass any merge, correct or not.
+    pub(super) fn a_crowd() -> Vec<Feature> {
+        let mut features = Vec::new();
+        for i in 0..60 {
+            let (row, column) = (i / 10, i % 10);
+            let (lon, lat) = (-120.0 + column as f64 * 0.03, 35.0 + row as f64 * 0.03);
+            features.push(lake(lon, lat, 0.02, 0));
+            features.push(Feature {
+                class: Class::area(dict::LAYER_BUILDINGS, crate::schema::kind("building"), 0),
+                geometry: square(lon + 0.004, lat + 0.004, 0.004),
+                name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
+                            turn_fwd: Vec::new(),
+                turn_bwd: Vec::new(),
+                building: None,
+                carriageway: tilecodec::mamaps::body::Carriageway::default(),
+            });
+            // A line as well, so the merge has to rebase a `GEOM_LINE` feature's parts too, and a
+            // long one so it crosses tiles rather than sitting inside one.
+            features.push(Feature {
+                class: Class::line(dict::LAYER_WATER, crate::schema::kind("river"), 0),
+                geometry: Geometry::Lines(vec![(0..40)
+                    .map(|k| (lon + k as f64 * 0.002, lat + (k % 5) as f64 * 0.001))
+                    .collect()]),
+                name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
+                            turn_fwd: Vec::new(),
+                turn_bwd: Vec::new(),
+                building: None,
+                carriageway: tilecodec::mamaps::body::Carriageway::default(),
+            });
+        }
+        features
     }
 
     /// **The sub-pixel drop.** A footprint under one display pixel at z14 is a speck, not detail:
@@ -388,63 +476,4 @@ mod tests {
             assert!(body.heightmap.is_none(), "no DEM means no heightmap section");
         }
     }
-
-    /// **The road/river name path, end to end.** A street's name survives the spill, the merge and
-    /// coalescing, and comes back interned in the tile's name table on the line feature — which is
-    #[test]
-    fn a_road_name_reaches_the_archive() {
-        let road = Feature {
-            class: Class::line(dict::LAYER_ROADS, crate::schema::kind("major_road"), 12),
-            geometry: Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.98, 35.002)]]),
-            name: Some("Market Street".to_string()),
-            id: tilecodec::mamaps::body::ID_NONE,
-            transit_color: 0,
-            transit_ordinal: 0,
-            transit_lanes: 0,
-            transit_taper: 0,
-            lane_count: 0,
-            turn_fwd: Vec::new(),
-            turn_bwd: Vec::new(),
-            building: None,
-            carriageway: tilecodec::mamaps::body::Carriageway::default(),
-        };
-        let river = Feature {
-            class: Class::line(dict::LAYER_WATER, crate::schema::kind("river"), 12),
-            geometry: Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.97, 35.004)]]),
-            name: Some("Los Gatos Creek".to_string()),
-            id: tilecodec::mamaps::body::ID_NONE,
-            transit_color: 0,
-            transit_ordinal: 0,
-            transit_lanes: 0,
-            transit_taper: 0,
-            lane_count: 0,
-            turn_fwd: Vec::new(),
-            turn_bwd: Vec::new(),
-            building: None,
-            carriageway: tilecodec::mamaps::body::Carriageway::default(),
-        };
-        let (bytes, _) = build(&spilled(&[road, river]), &settings(14, 14)).expect("build");
-        let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
-        let (mut saw_road, mut saw_river) = (false, false);
-        for (_, _, body) in &entries {
-            let body = Body::parse(body).expect("parse");
-            if let Some(layer) = body.layer(dict::LAYER_ROADS) {
-                for f in &layer.features {
-                    if f.name(&body) == Some("Market Street") {
-                        saw_road = true;
-                    }
-                }
-            }
-            if let Some(layer) = body.layer(dict::LAYER_WATER) {
-                for f in &layer.features {
-                    if f.name(&body) == Some("Los Gatos Creek") {
-                        saw_river = true;
-                    }
-                }
-            }
-        }
-        assert!(saw_road, "the road's name should reach the archive");
-        assert!(saw_river, "the river's name should reach the archive");
-    }
-    #[test]
-    fn a_roads_turn_masks_reach_the_archive() {
+}

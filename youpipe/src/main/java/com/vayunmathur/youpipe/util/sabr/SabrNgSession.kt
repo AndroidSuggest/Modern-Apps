@@ -1,5 +1,6 @@
 package com.vayunmathur.youpipe.util.sabr
 
+import android.util.Log
 import org.schabi.newpipe.extractor.exceptions.ExtractionException
 import org.schabi.newpipe.extractor.services.youtube.sabrng.YoutubeSabrInfo
 import org.schabi.newpipe.extractor.services.youtube.sabrng.YoutubeSabrRequest
@@ -20,7 +21,10 @@ import java.util.concurrent.ConcurrentHashMap
 class SabrNgSession(
     private val spec: SabrNgSourceSpec,
     spoolDirectory: File?,
-    tokenMinter: ((Boolean) -> ByteArray?)? = null
+    tokenMinter: ((Boolean) -> ByteArray?)? = null,
+    // Nullable result: a missing/dead player read must NOT coalesce to 0 and shadow the
+    // segment-tracked fallback. `() -> Long` lambdas remain source-compatible (covariant).
+    private val playheadMsProvider: (() -> Long?)? = null,
 ) {
     private val session: YoutubeSabrSession = newSession(spec.info, spoolDirectory, spec.poToken)
     private val coordinator = SabrRequestCoordinator(
@@ -50,6 +54,12 @@ class SabrNgSession(
     private var terminal: IOException? = null
 
     private var pumpThread: Thread? = null
+
+    @Volatile
+    private var lastStateLogMs = 0L
+
+    @Volatile
+    private var lastDeadSupplierLogMs = 0L
 
     private fun newSession(
         info: YoutubeSabrInfo,
@@ -90,6 +100,48 @@ class SabrNgSession(
 
     fun setPlayerTimeMs(positionMs: Long) {
         playerTimeMs = maxOf(0, positionMs)
+    }
+
+    /**
+     * The playhead hint sent with each SABR request. Prefers the live player position (a
+     * supplier wired from the service's ExoPlayer) and falls back to the last position observed
+     * from segment opens/seeks (used by downloads, which have no player).
+     *
+     * This must track real consumption: the server meters media delivery against the playhead
+     * and answers a frozen playhead with backoff-only responses until the 30s budget dies
+     * (#565). A dead live read (null, or a stale 0 from a torn-down player) must never shadow
+     * the segment-open fallback that provably advanced, so the max of the two wins; explicit
+     * seeks go through [requestSeek], which resets [playerTimeMs] to the target first.
+     */
+    internal fun currentPlayheadMs(): Long {
+        val supplied = try {
+            playheadMsProvider?.invoke()
+        } catch (_: Exception) {
+            null
+        }?.coerceAtLeast(0L) ?: 0L
+        maybeLogDeadSupplier(supplied)
+        return maxOf(playerTimeMs, supplied)
+    }
+
+    /**
+     * Advances the playhead hint sent with each SABR request to the start of the segment media3
+     * just opened. The pump otherwise reports `playerTimeMs=0` for the whole session while
+     * `bufferedThrough` advances minutes ahead, and the server answers playhead-stale requests
+     * with backoff-only responses until the 30s budget dies (#565 follow-up: `SABR continuous
+     * backoff exceeded 30000ms` ~40s into playback). Mirrors upstream `SabrMediaBridge`,
+     * which derives `playerTimeMs` from the demanded segment's timeline position.
+     * Monotonic: out-of-order segment opens never move the playhead backwards; explicit seeks
+     * go through [requestSeek].
+     */
+    fun updatePlayheadForSegment(itag: Int, sequenceNumber: Int) {
+        try {
+            val startMs = spec.timelineFor(itag)?.getStartMs(sequenceNumber) ?: return
+            if (startMs > playerTimeMs) {
+                playerTimeMs = startMs
+            }
+        } catch (_: Exception) {
+            // Unknown itag/sequence: leave the last known playhead alone.
+        }
     }
 
     fun setPlaybackRate(rate: Float) {
@@ -140,12 +192,21 @@ class SabrNgSession(
     private fun pumpLoop() {
         val consumer = SabrStreamingResponseReader.SegmentConsumer { segment -> onSegment(segment) }
         while (running) {
+            logPumpState()
             if (isFullyBuffered()) {
                 sleepQuietly(200L)
                 continue
             }
+            // Pace prefetch against consumption: burst-fetching the whole video trips YouTube's
+            // SABR throttling (backoff-only responses until the 30s budget dies, #565). Only
+            // fetch while the buffered window ahead of the playhead is thin, and pause briefly
+            // after every request round so steady-state demand tracks consumption.
+            if (isBufferedFarAheadOfPlayhead()) {
+                sleepQuietly(500L)
+                continue
+            }
             val request = YoutubeSabrRequest.playback(
-                playerTimeMs,
+                currentPlayheadMs(),
                 playbackRate,
                 listOf(
                     YoutubeSabrRequest.Track.of(
@@ -157,7 +218,19 @@ class SabrNgSession(
                 )
             )
             try {
-                coordinator.request(request, consumer)
+                // Progress is delivered media OR a moving playhead: the server legitimately
+                // paces delivery while the buffer drains, and a moving playhead proves the
+                // session is healthy even when a response carries no new segments.
+                var freshSegments = false
+                val countingConsumer =
+                    SabrStreamingResponseReader.SegmentConsumer { segment ->
+                        freshSegments = true
+                        consumer.accept(segment)
+                    }
+                val playheadAtRequestStart = currentPlayheadMs()
+                coordinator.request(request, countingConsumer) {
+                    freshSegments || currentPlayheadMs() != playheadAtRequestStart
+                }
             } catch (e: IOException) {
                 fail(e)
                 return
@@ -168,6 +241,7 @@ class SabrNgSession(
                 fail(IOException("SABR request failed", e))
                 return
             }
+            sleepQuietly(REQUEST_PACING_MS)
         }
     }
 
@@ -202,10 +276,103 @@ class SabrNgSession(
         audioBufferedThrough >= spec.audioTimeline.getEndSequence() &&
             videoBufferedThrough >= spec.videoTimeline.getEndSequence()
 
+    /**
+     * True once both tracks are buffered at least [PREFETCH_AHEAD_MS] past the playhead, so the
+     * pump idles instead of burst-fetching the rest of the video (which YouTube throttles with
+     * backoff-only responses, #565). Lags one segment behind by construction: the playhead only
+     * advances when media3 opens a segment, so the window refills as content is consumed.
+     */
+    internal fun isBufferedFarAheadOfPlayhead(): Boolean {
+        val playheadMs = currentPlayheadMs()
+        val audioEndMs = spec.audioTimeline.getEndMs(audioBufferedThrough.coerceAtLeast(0))
+        val videoEndMs = spec.videoTimeline.getEndMs(videoBufferedThrough.coerceAtLeast(0))
+        return minOf(audioEndMs, videoEndMs) - playheadMs >= PREFETCH_AHEAD_MS
+    }
+
+    /** Heartbeat for logcat diagnosis: playhead source, window state, and pump progress. */
+    private fun logPumpState() {
+        val now = System.currentTimeMillis()
+        if (now - lastStateLogMs < PUMP_STATE_LOG_INTERVAL_MS) return
+        lastStateLogMs = now
+        val supplied = try {
+            playheadMsProvider?.invoke()
+        } catch (_: Exception) {
+            null
+        }
+        Log.d(
+            TAG,
+            "pump video=${spec.videoId} playhead=${currentPlayheadMs()} " +
+                "supplier=$supplied fallback=$playerTimeMs " +
+                "audioThrough=$audioBufferedThrough videoThrough=$videoBufferedThrough " +
+                "windowIdle=${isBufferedFarAheadOfPlayhead()}"
+        )
+    }
+
+    /**
+     * Flags a dead live playhead read (supplier stuck at/below the known segment progress) so a
+     * torn-down or stale player reference shows up in logcat instead of silently metering the
+     * session to zero. Rate-limited; the fallback keeps the session alive in the meantime.
+     */
+    private fun maybeLogDeadSupplier(supplied: Long) {
+        if (supplied != 0L || playerTimeMs <= DEAD_SUPPLIER_FALLBACK_MS) return
+        val now = System.currentTimeMillis()
+        if (now - lastDeadSupplierLogMs < DEAD_SUPPLIER_LOG_INTERVAL_MS) return
+        lastDeadSupplierLogMs = now
+        Log.w(
+            TAG,
+            "SABR live playhead supplier reads 0 while segment progress is at " +
+                "$playerTimeMs ms for ${spec.videoId}; using segment fallback " +
+                "(player reference may be stale)"
+        )
+    }
+
     private fun fail(error: IOException) {
         terminal = error
         running = false
+        // The session keeps a bounded diagnostic transcript of every SABR request/response;
+        // dump it in chunks (logcat truncates single messages past ~4KB) so a terminal stall
+        // can be diagnosed from logcat without a debugger.
+        try {
+            Log.w(TAG, "SABR session failed for ${spec.videoId}: ${error.message}")
+            sessionTrace().chunked(TRACE_CHUNK_CHARS).forEachIndexed { index, chunk ->
+                Log.w(TAG, "SABR trace ${spec.videoId} [$index]: $chunk")
+            }
+        } catch (_: Exception) {
+        }
         synchronized(lock) { lock.notifyAll() }
+    }
+
+    private fun sessionTrace(): String {
+        return try {
+            session.getDiagnosticTrace()
+        } catch (_: Exception) {
+            "<trace unavailable>"
+        }
+    }
+
+    private companion object {
+        private const val TAG = "SabrNgSession"
+
+        /**
+         * Stop prefetching once this much content is buffered ahead of the playhead; the pump
+         * resumes as consumption drains the window.
+         */
+        private const val PREFETCH_AHEAD_MS = 60_000L
+
+        /** Breather between request rounds so steady-state demand tracks consumption. */
+        private const val REQUEST_PACING_MS = 1_000L
+
+        /** Pump heartbeat interval for logcat diagnosis. */
+        private const val PUMP_STATE_LOG_INTERVAL_MS = 5_000L
+
+        /** Only warn about a dead supplier once segments prove real progress past startup. */
+        private const val DEAD_SUPPLIER_FALLBACK_MS = 2_000L
+
+        /** Rate-limit for the dead-supplier warning (the per-pump heartbeat stays at 5s). */
+        private const val DEAD_SUPPLIER_LOG_INTERVAL_MS = 30_000L
+
+        /** Logcat truncates single messages past ~4KB; chunk the trace so none is lost. */
+        private const val TRACE_CHUNK_CHARS = 3_000
     }
 
     private fun sleepQuietly(millis: Long) {

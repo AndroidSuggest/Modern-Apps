@@ -91,23 +91,34 @@ class CarDisplay(
         }
 
     /**
-     * Optional night hook for the session's map mirror: invoked from
-     * [setNight] on the calling thread (the mirror marshals to main itself).
-     * The service sets this to `CarMapsMirror.setDark`; unset means the
-     * mirror keeps its own last palette.
+     * Optional night hook for the hosted map: invoked from [setNight] on the
+     * calling thread. The service sets this to `CarAppHost.setNight`, which
+     * forwards night as a configuration change so the app restyles its own
+     * palette; unset means the hosted map keeps its own last palette.
      */
     var mapDarkApplier: ((Boolean) -> Unit)? = null
 
     /** Phone status feed for the rail cluster; the service sets its monitor. */
-    var phoneStatusSource: (() -> PhoneStatus)? = null
+    var phoneStatusSource: (() -> PhoneStatus?)? = null
         set(value) {
             field = value
             // Late wiring must reach an already-up presentation too: the
             // ticker pulls through the inner field, never this one.
-            mainHandler.post { presentation?.setInnerPhoneStatusSource(value) }
+            value?.let { v -> mainHandler.post { presentation?.setInnerPhoneStatusSource(v) } }
         }
 
-    /** Card call actions; the service wires these to the bound InCallService. */
+    /**
+     * Forwards ch8 touches that land on the map surface to the hosted app.
+     * Wired by the session host to `CarAppHost.injectMapTouch`; cached for
+     * presentations created later like every other late-wired feed.
+     */
+    var mapTouchForwarder: ((Int, Float, Float) -> Boolean)? = null
+        set(value) {
+            field = value
+            value?.let { v -> mainHandler.post { presentation?.setMapTouchForwarder(v) } }
+        }
+
+    /** Call-card actions; the service wires these to the bound InCallService. */
     var onAnswerCall: (() -> Unit)? = null
         set(value) {
             field = value
@@ -131,11 +142,12 @@ class CarDisplay(
 
     /**
      * Active-call feed for the projected call card; the service sets the
-     * latest [ActiveCallInfo] (null with no live call). Cached for
-     * presentations created later.
+     * latest [ActiveCallInfo] (null with no live call) through [setActiveCall].
+     * Backing field only -- the `var` setter would clash on the JVM with the
+     * explicit setter, so all writes go through the function.
      */
     @Volatile
-    var activeCall: ActiveCallInfo? = null
+    private var activeCall: ActiveCallInfo? = null
 
     /**
      * Latest now-playing snapshot: applied to the card when set, and to any
@@ -217,6 +229,9 @@ class CarDisplay(
         ).also { shown ->
             mapSurfaceForwarder?.let { forward ->
                 shown.mapSurfaceListener = { s, w, h -> forward(s, w, h) }
+            }
+            mapTouchForwarder?.let { forward ->
+                shown.setMapTouchForwarder(forward)
             }
         }
         dumpVirtualDisplay(display.display, surface)
@@ -306,8 +321,8 @@ class CarDisplay(
      * Switches the car UI between day and night palettes. Safe from any thread.
      *
      * Recolors root/rail/cards/drawer per the §2.3 night deltas and forwards
-     * to the session mirror through [mapDarkApplier] (the service wires it
-     * to `CarMapsMirror.setDark`; the mirror marshals to main itself). Night
+     * to the hosted map through [mapDarkApplier] (the service wires it
+     * to `CarAppHost.setNight`). Night
      * sources already in the tree: `ProjectionService.isNightNow` and the
      * `SensorChannel` `NightSource` -- the service picks one and calls here,
      * and the cached value replays onto presentations created later.
@@ -326,6 +341,20 @@ class CarDisplay(
         activeCall = info
         mainHandler.post { presentation?.updateCallCard(info) }
     }
+
+    /**
+     * Pushes one hosted template state to the nav card. Safe from any thread;
+     * cached for presentations created later. The card shows the template's
+     * cue/road, distance, lanes, ETA and actions; the map surface itself
+     * arrives separately through [setMapSurfaceListener].
+     */
+    fun setHostNavState(state: HostNavState) {
+        hostNavState = state
+        mainHandler.post { presentation?.updateHostNav(state) }
+    }
+
+    /** Latest hosted template state; cached for presentations created later. */
+    @Volatile private var hostNavState: HostNavState? = null
 
     /**
      * Pushes one guidance snapshot to the nav banner, if the render pair is
@@ -588,6 +617,7 @@ class CarDisplay(
             throw e.cause ?: e
         }
     }
+
     /**
      * Now-playing card bounds in display pixels, for ch8 tap routing.
      * Compared in presentation root-view coordinates, which are 1:1 with

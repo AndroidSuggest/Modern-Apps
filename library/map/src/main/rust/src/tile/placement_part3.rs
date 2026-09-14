@@ -1,3 +1,7 @@
+#[cfg(test)]
+mod tests_tilt {
+    use super::*;
+
     // --- pitch-aware projection (tilt declutter) ----------------------------
 
     use crate::camera::Camera;

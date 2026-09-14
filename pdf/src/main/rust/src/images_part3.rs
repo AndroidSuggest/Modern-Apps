@@ -447,3 +447,48 @@ fn extract_image_inner(doc: &Document, stream: &lopdf::Stream, fill_argb: u32, c
         );
         return None;
     }
+    // An image over the pixel budget is DECIMATED, not dropped: the old guard
+    // deleted every 600 dpi scan and every >16 MP photo outright. Keeping one
+    // sample in `step` per axis bounds the RGBA buffer while still rendering.
+    let step = decimation_step(w, h);
+    let (dw, dh, decoded_comps) = match unpack_samples_decimated(&samples, w as usize, h as usize, ncomp as usize, bpc, step) {
+        Some(t) => t,
+        None => {
+            // Only reachable for a zero dimension/arity or an unpacked buffer over
+            // MAX_UNPACKED_SAMPLE_BYTES, i.e. a bogus /DeviceN arity or /N.
+            image_warn!(
+                "image {}x{} x {} comps at {} bpc (step {}) could not be unpacked - dropped",
+                w, h, ncomp, bpc, step
+            );
+            return None;
+        }
+    };
+    let (out_w, out_h) = (dw as u32, dh as u32);
+    if step > 1 {
+        image_warn!("image {}x{} over pixel budget: decimated by {} to {}x{}", w, h, step, out_w, out_h);
+    }
+
+    let mut rgba = image_samples_to_rgba(doc, dict, cs_resources, &decoded_comps, dw, dh, ncomp as usize, bpc);
+
+    // Masks are resampled to the (possibly decimated) raster, not to /Width x /Height.
+    let smask = read_smask(doc, dict, out_w, out_h);
+    apply_smask(&mut rgba, &smask);
+    // /Matte: base colors are premultiplied against a matte background; undo it
+    // using the SMask alpha we just applied.
+    if smask.is_some() {
+        if let Some(matte) = read_matte(doc, dict) {
+            apply_matte(&mut rgba, matte);
+        }
+    }
+    // Explicit stencil /Mask image (mutually exclusive with color-key /Mask).
+    if let Some(mask_alpha) = read_explicit_mask(doc, dict, out_w, out_h) {
+        apply_explicit_mask(&mut rgba, &mask_alpha);
+    }
+    // Color-key masking is compared against the pre-conversion samples so it is
+    // correct for CMYK/DeviceN (not just DeviceRGB/Gray). Indexed images key on
+    // the index value, which `decoded_comps` already holds (ncomp==1).
+    if let Some(ranges_raw) = read_color_key_ranges_raw(doc, dict) {
+        apply_color_key_mask_samples(&mut rgba, &decoded_comps, ncomp as usize, &ranges_raw, bpc);
+    }
+    Some(ImageData { w: out_w, h: out_h, format: 0, data: rgba })
+}

@@ -220,14 +220,17 @@ fun Project.rustNativeLib(
     }
     // Rust file-length gate: fails the build on any *.rs over
     // RUST_FILE_LENGTH_LIMIT lines, like the Kotlin FileLength rule (which
-    // cannot see Rust). Configuration-cache compatible: the source dir is
-    // resolved now, the walk happens in the task action.
-    val rustSrcDir = file("src/main/rust/src")
+    // cannot see Rust). Configuration-cache compatible: plain path strings
+    // cross the configuration boundary, never the Project object.
+    val rustSrcPath: String = file("src/main/rust/src").absolutePath
+    val rustProjPath: String = projectDir.absolutePath
     val rustFileLength = tasks.register("rustFileLength") {
         description = "Fails on Rust files over $RUST_FILE_LENGTH_LIMIT lines."
-        inputs.dir(rustSrcDir)
+        inputs.dir(rustSrcPath)
         doLast {
-            val over = rustSrcDir.walkTopDown()
+            val srcDir = java.io.File(rustSrcPath)
+            val projDir = java.io.File(rustProjPath)
+            val over = srcDir.walkTopDown()
                 .filter { it.isFile && it.extension == "rs" }
                 .map { it to it.readLines().size }
                 .filter { (f, n) ->
@@ -238,7 +241,7 @@ fun Project.rustNativeLib(
                 .toList()
             if (over.isNotEmpty()) {
                 val detail = over.joinToString("\n") { (f, n) ->
-                    "  $n ${f.relativeTo(projectDir)}"
+                    "  $n ${f.relativeTo(projDir)}"
                 }
                 throw org.gradle.api.GradleException(
                     "Rust files exceed $RUST_FILE_LENGTH_LIMIT lines (split along module lines):\n$detail"

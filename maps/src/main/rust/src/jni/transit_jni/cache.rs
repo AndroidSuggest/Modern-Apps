@@ -20,6 +20,10 @@ fn transit_cache() -> &'static Mutex<TransitCache> {
 
 /// The pack for `feed` under `base`, loading it on first use. `None` when it is
 /// absent or malformed; a failure is not cached, so a later republish is picked up.
+///
+/// Single-archive first: when `<base>/basemap.mamaps` carries a transit
+/// section it is the world pack, covering every feed, so per-region files are
+/// not consulted. Otherwise the legacy per-file layout.
 pub(super) fn transit_index(base: &str, feed: &str) -> Option<Arc<crate::transit::TransitIndex>> {
     let key = (base.to_string(), feed.to_string());
     // Held across the load so two concurrent first queries map the pack once
@@ -27,6 +31,11 @@ pub(super) fn transit_index(base: &str, feed: &str) -> Option<Arc<crate::transit
     let mut cache = transit_cache().lock().ok()?;
     if let Some(idx) = cache.get(&key) {
         return Some(Arc::clone(idx));
+    }
+    if let Some(pack) = crate::transit::TransitIndex::load_archive(&crate::graph::archive_path(base)) {
+        let idx = Arc::new(pack);
+        cache.insert(key, Arc::clone(&idx));
+        return Some(idx);
     }
     let idx = Arc::new(crate::transit::TransitIndex::load(base, feed)?);
     cache.insert(key, Arc::clone(&idx));

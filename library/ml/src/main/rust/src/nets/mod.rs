@@ -435,6 +435,7 @@ include!("mod_part6.rs");
 include!("mod_part7.rs");
 include!("mod_part8.rs");
 include!("mod_part9.rs");
+include!("mod_part9b.rs");
 include!("mod_part10.rs");
 include!("mod_part11.rs");
 include!("mod_part12.rs");

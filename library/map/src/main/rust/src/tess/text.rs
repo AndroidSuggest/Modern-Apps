@@ -435,6 +435,8 @@ pub fn upright_stride(vertices: &mut [f32], pivot: (f32, f32), rotation: (f32, f
 }
 
 include!("text_part1.rs");
+#[cfg(test)]
+mod tests {
 include!("text_part2.rs");
 include!("text_part3.rs");
-include!("text_part4.rs");
+}

@@ -1,3 +1,26 @@
+
+    #[test]
+    fn a_value_mix_over_two_different_lengths_is_one_vector_per_query() {
+        // Two queries, four keys, two channels of values. The probabilities pick key 3 for
+        // query 0 and key 0 for query 1, so the answer is two of V's columns swapped — an
+        // output width taken from V instead of from the queries would be four wide.
+        let queries = 2u32;
+        let keys = 4u32;
+        let mut probs = vec![0.0f32; (queries * keys) as usize];
+        probs[3] = 1.0;
+        probs[keys as usize] = 1.0;
+        let v: Vec<f32> = vec![10.0, 11.0, 12.0, 13.0, 20.0, 21.0, 22.0, 23.0];
+        let got = two(
+            (Shape::new(1, queries, keys), Shape::new(2, 1, keys)),
+            (&probs, &v),
+            |b, p, v| b.attn_apply(p, v, 1),
+        );
+        // `[2, 1, 2]`: channel 0 then channel 1, each (query 0, query 1).
+        close(&got, &[13.0, 10.0, 23.0, 20.0]);
+    }
+
+    #[test]
+    fn a_relative_score_map_refuses_two_different_lengths() {
         // A relative offset is `key - query`, so it is only meaningful within one sequence.
         // Cross-attention with a position table would index a band that does not exist.
         let source = Given::new(&[(vec![3, 2], vec![0.0; 6])]).expect("the fixture lays out");
@@ -415,36 +438,3 @@
             decoded.confidence
         );
     }
-
-    /// Run a shipped net on an input from disk and write its output back, for
-    /// `scripts/ml/onnx_parity.py` to compare against onnxruntime.
-    ///
-    /// Ignored, and a no-op without `PARITY_DIR`: it exists to be driven by that script,
-    /// which needs the export's ONNX and an `onnxruntime` install that CI does not have.
-    /// See the script's header for what the comparison is worth and what it has caught.
-    #[test]
-    #[ignore = "driven by scripts/ml/onnx_parity.py"]
-    fn dump_reference_output() {
-        let Ok(dir) = std::env::var("PARITY_DIR") else {
-            return;
-        };
-        let dir = std::path::PathBuf::from(dir);
-        let graph = std::env::var("PARITY_GRAPH").expect("PARITY_GRAPH");
-        let width: u32 = std::env::var("PARITY_WIDTH")
-            .expect("PARITY_WIDTH")
-            .parse()
-            .expect("a width");
-        let raw = std::fs::read(dir.join("input.f32")).expect("the input");
-        let input: Vec<f32> = raw
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-            .collect();
-
-        // A voice is a runtime download rather than a bundled asset, so the vocoder's
-        // `.maml` is given by path instead of being looked up in the tree.
-        if graph == "supertonic_voc" {
-            let path = std::env::var("PARITY_MAML").expect("PARITY_MAML");
-            let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-            let weights =
-                crate::weights::Weights::parse(&bytes, crate::weights::graph::SUPERTONIC_VOC)
-                    .expect("the vocoder asset parses");

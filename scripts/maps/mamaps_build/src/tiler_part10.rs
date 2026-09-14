@@ -1,3 +1,43 @@
+#[cfg(test)]
+mod tests_part10 {
+    use super::*;
+    use super::tests::*;
+    use crate::schema::Class;
+    use tilecodec::mamaps::dict;
+    /// A tile with no land is all sea, and a tile with land has that land cut out of it.
+    ///
+    /// The reason the sea needs geometry at all: it used to be the renderer's background colour,
+    /// so nothing was ever drawn over it and marine protected areas — real `landuse` polygons,
+    /// hundreds of kilometres across — painted green across open water.
+    #[test]
+    fn the_sea_is_the_tile_minus_the_land() {
+        let _budget = budget();
+        let land_at = |lon: f64, lat: f64| Feature {
+            class: Class::area(dict::LAYER_EARTH, tilecodec::mamaps::dict::NONE, 0),
+            geometry: square(lon, lat, 0.05),
+            name: None,
+            id: tilecodec::mamaps::body::ID_NONE,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+                    turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        // One patch of land, and a lake sitting on it so the water layer already exists. Plus a
+        // marine protected area out at sea with no land under it at all — a real `landuse` polygon
+        // over open water, which is the exact shape of the bug this exists to fix.
+        let features = vec![
+            land_at(-120.0, 35.0),
+            Feature {
+                class: Class::area(dict::LAYER_WATER, crate::schema::kind("lake"), 0),
+                geometry: square(-119.99, 35.01, 0.005),
+                name: None,
+                id: tilecodec::mamaps::body::ID_NONE,
+                transit_color: 0,
                 transit_ordinal: 0,
                 transit_lanes: 0,
                 transit_taper: 0,
@@ -107,58 +147,6 @@
                 "the sea was synthesised without a coastline to justify it"
             );
         }
-    }
-
-    fn settings(min_zoom: u8, max_zoom: u8) -> Settings {
-        Settings {
-            min_zoom,
-            max_zoom,
-            simplification: DEFAULT_SIMPLIFICATION,
-            build_id: 7,
-            scratch: scratch(),
-            // Off by default here: these fixtures carry no coastline, so "no land in this tile"
-            // would flood every one of them. `ocean_fills_a_tile_with_no_land` opts in.
-            ocean: false,
-            dem: None,
-            // Off: the shared-table tests opt in per test, so every existing test keeps asserting
-            // byte-identical v7.
-            shared_table: false,
-        }
-    }
-
-    /// A scratch path of this test's own. The tiler truncates and removes it per zoom, so two tests
-    /// sharing one would tile each other's chunks.
-    fn scratch() -> PathBuf {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        std::env::temp_dir().join(format!(
-            "mamaps_test_{}_{}.tilechunks",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed),
-        ))
-    }
-
-    /// The thread budget and the chunk size are process-wide, and `cargo test` runs these tests in
-    /// one process on several threads. The tests that set either take this lock against each other —
-    /// not for safety, an `AtomicUsize` is safe, but so that a test asserting "this is what one
-    /// thread produces" really is running on one thread when it says so.
-    ///
-    /// A poisoned lock is taken anyway: poisoning means another test panicked, and *its* failure is
-    /// the one worth reading rather than a cascade of lock errors on top of it.
-    static BUDGET: Mutex<()> = Mutex::new(());
-
-    fn budget() -> std::sync::MutexGuard<'static, ()> {
-        let guard = BUDGET.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        // Trip the once-only environment adoption here, *before* the test sets its own count. Left
-        // to `build`, the first call would run it after `set_threads(1)` and could quietly put
-        // `RAYON_NUM_THREADS` back — leaving a test that says "one thread" asserting nothing.
-        adopt_thread_budget();
-        guard
-    }
-
-    /// `par::clear_threads` is `#[cfg(test)]` *inside* `tile_build`, so it does not exist from here.
-    /// Putting the box's own count back is the same thing for a test process.
-    fn release_threads() {
-        par::set_threads(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4));
     }
 
     #[test]
@@ -276,40 +264,6 @@
         let (_, stats) = build(&spilled(&features), &settings(6, 14)).expect("build");
         let at = |z: u8| stats.iter().find(|s| s.zoom == z).expect("zoom").points;
         assert!(at(6) < at(14), "z6 has {} points, z14 has {}", at(6), at(14));
-    }
-
-    /// Enough features, spread over enough tiles, that every zoom has several chunks to merge and
-    /// several tiles per chunk. A single-tile fixture would pass any merge, correct or not.
-    fn a_crowd() -> Vec<Feature> {
-        let mut features = Vec::new();
-        for i in 0..60 {
-            let (row, column) = (i / 10, i % 10);
-            let (lon, lat) = (-120.0 + column as f64 * 0.03, 35.0 + row as f64 * 0.03);
-            features.push(lake(lon, lat, 0.02, 0));
-            features.push(Feature {
-                class: Class::area(dict::LAYER_BUILDINGS, crate::schema::kind("building"), 0),
-                geometry: square(lon + 0.004, lat + 0.004, 0.004),
-                name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
-                            turn_fwd: Vec::new(),
-                turn_bwd: Vec::new(),
-                building: None,
-                carriageway: tilecodec::mamaps::body::Carriageway::default(),
-            });
-            // A line as well, so the merge has to rebase a `GEOM_LINE` feature's parts too, and a
-            // long one so it crosses tiles rather than sitting inside one.
-            features.push(Feature {
-                class: Class::line(dict::LAYER_WATER, crate::schema::kind("river"), 0),
-                geometry: Geometry::Lines(vec![(0..40)
-                    .map(|k| (lon + k as f64 * 0.002, lat + (k % 5) as f64 * 0.001))
-                    .collect()]),
-                name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
-                            turn_fwd: Vec::new(),
-                turn_bwd: Vec::new(),
-                building: None,
-                carriageway: tilecodec::mamaps::body::Carriageway::default(),
-            });
-        }
-        features
     }
 
     /// **The property the parallel tiler exists to keep.** The archive is a function of the input,
@@ -448,3 +402,70 @@
         push(&mut first, &feature, &box_at(0));
         let mut second = ChunkEntry::new(dict::LAYER_WATER);
         push(&mut second, &feature, &box_at(1000));
+        concatenate(&mut first, second);
+
+        assert_eq!(first, together, "two chunks concatenated are not the one-pass layer");
+        // Spelled out as well, because `assert_eq` on the whole layer would also pass if both were
+        // empty, and an arena its parts do not tile exactly is what the encoder rejects.
+        assert_eq!(first.layer.features.len(), 2);
+        assert_eq!(first.layer.features[1].parts_offset, 1);
+        assert_eq!(first.layer.parts[1].coord_start, first.layer.parts[0].point_count);
+        assert_eq!(first.layer.coords.len(), 10);
+    }
+
+    /// The merge's contract on its own, without a build around it: ascending tiles, and layers in id
+    /// order within a tile, with same-layer contributions from several chunks collapsed into one.
+    ///
+    /// Written through a [`ChunkSpill`] first, because that is the only way the merge is reachable
+    /// now — and so this doubles as the round-trip check on a chunk whose entries all have empty
+    /// arenas.
+    #[test]
+    fn the_merge_yields_ascending_tiles_with_their_layers_in_id_order() {
+        let mut early: Chunk = BTreeMap::new();
+        early.insert((10, 3), ChunkEntry::new(3));
+        early.insert((30, 1), ChunkEntry::new(1));
+        let mut middle: Chunk = BTreeMap::new();
+        middle.insert((10, 1), ChunkEntry::new(1));
+        middle.insert((20, 2), ChunkEntry::new(2));
+        let mut late: Chunk = BTreeMap::new();
+        late.insert((10, 3), ChunkEntry::new(3));
+
+        let spill = ChunkSpill::create(scratch()).expect("scratch");
+        let refs: Vec<ChunkRef> = [early, middle, late]
+            .into_iter()
+            .map(|chunk| spill.write_chunk(chunk).expect("spill a chunk"))
+            .collect();
+
+        let merged: Vec<(u64, Vec<u8>)> = merge(&refs, &spill)
+            .map(|tile| tile.expect("read a tile back"))
+            .map(|(id, layers)| (id, layers.iter().map(|l| l.layer.layer_id).collect()))
+            .collect();
+        // Tile 10 carries layer 1 before layer 3 even though layer 3 was read first, and its two
+        // separate layer-3 pieces arrive as one layer rather than two.
+        assert_eq!(merged, vec![(10, vec![1, 3]), (20, vec![2]), (30, vec![1])]);
+        spill.check_books().expect("the books balance");
+    }
+
+    /// The read window is a memory/syscall trade and must not be observable in the archive. Forced
+    /// here at both clamps and either side of one entry's header, because a real build only ever
+    /// reaches one clamp and which one depends on the extract.
+    #[test]
+    fn the_archive_is_identical_however_the_read_window_is_sized() {
+        let _guard = budget();
+        par::set_threads(4);
+        // Small chunks, so a zoom has many streams and a tile's layers really do come from several.
+        set_chunk_vertices(64);
+        let store = spilled(&a_crowd());
+
+        let want = build(&store, &settings(0, 14)).expect("build").0;
+        for window in [1usize, 23, 24, 25, 4096, tilespill::MIN_WINDOW, tilespill::MAX_WINDOW] {
+            tilespill::set_read_window(window);
+            let got = build(&store, &settings(0, 14)).expect("build").0;
+            assert_eq!(got, want, "a {window}-byte read window moved the archive");
+        }
+
+        tilespill::set_read_window(0);
+        set_chunk_vertices(0);
+        release_threads();
+    }
+}

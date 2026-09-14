@@ -1,11 +1,4 @@
-            transpose: true,
-            pad_edge: false,
-            res: None,
-            shift: None,
-        });
-        out
-    }
-
+impl<'a> Builder<'a> {
     fn weight(&mut self, index: usize, dims: &[u32]) -> u32 {
         match self.read.get_mut(index) {
             Some(slot) => *slot = true,
@@ -442,9 +435,9 @@
     pub fn attn_apply_cached(&mut self, probs: Id, cache: Id, heads: u32) -> Id {
         self.attn_apply_cached_at(probs, cache, heads, heads, false, true)
     }
-
-    /// [`Builder::attn_apply_cached`] with the key count supplied by the step, not the shape.
-    ///
-    /// Must be paired with [`Builder::attn_scores_cached_dynamic`] and
-    /// [`Builder::softmax_prefix`]: all three read the same bound, and mixing a dynamic score map
-    /// with a full-width sum would fold unattended positions into the result.
+    // [`Builder::attn_apply_cached`] with the key count supplied by the step, not the shape.
+    //
+    // Must be paired with [`Builder::attn_scores_cached_dynamic`] and
+    // [`Builder::softmax_prefix`]: all three read the same bound, and mixing a dynamic score map
+    // with a full-width sum would fold unattended positions into the result.
+}

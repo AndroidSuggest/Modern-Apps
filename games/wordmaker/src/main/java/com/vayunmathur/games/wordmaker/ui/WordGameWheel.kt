@@ -44,7 +44,7 @@ import kotlinx.coroutines.CoroutineScope
  * Behavior identical — only moved.
  */
 @Composable
-fun BoxScope.WordGameWheel(
+fun WordGameWheel(
     isCompetitive: Boolean,
     isDaily: Boolean,
     competitiveScore: Int,

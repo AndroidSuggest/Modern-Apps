@@ -223,6 +223,9 @@ where
     }
 }
 
-include!("subdivide_part1.rs");
-include!("subdivide_part2.rs");
-include!("subdivide_part3.rs");
+#[cfg(test)]
+mod tests {
+    include!("subdivide_part1.rs");
+    include!("subdivide_part2.rs");
+    include!("subdivide_part3.rs");
+}

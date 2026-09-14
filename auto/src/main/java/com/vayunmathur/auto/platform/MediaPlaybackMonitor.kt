@@ -122,8 +122,11 @@ class MediaPlaybackMonitor(
         val metadata = active.mediaMetadata
         // Source badge: the session owner's app icon, matching gearhead's
         // per-source badge. Null when the package has no icon to load.
+        // (`MediaController` exposes the token, not the package directly;
+        // the token is the service we bound in `start`.)
         val sourceIcon = runCatching {
-            context.packageManager.getApplicationIcon(active.packageName)
+            val token = active.connectedToken ?: return@runCatching null
+            context.packageManager.getApplicationIcon(token.packageName)
         }.getOrNull()
         onUpdate(
             NowPlayingInfo(

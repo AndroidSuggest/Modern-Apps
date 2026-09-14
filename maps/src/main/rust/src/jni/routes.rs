@@ -106,7 +106,12 @@ pub extern "system" fn Java_com_vayunmathur_maps_util_OfflineRouter_init<'local>
         Err(_) => return 0,
     };
 
-    match Graph::load(&base) {
+    // Single-archive first: one download carries tiles, graph, POI and
+    // transit, and the archive's own checks refuse a corrupt container before
+    // any section loads. Falls back to the multi-file layout.
+    let graph = Graph::load_archive(&crate::graph::archive_path(&base))
+        .or_else(|| Graph::load(&base));
+    match graph {
         Some(g) => {
             if let Ok(mut w) = GRAPH.write() {
                 *w = Some(Arc::new(g));

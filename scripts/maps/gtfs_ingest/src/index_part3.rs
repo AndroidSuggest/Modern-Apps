@@ -1,3 +1,70 @@
+impl IndexBuilder {
+    /// Serialize one feed's routes, trips, profiles, shapes and stop→route lists.
+    ///
+    /// `stop_first` is the first stop index this feed contributed. Because a
+    /// route only ever references its own feed's stops, this feed's STOP_ROUTES
+    /// entries cover exactly `stop_first..` and append onto a globally
+    /// stop-ascending array.
+    fn finalize_feed(
+        &mut self,
+        raptor_routes: &[RaptorRoute],
+        built_trips: &[BuiltTrip],
+        shapes: &[(&str, &Shape)],
+        stop_first: u32,
+    ) -> Result<(), String> {
+        // (stop, route, position in the route's pattern), sorted into
+        // stop-ascending order below. Replaces the old `vec![Vec::new(); stops]`
+        // pair — 48 bytes of empty headers per stop, worldwide — and the
+        // `contains` scan that went with it, which was quadratic on the routes
+        // through a major interchange.
+        let mut stop_routes: Vec<(u32, u32, u32)> = Vec::new();
+
+        for (local_idx, rr) in raptor_routes.iter().enumerate() {
+            let ridx = (self.route_count + local_idx) as u32;
+            // Trips of one pattern normally share a `shape_id`. Where they do not
+            // (versioned shapes, rare express variants) the modal one keeps the
+            // common case exact; direction differences already form distinct
+            // patterns, so they never land here.
+            let mut votes: HashMap<u32, usize> = HashMap::new();
+            for &ti in &rr.trips {
+                let k = built_trips[ti].shape_key;
+                if k != NONE {
+                    *votes.entry(k).or_insert(0) += 1;
+                }
+            }
+            if votes.len() > 1 {
+                self.multi_shape_routes += 1;
+            }
+            let mut ranked: Vec<(u32, usize)> = votes.into_iter().collect();
+            // Ties break on the `shape_id` itself, not on its interned index, so
+            // the winner does not depend on the order trips were seen in.
+            ranked.sort_by(|a, b| {
+                b.1.cmp(&a.1).then(shapes[a.0 as usize].0.cmp(shapes[b.0 as usize].0))
+            });
+            let modal = ranked.first().map(|&(k, _)| k);
+            let fitted = modal.and_then(|key| {
+                let shape = shapes[key as usize].1;
+                let stop_ll: Vec<(i32, i32)> = rr
+                    .stop_pattern
+                    .iter()
+                    .map(|&s| (self.stop_lat[s as usize], self.stop_lon[s as usize]))
+                    .collect();
+                // `shape_dist_traveled` only helps when both files carry it, so
+                // take it from a trip that actually uses the modal shape.
+                let dists = rr
+                    .trips
+                    .iter()
+                    .filter(|&&ti| built_trips[ti].shape_key == key)
+                    .find_map(|&ti| built_trips[ti].stop_dists.as_ref())
+                    .filter(|d| d.len() == rr.stop_pattern.len());
+                shapes::fit(shape, &stop_ll, dists.map(|d| d.as_slice()))
+            });
+            if modal.is_some() {
+                if fitted.is_some() {
+                    self.shaped_routes += 1;
+                } else {
+                    self.dropped_shape_routes += 1;
+                }
             }
             let shape_off = match &fitted {
                 None => NONE,

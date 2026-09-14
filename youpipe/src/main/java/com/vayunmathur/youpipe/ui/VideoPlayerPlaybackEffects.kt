@@ -58,7 +58,17 @@ internal fun VideoPlayerControllerLifecycle(
         val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
 
         controllerFuture.addListener({
-            controller = controllerFuture.get()
+            // The future may already be cancelled by onDispose's releaseFuture (controller
+            // churn during navigation); a bare get() then throws and surfaces as an
+            // AbstractFuture RuntimeException. Swallow cancellation, keep real failures loud.
+            controller = try {
+                controllerFuture.get()
+            } catch (e: java.util.concurrent.CancellationException) {
+                null
+            } catch (e: Exception) {
+                android.util.Log.e("YouPipePlayer", "MediaController connect failed", e)
+                null
+            }
         }, MoreExecutors.directExecutor())
 
         onDispose {

@@ -1,5 +1,3 @@
-#[cfg(test)]
-mod tests {
     use super::*;
     use crate::geom::{Pt, SigPt};
     use crate::mvt::DEFAULT_EXTENT;
@@ -448,3 +446,25 @@ mod tests {
         out.push((
             "a long diagonal over many z7 tiles",
             line(&[(w(1.3), w(2.3)), (w(90.7), w(70.1))]),
+            7,
+        ));
+        // --- off the edge of the grid --------------------------------------
+        out.push(("a ring hanging off the grid", polygon(&[&square(-2.0, 3.0)]), 4));
+        out.push((
+            "a line hanging off the grid",
+            line(&[(w(-3.0), w(-1.0)), (w(4.0), w(5.0))]),
+            4,
+        ));
+
+        // --- points --------------------------------------------------------
+        let mut pts = Geometry::Points(sig(&[
+            (w(0.5), w(0.5)),
+            (w(1.0), w(1.0)),
+            (w(2.9999), w(3.0001)),
+            (w(5.5), w(2.5)),
+        ]));
+        crate::simplify::annotate(&mut pts);
+        out.push(("a handful of points", pts, 4));
+
+        out
+    }

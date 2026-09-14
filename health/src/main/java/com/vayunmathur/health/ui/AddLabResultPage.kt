@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.health.R
 import com.vayunmathur.health.Route
 import com.vayunmathur.health.platform.MedicalViewModel
+import com.vayunmathur.health.platform.saveLabDraft
 import com.vayunmathur.health.ui.components.PickerField
 import com.vayunmathur.library.ui.DetailScaffold
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api

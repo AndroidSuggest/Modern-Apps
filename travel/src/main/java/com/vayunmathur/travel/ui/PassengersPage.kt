@@ -40,6 +40,8 @@ import com.vayunmathur.travel.network.AirlineDto
 import com.vayunmathur.travel.network.OfferPassengerDto
 import com.vayunmathur.travel.network.PassengerInputDto
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.loadAirlines
+import com.vayunmathur.travel.util.updatePassenger
 import com.vayunmathur.travel.util.REQUESTED_CONTACT_FIELDS
 import com.vayunmathur.travel.util.readSessionContact
 import kotlinx.coroutines.Dispatchers

@@ -50,7 +50,10 @@ class SabrNgDashMediaSource(
     private val mediaItem: MediaItem,
     private val videoId: String,
     private val specSupplier: () -> SabrNgSourceSpec,
-    private val tokenMinter: ((Boolean) -> ByteArray?)? = null
+    private val tokenMinter: ((Boolean) -> ByteArray?)? = null,
+    // Nullable: a missing/dead player read must NOT coalesce to 0 and shadow the
+    // segment-tracked fallback (that froze the playhead and metered sessions to death).
+    private val playheadMsProvider: (() -> Long?)? = null,
 ) : CompositeMediaSource<Int>() {
 
     private val appContext: Context = context.applicationContext
@@ -90,7 +93,7 @@ class SabrNgDashMediaSource(
             // Heavy, off-main: mint the PO token (WebView/DOM JS) and fetch init segments.
             val spec = specSupplier()
             val spoolDir = File(appContext.cacheDir, "sabrng").apply { mkdirs() }
-            val builtSession = SabrNgSession(spec, spoolDir, tokenMinter)
+            val builtSession = SabrNgSession(spec, spoolDir, tokenMinter, playheadMsProvider)
             val durationMs = spec.getDurationMs()
             val dataSourceFactory = DataSource.Factory {
                 SabrNgSegmentDataSource(builtSession, SEGMENT_TIMEOUT_MS)

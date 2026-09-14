@@ -1,4 +1,6 @@
-mod refdiff_followup_tests {
+
+#[cfg(test)]
+mod refdiff_followup_tests_2 {
     use crate::*;
     use lopdf::content::Operation;
     use lopdf::{dictionary, Stream};
@@ -9,114 +11,6 @@ mod refdiff_followup_tests {
 
     fn clip_applies(prims: &[Prim]) -> usize {
         prims.iter().filter(|p| matches!(p, Prim::TextClipApply)).count()
-    }
-
-    /// §9.4.3: the text clip accumulates the outlines of the glyphs SHOWN. The
-    /// `TJ` arm latched `text_clip_used` OUTSIDE its array destructure, so
-    /// `7 Tr [] TJ` — and any `TJ` whose operand is not an array at all —
-    /// claimed a clip built from no glyphs, which `ET` then applied. The sibling
-    /// `Tj`/`'`/`"` arms all latch inside a successful string destructure.
-    ///
-    /// This matters far more since the consumer stopped ignoring an empty text
-    /// clip and started clipping to NOTHING, which is what §9.4.3 requires: a
-    /// spurious latch now blanks the page rather than being quietly absorbed.
-    #[test]
-    fn tj_does_not_latch_a_text_clip_when_it_shows_no_glyphs() {
-        let mut doc = Document::with_version("1.7");
-        let font = doc.add_object(dictionary! {
-            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica",
-        });
-        let res = dictionary! { "Font" => dictionary! { "F1" => Object::Reference(font) } };
-        let run = |body: Vec<Operation>| {
-            let mut ops = vec![
-                op("BT", vec![]),
-                op("Tf", vec![Object::Name(b"F1".to_vec()), 12.into()]),
-                op("Tr", vec![7.into()]),
-            ];
-            ops.extend(body);
-            ops.push(op("ET", vec![]));
-            let mut prims = Vec::new();
-            interpret_content(&doc, &ops, Some(&res), GraphicsState::default(), &mut prims, 0, false);
-            prims
-        };
-
-        for (what, body) in [
-            ("an empty array", vec![op("TJ", vec![Object::Array(vec![])])]),
-            (
-                "adjustments only",
-                vec![op("TJ", vec![Object::Array(vec![Object::Integer(-500)])])],
-            ),
-            ("a non-array operand", vec![op("TJ", vec![Object::Integer(0)])]),
-            ("no operand at all", vec![op("TJ", vec![])]),
-        ] {
-            assert_eq!(clip_applies(&run(body)), 0, "TJ with {what} showed no glyphs, so no clip");
-        }
-
-        // The converse: a TJ that DOES show a glyph must still latch, or the fix
-        // would have deleted the feature instead of bounding it.
-        let prims = run(vec![op(
-            "TJ",
-            vec![Object::Array(vec![
-                Object::string_literal("A"),
-                Object::Integer(-200),
-                Object::string_literal("B"),
-            ])],
-        )]);
-        assert_eq!(clip_applies(&prims), 1, "a TJ that shows glyphs must still clip");
-
-        // A WHITESPACE-ONLY run must also latch. It delivers a record, so the
-        // consumer accumulates — and a space has no contours, so it accumulates an
-        // EMPTY path and clips to nothing. That is §9.4.3, and it is the case the
-        // consumer's unconditional clipPath was changed to serve; latching on
-        // delivery rather than on outline area is what keeps it reachable.
-        assert_eq!(
-            clip_applies(&run(vec![op("Tj", vec![Object::string_literal("   ")])])),
-            1,
-            "a whitespace-only Tr 7 run must still emit the marker"
-        );
-    }
-
-    /// §9.6.5 Table 113: after `d1` a glyph description "shall not specify any
-    /// colour or other colour-related parameters"; if it does, they SHALL BE
-    /// IGNORED and the glyph painted with the current text-state colour. A
-    /// CharProc doing `1 1 1 rg` after its `d1` otherwise paints white on white.
-    ///
-    /// Unreachable until `content::repair_d0_d1` made `d1` an operator lopdf can
-    /// actually produce, so this is also the regression test for that arm being
-    /// live rather than dead code.
-    #[test]
-    fn colour_operators_after_d1_are_ignored() {
-        let doc = Document::with_version("1.7");
-        let red = rgb_to_argb(1.0, 0.0, 0.0);
-        let glyph = vec![
-            op("d1", vec![0.into(), 0.into(), 0.into(), 0.into(), 750.into(), 750.into()]),
-            op("rg", vec![1.into(), 1.into(), 1.into()]),
-            op("re", vec![0.into(), 0.into(), 100.into(), 100.into()]),
-            op("f", vec![]),
-        ];
-        let mut gs = GraphicsState::default();
-        gs.fill = red;
-        let mut prims = Vec::new();
-        interpret_content(&doc, &glyph, None, gs.clone(), &mut prims, 0, false);
-        let fills: Vec<u32> = prims
-            .iter()
-            .filter_map(|p| match p {
-                Prim::Fill { argb, .. } => Some(*argb),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(fills, vec![red], "the `1 1 1 rg` inside a d1 glyph must be ignored");
-
-        // `d0` carries no such rule, and neither does a page stream: the
-        // suppression must not leak outside a d1 glyph description.
-        let mut d0_glyph = glyph.clone();
-        d0_glyph[0] = op("d0", vec![0.into(), 0.into()]);
-        let mut prims = Vec::new();
-        interpret_content(&doc, &d0_glyph, None, gs, &mut prims, 0, false);
-        assert!(
-            prims.iter().any(|p| matches!(p, Prim::Fill { argb, .. } if *argb == rgb_to_argb(1.0, 1.0, 1.0))),
-            "d0 imposes no colour rule, so `1 1 1 rg` must take effect"
-        );
     }
 
     /// §8.7.4.2 makes a `/Shading` resource "a dictionary or a stream", and
@@ -336,7 +230,7 @@ mod refdiff_followup_tests {
         let mut gs = GraphicsState::default();
         gs.fill = red;
         let mut prims = Vec::new();
-        interpret_content(&doc, &ops, None, gs, &mut prims, 0, false);
+        interpret_content(&doc, &ops, None, self.gs, &mut prims, 0, false);
         let fills: Vec<u32> = prims
             .iter()
             .filter_map(|p| match p {
@@ -448,3 +342,66 @@ mod refdiff_followup_tests {
                 .find_map(|p| match p {
                     Prim::Fill { argb, .. } => Some(*argb),
                     _ => None,
+                })
+        };
+
+        // Precondition: an explicit /BC still produces its own colour, so this
+        // fixture really does reach the backdrop path.
+        assert_eq!(
+            backdrops(Some(Object::Array(vec![Object::Real(1.0)]))),
+            Some(rgb_to_argb(1.0, 1.0, 1.0)),
+            "an explicit white /BC must still paint white"
+        );
+        assert_eq!(
+            backdrops(None),
+            Some(0xFF00_0000),
+            "an absent /BC defaults to zero luminosity, not to no backdrop at all"
+        );
+    }
+
+    /// Residual of the `/BC` fix, found by `hunt-wrong2`: the backdrop block was
+    /// still wrapped in `if let Some(rect) = ...BBox...`, but `rect` is only used
+    /// on the no-extent FALLBACK path. So a mask group with no `/BBox` got no
+    /// backdrop even when `masked_extent` was `Some` and the extent needed to
+    /// paint one was right there — the pre-fix behaviour surviving in a narrower
+    /// case. §8.10.2 makes `/BBox` required, but producers omit it.
+    #[test]
+    fn a_luminosity_mask_without_a_bbox_still_gets_its_backdrop() {
+        let mut doc = Document::with_version("1.7");
+        // Deliberately NO /BBox on the group: the point of the test.
+        let group = doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject", "Subtype" => "Form",
+                "Group" => dictionary! { "S" => "Transparency", "CS" => "DeviceGray" },
+            },
+            b"1 g 0 0 50 50 re f".to_vec(),
+        ));
+        let extg = doc.add_object(dictionary! {
+            "Type" => "ExtGState",
+            "SMask" => dictionary! { "S" => "Luminosity", "G" => Object::Reference(group) },
+        });
+        let res = dictionary! { "ExtGState" => dictionary! { "GS" => Object::Reference(extg) } };
+        let ops = vec![
+            op("gs", vec![Object::Name(b"GS".to_vec())]),
+            op("re", vec![0.into(), 0.into(), 200.into(), 200.into()]),
+            op("f", vec![]),
+        ];
+        let mut prims = Vec::new();
+        interpret_content_seeded(
+            &doc, &ops, Some(&res), GraphicsState::default(), &mut prims, 0, false,
+            Some([0.0, 0.0, 200.0, 200.0]),
+        );
+        let content = prims
+            .iter()
+            .position(|p| matches!(p, Prim::SoftMaskContent))
+            .expect("the mask bracket must have been emitted");
+        assert_eq!(
+            prims[content..].iter().find_map(|p| match p {
+                Prim::Fill { argb, .. } => Some(*argb),
+                _ => None,
+            }),
+            Some(0xFF00_0000),
+            "the masked extent supplies the area, so a missing /BBox must not skip the backdrop"
+        );
+    }
+}

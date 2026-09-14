@@ -9,6 +9,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.plus
 import kotlin.time.Instant
 
 internal fun firstDayOfWeekOffset(date: LocalDate, locale: Locale): Int {

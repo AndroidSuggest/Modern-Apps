@@ -1,5 +1,3 @@
-#[cfg(test)]
-mod tests {
     use super::*;
 
     // --- A minimal TRX2 writer (v3 or v4), so the planner can be exercised
@@ -448,3 +446,12 @@ mod tests {
             }
             for s in sections.iter() {
                 out.resize(align(out.len()), 0);
+                out.extend_from_slice(s);
+            }
+            out
+        }
+
+        fn index(&self) -> TransitIndex {
+            TransitIndex::from_bytes(self.build_with_version(VERSION)).expect("index loads")
+        }
+    }

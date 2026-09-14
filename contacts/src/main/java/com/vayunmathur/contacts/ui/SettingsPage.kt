@@ -28,6 +28,9 @@ import com.vayunmathur.contacts.data.isDefaultLocalAccount
 import com.vayunmathur.contacts.data.isLocalAccountType
 import com.vayunmathur.contacts.util.ContactAccount
 import com.vayunmathur.contacts.util.ContactViewModel
+import com.vayunmathur.contacts.util.deleteLocalAccount
+import com.vayunmathur.contacts.util.renameLocalAccount
+import com.vayunmathur.contacts.util.setAccountVisibility
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.Route
 import com.vayunmathur.contacts.util.VcfUtils

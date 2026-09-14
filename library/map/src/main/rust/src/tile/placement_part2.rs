@@ -447,3 +447,4 @@ mod tests {
         assert!((b.cx - (100.0 + inv * 10.0)).abs() < 1e-2, "cx {}", b.cx);
         assert!((b.cy - (100.0 + inv * 10.0)).abs() < 1e-2, "cy {}", b.cy);
     }
+}

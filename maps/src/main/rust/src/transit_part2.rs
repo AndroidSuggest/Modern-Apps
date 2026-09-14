@@ -1,3 +1,5 @@
+
+impl TransitIndex {
     /// IANA timezone of feed `feed_idx` from FEED_TZ, or empty when the feed had
     /// no `agency.txt`.
     fn feed_tz_of(&self, feed_idx: u32) -> String {

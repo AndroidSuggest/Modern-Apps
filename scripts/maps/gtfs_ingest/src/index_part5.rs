@@ -14,14 +14,14 @@ mod tests {
         assert_eq!(std::mem::size_of::<StopTime>(), 24);
     }
 
-    fn agency(tz: &str) -> Csv {
+    pub(super) fn agency(tz: &str) -> Csv {
         parse_csv(&format!("agency_id,agency_name,agency_timezone\nA,Agency,{tz}\n"))
     }
 
     /// `(shape_id, points as (lat, lon), optional shape_dist_traveled)`.
-    type ShapeSpec<'a> = (&'a str, Vec<(f64, f64)>, Option<Vec<f64>>);
+    pub(super) type ShapeSpec<'a> = (&'a str, Vec<(f64, f64)>, Option<Vec<f64>>);
 
-    fn shape_map(entries: Vec<ShapeSpec>) -> HashMap<String, Shape> {
+    pub(super) fn shape_map(entries: Vec<ShapeSpec>) -> HashMap<String, Shape> {
         entries
             .into_iter()
             .map(|(id, pts, dist)| {
@@ -39,7 +39,7 @@ mod tests {
 
     /// Every route's vertex indices must be non-decreasing and inside its blob,
     /// or the device's `shape[vertex(board)..=vertex(alight)]` slice is garbage.
-    fn assert_shape_invariants(r: &Reader) {
+    pub(super) fn assert_shape_invariants(r: &Reader) {
         for route in 0..r.route_count() {
             let rec = r.route(route);
             let (n_stops, first) = (rec.n_stops, rec.first_route_stop);
@@ -295,7 +295,7 @@ mod tests {
     /// One feed, three collinear stops, one route, `shape_id` on both trips.
     /// `stop_times_extra` is appended verbatim so a test can add
     /// `shape_dist_traveled`.
-    fn shaped_feed(shape_dist: bool) -> (Csv, Csv, Csv, Csv, Csv) {
+    pub(super) fn shaped_feed(shape_dist: bool) -> (Csv, Csv, Csv, Csv, Csv) {
         let stops = parse_csv(
             "stop_id,stop_name,stop_lat,stop_lon,stop_code\n\
              S1,Alpha,37.700,-122.400,A1\n\
@@ -355,7 +355,7 @@ mod tests {
         )])
     }
 
-    fn one_feed<'a>(
+    pub(super) fn one_feed<'a>(
         t: &'a (Csv, Csv, Csv, Csv, Csv),
         ag: &'a Csv,
         shapes: Option<&'a HashMap<String, Shape>>,
@@ -429,22 +429,4 @@ mod tests {
             (0..rec.n_stops).map(|p| r.route_stop_shape(rec.first_route_stop + p)).collect();
         assert!(vertices.windows(2).all(|w| w[1] > w[0]), "distinct stops, distinct vertices");
     }
-
-    #[test]
-    fn a_mismatched_shape_is_dropped_to_the_stop_to_stop_fallback() {
-        let t = shaped_feed(false);
-        let ag = agency("America/Los_Angeles");
-        // The same shape_id, but 4000 km east.
-        let sh = shape_map(vec![(
-            "SH1",
-            vec![(40.700, -74.000), (40.710, -74.000), (40.720, -74.000)],
-            None,
-        )]);
-        let (blob, stats) =
-            build_index("world", &one_feed(&t, &ag, Some(&sh))).expect("build");
-        let r = Reader::new(blob).expect("read back the pack");
-        assert_eq!(stats.shaped_routes, 0);
-        assert_eq!(stats.dropped_shape_routes, 1);
-        assert!(r.route_shape_off(0).is_none(), "a bad shape must not be stored");
-        assert_eq!(r.sec_bytes(SEC_SHAPE_COORDS).len(), 0);
-        assert_shape_invariants(&r);
+}

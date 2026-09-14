@@ -1,13 +1,3 @@
-            report[0].largest_tile_bytes <= 600,
-            "largest tile {} exceeds the 600-byte budget",
-            report[0].largest_tile_bytes
-        );
-        // The archive still reads, which is the thing a bad drop breaks.
-        let a = Archive::parse(&bytes).unwrap();
-        for (_, raw) in a.iter_tiles().unwrap() {
-            assert!(Tile::decode(&crate::gz::decompress(raw).unwrap()).is_ok());
-        }
-    }
 
     #[test]
     fn one_feature_too_big_for_the_budget_is_kept_and_reported() {
@@ -448,3 +438,8 @@
     fn an_empty_input_streams_to_an_empty_but_valid_archive() {
         let opts = Options::new("l", 10, 12);
         let bytes = assert_identical("empty", &[], &opts, &StreamLimits::default());
+        let a = Archive::parse(&bytes).unwrap();
+        assert_eq!(a.header.addressed_tiles, 0);
+        assert_eq!(a.header.min_lat_e7, -850_511_290, "Builder's default, not StreamBuilder's");
+        assert_eq!(a.header.max_lat_e7, 850_511_290);
+    }

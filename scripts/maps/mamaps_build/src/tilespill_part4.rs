@@ -1,3 +1,19 @@
+#[cfg(test)]
+mod tests_extra {
+    use super::tests::{drain, every_layer, feature, tmp};
+    use super::*;
+    use tilecodec::mamaps::body::{GEOM_LINE, WINDING_OUTER};
+
+    /// Byte-identity, at the level the format can state it: what a reader yields does not depend on
+    /// how much it buffers. This is what pins "the window size is not observable".
+    #[test]
+    fn a_chunk_reads_the_same_however_the_window_is_sized() {
+        let spill = ChunkSpill::create(tmp("windows")).expect("create");
+        let mut map: BTreeMap<(u64, u8), ChunkEntry> = every_layer().into_iter().collect();
+        // One entry far larger than the smallest window, so at least one read has to be the
+        // oversize path rather than the buffered one.
+        let mut big = ChunkEntry::new(4);
+        big.layer.features = vec![feature(1, 1, GEOM_LINE, 0, 0, 1)];
         big.layer.parts =
             vec![Part { coord_start: 0, point_count: 40_000, winding: WINDING_OUTER }];
         // The coordinates themselves are arbitrary; only the point count matters here. Kept

@@ -1,3 +1,69 @@
+#[cfg(test)]
+mod tests_part8 {
+    use super::*;
+    use super::tests::*;
+    use crate::schema::Class;
+    use tilecodec::mamaps::dict;
+    /// **The road/river name path, end to end.** A street's name survives the spill, the merge and
+    /// coalescing, and comes back interned in the tile's name table on the line feature — which is
+    #[test]
+    fn a_road_name_reaches_the_archive() {
+        let road = Feature {
+            class: Class::line(dict::LAYER_ROADS, crate::schema::kind("major_road"), 12),
+            geometry: Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.98, 35.002)]]),
+            name: Some("Market Street".to_string()),
+            id: tilecodec::mamaps::body::ID_NONE,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        let river = Feature {
+            class: Class::line(dict::LAYER_WATER, crate::schema::kind("river"), 12),
+            geometry: Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.97, 35.004)]]),
+            name: Some("Los Gatos Creek".to_string()),
+            id: tilecodec::mamaps::body::ID_NONE,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+            turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            building: None,
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+        };
+        let (bytes, _) = build(&spilled(&[road, river]), &settings(14, 14)).expect("build");
+        let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
+        let (mut saw_road, mut saw_river) = (false, false);
+        for (_, _, body) in &entries {
+            let body = Body::parse(body).expect("parse");
+            if let Some(layer) = body.layer(dict::LAYER_ROADS) {
+                for f in &layer.features {
+                    if f.name(&body) == Some("Market Street") {
+                        saw_road = true;
+                    }
+                }
+            }
+            if let Some(layer) = body.layer(dict::LAYER_WATER) {
+                for f in &layer.features {
+                    if f.name(&body) == Some("Los Gatos Creek") {
+                        saw_river = true;
+                    }
+                }
+            }
+        }
+        assert!(saw_road, "the road's name should reach the archive");
+        assert!(saw_river, "the river's name should reach the archive");
+    }
+
+    #[test]
+    fn a_roads_turn_masks_reach_the_archive() {
         use osm_ingest::tags::{LANE_LEFT, LANE_RIGHT, LANE_THROUGH};
         let (fwd, _) = crate::schema::roads::turn_masks(
             &[("highway", "primary"), ("oneway", "yes"), ("lanes", "3"),
@@ -394,57 +460,4 @@
         assert_eq!(segs.len(), 1, "the traffic segment keeps its component id");
         assert_eq!(connectors, 2, "coalescing must not chain the two connectors");
     }
-
-    /// **Lane C: traffic segment-delta through the full tiler.** Two segments
-    /// of one edge land in one shared section with one stitched base in lane
-    /// A's geometry pool and one keep-mask each: the base decodes (mask
-    /// applied) to each segment's own tile-local vertices, and the bodies
-    /// stay full v7 (lane B has not landed).
-    ///
-    /// Fail-watch: revert the resolve call in `shared_intents_for_tile` (drop
-    /// the `resolve_traffic_codecs` zip) and this quotes
-    /// `left: 1, right: 2` on the base count working backward from the parse;
-    /// restore after quoting.
-    #[test]
-    fn a_shared_traffic_build_stitches_one_base_per_edge() {
-        use crate::layercodec::{apply_mask, codec_for, LayerCodec};
-        use crate::schema::traffic::{pack_component_id, traffic_class, unpack_component_id};
-        use tilecodec::mamaps::dict::LAYER_TRAFFIC;
-        assert_eq!(
-            codec_for(LAYER_TRAFFIC),
-            LayerCodec::TrafficDelta,
-            "traffic rides the delta codec",
-        );
-        let segment = |seg: u32, x0: f64, x1: f64| Feature {
-            class: traffic_class(),
-            geometry: Geometry::Lines(vec![vec![(x0, 35.0), (x1, 35.0004)]]),
-            name: None,
-            id: pack_component_id(7, seg),
-            transit_color: 0,
-            transit_ordinal: 0,
-            transit_lanes: 0,
-            transit_taper: 0,
-            lane_count: 0,
-            turn_fwd: Vec::new(),
-            turn_bwd: Vec::new(),
-            building: None,
-            carriageway: tilecodec::mamaps::body::Carriageway::default(),
-        };
-        // Two segments of edge 7, chaining end to start like the graph emits.
-        let features = vec![
-            segment(0, -120.0, -119.9996),
-            // Starts where seg 0 ends: the same junction mouth.
-            Feature {
-                class: traffic_class(),
-                geometry: Geometry::Lines(vec![vec![
-                    (-119.9996, 35.0004),
-                    (-119.9992, 35.0008),
-                ]]),
-                name: None,
-                id: pack_component_id(7, 1),
-                transit_color: 0,
-                transit_ordinal: 0,
-                transit_lanes: 0,
-                transit_taper: 0,
-                lane_count: 0,
-                turn_fwd: Vec::new(),
+}

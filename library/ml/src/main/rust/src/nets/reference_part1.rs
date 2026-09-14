@@ -1,4 +1,3 @@
-impl Reference {
     fn new(plan: &Plan, weights: &[u8], inputs: &[&[f32]]) -> Result<Reference, String> {
         if inputs.len() != plan.inputs.len() {
             return Err(format!(
@@ -433,18 +432,3 @@ impl Reference {
         }
         Ok(())
     }
-
-    /// Average pooling over an explicit window, floored and unpadded.
-    ///
-    /// The divisor is the window size rather than the number of elements actually read,
-    /// which is only correct because `Builder::avg_pool` refuses a window that overhangs.
-    fn avg_pool(&mut self, p: &Push) -> Result<(), String> {
-        let window = p.kh * p.kw;
-        if window == 0 {
-            return Err("an average pool over an empty window".into());
-        }
-        for oc in 0..p.out_c {
-            let plane = oc * p.in_h * p.in_w;
-            for oy in 0..p.out_h {
-                for ox in 0..p.out_w {
-                    let mut total = 0.0;

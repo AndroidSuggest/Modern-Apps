@@ -1,0 +1,988 @@
+Calculating task graph as no cached configuration is available for tasks: :calendar:compileDevKotlin :contacts:compileDevKotlin :health:compileDevKotlin :travel:compileDevKotlin :files:compileDevKotlin :things:compileDevKotlin :music:compileDevKotlin :flashcards:compileDevKotlin :games:arrows:compileDevKotlin :games:solitaire:compileDevKotlin :games:wordmaker:compileDevKotlin :games:logicgate:compileDevKotlin :email:compileDevKotlin
+> Task :build-logic:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :build-logic:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :build-logic:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :build-logic:compilePluginsBlocks UP-TO-DATE
+> Task :build-logic:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :build-logic:generateScriptPluginAdapters UP-TO-DATE
+> Task :build-logic:compileKotlin UP-TO-DATE
+> Task :build-logic:compileJava NO-SOURCE
+> Task :build-logic:pluginDescriptors UP-TO-DATE
+> Task :build-logic:processResources UP-TO-DATE
+> Task :build-logic:classes UP-TO-DATE
+> Task :build-logic:jar UP-TO-DATE
+
+> Configure project :appstore
+WARNING: The option setting 'android.experimental.enableScreenshotTest=true' is experimental.
+The current default is 'false'.
+Add android.sync.suppressAgpWarnings=UNSUPPORTED_PROJECT_OPTION_USE to the gradle.properties file to suppress this warning.
+
+> Task :library:network:preBuild UP-TO-DATE
+> Task :games:wordmaker:preBuild UP-TO-DATE
+> Task :travel:preBuild UP-TO-DATE
+> Task :calendar:preBuild UP-TO-DATE
+> Task :files:preBuild UP-TO-DATE
+> Task :library:work:preBuild UP-TO-DATE
+> Task :contacts:preBuild UP-TO-DATE
+> Task :games:solitaire:preBuild UP-TO-DATE
+> Task :library:room:preBuild UP-TO-DATE
+> Task :health:preBuild UP-TO-DATE
+> Task :sdk:cast:preBuild UP-TO-DATE
+> Task :games:logicgate:preBuild UP-TO-DATE
+> Task :sdk:games:preBuild UP-TO-DATE
+> Task :library:widgets:preBuild UP-TO-DATE
+> Task :things:preBuild UP-TO-DATE
+> Task :games:arrows:preBuild UP-TO-DATE
+> Task :library:media:preBuild UP-TO-DATE
+> Task :email:preBuild UP-TO-DATE
+> Task :library:preBuild UP-TO-DATE
+> Task :library:image:preBuild UP-TO-DATE
+> Task :flashcards:preBuild UP-TO-DATE
+> Task :library:ui:preBuild UP-TO-DATE
+> Task :music:preBuild UP-TO-DATE
+> Task :library:image:preReleaseBuild UP-TO-DATE
+> Task :music:preDevBuild UP-TO-DATE
+> Task :library:work:preReleaseBuild UP-TO-DATE
+> Task :contacts:generateDevLauncherIcon UP-TO-DATE
+> Task :calendar:generateDevLauncherIcon UP-TO-DATE
+> Task :health:generateDevLauncherIcon UP-TO-DATE
+> Task :library:network:preReleaseBuild UP-TO-DATE
+> Task :calendar:preDevBuild UP-TO-DATE
+> Task :library:image:javaPreCompileRelease UP-TO-DATE
+> Task :files:preDevBuild UP-TO-DATE
+> Task :games:wordmaker:preDevBuild UP-TO-DATE
+> Task :library:image:processReleaseNavigationResources UP-TO-DATE
+> Task :library:work:extractReleaseSupportedLocales UP-TO-DATE
+> Task :library:work:generateReleaseResources UP-TO-DATE
+> Task :library:image:generateReleaseResources UP-TO-DATE
+> Task :library:widgets:preReleaseBuild UP-TO-DATE
+> Task :health:preDevBuild UP-TO-DATE
+> Task :library:image:extractReleaseSupportedLocales UP-TO-DATE
+> Task :library:media:preReleaseBuild UP-TO-DATE
+> Task :library:preReleaseBuild UP-TO-DATE
+> Task :sdk:games:preReleaseBuild UP-TO-DATE
+> Task :contacts:preDevBuild UP-TO-DATE
+> Task :things:preDevBuild UP-TO-DATE
+> Task :games:logicgate:preDevBuild UP-TO-DATE
+> Task :travel:preDevBuild UP-TO-DATE
+> Task :library:room:preReleaseBuild UP-TO-DATE
+> Task :games:solitaire:preDevBuild UP-TO-DATE
+> Task :sdk:cast:preReleaseBuild UP-TO-DATE
+> Task :library:ui:preReleaseBuild UP-TO-DATE
+> Task :flashcards:preDevBuild UP-TO-DATE
+> Task :games:arrows:preDevBuild UP-TO-DATE
+> Task :contacts:generateDevResources UP-TO-DATE
+> Task :library:javaPreCompileRelease UP-TO-DATE
+> Task :health:mapDevSourceSetPaths UP-TO-DATE
+> Task :library:work:javaPreCompileRelease UP-TO-DATE
+> Task :library:work:processReleaseNavigationResources UP-TO-DATE
+> Task :library:network:extractReleaseSupportedLocales UP-TO-DATE
+> Task :calendar:generateDevResources UP-TO-DATE
+> Task :calendar:extractDevSupportedLocales UP-TO-DATE
+> Task :calendar:mapDevSourceSetPaths UP-TO-DATE
+> Task :calendar:generateDevBuildConfig UP-TO-DATE
+> Task :library:network:processReleaseNavigationResources UP-TO-DATE
+> Task :email:preDevBuild UP-TO-DATE
+> Task :contacts:mapDevSourceSetPaths UP-TO-DATE
+> Task :library:media:javaPreCompileRelease UP-TO-DATE
+> Task :games:wordmaker:generateDevBuildConfig UP-TO-DATE
+> Task :music:generateDevBuildConfig UP-TO-DATE
+> Task :health:generateDevResources UP-TO-DATE
+> Task :health:generateDevBuildConfig UP-TO-DATE
+> Task :library:widgets:javaPreCompileRelease UP-TO-DATE
+> Task :sdk:games:javaPreCompileRelease UP-TO-DATE
+> Task :health:extractDevSupportedLocales UP-TO-DATE
+> Task :library:generateReleaseResources UP-TO-DATE
+> Task :library:widgets:processReleaseNavigationResources UP-TO-DATE
+> Task :games:solitaire:generateDevLauncherIcon UP-TO-DATE
+> Task :sdk:games:generateReleaseResources UP-TO-DATE
+> Task :library:widgets:extractReleaseSupportedLocales UP-TO-DATE
+> Task :library:processReleaseNavigationResources UP-TO-DATE
+> Task :email:generateDevLauncherIcon UP-TO-DATE
+> Task :library:extractReleaseSupportedLocales UP-TO-DATE
+> Task :sdk:games:processReleaseNavigationResources UP-TO-DATE
+> Task :travel:generateDevLauncherIcon UP-TO-DATE
+> Task :sdk:games:extractReleaseSupportedLocales UP-TO-DATE
+> Task :library:widgets:generateReleaseResources UP-TO-DATE
+> Task :library:work:packageReleaseResources UP-TO-DATE
+> Task :library:ui:generateReleaseResources UP-TO-DATE
+> Task :games:logicgate:generateDevLauncherIcon UP-TO-DATE
+> Task :contacts:generateDevBuildConfig UP-TO-DATE
+> Task :things:generateDevLauncherIcon UP-TO-DATE
+> Task :games:arrows:generateDevBuildConfig UP-TO-DATE
+> Task :library:room:extractReleaseSupportedLocales UP-TO-DATE
+> Task :files:generateDevBuildConfig UP-TO-DATE
+> Task :library:image:packageReleaseResources UP-TO-DATE
+> Task :music:generateDevLauncherIcon UP-TO-DATE
+> Task :files:generateDevLauncherIcon UP-TO-DATE
+> Task :games:wordmaker:generateDevLauncherIcon UP-TO-DATE
+> Task :games:arrows:generateDevLauncherIcon UP-TO-DATE
+> Task :flashcards:generateDevLauncherIcon UP-TO-DATE
+> Task :flashcards:generateDevBuildConfig UP-TO-DATE
+> Task :things:generateDevResources UP-TO-DATE
+> Task :library:media:processReleaseNavigationResources UP-TO-DATE
+> Task :library:media:extractReleaseSupportedLocales UP-TO-DATE
+> Task :library:media:generateReleaseResources UP-TO-DATE
+> Task :library:ui:javaPreCompileRelease UP-TO-DATE
+> Task :games:arrows:generateDevResources UP-TO-DATE
+> Task :library:ui:processReleaseNavigationResources UP-TO-DATE
+> Task :library:ui:extractReleaseSupportedLocales UP-TO-DATE
+> Task :travel:generateDevBuildConfig UP-TO-DATE
+> Task :library:packageReleaseResources UP-TO-DATE
+> Task :library:network:generateReleaseResources UP-TO-DATE
+> Task :sdk:cast:extractReleaseSupportedLocales UP-TO-DATE
+> Task :contacts:extractDevSupportedLocales UP-TO-DATE
+> Task :sdk:games:packageReleaseResources UP-TO-DATE
+> Task :library:network:javaPreCompileRelease UP-TO-DATE
+> Task :travel:mapDevSourceSetPaths UP-TO-DATE
+> Task :travel:generateDevResources UP-TO-DATE
+> Task :travel:extractDevSupportedLocales UP-TO-DATE
+> Task :things:generateDevBuildConfig UP-TO-DATE
+> Task :games:arrows:mapDevSourceSetPaths UP-TO-DATE
+> Task :sdk:cast:javaPreCompileRelease UP-TO-DATE
+> Task :games:arrows:extractDevSupportedLocales UP-TO-DATE
+> Task :sdk:cast:generateReleaseResources UP-TO-DATE
+> Task :library:image:parseReleaseLocalResources UP-TO-DATE
+> Task :library:room:javaPreCompileRelease UP-TO-DATE
+> Task :library:room:generateReleaseResources UP-TO-DATE
+> Task :sdk:cast:processReleaseNavigationResources UP-TO-DATE
+> Task :library:room:processReleaseNavigationResources UP-TO-DATE
+> Task :games:logicgate:generateDevBuildConfig UP-TO-DATE
+> Task :things:extractDevSupportedLocales UP-TO-DATE
+> Task :library:ui:packageReleaseResources UP-TO-DATE
+> Task :games:solitaire:generateDevResources UP-TO-DATE
+> Task :games:solitaire:generateDevBuildConfig UP-TO-DATE
+> Task :games:solitaire:extractDevSupportedLocales UP-TO-DATE
+> Task :games:solitaire:mapDevSourceSetPaths UP-TO-DATE
+> Task :library:ui:parseReleaseLocalResources UP-TO-DATE
+> Task :library:parseReleaseLocalResources UP-TO-DATE
+> Task :sdk:games:parseReleaseLocalResources UP-TO-DATE
+> Task :library:network:packageReleaseResources UP-TO-DATE
+> Task :library:work:parseReleaseLocalResources UP-TO-DATE
+> Task :email:generateDevBuildConfig UP-TO-DATE
+> Task :library:ui:generateReleaseRFile UP-TO-DATE
+> Task :games:solitaire:processDevNavigationResources UP-TO-DATE
+> Task :music:generateDevResources UP-TO-DATE
+> Task :things:mapDevSourceSetPaths UP-TO-DATE
+> Task :music:extractDevSupportedLocales UP-TO-DATE
+> Task :music:mapDevSourceSetPaths UP-TO-DATE
+> Task :library:image:generateReleaseRFile UP-TO-DATE
+> Task :library:generateReleaseRFile UP-TO-DATE
+> Task :library:room:packageReleaseResources UP-TO-DATE
+> Task :library:widgets:packageReleaseResources UP-TO-DATE
+> Task :library:network:parseReleaseLocalResources UP-TO-DATE
+> Task :files:generateDevResources UP-TO-DATE
+> Task :files:extractDevSupportedLocales UP-TO-DATE
+> Task :files:mapDevSourceSetPaths UP-TO-DATE
+> Task :library:work:generateReleaseRFile UP-TO-DATE
+> Task :things:processDevNavigationResources UP-TO-DATE
+> Task :sdk:games:generateReleaseRFile UP-TO-DATE
+> Task :library:room:parseReleaseLocalResources UP-TO-DATE
+> Task :library:widgets:parseReleaseLocalResources UP-TO-DATE
+> Task :contacts:processDevNavigationResources UP-TO-DATE
+> Task :library:network:generateReleaseRFile UP-TO-DATE
+> Task :games:arrows:processDevNavigationResources UP-TO-DATE
+> Task :library:room:generateReleaseRFile UP-TO-DATE
+> Task :calendar:processDevNavigationResources UP-TO-DATE
+> Task :games:logicgate:extractDevSupportedLocales UP-TO-DATE
+> Task :games:logicgate:mapDevSourceSetPaths UP-TO-DATE
+> Task :games:logicgate:generateDevResources UP-TO-DATE
+> Task :library:widgets:generateReleaseRFile UP-TO-DATE
+> Task :flashcards:generateDevResources UP-TO-DATE
+> Task :flashcards:extractDevSupportedLocales UP-TO-DATE
+> Task :games:wordmaker:mapDevSourceSetPaths UP-TO-DATE
+> Task :flashcards:mapDevSourceSetPaths UP-TO-DATE
+> Task :games:wordmaker:extractDevSupportedLocales UP-TO-DATE
+> Task :email:generateDevResources UP-TO-DATE
+> Task :email:mapDevSourceSetPaths UP-TO-DATE
+> Task :games:wordmaker:generateDevResources UP-TO-DATE
+> Task :email:extractDevSupportedLocales UP-TO-DATE
+> Task :library:media:packageReleaseResources UP-TO-DATE
+> Task :sdk:cast:packageReleaseResources UP-TO-DATE
+> Task :health:processDevNavigationResources UP-TO-DATE
+> Task :files:processDevNavigationResources UP-TO-DATE
+> Task :games:logicgate:processDevNavigationResources UP-TO-DATE
+> Task :travel:processDevNavigationResources UP-TO-DATE
+> Task :games:wordmaker:processDevNavigationResources UP-TO-DATE
+> Task :flashcards:processDevNavigationResources UP-TO-DATE
+> Task :library:media:parseReleaseLocalResources UP-TO-DATE
+> Task :sdk:cast:parseReleaseLocalResources UP-TO-DATE
+> Task :library:media:generateReleaseRFile UP-TO-DATE
+> Task :sdk:cast:generateReleaseRFile UP-TO-DATE
+> Task :files:generateDevLocaleConfig UP-TO-DATE
+> Task :health:generateDevLocaleConfig UP-TO-DATE
+> Task :contacts:generateDevLocaleConfig UP-TO-DATE
+> Task :things:generateDevLocaleConfig UP-TO-DATE
+> Task :calendar:generateDevLocaleConfig UP-TO-DATE
+> Task :travel:generateDevLocaleConfig UP-TO-DATE
+> Task :music:generateDevLocaleConfig UP-TO-DATE
+> Task :flashcards:generateDevLocaleConfig UP-TO-DATE
+> Task :contacts:packageDevResources UP-TO-DATE
+> Task :health:packageDevResources UP-TO-DATE
+> Task :games:arrows:generateDevLocaleConfig UP-TO-DATE
+> Task :games:solitaire:generateDevLocaleConfig UP-TO-DATE
+> Task :games:logicgate:generateDevLocaleConfig UP-TO-DATE
+> Task :games:wordmaker:generateDevLocaleConfig UP-TO-DATE
+> Task :email:generateDevLocaleConfig UP-TO-DATE
+> Task :calendar:packageDevResources UP-TO-DATE
+> Task :health:parseDevLocalResources UP-TO-DATE
+> Task :calendar:parseDevLocalResources UP-TO-DATE
+> Task :contacts:parseDevLocalResources UP-TO-DATE
+> Task :health:generateDevRFile UP-TO-DATE
+> Task :calendar:generateDevRFile UP-TO-DATE
+> Task :contacts:generateDevRFile UP-TO-DATE
+> Task :things:packageDevResources UP-TO-DATE
+> Task :games:arrows:packageDevResources UP-TO-DATE
+> Task :things:parseDevLocalResources UP-TO-DATE
+> Task :games:logicgate:packageDevResources UP-TO-DATE
+> Task :games:arrows:parseDevLocalResources UP-TO-DATE
+> Task :things:generateDevRFile UP-TO-DATE
+> Task :games:logicgate:parseDevLocalResources UP-TO-DATE
+> Task :flashcards:packageDevResources UP-TO-DATE
+> Task :files:packageDevResources UP-TO-DATE
+> Task :games:solitaire:packageDevResources UP-TO-DATE
+> Task :games:arrows:generateDevRFile UP-TO-DATE
+> Task :flashcards:parseDevLocalResources UP-TO-DATE
+> Task :sdk:games:compileReleaseKotlin UP-TO-DATE
+> Task :files:parseDevLocalResources UP-TO-DATE
+> Task :games:solitaire:parseDevLocalResources UP-TO-DATE
+> Task :games:logicgate:generateDevRFile UP-TO-DATE
+> Task :music:packageDevResources UP-TO-DATE
+> Task :sdk:games:compileReleaseJavaWithJavac NO-SOURCE
+> Task :flashcards:generateDevRFile UP-TO-DATE
+> Task :games:solitaire:generateDevRFile UP-TO-DATE
+> Task :sdk:games:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :files:generateDevRFile UP-TO-DATE
+> Task :library:network:compileReleaseKotlin UP-TO-DATE
+> Task :games:wordmaker:packageDevResources UP-TO-DATE
+> Task :music:processDevNavigationResources UP-TO-DATE
+> Task :library:network:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:network:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :games:wordmaker:parseDevLocalResources UP-TO-DATE
+> Task :music:parseDevLocalResources UP-TO-DATE
+> Task :email:packageDevResources UP-TO-DATE
+> Task :travel:packageDevResources UP-TO-DATE
+> Task :music:generateDevRFile UP-TO-DATE
+> Task :email:processDevNavigationResources UP-TO-DATE
+> Task :library:kspReleaseKotlin UP-TO-DATE
+> Task :travel:parseDevLocalResources UP-TO-DATE
+> Task :email:parseDevLocalResources UP-TO-DATE
+> Task :travel:generateDevRFile UP-TO-DATE
+> Task :games:wordmaker:generateDevRFile UP-TO-DATE
+> Task :email:generateDevRFile UP-TO-DATE
+> Task :library:media:compileReleaseKotlin UP-TO-DATE
+> Task :sdk:cast:compileReleaseKotlin UP-TO-DATE
+> Task :sdk:cast:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:media:compileReleaseJavaWithJavac NO-SOURCE
+> Task :sdk:cast:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:media:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:compileReleaseKotlin UP-TO-DATE
+> Task :library:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:room:kspReleaseKotlin UP-TO-DATE
+> Task :library:work:compileReleaseKotlin UP-TO-DATE
+> Task :library:work:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:widgets:compileReleaseKotlin UP-TO-DATE
+> Task :library:work:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:widgets:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:widgets:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:room:compileReleaseKotlin UP-TO-DATE
+> Task :library:room:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:room:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:ui:compileReleaseKotlin UP-TO-DATE
+> Task :library:ui:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:ui:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:image:compileReleaseKotlin UP-TO-DATE
+> Task :library:image:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:image:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :contacts:kspDevKotlin UP-TO-DATE
+> Task :health:kspDevKotlin UP-TO-DATE
+> Task :things:kspDevKotlin UP-TO-DATE
+> Task :games:logicgate:kspDevKotlin UP-TO-DATE
+> Task :games:solitaire:kspDevKotlin UP-TO-DATE
+> Task :games:wordmaker:kspDevKotlin UP-TO-DATE
+> Task :files:kspDevKotlin UP-TO-DATE
+> Task :travel:kspDevKotlin UP-TO-DATE
+> Task :music:kspDevKotlin UP-TO-DATE
+> Task :calendar:kspDevKotlin
+> Task :games:arrows:kspDevKotlin
+
+> Task :things:compileDevKotlin FAILED
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:32:37 Cannot access 'val TAG: String': it is private in 'com.vayunmathur.things.platform.ScaleBleManager.Companion'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:33:82 Cannot access 'fun ByteArray.toHex(): String': it is private in 'com.vayunmathur.things.platform.ScaleBleManager'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:37:36 Cannot access 'val TAG: String': it is private in 'com.vayunmathur.things.platform.ScaleBleManager.Companion'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:57:31 Cannot access 'val TAG: String': it is private in 'com.vayunmathur.things.platform.ScaleBleManager.Companion'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:63:31 Cannot access 'val TAG: String': it is private in 'com.vayunmathur.things.platform.ScaleBleManager.Companion'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:80:51 Cannot access 'val SCALE_SCANNING_STATE: String': it is private in file.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:82:38 Unresolved reference 'SCAN_TIMEOUT_MS'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:111:44 Cannot access 'val TAG: String': it is private in 'com.vayunmathur.things.platform.ScaleBleManager.Companion'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:112:27 Cannot access 'val TAG: String': it is private in 'com.vayunmathur.things.platform.ScaleBleManager.Companion'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:114:51 Cannot access 'val SCALE_WAITING_STATE: String': it is private in file.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:142:25 Cannot access 'val TAG: String': it is private in 'com.vayunmathur.things.platform.ScaleBleManager.Companion'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:147:67 Cannot access 'val gattCallback: <anonymous>': it is private in 'com.vayunmathur.things.platform.ScaleBleManager'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt:156:9 Cannot access 'fun refreshCache(g: BluetoothGatt): Unit': it is private in 'com.vayunmathur.things.platform.ScaleBleManager'.
+
+> Task :games:wordmaker:compileDevKotlin FAILED
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/wordmaker/src/main/java/com/vayunmathur/games/wordmaker/ui/WordGameOverlays.kt:108:25 Syntax error: Type annotations are not allowed on destructuring declarations.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/wordmaker/src/main/java/com/vayunmathur/games/wordmaker/ui/WordGameScreen.kt:265:17 'fun BoxScope.WordGameWheel(isCompetitive: Boolean, isDaily: Boolean, competitiveScore: Int, remainingTimeMs: Long, dailyStreak: Long, wheelHeight: Dp, isWon: Boolean, timedOut: Boolean, currentLevel: Int, actions: WordGameActions, shuffledLetters: List<ChooserLetter>, onShuffle: () -> Unit, tapToSpell: Boolean, wheelSpacing: WheelSpacing, crosswordData: CrosswordData, foundWords: Set<String>, bonusWords: Set<String>, wordToAnimate: WordToAnimate?, animatedWord: String?, scope: CoroutineScope, animationProgress: Animatable<Float, AnimationVector1D>, density: Density, wordShakeAnim: Animatable<Float, AnimationVector1D>, bonusShakeAnim: Animatable<Float, AnimationVector1D>, onAnimateSolution: (WordToAnimate) -> Unit, onAnimateBonus: (String?) -> Unit, onWordBoxPositioned: (Offset) -> Unit, letterChooserPositions: Map<Int, Offset>, onLetterPositioned: (Int, Offset) -> Unit): Unit' cannot be called in this context with an implicit receiver. Use an explicit receiver if necessary.
+
+> Task :games:solitaire:compileDevKotlin FAILED
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:29:17 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:30:17 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:31:17 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:47:9 'when' expression must be exhaustive. Add the 'KLONDIKE', 'SPIDER', 'FREECELL', 'PYRAMID' branches or an 'else' branch.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:48:13 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:48:34 Unresolved reference 'handleKlondikeDrop'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:49:13 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:49:32 Unresolved reference 'handleSpiderDrop'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:50:13 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:50:34 Unresolved reference 'handleFreeCellDrop'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:51:13 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:89:9 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:89:30 Unresolved reference 'klondikeAutoMove'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:90:9 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt:90:30 Unresolved reference 'freeCellAutoMove'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:10:16 Unresolved reference 'createShuffledDeck'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:12:20 Method 'iterator()' is ambiguous for this expression. Applicable candidates:
+fun <T> Enumeration<T>.iterator(): Iterator<T>
+fun <T> Iterator<T>.iterator(): Iterator<T>
+fun <K, V> Map<out K, V>.iterator(): Iterator<Map.Entry<K, V>>
+fun <K, V> MutableMap<K, V>.iterator(): MutableIterator<MutableMap.MutableEntry<K, V>>
+fun CharSequence.iterator(): CharIterator
+fun BufferedInputStream.iterator(): ByteIterator
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:13:26 Argument type mismatch: actual type is 'MatchGroup?', but 'Card' was expected.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:15:22 Unresolved reference 'SolitaireUiState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:16:20 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:17:20 Unresolved reference 'FreeCellState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:20:27 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:20:35 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:20:37 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:23:19 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:25:38 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:139:43 Unresolved reference 'alternatesColorWith' on receiver of type 'Card'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:139:71 Unresolved reference 'isOneHigherThan' on receiver of type 'Card'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:142:29 Unresolved reference 'alternatesColorWith' on receiver of type 'Card'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:142:77 Unresolved reference 'isOneHigherThan' on receiver of type 'Card'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireFreeCellOps.kt:148:19 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:10:61 Unresolved reference 'GameConfig'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:11:16 Unresolved reference 'createShuffledDeck'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:12:38 Unresolved reference 'TableauPile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:17:22 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:17:29 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:19:26 Unresolved reference 'TableauPile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:22:29 Unresolved reference 'drawMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:22:53 Unresolved reference 'klondikeDifficulty'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:23:22 Unresolved reference 'SolitaireUiState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:24:20 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:25:20 Unresolved reference 'KlondikeState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:27:21 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:29:27 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:29:35 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:29:37 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:30:31 Unresolved reference 'drawMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:31:33 Unresolved reference 'klondikeDifficulty'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:32:39 Unresolved reference 'klondikeDifficulty'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:35:19 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:37:38 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:49:18 Unresolved reference 'update' on receiver of type 'MutableStateFlow<SolitaireUiState>'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:50:13 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:50:16 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:50:16 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:50:16 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:59:43 Unresolved reference 'DrawMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:61:18 Unresolved reference 'update' on receiver of type 'MutableStateFlow<SolitaireUiState>'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:62:13 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:62:16 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:62:16 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:62:16 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:80:14 Unresolved reference 'update' on receiver of type 'MutableStateFlow<SolitaireUiState>'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:81:9 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:81:12 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:81:12 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:81:12 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:98:14 Unresolved reference 'update' on receiver of type 'MutableStateFlow<SolitaireUiState>'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:99:9 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:99:12 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:99:12 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:99:12 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:121:14 Unresolved reference 'update' on receiver of type 'MutableStateFlow<SolitaireUiState>'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:122:9 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:122:12 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:122:12 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:122:12 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:144:14 Unresolved reference 'update' on receiver of type 'MutableStateFlow<SolitaireUiState>'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:145:9 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:145:12 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:145:12 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:145:12 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:216:14 Unresolved reference 'update' on receiver of type 'MutableStateFlow<SolitaireUiState>'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:216:23 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:216:26 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:216:26 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:216:26 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:220:77 Unresolved reference 'TableauPile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:221:10 Unresolved reference 'faceUp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:221:35 Unresolved reference 'faceDown'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:222:10 Unresolved reference 'faceUp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:223:18 Unresolved reference 'faceUp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:223:32 Unresolved reference 'isOneHigherThan'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:223:62 Unresolved reference 'alternatesColorWith' on receiver of type 'Card'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:223:87 Unresolved reference 'faceUp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:227:69 Unresolved reference 'Suit'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:228:54 Unresolved reference 'isOneHigherThan' on receiver of type 'Card'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:230:48 Unresolved reference 'TableauPile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:230:62 Unresolved reference 'TableauPile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:231:14 Unresolved reference 'faceUp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:231:39 Unresolved reference 'faceDown'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:232:14 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:232:14 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:232:14 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:232:19 No parameter with name 'faceDown' found.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:232:35 Unresolved reference 'faceDown'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:232:57 No parameter with name 'faceUp' found.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:232:66 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:232:78 Unresolved reference 'faceDown'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:238:18 Unresolved reference 'update' on receiver of type 'MutableStateFlow<SolitaireUiState>'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:238:27 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:238:30 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:238:30 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:238:30 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireKlondikeOps.kt:239:19 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:9:60 Unresolved reference 'GameConfig'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:10:16 Unresolved reference 'createShuffledDeck'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:21:30 Unresolved reference 'relaxed'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:22:22 Unresolved reference 'SolitaireUiState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:23:20 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:24:19 Unresolved reference 'PyramidState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:27:21 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:28:30 Unresolved reference 'relaxed'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:31:19 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:33:38 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:37:61 Unresolved reference 'PyramidState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:38:9 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:38:9 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:38:15 Unresolved reference 'pyramid'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:39:22 Unresolved reference 'pyramid'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:40:17 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:40:23 Unresolved reference 'pyramid'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:41:12 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:41:34 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:45:58 Unresolved reference 'PyramidState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:46:28 Unresolved reference 'waste'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:60:59 Unresolved reference 'PyramidState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:66:17 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:66:23 Unresolved reference 'pyramid'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:75:61 Unresolved reference 'PyramidState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:95:54 Unresolved reference 'PyramidState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:96:28 Unresolved reference 'waste'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:99:15 Unresolved reference 'pyramid'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:105:54 Unresolved reference 'PyramidState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:105:81 Unresolved reference 'PyramidState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:106:28 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:106:28 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:106:28 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:106:33 No parameter with name 'waste' found.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:106:47 Unresolved reference 'waste'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:109:32 Unresolved reference 'pyramid'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:109:46 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:110:9 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:111:15 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:111:15 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:111:15 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:111:20 No parameter with name 'pyramid' found.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:111:47 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:132:63 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:132:63 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:132:63 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:133:13 No parameter with name 'selectedId' found.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:134:13 No parameter with name 'moveCount' found.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:136:45 Argument type mismatch: actual type is 'Map.Entry<uninferred ??? (Unknown type for type parameter K), uninferred ??? (Unknown type for type parameter V)>', but 'PyramidState?' was expected.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:147:48 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:147:48 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:147:48 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:148:13 No parameter with name 'selectedId' found.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:149:13 No parameter with name 'moveCount' found.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:151:45 Argument type mismatch: actual type is 'Map.Entry<uninferred ??? (Unknown type for type parameter K), uninferred ??? (Unknown type for type parameter V)>', but 'PyramidState?' was expected.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitairePyramidOps.kt:192:19 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:10:59 Unresolved reference 'GameConfig'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:11:28 Unresolved reference 'spiderSuits'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:12:16 Unresolved reference 'createSpiderDeck'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:13:38 Unresolved reference 'TableauPile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:19:22 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:19:29 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:21:26 Unresolved reference 'TableauPile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:26:22 Unresolved reference 'SolitaireUiState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:27:20 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:28:18 Unresolved reference 'SpiderState'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:34:19 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:36:38 Unresolved reference 'GameMode'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:83:63 Unresolved reference 'isOneHigherThan' on receiver of type 'Card'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:85:75 Unresolved reference 'TableauPile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:86:10 Unresolved reference 'faceUp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:86:35 Unresolved reference 'faceDown'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:87:10 Unresolved reference 'faceUp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:88:18 Unresolved reference 'faceUp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:88:32 Unresolved reference 'rank'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireSpiderOps.kt:109:23 Unresolved reference 'GameMode'.
+
+> Task :files:compileDevKotlin FAILED
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:25:17 Cannot access 'val _selectedPaths: MutableStateFlow<Set<FileBrowserItem>>': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:30:5 Cannot access 'fun emit(message: String): Unit': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:35:17 Cannot access 'val _selectedPaths: MutableStateFlow<Set<FileBrowserItem>>': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:40:5 Cannot access 'fun emit(message: String): Unit': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:47:18 Cannot access 'val _currentDirectory: MutableStateFlow<File>': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:60:28 Cannot access 'fun File.atomicMoveTo(target: File): Unit': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:72:26 Cannot access 'fun emitMoveFailed(e: Exception): Unit': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:78:17 Cannot access 'val _selectedPaths: MutableStateFlow<Set<FileBrowserItem>>': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:85:9 Cannot access 'fun emitMoveFailed(e: Exception): Unit': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:101:9 Cannot access 'val _intents: MutableSharedFlow<Intent>': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:111:19 Cannot access 'val _selectedPaths: MutableStateFlow<Set<FileBrowserItem>>': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:113:25 Cannot access 'val _currentDirectory: MutableStateFlow<File>': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt:120:5 Cannot access 'fun emit(message: String): Unit': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:569:17 Unresolved reference 'ZipFile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:569:31 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:569:31 Cannot infer type for type parameter 'R'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:569:37 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:600:28 Cannot infer type for type parameter 'R'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:601:17 Unresolved reference 'ZipFile'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:601:34 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:601:34 Cannot infer type for type parameter 'R'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:601:40 Cannot infer type for type parameter 'T'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:602:38 Unresolved reference 'entries'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:603:33 Unresolved reference 'size'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:604:87 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:608:46 Unresolved reference 'compareTo' on receiver of type 'Any'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesViewModel.kt:612:60 Argument type mismatch: actual type is 'Any', but 'Long' was expected.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/ui/DirectoryBreadcrumbs.kt:81:14 Argument type mismatch: actual type is 'String?', but 'String' was expected.
+
+> Task :games:logicgate:compileDevKotlin
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:110:22 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:111:37 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:114:80 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:118:80 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:174:112 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:175:110 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:219:66 Unresolved reference 'chipId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:222:113 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:234:70 Unresolved reference 'chipId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:237:117 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:249:84 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:259:40 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:259:62 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:271:72 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:271:141 Unresolved reference 'chipId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt:280:58 Unresolved reference 'chipId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitCanvas.kt:304:62 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitCanvas.kt:306:58 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitGates.kt:96:30 Unresolved reference 'PlacedChip'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitGates.kt:104:30 Unresolved reference 'WireEnd'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/GameScreen.kt:217:107 Unresolved reference 'fillMaxWidth' on receiver of type 'Modifier'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/GameScreen.kt:219:108 Unresolved reference 'fillMaxWidth' on receiver of type 'Modifier'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/TuringGate.kt:60:27 Unresolved reference 'instanceId'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/TuringGate.kt:121:298 Unresolved reference 'padding'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/TuringTerminal.kt:117:288 Unresolved reference 'padding'.
+
+> Task :games:logicgate:compileDevKotlin FAILED
+
+> Task :music:compileDevKotlin FAILED
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:180:53 Unresolved reference 'dp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:232:42 Unresolved reference 'IconButton'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:236:17 @Composable invocations can only happen from the context of a @Composable function
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:236:63 Unresolved reference 'size'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:236:71 Unresolved reference 'dp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:238:17 @Composable invocations can only happen from the context of a @Composable function
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:238:56 @Composable invocations can only happen from the context of a @Composable function
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:241:42 Unresolved reference 'IconButton'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:242:13 @Composable invocations can only happen from the context of a @Composable function
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:242:59 Unresolved reference 'size'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:242:67 Unresolved reference 'dp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:244:36 Unresolved reference 'IconButton'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt:250:13 @Composable invocations can only happen from the context of a @Composable function
+
+> Task :travel:compileDevKotlin
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/AncillariesPage.kt:80:50 Unresolved reference 'setBaggageQuantity' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/AncillariesPage.kt:93:50 Unresolved reference 'setExtraQuantity' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/AncillariesPage.kt:133:31 Unresolved reference 'initPassengers' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/CancellationPage.kt:42:47 Unresolved reference 'quoteCancellation' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/CancellationPage.kt:70:39 Unresolved reference 'resetCancellation' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/CancellationPage.kt:102:47 Unresolved reference 'confirmCancellation' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/ChangePage.kt:57:19 Unresolved reference 'resetChange' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/ChangePage.kt:58:63 Unresolved reference 'loadOrderDetail' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/ChangePage.kt:83:35 Unresolved reference 'resetChange' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/ChangePage.kt:105:35 Unresolved reference 'requestChange' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/ChangePage.kt:128:39 Unresolved reference 'confirmChange' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/Common.kt:94:33 Unresolved reference 'autocomplete' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/Common.kt:318:2 Syntax error: Expecting '}'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/ConfirmationPage.kt:46:23 Unresolved reference 'resetPaymentAction' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/ConfirmationPage.kt:93:43 Unresolved reference 'payOrder' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:67:39 Unresolved reference 'searchFlights' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:74:63 Unresolved reference 'setSort' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:75:72 Unresolved reference 'setMaxStopsFilter' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:76:72 Unresolved reference 'toggleAirlineFilter' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:77:77 Unresolved reference 'setFareBrandFilter' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:78:54 Unresolved reference 'searchFlights' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:81:27 Unresolved reference 'selectOffer' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:222:21 Unresolved reference 'rememberSecondsUntil'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:319:20 Unresolved reference 'formatTime'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/FlightResultsPage.kt:319:61 Unresolved reference 'formatTime'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/HomePage.kt:129:54 Unresolved reference 'clearRecents' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OfferReviewPage.kt:52:47 Unresolved reference 'refreshOffer' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OfferReviewPage.kt:54:19 Unresolved reference 'loadAircraft' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OfferReviewPage.kt:55:19 Unresolved reference 'loadCities' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OfferReviewPage.kt:105:33 Unresolved reference 'rememberSecondsUntil'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OfferReviewPage.kt:107:52 Unresolved reference 'refreshOffer' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OfferReviewPage.kt:167:42 Unresolved reference 'formatTime'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OfferReviewPage.kt:167:102 Unresolved reference 'formatTime'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OfferReviewPage.kt:217:80 Unresolved reference 'formatTime'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OrderDetailPage.kt:50:19 Unresolved reference 'loadOrderDetail' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OrderDetailPage.kt:51:19 Unresolved reference 'loadOrderEvents' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OrderDetailPage.kt:55:23 Unresolved reference 'resetPaymentAction' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OrderDetailPage.kt:56:23 Unresolved reference 'loadOrderDetail' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OrderDetailPage.kt:62:64 Unresolved reference 'payOrder' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OrderDetailPage.kt:178:38 Unresolved reference 'formatTime'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/OrderDetailPage.kt:178:98 Unresolved reference 'formatTime'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PartialOffersPages.kt:47:19 Unresolved reference 'startPartialSearch' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PartialOffersPages.kt:76:50 Unresolved reference 'loadPartialReturn' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PartialOffersPages.kt:95:19 Unresolved reference 'loadPartialFares' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PartialOffersPages.kt:103:19 Unresolved reference 'selectOffer' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PartialOffersPages.kt:173:36 Unresolved reference 'formatTime'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PartialOffersPages.kt:173:77 Unresolved reference 'formatTime'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PassengersPage.kt:67:38 Unresolved reference 'loadAirlines' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PassengersPage.kt:99:44 Unresolved reference 'updatePassenger' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PaymentPage.kt:67:23 Unresolved reference 'resetBooking' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/PaymentPage.kt:148:39 Unresolved reference 'createOrder' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/SeatMapPage.kt:103:47 Unresolved reference 'loadSeatMaps' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/SeatMapPage.kt:108:27 Unresolved reference 'toggleSeat' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/SettingsPage.kt:58:38 Unresolved reference 'loadAirlines' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/SettingsPage.kt:89:54 Unresolved reference 'removeFrequentFlyer' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/SettingsPage.kt:96:27 Unresolved reference 'saveFrequentFlyer' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/SettingsPage.kt:120:48 Unresolved reference 'selectCustomer' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/SettingsPage.kt:121:48 Unresolved reference 'removeCustomer' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/SettingsPage.kt:131:27 Unresolved reference 'createCustomer' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/StayDetailPage.kt:45:54 Unresolved reference 'loadStayRates' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/StayDetailPage.kt:104:35 Unresolved reference 'selectStayRate' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/StayGuestsPage.kt:59:30 Operator call 'component1()' is ambiguous for destructuring of type '??? (Unresolved name: stayTotal)'. Applicable candidates:
+fun <T> Array<out T>.component1(): T
+fun ByteArray.component1(): Byte
+fun ShortArray.component1(): Short
+fun IntArray.component1(): Int
+fun LongArray.component1(): Long
+fun FloatArray.component1(): Float
+fun DoubleArray.component1(): Double
+fun BooleanArray.component1(): Boolean
+fun CharArray.component1(): Char
+fun <T> List<T>.component1(): T
+fun <K, V> Map.Entry<K, V>.component1(): K
+fun UIntArray.component1(): UInt
+fun ULongArray.component1(): ULong
+fun UByteArray.component1(): UByte
+fun UShortArray.component1(): UShort
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/StayGuestsPage.kt:59:30 Operator call 'component2()' is ambiguous for destructuring of type '??? (Unresolved name: stayTotal)'. Applicable candidates:
+fun <T> Array<out T>.component2(): T
+fun ByteArray.component2(): Byte
+fun ShortArray.component2(): Short
+fun IntArray.component2(): Int
+fun LongArray.component2(): Long
+fun FloatArray.component2(): Float
+fun DoubleArray.component2(): Double
+fun BooleanArray.component2(): Boolean
+fun CharArray.component2(): Char
+fun <T> List<T>.component2(): T
+fun <K, V> Map.Entry<K, V>.component2(): V
+fun UIntArray.component2(): UInt
+fun ULongArray.component2(): ULong
+fun UByteArray.component2(): UByte
+fun UShortArray.component2(): UShort
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/StayGuestsPage.kt:59:40 Unresolved reference 'stayTotal' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/StayGuestsPage.kt:64:23 Unresolved reference 'resetStayBooking' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/StayGuestsPage.kt:136:31 Unresolved reference 'bookStay' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/StaySearchForm.kt:89:33 Unresolved reference 'staySuggestions' on receiver of type 'TravelViewModel'.
+
+> Task :travel:compileDevKotlin FAILED
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/StaysPages.kt:27:19 Unresolved reference 'searchStays' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/TripsPage.kt:47:43 Unresolved reference 'loadOrderEvents' on receiver of type 'TravelViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/TripsPage.kt:61:43 Unresolved reference 'loadRemoteOrders' on receiver of type 'TravelViewModel'.
+
+> Task :contacts:compileDevKotlin FAILED
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/MainActivity.kt:446:31 Unresolved reference 'setEditDraftPhotoFromBitmap' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactDetailsPage.kt:68:37 Unresolved reference 'fillMaxSize'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactDetailsPage.kt:72:37 Unresolved reference 'fillMaxSize'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactDetailsPage.kt:150:15 Unresolved reference 'StaggerWindowMillis'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactDetailsRows.kt:117:14 Unresolved reference 'background' on receiver of type 'Modifier'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactDetailsRows.kt:124:33 Unresolved reference 'padding'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactDetailsSections.kt:59:34 Type 'MutableState<Boolean>' has no method 'setValue(Nothing?, KMutableProperty0<*>, ??? (Ambiguity: getValue, [kotlin/getValue, kotlin/getValue, kotlin/getValue, kotlin/collections/getValue, kotlin/collections/getValue, kotlin/collections/getValue]))', so it cannot serve as a delegate for var (read-write property).
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactDetailsSections.kt:59:34 Property delegate must have a 'getValue(Nothing?, KMutableProperty0<*>)' method. None of the following functions is applicable:
+fun <T> Lazy<T>.getValue(thisRef: Any?, property: KProperty<*>): T
+fun <V> KProperty0<V>.getValue(thisRef: Any?, property: KProperty<*>): V
+fun <T, V> KProperty1<T, V>.getValue(thisRef: T, property: KProperty<*>): V
+fun <K, V> Map<K, V>.getValue(key: K): V
+fun <V, V1 : V> Map<in String, V>.getValue(thisRef: Any?, property: KProperty<*>): V1
+fun <V, V1 : V> MutableMap<in String, out V>.getValue(thisRef: Any?, property: KProperty<*>): V1
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactDetailsSections.kt:62:33 Type 'MutableState<Boolean>' has no method 'setValue(Nothing?, KMutableProperty0<*>, ??? (Ambiguity: getValue, [kotlin/getValue, kotlin/getValue, kotlin/getValue, kotlin/collections/getValue, kotlin/collections/getValue, kotlin/collections/getValue]))', so it cannot serve as a delegate for var (read-write property).
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactDetailsSections.kt:62:33 Property delegate must have a 'getValue(Nothing?, KMutableProperty0<*>)' method. None of the following functions is applicable:
+fun <T> Lazy<T>.getValue(thisRef: Any?, property: KProperty<*>): T
+fun <V> KProperty0<V>.getValue(thisRef: Any?, property: KProperty<*>): V
+fun <T, V> KProperty1<T, V>.getValue(thisRef: T, property: KProperty<*>): V
+fun <K, V> Map<K, V>.getValue(key: K): V
+fun <V, V1 : V> Map<in String, V>.getValue(thisRef: Any?, property: KProperty<*>): V1
+fun <V, V1 : V> MutableMap<in String, out V>.getValue(thisRef: Any?, property: KProperty<*>): V1
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactItem.kt:198:33 Unresolved reference 'height'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactListScreen.kt:208:56 Unresolved reference 'padding' on receiver of type 'Modifier'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ContactListScreen.kt:245:61 Unresolved reference 'padding' on receiver of type 'Modifier'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:57:19 Unresolved reference 'initEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:79:23 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:79:41 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:79:44 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:79:44 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:79:44 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:89:27 Unresolved reference 'saveEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:89:43 Cannot infer type for value parameter 'ok'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:89:47 Cannot infer type for value parameter 'err'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:116:31 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:116:49 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:116:52 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:116:52 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:116:52 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:117:31 Unresolved reference 'setLastSelectedAccount' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:148:35 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:148:53 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:148:56 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:148:56 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:148:56 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:164:40 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:164:58 Cannot infer type for implicit value parameter 'it'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:174:31 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:175:25 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:175:28 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:175:28 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:175:28 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:176:44 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:182:31 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:183:25 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:183:28 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:183:28 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:183:28 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:184:38 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:196:40 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:196:58 Cannot infer type for implicit value parameter 'it'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:203:31 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:203:49 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:203:52 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:203:52 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:203:52 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:208:59 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:208:77 Unresolved reference 'it'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:208:80 Cannot infer type for type parameter 'K'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:208:80 Cannot infer type for type parameter 'V'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:208:80 This declaration needs opt-in. Its usage must be marked with '@kotlin.ExperimentalStdlibApi' or '@OptIn(kotlin.ExperimentalStdlibApi::class)'
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:238:44 Unresolved reference 'updateEditDraft' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/EditContactPage.kt:238:62 Cannot infer type for implicit value parameter 'it'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/GroupedContactSection.kt:20:57 Unresolved reference 'dp'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/ImportVcfScreen.kt:86:43 Unresolved reference 'createAccount' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/InsertOrEditContactScreen.kt:157:55 Unresolved reference 'addPhoneNumberToContact' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/SettingsPage.kt:239:63 Unresolved reference 'setAccountVisibility' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/SettingsPage.kt:269:39 Unresolved reference 'renameLocalAccount' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/SettingsPage.kt:269:74 Cannot infer type for value parameter 'ok'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/SettingsPage.kt:269:78 Cannot infer type for value parameter 'err'. Specify it explicitly.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/SettingsPage.kt:270:37 Unresolved reference 'not' for operator '!'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/SettingsPage.kt:294:31 Unresolved reference 'deleteLocalAccount' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/ui/dialogs/AddAccountDialog.kt:44:35 Unresolved reference 'createAccount' on receiver of type 'ContactViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/util/ContactViewModelAccounts.kt:169:14 Unresolved reference 'isLocalAccountType'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/util/ContactViewModelAccounts.kt:173:13 Unresolved reference 'isDefaultLocalAccount'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/util/ContactViewModelAccounts.kt:240:14 Unresolved reference 'isLocalAccountType'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/util/ContactViewModelAccounts.kt:244:13 Unresolved reference 'isDefaultLocalAccount'.
+
+> Task :health:compileDevKotlin FAILED
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AboutYouPage.kt:62:38 Unresolved reference 'importFromHealthConnect' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AboutYouPage.kt:65:19 Unresolved reference 'setPregnancyStatus' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AboutYouPage.kt:90:39 Unresolved reference 'setPregnancyStatus' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AboutYouPage.kt:127:58 Unresolved reference 'setSmokingStatus' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AboutYouPage.kt:157:31 Unresolved reference 'clearSocialHistoryAnswer' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AboutYouPage.kt:159:31 Unresolved reference 'setSocialHistoryAnswer' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AddAllergyPage.kt:60:31 Unresolved reference 'saveAllergyDraft' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AddConditionPage.kt:60:31 Unresolved reference 'saveConditionDraft' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AddLabResultPage.kt:63:31 Unresolved reference 'saveLabDraft' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AddMedicationPage.kt:84:31 Unresolved reference 'saveMedicationDraft' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AddVaccinationPage.kt:96:31 Unresolved reference 'saveVaccinationDraft' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AllergiesPage.kt:52:38 Unresolved reference 'importFromHealthConnect' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AllergiesPage.kt:60:27 Unresolved reference 'deleteAllergy' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/ConditionsPage.kt:45:38 Unresolved reference 'importFromHealthConnect' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/ConditionsPage.kt:53:27 Unresolved reference 'deleteCondition' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/LabResultsPage.kt:51:38 Unresolved reference 'importFromHealthConnect' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/LabResultsPage.kt:59:27 Unresolved reference 'deleteLabResult' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/MedicationPage.kt:62:38 Unresolved reference 'importFromHealthConnect' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/MedicationPage.kt:87:27 Unresolved reference 'deleteMedication' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/MedicationPage.kt:138:42 Unresolved reference 'recordDoseTaken' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/RecordsPage.kt:50:38 Unresolved reference 'importFromHealthConnect' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/VaccinationsPage.kt:62:38 Unresolved reference 'importFromHealthConnect' on receiver of type 'MedicalViewModel'.
+e: file:///C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/VaccinationsPage.kt:70:27 Unresolved reference 'deleteVaccination' on receiver of type 'MedicalViewModel'.
+
+> Task :games:arrows:compileDevKotlin
+w: file:///C:/Users/Vayun/Documents/code/Modern-Apps/games/arrows/src/main/java/com/vayunmathur/games/arrows/ui/components/ArrowsBoard.kt:140:39 Condition is always 'true'.
+
+> Task :flashcards:kspDevKotlin
+> Task :email:kspDevKotlin
+> Task :calendar:compileDevKotlin
+> Task :flashcards:compileDevKotlin
+> Task :email:compileDevKotlin
+
+
+FAILURE: Build completed with 9 failures.
+
+1: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':things:compileDevKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: INVISIBLE_REFERENCE
+       Kotlin compiler error
+         Cannot access 'val TAG: String': it is private in 'com.vayunmathur.things.platform.ScaleBleManager.Companion'.
+         Location: C:/Users/Vayun/Documents/code/Modern-Apps/things/src/main/java/com/vayunmathur/things/platform/ScaleBleConnection.kt line 32
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+==============================================================================
+[Incubating] Problems report is available at: file:///C:/Users/Vayun/Documents/code/Modern-Apps/build/reports/problems/problems-report.html
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':games:wordmaker:compileDevKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: SYNTAX
+       Kotlin compiler error
+         Syntax error: Type annotations are not allowed on destructuring declarations.
+         Location: C:/Users/Vayun/Documents/code/Modern-Apps/games/wordmaker/src/main/java/com/vayunmathur/games/wordmaker/ui/WordGameOverlays.kt line 108
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+3: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':games:solitaire:compileDevKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: UNRESOLVED_REFERENCE
+       Kotlin compiler error
+         Unresolved reference 'GameMode'.
+         Location: C:/Users/Vayun/Documents/code/Modern-Apps/games/solitaire/src/main/java/com/vayunmathur/games/solitaire/platform/SolitaireDragOps.kt line 29
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+4: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':files:compileDevKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: INVISIBLE_REFERENCE
+       Kotlin compiler error
+         Cannot access 'val _selectedPaths: MutableStateFlow<Set<FileBrowserItem>>': it is private in 'com.vayunmathur.files.platform.FilesViewModel'.
+         Location: C:/Users/Vayun/Documents/code/Modern-Apps/files/src/main/java/com/vayunmathur/files/platform/FilesClipboard.kt line 25
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+5: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':games:logicgate:compileDevKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: UNRESOLVED_REFERENCE
+       Kotlin compiler error
+         Unresolved reference 'instanceId'.
+         Location: C:/Users/Vayun/Documents/code/Modern-Apps/games/logicgate/src/main/java/com/vayunmathur/games/logicgate/ui/CircuitBackdrop.kt line 110
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+6: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':music:compileDevKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: UNRESOLVED_REFERENCE
+       Kotlin compiler error
+         Unresolved reference 'dp'.
+         Location: C:/Users/Vayun/Documents/code/Modern-Apps/music/src/main/java/com/vayunmathur/music/ui/NowPlayingScreen.kt line 180
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+7: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':travel:compileDevKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: UNRESOLVED_REFERENCE
+       Kotlin compiler error
+         Unresolved reference 'setBaggageQuantity' on receiver of type 'TravelViewModel'.
+         Location: C:/Users/Vayun/Documents/code/Modern-Apps/travel/src/main/java/com/vayunmathur/travel/ui/AncillariesPage.kt line 80
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+8: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':contacts:compileDevKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: UNRESOLVED_REFERENCE
+       Kotlin compiler error
+         Unresolved reference 'setEditDraftPhotoFromBitmap' on receiver of type 'ContactViewModel'.
+         Location: C:/Users/Vayun/Documents/code/Modern-Apps/contacts/src/main/java/com/vayunmathur/contacts/MainActivity.kt line 446
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+9: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':health:compileDevKotlin' (registered by plugin 'com.android.internal.application').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Kotlin compiler: UNRESOLVED_REFERENCE
+       Kotlin compiler error
+         Unresolved reference 'importFromHealthConnect' on receiver of type 'MedicalViewModel'.
+         Location: C:/Users/Vayun/Documents/code/Modern-Apps/health/src/main/java/com/vayunmathur/health/ui/AboutYouPage.kt line 62
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+BUILD FAILED in 43s
+257 actionable tasks: 17 executed, 240 up-to-date
+Configuration cache entry stored.

@@ -1,26 +1,3 @@
-            7,
-        ));
-
-        // --- off the edge of the grid --------------------------------------
-        out.push(("a ring hanging off the grid", polygon(&[&square(-2.0, 3.0)]), 4));
-        out.push((
-            "a line hanging off the grid",
-            line(&[(w(-3.0), w(-1.0)), (w(4.0), w(5.0))]),
-            4,
-        ));
-
-        // --- points --------------------------------------------------------
-        let mut pts = Geometry::Points(sig(&[
-            (w(0.5), w(0.5)),
-            (w(1.0), w(1.0)),
-            (w(2.9999), w(3.0001)),
-            (w(5.5), w(2.5)),
-        ]));
-        crate::simplify::annotate(&mut pts);
-        out.push(("a handful of points", pts, 4));
-
-        out
-    }
 
     /// **The gate.** The descent's answer for a tile must be the same shape as
     /// clipping the source straight to that tile -- same tiles, same parts, same
@@ -444,7 +421,3 @@
         assert!(!tiles.contains(&(7, 0)), "nor there");
         assert!(tiles.len() < 24, "walked {} tiles of the 64-tile box", tiles.len());
     }
-
-    /// An empty geometry, and one entirely off the grid, produce nothing rather than
-    /// panicking on a start cell that does not exist.
-    #[test]

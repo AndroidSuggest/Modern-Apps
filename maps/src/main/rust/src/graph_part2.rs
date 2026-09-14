@@ -280,12 +280,14 @@ impl Graph {
         }
 
         Some(Graph {
-            _nodes_region: nodes_region,
-            _edges_region: edges_region,
-            _intermediate_region: intermediate_region,
+            _nodes_region: Some(nodes_region),
+            _edges_region: Some(edges_region),
+            _intermediate_region: Some(intermediate_region),
             _road_names_region: road_names_region,
             _lanes_region: lanes_region,
             _elevation_region: elevation_region,
+            _archive_region: None,
+            _owned_buffers: Vec::new(),
             nodes,
             node_count,
             edge_count,
@@ -448,3 +450,11 @@ impl Graph {
     /// Four call sites scan a node's edge range looking for the one edge that reaches
     /// a given node and never use the target as a value. Delegating to [`Graph::edge`]
     /// rather than comparing in delta space keeps the escape handling in one place:
+    /// the delta form would have to handle both an escaped record that could still
+    /// match and a `want − source` outside `i16` range, and the saving over one
+    /// sign-extend and one add is nothing.
+    #[inline]
+    pub fn edge_targets(&self, idx: u64, source: u32, want: u32) -> bool {
+        self.edge(source, idx).target == want
+    }
+}

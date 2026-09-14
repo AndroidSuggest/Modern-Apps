@@ -1,3 +1,10 @@
+#[cfg(test)]
+mod tests_cont {
+    use super::*;
+    use super::tests::{num_operands, operators};
+    /// §8.4.3.6 Table 52: a conforming `d` takes an ARRAY then a number, so the
+    /// repair must never touch one — including the empty-array "solid" form,
+    /// which has the same operand COUNT as a mangled `d0`.
     #[test]
     fn strict_operations_leaves_a_real_dash_operator_alone() {
         for src in [

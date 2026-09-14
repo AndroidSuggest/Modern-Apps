@@ -1,10 +1,3 @@
-        family,
-        base_font: base_font_name,
-        glyph_program: glyph_program.map(Arc::new),
-        glyph_names: Arc::new(glyph_names),
-    }
-}
-
 /// Widths for a Type 3 font: `/Widths` values are in glyph space and are scaled
 /// to text space by the FontMatrix x-scale (rather than the /1000 used for
 /// simple fonts).

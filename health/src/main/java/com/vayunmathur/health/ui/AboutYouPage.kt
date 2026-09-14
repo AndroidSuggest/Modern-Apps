@@ -21,6 +21,11 @@ import com.vayunmathur.health.data.ProfileAnswer
 import com.vayunmathur.health.data.SmokingStatus
 import com.vayunmathur.health.domain.SocialHistoryQuestions
 import com.vayunmathur.health.platform.MedicalViewModel
+import com.vayunmathur.health.platform.clearSocialHistoryAnswer
+import com.vayunmathur.health.platform.importFromHealthConnect
+import com.vayunmathur.health.platform.setPregnancyStatus
+import com.vayunmathur.health.platform.setSmokingStatus
+import com.vayunmathur.health.platform.setSocialHistoryAnswer
 import com.vayunmathur.health.ui.components.AnswerPickerDialog
 import com.vayunmathur.health.ui.components.MedicalStorageNotice
 import com.vayunmathur.health.ui.components.PickerField

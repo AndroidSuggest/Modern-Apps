@@ -1,11 +1,4 @@
 
-        assert_eq!(
-            meta,
-            "{\"vector_layers\":[{\"id\":\"ma_pois\",\"minzoom\":12,\"maxzoom\":16}]}",
-            "listed once, at the rebuilt layer's zoom range"
-        );
-    }
-
     /// A tile only one input holds must come out as that producer's exact bytes.
     ///
     /// Worth pinning because the win is invisible from the output alone: a re-deflate
@@ -293,4 +286,3 @@
         assert!(b.add_tile_raw(10, b"y").is_err(), "a repeat must fail too");
         let _ = std::fs::remove_dir_all(&dir);
     }
-}

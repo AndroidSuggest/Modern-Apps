@@ -1,8 +1,3 @@
-            "the self-add must survive: {:?}",
-            plan.ops
-        );
-    }
-
     /// The folded plan carries the residual and the shift into the store.
     ///
     /// `nets::reference` serves fused pushes from the same arms as unfolded ones. This
@@ -136,4 +131,3 @@
         bytes[52..56].copy_from_slice(&(data_len as u32).to_le_bytes());
         bytes
     }
-}

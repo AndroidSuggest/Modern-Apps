@@ -50,6 +50,7 @@ import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.rememberDatePickerState
 import com.vayunmathur.travel.network.PlaceDto
 import com.vayunmathur.travel.util.TravelViewModel
+import com.vayunmathur.travel.util.autocomplete
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.travel.R
 
@@ -283,6 +284,7 @@ private fun IataBadge(
             color = MaterialTheme.colorScheme.onPrimaryContainer,
         )
     }
+}
 // --- Formatting helpers ------------------------------------------------------
 // (fare/money/duration/countdown labels now live in TravelFormat.kt)
 

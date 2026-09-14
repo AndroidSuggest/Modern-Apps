@@ -1,3 +1,12 @@
+
+    #[test]
+    fn a_nearest_resize_upsamples_both_axes_together() {
+        // A 2x2 doubled to 4x4. Each source pixel becomes a 2x2 block, so a row/column
+        // transposition in the index arithmetic changes the answer.
+        let got = one(Shape::new(1, 2, 2), &[1.0, 2.0, 3.0, 4.0], &[], |b, x| {
+            let like = b.resize_to(x, 4, 4);
+            b.resize_nearest_like(x, like)
+        });
         close(
             &got,
             &[
@@ -429,22 +438,3 @@
             assert!((total - 1.0).abs() < 2e-3, "row {row} sums to {total}");
         }
     }
-
-    #[test]
-    fn softmax_subtracts_the_row_maximum_rather_than_exponentiating_directly() {
-        // exp overflows fp32 a little past 88, so a row containing 100 sums to infinity
-        // and every probability in it becomes a NaN. Subtracting the maximum first makes
-        // the largest term exp(0), which cannot overflow and also floors the denominator
-        // at 1.
-        let got = one(Shape::new(1, 1, 3), &[100.0, 99.0, -100.0], &[], |b, x| b.softmax(x));
-        assert!(got.iter().all(|v| v.is_finite()), "{got:?}");
-        let expected = 1.0 / (1.0 + (-1.0f32).exp());
-        close(&got, &[expected, 1.0 - expected, 0.0]);
-    }
-
-    #[test]
-    fn a_causal_softmax_gives_position_zero_a_point_distribution() {
-        // The fixture that fails if the row bound is off by one in either direction. One head,
-        // T 3, so three rows of three: query 0 sees key 0 alone, query 1 keys 0-1, query 2 all
-        // three.
-        //
