@@ -13,9 +13,12 @@
 pub mod crop;
 pub mod ctc;
 pub mod dbnet;
+pub mod dbnet_extra;
 pub mod maia;
 pub mod nms;
+pub mod nms_extra;
 pub mod sentencepiece;
+pub mod sentencepiece_extra;
 pub mod supertonic;
 pub mod translate;
 pub mod whisper;

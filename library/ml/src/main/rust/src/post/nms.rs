@@ -64,12 +64,12 @@ pub struct Face {
 }
 
 impl Face {
-    fn area(&self) -> f32 {
+    pub(crate) fn area(&self) -> f32 {
         let [x0, y0, x1, y1] = self.bounds;
         (x1 - x0).max(0.0) * (y1 - y0).max(0.0)
     }
 
-    fn intersection(&self, other: &Face) -> f32 {
+    pub(crate) fn intersection(&self, other: &Face) -> f32 {
         let [ax0, ay0, ax1, ay1] = self.bounds;
         let [bx0, by0, bx1, by1] = other.bounds;
         let width = ax1.min(bx1) - ax0.max(bx0);
@@ -167,32 +167,7 @@ pub fn decode(
     Ok(())
 }
 
-/// Sort by score and drop any proposal overlapping a better one by more than `threshold`.
-///
-/// Greedy and quadratic in the number of proposals, which after a 0.5 score threshold is
-/// a handful even on a group photo.
-pub fn suppress(faces: &mut Vec<Face>, threshold: f32) {
-    // Stable, unlike the reference's quicksort — see the module docs. `total_cmp` rather
-    // than `partial_cmp`: a NaN score would otherwise make the ordering inconsistent and
-    // the sort's behaviour unspecified.
-    faces.sort_by(|a, b| b.score.total_cmp(&a.score));
-
-    let mut kept: Vec<Face> = Vec::new();
-    for face in faces.iter() {
-        let overlaps = kept.iter().any(|other| {
-            let intersection = face.intersection(other);
-            let union = face.area() + other.area() - intersection;
-            // Strictly greater, and a zero union cannot suppress: two degenerate boxes
-            // would otherwise divide by zero and compare as NaN, which is `false` here
-            // but only by accident.
-            union > 0.0 && intersection / union > threshold
-        });
-        if !overlaps {
-            kept.push(*face);
-        }
-    }
-    *faces = kept;
-}
+pub use super::nms_extra::suppress;
 
 /// Map coordinates out of the letterboxed space and back onto the source image.
 ///

@@ -13,7 +13,7 @@
 //! draw. All of it existed to reduce a general style to the seven properties this renderer
 //! actually supports, and the last two rendering bugs lived in that reduction. The flat file
 //! **is** one layer per colour, authored, so there is nothing left to derive — and
-//! `paint::the_flat_style_agrees_with_basemap_json` cross-checks every value that exists in
+//! `paint_extra5::the_flat_style_agrees_with_basemap_json` cross-checks every value that exists in
 //! both files, which is what keeps writing values down from becoming a third failed
 //! transcription.
 //!
@@ -40,6 +40,15 @@
 //! system theme.
 
 pub mod paint;
+mod paint_extra;
+#[cfg(test)]
+mod paint_extra2;
+#[cfg(test)]
+mod paint_extra3;
+#[cfg(test)]
+mod paint_extra4;
+#[cfg(test)]
+mod paint_extra5;
 
 mod filter;
 mod kinds;

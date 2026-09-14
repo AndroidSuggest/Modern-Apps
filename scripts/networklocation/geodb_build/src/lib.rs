@@ -13,8 +13,10 @@
 
 pub mod codec;
 pub mod extract;
+pub mod extract_extra;
 pub mod format;
 pub mod write;
+pub mod write_extra;
 
 /// Format a byte count for a status line.
 pub fn human_bytes(n: u64) -> String {

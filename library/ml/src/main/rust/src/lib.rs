@@ -47,6 +47,7 @@
 pub mod gate;
 pub mod knobs;
 pub mod logmel;
+pub mod logmel_extra;
 pub mod microfrontend;
 pub mod nets;
 pub mod post;

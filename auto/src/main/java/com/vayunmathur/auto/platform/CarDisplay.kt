@@ -4,6 +4,7 @@ import android.app.Presentation
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Outline
+import android.graphics.SurfaceTexture
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.os.Bundle
@@ -11,16 +12,25 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.Surface
+import android.view.TextureView
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.ScrollView
+import android.widget.Space
 import android.widget.TextView
 import com.vayunmathur.auto.BuildConfig
 import com.vayunmathur.auto.R
+import com.vayunmathur.auto.protocol.NavSnapshot
 import java.text.DateFormat
 import java.util.Date
 import java.util.concurrent.ExecutionException
@@ -35,12 +45,15 @@ import java.util.concurrent.FutureTask
  * owned by this app renders onto a private display perfectly well, which is enough to
  * get pixels onto a head unit and prove the video path end to end — so the DHU
  * loopback path never needs the flag.
+ *
+ * Views, not Compose: a `Presentation` on a private virtual display has no Compose
+ * lifecycle owner, and Views render into the encoder surface with no extra plumbing.
  */
 class CarDisplay(
     private val context: Context,
-    private val width: Int,
-    private val height: Int,
-    private val densityDpi: Int,
+    private var width: Int,
+    private var height: Int,
+    private var densityDpi: Int,
     /**
      * Phase 9 display-route hook: true requests `VIRTUAL_DISPLAY_FLAG_TRUSTED` so
      * other apps' activities may be launched onto the car screen. Driven by
@@ -58,6 +71,71 @@ class CarDisplay(
      * via [handleCarTap]. Wired to the media monitor's transport toggle.
      */
     var onMediaTap: (() -> Unit)? = null
+        set(value) {
+            field = value
+            value?.let { v -> mainHandler.post { presentation?.setOnMediaTap(v) } }
+        }
+
+    /** Fires when the media card's previous-track button is tapped. Null until wired. */
+    var onPreviousTap: (() -> Unit)? = null
+        set(value) {
+            field = value
+            value?.let { v -> mainHandler.post { presentation?.setOnPreviousTap(v) } }
+        }
+
+    /** Fires when the media card's next-track button is tapped. Null until wired. */
+    var onNextTap: (() -> Unit)? = null
+        set(value) {
+            field = value
+            value?.let { v -> mainHandler.post { presentation?.setOnNextTap(v) } }
+        }
+
+    /**
+     * Optional night hook for the session's map mirror: invoked from
+     * [setNight] on the calling thread (the mirror marshals to main itself).
+     * The service sets this to `CarMapsMirror.setDark`; unset means the
+     * mirror keeps its own last palette.
+     */
+    var mapDarkApplier: ((Boolean) -> Unit)? = null
+
+    /** Phone status feed for the rail cluster; the service sets its monitor. */
+    var phoneStatusSource: (() -> PhoneStatus)? = null
+        set(value) {
+            field = value
+            // Late wiring must reach an already-up presentation too: the
+            // ticker pulls through the inner field, never this one.
+            mainHandler.post { presentation?.setInnerPhoneStatusSource(value) }
+        }
+
+    /** Card call actions; the service wires these to the bound InCallService. */
+    var onAnswerCall: (() -> Unit)? = null
+        set(value) {
+            field = value
+            value?.let { v -> mainHandler.post { presentation?.setOnAnswerCall(v) } }
+        }
+    var onEndCall: (() -> Unit)? = null
+        set(value) {
+            field = value
+            value?.let { v -> mainHandler.post { presentation?.setOnEndCall(v) } }
+        }
+    var onHoldToggle: (() -> Unit)? = null
+        set(value) {
+            field = value
+            value?.let { v -> mainHandler.post { presentation?.setOnHoldToggle(v) } }
+        }
+    var onMuteToggle: (() -> Unit)? = null
+        set(value) {
+            field = value
+            value?.let { v -> mainHandler.post { presentation?.setOnMuteToggle(v) } }
+        }
+
+    /**
+     * Active-call feed for the projected call card; the service sets the
+     * latest [ActiveCallInfo] (null with no live call). Cached for
+     * presentations created later.
+     */
+    @Volatile
+    var activeCall: ActiveCallInfo? = null
 
     /**
      * Latest now-playing snapshot: applied to the card when set, and to any
@@ -65,6 +143,21 @@ class CarDisplay(
      * and handed to the main thread by reference through the posted update.
      */
     @Volatile private var nowPlaying: NowPlayingInfo? = null
+
+    /**
+     * Latest driving-restriction gate: applied to the card when set, and to
+     * any presentation created afterwards. Cached like [nowPlaying].
+     */
+    @Volatile private var drivingRestricted: Boolean = false
+
+    /**
+     * Latest night palette: applied to the car UI when set, and to any
+     * presentation created afterwards. Cached like [nowPlaying].
+     */
+    @Volatile private var nightDark: Boolean = false
+
+    /** The encoder input surface [show] was last called with; kept for [updateConfig]. */
+    private var cachedSurface: Surface? = null
 
     /** Last-known now-playing card bounds in display pixels; null until laid out. */
     @Volatile private var mediaCardBounds: TapBounds? = null
@@ -87,6 +180,7 @@ class CarDisplay(
      * hops to the main thread and waits, keeping the video bring-up order unchanged.
      */
     fun show(surface: Surface) {
+        cachedSurface = surface
         val displayManager = context.getSystemService(DisplayManager::class.java)
         // PRESENTATION alone is a private display: no permission needed. TRUSTED
         // additionally requires ADD_TRUSTED_DISPLAY (the MAOS role); requesting it
@@ -106,12 +200,51 @@ class CarDisplay(
         presentation = showPresentation(
             display.display,
             initialNowPlaying = nowPlaying,
+            initialDrivingRestricted = drivingRestricted,
+            initialNight = nightDark,
+            initialActiveCall = activeCall,
+            initialPhoneStatusSource = phoneStatusSource,
             onMediaTap = { onMediaTap?.invoke() },
+            onPreviousTap = { onPreviousTap?.invoke() },
+            onNextTap = { onNextTap?.invoke() },
+            onAnswerCall = { onAnswerCall?.invoke() },
+            onEndCall = { onEndCall?.invoke() },
+            onHoldToggle = { onHoldToggle?.invoke() },
+            onMuteToggle = { onMuteToggle?.invoke() },
             onCardBounds = { left, top, right, bottom ->
                 mediaCardBounds = TapBounds(left, top, right, bottom)
             },
-        )
+        ).also { shown ->
+            mapSurfaceForwarder?.let { forward ->
+                shown.mapSurfaceListener = { s, w, h -> forward(s, w, h) }
+            }
+        }
         dumpVirtualDisplay(display.display, surface)
+    }
+
+    /**
+     * Rebuilds the virtual display when the negotiated size changes.
+     *
+     * The car path has no `onConfigurationChanged` of its own (phone config
+     * lives in `MainActivity`); whoever observes a new video config calls
+     * here. Same size is a no-op; otherwise the display and presentation are
+     * torn down and re-shown on the cached surface, which rebuilds every
+     * programmatic view (including the alpha-jump keyboard) at the new size.
+     * Density and encoder settings are untouched. Safe from any thread.
+     */
+    fun updateConfig(width: Int, height: Int, densityDpi: Int) {
+        mainHandler.post {
+            if (width == this.width && height == this.height && densityDpi == this.densityDpi) return@post
+            val surface = cachedSurface ?: return@post
+            this.width = width
+            this.height = height
+            this.densityDpi = densityDpi
+            presentation?.dismiss()
+            presentation = null
+            virtualDisplay?.release()
+            virtualDisplay = null
+            show(surface)
+        }
     }
 
     /**
@@ -132,6 +265,96 @@ class CarDisplay(
      */
     fun hideNowPlaying() {
         mainHandler.post { presentation?.hideNowPlaying() }
+    }
+
+    /**
+     * Gates driving-restricted pixels. Safe from any thread.
+     *
+     * Hides the media card's action row (gearhead `MediaPlaybackView.n()`
+     * auto-hide) and raises the drawer lockout scrim when the drawer is
+     * open. There is no `nrd` truth table in MA: the service drives this
+     * from the sensor DRIVING_STATUS stream / `NavSnapshot.parked`, and the
+     * cached value replays onto presentations created later.
+     */
+    fun setDrivingRestricted(restricted: Boolean) {
+        drivingRestricted = restricted
+        mainHandler.post { presentation?.setDrivingRestricted(restricted) }
+    }
+
+    /**
+     * Closes the drawer at trip end. Parked is the motion heuristic from
+     * `NavSnapshot.parked`, not a gear reading; the parked-browsing exit
+     * header covers the parked-browsing affordance separately. Safe from any
+     * thread.
+     */
+    fun setParked(parked: Boolean) {
+        if (parked) mainHandler.post { presentation?.closeDrawer() }
+    }
+
+    /**
+     * Pushes parked state into the driving-restriction gate. The parked bit
+     * is the `NavSnapshot.parked` motion heuristic: parked clears the gate
+     * (media row visible, lockout down); not-parked raises it. Separated from
+     * [setParked] (which closes the drawer at trip end) so both consumers of
+     * the same snapshot field stay explicit. Safe from any thread.
+     */
+    fun setParkedBrowsingGate(parked: Boolean) {
+        setDrivingRestricted(!parked)
+    }
+
+    /**
+     * Switches the car UI between day and night palettes. Safe from any thread.
+     *
+     * Recolors root/rail/cards/drawer per the §2.3 night deltas and forwards
+     * to the session mirror through [mapDarkApplier] (the service wires it
+     * to `CarMapsMirror.setDark`; the mirror marshals to main itself). Night
+     * sources already in the tree: `ProjectionService.isNightNow` and the
+     * `SensorChannel` `NightSource` -- the service picks one and calls here,
+     * and the cached value replays onto presentations created later.
+     */
+    fun setNight(dark: Boolean) {
+        nightDark = dark
+        mapDarkApplier?.invoke(dark)
+        mainHandler.post { presentation?.setNight(dark) }
+    }
+
+    /**
+     * Pushes one active-call snapshot into the car card; null hides it.
+     * Safe from any thread; cached for presentations created later.
+     */
+    fun setActiveCall(info: ActiveCallInfo?) {
+        activeCall = info
+        mainHandler.post { presentation?.updateCallCard(info) }
+    }
+
+    /**
+     * Pushes one guidance snapshot to the nav banner, if the render pair is
+     * up. The service calls this on every guidance-monitor update; the banner
+     * itself decides show vs GONE.
+     */
+    fun setNavSnapshot(snapshot: NavSnapshot) {
+        mainHandler.post { presentation?.updateNavSnapshot(snapshot) }
+    }
+
+    /**
+     * Forwards nav-card map surfaces to the session mirror when the render
+     * pair comes up after this was set. Cached like [nowPlaying] for
+     * presentations created later.
+     */
+    @Volatile private var mapSurfaceForwarder: ((Surface?, Int, Int) -> Unit)? = null
+
+    /**
+     * Wires the nav-card map surface to the session mirror. The surface
+     * arrives when the TextureView is ready (or null on destroy); unset means
+     * no map backend and the nav card stays a launch tile.
+     */
+    fun setMapSurfaceListener(listener: (Surface?, Int, Int) -> Unit) {
+        mapSurfaceForwarder = listener
+        mainHandler.post {
+            presentation?.mapSurfaceListener = { surface, w, h ->
+                listener(surface, w, h)
+            }
+        }
     }
 
     /**
@@ -193,8 +416,8 @@ class CarDisplay(
     fun injectKey(keycode: Int, down: Boolean): Boolean {
         if (presentation == null) return false
         mainHandler.post {
-            val event = android.view.KeyEvent(
-                if (down) android.view.KeyEvent.ACTION_DOWN else android.view.KeyEvent.ACTION_UP,
+            val event = KeyEvent(
+                if (down) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP,
                 keycode,
             )
             presentation?.window?.decorView?.dispatchKeyEvent(event)
@@ -210,14 +433,14 @@ class CarDisplay(
         if (presentation == null) return false
         mainHandler.post {
             val now = android.os.SystemClock.uptimeMillis()
-            val coords = android.view.MotionEvent.PointerCoords().apply {
-                setAxisValue(android.view.MotionEvent.AXIS_VSCROLL, delta.toFloat())
+            val coords = MotionEvent.PointerCoords().apply {
+                setAxisValue(MotionEvent.AXIS_VSCROLL, delta.toFloat())
             }
-            val event = android.view.MotionEvent.obtain(
+            val event = MotionEvent.obtain(
                 now, now,
-                android.view.MotionEvent.ACTION_SCROLL,
+                MotionEvent.ACTION_SCROLL,
                 1,
-                arrayOf(android.view.MotionEvent.PointerProperties().apply { id = 0 }),
+                arrayOf(MotionEvent.PointerProperties().apply { id = 0 }),
                 arrayOf(coords),
                 0, 0, 1f, 1f, 0, 0,
                 android.view.InputDevice.SOURCE_MOUSE, 0,
@@ -239,43 +462,43 @@ class CarDisplay(
         // coordinates are display pixels and the card bounds are too, so a
         // DOWN inside them is an unambiguous card hit. Other gestures (and
         // taps elsewhere) still dispatch normally so app tiles stay tappable.
-        if (action == android.view.MotionEvent.ACTION_DOWN && pointers.size == 1) {
+        if (action == MotionEvent.ACTION_DOWN && pointers.size == 1) {
             val (x, y, _) = pointers[0]
             if (handleCarTap(x, y)) return
         }
         val now = android.os.SystemClock.uptimeMillis()
-        val downTime = if (action == android.view.MotionEvent.ACTION_DOWN) {
+        val downTime = if (action == MotionEvent.ACTION_DOWN) {
             gestureDownTime = now
             now
         } else {
             gestureDownTime
         }
         val fullAction = when (action) {
-            android.view.MotionEvent.ACTION_POINTER_DOWN,
-            android.view.MotionEvent.ACTION_POINTER_UP,
+            MotionEvent.ACTION_POINTER_DOWN,
+            MotionEvent.ACTION_POINTER_UP,
             -> action or (actionIndex.coerceIn(0, pointers.size - 1) shl
-                android.view.MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+                MotionEvent.ACTION_POINTER_INDEX_SHIFT)
             else -> action
         }
         val props = pointers.map { (_, _, id) ->
-            android.view.MotionEvent.PointerProperties().apply { this.id = id }
+            MotionEvent.PointerProperties().apply { this.id = id }
         }.toTypedArray()
         val coords = pointers.map { (x, y, _) ->
-            android.view.MotionEvent.PointerCoords().apply {
+            MotionEvent.PointerCoords().apply {
                 this.x = x
                 this.y = y
                 pressure = 1f
             }
         }.toTypedArray()
-        val event = android.view.MotionEvent.obtain(
+        val event = MotionEvent.obtain(
             downTime, now, fullAction, pointers.size, props, coords,
             0, 0, 1f, 1f, 0, 0,
             android.view.InputDevice.SOURCE_TOUCHSCREEN, 0,
         )
         view.dispatchTouchEvent(event)
         event.recycle()
-        if (action == android.view.MotionEvent.ACTION_UP ||
-            action == android.view.MotionEvent.ACTION_CANCEL
+        if (action == MotionEvent.ACTION_UP ||
+            action == MotionEvent.ACTION_CANCEL
         ) {
             gestureDownTime = 0
         }
@@ -300,16 +523,56 @@ class CarDisplay(
     private fun showPresentation(
         display: android.view.Display,
         initialNowPlaying: NowPlayingInfo?,
+        initialDrivingRestricted: Boolean,
+        initialNight: Boolean,
+        initialActiveCall: ActiveCallInfo?,
+        initialPhoneStatusSource: (() -> PhoneStatus?)?,
         onMediaTap: () -> Unit,
+        onPreviousTap: () -> Unit,
+        onNextTap: () -> Unit,
+        onAnswerCall: () -> Unit,
+        onEndCall: () -> Unit,
+        onHoldToggle: () -> Unit,
+        onMuteToggle: () -> Unit,
         onCardBounds: (Int, Int, Int, Int) -> Unit,
     ): CarPresentation {
         if (isMainThread) {
-            return CarPresentation(context, display, initialNowPlaying, onMediaTap, onCardBounds)
-                .also { it.show() }
+            return CarPresentation(
+                context,
+                display,
+                initialNowPlaying,
+                initialDrivingRestricted,
+                initialNight,
+                initialActiveCall,
+                initialPhoneStatusSource,
+                onMediaTap,
+                onPreviousTap,
+                onNextTap,
+                onAnswerCall,
+                onEndCall,
+                onHoldToggle,
+                onMuteToggle,
+                onCardBounds,
+            ).also { it.show() }
         }
         val show = FutureTask<CarPresentation> {
-            CarPresentation(context, display, initialNowPlaying, onMediaTap, onCardBounds)
-                .also { it.show() }
+            CarPresentation(
+                context,
+                display,
+                initialNowPlaying,
+                initialDrivingRestricted,
+                initialNight,
+                initialActiveCall,
+                initialPhoneStatusSource,
+                onMediaTap,
+                onPreviousTap,
+                onNextTap,
+                onAnswerCall,
+                onEndCall,
+                onHoldToggle,
+                onMuteToggle,
+                onCardBounds,
+            ).also { it.show() }
         }
         mainHandler.post(show)
         try {
@@ -325,668 +588,12 @@ class CarDisplay(
             throw e.cause ?: e
         }
     }
-
-    /**
-     * The car launcher: a driving-safe home screen with a status bar and big app tiles.
-     *
-     * Deliberately Views, not Compose: a `Presentation` on a private virtual display has
-     * no Compose lifecycle owner, and Views render into the encoder surface with no
-     * extra plumbing. Large tiles, high contrast, and nothing that needs reading at
-     * a glance beyond a label.
-     */
-    private class CarPresentation(
-        context: Context,
-        display: android.view.Display,
-        initialNowPlaying: NowPlayingInfo?,
-        private val onMediaTap: () -> Unit,
-        private val onCardBounds: (Int, Int, Int, Int) -> Unit,
-    ) : Presentation(context, display) {
-
-        /**
-         * Snapshot that arrived before `onCreate` built the card views.
-         * Consumed once in `onCreate`; after that the card exists and updates
-         * apply directly.
-         */
-        private var pendingNowPlaying: NowPlayingInfo? = initialNowPlaying
-
-        private var clockView: TextView? = null
-        private val timeFormat: DateFormat = DateFormat.getTimeInstance(DateFormat.SHORT)
-        private var mediaTitle: TextView? = null
-        private var mediaSubtitle: TextView? = null
-        private var mediaState: TextView? = null
-        private var mediaProgress: View? = null
-        private var mediaCard: LinearLayout? = null
-        private var drawerView: View? = null
-
-        // Real wall-clock time, ticking every second. The old placeholder showed a
-        // session counter here; a driver needs to know what time it is instead, and the
-        // moving digits still prove frames are flowing rather than one stale image.
-        private val ticker = object : Runnable {
-            override fun run() {
-                val view = clockView ?: return
-                view.text = timeFormat.format(Date())
-                view.postDelayed(this, 1000)
-            }
-        }
-
-        /**
-         * Continuous re-render at [fps] so the encoder surface produces frames
-         * even when no view changes on its own. Main thread only. Backs off to
-         * a Choreographer-frame chain when [fps] is at/above display cadence.
-         */
-        private var invalidator: Runnable? = null
-        private var invalidatorFps = 0
-
-        fun startFrameInvalidation(fps: Int) {
-            stopFrameInvalidation()
-            val decor = window?.decorView ?: return
-            val intervalMs = (1000L / fps.coerceIn(1, MAX_INVALIDATE_FPS)).coerceAtLeast(0)
-            invalidatorFps = fps
-            val tick = object : Runnable {
-                override fun run() {
-                    decor.invalidate()
-                    decor.postDelayed(this, intervalMs)
-                }
-            }
-            invalidator = tick
-            decor.post(tick)
-        }
-
-        fun stopFrameInvalidation() {
-            val decor = window?.decorView
-            invalidator?.let { decor?.removeCallbacks(it) }
-            invalidator = null
-            invalidatorFps = 0
-        }
-
-        override fun onCreate(savedInstanceState: Bundle?) {
-            super.onCreate(savedInstanceState)
-            // Coolwalk facet structure, matching gearhead's
-            // `gh_coolwalk_facet_bar` + dashboard cards + drawer:
-            // content area (split nav/media cards, drawer overlay) above a
-            // bottom facet bar (dashboard button, hotseat dock, status).
-            // Views, not Compose (see the class KDoc).
-            val root = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(Color.parseColor("#101418"))
-                layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
-            }
-            val apps = CarApps.query(context)
-            val content = android.widget.FrameLayout(context).apply {
-                layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
-                addView(splitCards(apps))
-                addView(appDrawer(apps).also { drawerView = it })
-            }
-            root.addView(content)
-            root.addView(facetBar(apps))
-            setContentView(root)
-
-            pendingNowPlaying?.let { updateNowPlaying(it) }
-            pendingNowPlaying = null
-
-            clockView?.let {
-                it.text = timeFormat.format(Date())
-                it.post(ticker)
-            }
-        }
-
-        /** Hides the now-playing card; the cached snapshot is untouched. Main thread only. */
-        fun hideNowPlaying() {
-            mediaCard?.visibility = View.GONE
-        }
-
-        override fun onStop() {
-            clockView?.removeCallbacks(ticker)
-            stopFrameInvalidation()
-            clockView = null
-            mediaTitle = null
-            mediaSubtitle = null
-            mediaState = null
-            mediaProgress = null
-            mediaCard = null
-            drawerView = null
-            super.onStop()
-        }
-
-        /**
-         * Applies a snapshot to the now-playing card. Main thread only: called
-         * from the posted update in [setNowPlaying], or from `onCreate` above
-         * for a snapshot that arrived before the views existed.
-         *
-         * Also owns the card's visibility: `GONE` when idle (not playing and
-         * no title to show) so the car display shows no card with nothing
-         * playing; `VISIBLE` while playing, and while paused with a title so
-         * resume keeps its context. GAL 11/12 stay unspoken by design, so no
-         * head-unit contract drives this -- it is purely phone-side.
-         */
-        fun updateNowPlaying(info: NowPlayingInfo) {
-            val card = mediaCard ?: return
-            card.visibility = if (info.shouldShowCard()) View.VISIBLE else View.GONE
-            val title = mediaTitle ?: return
-            val subtitle = mediaSubtitle ?: return
-            val state = mediaState ?: return
-            title.text = info.title ?: context.getString(R.string.car_now_playing_unknown)
-            subtitle.text = info.artist ?: context.getString(R.string.car_now_playing_unknown_artist)
-            state.text = context.getString(
-                if (info.playing) R.string.car_now_playing_playing
-                else R.string.car_now_playing_paused,
-            )
-            val progress = mediaProgress ?: return
-            val fraction = progressFraction(info.positionMs, info.durationMs)
-            val bar = mediaCard ?: return
-            // Resize the fill once laid out: the bar width is only known after
-            // the layout pass, and the encoder surface picks the re-layout up on
-            // the next frame.
-            progress.post {
-                val total = bar.width
-                if (total > 0) {
-                    progress.layoutParams = progress.layoutParams.apply {
-                        width = (total * fraction).toInt().coerceIn(0, total)
-                    }
-                    progress.requestLayout()
-                }
-            }
-        }
-
-        /**
-         * The single now-playing layout, matching `frag_dash_media` structure:
-         * title (28sp, 1 line) + subtitle (24sp), 4dp progress bar, whole card
-         * tappable to toggle playback. Album art and the prev/next button row
-         * are omitted: no art backend exists, and transport beyond toggle has
-         * no monitor path yet -- the card never shows what it cannot do.
-         */
-        private fun nowPlayingCard(): LinearLayout {
-            val card = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(Color.parseColor("#1B2430"))
-                setPadding(dp(24), dp(16), dp(24), dp(16))
-                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
-                isClickable = true
-                isFocusable = true
-                // Starts hidden: the first snapshot decides, and with nothing
-                // playing there is nothing to show.
-                visibility = View.GONE
-            }
-            card.addView(
-                TextView(context).apply {
-                    text = context.getString(R.string.car_now_playing)
-                    setTextColor(Color.parseColor("#8AB4F8"))
-                    textSize = 14f
-                },
-            )
-            card.addView(
-                TextView(context).apply {
-                    textSize = 28f
-                    maxLines = 1
-                    setTextColor(Color.WHITE)
-                    mediaTitle = this
-                },
-            )
-            card.addView(
-                TextView(context).apply {
-                    textSize = 24f
-                    setTextColor(Color.parseColor("#C7CFD9"))
-                    mediaSubtitle = this
-                },
-            )
-            card.addView(
-                TextView(context).apply {
-                    textSize = 14f
-                    setTextColor(Color.parseColor("#8AB4F8"))
-                    mediaState = this
-                },
-            )
-            val track = View(context).apply {
-                setBackgroundColor(Color.parseColor("#2A3138"))
-                layoutParams = LinearLayout.LayoutParams(MATCH, dp(4)).apply {
-                    topMargin = dp(12)
-                }
-            }
-            card.addView(track)
-            val fill = View(context).apply {
-                setBackgroundColor(Color.parseColor("#8AB4F8"))
-                layoutParams = LinearLayout.LayoutParams(0, dp(4)).apply {
-                    topMargin = dp(-4)
-                }
-                mediaProgress = this
-            }
-            card.addView(fill)
-            card.setOnClickListener { onMediaTap() }
-            // Report layout bounds for ch8 tap routing once the view is placed.
-            card.viewTreeObserver.addOnGlobalLayoutListener(
-                object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
-                    override fun onGlobalLayout() {
-                        val loc = IntArray(2)
-                        card.getLocationOnScreen(loc)
-                        onCardBounds(loc[0], loc[1], loc[0] + card.width, loc[1] + card.height)
-                    }
-                },
-            )
-            mediaCard = card
-            return card
-        }
-
-        private fun statusBar(): LinearLayout {
-            val bar = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(24), dp(16), dp(24), dp(16))
-            }
-            val titles = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-            }
-            titles.addView(
-                TextView(context).apply {
-                    text = context.getString(R.string.app_name)
-                    setTextColor(Color.WHITE)
-                    textSize = 28f
-                },
-            )
-            titles.addView(
-                TextView(context).apply {
-                    text = context.getString(R.string.car_connected)
-                    setTextColor(Color.parseColor("#8AB4F8"))
-                    textSize = 16f
-                },
-            )
-            bar.addView(titles)
-            val clock = TextView(context).apply {
-                setTextColor(Color.WHITE)
-                textSize = 24f
-                gravity = Gravity.END
-            }
-            clockView = clock
-            bar.addView(clock)
-            return bar
-        }
-
-        private fun divider(): View = View(context).apply {
-            setBackgroundColor(Color.parseColor("#2A3138"))
-            layoutParams = LinearLayout.LayoutParams(MATCH, dp(1))
-        }
-
-        /**
-         * The bottom facet bar (`gh_coolwalk_facet_bar`): dashboard button,
-         * centered hotseat dock, and the status clock at the end. Touch
-         * targets match gearhead (`facet_bar_touch_target_size` 68dp,
-         * `coolwalk_launcher_dashboard_margin` 10dp, `rail_coolwalk_rail_margin`
-         * 6dp). No assistant button: there is no assistant backend, and the
-         * launcher never shows what the phone cannot open.
-         */
-        private fun facetBar(apps: List<CarApp>): LinearLayout {
-            return LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setBackgroundColor(Color.parseColor("#161C24"))
-                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
-                setPadding(dp(10), dp(6), dp(6), dp(6))
-                addView(
-                    facetButton(context.getString(R.string.car_home_glyph), "Home") {
-                        drawerView?.visibility = View.GONE
-                    },
-                )
-                addView(
-                    LinearLayout(context).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER
-                        layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
-                        apps.take(MAX_DOCK_APPS).forEach { app ->
-                            addView(hotseatCell(app))
-                        }
-                        addView(
-                            hotseatCell(null) {
-                                drawerView?.visibility = View.VISIBLE
-                            },
-                        )
-                    },
-                )
-                addView(facetStatus())
-            }
-        }
-
-        /** One 68dp facet-bar button with a decorative glyph label. */
-        private fun facetButton(glyph: String, description: String, onTap: () -> Unit): TextView {
-            return TextView(context).apply {
-                text = glyph
-                contentDescription = description
-                setTextColor(Color.WHITE)
-                textSize = 28f
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(dp(68), dp(68))
-                isClickable = true
-                isFocusable = true
-                setOnClickListener { onTap() }
-            }
-        }
-
-        /**
-         * One hotseat cell (`sys_ui_rail_hotseat` item): a 68dp touch target
-         * with the app icon at 56dp and 8dp padding, untinted, no label --
-         * labels live in the drawer grid (`app_launcher_item`). A null app
-         * renders the drawer glyph cell instead.
-         */
-        private fun hotseatCell(app: CarApp?, onDrawerTap: (() -> Unit)? = null): android.widget.FrameLayout {
-            return android.widget.FrameLayout(context).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(68), dp(68))
-                isClickable = true
-                isFocusable = true
-                if (app != null) {
-                    addView(
-                        ImageView(context).apply {
-                            setImageDrawable(app.icon)
-                            contentDescription = app.label.toString()
-                            setPadding(dp(8), dp(8), dp(8), dp(8))
-                            layoutParams = android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER)
-                        },
-                    )
-                    setOnClickListener { context.startActivity(app.launch) }
-                } else {
-                    addView(
-                        TextView(context).apply {
-                            text = context.getString(R.string.car_drawer_glyph)
-                            setTextColor(Color.WHITE)
-                            textSize = 28f
-                            gravity = Gravity.CENTER
-                            layoutParams = android.widget.FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER)
-                        },
-                    )
-                    setOnClickListener { onDrawerTap?.invoke() }
-                }
-            }
-        }
-
-        /**
-         * The facet status slot (`rail_statusbar`): clock only. Gearhead shows
-         * signal/battery icons here; the phone cannot know the car's radio
-         * state, so nothing is faked.
-         */
-        private fun facetStatus(): TextView {
-            return TextView(context).apply {
-                setTextColor(Color.WHITE)
-                textSize = 24f
-                gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                layoutParams = LinearLayout.LayoutParams(WRAP, dp(68))
-                setPadding(dp(6), 0, dp(6), 0)
-            }.also { clockView = it }
-        }
-
-        /**
-         * The Coolwalk split: nav card beside the media card, sharing the
-         * content area. The media card is the existing now-playing layout
-         * (visibility-gated as before); the nav card deep-links Maps.
-         */
-        private fun splitCards(apps: List<CarApp>): LinearLayout {
-            return LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                // Fills the content frame: weights only work in a LinearLayout
-                // parent, and this lives in a FrameLayout (split + drawer
-                // overlay), so MATCH/MATCH, not 0-weight.
-                layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
-                setPadding(dp(16), dp(8), dp(16), dp(8))
-                addView(
-                    navCard(apps).apply {
-                        layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f).apply {
-                            marginEnd = dp(8)
-                        }
-                    },
-                )
-                addView(
-                    nowPlayingCard().apply {
-                        layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f).apply {
-                            marginStart = dp(8)
-                        }
-                    },
-                )
-            }
-        }
-
-        /**
-         * The nav half of the split: Maps icon + label, tapping launches it.
-         * Without Maps installed this shows the empty state instead of a dead
-         * tile, so the split never offers what the phone cannot open.
-         */
-        private fun navCard(apps: List<CarApp>): LinearLayout {
-            val maps = apps.firstOrNull {
-                it.launch.`package` == MAPS_PACKAGE ||
-                    it.label.toString().contains(MAPS_LABEL, ignoreCase = true)
-            }
-            return LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setBackgroundColor(Color.parseColor("#1B2430"))
-                setPadding(dp(24), dp(16), dp(24), dp(16))
-                if (maps != null) {
-                    maps.icon?.let { icon ->
-                        addView(
-                            ImageView(context).apply {
-                                setImageDrawable(icon)
-                                contentDescription = maps.label.toString()
-                                layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
-                            },
-                        )
-                    }
-                    addView(
-                        TextView(context).apply {
-                            text = maps.label.toString()
-                            setTextColor(Color.WHITE)
-                            textSize = 20f
-                            gravity = Gravity.CENTER
-                            setPadding(0, dp(8), 0, 0)
-                        },
-                    )
-                    isClickable = true
-                    isFocusable = true
-                    setOnClickListener { context.startActivity(maps.launch) }
-                } else {
-                    addView(
-                        TextView(context).apply {
-                            text = context.getString(R.string.car_no_apps)
-                            setTextColor(Color.parseColor("#8AB4F8"))
-                            textSize = 18f
-                            gravity = Gravity.CENTER
-                        },
-                    )
-                }
-            }
-        }
-
-        /**
-         * The app-drawer overlay (`drawer_contents`): full content-area sheet
-         * with an "Apps" heading and the app grid in the gearhead launcher
-         * item shape (84dp circular icons, 24sp centered single-line labels,
-         * 156dp tiles). Starts GONE; the hotseat drawer cell opens it, the
-         * dashboard facet button or a launch closes it.
-         */
-        private fun appDrawer(apps: List<CarApp>): View {
-            return LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(Color.parseColor("#101418"))
-                layoutParams = ViewGroup.LayoutParams(MATCH, MATCH)
-                visibility = View.GONE
-                setPadding(dp(16), dp(16), dp(16), dp(16))
-                addView(
-                    TextView(context).apply {
-                        text = context.getString(R.string.car_drawer_apps)
-                        setTextColor(Color.WHITE)
-                        textSize = 28f
-                        setPadding(0, 0, 0, dp(16))
-                    },
-                )
-                if (apps.isEmpty()) {
-                    addView(
-                        TextView(context).apply {
-                            text = context.getString(R.string.car_no_apps)
-                            setTextColor(Color.parseColor("#8AB4F8"))
-                            textSize = 24f
-                            gravity = Gravity.CENTER
-                            layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
-                        },
-                    )
-                } else {
-                    addView(
-                        GridLayout(context).apply {
-                            columnCount = COLUMNS
-                            layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
-                            apps.forEach { app ->
-                                addView(
-                                    launcherItem(app).apply {
-                                        layoutParams = GridLayout.LayoutParams().apply {
-                                            width = 0
-                                            height = dp(156)
-                                            columnSpec = GridLayout.spec(
-                                                UNDEFINED_COLUMN,
-                                                1,
-                                                FILL,
-                                                1f,
-                                            )
-                                        }
-                                        setOnClickListener {
-                                            context.startActivity(app.launch)
-                                            drawerView?.visibility = View.GONE
-                                        }
-                                    },
-                                )
-                            }
-                        },
-                    )
-                }
-            }
-        }
-
-        /**
-         * One launcher item (`app_launcher_item`): 84dp circular icon over a
-         * 24sp centered single-line label. Circular crop via outline clipping
-         * (no CardView dependency); focusable for rotary/dpad parity.
-         */
-        private fun launcherItem(app: CarApp): LinearLayout {
-            return LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                isClickable = true
-                isFocusable = true
-                addView(
-                    ImageView(context).apply {
-                        setImageDrawable(app.icon)
-                        contentDescription = app.label.toString()
-                        layoutParams = LinearLayout.LayoutParams(dp(84), dp(84))
-                        clipToOutline = true
-                        outlineProvider = object : ViewOutlineProvider() {
-                            override fun getOutline(view: View, outline: Outline) {
-                                outline.setOval(0, 0, view.width, view.height)
-                            }
-                        }
-                    },
-                )
-                addView(
-                    TextView(context).apply {
-                        text = app.label.toString()
-                        setTextColor(Color.WHITE)
-                        textSize = 24f
-                        gravity = Gravity.CENTER
-                        maxLines = 1
-                        layoutParams = LinearLayout.LayoutParams(MATCH, dp(28)).apply {
-                            topMargin = dp(16)
-                        }
-                    },
-                )
-            }
-        }
-
-        private fun appGrid(apps: List<CarApp>): GridLayout {
-            return GridLayout(context).apply {
-                columnCount = COLUMNS
-                setPadding(dp(16), dp(8), dp(16), dp(16))
-                layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
-                apps.forEach { app ->
-                    addView(
-                        appCell(app).apply {
-                            layoutParams = GridLayout.LayoutParams().apply {
-                                width = 0
-                                columnSpec = GridLayout.spec(UNDEFINED_COLUMN, 1, FILL, 1f)
-                            }
-                        },
-                    )
-                }
-            }
-        }
-
-        private fun appCell(app: CarApp): LinearLayout {
-            return LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(8), dp(16), dp(8), dp(16))
-                isClickable = true
-                isFocusable = true
-                addView(
-                    ImageView(context).apply {
-                        setImageDrawable(app.icon)
-                        contentDescription = app.label.toString()
-                        layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
-                    },
-                )
-                addView(
-                    TextView(context).apply {
-                        text = app.label.toString()
-                        setTextColor(Color.WHITE)
-                        textSize = 16f
-                        gravity = Gravity.CENTER
-                        setPadding(0, dp(8), 0, 0)
-                    },
-                )
-                setOnClickListener { context.startActivity(app.launch) }
-            }
-        }
-
-        private fun emptyState(): TextView {
-            return TextView(context).apply {
-                text = context.getString(R.string.car_no_apps)
-                setTextColor(Color.parseColor("#8AB4F8"))
-                textSize = 20f
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
-            }
-        }
-
-        private fun dp(value: Int): Int =
-            (value * context.resources.displayMetrics.density).toInt()
-
-        private companion object {
-            const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
-            const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
-            const val COLUMNS = 3
-            const val UNDEFINED_COLUMN = GridLayout.UNDEFINED
-            val FILL: GridLayout.Alignment = GridLayout.FILL
-
-            /** Hotseat shows this many apps before the drawer cell; the rest live in the drawer. */
-            const val MAX_DOCK_APPS = 3
-
-            /** Package + label fallback identifying the Maps slot for the nav card. */
-            const val MAPS_PACKAGE = "com.vayunmathur.maps"
-            const val MAPS_LABEL = "map"
-
-            /**
-             * Ceiling for the continuous frame invalidator: the encoder paces
-             * output to its own configured rate, so invalidating faster only
-             * burns CPU compositing frames the encoder drops.
-             */
-            const val MAX_INVALIDATE_FPS = 60
-
-            /** Progress fraction in [0,1]; half (indeterminate-ish) with no duration. */
-            fun progressFraction(positionMs: Long, durationMs: Long?): Float {
-                val duration = durationMs?.takeIf { it > 0 } ?: return 0.5f
-                return (positionMs.coerceAtLeast(0).toFloat() / duration).coerceIn(0f, 1f)
-            }
-        }
-    }
-
     /**
      * Now-playing card bounds in display pixels, for ch8 tap routing.
      * Compared in presentation root-view coordinates, which are 1:1 with
      * display pixels on a virtual display.
      */
-    private data class TapBounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+    internal data class TapBounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
         fun contains(x: Float, y: Float): Boolean =
             x >= left && x <= right && y >= top && y <= bottom
     }

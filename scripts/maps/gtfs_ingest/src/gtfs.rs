@@ -15,6 +15,8 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::path::Path;
 
+pub(crate) use crate::gtfs_extra::{RawShapePoint, split_line};
+
 /// A parsed CSV table: the header row plus data rows (each a `Vec<String>`).
 pub struct Csv {
     header: Vec<String>,
@@ -182,38 +184,6 @@ pub struct Shape {
     pub dist: Option<Vec<f64>>,
 }
 
-/// Split one CSV line into fields, honouring quotes and `""` escapes. Unlike
-/// [`parse_csv`] this cannot span newlines, which `shapes.txt` never needs — all
-/// five of its columns are numbers or an id.
-fn split_line(line: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut field = String::new();
-    let mut in_quotes = false;
-    let mut chars = line.chars().peekable();
-    while let Some(c) = chars.next() {
-        if in_quotes {
-            if c == '"' {
-                if chars.peek() == Some(&'"') {
-                    field.push('"');
-                    let _ = chars.next();
-                } else {
-                    in_quotes = false;
-                }
-            } else {
-                field.push(c);
-            }
-        } else if c == '"' {
-            in_quotes = true;
-        } else if c == ',' {
-            out.push(std::mem::take(&mut field));
-        } else {
-            field.push(c);
-        }
-    }
-    out.push(field);
-    out
-}
-
 /// One usable `stop_times.txt` row, already typed. Borrowed from the reader's
 /// line buffer, so it must be consumed before the next row is read.
 pub struct StopTimeRow<'a> {
@@ -317,12 +287,6 @@ pub fn stream_stop_times(dir: &Path, mut f: impl FnMut(StopTimeRow)) -> Option<(
     }
     Some(())
 }
-
-/// A `shapes.txt` row before ordering: `(sequence, lat_e7, lon_e7, dist)`, where
-/// `dist` is NaN when the row has none. 24 bytes rather than the 32 an
-/// `(i64, i32, i32, Option<f64>)` needs — this intermediate has exactly the
-/// defect the streaming loader exists to avoid.
-type RawShapePoint = (u32, i32, i32, f64);
 
 /// Stream `dir/shapes.txt` into one polyline per `shape_id`. Returns `None` when
 /// the file is absent (it is optional) or carries no usable columns.

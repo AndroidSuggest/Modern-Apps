@@ -50,12 +50,18 @@
 pub mod codec;
 pub mod consts;
 pub mod emit;
+pub mod emit_extra;
 pub mod model;
 pub mod slim;
 pub mod tables;
+pub mod tables_extra;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_extra;
+#[cfg(test)]
+mod tests_extra2;
 
 pub use consts::{
     BODY_FLAG_BUILDING_TABLE, BODY_FLAG_EXTENDED_COUNTS, BODY_FLAG_HEIGHTMAP, BODY_FLAG_ID_TABLE,

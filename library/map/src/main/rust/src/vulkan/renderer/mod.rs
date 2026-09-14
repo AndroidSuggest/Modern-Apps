@@ -5,22 +5,22 @@ use crate::marker::Marker;
 use crate::overlay::{RoutePlacement, RouteSegmentRange};
 use crate::style::{Anchor, Layer, LayerKind};
 use crate::tile::geometry;
-use crate::vulkan::buffers::{Buffer, ScratchRing};
-use crate::vulkan::cache::ShaderCache;
-use crate::vulkan::context::{ANativeWindow, Context};
-use crate::vulkan::images::{AtlasSet, SampledImage};
-use crate::vulkan::pick::Pick;
-use crate::vulkan::pipeline::Pipelines;
-use crate::vulkan::swapchain::Swapchain;
+use crate::vulkan::buffers::Buffer;
 use ash::vk;
-use std::cell::Cell;
 use std::collections::HashMap;
 
 mod frame;
+mod mod_extra;
 mod placement;
 mod record;
+mod record_extra;
+mod record_extra2;
+mod record_extra3;
 mod rebuild;
 mod upload;
+mod upload_extra;
+
+pub use mod_extra::Renderer;
 
 /// How many frames may be in flight. Two is enough to keep the GPU fed behind vsync
 /// without adding latency the user can feel when panning.
@@ -357,100 +357,6 @@ const TRAFFIC_WIDTH_DP: f32 = 4.0;
 /// is gated on the camera's own zoom so buildings appear only once the map is zoomed in far enough
 /// for the extruded detail to read — below it the map is the flat basemap it always was.
 const BUILDINGS_DRAW_MIN_ZOOM: f64 = 14.0;
-
-pub struct Renderer {
-    context: Context,
-    swapchain: Swapchain,
-    pipelines: Pipelines,
-    /// Sampled-image infra shared by the glyph atlas and the sprite atlas: one
-    /// pool/layout, one set per atlas. Uploaded once at startup from the
-    /// CPU-built atlas bytes.
-    atlas_set: AtlasSet,
-    glyph_atlas: Option<SampledImage>,
-    glyph_set: Option<vk::DescriptorSet>,
-    /// The POI icon sheet, uploaded beside the glyphs. `None` when the sheet would
-    /// not decode, which leaves POI labels drawing without icons rather than not at
-    /// all.
-    sprite_atlas: Option<SampledImage>,
-    sprite_set: Option<vk::DescriptorSet>,
-    command_pool: vk::CommandPool,
-    frames: Vec<Frame>,
-    frame_index: usize,
-    tiles: HashMap<u64, ResidentTile>,
-    /// Retired buffers waiting for the frames that might still reference them.
-    retiring: Vec<(usize, ResidentTile)>,
-    /// The persistent shader-compilation cache, seeded from disk at startup and shared by every
-    /// pipeline and by [`Pick`]. Outlives [`Pipelines`], which is destroyed and rebuilt whenever
-    /// the render pass changes — that is the whole point, since the rebuild is what used to
-    /// recompile twelve pipelines inside a frame.
-    pipeline_cache: ShaderCache,
-    /// Transient per-frame symbol buffers, same grace rule as `retiring`.
-    transients: Vec<TransientBuffers>,
-    /// One scratch bump allocator per frame in flight, which every symbol draw's geometry is
-    /// suballocated from. Indexed by [`frame_index`](Self::frame_index) and reset once that
-    /// frame's fence has signalled. See [`ScratchRing`].
-    scratch: Vec<ScratchRing>,
-    window: *mut ANativeWindow,
-    pub width: u32,
-    pub height: u32,
-    /// Set when the swapchain needs rebuilding: a resize, a rotation, or an out-of-date
-    /// present.
-    needs_rebuild: bool,
-    /// Draw calls actually submitted by the last recorded frame.
-    ///
-    /// Counted where they are issued rather than re-derived, because a layer can be resident
-    /// and still not drawn — the authored style ramps a road's width to zero outside the zooms
-    /// it is meant for, and [`record`](Self::record) skips it. Any second implementation of
-    /// that test would drift out of step with the one that matters and the number would start
-    /// lying again, more subtly.
-    ///
-    /// A `Cell` because `record` takes `&self`; the frame path is single-threaded, as the
-    /// module docs of [`crate::bridge`] set out.
-    submitted_draws: Cell<usize>,
-    /// Task-17 pick state: the last frame's PLACED labels — accept-set id,
-    /// screen box in DEVICE px, layer index, display name, kind string, and
-    /// anchor lon/lat — so `pick_labels` answers without re-tessellating.
-    /// Refreshed by `record_inner` every frame; read by the JNI pick path.
-    placed: std::cell::RefCell<Vec<PlacedHit>>,
-    /// The last symbol placement and the state it was computed from.
-    ///
-    /// [`place_symbols`](Self::place_symbols) projects a collision box for every glyph of every
-    /// curved label and then runs a solver that is quadratic in accepted boxes, all of it on the
-    /// Choreographer callback. None of that depends on the frame clock, so a camera that has not
-    /// moved gets last frame's answer instead of the same computation again.
-    placement_cache: std::cell::RefCell<Option<(PlacementKey, AcceptSet)>>,
-    /// What this frame draws on top of every tile, in order. See [`Overlay`].
-    overlays: Vec<Overlay>,
-    /// The geometry every overlay shares, uploaded once.
-    quad: Quad,
-    /// The OSM relation whose shape is punched out of the mask scrim, if any.
-    ///
-    /// Not an [`Overlay`]: an overlay draws itself over the tiles, while this one is a property
-    /// of how every tile is drawn — two pipelines and a stencil rather than one quad.
-    selected_region: Option<u64>,
-    /// The navigation route line, or `None` when no route is set.
-    route: Option<RouteBuffers>,
-    /// The live-traffic colour table: `component_id → ARGB`, pushed from the host each update.
-    ///
-    /// The device owns the theme and palette, so it sends fully-resolved colours; the renderer
-    /// only looks them up. A segment whose id is absent draws nothing (see [`record_traffic`]),
-    /// which keeps the overlay to the roads traffic actually covers rather than flooding the
-    /// whole network with a neutral tint. Replacing this map is the whole of a recolour — no
-    /// geometry is touched — so new speeds cost no tessellation.
-    ///
-    /// [`record_traffic`]: Self::record_traffic
-    traffic_colors: HashMap<u64, u32>,
-    /// Whether the traffic overlay is drawn this frame. Set from the host's layer toggle; the
-    /// geometry is also gated at tessellation, so this is the cheap per-frame guard that stops
-    /// resident traffic meshes drawing in the window before a toggle-off re-tessellation lands.
-    traffic_enabled: bool,
-    /// The offscreen id-buffer pass, for tap picking. Self-contained (its own render pass, pipeline
-    /// and target); invoked out of band by [`pick_at`](Self::pick_at), never in the frame loop.
-    pick: Pick,
-    /// The last camera a frame was recorded with, so [`pick_at`](Self::pick_at) can place markers
-    /// against the frame the user is actually looking at. `None` before the first frame.
-    last_camera: Option<Camera>,
-}
 
 /// One placed label as the pick path sees it: everything `pickLabels` needs
 /// to answer without touching tiles, layers, or the camera.

@@ -133,21 +133,13 @@ pub fn attrs(tags: &(impl TagSource + ?Sized)) -> BuildingAttrs {
 fn metres_dm(tags: &(impl TagSource + ?Sized), key: &str) -> Option<u16> {
     let raw = tags.get(key)?;
     let metres = parse_leading_f64(raw)?;
-    dm_of(metres)
+    super::buildings_extra::dm_of(metres)
 }
 
 /// A level count (`building:levels=3`) as a height in decimetres, at [`METRES_PER_LEVEL`] each.
 fn levels_dm(tags: &(impl TagSource + ?Sized), key: &str) -> Option<u16> {
     let levels = parse_leading_f64(tags.get(key)?)?;
-    dm_of(levels * METRES_PER_LEVEL)
-}
-
-/// Metres to decimetres, rounded and clamped to `u16`; negative or non-finite yields `None`.
-fn dm_of(metres: f64) -> Option<u16> {
-    if !metres.is_finite() || metres < 0.0 {
-        return None;
-    }
-    Some((metres * 10.0).round().min(u16::MAX as f64) as u16)
+    super::buildings_extra::dm_of(levels * METRES_PER_LEVEL)
 }
 
 /// The leading number of a value, ignoring a trailing unit like ` m`. OSM height tags are metres

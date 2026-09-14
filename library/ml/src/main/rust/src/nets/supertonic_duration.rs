@@ -53,6 +53,7 @@
 //! through six residual blocks and ten layer norms. The predicted duration itself agrees to
 //! 0.12%: 1.556031 seconds against 1.557878, which is the same [`latent_frames`] either way.
 
+use super::supertonic_duration_extra::Layers;
 use super::{Act, Builder, Id, Plan, Shape, WeightSource};
 
 /// Characters in the embedding table, from `onnx/unicode_indexer.json`'s 8,321 mapped
@@ -144,39 +145,6 @@ pub fn latent_frames(seconds: f32) -> u32 {
 /// A single transcendental on a single scalar, which is not worth a shader or a `Kind`.
 pub fn seconds(log_seconds: f32) -> f32 {
     log_seconds.exp()
-}
-
-/// Hands out `.maml` tensor indices in the order the layers appear.
-struct Layers {
-    next: usize,
-}
-
-impl Layers {
-    /// A weight and the bias after it.
-    fn take(&mut self) -> usize {
-        let index = self.next;
-        self.next += 2;
-        index
-    }
-
-    /// An int8 kernel, its per-output-channel scale, and the bias after that.
-    ///
-    /// Three rather than two, which is why quantising a convolution shifts every later index. The
-    /// order is the one `Builder::conv_int8` reads and `supertonic_fold.py` writes; getting it
-    /// wrong puts an fp16 tensor where the kernel should be, and `WeightSource::shaped_words`
-    /// refuses that rather than reading it as bytes.
-    fn take3(&mut self) -> usize {
-        let index = self.next;
-        self.next += 3;
-        index
-    }
-
-    /// A lone tensor: the embedding table, a relative position table, a PReLU slope.
-    fn take_one(&mut self) -> usize {
-        let index = self.next;
-        self.next += 1;
-        index
-    }
 }
 
 /// A `1 x 1` convolution, which every projection and both head `Gemm`s are.

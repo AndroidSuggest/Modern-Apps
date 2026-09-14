@@ -248,7 +248,7 @@ pub fn parse_props(body: &str) -> Vec<(String, Value)> {
         if i >= b.len() {
             break;
         }
-        let key = unescape(&body[ks..i]);
+        let key = crate::geojson_extra::unescape(&body[ks..i]);
         i += 1;
         while i < b.len() && b[i] != b':' {
             i += 1;
@@ -270,7 +270,7 @@ pub fn parse_props(body: &str) -> Vec<(String, Value)> {
                     }
                     i += 1;
                 }
-                out.push((key, Value::String(unescape(&body[vs..i.min(body.len())]))));
+                out.push((key, Value::String(crate::geojson_extra::unescape(&body[vs..i.min(body.len())]))));
                 i += 1;
             }
             open @ (b'{' | b'[') => {
@@ -317,34 +317,6 @@ pub fn parse_props(body: &str) -> Vec<(String, Value)> {
             i += 1;
         }
         i += 1;
-    }
-    out
-}
-
-pub fn unescape(s: &str) -> String {
-    if !s.contains('\\') {
-        return s.to_string();
-    }
-    let mut out = String::with_capacity(s.len());
-    let mut it = s.chars();
-    while let Some(c) = it.next() {
-        if c != '\\' {
-            out.push(c);
-            continue;
-        }
-        match it.next() {
-            Some('n') => out.push('\n'),
-            Some('r') => out.push('\r'),
-            Some('t') => out.push('\t'),
-            Some('u') => {
-                let hex: String = it.by_ref().take(4).collect();
-                if let Some(ch) = u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
-                    out.push(ch);
-                }
-            }
-            Some(other) => out.push(other),
-            None => break,
-        }
     }
     out
 }

@@ -13,10 +13,12 @@
 //! makes this crate build and run offline on any box.
 pub mod bundle;
 pub mod gtfs;
+pub mod gtfs_extra;
 pub mod index;
 pub mod json;
 pub mod manifest;
 pub mod par;
 pub mod reader;
+pub mod reader_extra;
 pub mod registry;
 pub mod shapes;

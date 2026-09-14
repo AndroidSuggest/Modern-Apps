@@ -60,11 +60,13 @@
 pub mod boolean;
 pub mod clip;
 pub mod geojson;
+pub mod geojson_extra;
 pub mod geom;
 pub mod par;
 pub mod progress;
 pub mod pyramid;
 pub mod simplify;
+pub mod simplify_extra;
 pub mod spill;
 pub mod subdivide;
 pub mod tiling;

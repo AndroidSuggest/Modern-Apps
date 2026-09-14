@@ -22,6 +22,9 @@ mod shape;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod tests_extra;
+
 pub use self::billboard::{
     billboard_clip, billboard_ortho2x2, billboard_push_flag, icon_push_billboard,
 };

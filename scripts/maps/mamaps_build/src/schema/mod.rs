@@ -25,13 +25,16 @@ use tilecodec::mamaps::dict;
 
 pub mod boundaries;
 pub mod buildings;
+pub mod buildings_extra;
 pub mod earth;
 pub mod junction;
 pub mod land;
 pub mod places;
 pub mod poi;
 pub mod roads;
+pub mod roads_extra;
 pub mod traffic;
+pub mod traffic_extra;
 pub mod transit;
 pub mod water;
 

@@ -53,6 +53,7 @@ pub mod codec;
 pub mod options;
 pub mod spill;
 pub mod writer;
+pub mod writer_extra;
 
 #[cfg(all(test, feature = "write"))]
 mod tests;

@@ -178,7 +178,7 @@ pub struct Layer {
     /// The `style/basemap.json` layer this was transcribed from.
     ///
     /// Provenance, and the key the cross-check test joins the two files on — see
-    /// [`super::paint::tests::the_flat_style_agrees_with_basemap_json`]. Nothing in the render path
+    /// [`super::paint_extra5::the_flat_style_agrees_with_basemap_json`]. Nothing in the render path
     /// reads it.
     pub authored: String,
 }

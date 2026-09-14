@@ -42,39 +42,9 @@ pub const SEC_ROUTE_TRIP_RECS: usize = 25;
 pub const SEC_ROUTE_TRIP_OFF: usize = 26;
 
 /// Bytes per v6 trip record: `u32 start_time, profile_id, service_idx, headsign_off`.
-pub const TRIP_REC_BYTES: usize = 16;
-
-fn ru32(b: &[u8], off: usize) -> u32 {
-    u32::from_le_bytes([b[off], b[off + 1], b[off + 2], b[off + 3]])
-}
-fn ri32(b: &[u8], off: usize) -> i32 {
-    i32::from_le_bytes([b[off], b[off + 1], b[off + 2], b[off + 3]])
-}
-fn ru64(b: &[u8], off: usize) -> u64 {
-    let mut a = [0u8; 8];
-    a.copy_from_slice(&b[off..off + 8]);
-    u64::from_le_bytes(a)
-}
-
-/// Read one unsigned LEB128 varint, advancing `pos`.
-pub fn read_uvarint(b: &[u8], pos: &mut usize) -> u64 {
-    let mut result = 0u64;
-    let mut shift = 0;
-    loop {
-        let byte = b[*pos];
-        *pos += 1;
-        result |= ((byte & 0x7f) as u64) << shift;
-        if byte & 0x80 == 0 {
-            break;
-        }
-        shift += 7;
-    }
-    result
-}
-
-fn zigzag(u: u64) -> i64 {
-    ((u >> 1) as i64) ^ -((u & 1) as i64)
-}
+use crate::index::{HEADER_LEN, MAGIC, NONE, SECTION_COUNT, VERSION, VERSION_MIN};
+use crate::reader_extra::{ri32, ru32, ru64, zigzag};
+pub use crate::reader_extra::read_uvarint;
 
 /// One ROUTES entry (a 32-byte stride).
 #[derive(Clone, Copy, Debug)]

@@ -1,0 +1,463 @@
+    /// Draw `mesh` as the navigation route, or take the route away with `None`.
+    ///
+    /// Pure state like [`set_user_puck`](Self::set_user_puck), and for a stronger reason:
+    /// a route arrives once when the driver starts navigating and then does not change
+    /// for the rest of the trip, so it has no business being an argument on
+    /// [`render`](Self::render).
+    ///
+    /// The old buffers go through the same frames-in-flight grace queue the transient
+    /// symbol buffers use — a command buffer submitted last frame may still be reading
+    /// them, and freeing a live vertex buffer is the classic Vulkan use-after-free.
+    ///
+    /// On upload failure the route is left cleared rather than half-set, so a device that
+    /// cannot allocate draws no route instead of a route with no indices.
+    pub fn set_route(&mut self, mesh: Option<&RouteMesh>) -> Result<(), String> {
+        if let Some(previous) = self.route.take() {
+            self.transients.push(TransientBuffers {
+                vbuf: previous.vertices,
+                ibuf: previous.indices,
+                frames: FRAMES_IN_FLIGHT,
+            });
+        }
+        let Some(mesh) = mesh else { return Ok(()) };
+        if mesh.indices.is_empty() {
+            return Ok(());
+        }
+        unsafe {
+            let vertices = Buffer::upload(
+                &self.context.instance,
+                self.context.physical_device,
+                &self.context.device,
+                vk::BufferUsageFlags::VERTEX_BUFFER,
+                &mesh.vertices,
+            )?;
+            let indices = match Buffer::upload(
+                &self.context.instance,
+                self.context.physical_device,
+                &self.context.device,
+                vk::BufferUsageFlags::INDEX_BUFFER,
+                &mesh.indices,
+            ) {
+                Ok(buffer) => buffer,
+                Err(e) => {
+                    vertices.destroy(&self.context.device);
+                    return Err(e);
+                }
+            };
+            self.route = Some(RouteBuffers {
+                placement: mesh.placement,
+                vertices,
+                indices,
+                index_count: mesh.indices.len() as u32,
+                segments: mesh.segments.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Upload a tile's geometry, replacing anything already resident for it.
+    pub fn upload(&mut self, key: u64, mesh: &TileMesh) -> Result<(), String> {
+        let mut layers = Vec::with_capacity(mesh.meshes.len());
+        for layer_mesh in &mesh.meshes {
+            if layer_mesh.indices.is_empty() {
+                continue;
+            }
+            unsafe {
+                let vertices = Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    &layer_mesh.vertices,
+                )?;
+                let indices = Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    &layer_mesh.indices,
+                )?;
+                layers.push(LayerBuffers {
+                    layer_index: layer_mesh.layer_index,
+                    kind: layer_mesh.kind,
+                    vertices,
+                    indices,
+                    index_count: layer_mesh.indices.len() as u32,
+                    color_override: layer_mesh.color_override,
+                    lane: layer_mesh.lane,
+                });
+            }
+        }
+        let mut regions = Vec::with_capacity(mesh.regions.len());
+        for region in &mesh.regions {
+            unsafe {
+                let vertices = Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    &region.vertices,
+                )?;
+                let indices = Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    &region.indices,
+                )?;
+                regions.push(RegionBuffers {
+                    id: region.id,
+                    vertices,
+                    indices,
+                    index_count: region.indices.len() as u32,
+                    rings: region.rings.clone(),
+                    area: region.area,
+                    level: region.level,
+                });
+            }
+        }
+        let mut traffic = Vec::with_capacity(mesh.traffic.len());
+        for segment in &mesh.traffic {
+            if segment.indices.is_empty() {
+                continue;
+            }
+            unsafe {
+                let vertices = Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    &segment.vertices,
+                )?;
+                let indices = match Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    &segment.indices,
+                ) {
+                    Ok(buffer) => buffer,
+                    Err(e) => {
+                        vertices.destroy(&self.context.device);
+                        return Err(e);
+                    }
+                };
+                traffic.push(TrafficBuffers {
+                    id: segment.id,
+                    vertices,
+                    indices,
+                    index_count: segment.indices.len() as u32,
+                });
+            }
+        }
+        // The tile's road carriageways: one mesh per distinct road shape, uploaded like the
+        // traffic segments above.
+        let mut carriageways = Vec::with_capacity(mesh.carriageways.len());
+        for road in &mesh.carriageways {
+            if road.indices.is_empty() {
+                continue;
+            }
+            unsafe {
+                let vertices = Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    &road.vertices,
+                )?;
+                let indices = match Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    &road.indices,
+                ) {
+                    Ok(buffer) => buffer,
+                    Err(e) => {
+                        vertices.destroy(&self.context.device);
+                        return Err(e);
+                    }
+                };
+                carriageways.push(CarriagewayBuffers {
+                    layer_index: road.layer_index,
+                    lanes: road.lanes,
+                    split: road.split,
+                    oneway: road.oneway,
+                    vertices,
+                    indices,
+                    index_count: road.indices.len() as u32,
+                });
+            }
+        }
+        // The tile's 3D buildings, if any: one combined mesh, uploaded like the rest.
+        let buildings = if mesh.buildings.indices.is_empty() {
+            None
+        } else {
+            unsafe {
+                let vertices = Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    &mesh.buildings.vertices,
+                )?;
+                let indices = match Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    &mesh.buildings.indices,
+                ) {
+                    Ok(buffer) => buffer,
+                    Err(e) => {
+                        vertices.destroy(&self.context.device);
+                        return Err(e);
+                    }
+                };
+                Some(BuildingBuffers {
+                    vertices,
+                    indices,
+                    index_count: mesh.buildings.indices.len() as u32,
+                })
+            }
+        };
+        // The tile's terrain grid, if any: one combined mesh, uploaded like the buildings above.
+        let terrain = if mesh.terrain.indices.is_empty() {
+            None
+        } else {
+            unsafe {
+                let vertices = Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    &mesh.terrain.vertices,
+                )?;
+                let indices = match Buffer::upload(
+                    &self.context.instance,
+                    self.context.physical_device,
+                    &self.context.device,
+                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    &mesh.terrain.indices,
+                ) {
+                    Ok(buffer) => buffer,
+                    Err(e) => {
+                        vertices.destroy(&self.context.device);
+                        return Err(e);
+                    }
+                };
+                Some(TerrainBuffers {
+                    vertices,
+                    indices,
+                    index_count: mesh.terrain.indices.len() as u32,
+                })
+            }
+        };
+        let tile = ResidentTile {
+            layers,
+            buildings,
+            terrain,
+            regions,
+            traffic,
+            carriageways,
+            yellow_centre: mesh.yellow_centre,
+            labels: mesh.labels.clone(),
+            arrows: mesh.arrows.clone(),
+            z: mesh.z,
+            x: mesh.x,
+            y: mesh.y,
+            // Stamp the tile with the latest frame clock so the fade below measures from the
+            // moment its GPU buffers landed. Before the first frame there is no clock yet;
+            // 0.0 makes `now - uploaded_at` large, so a startup tile is fully opaque at once
+            // (nothing is under it to fade over anyway).
+            uploaded_at: self.last_camera.map(|c| c.time_seconds).unwrap_or(0.0),
+            generation: mesh.generation,
+        };
+        if let Some(previous) = self.tiles.insert(key, tile) {
+            self.retire(previous);
+        }
+        Ok(())
+    }
+
+    /// Drop resident tiles that are neither wanted nor useful as a stand-in, and enforce the
+    /// residency cap.
+    ///
+    /// `keep` is the visible tiles and their ancestors, in the order [`select::resident_set`]
+    /// produced them — coarsest first. `visible` is needed separately because descendants cannot
+    /// be enumerated into a keep list without naming tiles that were never fetched; they are
+    /// recognised here, against what is actually resident.
+    ///
+    /// This is also the **only** bound on GPU memory. Tiles live until they fall out of this, so
+    /// the cap is not belt-and-braces: without it, retaining descendants would mean every deep
+    /// tile visited during a session stays resident for as long as the camera sits above it.
+    pub fn retain(&mut self, keep: &[u64], visible: &[select::TileId], cap: usize) {
+        let visible_keys: HashSet<u64> = visible.iter().map(|t| t.key()).collect();
+        let wanted: HashSet<u64> = keep.iter().copied().collect();
+
+        // Rank by how much is lost if it goes, because the cap has to evict *something* and the
+        // stand-ins are what it should reach for first.
+        let mut ranked: Vec<(u8, u64)> = self
+            .tiles
+            .keys()
+            .map(|&key| {
+                let rank = if visible_keys.contains(&key) {
+                    0 // on screen at its own zoom; evicting this is the blank frame itself
+                } else if wanted.contains(&key) {
+                    1 // an ancestor: one coarse tile covers many fine ones, so cheap to hold
+                } else if select::stands_in_for_visible(key, visible, select::DESCENDANT_DEPTH) {
+                    2 // a descendant: only covers a fraction of the screen, so the first to go
+                } else {
+                    3 // unrelated to anything on screen
+                };
+                (rank, key)
+            })
+            .collect();
+        ranked.sort_unstable();
+
+        let doomed: Vec<u64> = ranked
+            .iter()
+            .enumerate()
+            .filter(|(at, (rank, _))| *rank == 3 || *at >= cap)
+            .map(|(_, (_, key))| *key)
+            .collect();
+        for key in doomed {
+            if let Some(tile) = self.tiles.remove(&key) {
+                self.retire(tile);
+            }
+        }
+    }
+
+    /// Hold a tile's buffers until every in-flight frame that might reference them has
+    /// finished.
+    ///
+    /// Freeing them immediately is the classic Vulkan use-after-free: a command buffer
+    /// submitted last frame can still be executing, and destroying its vertex buffer is
+    /// undefined behaviour that usually looks like corrupted geometry rather than a crash.
+    fn retire(&mut self, tile: ResidentTile) {
+        self.retiring.push((FRAMES_IN_FLIGHT, tile));
+    }
+
+    /// Free anything whose grace period has expired.
+    pub(super) fn collect_retired(&mut self) {
+        let device = &self.context.device;
+        self.retiring.retain_mut(|(remaining, tile)| {
+            if *remaining > 0 {
+                *remaining -= 1;
+                return true;
+            }
+            unsafe {
+                for layer in &tile.layers {
+                    layer.vertices.destroy(device);
+                    layer.indices.destroy(device);
+                }
+                for region in &tile.regions {
+                    region.vertices.destroy(device);
+                    region.indices.destroy(device);
+                }
+                for segment in &tile.traffic {
+                    segment.vertices.destroy(device);
+                    segment.indices.destroy(device);
+                }
+                for road in &tile.carriageways {
+                    road.vertices.destroy(device);
+                    road.indices.destroy(device);
+                }
+                if let Some(buildings) = &tile.buildings {
+                    buildings.vertices.destroy(device);
+                    buildings.indices.destroy(device);
+                }
+                if let Some(terrain) = &tile.terrain {
+                    terrain.vertices.destroy(device);
+                    terrain.indices.destroy(device);
+                }
+            }
+            false
+        });
+        // Transient per-frame symbol buffers retire on the same grace count, in
+        // their own queue — no device_wait_idle stall on the frame path.
+        self.transients.retain_mut(|t| {
+            if t.frames > 0 {
+                t.frames -= 1;
+                return true;
+            }
+            unsafe {
+                t.vbuf.destroy(device);
+                t.ibuf.destroy(device);
+            }
+            false
+        });
+    }
+}
+
+/// Upload the process-global glyph atlas and allocate its descriptor set.
+///
+/// Separate from [`Renderer::new`] so the error paths read linearly. Called once
+/// at startup; the bytes come from `tile::glyph::atlas()` (SDF R8 built from the
+/// bundled Noto Sans at first use).
+///
+/// # Safety
+///
+/// Same rules as the surrounding constructors: live device, idle queue.
+unsafe fn try_upload_glyph_atlas(
+    context: &Context,
+    atlas_set: &AtlasSet,
+    command_pool: vk::CommandPool,
+) -> Result<(SampledImage, vk::DescriptorSet), String> {
+    use crate::tile::glyph;
+    if !glyph::fonts_staged() {
+        return Err("bundled fonts are not valid TTFs".into());
+    }
+    let atlas = glyph::atlas();
+    let image = SampledImage::upload(
+        &context.instance,
+        context.physical_device,
+        &context.device,
+        context.queue,
+        context.queue_family_index,
+        command_pool,
+        &atlas.pixels,
+        glyph::ATLAS_PX,
+        glyph::ATLAS_PX,
+        vk::Format::R8_UNORM,
+    )?;
+    let set = atlas_set.allocate(&context.device, &image)?;
+    Ok((image, set))
+}
+
+/// Upload the process-global POI sprite sheet and allocate its descriptor set.
+///
+/// [`try_upload_glyph_atlas`]'s counterpart, and the second of the two sets
+/// [`AtlasSet`]'s pool is sized for. The sheet is already RGBA8, so
+/// [`SampledImage::upload`] takes it unchanged — no expansion step like the glyph
+/// atlas's R8 one.
+///
+/// # Safety
+///
+/// Same rules as the surrounding constructors: live device, idle queue.
+unsafe fn try_upload_sprite_atlas(
+    context: &Context,
+    atlas_set: &AtlasSet,
+    command_pool: vk::CommandPool,
+) -> Result<(SampledImage, vk::DescriptorSet), String> {
+    use crate::tile::sprite;
+    let atlas = sprite::atlas();
+    // An empty atlas is what `sprite::atlas()` leaves behind when the sheet will not
+    // decode; uploading a zero-sized image would fail in the driver instead of here.
+    if atlas.is_empty() {
+        return Err("the sprite sheet carries no icons".into());
+    }
+    let image = SampledImage::upload(
+        &context.instance,
+        context.physical_device,
+        &context.device,
+        context.queue,
+        context.queue_family_index,
+        command_pool,
+        &atlas.pixels,
+        atlas.width,
+        atlas.height,
+        vk::Format::R8G8B8A8_UNORM,
+    )?;
+    let set = atlas_set.allocate(&context.device, &image)?;
+    Ok((image, set))
+}

@@ -32,6 +32,7 @@ pub mod nodeloc;
 pub mod osm;
 pub mod par;
 pub mod pbf;
+pub mod pbf_extra;
 pub mod poi_attrs;
 pub mod poi_build;
 pub mod poi_side;
@@ -42,6 +43,7 @@ pub mod safety;
 pub mod select;
 pub mod spatial;
 pub mod tags;
+pub mod tags_extra;
 pub mod transit_lines;
 
 #[cfg(test)]

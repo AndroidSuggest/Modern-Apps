@@ -58,3 +58,5 @@ pub use read::MamapsArchive;
 
 #[cfg(all(test, feature = "write"))]
 mod tests;
+#[cfg(all(test, feature = "write"))]
+mod tests_extra;

@@ -22,6 +22,12 @@ mod traffic;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_extra;
+#[cfg(test)]
+mod tests_extra2;
+#[cfg(test)]
+mod tests_extra3;
 
 pub use build::{build, build_toggled};
 pub use mesh::{

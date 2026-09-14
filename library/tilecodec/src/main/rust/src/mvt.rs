@@ -56,6 +56,9 @@ pub mod model;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod tests_extra;
+
 pub use model::{
     DEFAULT_EXTENT, DEFAULT_VERSION, Feature, FeatureRef, GeomType, Layer, Tile, Value,
 };

@@ -34,6 +34,7 @@ pub mod record;
 pub mod seed;
 pub mod sort;
 pub mod store;
+pub mod store_extra;
 pub mod v1;
 
 use std::io::{self, BufRead, BufReader};

@@ -19,6 +19,7 @@
 
 mod assemble;
 mod pipelines;
+mod pipelines_extra;
 mod push;
 mod shaders;
 mod state;

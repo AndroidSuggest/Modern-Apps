@@ -21,9 +21,11 @@ pub mod buffers;
 pub mod context;
 pub mod imageprobe;
 pub mod pipeline;
+pub mod pipeline_extra;
 pub mod reshape;
 pub mod run;
 pub mod segment;
+pub mod segment_extra;
 
 #[cfg(test)]
 mod parity;

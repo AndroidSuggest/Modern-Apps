@@ -1,0 +1,447 @@
+impl Store {
+    /// Write the sidecar that lets [`Store::open`] skip stage A.
+    ///
+    /// Beside the spill, as `<spill>.index`. Everything a `Store` holds that is not the spill itself:
+    /// the chunk offsets, the per-chunk shallowest zoom, the count and the bounding box. On a
+    /// north-america build that is about 28 MB against a 29 GB spill, and it buys eighteen minutes
+    /// per subsequent run.
+    ///
+    /// `features` is [`crate::extract::Stats::features`], which the build id is derived from. Stored
+    /// rather than recomputed so a reused run derives the **same** id as the run that built the
+    /// spill -- otherwise reuse would quietly republish under a different id.
+    pub fn save_index(&self, provenance: Provenance, features: u64) -> Result<PathBuf> {
+        let path = index_path(&self.path);
+        let mut out = Vec::with_capacity(16 + self.chunks.len() * 8 + self.chunk_mins.len());
+        out.extend_from_slice(INDEX_MAGIC);
+        out.extend_from_slice(&INDEX_VERSION.to_le_bytes());
+        out.extend_from_slice(&provenance.source_len.to_le_bytes());
+        out.extend_from_slice(&provenance.source_mtime.to_le_bytes());
+        out.extend_from_slice(&provenance.layers.to_le_bytes());
+        out.push(u8::from(provenance.coastline));
+        out.push(u8::from(provenance.transit_routes));
+        out.push(u8::from(provenance.graph));
+        out.extend_from_slice(&features.to_le_bytes());
+        out.extend_from_slice(&self.count.to_le_bytes());
+        for v in [self.bbox.0, self.bbox.1, self.bbox.2, self.bbox.3] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        out.extend_from_slice(&(self.chunks.len() as u64).to_le_bytes());
+        for c in &self.chunks {
+            out.extend_from_slice(&c.to_le_bytes());
+        }
+        out.extend_from_slice(&(self.chunk_mins.len() as u64).to_le_bytes());
+        out.extend_from_slice(&self.chunk_mins);
+        out.extend_from_slice(&self.conventions.to_bytes());
+        std::fs::write(&path, &out)
+            .map_err(|e| osm_ingest::proto::Error(format!("cannot write {}: {e}", path.display())))?;
+        Ok(path)
+    }
+
+    /// Reopen a spill written by an earlier run, refusing one that does not match `want`.
+    ///
+    /// Returns the store and the feature count the build id is derived from. The whole point is
+    /// iterating on tiling without paying for stage A again, so the checks are what make that safe
+    /// rather than merely fast.
+    pub fn open(spill: &Path, want: Provenance) -> Result<(Store, u64)> {
+        let path = index_path(spill);
+        if !spill.exists() {
+            return err(format!("no feature spill at {}", spill.display()));
+        }
+        let raw = std::fs::read(&path).map_err(|e| {
+            osm_ingest::proto::Error(format!(
+                "cannot read {} ({e}) -- a store can only be reused if the run that built it wrote \
+                 its index",
+                path.display(),
+            ))
+        })?;
+        let mut at = 0usize;
+        let mut take = |n: usize| -> Result<&[u8]> {
+            let end = at + n;
+            if end > raw.len() {
+                return err(format!("{} is truncated", path.display()));
+            }
+            let slice = &raw[at..end];
+            at = end;
+            Ok(slice)
+        };
+        if take(8)? != INDEX_MAGIC {
+            return err(format!("{} is not a store index", path.display()));
+        }
+        let version = u32::from_le_bytes(take(4)?.try_into().expect("four bytes"));
+        if version != INDEX_VERSION {
+            return err(format!(
+                "{} is version {version}, this build writes {INDEX_VERSION}",
+                path.display(),
+            ));
+        }
+        let got = Provenance {
+            source_len: u64::from_le_bytes(take(8)?.try_into().expect("eight bytes")),
+            source_mtime: u64::from_le_bytes(take(8)?.try_into().expect("eight bytes")),
+            layers: u16::from_le_bytes(take(2)?.try_into().expect("two bytes")),
+            coastline: take(1)?[0] != 0,
+            transit_routes: take(1)?[0] != 0,
+            graph: take(1)?[0] != 0,
+        };
+        if got != want {
+            return err(format!(
+                "{} was built from a different input or layer set (source {} bytes at mtime {}, \
+                 layers {:#06x}, coastline {}, transit routes {}) than this run wants (source {} \
+                 bytes at mtime {}, layers {:#06x}, coastline {}, transit routes {}) -- delete it \
+                 or drop --reuse-store",
+                path.display(),
+                got.source_len,
+                got.source_mtime,
+                got.layers,
+                got.coastline,
+                got.transit_routes,
+                want.source_len,
+                want.source_mtime,
+                want.layers,
+                want.coastline,
+                want.transit_routes,
+            ));
+        }
+        let features = u64::from_le_bytes(take(8)?.try_into().expect("eight bytes"));
+        let count = u64::from_le_bytes(take(8)?.try_into().expect("eight bytes"));
+        let mut bbox = [0i32; 4];
+        for slot in &mut bbox {
+            *slot = i32::from_le_bytes(take(4)?.try_into().expect("four bytes"));
+        }
+        let chunk_count = u64::from_le_bytes(take(8)?.try_into().expect("eight bytes")) as usize;
+        let mut chunks = Vec::with_capacity(chunk_count);
+        for _ in 0..chunk_count {
+            chunks.push(u64::from_le_bytes(take(8)?.try_into().expect("eight bytes")));
+        }
+        let min_count = u64::from_le_bytes(take(8)?.try_into().expect("eight bytes")) as usize;
+        let chunk_mins = take(min_count)?.to_vec();
+        // The convention grid trails the chunk index, so it is whatever is left. Last, because it
+        // is the only variable-length section whose length is not known before the one before it
+        // has been read.
+        let (conventions, _) = crate::schema::boundaries::Conventions::from_bytes(&raw[at..])?;
+        // The same cross-check `WaySink::finish` makes, for the same reason: two indexes that
+        // disagree silently drop real features from a handful of tiles at one zoom.
+        if chunk_mins.len() != chunks.len().saturating_sub(1) {
+            return err(format!(
+                "{} describes {} chunk(s) but {} zoom entr(ies)",
+                path.display(),
+                chunks.len().saturating_sub(1),
+                chunk_mins.len(),
+            ));
+        }
+        Ok((
+            Store {
+                path: spill.to_path_buf(),
+                count,
+                bbox: (bbox[0], bbox[1], bbox[2], bbox[3]),
+                chunks,
+                chunk_mins,
+                conventions,
+            },
+            features,
+        ))
+    }
+}
+
+fn index_path(spill: &Path) -> PathBuf {
+    let mut p = spill.as_os_str().to_owned();
+    p.push(".index");
+    PathBuf::from(p)
+}
+
+impl Store {
+    /// How many features are in the file.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn len(&self) -> u64 {
+        self.count
+    }
+
+    /// The bounding box of every feature, in degrees times 1e7, for the archive header.
+    pub fn bbox(&self) -> (i32, i32, i32, i32) {
+        self.bbox
+    }
+
+    /// Read every feature a zoom could want, in the order they were written.
+    ///
+    /// A chunk whose shallowest `min_zoom` is deeper than `z` holds nothing this zoom draws, so it is
+    /// skipped outright — not read, not parsed. Order is unchanged, because the chunks that survive
+    /// are still visited in file order, and that is what keeps the archive byte-identical.
+    pub fn reader_for_zoom(&self, z: u8) -> Result<ZoomReader> {
+        let wanted: Vec<usize> = self
+            .chunk_mins
+            .iter()
+            .enumerate()
+            .filter(|(_, min)| **min <= z)
+            .map(|(i, _)| i)
+            .collect();
+        ZoomReader::spawn(
+            NormalizedChunks::open(self.path.clone(), self.chunks.clone())
+                .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
+            wanted,
+            z,
+        )
+    }
+
+    pub fn wanted_chunks_for_zoom(&self, z: u8) -> Vec<usize> {
+        self.chunk_mins
+            .iter()
+            .enumerate()
+            .filter(|(_, min)| **min <= z)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    pub fn wanted_len_for_zoom(&self, z: u8) -> usize {
+        self.chunk_mins.iter().filter(|min| **min <= z).count()
+    }
+
+    pub fn path(&self) -> &PathBuf {
+        &self.path
+    }
+
+    pub fn raw_chunks(&self) -> &[u64] {
+        &self.chunks
+    }
+
+    pub fn chunk_mins_cloned(&self) -> Vec<u8> {
+        self.chunk_mins.clone()
+    }
+
+    pub fn from_parts(path: PathBuf, chunks: Vec<u64>, chunk_mins: Vec<u8>) -> Self {
+        Self {
+            path,
+            chunks,
+            chunk_mins,
+            count: 0,
+            bbox: (0, 0, 0, 0),
+            conventions: crate::schema::boundaries::Conventions::default(),
+        }
+    }
+
+    /// Take the marking-convention grid stage A resolved from the country relations.
+    pub fn with_conventions(
+        mut self,
+        conventions: crate::schema::boundaries::Conventions,
+    ) -> Self {
+        self.conventions = conventions;
+        self
+    }
+
+    /// Which marking convention applies where, for the tiler to stamp onto each tile.
+    pub fn conventions(&self) -> &crate::schema::boundaries::Conventions {
+        &self.conventions
+    }
+
+    pub fn reader_for_wanted(&self, wanted: Vec<usize>, z: u8) -> Result<ZoomReader> {
+        ZoomReader::spawn(
+            NormalizedChunks::open(self.path.clone(), self.chunks.clone())
+                .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
+            wanted,
+            z,
+        )
+    }
+
+    /// Read every feature, in the order they were written.
+    ///
+    /// Kept as the reference [`Self::reader_for_zoom`] is checked against: a test that reads a store
+    /// both ways and compares is the cheapest possible guard on the chunk index being right.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn reader(&self) -> Result<Reader> {
+        Ok(Reader {
+            inner: NormalizedReader::open(self.path.clone())
+                .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
+        })
+    }
+}
+
+impl Store {
+    /// Spill features from memory into a temporary store.
+    ///
+    /// For tests only. The generator never has a `Vec<Feature>` to hand -- that is the entire point
+    /// of this module -- but a test that had to write a file to state its case would be a worse test.
+    #[cfg(test)]
+    pub fn of(features: &[Feature]) -> Result<Store> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "mamaps_test_{}_{}.features",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed),
+        ));
+        let mut sink = Sink::create(&path)?;
+        for feature in features {
+            if feature.transit_color != 0 {
+                sink.push_transit(
+                    &feature.class,
+                    &feature.geometry,
+                    feature.transit_color,
+                    feature.transit_ordinal,
+                    feature.transit_lanes,
+                    feature.transit_taper,
+                )?;
+            } else if let Some(attrs) = feature.building {
+                sink.push_building(
+                    &feature.class,
+                    &feature.geometry,
+                    feature.name.as_deref(),
+                    attrs,
+                )?;
+            } else if feature.lane_count != 0
+                || !feature.turn_fwd.is_empty()
+                || !feature.turn_bwd.is_empty()
+                || !feature.carriageway.is_empty()
+            {
+                sink.push_road(
+                    &feature.class,
+                    &feature.geometry,
+                    feature.name.as_deref(),
+                    feature.lane_count,
+                    &feature.turn_fwd,
+                    &feature.turn_bwd,
+                    feature.carriageway,
+                )?;
+            } else {
+                sink.push_named(&feature.class, &feature.geometry, feature.name.as_deref(), feature.id)?;
+            }
+        }
+        sink.finish(&path)
+    }
+}
+
+/// A spilled record as a [`Feature`].
+///
+/// A record whose class property is missing or is not an integer is a corrupt file rather than a
+/// feature to skip: everything in here was written by [`Sink::push`] one run ago, so anything else
+/// means the file is not the one we wrote. A `n` string property rides along as the display
+/// name, a `t` integer as the transit colour, an `s` integer as its packed lane inputs and an `i`
+/// integer as the tagged OSM id; anything else in there is corruption for the same reason.
+fn feature_of(record: tile_build::spill::NormalizedFeature) -> Result<Feature> {
+    let bits = match record.props.iter().find(|(key, _)| key == CLASS_KEY) {
+        Some((_, Value::Uint(bits))) => *bits,
+        _ => return err("a spilled feature carries no packed class".to_string()),
+    };
+    let mut name: Option<String> = None;
+    let mut id: u64 = tilecodec::mamaps::body::ID_NONE;
+    let mut transit_color: u32 = 0;
+    let mut transit_ordinal: u8 = 0;
+    let mut transit_lanes: u8 = 0;
+    let mut transit_taper: u8 = 0;
+    let mut lane_count: u8 = 0;
+    let mut turn_fwd: Vec<u16> = Vec::new();
+    let mut turn_bwd: Vec<u16> = Vec::new();
+    let mut carriageway = Carriageway::default();
+    let mut bld_a: Option<u64> = None;
+    let mut bld_b: Option<u64> = None;
+    let mut bld_c: Option<u64> = None;
+    for (key, value) in &record.props {
+        if key == CLASS_KEY {
+            continue;
+        }
+        match (key.as_str(), value) {
+            (NAME_KEY, Value::String(text)) if !text.is_empty() => {
+                if name.replace(text.clone()).is_some() {
+                    return err("a spilled feature carries two names".to_string());
+                }
+            }
+            (COLOR_KEY, Value::Uint(color)) => {
+                transit_color = u32::try_from(*color)
+                    .map_err(|_| Error("a spilled transit colour does not fit u32".to_string()))?;
+            }
+            (LANE_KEY, Value::Uint(lane_bits)) => {
+                if *lane_bits > 0xff_ff_ff {
+                    return err("a spilled transit lane triple does not fit three bytes".to_string());
+                }
+                transit_ordinal = (lane_bits >> 16) as u8;
+                transit_lanes = (lane_bits >> 8) as u8;
+                transit_taper = *lane_bits as u8;
+            }
+            (LANE_COUNT_KEY, Value::Uint(count)) => {
+                lane_count = u8::try_from(*count)
+                    .map_err(|_| Error("a spilled road lane count does not fit a byte".to_string()))?;
+            }
+            (TURN_FWD_KEY, Value::String(packed)) => {
+                turn_fwd = unpack_lanes(packed)?;
+            }
+            (TURN_BWD_KEY, Value::String(packed)) => {
+                turn_bwd = unpack_lanes(packed)?;
+            }
+            (CARRIAGEWAY_KEY, Value::Uint(bits)) => {
+                carriageway = unpack_carriageway(*bits);
+            }
+            (BLD_A_KEY, Value::Uint(v)) => bld_a = Some(*v),
+            (BLD_B_KEY, Value::Uint(v)) => bld_b = Some(*v),
+            (BLD_C_KEY, Value::Uint(v)) => bld_c = Some(*v),
+            (ID_KEY, Value::Uint(tagged)) => {
+                if id != tilecodec::mamaps::body::ID_NONE {
+                    return err("a spilled feature carries two ids".to_string());
+                }
+                id = *tagged;
+            }
+            _ => {
+                return err(format!("a spilled feature carries an unknown property `{key}`"));
+            }
+        }
+    }
+    Ok(Feature {
+        class: unpack(bits),
+        geometry: record.geometry,
+        name,
+        id,
+        transit_color,
+        transit_ordinal,
+        transit_lanes,
+        transit_taper,
+        lane_count,
+        turn_fwd,
+        turn_bwd,
+        carriageway,
+        building: match (bld_a, bld_b, bld_c) {
+            (Some(a), Some(b), Some(c)) => Some(unpack_building(a, b, c)),
+            (None, None, None) => None,
+            _ => return err("a spilled building is missing part of its attributes".to_string()),
+        },
+    })
+}
+
+/// Chunks of features as the lanes hand them over, or the error that stopped one.
+///
+/// [`Feature`] rather than the decoder's own record, because turning one into the other is where
+/// the reader thread's remaining time went. It looks like a field lookup and a move, and the field
+/// lookup and the move are free; what is not is dropping the `props` the decoder built — a `Vec` and
+/// an owned key `String` per feature, freed one at a time on the one thread the whole map phase
+/// waits on. Converting in the lane puts that on the lane.
+type Decoded = Result<Vec<Feature>>;
+
+/// Threads decoding spill chunks ahead of the tiler.
+///
+/// Not the pool: see [`ZoomReader::spawn`]. **Four is the safe default, not the right answer**, and
+/// there is no right answer available as a constant. The two extracts want opposite things:
+///
+/// | lanes / tiling workers | us-west | north-america |
+/// |---|---|---|
+/// | 4 / 64 | **91.9 s** | 945.7 s |
+/// | 16 / 64 | 151.9 s | **766.9 s** |
+/// | 16 / 48 | 94.4 s | 900.4 s |
+///
+/// Sixteen lanes is a 65% regression on us-west and a 19% improvement on north-america, and the
+/// mechanism is the same in both: a lane competes for a CPU only when it is running. On
+/// north-america the reader cannot fill the channel fast enough, so the clipping workers are blocked
+/// and the lanes are free; on us-west the workers saturate the machine and the lanes take CPU from
+/// the single reader thread they exist to feed. Which regime a build lands in depends on the spill
+/// against the page cache, not on anything this constant can see — the middle row of that table is
+/// the attempt to correct for it by taking the lanes out of the worker budget, and it makes each
+/// case worse than that case's own best.
+///
+/// So it is a knob, defaulting to the value that cannot hurt. `MAPS_PREFETCH_LANES=16` is what a
+/// continent wants. Removing the need for the knob means removing the re-decode it is compensating
+/// for: the spill is read once per zoom, which is ~1.06 billion feature decodes to deliver
+/// 199.7 M distinct features on north-america, and no lane count makes redundant work cheap.
+pub fn prefetch_lanes() -> usize {
+    static LANES: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *LANES.get_or_init(|| {
+        std::env::var("MAPS_PREFETCH_LANES")
+            .ok()
+            .and_then(|raw| raw.trim().parse::<usize>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(4)
+    })
+}
