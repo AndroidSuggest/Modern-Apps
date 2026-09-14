@@ -17,4 +17,15 @@
     <string name="clear_clipboard">Eemalda kõik</string>
     <string name="clear_clipboard_history">Kustuta lõikelaua ajalugu</string>
     <string name="copied_text_shows_up_here">Kopeeritud tekstid ja pildid saavad olema nähtavad siin</string>
+    <string name="voice_input">Häälsisend</string>
+    <string name="voice_listening">Kuulan sinu juttu…</string>
+    <string name="voice_transcribing">Kirjutan juttu üles…</string>
+    <string name="voice_unavailable">Ühtegi kõnetuvastusrakendust pole paigaldatud</string>
+    <string name="voice_permission_denied">Kõnetuvastus eeldab mikrofoni kasutamise luba</string>
+    <string name="voice_permission_blocked">Luba seadistustest mikrofoni kasutamine</string>
+    <string name="voice_network">Häältuvastus eeldab võrguühenduse olemasolu</string>
+    <string name="voice_no_speech">Kõne tuvastamine ei õnnestunud</string>
+    <string name="voice_busy">Kõnetuvastus on hõivatud</string>
+    <string name="voice_audio_error">Heli salvestamine ei õnnestunud</string>
+    <string name="voice_failed">Häälsisendi kasutamine ei toiminud</string>
 </resources>
