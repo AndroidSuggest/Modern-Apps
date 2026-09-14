@@ -324,4 +324,5 @@ mod tests {
     include!("transit_part7.rs");
     include!("transit_part8.rs");
     include!("transit_part9.rs");
+    include!("transit_part12.rs");
 }

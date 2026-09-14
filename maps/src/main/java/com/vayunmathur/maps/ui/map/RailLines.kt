@@ -20,6 +20,7 @@ import com.vayunmathur.maps.util.visibleBoundsOrWorld
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlin.math.pow
 
 /**
  * How long the camera must sit still before the rail network refetches: the
@@ -53,6 +54,107 @@ private fun packHexColor(hex: String?): Color? =
     }
 
 /**
+ * How many parallel lanes a corridor draws at `zoom`, floored at read.
+ * Ported from the tile style's `transit-rail` entry (`lanes` ramp
+ * `[[0,1],[9,2],[11,3],[13,4]]`, linear): the lane count is a property of
+ * the camera, not of the route, so a corridor fans wider as you zoom in and
+ * collapses toward its centerline as you zoom out.
+ */
+internal fun railLaneCount(zoom: Double): Int {
+    val stops = listOf(0.0 to 1.0f, 9.0 to 2.0f, 11.0 to 3.0f, 13.0 to 4.0f)
+    if (zoom <= stops.first().first) return stops.first().second.toInt()
+    if (zoom >= stops.last().first) return stops.last().second.toInt()
+    for (i in 0 until stops.size - 1) {
+        val (z0, v0) = stops[i]
+        val (z1, v1) = stops[i + 1]
+        if (zoom <= z1) {
+            val t = (zoom - z0) / (z1 - z0)
+            return (v0 + (v1 - v0) * t).toInt()
+        }
+    }
+    return stops.last().second.toInt()
+}
+
+/**
+ * How far sideways a corridor span's mesh shifts at `zoom`, in Dp. Ported
+ * from `lane_offset_px` in the tile style: past the lane count the colours
+ * squash onto shared lanes from the middle (ordinal 0 keeps lane 0, the
+ * last ordinal the last lane) so two colours can share a lane but never
+ * swap sides. `spread` is the tile entry's constant 6.0 Dp between adjacent
+ * lanes; `taper/255` eases mouth pieces into their lane.
+ */
+internal fun railLaneOffsetDp(zoom: Double, ordinal: Int, count: Int, taper: Int): Double {
+    val lanes = minOf(railLaneCount(zoom), count)
+    if (lanes < 2 || count < 2) return 0.0
+    val span = lanes - 1
+    val steps = count - 1
+    val lane = (2 * ordinal * span + steps) / (2 * steps)
+    return (2 * lane - (lanes - 1)) * 6.0 / 2.0 * (taper / 255.0)
+}
+
+/**
+ * Ground metres per Dp at `latitude`/`zoom` for the 512-unit tile schema.
+ */
+internal fun metersPerDp(latitude: Double, zoom: Double): Double {
+    val worldPx = 512.0 * 2.0.pow(zoom)
+    return 40_075_016.686 * kotlin.math.cos(Math.toRadians(latitude)) / worldPx
+}
+
+/**
+ * A polyline shifted sideways by `meters` (positive = right of travel),
+ * for fanning corridor spans into parallel lanes host-side.
+ *
+ * Per-vertex averaged normals: each interior vertex moves along the mean of
+ * its two segment normals, endpoints along their single segment's normal.
+ * Ends stay glued (zero-length segments skipped), so fanned spans meet the
+ * same way centred ones do.
+ */
+internal fun offsetPolyline(
+    points: List<com.vayunmathur.library.map.GeoPoint>,
+    meters: Double,
+): List<com.vayunmathur.library.map.GeoPoint> {
+    if (points.size < 2 || meters == 0.0) return points
+    data class Vec(val east: Double, val north: Double)
+    // Segment normals (east, north), length-weighted by averaging below.
+    val normals = mutableListOf<Vec>()
+    for (i in 0 until points.size - 1) {
+        val a = points[i]
+        val b = points[i + 1]
+        val cosLat = kotlin.math.cos(
+            Math.toRadians((a.latitude + b.latitude) / 2.0)
+        ).coerceAtLeast(1e-6)
+        val east = (b.longitude - a.longitude) * 111_320.0 * cosLat
+        val north = (b.latitude - a.latitude) * 111_320.0
+        val len = kotlin.math.hypot(east, north)
+        // Right-of-travel normal: (north, -east) normalized. Matches the
+        // tool's `d.east * uy - d.north * ux` side: positive offset draws
+        // right of travel, like ascending ordinals.
+        normals.add(
+            if (len <= 0.0) Vec(0.0, 0.0)
+            else Vec(north / len, -east / len)
+        )
+    }
+    return points.mapIndexed { i, p ->
+        val n = when (i) {
+            0 -> normals.first()
+            points.size - 1 -> normals.last()
+            else -> {
+                val a = normals[i - 1]
+                val b = normals[i]
+                val s = Vec(a.east + b.east, a.north + b.north)
+                val len = kotlin.math.hypot(s.east, s.north)
+                if (len <= 0.0) a else Vec(s.east / len, s.north / len)
+            }
+        }
+        val cosLat = kotlin.math.cos(Math.toRadians(p.latitude)).coerceAtLeast(1e-6)
+        com.vayunmathur.library.map.GeoPoint(
+            p.longitude + n.east * meters / (111_320.0 * cosLat),
+            p.latitude + n.north * meters / 111_320.0,
+        )
+    }
+}
+
+/**
  * The pack-driven rail-lines network for the viewport, as a [RouteOverlay
  * ], or null when the transit layer is off, zoomed too far out, or the pack
  * carries no shapes for the area.
@@ -72,16 +174,50 @@ fun rememberRailLines(
 ): RouteOverlay? {
     val context = LocalContext.current
     var overlay by remember { mutableStateOf<RouteOverlay?>(null) }
-    // Last fetch footprint: reused while the camera stays inside it.
+    // Last fetch footprint: reused while the camera stays inside it. The
+    // fetched spans (with corridor slots) are kept separately from the
+    // built overlay so a zoom-band change re-fans cached geometry without
+    // re-querying the pack.
     var fetchedCentre by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var fetchedZoom by remember { mutableStateOf(Double.NaN) }
+    var fetchedSpans by remember {
+        mutableStateOf<List<com.vayunmathur.maps.data.transit.RailLine>>(emptyList())
+    }
+    var fannedZoom by remember { mutableStateOf(Double.NaN) }
 
     LaunchedEffect(transitEnabled) {
         if (!transitEnabled) {
             overlay = null
             fetchedCentre = null
             fetchedZoom = Double.NaN
+            fetchedSpans = emptyList()
+            fannedZoom = Double.NaN
         }
+    }
+
+    // Re-fan cached spans when the lane count steps (z9/11/13 bands). Pure
+    // geometry post-processing: no pack query, no tessellation here (the
+    // push re-tessellates native-side, like any overlay update).
+    fun fan(spans: List<com.vayunmathur.maps.data.transit.RailLine>, zoom: Double, lat: Double) {
+        val mpd = metersPerDp(lat, zoom)
+        overlay = if (spans.isEmpty()) {
+            null
+        } else {
+            RouteOverlay(
+                segments = spans.map { line ->
+                    val offsetDp = railLaneOffsetDp(zoom, line.ordinal, line.lanes, line.taper)
+                    RouteSegment(
+                        points = offsetPolyline(line.points, offsetDp * mpd),
+                        color = packHexColor(line.color)
+                            ?: tokens.routeTransitFallback,
+                    )
+                },
+                // Thinner than the 8 dp navigation route with no
+                // casing: a network backdrop, not a followed line.
+                style = RouteStyle(width = 4.dp, casingWidth = 0.dp),
+            )
+        }
+        fannedZoom = zoom
     }
 
     LaunchedEffect(camera, transitEnabled) {
@@ -103,6 +239,11 @@ fun rememberRailLines(
                     kotlin.math.abs(centre.second - last.second) < RAIL_RECENTER_DEGREES &&
                     kotlin.math.abs(zoom - fetchedZoom) < 1.0
                 ) {
+                    // Inside the fetched footprint: re-fan only when the
+                    // lane count stepped.
+                    if (railLaneCount(zoom) != railLaneCount(fannedZoom)) {
+                        fan(fetchedSpans, zoom, centre.first)
+                    }
                     return@collectLatest
                 }
                 // Pad the query past the viewport so small pans stay covered.
@@ -121,22 +262,8 @@ fun rememberRailLines(
                 }
                 fetchedCentre = centre
                 fetchedZoom = zoom
-                overlay = if (lines.isEmpty()) {
-                    null
-                } else {
-                    RouteOverlay(
-                        segments = lines.map { line ->
-                            RouteSegment(
-                                points = line.points,
-                                color = packHexColor(line.color)
-                                    ?: tokens.routeTransitFallback,
-                            )
-                        },
-                        // Thinner than the 8 dp navigation route with no
-                        // casing: a network backdrop, not a followed line.
-                        style = RouteStyle(width = 4.dp, casingWidth = 0.dp),
-                    )
-                }
+                fetchedSpans = lines
+                fan(lines, zoom, centre.first)
             }
     }
     return overlay

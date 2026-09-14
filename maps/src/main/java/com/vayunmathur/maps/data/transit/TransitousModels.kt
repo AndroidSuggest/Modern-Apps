@@ -67,8 +67,8 @@ data class TripItinerary(
 )
 
 /**
- * One drawable rail line for the pack-driven lines overlay: the route's full
- * GTFS-shape polyline with its agency colour.
+ * One drawable rail-line span for the pack-driven lines overlay: part of a
+ * route's shape with its lane in the corridor it crosses.
  */
 data class RailLine(
     val name: String,
@@ -76,6 +76,12 @@ data class RailLine(
     val color: String?,
     val mode: String,
     val points: List<GeoPoint>,
+    /** This colour's index among the corridor's distinct colours. */
+    val ordinal: Int,
+    /** Distinct colours the corridor carries (1 outside one). */
+    val lanes: Int,
+    /** How far into its lane this span sits, over 255. */
+    val taper: Int,
 )
 
 /**

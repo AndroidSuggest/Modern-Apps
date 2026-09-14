@@ -53,8 +53,9 @@ pub extern "system" fn Java_com_vayunmathur_maps_util_OfflineRouter_getRailLines
         Ok(c) => c,
         Err(_) => return null,
     };
-    // MUST match the RawRailLine ctor: name, color, routeType (I), feed, coords ([D).
-    let ctor = "(Ljava/lang/String;IILjava/lang/String;[D)V";
+    // MUST match the RawRailLine ctor: name, color, routeType (I), feed,
+    // coords ([D), then the corridor slot (ordinal, lanes, taper) LAST.
+    let ctor = "(Ljava/lang/String;IILjava/lang/String;[DIII)V";
     let array = match env.new_object_array(lines.len() as i32, &class, JObject::null()) {
         Ok(a) => a,
         Err(_) => return null,
@@ -88,6 +89,9 @@ pub extern "system" fn Java_com_vayunmathur_maps_util_OfflineRouter_getRailLines
                 JValue::Int(l.route_type as i32),
                 JValue::Object(&jfeed),
                 JValue::Object(&jcoords_obj),
+                JValue::Int(i32::from(l.ordinal)),
+                JValue::Int(i32::from(l.lanes)),
+                JValue::Int(i32::from(l.taper)),
             ],
         ) {
             Ok(o) => o,

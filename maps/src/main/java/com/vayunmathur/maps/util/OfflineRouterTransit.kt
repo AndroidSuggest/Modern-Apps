@@ -352,6 +352,9 @@ internal object OfflineRouterTransit {
                                         else String.format("%06X", line.color and 0xFFFFFF),
                                 mode = gtfsRouteTypeToMode(line.routeType),
                                 points = points,
+                                ordinal = line.ordinal,
+                                lanes = line.lanes,
+                                taper = line.taper,
                         )
                 )
             }

@@ -522,6 +522,10 @@ object OfflineRouter {
             val feed: String,
             /** Flat `[lon0, lat0, ...]`, like a [RawStep] geometry. */
             val coords: DoubleArray,
+            // Corridor slot, appended LAST.
+            val ordinal: Int,
+            val lanes: Int,
+            val taper: Int,
     )
 
     /**
@@ -723,10 +727,8 @@ object OfflineRouter {
     /** Drawable rail lines — see [OfflineRouterTransit.railLines]. */
     suspend fun railLines(
             context: Context,
-            minLat: Double,
-            minLon: Double,
-            maxLat: Double,
-            maxLon: Double,
+            minLat: Double, minLon: Double,
+            maxLat: Double, maxLon: Double,
     ): List<com.vayunmathur.maps.data.transit.RailLine> =
             OfflineRouterTransit.railLines(context, minLat, minLon, maxLat, maxLon)
 

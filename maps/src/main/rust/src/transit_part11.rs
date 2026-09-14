@@ -14,7 +14,10 @@
 // via `Schedule::runs`, `delayed`, `abs_time_on`) and the `HashMap` import
 // are all in scope without qualification, exactly as in `transit_part10.rs`.
 
-/// One drawable rail line: the route's full shape with its agency colour.
+/// One drawable rail-line span: part of a route's shape with its lane in
+/// the corridor it crosses. A route outside any corridor is one span over
+/// its whole shape (`ordinal` 0, `lanes` 1, `taper` 255).
+#[derive(Debug)]
 pub struct RailLine {
     pub name: String,
     pub color: u32,
@@ -22,15 +25,31 @@ pub struct RailLine {
     pub feed: String,
     /// Interleaved `[lon0, lat0, lon1, lat1, ...]`, like a `RawStep` geometry.
     pub coords: Vec<f64>,
+    /// This colour's index among the corridor's distinct colours.
+    pub ordinal: u8,
+    /// Distinct colours the corridor carries. One outside a corridor.
+    pub lanes: u8,
+    /// How far into its lane this span sits, over 255.
+    pub taper: u8,
 }
 
-/// Bound on lines per query: a metro bbox holds dozens of rail routes, but an
-/// unbounded world-zoom enumeration would serialize thousands of polylines.
+/// Bound on spans per query: a metro bbox holds dozens of rail routes, but
+/// an unbounded world-zoom enumeration would serialize thousands of
+/// polylines.
 pub const MAX_RAIL_LINES: usize = 1500;
 
 /// Margin (degrees) matching the vehicle enumeration, so a line whose stops
 /// sit just off-screen still draws to the viewport edge.
 const RAIL_BBOX_MARGIN_DEG: f64 = 0.02;
+
+/// A line already drawn in its colour over 95% of its length adds nothing.
+const MOSTLY_DRAWN: f64 = 0.95;
+
+/// How many distinct services may draw over one stretch of track before the
+/// rest are dropped. Past the style's lane count the colours squash onto
+/// shared lanes anyway; fifteen republished feeds over one railway is data
+/// artefact, not fifteen services.
+const MAX_SERVICES_PER_TRACK: usize = 4;
 
 /// Whether a GTFS `route_type` draws as a rail line. Mirrors the Kotlin
 /// `gtfsRouteTypeToMode` split inversely: everything except the bus family.
@@ -40,13 +59,28 @@ fn is_rail_line(t: u32) -> bool {
     !matches!(t, 3 | 800 | 200..=299 | 700..=799)
 }
 
-/// Every rail line serving the bbox, with agency colours.
+/// Fallback line colour per rail mode, for routes naming none. A matched
+/// pair with the tile path's table in `transit_shapes`: grouping and drawing
+/// must agree, or indistinguishable lines take separate lanes.
+fn fallback_color(route_type: u32) -> u32 {
+    match route_type {
+        1 | 400..=499 => 0xE4_002B,
+        0 | 5 | 900 => 0xFF_D200,
+        2 | 100..=199 => 0x00_57A8,
+        12 => 0x9D_9D9D,
+        _ => 0x66_6666,
+    }
+}
+
+/// Every rail line serving the bbox, cut into corridor spans with lanes.
 ///
 /// Shape-first: the route's fitted GTFS polyline (`route_shape_off` +
 /// full-span `shape_slice`); routes the ingester could not fit fall back to
-/// stop-to-stop, the same fallback the ride legs use. Direction variants of
-/// one GTFS route are distinct RAPTOR routes and both enumerate — the caller
-/// dedups by name when it wants one line per named route.
+/// stop-to-stop, the same fallback the ride legs use. Corridor assignment is
+/// the tile path's algorithm (`crate::corridor_group` + `spans_of`),
+/// single-threaded at viewport scale: overlapping services fan into
+/// parallel lanes, 95%-redrawn duplicates drop, and no track carries more
+/// than four services.
 pub fn rail_lines(
     idx: &TransitIndex,
     min_lat: f64,
@@ -54,14 +88,24 @@ pub fn rail_lines(
     max_lat: f64,
     max_lon: f64,
 ) -> Vec<RailLine> {
-    let mut out = Vec::new();
     if idx.stop_count == 0 {
-        return out;
+        return Vec::new();
     }
     let m = RAIL_BBOX_MARGIN_DEG;
     let near_bbox = |lat: f64, lon: f64| {
         lat >= min_lat - m && lat <= max_lat + m && lon >= min_lon - m && lon <= max_lon + m
     };
+    // Collect serving routes with e7 shapes, deterministic order (colour,
+    // name) so a rebuild fans identically.
+    struct Serving {
+        route_idx: u32,
+        name: String,
+        color: u32,
+        route_type: u32,
+        feed: String,
+        points: Vec<(i32, i32)>,
+    }
+    let mut serving: Vec<Serving> = Vec::new();
     for r in 0..idx.route_count {
         let route = idx.route(r);
         if route.n_stops < 2 || !is_rail_line(route.route_type) {
@@ -80,47 +124,165 @@ pub fn rail_lines(
         }
         let first = route.first_route_stop;
         let last = first + route.n_stops - 1;
-        let coords: Vec<f64> = match idx.route_shape_off(r) {
+        let e7: Vec<(i32, i32)> = match idx.route_shape_off(r) {
             Some(off) => {
                 let fv = idx.route_stop_shape(first);
                 let tv = idx.route_stop_shape(last);
                 if fv == NONE || tv == NONE || tv < fv {
-                    stop_to_stop(idx, &route)
+                    stop_to_stop_e7(idx, &route)
                 } else {
                     idx.shape_slice(off, fv, tv)
                         .into_iter()
-                        .flat_map(|(lat, lon)| [lon, lat])
+                        .map(|(lat, lon)| {
+                            (lat * 1e7, lon * 1e7)
+                        })
+                        .map(|(lat, lon)| (lat.round() as i32, lon.round() as i32))
                         .collect()
                 }
             }
-            None => stop_to_stop(idx, &route),
+            None => stop_to_stop_e7(idx, &route),
         };
-        if coords.len() < 4 {
+        if e7.len() < 2 {
             continue;
         }
-        out.push(RailLine {
+        let color =
+            if route.color == 0 { fallback_color(route.route_type) } else { route.color };
+        serving.push(Serving {
+            route_idx: r,
             name: idx.read_str(route.name_off),
-            color: route.color,
+            color,
             route_type: route.route_type,
             feed: idx.feed_name_of(route.feed_idx),
-            coords,
+            points: e7,
         });
-        if out.len() >= MAX_RAIL_LINES {
-            break;
+    }
+    serving.sort_by(|a, b| {
+        a.color.cmp(&b.color).then(a.name.cmp(&b.name)).then(a.route_idx.cmp(&b.route_idx))
+    });
+
+    // Dedup: whole lines only. A line 95% drawn in its colour adds nothing;
+    // past four services over one metre the track is fully said.
+    let mut kept: Vec<usize> = Vec::with_capacity(serving.len());
+    let mut by_color: std::collections::HashMap<u32, crate::corridor_spans::Covered> =
+        std::collections::HashMap::new();
+    let mut mode_cover: std::collections::HashMap<u32, crate::corridor_spans::Covered> =
+        std::collections::HashMap::new();
+    for (at, s) in serving.iter().enumerate() {
+        let color_cover = by_color.entry(s.color).or_default();
+        if color_cover.covered_fraction(&s.points) >= MOSTLY_DRAWN {
+            continue;
+        }
+        let mode = mode_bucket(s.route_type);
+        let cover = mode_cover.entry(mode).or_default();
+        if cover.crowd_reaches(&s.points, MAX_SERVICES_PER_TRACK) {
+            continue;
+        }
+        cover.add_tagged(&s.points, s.color);
+        color_cover.add_tagged(&s.points, 0);
+        kept.push(at);
+    }
+
+    // Corridor assignment over the survivors.
+    let candidates: Vec<crate::corridor_group::Candidate> = kept
+        .iter()
+        .map(|&at| crate::corridor_group::Candidate {
+            points: &serving[at].points,
+            route: serving[at].route_idx,
+            color: serving[at].color,
+            name: &serving[at].name,
+        })
+        .collect();
+    let named: Vec<Option<(u32, &str)>> = {
+        let max_route = candidates.iter().map(|c| c.route as usize + 1).max().unwrap_or(0);
+        let mut named = vec![None; max_route];
+        for c in &candidates {
+            named[c.route as usize].get_or_insert((c.color, c.name));
+        }
+        named
+    };
+    let (_sets, runs, corridors) = crate::corridor_group::group(&candidates, &named);
+
+    // Cut spans per survivor. Runs/samples live in candidate order; map back
+    // through `kept` for route metadata.
+    let mut out = Vec::new();
+    // Rebuild per-candidate samples for spans_of: probe points in block
+    // order with probe-space cum. The grouping port owns sampling; replay
+    // the same walk here so spans cut on identical geometry.
+    for (nth, &at) in kept.iter().enumerate() {
+        let s = &serving[at];
+        let walked = crate::corridor_geom::resample(&s.points, crate::corridor_group::SAMPLE_M);
+        if walked.len() < 2 {
+            continue;
+        }
+        let own_cum = crate::corridor_geom::cumulative(&s.points);
+        // Probe-space cum: probe k sits at k*SAMPLE_M, last at the total.
+        let total = own_cum.last().copied().unwrap_or(0.0);
+        let probe_pts: Vec<(i32, i32)> = walked;
+        let probe_cum: Vec<f64> = (0..probe_pts.len())
+            .map(|k| {
+                if k + 1 == probe_pts.len() {
+                    total
+                } else {
+                    (k as f64 * crate::corridor_group::SAMPLE_M).min(total)
+                }
+            })
+            .collect();
+        let spans = crate::corridor_spans::spans_of(
+            &s.points,
+            s.color,
+            runs.get(nth).map(|r| r.as_slice()).unwrap_or(&[]),
+            &probe_pts,
+            &probe_cum,
+            &own_cum,
+            &corridors,
+        );
+        for span in spans {
+            if span.points.len() < 2 {
+                continue;
+            }
+            out.push(RailLine {
+                name: s.name.clone(),
+                color: s.color,
+                route_type: s.route_type,
+                feed: s.feed.clone(),
+                coords: span
+                    .points
+                    .iter()
+                    .flat_map(|&(lat, lon)| [f64::from(lon) * 1e-7, f64::from(lat) * 1e-7])
+                    .collect(),
+                ordinal: span.ordinal,
+                lanes: span.lanes,
+                taper: span.taper,
+            });
+            if out.len() >= MAX_RAIL_LINES {
+                return out;
+            }
         }
     }
     out
 }
 
-/// A route's stops joined straight, for routes with no fitted shape.
-fn stop_to_stop(idx: &TransitIndex, route: &RouteRec) -> Vec<f64> {
-    let mut coords = Vec::with_capacity(route.n_stops as usize * 2);
+/// Coarse mode bucket for the crowd ceiling: distinct rail modes each get
+/// their own crowd budget, so a subway trunk and a tramway sharing track do
+/// not suppress each other.
+fn mode_bucket(route_type: u32) -> u32 {
+    match route_type {
+        1 | 400..=499 => 1,
+        0 | 5 | 900 => 2,
+        2 | 100..=199 => 3,
+        _ => 0,
+    }
+}
+
+/// A route's stops joined straight, as e7 pairs, for routes with no fitted
+/// shape.
+fn stop_to_stop_e7(idx: &TransitIndex, route: &RouteRec) -> Vec<(i32, i32)> {
+    let mut out = Vec::with_capacity(route.n_stops as usize);
     for pos in 0..route.n_stops {
         let (lat, lon) = idx.stop_ll(idx.route_stop(route.first_route_stop + pos));
-        coords.push(lon);
-        coords.push(lat);
+        out.push(((lat * 1e7).round() as i32, (lon * 1e7).round() as i32));
     }
-    coords
+    out
 }
 
 /// One stop on a trip's itinerary, with query-day-frame times.

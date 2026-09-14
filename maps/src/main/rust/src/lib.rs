@@ -13,6 +13,10 @@
 // so the wider surface costs nothing on device.
 pub mod geometry;
 pub mod graph;
+mod corridor_geom;
+mod corridor_grid;
+mod corridor_group;
+mod corridor_spans;
 mod jni;
 mod mvt;
 pub mod routing;
