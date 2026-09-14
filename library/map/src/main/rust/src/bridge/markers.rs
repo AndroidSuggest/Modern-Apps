@@ -62,6 +62,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setMarkers<'l>
             lon: coord_buf[i * 2] as f64,
             lat: coord_buf[i * 2 + 1] as f64,
             icon: icon_buf[i] as u32,
+            // App pins carry no route colour; vehicles arrive through
+            // `setVehicles`, which has its own colours array.
+            colour: 0,
         })
         .collect();
     map.renderer.set_markers(markers);
@@ -85,7 +88,10 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_clearMarkers<'
 /// [`setMarkers`](Java_com_vayunmathur_library_map_MapNative_setMarkers) — `ids[i]` the host's
 /// stable per-trip id, `lonLat` the flat `[lon0, lat0, lon1, lat1, …]`, and `icons[i]` the mode
 /// sprite id (a vehicle uses the `VEHICLE_*` ids in `crate::marker::icon`) — because a vehicle is
-/// just a [`Marker`] whose icon names a mode sprite, so it reuses the marker draw path verbatim.
+/// just a [`Marker`] whose icon names a mode sprite, so it reuses the marker draw path verbatim —
+/// plus a fourth, `colors[i]`, the GTFS `route_color` packed as `0xRRGGBB` (`0` when the pack
+/// carries none). A nonzero colour draws a route-coloured ring under the sprite so the vehicle
+/// reads in its line's colour; without it the icon is only its mode glyph.
 ///
 /// Separate from [`setMarkers`](Java_com_vayunmathur_library_map_MapNative_setMarkers) so the app's
 /// ~1 Hz vehicle recompute replaces only the vehicles, leaving the pins (which change on a tap or
@@ -102,12 +108,15 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setVehicles<'l
     ids: JLongArray<'l>,
     lon_lat: JFloatArray<'l>,
     icons: JIntArray<'l>,
+    colors: JIntArray<'l>,
 ) {
     let Some(map) = handle_mut(handle) else { return };
     let id_len = env.get_array_length(&ids).unwrap_or(0).max(0) as usize;
     let icon_len = env.get_array_length(&icons).unwrap_or(0).max(0) as usize;
     let coord_len = env.get_array_length(&lon_lat).unwrap_or(0).max(0) as usize;
+    let color_len = env.get_array_length(&colors).unwrap_or(0).max(0) as usize;
     // Each vehicle consumes two floats (lon, lat), so the coordinate array bounds the count too.
+    // Colours ride along when present; a short/empty array means "no rings" rather than a failure.
     let n = id_len.min(icon_len).min(coord_len / 2);
     if n == 0 {
         map.renderer.set_vehicles(Vec::new());
@@ -116,9 +125,12 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setVehicles<'l
     let mut id_buf = vec![0i64; n];
     let mut icon_buf = vec![0i32; n];
     let mut coord_buf = vec![0f32; n * 2];
+    let mut color_buf = vec![0i32; n.min(color_len)];
     if env.get_long_array_region(&ids, 0, &mut id_buf).is_err()
         || env.get_int_array_region(&icons, 0, &mut icon_buf).is_err()
         || env.get_float_array_region(&lon_lat, 0, &mut coord_buf).is_err()
+        || (!color_buf.is_empty()
+            && env.get_int_array_region(&colors, 0, &mut color_buf).is_err())
     {
         log("the vehicle arrays could not be read; leaving the vehicles unchanged");
         return;
@@ -129,6 +141,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setVehicles<'l
             lon: coord_buf[i * 2] as f64,
             lat: coord_buf[i * 2 + 1] as f64,
             icon: icon_buf[i] as u32,
+            colour: color_buf.get(i).copied().unwrap_or(0) as u32 & 0x00FF_FFFF,
         })
         .collect();
     map.renderer.set_vehicles(vehicles);

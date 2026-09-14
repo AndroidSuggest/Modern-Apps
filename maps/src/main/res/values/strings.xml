@@ -327,8 +327,8 @@
     <string name="layer_safety_unavailable">Coming soon</string>
     <!-- LayersSheet: public-transit layer toggle. Noun. -->
     <string name="layer_transit">Transit</string>
-    <!-- LayersSheet: transit layer description. Rail lines the basemap renderer draws plus the departure board for the stop nearest a tap; stop pins are a tracked renderer gap (TransitStopsLayer is a no-op) and vehicle sprites are off until the atlas carries dedicated vehicle art. -->
-    <string name="layer_transit_desc">Show rail lines and departures</string>
+    <!-- LayersSheet: transit layer description. Rail lines the basemap renderer draws, live vehicle pictograms and the departure board for the stop nearest a tap; stop pins are a tracked renderer gap (TransitStopsLayer is a no-op). -->
+    <string name="layer_transit_desc">Show rail lines, live vehicles and departures</string>
 
     <!-- Departure board: section subtitle under the stop name. Noun. -->
     <string name="transit_departures_title">Departures</string>

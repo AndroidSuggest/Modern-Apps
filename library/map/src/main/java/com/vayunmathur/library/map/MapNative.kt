@@ -230,8 +230,10 @@ internal object MapNative {
      *
      * The same three parallel bulk arrays as [setMarkers] — [ids] each vehicle's stable per-trip id,
      * [lonLat] a flat `[lon0, lat0, lon1, lat1, …]`, and [icons] each vehicle's mode sprite id (the
-     * `VEHICLE_*` entries in [MarkerIcon]) — because a vehicle is a marker whose icon names a mode
-     * sprite, so it reuses the marker draw path verbatim.
+     * `VEHICLE_*` entries in [MarkerIcon]) — plus [colors], each vehicle's GTFS `route_color`
+     * packed as `0xRRGGBB` (`0` draws no ring). A nonzero colour draws a route-coloured ring under
+     * the sprite so the vehicle reads in its line's colour. Because a vehicle is a marker whose
+     * icon names a mode sprite, it reuses the marker draw path verbatim.
      *
      * Separate from [setMarkers] so the app's ~1 Hz vehicle recompute replaces only the vehicles and
      * leaves the pins untouched, and so the moving vehicle sprites stay out of the pin id-buffer pick
@@ -241,7 +243,13 @@ internal object MapNative {
      * linger. Mismatched array lengths are truncated to the shortest; an empty set is the same as
      * [clearVehicles].
      */
-    external fun setVehicles(handle: Long, ids: LongArray, lonLat: FloatArray, icons: IntArray)
+    external fun setVehicles(
+        handle: Long,
+        ids: LongArray,
+        lonLat: FloatArray,
+        icons: IntArray,
+        colors: IntArray,
+    )
 
     /** Take every simulated vehicle away: the transit toggle went off, or the surface was hidden. */
     external fun clearVehicles(handle: Long)

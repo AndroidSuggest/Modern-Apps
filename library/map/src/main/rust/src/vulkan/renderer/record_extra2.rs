@@ -1,7 +1,8 @@
 use super::{
     ARROW_COLOR, ARROW_DP, BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, Overlay, PUCK_COLOR, PUCK_CONE_DP,
     PUCK_CONE_HALF_STROKE_DP, PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, Renderer,
-    SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, anchors_for, argb_to_rgba, scale_alpha,
+    SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, VEHICLE_RING_DP, VEHICLE_RING_QUAD_DP, anchors_for,
+    argb_to_rgba, scale_alpha,
 };
 use crate::camera::Camera;
 use crate::marker::{Marker, MARKER_SIZE_DP};
@@ -295,6 +296,11 @@ impl Renderer {
         // user placed and can tap outranks a simulated vehicle sprite at the same spot, and the
         // user's own location outranks both. Both go through the shared billboarded sprite path.
         if !vehicles.is_empty() {
+            // Route-colour rings under the sprites that carry a colour, so a
+            // vehicle reads in its line's colour: a dot-only pass on the puck
+            // pipeline (no cone, no white rim), sized just past the 28 Dp
+            // sprite, drawn before the sprites so they cover its middle.
+            self.draw_vehicle_rings(command_buffer, camera, &vehicles, submitted);
             self.draw_markers(command_buffer, camera, palette, &vehicles, submitted);
         }
         if !markers.is_empty() {

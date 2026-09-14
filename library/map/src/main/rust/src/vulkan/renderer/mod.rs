@@ -337,6 +337,13 @@ const PUCK_CONE_HALF_STROKE_DP: f32 = 4.0;
 /// so a quad any tighter would clip the falloff.
 const PUCK_QUAD_DP: f32 = 28.0;
 
+/// A simulated vehicle's route-colour ring: the disc radius in Dp, and the quad
+/// half-extent that holds it. The disc is wider than the 28 Dp vehicle sprite
+/// (half 14) so its edge reads as an outline in the line's colour around the
+/// mode glyph; the sprite draws over the disc's middle on top of it.
+const VEHICLE_RING_DP: f32 = 16.5;
+const VEHICLE_RING_QUAD_DP: f32 = 19.0;
+
 /// The turn-arrow glyph: its screen size in Dp (the unit arrow spans roughly `-1..1`, so this is a
 /// touch under its half-extent), and its colour. A muted near-white so the arrows read on the dark
 /// carriageway without competing with the route line's saturated blue.

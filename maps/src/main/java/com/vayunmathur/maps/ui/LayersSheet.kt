@@ -71,11 +71,10 @@ fun LayersSheet(
                 )
             }
 
-            // Transit — offline rail lines from the on-device pack, and a
+            // Transit — offline rail lines from the on-device pack, live vehicle
+            // pictograms (dedicated solid-badge sprites, not POI icons) and a
             // departure board for the stop nearest a tap. Stop pins
-            // themselves are a tracked renderer gap ([TransitStopsLayer]);
-            // vehicle sprites stay off until the atlas carries dedicated
-            // vehicle art (VEHICLE_SPRITES_ENABLED).
+            // themselves are a tracked renderer gap ([TransitStopsLayer]).
             SettingsSwitchRow(
                 title = stringResource(R.string.layer_transit),
                 supportingText = stringResource(R.string.layer_transit_desc),

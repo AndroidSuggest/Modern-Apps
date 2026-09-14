@@ -24,7 +24,8 @@
 //! **name** here, and a name the sheet does not carry simply draws nothing, exactly as a POI with
 //! no icon does ([`crate::tile::sprite::SpriteAtlas::get`]).
 
-/// One marker: a stable id for picking, a ground position, and which atlas icon to draw.
+/// One marker: a stable id for picking, a ground position, which atlas icon
+/// to draw, and an optional route-colour ring.
 ///
 /// [`id`](Self::id) is the app's own stable feature id (a pin's parking/search/saved id, or a
 /// vehicle's trip id), returned verbatim by the id-buffer pick so the host can rejoin the tap to
@@ -39,6 +40,11 @@ pub struct Marker {
     pub lat: f64,
     /// Which atlas icon to draw — see [`icon`] and [`icon_sprite_name`].
     pub icon: u32,
+    /// Route colour (`0xRRGGBB`) for the ring drawn under a vehicle sprite so
+    /// the icon reads in its line's colour; `0` draws no ring. Carried only on
+    /// the vehicles path today (app pins pass `0`) — see
+    /// [`crate::vulkan::renderer`] vehicle rings.
+    pub colour: u32,
 }
 
 /// The screen size a marker icon is drawn at, in Dp.
@@ -84,7 +90,14 @@ pub mod icon {
 /// which have no dedicated *pin* pictograms, so the pin ids map to the closest existing sprite so a
 /// marker is visible today rather than blank. A follow-up build-side asset pass can add dedicated
 /// `pin-*` sprites and repoint these names with no code change beyond this table — the JNI ids stay
-/// the same. The vehicle ids already resolve to real transit sprites, so WS-F needs no new art.
+/// the same.
+///
+/// # Vehicle art
+///
+/// The vehicle ids resolve to dedicated `vehicle-*` sprites: solid transport-blue badges with
+/// white Maki glyphs, built by `analysis/spritepack/pack.py` alongside the `fuel`/`hotel`/`bank`
+/// POI additions. Solid rather than the pale POI badge on purpose — vehicles dwell exactly on
+/// stops, and pale badges read as duplicated station POIs (seen on-device 2026-09-14).
 pub fn icon_sprite_name(icon: u32) -> Option<&'static str> {
     let name = match icon {
         // Pins — provisional mappings onto existing POI sprites (see the doc above).
@@ -93,11 +106,11 @@ pub fn icon_sprite_name(icon: u32) -> Option<&'static str> {
         icon::SEARCH => "attraction",
         icon::SAVED => "artwork",
         icon::FAMILY => "attraction",
-        // Vehicles (WS-F) — real transit sprites already in the sheet.
-        icon::VEHICLE_BUS => "bus_stop",
-        icon::VEHICLE_TRAM => "train_station",
-        icon::VEHICLE_TRAIN => "train_station",
-        icon::VEHICLE_FERRY => "ferry_terminal",
+        // Vehicles (WS-F) — dedicated solid-badge sprites, not POI icons.
+        icon::VEHICLE_BUS => "vehicle-bus",
+        icon::VEHICLE_TRAM => "vehicle-tram",
+        icon::VEHICLE_TRAIN => "vehicle-train",
+        icon::VEHICLE_FERRY => "vehicle-ferry",
         _ => return None,
     };
     Some(name)
@@ -137,14 +150,15 @@ mod tests {
         assert!(icon_sprite_name(u32::MAX).is_none());
     }
 
-    /// The vehicle ids WS-F builds on are the reserved 5–8 and resolve to transit sprites, so the
-    /// bulk vehicle case needs no new art. Pins them so a renumbering that collided with a pin id
-    /// is caught here.
+    /// The vehicle ids WS-F builds on are the reserved 5-8 and resolve to the
+    /// dedicated solid-badge `vehicle-*` sprites (not the ambient POI icons,
+    /// which read as duplicated stations when vehicles dwell on stops). Pins
+    /// them so a renumbering that collided with a pin id is caught here.
     #[test]
     fn the_reserved_vehicle_ids_map_to_transit_sprites() {
-        assert_eq!(icon_sprite_name(icon::VEHICLE_BUS), Some("bus_stop"));
-        assert_eq!(icon_sprite_name(icon::VEHICLE_TRAM), Some("train_station"));
-        assert_eq!(icon_sprite_name(icon::VEHICLE_TRAIN), Some("train_station"));
-        assert_eq!(icon_sprite_name(icon::VEHICLE_FERRY), Some("ferry_terminal"));
+        assert_eq!(icon_sprite_name(icon::VEHICLE_BUS), Some("vehicle-bus"));
+        assert_eq!(icon_sprite_name(icon::VEHICLE_TRAM), Some("vehicle-tram"));
+        assert_eq!(icon_sprite_name(icon::VEHICLE_TRAIN), Some("vehicle-train"));
+        assert_eq!(icon_sprite_name(icon::VEHICLE_FERRY), Some("vehicle-ferry"));
     }
 }

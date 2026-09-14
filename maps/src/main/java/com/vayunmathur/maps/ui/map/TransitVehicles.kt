@@ -40,17 +40,14 @@ private const val VEHICLE_TICK_MS = 1_000L
 private const val VEHICLE_MIN_ZOOM = 11.0
 
 /**
- * Whether the simulated vehicle sprites draw at all. Currently false: the
- * sprite atlas has no dedicated vehicle pictograms, so the vehicle ids borrow
- * the ambient POI icons (`VEHICLE_BUS` draws the bus-stop pin,
- * `VEHICLE_TRAM/TRAIN` the train-station pin) at 28 Dp against 19 Dp POIs
- * with no labels. Vehicles dwell exactly on stops, so several trips at one
- * station read as duplicated, misaligned, textless station POIs - which is
- * what the transit toggle showed. Rail lines, departure boards and routing
- * are unaffected (separate paths); flip this back on when dedicated vehicle
- * sprites land in the atlas (see `marker::icon_sprite_name`).
+ * Whether the simulated vehicle sprites draw at all. True: the sprite atlas
+ * carries dedicated solid-badge vehicle pictograms (`vehicle-bus/tram/train/
+ * ferry`, white Maki glyphs on transport blue — built by
+ * `analysis/spritepack/pack.py`), visually distinct from the pale ambient POI
+ * badges so a vehicle dwelling on a stop no longer reads as a duplicated
+ * station POI. Was false while the vehicle ids borrowed POI icons.
  */
-private const val VEHICLE_SPRITES_ENABLED = false
+private const val VEHICLE_SPRITES_ENABLED = true
 
 /**
  * How far the bbox centre may drift (degrees) before a recompute is forced.
@@ -147,6 +144,10 @@ fun rememberTransitVehicles(
                             id = v.id,
                             position = GeoPoint(longitude = v.lon, latitude = v.lat),
                             icon = gtfsModeToMarkerIcon(v.mode),
+                            // The pack's GTFS route_color drives the ring under the
+                            // sprite so the vehicle reads in its line's colour; 0
+                            // (no colour in the pack) draws no ring.
+                            color = v.colour,
                         )
                     }
                 }

@@ -668,8 +668,8 @@ class SurfaceMapRenderer(
             MapNative.clearVehicles(handle)
             return
         }
-        val (ids, lonLat, icons) = packMapMarkers(vs)
-        MapNative.setVehicles(handle, ids, lonLat, icons)
+        val packed = packVehicles(vs)
+        MapNative.setVehicles(handle, packed.ids, packed.lonLat, packed.icons, packed.colors)
     }
 
 

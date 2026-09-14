@@ -24,6 +24,35 @@ internal fun packMapMarkers(pins: List<MapMarker>): Triple<LongArray, FloatArray
 }
 
 /**
+ * Packs vehicle lists into the four parallel bulk arrays the native vehicle
+ * path reads: the three marker arrays plus per-vehicle route colours packed
+ * as `0xRRGGBB` (`0` draws no ring). Separate from [packMapMarkers] so the pin
+ * path keeps its three-array JNI signature.
+ */
+internal data class PackedVehicles(
+    val ids: LongArray,
+    val lonLat: FloatArray,
+    val icons: IntArray,
+    val colors: IntArray,
+)
+
+internal fun packVehicles(vehicles: List<MapMarker>): PackedVehicles {
+    val ids = LongArray(vehicles.size)
+    val lonLat = FloatArray(vehicles.size * 2)
+    val icons = IntArray(vehicles.size)
+    val colors = IntArray(vehicles.size)
+    for (i in vehicles.indices) {
+        val v = vehicles[i]
+        ids[i] = v.id
+        lonLat[i * 2] = v.position.longitude.toFloat()
+        lonLat[i * 2 + 1] = v.position.latitude.toFloat()
+        icons[i] = v.icon
+        colors[i] = v.color and 0x00FFFFFF
+    }
+    return PackedVehicles(ids, lonLat, icons, colors)
+}
+
+/**
  * The route, traffic and picking half of [SurfaceMapRenderer], as `internal`
  * extensions so SurfaceMapRenderer.kt stays under the FileLength limit. Public
  * setters stay on the renderer and delegate here.

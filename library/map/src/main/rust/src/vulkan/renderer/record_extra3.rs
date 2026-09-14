@@ -1,7 +1,8 @@
 use super::{
     ARROW_COLOR, ARROW_DP, BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, Overlay, PUCK_COLOR, PUCK_CONE_DP,
     PUCK_CONE_HALF_STROKE_DP, PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, Renderer,
-    SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, anchors_for, argb_to_rgba, scale_alpha,
+    SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, VEHICLE_RING_DP, VEHICLE_RING_QUAD_DP, anchors_for,
+    argb_to_rgba, scale_alpha,
 };
 use crate::camera::Camera;
 use crate::marker::{Marker, MARKER_SIZE_DP};
@@ -110,6 +111,67 @@ impl Renderer {
             &push,
             submitted,
         );
+    }
+
+    /// Draw the route-colour rings under coloured vehicles, so each reads in
+    /// its line's colour.
+    ///
+    /// A dot-only pass on the puck pipeline (no cone, no white rim): one disc
+    /// per vehicle with a nonzero [`Marker::colour`], sized just past the
+    /// 28 Dp sprite, drawn before the sprites so they cover its middle and
+    /// only the edge shows as an outline. The pipeline is bound once and each
+    /// vehicle is one push-constant draw — the visible set is bounded by the
+    /// host's bbox/zoom gate, so this stays a handful of draws per frame.
+    /// Vehicles with colour `0` (the pack carries no `route_color`) and ones
+    /// the tilt puts behind the eye draw nothing.
+    pub(super) unsafe fn draw_vehicle_rings(
+        &mut self,
+        command_buffer: vk::CommandBuffer,
+        camera: &Camera,
+        vehicles: &[Marker],
+        submitted: &mut usize,
+    ) {
+        let density = camera.density;
+        let device = &self.context.device;
+        device.cmd_bind_pipeline(
+            command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipelines.puck,
+        );
+        device.cmd_bind_vertex_buffers(command_buffer, 0, &[self.quad.vertices.buffer], &[0]);
+        device.cmd_bind_index_buffer(
+            command_buffer,
+            self.quad.indices.buffer,
+            0,
+            vk::IndexType::UINT32,
+        );
+        for v in vehicles {
+            if v.colour == 0 {
+                continue;
+            }
+            let m = camera.screen_quad_to_clip(v.lon, v.lat, VEHICLE_RING_QUAD_DP as f64);
+            if m[15] <= 0.0 {
+                continue; // behind the eye / above the horizon under tilt.
+            }
+            let push = Push {
+                tile_to_clip: m,
+                color: argb_to_rgba(0xFF00_0000 | v.colour),
+                // Dot only: rim 0 hides the white ring, cone sizes 0 and
+                // misc.y 0 hide the bearing cone.
+                line: [0.0, VEHICLE_RING_DP * density, 0.0, 0.0],
+                misc: [0.0, 0.0, VEHICLE_RING_QUAD_DP * density, camera.time_seconds],
+                morph: MORPH_NONE,
+            };
+            device.cmd_push_constants(
+                command_buffer,
+                self.pipelines.layout,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                0,
+                push.as_bytes(),
+            );
+            device.cmd_draw_indexed(command_buffer, QUAD_INDICES.len() as u32, 1, 0, 0, 0);
+            *submitted += 1;
+        }
     }
 
     /// Draw one tile's one symbol layer: emit its shaped labels at the frame's
