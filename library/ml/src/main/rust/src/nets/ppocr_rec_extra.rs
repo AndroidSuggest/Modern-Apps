@@ -9,6 +9,15 @@ use super::ppocr_rec::{along_sequence, block, depthwise, point, squeeze_excite};
 /// `width` must be a positive multiple of [`WIDTH_MULTIPLE`]; the output is
 /// `[LOGITS, 1, width / 8]`.
 pub fn build(weights: &dyn WeightSource, width: u32) -> Result<Plan, String> {
+    Ok(record(weights, width)?.plan)
+}
+
+/// Record the recognition pass for a `48 x width` crop.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(weights: &dyn WeightSource, width: u32) -> Result<crate::nets::Recorded, String> {
     use super::ppocr_rec::Layers;
     if width == 0 || !width.is_multiple_of(WIDTH_MULTIPLE) {
         return Err(format!(
@@ -108,5 +117,5 @@ pub fn build(weights: &dyn WeightSource, width: u32) -> Result<Plan, String> {
     if l.next != TENSORS {
         return Err(format!("the forward pass claims {} tensors, not {TENSORS}", l.next));
     }
-    builder.finish(&[logits])
+    builder.record(&[logits], &crate::weights::Offsets::empty())
 }

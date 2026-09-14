@@ -595,4 +595,51 @@ impl<'a> Builder<'a> {
         });
         out
     }
+
+    /// [`Builder::conv_transpose`] with resolved weight offsets rather than
+    /// table indices.
+    ///
+    /// As [`Builder::conv_raw`]: the section parser validated shapes, so
+    /// lowering only translates addressing. `m` is the section's computed
+    /// output channels. No fused form: `fuse_elementwise` never folds into a
+    /// transpose (its producer predicate names `Conv`/`ConvInt8` nodes), so
+    /// there is no `res`/`shift` to replay.
+    #[allow(clippy::too_many_arguments)]
+    pub fn conv_transpose_raw(
+        &mut self,
+        input: Id,
+        weight: u32,
+        bias: u32,
+        act_weight: u32,
+        m: u32,
+        act: Act,
+        kernel: (u32, u32),
+        stride: (u32, u32),
+        pads: (u32, u32, u32, u32),
+    ) -> Id {
+        let in_shape = self.shape_of(input);
+        let (kh, kw) = kernel;
+        let (pad_t, pad_l, pad_b, pad_r) = pads;
+        let out_h = deconv_out(in_shape.h, kh, stride.0, pad_t + pad_b);
+        let out_w = deconv_out(in_shape.w, kw, stride.1, pad_l + pad_r);
+        let out = self.tensor(Shape::new(m, out_h, out_w));
+        self.nodes.push(Node::Conv {
+            input,
+            out,
+            weight,
+            bias,
+            kernel,
+            stride,
+            dilation: (1, 1),
+            pad: (pad_t, pad_l),
+            group: 1,
+            act,
+            act_weight,
+            transpose: true,
+            pad_edge: false,
+            res: None,
+            shift: None,
+        });
+        out
+    }
 }

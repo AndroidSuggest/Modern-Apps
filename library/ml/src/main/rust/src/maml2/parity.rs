@@ -141,38 +141,36 @@ fn lowered_plan_schedules_like_v1() {
     );
 }
 
-/// True numeric parity: the v2-lowered plan against the v1 plan, same
-/// interpreter, same invented inputs, real weights both sides.
+/// True numeric parity between a v1 plan and its v2 lowering.
 ///
-/// Both plans run through `run_multi` on their own blob (v1 data section vs
-/// bridge blob) — different address spaces, same values, since kernels are
-/// NCHW in both files. The arithmetic is identical kind-for-kind (the
-/// blocked rewrite qualifies nothing on an all-NCHW file), so the outputs
-/// must be bit-exact, not within tolerance: any divergence is a loader bug
-/// (wrong offset, dropped res/shift, permuted kernel), never rounding.
-/// Skips quietly when either asset is absent.
-#[test]
-fn v2_plan_matches_v1_bit_exact() {
-    // The v1 plan must be built against the real `Offsets` table: the
-    // `Shapes` stub hands back tensor indices as addresses, which read
-    // wrong weights on a real blob (NaN within an op or two). Real
-    // addresses, real weights, same interpreter, same inputs.
+/// Builds the v1 plan against the real `Offsets` (never the `Shapes` stub,
+/// whose index-as-address reads wrong weights on a real blob), lowers the
+/// v2 file, and requires bit-exact outputs through the same interpreter on
+/// the same invented inputs. Skips quietly when either asset is absent.
+fn assert_bit_exact(
+    what: &str,
+    v1asset: &str,
+    graph_id: u32,
+    v2asset: &str,
+    build_v1: impl FnOnce(&crate::weights::Offsets) -> Result<crate::nets::Plan, String>,
+    inputs: Vec<Vec<f32>>,
+) {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(5)
         .expect("workspace root")
         .to_path_buf();
-    let v1path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml");
+    let v1path = root.join(v1asset);
     let v1bytes = match std::fs::read(&v1path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => panic!("cannot read {}: {e}", v1path.display()),
     };
-    let v1parsed = weights::Weights::parse(&v1bytes, weights::graph::SUPERTONIC_VE)
-        .expect("parse the v1 asset");
+    let v1parsed =
+        weights::Weights::parse(&v1bytes, graph_id).expect("parse the v1 asset");
     let v1data = v1parsed.data().to_vec();
-    let v1plan = supertonic_sampler::build(&v1parsed.offsets(), 49, 55).expect("build v1");
-    let path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml2");
+    let v1plan = build_v1(&v1parsed.offsets()).expect("build v1");
+    let path = root.join(v2asset);
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
@@ -182,40 +180,177 @@ fn v2_plan_matches_v1_bit_exact() {
     let inferred = infer::infer(&verified).expect("infer");
     let bridge = lower::V2Weights::new(&verified).expect("bridge");
     let plan = lower::lower(&verified, &inferred[0], &bridge, 0).expect("lower");
-    // Same invented inputs both sides: the seven sampler inputs at the
-    // recorded shape, distinct and asymmetric about zero.
-    let shapes = [
-        (144usize, 1usize, 49usize),
-        (256, 1, 55),
-        (1024, 1, 50),
-        (256, 1, 50),
-        (2048, 1, 1),
-        (64, 1, 49),
-        (64, 1, 55),
-    ];
-    let inputs: Vec<Vec<f32>> = shapes
+    let refs: Vec<&[f32]> = inputs.iter().map(|v| v.as_slice()).collect();
+    assert_eq!(
+        refs.len(),
+        v1plan.inputs.len(),
+        "{what}: invented inputs cover the v1 plan inputs"
+    );
+    assert_eq!(
+        refs.len(),
+        plan.inputs.len(),
+        "{what}: invented inputs cover the v2 plan inputs"
+    );
+    let v1out = crate::nets::reference::run_multi(&v1plan, &v1data, &refs).expect("run v1");
+    let v2out = crate::nets::reference::run_multi(&plan, &bridge.blob(), &refs).expect("run v2");
+    // The zero oracle: invented inputs through real-weight ops cannot be
+    // zero; an all-zeros output means the inputs never reached the graph.
+    assert!(
+        v1out.iter().flat_map(|v| v.iter()).any(|&v| v != 0.0),
+        "{what}: the v1 interpreter output is all zeros"
+    );
+    assert_eq!(v2out.len(), v1out.len(), "{what}: same output count");
+    for (index, (a, b)) in v1out.iter().zip(v2out.iter()).enumerate() {
+        assert_eq!(a.len(), b.len(), "{what}: output {index} length");
+        for (at, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+            assert!(x == y, "{what}: output {index} element {at}: v1 {x} vs v2 {y}");
+        }
+    }
+}
+
+/// Invented inputs: distinct, bounded, asymmetric about zero, so
+/// sign/transpose errors cannot hide. One vector per plan input shape.
+fn spread_inputs(shapes: &[(usize, usize, usize)], seed: f32) -> Vec<Vec<f32>> {
+    shapes
         .iter()
         .enumerate()
         .map(|(k, (c, h, w))| {
             (0..c * h * w)
-                .map(|i| (i as f32 * 0.7 + k as f32 * 1.7).sin() * 0.8 + 0.1)
+                .map(|i| (i as f32 * 0.7 + (seed + k as f32) * 1.7).sin() * 0.8 + 0.1)
                 .collect()
         })
-        .collect();
-    let refs: Vec<&[f32]> = inputs.iter().map(|v| v.as_slice()).collect();
-    let v1out = crate::nets::reference::run_multi(&v1plan, &v1data, &refs).expect("run v1");
-    let v2out = crate::nets::reference::run_multi(&plan, &bridge.blob(), &refs).expect("run v2");
-    // The zero oracle: invented inputs through 212 real-weight ops cannot be
-    // zero; an all-zeros output means the inputs never reached the graph.
-    assert!(
-        v1out.iter().flat_map(|v| v.iter()).any(|&v| v != 0.0),
-        "the v1 interpreter output is all zeros"
+        .collect()
+}
+
+/// True numeric parity for the sampler: the v2-lowered plan against the v1
+/// plan. See [`assert_bit_exact`] for the contract.
+#[test]
+fn v2_plan_matches_v1_bit_exact() {
+    assert_bit_exact(
+        "the sampler at 49 frames, 55 chars",
+        "speech/src/main/assets/supertonic/supertonic_ve.maml",
+        weights::graph::SUPERTONIC_VE,
+        "speech/src/main/assets/supertonic/supertonic_ve.maml2",
+        |offsets| supertonic_sampler::build(offsets, 49, 55),
+        spread_inputs(
+            &[
+                (144usize, 1usize, 49usize),
+                (256, 1, 55),
+                (1024, 1, 50),
+                (256, 1, 50),
+                (2048, 1, 1),
+                (64, 1, 49),
+                (64, 1, 55),
+            ],
+            0.0,
+        ),
     );
-    assert_eq!(v2out.len(), v1out.len(), "same output count");
-    for (index, (a, b)) in v1out.iter().zip(v2out.iter()).enumerate() {
-        assert_eq!(a.len(), b.len(), "output {index} length");
-        for (at, (x, y)) in a.iter().zip(b.iter()).enumerate() {
-            assert!(x == y, "output {index} element {at}: v1 {x} vs v2 {y}");
-        }
-    }
+}
+
+/// True numeric parity for selfie segmentation: the v2-lowered plan against
+/// the v1 plan at 256x256.
+#[test]
+fn v2_selfie_matches_v1_bit_exact() {
+    use crate::nets::selfie;
+    assert_bit_exact(
+        "selfie at 256x256",
+        "camera/src/main/assets/selfie_segmentation.maml",
+        weights::graph::SELFIE,
+        "camera/src/main/assets/selfie_segmentation.maml2",
+        |offsets| selfie::build(offsets),
+        spread_inputs(&[(3usize, 256usize, 256usize)], 0.0),
+    );
+}
+
+/// True numeric parity for U^2-Net portable at 320x320.
+#[test]
+fn v2_u2netp_matches_v1_bit_exact() {
+    use crate::nets::u2netp;
+    assert_bit_exact(
+        "u2netp at 320x320",
+        "photos/src/main/assets/u2netp.maml",
+        weights::graph::U2NETP,
+        "photos/src/main/assets/u2netp.maml2",
+        |offsets| u2netp::build(offsets),
+        spread_inputs(&[(3usize, 320usize, 320usize)], 1.0),
+    );
+}
+
+/// True numeric parity for SCRFD at 640x640.
+#[test]
+fn v2_scrfd_matches_v1_bit_exact() {
+    use crate::nets::scrfd;
+    assert_bit_exact(
+        "scrfd at 640x640",
+        "photos/src/main/assets/scrfd_500m.maml",
+        weights::graph::SCRFD,
+        "photos/src/main/assets/scrfd_500m.maml2",
+        |offsets| scrfd::build(offsets, 640, 640),
+        spread_inputs(&[(3usize, 640usize, 640usize)], 2.0),
+    );
+}
+
+/// True numeric parity for MobileFaceNet at 112x112 (exercises fused PRelu
+/// slopes through the file).
+#[test]
+fn v2_mobilefacenet_matches_v1_bit_exact() {
+    use crate::nets::mobilefacenet;
+    assert_bit_exact(
+        "mobilefacenet at 112x112",
+        "photos/src/main/assets/w600k_mbf.maml",
+        weights::graph::MOBILEFACENET,
+        "photos/src/main/assets/w600k_mbf.maml2",
+        |offsets| mobilefacenet::build(offsets),
+        spread_inputs(&[(3usize, 112usize, 112usize)], 3.0),
+    );
+}
+
+/// True numeric parity for PP-OCR detection at 960x960.
+#[test]
+fn v2_ppocr_det_matches_v1_bit_exact() {
+    use crate::nets::ppocr_det;
+    assert_bit_exact(
+        "ppocr_det at 960x960",
+        "library/ocr/src/main/assets/ppocr_det.maml",
+        weights::graph::PPOCR_DET,
+        "library/ocr/src/main/assets/ppocr_det.maml2",
+        |offsets| ppocr_det::build(offsets, 960, 960),
+        spread_inputs(&[(3usize, 960usize, 960usize)], 4.0),
+    );
+}
+
+/// True numeric parity for PP-OCR recognition on a 48x320 crop.
+#[test]
+fn v2_ppocr_rec_matches_v1_bit_exact() {
+    use crate::nets::ppocr_rec_extra;
+    assert_bit_exact(
+        "ppocr_rec on 48x320",
+        "library/ocr/src/main/assets/ppocr_rec.maml",
+        weights::graph::PPOCR_REC,
+        "library/ocr/src/main/assets/ppocr_rec.maml2",
+        |offsets| ppocr_rec_extra::build(offsets, 320),
+        spread_inputs(&[(3usize, 48usize, 320usize)], 5.0),
+    );
+}
+
+/// True numeric parity for Maia (two outputs, host-side elo tables, int8
+/// points, single-head attention).
+#[test]
+fn v2_maia_matches_v1_bit_exact() {
+    use crate::nets::maia;
+    assert_bit_exact(
+        "maia",
+        "games/chess/src/main/assets/maia3-5m.maml",
+        weights::graph::MAIA,
+        "games/chess/src/main/assets/maia3-5m.maml2",
+        |offsets| maia::build(offsets),
+        spread_inputs(
+            &[(
+                maia::INPUT as usize,
+                1usize,
+                maia::SQUARES as usize,
+            )],
+            6.0,
+        ),
+    );
 }

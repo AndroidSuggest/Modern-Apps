@@ -91,6 +91,16 @@ impl<'a> Builder<'a> {
         out
     }
 
+    /// [`Builder::resize_nearest_like`] to an explicit size, for lowering a
+    /// version-2 graph section: the file carries the recorded target dims,
+    /// not a `like` tensor. Same node as the `like` form.
+    pub fn resize_nearest_to(&mut self, input: Id, h: u32, w: u32) -> Id {
+        let in_shape = self.shape_of(input);
+        let out = self.tensor(Shape::new(in_shape.c, h, w));
+        self.nodes.push(Node::Resize { input, out, nearest: true });
+        out
+    }
+
     /// Mean over H and W, to `C x 1 x 1`.
     pub fn global_avg_pool(&mut self, input: Id) -> Id {
         let in_shape = self.shape_of(input);
@@ -274,6 +284,19 @@ impl<'a> Builder<'a> {
         }
         let per_group = shape.c.checked_div(groups.max(1)).unwrap_or(0);
         let gamma = self.weight(weight_index, &[per_group]);
+        let out = self.tensor(shape);
+        self.nodes.push(Node::RmsNorm { input, out, gamma, epsilon, groups });
+        out
+    }
+
+    /// [`Builder::rms_norm_grouped`] with a resolved gamma offset rather than
+    /// a table index.
+    ///
+    /// As [`Builder::conv_raw`]: the loader validated shapes at inference, so
+    /// lowering only translates addressing. `groups` rides the node as the
+    /// indexed path sets it.
+    pub fn rms_norm_raw(&mut self, input: Id, gamma: u32, epsilon: f32, groups: u32) -> Id {
+        let shape = self.shape_of(input);
         let out = self.tensor(shape);
         self.nodes.push(Node::RmsNorm { input, out, gamma, epsilon, groups });
         out

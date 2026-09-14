@@ -278,7 +278,13 @@ fn infer_node(
             let kernel = attrs.ints("kernel")?;
             let stride = attrs.ints("stride")?;
             let dilation = attrs.ints("dilation")?;
+            // Four values `[t, l, b, r]` (the node retains `(t, l)`; the
+            // emitter solves `(b, r)` from the recorded shapes). Totals
+            // drive the output size; `(t, l)` drive the taps.
             let pads = attrs.ints("pads")?;
+            if pads.len() != 4 {
+                return Err(err("Conv pads are not [t, l, b, r]"));
+            }
             let groups = attrs.int("groups")?;
             if x.len() != 3 || w.len() < 2 {
                 return Err(err("Conv shapes are not [c, h, w] / [m, ...]"));
@@ -289,11 +295,9 @@ fn infer_node(
             let sw = *stride.get(1).unwrap_or(&1);
             let dh = dilation.first().copied().unwrap_or(1);
             let dw = *dilation.get(1).unwrap_or(&1);
-            let pt = pads.first().copied().unwrap_or(0);
-            let pl = *pads.get(1).unwrap_or(&0);
             let m = w[0];
-            let out_h = conv_out(x[1], kh, sh, dh, pt * 2);
-            let out_w = conv_out(x[2], kw, sw, dw, pl * 2);
+            let out_h = conv_out(x[1], kh, sh, dh, pads[0] + pads[2]);
+            let out_w = conv_out(x[2], kw, sw, dw, pads[1] + pads[3]);
             let _ = groups;
             Ok(vec![Inferred { dims: vec![m, out_h, out_w], layout: computed_layout }])
         }
@@ -308,6 +312,140 @@ fn infer_node(
             }
             // Pointwise: `[m, 1, positions]`.
             Ok(vec![Inferred { dims: vec![w[0], a[1], a[2]], layout: computed_layout }])
+        }
+        fb::Op::ConvTranspose => {
+            // Learned upsample: weights `[in_c, m, kh, kw]`, output
+            // `(in - 1) * stride + kh - pads`. Mirrors `deconv_out`.
+            if inputs.len() != 3 {
+                return Err(err("ConvTranspose wants [x, w, b]"));
+            }
+            let x = shape_of(inputs[0])?.dims.clone();
+            let w = shape_of(inputs[1])?.dims.clone();
+            let kernel = attrs.ints("kernel")?;
+            let stride = attrs.ints("stride")?;
+            let pads = attrs.ints("pads")?;
+            if x.len() != 3 || w.len() < 2 {
+                return Err(err("ConvTranspose shapes are not [c, h, w] / [in_c, m, ...]"));
+            }
+            let kh = kernel.first().copied().unwrap_or(1);
+            let kw = *kernel.get(1).unwrap_or(&1);
+            let sh = stride.first().copied().unwrap_or(1);
+            let sw = *stride.get(1).unwrap_or(&1);
+            if pads.len() != 4 {
+                return Err(err("ConvTranspose pads are not [t, l, b, r]"));
+            }
+            let m = w.get(1).copied().unwrap_or(0);
+            // Totals, mirroring `deconv_out` (which saturates rather than
+            // wrapping; the recorded shapes are sane, so no bound is hit).
+            let out_h = (x[1].max(1) - 1) * sh + kh - (pads[0] + pads[2]);
+            let out_w = (x[2].max(1) - 1) * sw + kw - (pads[1] + pads[3]);
+            Ok(vec![Inferred { dims: vec![m, out_h, out_w], layout: computed_layout }])
+        }
+        fb::Op::MaxPool | fb::Op::AvgPool => {
+            if inputs.len() != 1 {
+                return Err(err("pooling wants [x]"));
+            }
+            let x = shape_of(inputs[0])?.dims.clone();
+            let kernel = attrs.ints("kernel")?;
+            let stride = attrs.ints("stride")?;
+            if x.len() != 3 {
+                return Err(err("pooling input is not [c, h, w]"));
+            }
+            let kh = kernel.first().copied().unwrap_or(1);
+            let kw = *kernel.get(1).unwrap_or(&1);
+            let sh = stride.first().copied().unwrap_or(1);
+            let sw = *stride.get(1).unwrap_or(&1);
+            // Floored and unpadded, as the builders enforce at record.
+            let out_h = conv_out(x[1], kh, sh, 1, 0);
+            let out_w = conv_out(x[2], kw, sw, 1, 0);
+            Ok(vec![Inferred { dims: vec![x[0], out_h, out_w], layout: computed_layout }])
+        }
+        fb::Op::Resize => {
+            if inputs.len() != 1 {
+                return Err(err("Resize wants [x]"));
+            }
+            let x = shape_of(inputs[0])?.dims.clone();
+            let dims = attrs.ints("dims")?;
+            if dims.len() != 3 || dims[0] != x[0] {
+                return Err(err(&format!("Resize dims {dims:?} do not extend {x:?}")));
+            }
+            Ok(vec![Inferred { dims, layout: computed_layout }])
+        }
+        fb::Op::GlobalAvgPool => {
+            if inputs.len() != 1 {
+                return Err(err("GlobalAvgPool wants [x]"));
+            }
+            let x = shape_of(inputs[0])?.dims.clone();
+            Ok(vec![Inferred { dims: vec![x[0], 1, 1], layout: computed_layout }])
+        }
+        fb::Op::Concat => {
+            if inputs.is_empty() {
+                return Err(err("Concat wants parts"));
+            }
+            // A single part is a reshape: same elements under the `dims`
+            // attr's shape. The element counts must agree; the shape itself
+            // is authoritative (it is what the stored row is checked
+            // against by the caller).
+            if inputs.len() == 1 {
+                let part = shape_of(inputs[0])?.dims.clone();
+                let dims = attrs.ints("dims")?;
+                if dims.len() != 3 {
+                    return Err(err("reshape Concat dims are not [c, h, w]"));
+                }
+                let part_elems: i64 = part.iter().map(|&d| d as i64).product();
+                let dst_elems: i64 = dims.iter().map(|&d| d as i64).product();
+                if part_elems != dst_elems {
+                    return Err(err(&format!(
+                        "reshape Concat of {part:?} ({part_elems} elems) to {dims:?} ({dst_elems} elems)"
+                    )));
+                }
+                return Ok(vec![Inferred { dims, layout: computed_layout }]);
+            }
+            let axis = attrs.int("axis")?;
+            let mut parts = Vec::with_capacity(inputs.len());
+            for input in inputs {
+                parts.push(shape_of(*input)?.dims.clone());
+            }
+            let first = parts[0].clone();
+            if axis == 0 {
+                // Channel concat: spatial extents agree, channels sum.
+                let mut channels = 0;
+                for part in &parts {
+                    if part.len() != 3 || part[1] != first[1] || part[2] != first[2] {
+                        return Err(err(&format!("channel concat part {part:?} mismatches {first:?}")));
+                    }
+                    channels += part[0];
+                }
+                Ok(vec![Inferred { dims: vec![channels, first[1], first[2]], layout: computed_layout }])
+            } else if axis == 2 {
+                // Position concat: channels and height agree, widths sum.
+                let mut width = 0;
+                for part in &parts {
+                    if part.len() != 3 || part[0] != first[0] || part[1] != first[1] {
+                        return Err(err(&format!("position concat part {part:?} mismatches {first:?}")));
+                    }
+                    width += part[2];
+                }
+                Ok(vec![Inferred { dims: vec![first[0], first[1], width], layout: computed_layout }])
+            } else {
+                Err(err(&format!("Concat axis {axis} is not 0 (channels) or 2 (positions)")))
+            }
+        }
+        fb::Op::Affine => {
+            if inputs.len() != 1 {
+                return Err(err("Affine wants [x]"));
+            }
+            let x = shape_of(inputs[0])?.dims.clone();
+            Ok(vec![Inferred { dims: x, layout: computed_layout }])
+        }
+        fb::Op::Constant => {
+            // A learned tensor copied to the arena: the output shape is the
+            // stored row, checked by the caller against this echo.
+            if inputs.len() != 1 {
+                return Err(err("Constant wants [weight]"));
+            }
+            let w = shape_of(inputs[0])?.dims.clone();
+            Ok(vec![Inferred { dims: w, layout: computed_layout }])
         }
         fb::Op::Add | fb::Op::Mul => {
             if inputs.len() != 2 {
@@ -408,7 +546,7 @@ fn infer_node(
             }
             Ok(vec![Inferred { dims, layout: src.layout }])
         }
-        _ => Err(err("op is not a Phase 1 sampler op")),
+        _ => Err(err("op is not expressible in a v2 graph yet")),
     }
 }
 

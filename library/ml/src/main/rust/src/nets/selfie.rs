@@ -128,6 +128,15 @@ fn final_block(b: &mut Builder, layers: &mut Layers, deep: Id, skip: Id, channel
 
 /// Compile the whole forward pass.
 pub fn build(weights: &dyn WeightSource) -> Result<Plan, String> {
+    Ok(record(weights)?.plan)
+}
+
+/// Record the whole forward pass: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(weights: &dyn WeightSource) -> Result<crate::nets::Recorded, String> {
     let mut b = Builder::new(weights);
     let mut layers = Layers { next: 0 };
     let l = &mut layers;
@@ -181,7 +190,7 @@ pub fn build(weights: &dyn WeightSource) -> Result<Plan, String> {
 
     // 128 -> 256, and the sigmoid that makes it an alpha.
     let alphas = b.conv_transpose(x, l.take(), 1, (2, 2), (2, 2), (0, 0, 0, 0), Act::Sigmoid);
-    b.finish(&[alphas])
+    b.record(&[alphas], &crate::weights::Offsets::empty())
 }
 
 #[cfg(test)]

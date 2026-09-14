@@ -20,17 +20,19 @@ use crate::nets::{Act, Builder, Id, Plan, Shape, WeightSource};
 /// Activation from the v2 `activation` attribute code.
 ///
 /// Inverse of the emitter's `act_code`: 0 none, 1 relu, 2 hardswish,
-/// 3 sigmoid, 5 clip01, 6 swish, 8 gelu.
+/// 3 sigmoid, 5 clip01, 6 swish, 8 gelu, 4 PRelu (whose slope rides a
+/// `slope` tensor attr the caller resolves separately).
 fn act_from_code(code: i32) -> Result<Act, String> {
     match code {
         0 => Ok(Act::None),
         1 => Ok(Act::Relu),
         2 => Ok(Act::HardSwish),
         3 => Ok(Act::Sigmoid),
+        4 => Ok(Act::PRelu(0)),
         5 => Ok(Act::Clip01),
         6 => Ok(Act::Swish),
         8 => Ok(Act::Gelu),
-        _ => Err(format!("activation code {code} is not a Phase 1 activation")),
+        _ => Err(format!("activation code {code} is not a v2 activation")),
     }
 }
 
@@ -258,6 +260,20 @@ impl<'a> NodeAttrs<'a> {
         None
     }
 
+    fn float(&self, name: &str) -> Result<f32, String> {
+        let attrs = self.node.attrs().ok_or_else(|| format!("missing attribute {name}"))?;
+        for i in 0..attrs.len() {
+            let attr = attrs.get(i);
+            if attr.name() == Some(name) {
+                return attr
+                    .value_as_attr_float()
+                    .map(|v| v.value())
+                    .ok_or_else(|| format!("attribute {name} is not a float"));
+            }
+        }
+        Err(format!("missing attribute {name}"))
+    }
+
     fn opt_bool(&self, name: &str) -> bool {
         let Some(attrs) = self.node.attrs() else {
             return false;
@@ -358,6 +374,22 @@ fn lower_with_options(
                     }
                 }
             }
+            // Weight refs that ride attributes, not inputs: PRelu's `slope`.
+            // A slope names a buffered weight no input edge covers; without
+            // this the gate below mistakes it for a dropped layer.
+            if let Some(attrs) = node.attrs() {
+                for i in 0..attrs.len() {
+                    let attr = attrs.get(i);
+                    if attr.name() == Some("slope") {
+                        if let Some(v) = attr.value_as_attr_int() {
+                            let t = v.value() as usize;
+                            if t < read.len() {
+                                read[t] = true;
+                            }
+                        }
+                    }
+                }
+            }
         }
         // Host tensors (placement HOST, no buffer) are read on the CPU.
         for t in 0..tensors.len() {
@@ -454,6 +486,21 @@ fn lower_with_options(
                     }
                 }
             }
+            // Weight refs that ride attributes, not inputs: PRelu's `slope`
+            // (see the pre-pass above).
+            if let Some(attrs) = node.attrs() {
+                for i in 0..attrs.len() {
+                    let attr = attrs.get(i);
+                    if attr.name() == Some("slope") {
+                        if let Some(v) = attr.value_as_attr_int() {
+                            let t = v.value() as usize;
+                            if t < read.len() {
+                                read[t] = true;
+                            }
+                        }
+                    }
+                }
+            }
         }
         // Host tensors (placement HOST, no buffer) are read on the CPU: mark
         // them named so the rule below exempts them the way
@@ -488,11 +535,12 @@ pub const BLOCKED_KINDS: [(crate::nets::Kind, crate::nets::Kind); 1] =
 
 /// Rewrite tiled dispatches to their blocked twin where the layouts agree.
 ///
-/// A dispatch rewrites when its input activation, its kernel, and its output
-/// are all `CHANNEL_BLOCKED_4` in the file. The rewrite is exact: same `Push`
-/// (word-indexed weight, fp16 scale, tile count), same invocations, same
-/// fused addends — only the pipeline changes. Anything else keeps the NCHW
-/// kernel, which is always correct and merely the old speed.
+/// A dispatch rewrites when its input and output activations are
+/// `CHANNEL_BLOCKED_4` in the file (kernels are always NCHW). The rewrite is
+/// exact: same `Push` (word-indexed weight, fp16 scale, tile count), same
+/// invocations, same fused addends — only the pipeline changes. Anything
+/// else keeps the NCHW kernel, which is always correct and merely the old
+/// speed.
 fn rewrite_blocked_kinds(
     plan: &mut Plan,
     verified: &Verified<'_>,
@@ -504,30 +552,33 @@ fn rewrite_blocked_kinds(
     let graphs = model.graphs().ok_or("a model with no graphs")?;
     let graph = graphs.get(entry_graph);
     let nodes = graph.nodes().ok_or("a graph with no nodes")?;
-    // v2 node index → (activation tensor, kernel tensor, output tensor).
-    // Rebuilt from the node refs: MatMul `[a, w, s, b] -> [y]`, Conv
-    // `[a, w, b] -> [y]`. Only tiled int8 nodes are candidates; anything
-    // else is skipped without inspection. (The dead first loop over Kinds
-    // that stood here confused file ops with plan Kinds; file nodes are
-    // `fb::Op`, matched below.)
     let layout_of = |t: i32| -> Option<fb::Layout> {
         if t < 0 {
             return None;
         }
         Some(tensors.get(t as usize).layout())
     };
-    // Map each emitted dispatch back to its v2 node: file order is
-    // topological and emission preserves it, so dispatch n (among tiled
-    // int8 dispatches) corresponds to tiled int8 node n. Check layouts per
-    // node and rewrite by position: collect the qualifications in order,
-    // then walk the plan rewriting tiled int8 dispatches in the same order.
-    // The plan's kinds are the lowering output, not the file ops: match the
-    // file's MatMul nodes (int8 1x1) whose layouts are all blocked.
+    let dims_of = |t: i32| -> Vec<i32> {
+        tensors
+            .get(t as usize)
+            .dims()
+            .map(|d| (0..d.len()).map(|i| d.get(i)).collect())
+            .unwrap_or_default()
+    };
+    // Map each tiled int8 dispatch back to its v2 node. File order is
+    // topological and emission preserves it, so the plan's tiled int8
+    // dispatches correspond in order to the file's tiled MatMul nodes — but
+    // ONLY the tiled ones: a MatMul node with groups, stride, padding, or a
+    // single position lowers to the untiled or GEMV kernel, which has no
+    // blocked twin. The routing is recomputed here from the node attrs and
+    // tensor shapes, mirroring `Builder::emit`'s tiled test exactly
+    // (ungrouped 1x1, stride 1, unpadded, same spatial extent, >1 position).
+    // A drift between the two routings fails the count check below rather
+    // than rewriting the wrong dispatch.
     let mut qualify: Vec<bool> = Vec::new();
     for n in 0..nodes.len() {
         let node = nodes.get(n);
-        let is_matmul = node.op() == fb::Op::MatMul;
-        if !is_matmul {
+        if node.op() != fb::Op::MatMul {
             continue;
         }
         let inputs: Vec<i32> = node.inputs().map(|v| (0..v.len()).map(|i| v.get(i)).collect()).unwrap_or_default();
@@ -536,7 +587,27 @@ fn rewrite_blocked_kinds(
         if inputs.len() != 4 || outputs.len() != 1 {
             continue;
         }
-        let blocked = [inputs[0], inputs[1], outputs[0]]
+        let attrs = NodeAttrs { node };
+        let ints = |name: &str| attrs.ints(name).unwrap_or_default();
+        let kernel = ints("kernel");
+        let stride = ints("stride");
+        let pads = ints("pads");
+        let groups = attrs.int("groups").unwrap_or(1);
+        let a = dims_of(inputs[0]);
+        let y = dims_of(outputs[0]);
+        let tiled = groups == 1
+            && kernel == [1, 1]
+            && stride == [1, 1]
+            && pads == [0, 0, 0, 0]
+            && a.len() == 3
+            && y.len() == 3
+            && a[1] == y[1]
+            && a[2] == y[2]
+            && y[1] * y[2] > 1;
+        if !tiled {
+            continue;
+        }
+        let blocked = [inputs[0], outputs[0]]
             .iter()
             .all(|t| layout_of(*t) == Some(fb::Layout::CHANNEL_BLOCKED_4));
         qualify.push(blocked);
@@ -553,7 +624,7 @@ fn rewrite_blocked_kinds(
                     Some(false) => {}
                     None => {
                         return Err(format!(
-                            "more tiled int8 dispatches than MatMul nodes ({qi} seen)"
+                            "more tiled int8 dispatches than tiled MatMul nodes ({qi} seen)"
                         ));
                     }
                 }
@@ -563,7 +634,7 @@ fn rewrite_blocked_kinds(
     }
     if qi != qualify.len() {
         return Err(format!(
-            "MatMul node count {} != tiled int8 dispatch count {qi}",
+            "tiled MatMul node count {} != tiled int8 dispatch count {qi}",
             qualify.len()
         ));
     }
@@ -585,7 +656,7 @@ fn lower_node(
     let outputs: Vec<i32> =
         node.outputs().map(|v| (0..v.len()).map(|i| v.get(i)).collect::<Vec<i32>>()).unwrap_or_default();
     if outputs.len() != 1 {
-        return Err(err("Phase 1 nodes write exactly one tensor"));
+        return Err(err("v2 nodes write exactly one tensor"));
     }
     let id_of = |t: i32| -> Result<Id, String> {
         ids.get(&t).copied().ok_or_else(|| err(&format!("tensor {t} has no Id yet")))
@@ -614,9 +685,22 @@ fn lower_node(
             let stride = attrs.ints("stride")?;
             let dilation = attrs.ints("dilation")?;
             let pads = attrs.ints("pads")?;
+            if pads.len() != 4 {
+                return Err(err("Conv pads are not [t, l, b, r]"));
+            }
             let groups = attrs.int("groups")? as u32;
             let pad_edge = attrs.opt_bool("pad_edge");
-            let act = act_from_code(attrs.int("activation")?).map_err(|e| err(&e))?;
+            let act_code = attrs.int("activation")?;
+            let act = act_from_code(act_code).map_err(|e| err(&e))?;
+            // PRelu's slope is a tensor ref beside the code; every other
+            // activation leaves the slope slot zero and unread.
+            let act_weight = match act {
+                Act::PRelu(_) => {
+                    let slope = attrs.opt_int("slope").ok_or_else(|| err("PRelu with no slope"))?;
+                    weight_elem(slope)?
+                }
+                _ => 0,
+            };
             let m = tensors
                 .get(inputs[1] as usize)
                 .dims()
@@ -630,13 +714,13 @@ fn lower_node(
                 id_of(inputs[0])?,
                 w,
                 b,
-                0,
+                act_weight,
                 m,
                 act,
                 (kernel[0] as u32, kernel[1] as u32),
                 (stride[0] as u32, stride[1] as u32),
                 (dilation[0] as u32, dilation[1] as u32),
-                (pads[0] as u32, pads[1] as u32, pads[0] as u32, pads[1] as u32),
+                (pads[0] as u32, pads[1] as u32, pads[2] as u32, pads[3] as u32),
                 groups,
                 pad_edge,
                 res,
@@ -644,13 +728,56 @@ fn lower_node(
             );
             id
         }
+        fb::Op::ConvTranspose => {
+            if inputs.len() != 3 {
+                return Err(err("ConvTranspose wants [x, w, b]"));
+            }
+            let kernel = attrs.ints("kernel")?;
+            let stride = attrs.ints("stride")?;
+            let pads = attrs.ints("pads")?;
+            if pads.len() != 4 {
+                return Err(err("ConvTranspose pads are not [t, l, b, r]"));
+            }
+            let act_code = attrs.int("activation")?;
+            let act = act_from_code(act_code).map_err(|e| err(&e))?;
+            let act_weight = match act {
+                Act::PRelu(_) => {
+                    let slope = attrs.opt_int("slope").ok_or_else(|| err("PRelu with no slope"))?;
+                    weight_elem(slope)?
+                }
+                _ => 0,
+            };
+            let m = tensors
+                .get(inputs[1] as usize)
+                .dims()
+                .map(|d| if d.len() > 1 { d.get(1) as u32 } else { 0 })
+                .unwrap_or(0);
+            let w = weight_elem(inputs[1])?;
+            let b = weight_elem(inputs[2])?;
+            builder.conv_transpose_raw(
+                id_of(inputs[0])?,
+                w,
+                b,
+                act_weight,
+                m,
+                act,
+                (kernel[0] as u32, kernel[1] as u32),
+                (stride[0] as u32, stride[1] as u32),
+                (pads[0] as u32, pads[1] as u32, pads[2] as u32, pads[3] as u32),
+            )
+        }
         fb::Op::MatMul => {
-            // Int8 1x1: `[a, w, s, b]`. The loader routes by shape through
-            // `conv_int8_raw`, which lowers to the tiled/GEMV kernels.
+            // Quantised 1x1: `[a, w, s, b]`. The loader routes by shape
+            // through `conv_int8_raw_fused`, which lowers to the
+            // tiled/GEMV/untiled kernels — including grouped 1x1s (maia's
+            // replicated smolgen expansion, group 8), which take the untiled
+            // path exactly as the hand-written pass does. Groups ride the
+            // node attrs; the kernel dims carry per-group taps.
             if inputs.len() != 4 {
                 return Err(err("MatMul wants [a, w, s, b]"));
             }
             let act = act_from_code(attrs.int("activation")?).map_err(|e| err(&e))?;
+            let groups = attrs.int("groups").unwrap_or(1) as u32;
             let m = tensors
                 .get(inputs[1] as usize)
                 .dims()
@@ -677,7 +804,7 @@ fn lower_node(
                 (1, 1),
                 (1, 1),
                 (0, 0, 0, 0),
-                1,
+                groups,
                 crate::nets::Quant::I8,
                 res,
                 shift,
@@ -701,11 +828,126 @@ fn lower_node(
             }
             builder.add_channel(id_of(inputs[0])?, id_of(inputs[1])?)
         }
+        fb::Op::MulBroadcast => {
+            if inputs.len() != 2 {
+                return Err(err("MulBroadcast wants [a, b]"));
+            }
+            builder.mul_channel(id_of(inputs[0])?, id_of(inputs[1])?)
+        }
+        fb::Op::MaxPool => {
+            if inputs.len() != 1 {
+                return Err(err("MaxPool wants [x]"));
+            }
+            // The only max pooling the nets record is 2x2 stride 2 (the
+            // builder refuses odd extents); replay through it so the same
+            // refusal guards the file.
+            builder.max_pool_2x2(id_of(inputs[0])?)
+        }
+        fb::Op::AvgPool => {
+            if inputs.len() != 1 {
+                return Err(err("AvgPool wants [x]"));
+            }
+            let kernel = attrs.ints("kernel")?;
+            let stride = attrs.ints("stride")?;
+            builder.avg_pool(
+                id_of(inputs[0])?,
+                (kernel[0] as u32, kernel[1] as u32),
+                (stride[0] as u32, stride[1] as u32),
+            )
+        }
+        fb::Op::Resize => {
+            if inputs.len() != 1 {
+                return Err(err("Resize wants [x]"));
+            }
+            let mode = attrs.int("mode")?;
+            let dims = attrs.ints("dims")?;
+            if dims.len() != 3 {
+                return Err(err("Resize dims are not [c, h, w]"));
+            }
+            // Bilinear is the `half_pixel` shader; nearest is asymmetric.
+            // Mode 0/1 mirrors the emitter; anything else is a corrupt file.
+            match mode {
+                0 => builder.resize_to(id_of(inputs[0])?, dims[1] as u32, dims[2] as u32),
+                1 => builder.resize_nearest_to(id_of(inputs[0])?, dims[1] as u32, dims[2] as u32),
+                _ => return Err(err(&format!("Resize mode {mode} is not 0 or 1"))),
+            }
+        }
+        fb::Op::GlobalAvgPool => {
+            if inputs.len() != 1 {
+                return Err(err("GlobalAvgPool wants [x]"));
+            }
+            builder.global_avg_pool(id_of(inputs[0])?)
+        }
+        fb::Op::Concat => {
+            if inputs.is_empty() {
+                return Err(err("Concat wants parts"));
+            }
+            // A single part is a reshape (`Builder::reshaped`): replay the
+            // relabel against the stored output shape rather than deriving a
+            // channel sum from the part.
+            if inputs.len() == 1 {
+                let dims = tensors
+                    .get(outputs[0] as usize)
+                    .dims()
+                    .map(|d| (0..d.len()).map(|i| d.get(i) as u32).collect::<Vec<u32>>())
+                    .unwrap_or_default();
+                if dims.len() != 3 {
+                    return Err(err("reshape Concat output is not [c, h, w]"));
+                }
+                builder.reshaped(
+                    id_of(inputs[0])?,
+                    Shape::new(dims[0], dims[1], dims[2]),
+                )
+            } else {
+                let axis = attrs.int("axis")?;
+                let parts: Vec<Id> = inputs
+                    .iter()
+                    .map(|t| id_of(*t))
+                    .collect::<Result<Vec<Id>, String>>()?;
+                match axis {
+                    0 => builder.concat(&parts),
+                    2 => builder.concat_positions(&parts),
+                    _ => return Err(err(&format!("Concat axis {axis} is not 0 or 2"))),
+                }
+            }
+        }
+        fb::Op::Affine => {
+            if inputs.len() != 1 {
+                return Err(err("Affine wants [x]"));
+            }
+            let scale = attrs.float("scale")?;
+            let shift = attrs.float("shift")?;
+            builder.affine(id_of(inputs[0])?, scale, shift)
+        }
+        fb::Op::Constant => {
+            if inputs.len() != 1 {
+                return Err(err("Constant wants [weight]"));
+            }
+            let w = weight_elem(inputs[0])?;
+            let dims = tensors
+                .get(outputs[0] as usize)
+                .dims()
+                .map(|d| (0..d.len()).map(|i| d.get(i) as u32).collect::<Vec<u32>>())
+                .unwrap_or_default();
+            if dims.len() != 3 {
+                return Err(err("Constant output is not [c, h, w]"));
+            }
+            builder.constant_raw(w, Shape::new(dims[0], dims[1], dims[2]))
+        }
+        fb::Op::RmsNorm => {
+            if inputs.len() != 2 {
+                return Err(err("RmsNorm wants [x, gamma]"));
+            }
+            let epsilon = attrs.float("epsilon")?;
+            let groups = attrs.int("groups")? as u32;
+            let g = weight_elem(inputs[1])?;
+            builder.rms_norm_raw(id_of(inputs[0])?, g, epsilon, groups)
+        }
         fb::Op::LayerNorm => {
             if inputs.len() != 3 {
                 return Err(err("LayerNorm wants [x, gamma, beta]"));
             }
-            let epsilon = 1e-5;
+            let epsilon = attrs.float("epsilon")?;
             let g = weight_elem(inputs[1])?;
             let be = weight_elem(inputs[2])?;
             builder.layer_norm_raw(id_of(inputs[0])?, g, be, epsilon)
@@ -754,7 +996,7 @@ fn lower_node(
             // channel extent; the offset names its start.
             builder.slice_channels(id_of(inputs[0])?, offset, dims[0] as u32)
         }
-        _ => return Err(err("op is not a Phase 1 sampler op")),
+        _ => return Err(err("op is not expressible in a v2 graph yet")),
     };
     ids.insert(outputs[0], out);
     Ok(())

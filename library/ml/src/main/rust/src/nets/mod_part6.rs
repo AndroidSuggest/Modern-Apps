@@ -393,6 +393,17 @@ impl<'a> Builder<'a> {
         out
     }
 
+    /// [`Builder::constant`] with a resolved weight offset rather than a
+    /// table index.
+    ///
+    /// As [`Builder::conv_raw`]: the loader validated shapes at inference, so
+    /// lowering only translates addressing.
+    pub fn constant_raw(&mut self, weight: u32, shape: Shape) -> Id {
+        let out = self.tensor(shape);
+        self.nodes.push(Node::Constant { out, weight });
+        out
+    }
+
     /// An embedding lookup: `out[c][t] = table[id(t)][c]`, over a `[1, 1, T]` id tensor, or a
     /// `[2, 1, T]` one when the table has more than [`EMBED_LANE`] rows.
     ///

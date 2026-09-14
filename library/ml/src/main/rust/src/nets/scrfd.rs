@@ -160,6 +160,19 @@ fn head(b: &mut Builder, l: &mut Layers, x: Id) -> (Id, Id, Id) {
 /// Both must be multiples of [`EXTENT_MULTIPLE`]; see the module docs for why that is a
 /// requirement and not a convention.
 pub fn build(weights: &dyn WeightSource, height: u32, width: u32) -> Result<Plan, String> {
+    Ok(record(weights, height, width)?.plan)
+}
+
+/// Record the whole forward pass: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(
+    weights: &dyn WeightSource,
+    height: u32,
+    width: u32,
+) -> Result<crate::nets::Recorded, String> {
     if height == 0 || width == 0 {
         return Err(format!("a {width}x{height} input"));
     }
@@ -233,7 +246,7 @@ pub fn build(weights: &dyn WeightSource, height: u32, width: u32) -> Result<Plan
     // over `STRIDES`. The ONNX declares its nine outputs grouped the other way, by kind
     // then stride; the order here is the one that makes the post-processing loop
     // obviously right, and it is the only place the two conventions meet.
-    b.finish(&outputs)
+    b.record(&outputs, &crate::weights::Offsets::empty())
 }
 
 #[cfg(test)]

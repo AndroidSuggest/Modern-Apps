@@ -132,6 +132,19 @@ fn residual_excite(b: &mut Builder, l: &mut Layers, x: Id, reduce: u32) -> Id {
 
 /// Compile the forward pass for an input of `height` x `width`.
 pub fn build(weights: &dyn WeightSource, height: u32, width: u32) -> Result<Plan, String> {
+    Ok(record(weights, height, width)?.plan)
+}
+
+/// Record the forward pass for an input of `height` x `width`.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(
+    weights: &dyn WeightSource,
+    height: u32,
+    width: u32,
+) -> Result<crate::nets::Recorded, String> {
     compile(weights, height, width, false)
 }
 
@@ -140,7 +153,7 @@ fn compile(
     height: u32,
     width: u32,
     backbone: bool,
-) -> Result<Plan, String> {
+) -> Result<crate::nets::Recorded, String> {
     if height == 0 || width == 0 {
         return Err(format!("a {width}x{height} input"));
     }
@@ -249,9 +262,9 @@ fn compile(
     let probability =
         b.conv_transpose(x, l.take(), 1, (2, 2), (2, 2), (0, 0, 0, 0), Act::Sigmoid);
     if backbone {
-        return b.finish(&[probability, c5]);
+        return b.record(&[probability, c5], &crate::weights::Offsets::empty());
     }
-    b.finish(&[probability])
+    b.record(&[probability], &crate::weights::Offsets::empty())
 }
 
 /// [`build`], plus the backbone's output as a second binding.
@@ -265,7 +278,7 @@ pub fn build_with_backbone(
     height: u32,
     width: u32,
 ) -> Result<Plan, String> {
-    compile(weights, height, width, true)
+    Ok(compile(weights, height, width, true)?.plan)
 }
 
 /// A 3x3 convolution at `stride`, for the stem.

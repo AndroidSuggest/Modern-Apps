@@ -281,15 +281,16 @@ fn scale_indices(kernels: &HashMap<usize, WeightQuant>) -> Vec<usize> {
 ///
 /// Matches `Act::code()` on the runtime side: 0 none, 1 relu, 2 hardswish,
 /// 3 sigmoid, 5 clip01, 6 swish, 8 gelu. PRelu carries its slope tensor and
-/// is encoded as `4 + slope file index << 8`; the Phase 1 sampler never
-/// emits one (no PRelu in the net), so encountering it is an error.
+/// is encoded as 4 plus a `slope` attribute naming the slope's v2 tensor
+/// (spec section 5.2's PRelu-with-slope-ref); the caller appends that attr
+/// from the returned slope offset.
 fn act_code(act: Act) -> Result<i32, String> {
     match act {
         Act::None => Ok(0),
         Act::Relu => Ok(1),
         Act::HardSwish => Ok(2),
         Act::Sigmoid => Ok(3),
-        Act::PRelu(_) => Err("PRelu is not expressible in the Phase 1 sampler graph".into()),
+        Act::PRelu(_) => Ok(4),
         Act::Clip01 => Ok(5),
         Act::Swish => Ok(6),
         Act::Gelu => Ok(8),
@@ -449,19 +450,45 @@ fn emit_nodes(
                 pad,
                 group,
                 act,
+                act_weight,
                 transpose,
                 pad_edge,
                 res,
                 shift,
                 ..
             } => {
-                if transpose {
-                    return Err("transposed convolution is not in the Phase 1 sampler".into());
-                }
                 let a = computed(input.0, id_map, emit_tensors);
                 let y = computed(out.0, id_map, emit_tensors);
                 let w = weights.fp16("conv weight", weight)?;
                 let b = weights.fp16("conv bias", bias)?;
+                // Pads are `[t, l, b, r]`: the node only retains `(t, l)`
+                // (taps read nothing else), so `(b, r)` are solved from the
+                // recorded shapes — the totals that reproduce the recorded
+                // output. Forward (`conv_out`) and transposed (`deconv_out`)
+                // solve differently; the branch says which. Any total in the
+                // feasible set is behaviorally identical (shapes read totals,
+                // taps read `(t, l)`), and inference re-derives the recorded
+                // shape from what is emitted, so a bad solve fails loudly at
+                // load.
+                let in_shape =
+                    recorded.shapes.get(input.0).copied().unwrap_or(Shape::new(0, 0, 0));
+                let out_shape =
+                    recorded.shapes.get(out.0).copied().unwrap_or(Shape::new(0, 0, 0));
+                let (total_h, total_w) = if transpose {
+                    // `out = (in - 1) * s + k - total` (dilation is 1 for
+                    // every transposed convolution the builders offer).
+                    (
+                        (in_shape.h - 1) * stride.0 + kernel.0 - out_shape.h,
+                        (in_shape.w - 1) * stride.1 + kernel.1 - out_shape.w,
+                    )
+                } else {
+                    let eff_h = dilation.0 * (kernel.0 - 1) + 1;
+                    let eff_w = dilation.1 * (kernel.1 - 1) + 1;
+                    (
+                        (out_shape.h - 1) * stride.0 + eff_h - in_shape.h,
+                        (out_shape.w - 1) * stride.1 + eff_w - in_shape.w,
+                    )
+                };
                 let mut attrs = vec![
                     ("kernel".into(), AttrValue::Ints(vec![kernel.0 as i32, kernel.1 as i32])),
                     ("stride".into(), AttrValue::Ints(vec![stride.0 as i32, stride.1 as i32])),
@@ -469,11 +496,26 @@ fn emit_nodes(
                         "dilation".into(),
                         AttrValue::Ints(vec![dilation.0 as i32, dilation.1 as i32]),
                     ),
-                    ("pads".into(), AttrValue::Ints(vec![pad.0 as i32, pad.1 as i32])),
+                    (
+                        "pads".into(),
+                        AttrValue::Ints(vec![
+                            pad.0 as i32,
+                            pad.1 as i32,
+                            total_h as i32 - pad.0 as i32,
+                            total_w as i32 - pad.1 as i32,
+                        ]),
+                    ),
                     ("groups".into(), AttrValue::Int(group as i32)),
                     ("pad_edge".into(), AttrValue::Bool(pad_edge)),
                     ("activation".into(), AttrValue::Int(act_code(act)?)),
                 ];
+                // PRelu's slope rides beside the activation code, as a tensor
+                // ref (spec section 5.2). Int8 convs refuse PRelu at build;
+                // only this arm can carry one.
+                if matches!(act, Act::PRelu(_)) {
+                    let slope = weights.fp16("conv prelu slope", act_weight)?;
+                    attrs.push(("slope".into(), AttrValue::Int(slope)));
+                }
                 if let Some(res) = res {
                     attrs.push((
                         "res".into(),
@@ -487,7 +529,7 @@ fn emit_nodes(
                     ));
                 }
                 nodes.push(EmittedNode {
-                    op: fb::Op::Conv,
+                    op: if transpose { fb::Op::ConvTranspose } else { fb::Op::Conv },
                     inputs: vec![a, w, b],
                     outputs: vec![y],
                     attrs,
@@ -514,6 +556,16 @@ fn emit_nodes(
                 let w = weights.kernel(weight)?;
                 let s = weights.fp16("conv_int8 scale", scale)?;
                 let b = weights.fp16("conv_int8 bias", bias)?;
+                // Four-valued pads like the fp16 arm: `(b, r)` solved from
+                // the recorded shapes (see the `Conv` arm).
+                let in_shape =
+                    recorded.shapes.get(input.0).copied().unwrap_or(Shape::new(0, 0, 0));
+                let out_shape =
+                    recorded.shapes.get(out.0).copied().unwrap_or(Shape::new(0, 0, 0));
+                let eff_h = dilation.0 * (kernel.0 - 1) + 1;
+                let eff_w = dilation.1 * (kernel.1 - 1) + 1;
+                let total_h = (out_shape.h - 1) * stride.0 + eff_h - in_shape.h;
+                let total_w = (out_shape.w - 1) * stride.1 + eff_w - in_shape.w;
                 let mut attrs = vec![
                     ("kernel".into(), AttrValue::Ints(vec![kernel.0 as i32, kernel.1 as i32])),
                     ("stride".into(), AttrValue::Ints(vec![stride.0 as i32, stride.1 as i32])),
@@ -521,7 +573,15 @@ fn emit_nodes(
                         "dilation".into(),
                         AttrValue::Ints(vec![dilation.0 as i32, dilation.1 as i32]),
                     ),
-                    ("pads".into(), AttrValue::Ints(vec![pad.0 as i32, pad.1 as i32])),
+                    (
+                        "pads".into(),
+                        AttrValue::Ints(vec![
+                            pad.0 as i32,
+                            pad.1 as i32,
+                            total_h as i32 - pad.0 as i32,
+                            total_w as i32 - pad.1 as i32,
+                        ]),
+                    ),
                     ("groups".into(), AttrValue::Int(group as i32)),
                     ("activation".into(), AttrValue::Int(act_code(act)?)),
                     (
@@ -562,9 +622,146 @@ fn emit_nodes(
                     crate::nets::Kind::Mul => fb::Op::Mul,
                     crate::nets::Kind::MulBroadcast => fb::Op::MulBroadcast,
                     crate::nets::Kind::AddBroadcast => fb::Op::AddBroadcast,
-                    other => return Err(format!("{other:?} is not a Phase 1 sampler op")),
+                    other => return Err(format!("{other:?} is not expressible in a v2 graph")),
                 };
                 nodes.push(EmittedNode { op, inputs: vec![x, y_in], outputs: vec![y], attrs: vec![] });
+            }
+            Node::MaxPool { input, out, kernel, stride } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::MaxPool,
+                    inputs: vec![x],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("kernel".into(), AttrValue::Ints(vec![kernel.0 as i32, kernel.1 as i32])),
+                        ("stride".into(), AttrValue::Ints(vec![stride.0 as i32, stride.1 as i32])),
+                    ],
+                });
+            }
+            Node::AvgPool { input, out, kernel, stride } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::AvgPool,
+                    inputs: vec![x],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("kernel".into(), AttrValue::Ints(vec![kernel.0 as i32, kernel.1 as i32])),
+                        ("stride".into(), AttrValue::Ints(vec![stride.0 as i32, stride.1 as i32])),
+                    ],
+                });
+            }
+            Node::Resize { input, out, nearest } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                let shape = recorded.shapes.get(out.0).copied().unwrap_or(Shape::new(0, 0, 0));
+                nodes.push(EmittedNode {
+                    op: fb::Op::Resize,
+                    inputs: vec![x],
+                    outputs: vec![y],
+                    attrs: vec![
+                        (
+                            "mode".into(),
+                            AttrValue::Int(if nearest { 1 } else { 0 }),
+                        ),
+                        (
+                            "dims".into(),
+                            AttrValue::Ints(vec![
+                                shape.c as i32,
+                                shape.h as i32,
+                                shape.w as i32,
+                            ]),
+                        ),
+                    ],
+                });
+            }
+            Node::GlobalAvgPool { input, out } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::GlobalAvgPool,
+                    inputs: vec![x],
+                    outputs: vec![y],
+                    attrs: vec![],
+                });
+            }
+            Node::Concat { ref parts, out } => {
+                let ins: Vec<i32> =
+                    parts.iter().map(|id| computed(id.0, id_map, emit_tensors)).collect();
+                let y = computed(out.0, id_map, emit_tensors);
+                // A single part is a reshape (`Builder::reshaped`): same
+                // elements under a new shape, lowered as one copy. The
+                // output shape is not derivable from the part, so it rides a
+                // `dims` attr (like `Resize`); inference checks the element
+                // counts agree.
+                let mut attrs = vec![("axis".into(), AttrValue::Int(0))];
+                if parts.len() == 1 {
+                    let shape =
+                        recorded.shapes.get(out.0).copied().unwrap_or(Shape::new(0, 0, 0));
+                    attrs.push((
+                        "dims".into(),
+                        AttrValue::Ints(vec![
+                            shape.c as i32,
+                            shape.h as i32,
+                            shape.w as i32,
+                        ]),
+                    ));
+                }
+                nodes.push(EmittedNode {
+                    op: fb::Op::Concat,
+                    inputs: ins,
+                    outputs: vec![y],
+                    attrs,
+                });
+            }
+            Node::ConcatPositions { ref parts, out } => {
+                let ins: Vec<i32> =
+                    parts.iter().map(|id| computed(id.0, id_map, emit_tensors)).collect();
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::Concat,
+                    inputs: ins,
+                    outputs: vec![y],
+                    attrs: vec![("axis".into(), AttrValue::Int(2))],
+                });
+            }
+            Node::Affine { input, out, scale, shift } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                nodes.push(EmittedNode {
+                    op: fb::Op::Affine,
+                    inputs: vec![x],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("scale".into(), AttrValue::Float(scale)),
+                        ("shift".into(), AttrValue::Float(shift)),
+                    ],
+                });
+            }
+            Node::Constant { out, weight } => {
+                let y = computed(out.0, id_map, emit_tensors);
+                let w = weights.fp16("constant", weight)?;
+                nodes.push(EmittedNode {
+                    op: fb::Op::Constant,
+                    inputs: vec![w],
+                    outputs: vec![y],
+                    attrs: vec![],
+                });
+            }
+            Node::RmsNorm { input, out, gamma, epsilon, groups } => {
+                let x = computed(input.0, id_map, emit_tensors);
+                let y = computed(out.0, id_map, emit_tensors);
+                let g = weights.fp16("rms_norm gamma", gamma)?;
+                nodes.push(EmittedNode {
+                    op: fb::Op::RmsNorm,
+                    inputs: vec![x, g],
+                    outputs: vec![y],
+                    attrs: vec![
+                        ("epsilon".into(), AttrValue::Float(epsilon)),
+                        ("groups".into(), AttrValue::Int(groups as i32)),
+                    ],
+                });
             }
             Node::LayerNorm { input, out, gamma, beta, epsilon } => {
                 let x = computed(input.0, id_map, emit_tensors);
@@ -655,7 +852,7 @@ fn emit_nodes(
                 });
             }
             ref other => {
-                return Err(format!("{other:?} is not a Phase 1 sampler op"));
+                return Err(format!("{other:?} is not expressible in a v2 graph yet"));
             }
         }
     }
@@ -701,23 +898,29 @@ pub struct Emitted {
     pub op_inventory: Vec<(fb::Op, usize)>,
 }
 
-/// Emit a MAML v2 model from one recorded sampler branch.
+/// Emit a MAML v2 model from one recorded single-graph pass.
 ///
-/// `recorded` is the [`Builder::record`] output at a fixed `(frames, chars)`
-/// shape; `table` + `data` are the v1 file's tensor table and data section,
-/// whose weight bytes are repacked into the v2 buffers. `description` names
-/// the model for humans; `converter_version` and `source_sha256` trace
-/// provenance.
+/// `recorded` is the [`Builder::record`] output at a fixed shape; `table` +
+/// `data` are the v1 file's tensor table and data section, whose weight
+/// bytes are stored verbatim into the v2 buffers. `description` names the
+/// model for humans; `converter_version` and `source_sha256` trace
+/// provenance. `graph_name` / `entry_name` / `roles` name the single graph,
+/// its entry point, and the entry's input roles (positional over the graph
+/// inputs; must cover them exactly).
 ///
-/// The entry point is `encode` over the graph `sampler`: Phase 1 proves the
-/// single-branch loop, and the dual-branch plan is two submits of it.
-pub fn emit_sampler(
+/// The sampler's `emit_sampler` is this with its seven roles; every
+/// single-graph net shares the core.
+#[allow(clippy::too_many_arguments)]
+pub fn emit_graph(
     recorded: &Recorded,
     table: &[WeightTensor],
     data: &[u8],
     description: &str,
     converter_version: &str,
     source_sha256: [u8; 32],
+    graph_name: &str,
+    entry_name: &str,
+    roles: &[&str],
 ) -> Result<Emitted, String> {
     // 1. Which file tensors are quantised kernels, and which are their scales.
     let kernels = quant_kernels(&recorded.nodes, table, data)?;
@@ -754,15 +957,18 @@ pub fn emit_sampler(
         };
         for node in &recorded.nodes {
             match node {
-                Node::Conv { weight, bias, act_weight, .. } => {
-                    // act_weight is 0 unless PRelu (absent in Phase 1).
-                    let _ = act_weight;
+                Node::Conv { weight, bias, act_weight, act, .. } => {
                     // The fp16 kernel/bias resolve through elem offsets; find
-                    // their file tensors by matching offset to table.
+                    // their file tensors by matching offset to table. PRelu's
+                    // slope rides `act_weight` (zero otherwise) and marks the
+                    // same way — an unmarked slope would emit as a host row
+                    // and the file would carry it twice.
+                    let slope = matches!(act, Act::PRelu(_));
                     for (index, tensor) in table.iter().enumerate() {
                         if !tensor.dtype.is_quantised()
                             && (tensor.elem_offset() == *weight
-                                || tensor.elem_offset() == *bias)
+                                || tensor.elem_offset() == *bias
+                                || (slope && tensor.elem_offset() == *act_weight))
                         {
                             node_refs.insert(index, ());
                         }
@@ -932,6 +1138,15 @@ pub fn emit_sampler(
     // reference no buffer.
     let buffer_offsets: Vec<flatbuffers::WIPOffset<fb::Buffer<'_>>> = Vec::new();
     let _ = buffer_offsets;
+    // Roles must cover the graph inputs exactly: a missing role is an input
+    // the bridge cannot bind, an extra one a name with no tensor.
+    if roles.len() != input_ids.len() {
+        return Err(format!(
+            "entry point {entry_name} declares {} roles for {} graph inputs",
+            roles.len(),
+            input_ids.len()
+        ));
+    }
     // NOTE: assembly continues below; tensor/buffer vectors need the payloads
     // built first. The full builder sequence is in `assemble`.
     let assembled = assemble(
@@ -946,6 +1161,9 @@ pub fn emit_sampler(
         converter_version,
         source_sha256,
         graph_digest,
+        graph_name,
+        entry_name,
+        roles,
     )?;
     let _ = assembled;
 
@@ -959,6 +1177,40 @@ pub fn emit_sampler(
     op_inventory.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
 
     Ok(Emitted { bytes: builder.finished_data().to_vec(), graph_digest, op_inventory })
+}
+
+/// Emit a MAML v2 model from one recorded sampler branch.
+///
+/// Thin wrapper over [`emit_graph`] with the sampler's graph/entry names and
+/// its seven roles in `build` order. The dual-branch plan is two submits of
+/// the single branch, so one graph serves both.
+pub fn emit_sampler(
+    recorded: &Recorded,
+    table: &[WeightTensor],
+    data: &[u8],
+    description: &str,
+    converter_version: &str,
+    source_sha256: [u8; 32],
+) -> Result<Emitted, String> {
+    emit_graph(
+        recorded,
+        table,
+        data,
+        description,
+        converter_version,
+        source_sha256,
+        "sampler",
+        "encode",
+        &[
+            "noisy_latent",
+            "text",
+            "style_keys",
+            "style_values",
+            "shifts",
+            "query_angles",
+            "key_angles",
+        ],
+    )
 }
 
 /// Build the FlatBuffers vectors and finish the model.
@@ -975,6 +1227,9 @@ fn assemble(
     converter_version: &str,
     source_sha256: [u8; 32],
     graph_digest: [u8; 32],
+    graph_name: &str,
+    entry_name: &str,
+    roles: &[&str],
 ) -> Result<(), String> {
     // Weight payloads become Buffers; each emitted weight tensor points at
     // its buffer. Computed tensors (buffer -1) and host tensors (no bytes)
@@ -1028,7 +1283,13 @@ fn assemble(
             block,
         );
         let (buffer, buffer_offset) = match buffer_of[position] {
-            Some(_) => (position as i32, 0u64),
+            // The buffers-vector index, NOT the emitted position: host rows
+            // (no bytes) occupy tensor indices but push no buffer, so every
+            // buffered tensor after the first host row would otherwise point
+            // one buffer too far. The sampler's host rows sit at the end of
+            // the table, which is why this only surfaced with maia's
+            // early elo tables.
+            Some(buffer) => (buffer as i32, 0u64),
             None => (-1, 0u64),
         };
         let placement =
@@ -1128,7 +1389,7 @@ fn assemble(
     let scope = builder.create_vector(&scope);
     let graph_inputs = builder.create_vector(input_ids);
     let graph_outputs = builder.create_vector(outputs);
-    let graph_name = builder.create_string("sampler");
+    let graph_name = builder.create_string(graph_name);
     let graph = fb::Graph::create(
         builder,
         &fb::GraphArgs {
@@ -1141,21 +1402,13 @@ fn assemble(
     );
     let graphs = builder.create_vector(&[graph]);
 
-    // Entry point: `encode` over graph 0. Roles bind positionally to the
-    // graph inputs (the sampler's seven, in `build` order).
-    let entry_name = builder.create_string("encode");
-    let roles: Vec<flatbuffers::WIPOffset<&str>> = [
-        "noisy_latent",
-        "text",
-        "style_keys",
-        "style_values",
-        "shifts",
-        "query_angles",
-        "key_angles",
-    ]
-    .iter()
-    .map(|role| builder.create_string(role))
-    .collect();
+    // Entry point over graph 0. Roles bind positionally to the graph inputs;
+    // the caller guarantees they cover the inputs exactly.
+    let entry_name = builder.create_string(entry_name);
+    let roles: Vec<flatbuffers::WIPOffset<&str>> = roles
+        .iter()
+        .map(|role| builder.create_string(role))
+        .collect();
     let roles = builder.create_vector(&roles);
     let entry_point = fb::EntryPoint::create(
         builder,

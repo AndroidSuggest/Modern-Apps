@@ -115,6 +115,15 @@ fn transition(b: &mut Builder, l: &mut Layers, x: Id, wide: u32, out: u32) -> Id
 
 /// Compile the whole forward pass.
 pub fn build(weights: &dyn WeightSource) -> Result<Plan, String> {
+    Ok(record(weights)?.plan)
+}
+
+/// Record the whole forward pass: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(weights: &dyn WeightSource) -> Result<crate::nets::Recorded, String> {
     let mut b = Builder::new(weights);
     let mut layers = Layers { next: 0 };
     let l = &mut layers;
@@ -190,7 +199,7 @@ pub fn build(weights: &dyn WeightSource) -> Result<Plan, String> {
         1,
         Act::None,
     );
-    b.finish(&[embedding])
+    b.record(&[embedding], &crate::weights::Offsets::empty())
 }
 
 #[cfg(test)]

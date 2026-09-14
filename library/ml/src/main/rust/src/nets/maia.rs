@@ -309,6 +309,15 @@ fn encoder_block(b: &mut Builder, l: &mut Layers, x: Id) -> Id {
 /// `post::maia` turns them into the 4352-logit move vector; see [`crate::post::maia`] for
 /// why the promotion head runs over all 64 positions rather than the eight it needs.
 pub fn build(weights: &dyn WeightSource) -> Result<Plan, String> {
+    Ok(record(weights)?.plan)
+}
+
+/// Record the forward pass: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(weights: &dyn WeightSource) -> Result<crate::nets::Recorded, String> {
     let mut builder = Builder::new(weights);
     let b = &mut builder;
     // The elo tables are read on the host by `elo_embedding`, so nothing in the plan touches
@@ -342,7 +351,7 @@ pub fn build(weights: &dyn WeightSource) -> Result<Plan, String> {
     if policy.next != TENSORS {
         return Err(format!("the policy head ends at {}, not {TENSORS}", policy.next));
     }
-    builder.finish(&[scores, promo])
+    builder.record(&[scores, promo], &crate::weights::Offsets::empty())
 }
 
 /// The blended elo vector for `elo`, `ELO_DIM` long.

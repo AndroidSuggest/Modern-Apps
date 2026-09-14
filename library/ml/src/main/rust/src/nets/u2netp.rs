@@ -226,6 +226,15 @@ fn rsu4f(b: &mut Builder, layers: &mut Layers, x: Id) -> Id {
 /// Of the seven outputs the ONNX declares — the fused `d0` and the six per-scale side
 /// maps — only `d0` is produced. `MlSegmentation.kt` never read the others.
 pub fn build(weights: &dyn WeightSource) -> Result<Plan, String> {
+    Ok(record(weights)?.plan)
+}
+
+/// Record the whole forward pass: the resolved plan plus the graph.
+///
+/// [`build`] is this plus `Op` emission; the MAML v2 emitter needs the graph
+/// without the plan, after the same fusion fold and the same every-tensor
+/// rule. Split out so both share the body verbatim. See [`Builder::record`].
+pub fn record(weights: &dyn WeightSource) -> Result<crate::nets::Recorded, String> {
     let mut b = Builder::new(weights);
     let mut layers = Layers { next: 0 };
     let l = &mut layers;
@@ -275,7 +284,7 @@ pub fn build(weights: &dyn WeightSource) -> Result<Plan, String> {
     let fused = b.concat(&sides);
     let d0 = b.conv_same(fused, l.take(), 1, 1, 1, Act::Sigmoid);
 
-    b.finish(&[d0])
+    b.record(&[d0], &crate::weights::Offsets::empty())
 }
 
 #[cfg(test)]
