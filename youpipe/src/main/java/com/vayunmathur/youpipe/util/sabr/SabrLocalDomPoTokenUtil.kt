@@ -6,32 +6,13 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import org.schabi.newpipe.extractor.utils.JsonUtils
-import org.schabi.newpipe.extractor.utils.getObject
-import org.schabi.newpipe.extractor.utils.getString
 import java.util.Base64
 
-internal data class SabrAttChallengeData(
-    val program: String,
-    val globalName: String,
-    val interpreterUrl: String,
-)
-
-internal fun parseSabrAttChallengeData(rawAttestationData: String): SabrAttChallengeData {
-    val challenge = JsonUtils.toJsonObject(rawAttestationData).getObject("bgChallenge")
-        ?: throw IllegalArgumentException("Missing bgChallenge in attestation data")
-    val interpreterUrl = challenge.getObject("interpreterUrl")
-        ?.getString("privateDoNotAccessOrElseTrustedResourceUrlWrappedValue").orEmpty()
-    return SabrAttChallengeData(
-        program = challenge.getString("program").orEmpty(),
-        globalName = challenge.getString("globalName").orEmpty(),
-        interpreterUrl = if (interpreterUrl.startsWith("//")) {
-            "https:$interpreterUrl"
-        } else {
-            interpreterUrl
-        },
-    )
-}
-
+/**
+ * Builds the challenge payload handed to `pipepipeSabrRunBotguard` in `sabr_po_token.js`.
+ * Only the interpreter payload the page actually inlined is sent; the trusted URL is a hint
+ * the JS does not consume.
+ */
 internal fun buildSabrAttChallengeData(
     challengeData: SabrAttChallengeData,
     interpreterJavascript: String,
@@ -39,10 +20,6 @@ internal fun buildSabrAttChallengeData(
     return buildJsonObject {
         putJsonObject("interpreterJavascript") {
             put("privateDoNotAccessOrElseSafeScriptWrappedValue", interpreterJavascript)
-            put(
-                "privateDoNotAccessOrElseTrustedResourceUrlWrappedValue",
-                challengeData.interpreterUrl,
-            )
         }
         put("program", challengeData.program)
         put("globalName", challengeData.globalName)

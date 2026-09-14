@@ -46,13 +46,19 @@ function loadBotGuard(root, challengeData, onReady, onError) {
       };
     };
 
+    var noOp = function () {};
+    var loggerFunctions = [noOp, noOp, noOp, noOp, noOp];
+
     root.syncSnapshotFunction = root.vm.a(
       root.program,
       vmFunctionsCallback,
       true,
       root.userInteractionElement,
-      function () {},
-      [[], []]
+      noOp,
+      [[], []],
+      undefined,
+      false,
+      loggerFunctions
     )[0];
 
     root._botGuardPolls = 0;
@@ -167,9 +173,12 @@ function obtainPoToken(mintCallback, identifier) {
   return result;
 }
 
-function pipepipeSabrRunBotguard(sessionId, challengeData) {
+function pipepipeSabrRunBotguard(sessionId, eventId, challengeData) {
   var bridge = pipepipeBridge();
   try {
+    window.yt = window.yt || {};
+    window.yt.config_ = window.yt.config_ || {};
+    window.yt.config_.EVENT_ID = eventId;
     runBotGuard(
       challengeData,
       function (result) {

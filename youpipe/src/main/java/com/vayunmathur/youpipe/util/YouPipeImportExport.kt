@@ -4,6 +4,8 @@ import android.app.Application
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.library.util.AppMessages
+import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.data.HistoryVideo
 import com.vayunmathur.youpipe.data.Subscription
 import com.vayunmathur.youpipe.ui.VideoInfo
@@ -159,15 +161,36 @@ fun YouPipeViewModel.restoreSubscriptions(uri: Uri) {
         _isImporting.value = true
         try {
             val json = ctx.contentResolver.openInputStream(uri)!!.bufferedReader().readText()
-            val subs = Json.decodeFromString<List<Subscription>>(json)
-            repository.clearAllSubscriptions()
-            repository.upsertSubscriptions(subs)
+            val subs = decodeSubscriptionBackup(json)
+            if (subs == null) {
+                // #565: files shaped like {"version":1,"salt":"..."} are an encrypted/salted
+                // envelope written by another client, not a plain subscription list. There is no
+                // password UI to decrypt with, so report it instead of crashing on the decode.
+                Log.e(TAG, "Unsupported subscription backup format")
+                AppMessages.show(ctx.getString(R.string.restore_unsupported_format))
+            } else {
+                repository.clearAllSubscriptions()
+                repository.upsertSubscriptions(subs)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error restoring subscriptions", e)
+            AppMessages.show(ctx.getString(R.string.restore_unsupported_format))
         }
         _isImporting.value = false
         setupHourlyTask(ctx)
     }
+}
+
+/**
+ * Decodes a YouPipe subscription backup: a plain JSON array of [Subscription].
+ * Returns null when the file is a non-array envelope (e.g. an encrypted
+ * `{"version":..,"salt":..}` backup from another client) rather than throwing, so callers can
+ * report an unsupported-format message.
+ */
+internal fun decodeSubscriptionBackup(json: String): List<Subscription>? {
+    val trimmed = json.trimStart()
+    if (!trimmed.startsWith("[")) return null
+    return Json.decodeFromString<List<Subscription>>(json)
 }
 
 fun YouPipeViewModel.importNewPipe(uri: Uri) {

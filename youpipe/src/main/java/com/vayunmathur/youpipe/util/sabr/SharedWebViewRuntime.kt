@@ -505,7 +505,7 @@ class SharedWebViewRuntime private constructor(context: Context) {
         private const val DEFAULT_TIMEOUT_MS = 30_000L
         private const val READY_CALLBACK_ATTEMPT_TIMEOUT_MS = 5_000L
         private const val MAX_READY_CALLBACK_ATTEMPTS = 2
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+        internal const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.3"
 
         @Volatile private var instance: SharedWebViewRuntime? = null

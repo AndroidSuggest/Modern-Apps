@@ -37,6 +37,10 @@
 
     <!-- Video load error dialog text explaining YouTube may have blocked anonymous watch from IP -->
     <string name="video_load_error">Video load error - Youtube may have blocked anonymous watch access from this IP</string>
+    <!-- Snackbar: playback stopped mid-video (e.g. the stream could not be fetched). Sentence -->
+    <string name="playback_error">Playback stopped unexpectedly. Please try again.</string>
+    <!-- Snackbar: a subscription backup file is in an unsupported (e.g. encrypted) format. Sentence -->
+    <string name="restore_unsupported_format">This backup file format is not supported.</string>
     <!-- Button: go back from error dialog. Verb phrase -->
     <string name="action_go_back">Go Back</string>
     <!-- Tab label: comments section under video. Noun plural -->

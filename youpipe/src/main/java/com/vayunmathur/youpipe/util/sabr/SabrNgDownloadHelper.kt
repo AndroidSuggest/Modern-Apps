@@ -37,7 +37,7 @@ internal object SabrNgDownloadHelper {
         }
         val provider = LocalDomPoTokenProvider.shared(context.applicationContext)
         val tokenMinter: (Boolean) -> ByteArray? = { force ->
-            provider.getPoTokenBytes(videoId, info.getVisitorData(), force)
+            provider.getPoTokenBytes(videoId, force)
         }
         val poToken = tokenMinter(false)
         val spec = SabrNgSessionStore.createSourceSpec(

@@ -5,12 +5,17 @@ import org.schabi.newpipe.extractor.services.youtube.sabrng.exception.SabrAttest
 
 /**
  * Maintains the PO-token recovery budget for one SABR media acquisition. On a rejected attestation
- * identity it mints a fresh PO token and injects it into the session, mirroring PipePipe's
- * `SabrAttestationRetryHandler` (the #92 "rotate rejected SABR attestation identities" fix).
+ * identity it mints a fresh PO token and injects it into the session.
+ *
+ * The [tokenMinter] is invoked with `force=true`: [LocalDomPoTokenProvider] then tears down the
+ * burned BotGuard session and re-bootstraps from a fresh home page before minting, so every
+ * retry comes from a new attestation identity. Because each retry refreshes the global session,
+ * the identity is always fresh again after a rejection episode, including for the next
+ * acquisition — no separate exhaustion hook is needed.
  */
 internal class SabrAttestationRetryHandler(
     private val videoId: String,
-    private val tokenMinter: ((Boolean) -> ByteArray?)?
+    private val tokenMinter: ((Boolean) -> ByteArray?)?,
 ) {
     private var retriesRemaining = MAX_RETRIES
 

@@ -369,6 +369,10 @@ class YoutubeSabrSession @JvmOverloads constructor(
     @Synchronized
     fun setPoToken(value: ByteArray?) {
         poToken = value?.clone()
+        // A fresh token starts a fresh attestation epoch: "pending" responses observed so far
+        // belonged to the rejected identity, not this one. Without this reset the pending
+        // counter survives rotation and the new token trips the threshold on arrival (#565).
+        consecutiveAttestationPendingResponses = 0
     }
 
     internal fun getRawPoToken(): ByteArray? = poToken

@@ -1,80 +1,98 @@
 package com.vayunmathur.youpipe.util.sabr
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import androidx.core.content.edit
-import org.schabi.newpipe.extractor.services.youtube.sabrng.exception.SabrProtocolException
+import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
-import org.schabi.newpipe.extractor.services.youtube.InnertubeClientRequestInfo
-import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper
 import org.schabi.newpipe.extractor.services.youtube.YoutubeSessionPoToken
 import org.schabi.newpipe.extractor.services.youtube.YoutubeSessionPoTokenProvider
-import java.security.MessageDigest
+import org.schabi.newpipe.extractor.services.youtube.sabrng.exception.SabrProtocolException
 import java.util.Base64
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.FutureTask
 
-internal fun youtubeCredentialIdentity(loggedIn: Boolean, tokens: String?): String {
-    val digest = MessageDigest.getInstance("SHA-256")
-    digest.update(if (loggedIn) 1.toByte() else 0.toByte())
-    if (loggedIn) {
-        digest.update(0.toByte())
-        digest.update(tokens.orEmpty().toByteArray(Charsets.UTF_8))
-    }
-    return Base64.getUrlEncoder().withoutPadding().encodeToString(digest.digest())
-}
-
-internal class CredentialIdentityTracker(private val onChanged: () -> Unit) {
-    private var observedIdentity: String? = null
-
-    @Synchronized
-    fun observe(identity: String) {
-        val previous = observedIdentity
-        if (previous != null && previous != identity) {
-            onChanged()
-        }
-        observedIdentity = identity
-    }
-}
-
-class LocalDomPoTokenProvider(context: Context) :
-    YoutubeSessionPoTokenProvider {
-    private data class CachedToken(
-        val token: ByteArray,
-        val mintedAtMs: Long,
-        val visitorData: String,
-        val credentialIdentity: String,
+/**
+ * Global PO-token minter for the session-based SABR stack.
+ *
+ * Port of PipePipe's `LocalDomPoTokenProvider` (post-#84 rewrite): a single mint session is
+ * bootstrapped from the YouTube home page ([parseYoutubePageAttestationBootstrap]) and every
+ * token — per-video content tokens for SABR playback/downloads and the session token for the
+ * WEB player fetch — is minted from that one BotGuard session. The previous design minted each
+ * video's token from its own `youtubei/v1/att/get` UNBOUND attestation, whose tokens the server
+ * leaves at attestation-pending forever (#565: playback stalls mid-video after 6 no-media
+ * responses).
+ *
+ * When the server rejects the attestation identity, [invalidate] tears the whole session down
+ * and re-bootstraps from a fresh home page (upstream `invalidate()`), so the next mint comes
+ * from a new identity instead of re-minting from the burned one.
+ */
+class LocalDomPoTokenProvider(context: Context) : YoutubeSessionPoTokenProvider {
+    private data class MintState(
+        val bootstrap: YoutubePageAttestationBootstrap,
+        val generator: LocalDomPoTokenGenerator,
+        val sessionPoToken: ByteArray?,
     )
 
     private val appContext = context.applicationContext
-    private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    private val cache = ConcurrentHashMap<String, CachedToken>()
-    private val mintLocks = ConcurrentHashMap<String, Any>()
-    private val generatorLock = Any()
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var generatorVisitorData: String? = null
-    private var generatorCredentialIdentity: String? = null
-    private var generator: LocalDomPoTokenGenerator? = null
-    private var rawSessionPoToken: ByteArray? = null
-    private val visitorDataLock = Any()
-    private var fetchedVisitorData: String? = null
-    private var fetchedVisitorDataLoggedIn: Boolean? = null
-    private var fetchedVisitorDataCredentialIdentity: String? = null
-    private var visitorDataFetchedAtMs: Long = 0
-    private val credentialIdentityTracker = CredentialIdentityTracker(
-        onChanged = ::invalidateCredentialBoundState,
-    )
-    private val prewarmLock = Any()
-    private val prewarmExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "YoutubeSessionPoTokenPrewarm")
+    private val initializationExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "YoutubePoTokenWarmup").apply { isDaemon = true }
     }
-    private var prewarmCredentialIdentity: String? = null
-    private var prewarmTask: FutureTask<YoutubeSessionPoToken?>? = null
+    private val initializationLock = Any()
+
+    @Volatile
+    private var initializationTask: FutureTask<MintState>? = null
+
+    fun warmUp() {
+        ensureInitializationTask()
+    }
+
+    /**
+     * Raw PO token bytes for the session-based SABR stack ([SabrNgSession]), minted from the
+     * global home-page session for [videoId].
+     */
+    @JvmOverloads
+    fun getPoTokenBytes(
+        videoId: String,
+        forceRefresh: Boolean = false,
+    ): ByteArray? {
+        if (forceRefresh) {
+            invalidate()
+        }
+        val state = getState()
+        return when (state.bootstrap.binding) {
+            YoutubePoTokenBinding.CONTENT -> state.generator.mint(videoId)
+            YoutubePoTokenBinding.SESSION ->
+                requireNotNull(state.sessionPoToken).clone()
+            YoutubePoTokenBinding.NONE -> throw SabrProtocolException(
+                "YouTube home does not enable a supported PO token binding",
+            )
+        }
+    }
+
+    /**
+     * Closes the rejected mint session and re-bootstraps from a fresh home page. Called when
+     * the server rejects the attestation identity so the next mint does not come from the
+     * burned session. Port of upstream `LocalDomPoTokenProvider.invalidate()`.
+     */
+    fun invalidate() {
+        val sessionToClose: LocalDomPoTokenGenerator
+        synchronized(initializationLock) {
+            val task = initializationTask ?: return
+            if (!task.isDone || task.isCancelled) return
+            val state = try {
+                task.get()
+            } catch (_: Exception) {
+                return
+            }
+            initializationTask = null
+            sessionToClose = state.generator
+        }
+        sessionToClose.close()
+        Log.i(TAG, "Invalidated rejected PO token minter")
+        warmUp()
+    }
 
     override fun getSessionPoToken(
         clientName: String,
@@ -82,35 +100,22 @@ class LocalDomPoTokenProvider(context: Context) :
         contentCountry: ContentCountry,
         loggedIn: Boolean,
     ): YoutubeSessionPoToken? {
-        val credentialIdentity = currentCredentialIdentity(loggedIn)
-        val inFlightPrewarm = synchronized(prewarmLock) {
-            prewarmTask?.takeIf {
-                prewarmCredentialIdentity == credentialIdentity && !it.isDone
-            }
+        val state = getState()
+        if (state.bootstrap.binding == YoutubePoTokenBinding.NONE) {
+            throw SabrProtocolException(
+                "YouTube home does not enable a supported PO token binding",
+            )
         }
-        if (inFlightPrewarm != null) {
-            try {
-                return inFlightPrewarm.get()
-            } catch (error: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw SabrProtocolException(
-                    "Interrupted waiting for session PO token prewarm",
-                    error,
-                )
-            } catch (error: ExecutionException) {
-                throw SabrProtocolException(
-                    "Session PO token prewarm failed",
-                    error.cause ?: error,
-                )
-            }
-        }
-        return getSessionPoTokenNow(
-            clientName,
-            localization,
-            contentCountry,
-            loggedIn,
-            credentialIdentity,
+        // Token for the WEB player request's serviceIntegrityDimensions, bound to the same
+        // BotGuard session as the per-video SABR tokens.
+        val rawToken = state.sessionPoToken
+            ?: state.generator.mint(state.bootstrap.visitorData)
+        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(rawToken)
+        Log.i(
+            TAG,
+            "session token ready client=$clientName loggedIn=$loggedIn bytes=${rawToken.size}",
         )
+        return YoutubeSessionPoToken(state.bootstrap.visitorData, encoded)
     }
 
     fun prewarmSessionPoToken(
@@ -118,303 +123,100 @@ class LocalDomPoTokenProvider(context: Context) :
         contentCountry: ContentCountry,
         loggedIn: Boolean,
     ) {
-        val credentialIdentity = currentCredentialIdentity(loggedIn)
-        synchronized(prewarmLock) {
-            val current = prewarmTask
-            if (prewarmCredentialIdentity == credentialIdentity && current != null &&
-                !current.isDone
-            ) {
-                return
-            }
-            val task = FutureTask {
-                val startMs = android.os.SystemClock.elapsedRealtime()
-                if (currentCredentialIdentity(currentlyLoggedIn()) !=
-                    credentialIdentity
-                ) {
-                    Log.i(TAG, "session token prewarm skipped after credentials changed")
-                    return@FutureTask null
-                }
-                try {
-                    getSessionPoTokenNow(
-                        PREWARM_CLIENT_NAME,
-                        localization,
-                        contentCountry,
-                        loggedIn,
-                        credentialIdentity,
-                    ).also {
-                        Log.i(
-                            TAG,
-                            "session token prewarm ready in " +
-                                "${android.os.SystemClock.elapsedRealtime() - startMs}ms",
-                        )
+        warmUp()
+    }
+
+    private fun getState(): MintState {
+        while (true) {
+            val task = ensureInitializationTask()
+            val state = try {
+                task.get()
+            } catch (error: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw SabrProtocolException("Global PO token initialization interrupted", error)
+            } catch (error: ExecutionException) {
+                synchronized(initializationLock) {
+                    if (initializationTask === task) {
+                        initializationTask = null
                     }
+                }
+                val cause = error.cause ?: error
+                throw SabrProtocolException(
+                    "Global PO token initialization failed: ${cause.message}",
+                    cause,
+                )
+            }
+            if (!state.generator.isExpired()) {
+                return state
+            }
+            synchronized(initializationLock) {
+                if (initializationTask === task) {
+                    initializationTask = null
+                    state.generator.close()
+                }
+            }
+        }
+    }
+
+    private fun ensureInitializationTask(): FutureTask<MintState> {
+        initializationTask?.let { return it }
+        synchronized(initializationLock) {
+            initializationTask?.let { return it }
+            val task = FutureTask {
+                val bootstrap = fetchHomeBootstrap()
+                if (bootstrap.binding == YoutubePoTokenBinding.NONE) {
+                    throw SabrProtocolException(
+                        "YouTube home does not enable a supported PO token binding",
+                    )
+                }
+                val generator = LocalDomPoTokenGenerator.create(appContext, bootstrap)
+                try {
+                    val sessionPoToken =
+                        if (bootstrap.binding == YoutubePoTokenBinding.SESSION) {
+                            generator.mint(bootstrap.visitorData)
+                        } else {
+                            null
+                        }
+                    Log.i(
+                        TAG,
+                        "Global PO minter ready client=${bootstrap.clientName} " +
+                            "version=${bootstrap.clientVersion} " +
+                            "binding=${bootstrap.binding}",
+                    )
+                    MintState(bootstrap, generator, sessionPoToken)
                 } catch (error: Throwable) {
-                    Log.w(TAG, "session token prewarm failed", error)
+                    generator.close()
                     throw error
                 }
             }
-            prewarmCredentialIdentity = credentialIdentity
-            prewarmTask = task
-            prewarmExecutor.execute(task)
+            initializationTask = task
+            initializationExecutor.execute(task)
+            return task
         }
     }
 
-    private fun getSessionPoTokenNow(
-        clientName: String,
-        localization: Localization,
-        contentCountry: ContentCountry,
-        loggedIn: Boolean,
-        credentialIdentity: String,
-    ): YoutubeSessionPoToken? {
-        credentialIdentityTracker.observe(credentialIdentity)
-        val visitorData = getOrFetchVisitorData(
-            localization,
-            contentCountry,
-            loggedIn,
-            credentialIdentity,
+    private fun fetchHomeBootstrap(): YoutubePageAttestationBootstrap {
+        val downloader = NewPipe.getDownloader()
+        val response = downloader.get(
+            YOUTUBE_HOME,
+            mapOf(
+                "Accept-Language" to listOf("en-US"),
+                "Cookie" to listOf(ANONYMOUS_COOKIE),
+                "User-Agent" to listOf(SharedWebViewRuntime.USER_AGENT),
+            ),
         )
-        val rawToken = getRawSessionPoToken(visitorData, credentialIdentity)
-        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(rawToken)
-        Log.i(
-            TAG,
-            "session token ready client=$clientName loggedIn=$loggedIn bytes=${rawToken.size}",
-        )
-        return YoutubeSessionPoToken(visitorData, encoded)
-    }
-
-    /**
-     * Raw PO token bytes for the session-based SABR stack ([SabrNgSession]); takes the
-     * videoId/visitorData directly so it does not depend on the legacy `sabr` package types.
-     */
-    @JvmOverloads
-    fun getPoTokenBytes(
-        videoId: String,
-        visitorDataHint: String?,
-        forceRefresh: Boolean = false,
-    ): ByteArray? {
-        val credentialIdentity = currentCredentialIdentity(currentlyLoggedIn())
-        credentialIdentityTracker.observe(credentialIdentity)
-        val visitorData = visitorDataHint ?: synchronized(visitorDataLock) {
-            fetchedVisitorData
-        } ?: throw SabrProtocolException("Missing visitorData for Local DOM PO token")
-        if (forceRefresh) {
-            cache.remove(videoId)
-            prefs.edit { remove(videoId) }
-        }
-        synchronized(mintLocks.computeIfAbsent(videoId) { Any() }) {
-            val now = System.currentTimeMillis()
-            val cached = cache[videoId]
-                ?: diskLoad(videoId)?.also { cache[videoId] = it }
-            if (cached != null && cached.visitorData == visitorData &&
-                cached.credentialIdentity == credentialIdentity &&
-                now - cached.mintedAtMs < TOKEN_TTL_MS
-            ) {
-                Log.i(TAG, "cache hit video=$videoId bytes=${cached.token.size}")
-                return cached.token
-            }
-            val token = ensureGenerator(visitorData, credentialIdentity)
-                .generateRawPoToken(videoId)
-            cache[videoId] = CachedToken(token, now, visitorData, credentialIdentity)
-            diskSave(videoId, token, now, visitorData, credentialIdentity)
-            Log.i(TAG, "mint complete video=$videoId bytes=${token.size}")
-            return token
-        }
-    }
-
-    fun hasCachedToken(videoId: String): Boolean {
-        val credentialIdentity = currentCredentialIdentity(currentlyLoggedIn())
-        credentialIdentityTracker.observe(credentialIdentity)
-        val mem = cache[videoId]
-        if (mem != null && mem.credentialIdentity == credentialIdentity &&
-            System.currentTimeMillis() - mem.mintedAtMs < TOKEN_TTL_MS
-        ) {
-            return true
-        }
-        return diskLoad(videoId)?.credentialIdentity == credentialIdentity
-    }
-
-    fun clearCachedToken(videoId: String) {
-        synchronized(mintLocks.computeIfAbsent(videoId) { Any() }) {
-            cache.remove(videoId)
-            prefs.edit(commit = true) { remove(videoId) }
-        }
-    }
-
-    private fun ensureGenerator(
-        visitorData: String,
-        credentialIdentity: String,
-    ): LocalDomPoTokenGenerator {
-        synchronized(generatorLock) {
-            val current = generator
-            if (current != null && !current.isExpired() &&
-                generatorVisitorData == visitorData &&
-                generatorCredentialIdentity == credentialIdentity &&
-                rawSessionPoToken != null
-            ) {
-                return current
-            }
-            if (!credentialsStillMatch(credentialIdentity)) {
-                throw SabrProtocolException(
-                    "YouTube credentials changed before PO token generator initialization",
-                )
-            }
-            current?.let { mainHandler.post { it.close() } }
-            val fresh = LocalDomPoTokenGenerator.create(appContext)
-            val freshSessionPoToken = fresh.generateRawPoToken(visitorData)
-            if (!credentialsStillMatch(credentialIdentity)) {
-                mainHandler.post { fresh.close() }
-                throw SabrProtocolException(
-                    "YouTube credentials changed during PO token generator initialization",
-                )
-            }
-            generator = fresh
-            generatorVisitorData = visitorData
-            generatorCredentialIdentity = credentialIdentity
-            rawSessionPoToken = freshSessionPoToken
-            return fresh
-        }
-    }
-
-    private fun getRawSessionPoToken(
-        visitorData: String,
-        credentialIdentity: String,
-    ): ByteArray {
-        synchronized(generatorLock) {
-            ensureGenerator(visitorData, credentialIdentity)
-            return rawSessionPoToken?.clone()
-                ?: throw SabrProtocolException("Local DOM session PO token is missing")
-        }
-    }
-
-    private fun getOrFetchVisitorData(
-        localization: Localization,
-        contentCountry: ContentCountry,
-        loggedIn: Boolean,
-        credentialIdentity: String,
-    ): String {
-        synchronized(visitorDataLock) {
-            val now = System.currentTimeMillis()
-            val cached = fetchedVisitorData
-            if (cached != null && fetchedVisitorDataLoggedIn == loggedIn &&
-                fetchedVisitorDataCredentialIdentity == credentialIdentity &&
-                now - visitorDataFetchedAtMs < VISITOR_DATA_TTL_MS
-            ) {
-                return cached
-            }
-
-            val headers = HashMap<String, List<String>>()
-            headers.putAll(YoutubeParsingHelper.getYouTubeHeaders())
-            headers["Content-Type"] = listOf("application/json")
-            if (loggedIn) {
-                YoutubeParsingHelper.addLoggedInHeaders(headers)
-            }
-            val fresh = YoutubeParsingHelper.getVisitorDataFromInnertube(
-                InnertubeClientRequestInfo.ofWebClient(),
-                localization,
-                contentCountry,
-                headers,
-                YoutubeParsingHelper.YOUTUBEI_V1_URL,
-                null,
-                false,
-            )
-            if (!credentialsStillMatch(credentialIdentity)) {
-                throw SabrProtocolException(
-                    "YouTube credentials changed while fetching visitorData",
-                )
-            }
-            fetchedVisitorData = fresh
-            fetchedVisitorDataLoggedIn = loggedIn
-            fetchedVisitorDataCredentialIdentity = credentialIdentity
-            visitorDataFetchedAtMs = now
-            return fresh
-        }
-    }
-
-    // This fork does not support an authenticated YouTube session.
-    private fun currentlyLoggedIn(): Boolean = false
-
-    private fun currentCredentialIdentity(loggedIn: Boolean): String {
-        return youtubeCredentialIdentity(loggedIn, null)
-    }
-
-    private fun credentialsStillMatch(credentialIdentity: String): Boolean {
-        return currentCredentialIdentity(currentlyLoggedIn()) == credentialIdentity
-    }
-
-    private fun invalidateCredentialBoundState() {
-        synchronized(visitorDataLock) {
-            fetchedVisitorData = null
-            fetchedVisitorDataLoggedIn = null
-            fetchedVisitorDataCredentialIdentity = null
-            visitorDataFetchedAtMs = 0
-        }
-        synchronized(generatorLock) {
-            generator?.let { mainHandler.post { it.close() } }
-            generator = null
-            generatorVisitorData = null
-            generatorCredentialIdentity = null
-            rawSessionPoToken = null
-        }
-        cache.clear()
-        prefs.edit(commit = true) { clear() }
-        Log.i(TAG, "YouTube credentials changed; cleared credential-bound PO token state")
-    }
-
-    private fun diskLoad(videoId: String): CachedToken? {
-        val value = prefs.getString(videoId, null) ?: return null
-        val parts = value.split('|', limit = 4)
-        if (parts.size != 4) {
-            prefs.edit { remove(videoId) }
-            return null
-        }
-        return try {
-            val mintedAt = parts[0].toLong()
-            if (System.currentTimeMillis() - mintedAt >= TOKEN_TTL_MS) {
-                prefs.edit { remove(videoId) }
-                null
-            } else {
-                val visitorData = String(
-                    Base64.getUrlDecoder().decode(parts[2]),
-                    Charsets.UTF_8,
-                )
-                CachedToken(
-                    Base64.getUrlDecoder().decode(parts[3]),
-                    mintedAt,
-                    visitorData,
-                    parts[1],
-                )
-            }
-        } catch (error: IllegalArgumentException) {
-            null
-        }
-    }
-
-    private fun diskSave(
-        videoId: String,
-        token: ByteArray,
-        mintedAt: Long,
-        visitorData: String,
-        credentialIdentity: String,
-    ) {
-        val encoder = Base64.getUrlEncoder().withoutPadding()
-        val encodedVisitorData = encoder.encodeToString(
-            visitorData.toByteArray(Charsets.UTF_8),
-        )
-        val encodedToken = encoder.encodeToString(token)
-        prefs.edit(commit = true) {
-            putString(
-                videoId,
-                "$mintedAt|$credentialIdentity|$encodedVisitorData|$encodedToken",
+        if (response.responseCode() != 200) {
+            throw SabrProtocolException(
+                "YouTube home initialization failed: ${response.responseCode()}",
             )
         }
+        return parseYoutubePageAttestationBootstrap(response.responseBody())
     }
 
     companion object {
         private const val TAG = "SabrLocalDomPoToken"
-        private const val PREFS = "sabr_local_dom_video_token_cache"
-        private const val TOKEN_TTL_MS = 6L * 60L * 60L * 1000L
-        private const val VISITOR_DATA_TTL_MS = 6L * 60L * 60L * 1000L
-        private const val PREWARM_CLIENT_NAME = "WEB"
+        private const val YOUTUBE_HOME = "https://www.youtube.com"
+        private const val ANONYMOUS_COOKIE = "PREF=hl=en&gl=US"
 
         @Volatile
         private var sharedInstance: LocalDomPoTokenProvider? = null

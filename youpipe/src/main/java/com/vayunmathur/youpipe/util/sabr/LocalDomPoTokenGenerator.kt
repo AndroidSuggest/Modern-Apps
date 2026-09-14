@@ -9,9 +9,18 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * Mints PO tokens inside the shared WebView runtime from a home-page attestation bootstrap.
+ *
+ * Port of PipePipe's `PersistentMintSession`: the BotGuard challenge comes from the YouTube home
+ * page (`window.ytAtN`, parsed by [parseYoutubePageAttestationBootstrap]) and the run is bound
+ * to the page's EVENT_ID. The previous `youtubei/v1/att/get` UNBOUND flow minted tokens the
+ * server leaves at attestation-pending forever (#565).
+ */
 internal class LocalDomPoTokenGenerator private constructor(
     context: Context,
     private val initialization: InitWaiter,
+    private val bootstrap: YoutubePageAttestationBootstrap,
 ) : Closeable {
     private val appContext = context.applicationContext
     private val runtime = SharedWebViewRuntime.get(appContext)
@@ -37,7 +46,7 @@ internal class LocalDomPoTokenGenerator private constructor(
 
     @Synchronized
     @Throws(SabrProtocolException::class)
-    fun generateRawPoToken(identifier: String): ByteArray {
+    fun mint(identifier: String): ByteArray {
         if (closed) {
             throw SabrProtocolException("Local DOM PO token generator is closed")
         }
@@ -115,7 +124,7 @@ internal class LocalDomPoTokenGenerator private constructor(
                 val response = downloader.post(
                     url,
                     mapOf(
-                        "User-Agent" to listOf(USER_AGENT),
+                        "User-Agent" to listOf(SharedWebViewRuntime.USER_AGENT),
                         "Accept" to listOf("application/json"),
                         "Content-Type" to listOf(contentType),
                         "x-goog-api-key" to listOf(GOOGLE_API_KEY),
@@ -146,7 +155,7 @@ internal class LocalDomPoTokenGenerator private constructor(
                 val response = downloader.get(
                     url,
                     mapOf(
-                        "User-Agent" to listOf(USER_AGENT),
+                        "User-Agent" to listOf(SharedWebViewRuntime.USER_AGENT),
                         "Accept" to listOf("*/*"),
                     ),
                 )
@@ -195,34 +204,33 @@ internal class LocalDomPoTokenGenerator private constructor(
     }
 
     private fun downloadAndRunBotguard() {
-        makeBotguardServiceRequest(
-            "https://www.youtube.com/youtubei/v1/att/get?prettyPrint=false",
-            """{"context":{"client":{"clientName":"WEB","clientVersion":"$ATT_CLIENT_VERSION"}},"engagementType":"ENGAGEMENT_TYPE_UNBOUND"}""",
-            contentType = "application/json",
-            onSuccess = { body ->
-                try {
-                    val challenge = parseSabrAttChallengeData(body)
-                    makeBotguardGetRequest(
-                        challenge.interpreterUrl,
-                        onSuccess = { interpreterJavascript ->
-                            val challengeData = buildSabrAttChallengeData(
-                                challenge,
-                                interpreterJavascript,
-                            )
-                            runtime.evaluateJavascript(
-                                "pipepipeSabrRunBotguard(" + jsString(sessionId)
-                                    + ", " + challengeData + ");",
-                                null,
-                            ) { error -> failInitialization(error) }
-                        },
-                        onError = ::failInitialization,
-                    )
-                } catch (error: Throwable) {
-                    failInitialization(error)
-                }
-            },
-            onError = ::failInitialization,
-        )
+        val challenge = bootstrap.challenge
+        val inlineInterpreter = challenge.interpreterJavascript
+        if (inlineInterpreter != null) {
+            runBotguard(challenge, inlineInterpreter)
+        } else {
+            val url = challenge.interpreterUrl
+                ?: return failInitialization(
+                    SabrProtocolException("Attestation challenge has no interpreter script or URL")
+                )
+            makeBotguardGetRequest(
+                url,
+                onSuccess = { runBotguard(challenge, it) },
+                onError = ::failInitialization,
+            )
+        }
+    }
+
+    private fun runBotguard(
+        challenge: SabrAttChallengeData,
+        interpreterJavascript: String,
+    ) {
+        val challengeData = buildSabrAttChallengeData(challenge, interpreterJavascript)
+        runtime.evaluateJavascript(
+            "pipepipeSabrRunBotguard(" + jsString(sessionId) + ", "
+                + jsString(bootstrap.eventId) + ", " + challengeData + ");",
+            null,
+        ) { error -> failInitialization(error) }
     }
 
     private fun onRunBotguardResult(botguardResponse: String) {
@@ -286,14 +294,14 @@ internal class LocalDomPoTokenGenerator private constructor(
         private const val INIT_TIMEOUT_MS = 60_000L
         private const val GOOGLE_API_KEY = "AIzaSyDyT5W0Jh49F30Pqqtyfdf7pDLFKLJoAnw"
         private const val REQUEST_KEY = "O43z0dpjhgX20SCx4KAo"
-        private const val ATT_CLIENT_VERSION = "2.20260227.01.00"
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.3"
 
         @Throws(SabrProtocolException::class)
-        fun create(context: Context): LocalDomPoTokenGenerator {
+        fun create(
+            context: Context,
+            bootstrap: YoutubePageAttestationBootstrap,
+        ): LocalDomPoTokenGenerator {
             val init = InitWaiter()
-            val generator = LocalDomPoTokenGenerator(context, init)
+            val generator = LocalDomPoTokenGenerator(context, init, bootstrap)
             generator.loadScriptAndInitialize()
             try {
                 if (!init.latch.await(INIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {

@@ -120,7 +120,7 @@ class PlaybackService : MediaSessionService() {
                         val vAudioItag = audioItag
                         val vAudioTrackId = audioTrackIdOverride
                         val tokenMinter: (Boolean) -> ByteArray? = { force ->
-                            provider.getPoTokenBytes(videoId, info.getVisitorData(), force)
+                            provider.getPoTokenBytes(videoId, force)
                         }
                         val specSupplier: () -> com.vayunmathur.youpipe.util.sabr.SabrNgSourceSpec = {
                             val poToken = tokenMinter(false)

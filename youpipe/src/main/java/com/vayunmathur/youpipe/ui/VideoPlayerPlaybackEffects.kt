@@ -12,6 +12,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -25,6 +26,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
+import com.vayunmathur.library.util.AppMessages
+import com.vayunmathur.youpipe.R
 import com.vayunmathur.youpipe.data.HistoryVideo
 import com.vayunmathur.youpipe.findActivity
 import com.vayunmathur.youpipe.platform.CastPlayback
@@ -96,6 +99,9 @@ internal fun VideoPlayerTransportObserver(
     val context = LocalContext.current
     var aspectRatio by aspectRatioState
     var cues by cuesState
+    // #565: a mid-playback SABR failure used to surface as a silent stall (the spinner spins,
+    // nothing says why). Surface ExoPlayer errors as a message so the user knows playback died.
+    val playbackErrorMessage = stringResource(R.string.playback_error)
     DisposableEffect(controller) {
         val player = controller ?: return@DisposableEffect onDispose {}
         // Sync initial playing state once controller is available
@@ -113,6 +119,10 @@ internal fun VideoPlayerTransportObserver(
                         )
                     }
                 }
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                android.util.Log.e("YouPipePlayer", "Playback error", error)
+                AppMessages.show(playbackErrorMessage)
             }
             override fun onIsPlayingChanged(isPlayingNow: Boolean) {
                 CastPlayback.update { it.copy(playing = isPlayingNow) }
