@@ -1,14 +1,20 @@
 package com.vayunmathur.library.ml
 
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
 import android.content.res.AssetManager
-import android.os.ParcelFileDescriptor
 import android.util.Log
+import java.nio.FloatBuffer
 
 /**
- * On-device human-move prediction for chess: Maia3-5M on the Vulkan compute runtime.
+ * On-device human-move prediction for chess: Maia3-5M on the reduced ONNX Runtime build.
  *
  * An encoder-only transformer over 64 square tokens — width 256, 8 blocks, 8 heads — at 5.23
- * million parameters. See `library/ml/src/main/rust/src/nets/maia.rs`.
+ * million parameters. The export (`scripts/ml/maia_to_onnx.py` from `UofTCSSLab/Maia3-5M`)
+ * takes `tokens [1, 64, 97]` (square-major planes × 8 plies + clock column) plus the two elo
+ * scalars and returns the 4352 move logits directly (from-to pairs plus file promotions).
+ * Validated against the torch reference at correlation 1.0, argmax-exact.
  *
  * # It predicts, it does not search
  *
@@ -23,21 +29,10 @@ import android.util.Log
  * the model as a blend of two learned embeddings. One weights file therefore covers every
  * difficulty; there is nothing to reload when the player changes it.
  *
- * # One bundled asset, 6.8 MiB
+ * # One bundled asset, ~21 MiB
  *
- * `maia3-5m.maml` ships inside the APK, so this has an [inAssets] and no download. Every
- * convolution is int8, quantised per output channel from the fp32 checkpoint; the norms, the
- * biases and the two elo embeddings stay fp16 and are 1% of the parameters. It replaces an
- * 86 MB NNUE, so the APK is about 79 MB smaller.
- *
- * int8 rather than fp16 because it was measured: `scripts/ml/maia_quant_eval.py` puts move
- * agreement against fp32 at 99.0% to 99.5% across the four difficulties, and every
- * disagreement is a position where the top two legal moves are closer together than fp16
- * rounding alone would separate them. The same harness rejects int4 at 87% to 91%.
- *
- * An asset must be stored **uncompressed** for this to work at all: `AssetManager.openFd`
- * throws for a deflated entry. That is what `noCompress += "maml"` in
- * `games/chess/build.gradle.kts` is for.
+ * `maia3-5m.onnx` ships inside the APK, so this has an [inAssets] and no download. An asset
+ * must be stored **uncompressed** (`noCompress += "onnx"` in `games/chess/build.gradle.kts`).
  *
  * # The caller owns the chess
  *
@@ -48,9 +43,8 @@ import android.util.Log
  *
  * # Availability
  *
- * Construction never throws. [isAvailable] is false when `libmodelrunner.so` is missing for
- * this ABI, when the asset is absent, compressed or malformed, or when the device cannot give
- * us a Vulkan device with fp16 compute — and then [logits] returns null. The chess app gates
+ * Construction never throws. [isAvailable] is false when the asset is absent or has an
+ * operator outside the reduced build — and then [logits] returns null. The chess app gates
  * its "play against the AI" option on it rather than offering a mode that cannot move.
  *
  * # Threading
@@ -58,17 +52,19 @@ import android.util.Log
  * Not thread-safe. A caller must hold a lock across [logits] and [close].
  */
 class MaiaHandle private constructor(private val source: String) : AutoCloseable {
-    private var handle: Long = 0L
+    private var session: OrtSession? = null
+    private var assetPath: String = GRAPH
 
     /** True if the graph came up and is the file this runtime was built against. */
-    val isAvailable: Boolean get() = handle != 0L
+    val isAvailable: Boolean get() = session != null
 
     /**
      * The [MOVES] move logits for a board, or null on failure.
      *
      * [planes] is `PLANE_COUNT * SQUARES` floats, plane-major, with square `rank * 8 + file`
      * so a1 is 0 and h8 is 63. The planes are white P, N, B, R, Q, K then black P, N, B, R, Q,
-     * K.
+     * K. They are repeated across the 8 history plies here (the model was trained with
+     * `use_uci_history=False`, so all plies hold the current board).
      *
      * **The board must already be from the mover's side.** When black is to move the caller
      * mirrors it vertically and swaps the colours, and un-mirrors the move it picks. Passing
@@ -79,16 +75,57 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
      * are always rank 7 to rank 8, because the board is mirrored for black.
      */
     fun logits(planes: FloatArray, selfElo: Int, oppoElo: Int): FloatArray? {
-        if (handle == 0L) return null
+        val live = session ?: return null
         if (planes.size != PLANE_COUNT * SQUARES) return null
-        return MlNative.maiaLogits(handle, planes, selfElo, oppoElo)
+        return try {
+            // Square-major [64, 12] -> [64, 96] across 8 plies + zero clock column.
+            val tokens = FloatArray(SQUARES * TOKEN_WIDTH)
+            for (square in 0 until SQUARES) {
+                for (ply in 0 until HISTORY) {
+                    for (plane in 0 until PLANE_COUNT) {
+                        tokens[square * TOKEN_WIDTH + ply * PLANE_COUNT + plane] =
+                            planes[plane * SQUARES + square]
+                    }
+                }
+            }
+            val env = OrtEnvironment.getEnvironment()
+            val tokenTensor = OnnxTensor.createTensor(
+                env, FloatBuffer.wrap(tokens), longArrayOf(1, SQUARES.toLong(), TOKEN_WIDTH.toLong()),
+            )
+            val selfTensor = OnnxTensor.createTensor(
+                env, floatArrayOf(selfElo.coerceIn(0, MAX_ELO).toFloat()),
+            )
+            val oppoTensor = OnnxTensor.createTensor(
+                env, floatArrayOf(oppoElo.coerceIn(0, MAX_ELO).toFloat()),
+            )
+            tokenTensor.useOrt {
+                selfTensor.useOrt {
+                    oppoTensor.useOrt {
+                        live.run(
+                            mapOf(
+                                "tokens" to tokenTensor,
+                                "self_elo" to selfTensor,
+                                "oppo_elo" to oppoTensor,
+                            ),
+                        ).useOrt { result ->
+                            val out = result.get("moves").get() as OnnxTensor
+                            val vec = FloatArray(MOVES)
+                            out.floatBuffer.get(vec)
+                            vec
+                        }
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "maia inference failed", e)
+            null
+        }
     }
 
-    /** Free the network and close the weights file. Idempotent. */
+    /** Free the network. Idempotent. */
     override fun close() {
-        val live = handle
-        handle = 0L
-        if (live != 0L) MlNative.destroyMaia(live)
+        session = null
+        OnnxSessions.close("asset:$assetPath")
     }
 
     override fun toString(): String = "Maia3-5M from $source"
@@ -102,69 +139,31 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
         /** Board planes: six piece types for each colour. */
         const val PLANE_COUNT = 12
 
+        /** History plies (all hold the current board) plus the clock column. */
+        const val HISTORY = 8
+        const val TOKEN_WIDTH = 97
+
         /** Entries in the move vocabulary: 64x64 from-to pairs plus 8x8x4 promotions. */
         const val MOVES = 4352
 
         /** The highest rating the model interpolates to. Higher inputs clamp to it. */
         const val MAX_ELO = 5000
 
-        /** The one graph. Native checks its graph id, so a wrong file fails at load. */
-        const val GRAPH = "maia3-5m.maml"
+        /** The one graph. A wrong file fails at load. */
+        const val GRAPH = "maia3-5m.onnx"
 
         /**
          * The model from the APK's assets, which is the only place it lives.
          *
-         * No `inDirectory` counterpart: at 6.8 MiB this is bundled, so there is no download
+         * No `inDirectory` counterpart: at ~21 MiB this is bundled, so there is no download
          * directory to look in.
          */
         fun inAssets(assets: AssetManager, path: String = GRAPH): MaiaHandle {
             val instance = MaiaHandle("the APK's $path")
-            instance.handle = if (!MlNative.isAvailable) {
-                0L
-            } else {
-                try {
-                    create(assets, path)
-                } catch (e: Throwable) {
-                    Log.e(TAG, "cannot open $path", e)
-                    0L
-                }
-            }
+            instance.assetPath = path
+            instance.session = OnnxSessions.openAssetManager(assets, path)
+            if (instance.session == null) Log.e(TAG, "cannot open $path")
             return instance
-        }
-
-        /**
-         * Open the asset and hand the descriptor over.
-         *
-         * `use` rather than a bare `close`, and it is load-bearing in both directions — the
-         * same argument [ClipHandle]'s asset path makes. On the happy path the descriptor has
-         * already been detached and `AssetFileDescriptor.close` only releases the wrapper; if
-         * `detachFd` throws instead, the close is the real one, and a leaked descriptor onto
-         * the APK would last the life of the process.
-         *
-         * The inner `finally` covers the remaining window: after the descriptor has been given
-         * up but before native has adopted it.
-         */
-        private fun create(assets: AssetManager, path: String): Long =
-            assets.openFd(path).use { afd ->
-                val fd = afd.parcelFileDescriptor.detachFd()
-                var handed = false
-                try {
-                    val handle = MlNative.createMaia(fd, afd.startOffset, afd.length)
-                    handed = true
-                    handle
-                } finally {
-                    if (!handed) closeFd(fd)
-                }
-            }
-
-        /**
-         * Close a bare descriptor.
-         *
-         * Adopting it into a [ParcelFileDescriptor] is the only way to reach `close(2)` from
-         * Kotlin. Failures are swallowed because the caller is already on an error path.
-         */
-        private fun closeFd(fd: Int) {
-            runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
         }
     }
 }
