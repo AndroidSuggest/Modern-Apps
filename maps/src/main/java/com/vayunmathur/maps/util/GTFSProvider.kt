@@ -4,6 +4,17 @@ import android.content.Context
 import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Last-resort route-colour lookup from a GTFS `routes.txt`.
+ *
+ * Pack-first: [OfflineRouterRouteBuilder] prefers the `route_color` baked into
+ * the transit pack and only falls back here. The lookup opens
+ * `assets/<feedName>/routes.txt` from the APK; no feed assets ship anymore
+ * (the SLO-only `US-CA-SLOT/` folder and the orphan `world_map.png` were
+ * deleted — the world pack covers San Francisco and the sidecars never did),
+ * so this returns null when absent rather than failing. API unchanged: the
+ * CSV parser is covered by `GTFSProviderTest`.
+ */
 object GTFSProvider {
     // Accessed concurrently from OfflineRouter.getRoute (Dispatchers.Default)
     // and from the map layers on the Main thread, so use a thread-safe map —

@@ -11,6 +11,8 @@ import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.ParkingSpot
 import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.data.SpecificFeature
+import com.vayunmathur.maps.data.google.GooglePoiInfo
+import com.vayunmathur.maps.data.google.PoiSection
 import com.vayunmathur.maps.data.transit.TransitStop
 import com.vayunmathur.maps.ipc.FamilyMember
 import com.vayunmathur.maps.ui.map.MapChromeState
@@ -26,6 +28,30 @@ import com.vayunmathur.maps.util.SearchResult
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
 import com.vayunmathur.maps.util.TransitStopsViewModel
 import kotlinx.coroutines.CoroutineScope
+
+/**
+ * Coarse identity of the place enrichment for the inner place sheet's
+ * contentKey: review/photo counts plus featured-review presence.
+ *
+ * Late-arriving reviews and photos grow the sheet content after measurement,
+ * which the scaffold's learned ceiling would otherwise never re-learn. Kept
+ * to counts/presence rather than the full lists so progressive review
+ * streaming settles the key (null → base → final) instead of resetting the
+ * ceiling on every partial.
+ */
+data class PoiEnrichmentKey(
+    val reviewCount: Int,
+    val photoCount: Int,
+    val hasFeaturedReview: Boolean,
+) {
+    companion object {
+        fun of(poi: GooglePoiInfo?): PoiEnrichmentKey = PoiEnrichmentKey(
+            reviewCount = poi?.reviews?.size ?: 0,
+            photoCount = poi?.photoUrls?.size ?: 0,
+            hasFeaturedReview = poi?.featuredReview != null,
+        )
+    }
+}
 
 /**
  * An open search sheet.
@@ -71,6 +97,21 @@ internal class MapPageScope(
     val selectedFeature: SpecificFeature?,
     val inactiveNavigation: SpecificFeature.Route?,
     val route: Map<RouteService.TravelMode, RouteService.RouteType?>?,
+    /**
+     * Which of the place sheet's Details / Photos / Reviews tabs is showing.
+     * Part of the inner place sheet's contentKey (with [poiEnrichmentKey]):
+     * each tab is a different content height, and without the tab in the key
+     * a sheet opened on Details keeps its low learned ceiling on Reviews.
+     */
+    val poiSection: PoiSection,
+    /**
+     * Coarse enrichment signature for the inner place sheet's contentKey.
+     * Late-arriving reviews/photos grow the content after measurement, which
+     * the learned ceiling would otherwise never re-learn; kept to
+     * counts/presence (not the full lists) so progressive review streaming
+     * settles the key instead of resetting it on every partial.
+     */
+    val poiEnrichmentKey: PoiEnrichmentKey,
     val userPosition: GeoPoint,
     val userBearing: Float?,
     val userHeadingAccuracy: Int,

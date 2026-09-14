@@ -85,7 +85,15 @@ internal fun MapPageScope.MapSheets(
                     Modifier.padding(horizontal = Spacing.lg).padding(top = Spacing.sm),
                 )
             },
-            contentKey = listOf(selectedFeature, chrome.selectedRouteType),
+            // The selection, the route-type, the POI tab AND the enrichment
+            // identity: each names a different content height. The tab because
+            // Details content teaches the scaffold a low ceiling that would
+            // trap the taller Reviews list; the enrichment signature because
+            // late-arriving reviews/photos grow the content after measurement.
+            // Coarse (counts/presence, not the lists) so progressive streaming
+            // settles the key instead of resetting it on every partial. Wide
+            // layout has no sheet (MapSidePanel) and needs no key.
+            contentKey = listOf(selectedFeature, chrome.selectedRouteType, poiSection, poiEnrichmentKey),
         ) { _ ->
             MapContentBox(Modifier.fillMaxSize())
         }

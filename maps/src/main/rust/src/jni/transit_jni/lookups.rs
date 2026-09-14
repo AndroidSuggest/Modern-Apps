@@ -3,10 +3,40 @@
 //! Pure move out of `super` (`transit_jni.rs`); no logic changes.
 
 use jni::objects::{JObject, JString};
-use jni::sys::{jdouble, jstring};
+use jni::sys::{jboolean, jdouble, jstring};
 use jni::JNIEnv;
 
 use super::cache::transit_index;
+
+// ---------------------------------------------------------------------------
+// JNI: hasTransitArchiveNative (does the archive carry a transit section?)
+// ---------------------------------------------------------------------------
+
+/// Whether `<base_path>/basemap.mamaps` carries a transit section (kind 13).
+///
+/// The Kotlin discovery gate calls this before listing per-region
+/// `<base>/*.transit` files: on an archive-only device there are no sidecar
+/// files, so without this the gate finds nothing and every transit entry
+/// point short-circuits before any JNI call. A pure presence probe — it reads
+/// the archive's section directory without parsing the TRIX pack — so it is
+/// cheap enough to call on every entry.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_maps_util_OfflineRouter_hasTransitArchiveNative<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _thiz: JObject<'local>,
+    base_path: JString<'local>,
+) -> jboolean {
+    let base: String = match env.get_string(&base_path) {
+        Ok(s) => s.into(),
+        Err(_) => return 0,
+    };
+    let present = crate::transit::TransitIndex::has_archive_transit(
+        &crate::graph::archive_path(&base),
+    );
+    present as jboolean
+}
 
 // ---------------------------------------------------------------------------
 // JNI: getFeedTimezoneNative (IANA tz of the feed covering a coordinate)

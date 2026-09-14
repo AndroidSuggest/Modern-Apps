@@ -40,6 +40,23 @@ private const val VEHICLE_TICK_MS = 1_000L
 private const val VEHICLE_MIN_ZOOM = 11.0
 
 /**
+ * How far the bbox centre may drift (degrees) before a recompute is forced.
+ * A degree of latitude is ~111 km, so this is ~50 m: a static camera reuses
+ * the last enumeration rather than paying a JNI round-trip plus a full marker
+ * rebuild every second for sprites that moved a few metres.
+ */
+private const val VEHICLE_BBOX_TOLERANCE_DEG = 0.0005
+
+/**
+ * How many consecutive 1 Hz ticks may reuse the last enumeration while the
+ * camera is static. Positions are interpolated per recompute, so an unbounded
+ * skip would freeze the sprites; this bounds the staleness to a few seconds
+ * (a few dozen metres at transit speeds) while still cutting the steady-state
+ * JNI + recomposition rate of a stationary map.
+ */
+private const val VEHICLE_MAX_REUSE_TICKS = 3
+
+/**
  * The simulated in-service transit vehicles for the visible bbox, recomputed at ~1 Hz and mapped to
  * renderer markers, or an empty list when the transit layer is off, the surface is hidden, or the
  * camera is zoomed too far out (see [VEHICLE_MIN_ZOOM]).
@@ -80,24 +97,50 @@ fun rememberTransitVehicles(
             vehicles = emptyList()
             return@LaunchedEffect
         }
+        // Last enumeration, reused while the camera is static (see below).
+        var lastCentreLat = Double.NaN
+        var lastCentreLon = Double.NaN
+        var lastZoom = Double.NaN
+        var reuseTicks = 0
         while (true) {
             val bounds = camera.visibleBoundsOrWorld()
-            vehicles = if (camera.position.zoom < VEHICLE_MIN_ZOOM) {
-                emptyList()
-            } else {
-                OfflineRouter.activeVehicles(
-                    context,
-                    minLat = bounds.south,
-                    minLon = bounds.west,
-                    maxLat = bounds.north,
-                    maxLon = bounds.east,
-                ).map { v ->
-                    MapMarker(
-                        id = v.id,
-                        position = GeoPoint(longitude = v.lon, latitude = v.lat),
-                        icon = gtfsModeToMarkerIcon(v.mode),
-                    )
+            val zoom = camera.position.zoom
+            val centreLat = (bounds.south + bounds.north) / 2.0
+            val centreLon = (bounds.west + bounds.east) / 2.0
+            // A static camera reuses the last enumeration: the native call
+            // interpolates positions per recompute, but a second of drift is
+            // metres at transit speeds while the JNI round-trip plus the
+            // marker-list rebuild and re-push cost every tick. Bounded by
+            // VEHICLE_MAX_REUSE_TICKS so the sprites never freeze; reusing the
+            // same list instance also skips recomposition downstream.
+            val cameraStatic = zoom >= VEHICLE_MIN_ZOOM &&
+                kotlin.math.abs(centreLat - lastCentreLat) < VEHICLE_BBOX_TOLERANCE_DEG &&
+                kotlin.math.abs(centreLon - lastCentreLon) < VEHICLE_BBOX_TOLERANCE_DEG &&
+                kotlin.math.abs(zoom - lastZoom) < 0.25
+            if (!cameraStatic || reuseTicks >= VEHICLE_MAX_REUSE_TICKS) {
+                vehicles = if (zoom < VEHICLE_MIN_ZOOM) {
+                    emptyList()
+                } else {
+                    OfflineRouter.activeVehicles(
+                        context,
+                        minLat = bounds.south,
+                        minLon = bounds.west,
+                        maxLat = bounds.north,
+                        maxLon = bounds.east,
+                    ).map { v ->
+                        MapMarker(
+                            id = v.id,
+                            position = GeoPoint(longitude = v.lon, latitude = v.lat),
+                            icon = gtfsModeToMarkerIcon(v.mode),
+                        )
+                    }
                 }
+                lastCentreLat = centreLat
+                lastCentreLon = centreLon
+                lastZoom = zoom
+                reuseTicks = 0
+            } else {
+                reuseTicks++
             }
             delay(VEHICLE_TICK_MS)
         }

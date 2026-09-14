@@ -308,3 +308,65 @@
         assert_eq!((ride.dep_secs, ride.arr_secs), (28_800, 29_400));
         std::fs::remove_file(&path).ok();
     }
+
+    // The Kotlin discovery gate's presence probe: an archive with section 13
+    // reads present, a tiles-only archive (or a missing/garbage file) reads
+    // absent. Unix only, same mmap reason as the test above.
+    #[cfg(unix)]
+    #[test]
+    fn has_archive_transit_sees_section_thirteen() {
+        let pack = one_route_pack().build_with_version(VERSION);
+        let bytes = archive_with_pack(&pack);
+        let path = std::env::temp_dir().join(format!(
+            "transit_presence_{}.mamaps",
+            std::process::id()
+        ));
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(
+            TransitIndex::has_archive_transit(path.to_str().unwrap()),
+            "an archive built with a transit section reads present"
+        );
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn has_archive_transit_refuses_a_tiles_only_archive() {
+        // Same tiles-only container as
+        // `an_archive_without_a_transit_section_yields_no_index`: no section
+        // 13, so the probe reads absent and Kotlin keeps the legacy
+        // per-file path rather than advertising transit it cannot plan.
+        let mut header = archive_header(0);
+        let mut out = vec![0u8; 4096];
+        while out.len() as u64 % ARCHIVE_ALIGN != 0 {
+            out.push(0);
+        }
+        let dir_offset = out.len() as u64;
+        let (dir, _) = tilecodec::mamaps::archive::serialize_dir(&[], ARCHIVE_BUILD_ID, dir_offset);
+        out.extend_from_slice(&dir);
+        let footer = ArchiveFooter {
+            dir_offset,
+            dir_len: dir.len() as u64,
+            build_id: ARCHIVE_BUILD_ID,
+        };
+        out.extend_from_slice(&footer.serialize());
+        header.file_len = out.len() as u64;
+        let head = header.serialize();
+        out[..head.len()].copy_from_slice(&head);
+        let path = std::env::temp_dir().join(format!(
+            "transit_presence_tiles_only_{}.mamaps",
+            std::process::id()
+        ));
+        std::fs::write(&path, &out).unwrap();
+        assert!(
+            !TransitIndex::has_archive_transit(path.to_str().unwrap()),
+            "a tiles-only archive reads absent"
+        );
+        assert!(
+            !TransitIndex::has_archive_transit(
+                path.with_extension("missing").to_str().unwrap()
+            ),
+            "a missing file reads absent rather than panicking"
+        );
+        std::fs::remove_file(&path).ok();
+    }

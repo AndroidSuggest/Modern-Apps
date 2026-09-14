@@ -1,6 +1,7 @@
 package com.vayunmathur.maps.util
 
 import android.content.Context
+import android.util.Log
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.util.ConnectivityMonitor
 import com.vayunmathur.maps.data.transit.Departure
@@ -14,8 +15,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /**
- * Offline transit planning over the per-region `*.transit` packs, extracted from
- * [OfflineRouter] to keep that file under the length limit.
+ * Offline transit planning over the on-device transit pack - the world pack
+ * inside `<base>/basemap.mamaps` when the archive carries it, else the legacy
+ * per-region sidecar packs - extracted from [OfflineRouter] to keep that file
+ * under the length limit.
  *
  * The JNI surface (native methods, `RawStep`/`RawDeparture`/`RawVehicle`, the traffic fetch
  * callback) stays on [OfflineRouter] — native code resolves those by class and member name, so
@@ -51,9 +54,13 @@ internal object OfflineRouterTransit {
     /**
      * Pack names under the base path, listed once.
      *
-     * Every transit entry point used to `listFiles` this directory and loop over
-     * the result; in practice there is exactly one pack. Cleared by [onReload], which
-     * [OfflineRouter.reload] calls once a download has replaced it.
+     * The single-archive `basemap.mamaps` already ships the world transit
+     * pack as section 13 (packed by `mamaps_pack --transit`), and the native
+     * index reads it first - so an archive-present device reports a single
+     * `world` pseudo-feed that routes every transit entry point to that
+     * archive path. Legacy per-file sidecar packs are the fallback for
+     * archives without a transit section. Cleared by [onReload], which
+     * [OfflineRouter.reload] calls once a download has replaced the archive.
      */
     @Volatile
     private var cachedTransitFeeds: List<String>? = null
@@ -65,6 +72,18 @@ internal object OfflineRouterTransit {
 
     private fun transitFeeds(base: String): List<String> {
         cachedTransitFeeds?.let { return it }
+        // Archive first: on an archive-only device there are no sidecar files,
+        // so a file listing alone would disable offline transit everywhere.
+        // The probe reads the archive section directory only (no pack parse);
+        // a negative simply falls through to the legacy per-file list below.
+        // The native index reads the archive first and ignores the feed name
+        // on that path, so this stable pseudo-feed routes there.
+        if (runCatching { OfflineRouter.hasTransitArchiveNative(base) }.getOrDefault(false)) {
+            Log.d("OfflineRouterTransit", "archive transit section found")
+            val feeds = listOf("world")
+            cachedTransitFeeds = feeds
+            return feeds
+        }
         val feeds = File(base)
                 .listFiles { f -> f.isFile && f.name.endsWith(".transit") }
                 ?.map { it.name.removeSuffix(".transit") }
@@ -77,8 +96,9 @@ internal object OfflineRouterTransit {
 
     /**
      * Offline transit routing (P11d): plan a journey with the on-device RAPTOR
-     * planner over any downloaded per-region `*.transit` index that covers the
-     * endpoints. Returns null when no index is present/covering or no journey is
+     * planner over the transit pack covering the endpoints (the world pack in
+     * the archive when present, else a downloaded per-region sidecar index).
+     * Returns null when no index is present/covering or no journey is
      * found — the caller then falls back to the P10 online Transitous planner.
      *
      * Runs at most **two** RAPTOR passes: a schedule-only plan, then, when the
@@ -199,7 +219,7 @@ internal object OfflineRouterTransit {
     }
 
     /**
-     * The stop nearest `(lat, lon)` from the baked `*.transit` packs, as a
+     * The stop nearest `(lat, lon)` from the on-device transit pack, as a
      * [TransitStop] whose id is the MOTIS/Transitous id so the realtime board can
      * query it. Null when no pack covers the point.
      *
@@ -227,7 +247,7 @@ internal object OfflineRouterTransit {
 
     /**
      * Simulated moving transit vehicles within the visible bbox (WS-F). Positions
-     * are interpolated on-device from each downloaded `*.transit` pack's schedule +
+     * are interpolated on-device from the on-device pack's schedule +
      * shape by the native `activeVehiclesNative`; there is no live GPS feed. The
      * result is meant to be recomputed at ~1 Hz by a ticker (the renderer's frame
      * clock smooths motion between recomputes) and pushed to the map overlay.
@@ -287,7 +307,7 @@ internal object OfflineRouterTransit {
     }
 
     /**
-     * Departure board from the baked `*.transit` index for the stop nearest
+     * Departure board from the on-device transit index for the stop nearest
      * `(lat,lon)`. Scheduled times come from the pack; when the device is online
      * the MOTIS board for that stop is folded in as a realtime overlay, so
      * `delayMinutes`/`realTime`/`cancelled` are live. Returns an empty list when

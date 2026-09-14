@@ -31,6 +31,13 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
     /** What [acceptsFix] compares against. Kept beside [lastLocation] so the two never disagree. */
     private var lastFix: Fix? = null
     private var currentHeading: Float? = null
+    /**
+     * Last compass heading actually emitted to the UI. The emit gate compares
+     * against this rather than the previous sensor sample: smoothing moves a
+     * fraction of the remaining gap per sample, so during a slow turn each
+     * step is sub-degree while the accumulated movement is real.
+     */
+    private var lastEmittedHeading: Float? = null
     /** Listener we registered with the OS so [stop] can unregister it. */
     private var registeredLocationListener: LocationListener? = null
 
@@ -55,6 +62,10 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
                 lastLocation = location
                 // If location has a GPS bearing, we prioritize it while moving
                 val heading = if (location.hasBearing()) location.bearing else currentHeading
+                // A GPS fix is authoritative: re-anchor the compass emit gate so
+                // the next sensor sample compares against what the UI just drew
+                // rather than a pre-fix heading.
+                if (location.hasBearing()) lastEmittedHeading = location.bearing
                 onUpdate?.invoke(GeoPoint(location.longitude, location.latitude), heading)
             }
             @Deprecated("Overrides deprecated LocationListener.onStatusChanged")
@@ -93,9 +104,12 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
         onAccuracy = null
         // Otherwise a restart compares the first fix against one from the previous session and
         // can reject it: `elapsedRealtimeNanos` keeps counting while updates are unregistered,
-        // so the old fix would look fresh enough to keep winning.
+        // so the old fix would look fresh enough to keep winning. The heading gate is reset
+        // for the same reason: the first compass sample must always emit.
         lastFix = null
         lastLocation = null
+        currentHeading = null
+        lastEmittedHeading = null
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -121,9 +135,15 @@ class FrameworkLocationManager(context: Context) : SensorEventListener {
             // renderer takes it away.
             currentHeading = smoothHeading(currentHeading, newHeading)
 
-            // Update UI if we have a location but the user is standing still
+            // Update UI if we have a location but the user is standing still.
+            // Gated on movement since the last EMIT (not the last sample):
+            // the sensor fires at ~60 ms whether or not the phone turned, and
+            // an ungated emit pushes userPosition/userBearing through the page
+            // (and wakes the renderer) at sensor rate even on a desk. Location
+            // fixes bypass this — they always emit.
             lastLocation?.let {
-                if (!it.hasBearing()) {
+                if (!it.hasBearing() && headingDelta(lastEmittedHeading, currentHeading ?: newHeading) >= HEADING_EMIT_DEGREES) {
+                    lastEmittedHeading = currentHeading
                     onUpdate?.invoke(GeoPoint(it.longitude, it.latitude), currentHeading)
                 }
             }
@@ -164,6 +184,26 @@ internal fun smoothHeading(
  * kill the jitter without the cone visibly trailing a deliberate turn.
  */
 private const val HEADING_SMOOTHING = 0.15f
+
+/**
+ * Minimum smoothed-heading movement (degrees) that re-emits the compass update.
+ * The sensor fires at ~60 ms even when the phone is sitting on a desk, and every
+ * emission used to push `userPosition`/`userBearing` through the page and wake the
+ * renderer — so a stationary phone recomposed at sensor rate for a heading that
+ * had converged to a tenth of a degree. Below this delta the cone cannot move a
+ * visible pixel, and the update is dropped.
+ */
+private const val HEADING_EMIT_DEGREES = 1.0f
+
+/**
+ * Shortest-arc distance between two headings, in degrees. Null [current] (the
+ * first reading) counts as infinitely far: the initial fix must always emit.
+ */
+internal fun headingDelta(current: Float?, target: Float): Float {
+    if (current == null) return Float.MAX_VALUE
+    val delta = (target - current + 540f) % 360f - 180f
+    return kotlin.math.abs(delta)
+}
 
 /**
  * The part of a fix that decides whether it is worth taking, independent of `android.location`

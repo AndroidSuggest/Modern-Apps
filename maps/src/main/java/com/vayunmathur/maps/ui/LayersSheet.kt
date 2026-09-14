@@ -71,8 +71,9 @@ fun LayersSheet(
                 )
             }
 
-            // Transit — live (P10). Shows nearby stops; tap a stop for its
-            // live departure board (Transitous, online-only).
+            // Transit — offline rail lines + moving vehicles from the on-device
+            // pack, and a departure board for the stop nearest a tap. Stop pins
+            // themselves are a tracked renderer gap ([TransitStopsLayer]).
             SettingsSwitchRow(
                 title = stringResource(R.string.layer_transit),
                 supportingText = stringResource(R.string.layer_transit_desc),

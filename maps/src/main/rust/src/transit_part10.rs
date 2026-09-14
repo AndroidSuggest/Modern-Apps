@@ -10,6 +10,31 @@ use tilecodec::mamaps::archive::{ARCHIVE_KIND_TRANSIT, ArchiveView};
 use tilecodec::mamaps::header::Header;
 
 impl TransitIndex {
+    /// Whether `path` is a single-archive (`.mamaps`) carrying a transit
+    /// section (kind 13).
+    ///
+    /// A pure presence probe for the Kotlin discovery gate: it maps the
+    /// container and reads its section directory, without parsing the TRIX
+    /// pack itself, so it is cheap and safe to call on every transit entry.
+    /// False when the file is missing, the container is corrupt, or the
+    /// archive simply has no transit section (a tiles-only build).
+    pub fn has_archive_transit(path: &str) -> bool {
+        let Some(region) = MmapRegion::map(path) else {
+            return false;
+        };
+        // The mapping must cover the whole file: ArchiveView::parse checks
+        // `bytes.len() == header.file_len`, and a short mapping would refuse
+        // a good archive rather than read past it.
+        let bytes = unsafe { std::slice::from_raw_parts(region.base(), region.len) };
+        let Ok(header) = Header::parse(bytes) else {
+            return false;
+        };
+        let Ok(view) = ArchiveView::parse(bytes, &header) else {
+            return false;
+        };
+        view.location(ARCHIVE_KIND_TRANSIT).is_some()
+    }
+
     /// Load the transit pack from a single-archive `.mamaps` file.
     ///
     /// Returns `None` when the container is corrupt, the build id disagrees,

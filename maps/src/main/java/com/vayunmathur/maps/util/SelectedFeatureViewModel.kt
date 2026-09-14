@@ -40,6 +40,28 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
         _poiSection.value = section
     }
 
+    /**
+     * The route tab the sheet is showing (DRIVE by default). Read once per
+     * selection by [routes] so the visible tab's mode plans first; the flow
+     * restarts on the next selection change anyway, so this is a plain var
+     * rather than a collected flow (collecting it would re-plan every mode
+     * on each tab switch). Synced from the chrome tab in MapPage.
+     */
+    var selectedRouteMode: RouteService.TravelMode = RouteService.TravelMode.DRIVE
+
+    /**
+     * Coalescing gates for the review-streaming partials in [currentPoiInfo]:
+     * forward a partial only when the list grew by [PARTIAL_MIN_GROWTH]
+     * reviews or [PARTIAL_MIN_INTERVAL_MS] elapsed since the last forward.
+     * Dozens of per-parse emissions used to recompose the sheet for a list
+     * the user barely sees change; the authoritative final send still always
+     * runs, so a dropped partial loses nothing.
+     */
+    private companion object {
+        const val PARTIAL_MIN_GROWTH = 5
+        const val PARTIAL_MIN_INTERVAL_MS = 2_000L
+    }
+
     /** A pending request for the map to fly to [position] (at [zoom] when set) and
      *  show the place bottom PANE (peek), the Vela-style place card. Backed by a
      *  StateFlow so a request made before MapPage is composed (a cold-start deep
@@ -164,11 +186,28 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
                 // failure/timeout just leaves reviews empty and the sheet as-is.
                 val fid = base?.featureId
                 if (base != null && !fid.isNullOrBlank()) {
+                    // Coalesce the progressive partials: the scraper streams the
+                    // accumulated list on every parse, and each trySend
+                    // recomposes the sheet that collects this flow. Forward a
+                    // partial only when it grew meaningfully or enough time
+                    // passed; the authoritative final send below still always
+                    // runs, so nothing is ever lost by a dropped partial.
+                    var lastPartialSize = 0
+                    var lastPartialMs = 0L
                     val reviews = runCatching {
                         webReviews.fetch(
                             featureId = fid,
                             onPartial = { list ->
-                                if (list.isNotEmpty()) trySend(base.copy(reviews = list))
+                                if (list.isNotEmpty()) {
+                                    val nowMs = System.currentTimeMillis()
+                                    if (list.size - lastPartialSize >= PARTIAL_MIN_GROWTH ||
+                                        nowMs - lastPartialMs >= PARTIAL_MIN_INTERVAL_MS
+                                    ) {
+                                        lastPartialSize = list.size
+                                        lastPartialMs = nowMs
+                                        trySend(base.copy(reviews = list))
+                                    }
+                                }
                             },
                         )
                     }.getOrDefault(emptyList())
@@ -183,16 +222,32 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
         )
 
     // Move heavy computation to a background StateFlow
+    //
+    // The selected tab's mode is computed first and emitted immediately, so
+    // the visible route overlay resolves after one plan instead of four: the
+    // old sequential loop emitted five maps (empty + one per mode) through
+    // `scan`, and every emission re-resolved the route overlay/traffic tables
+    // and re-pushed to the renderer. The remaining modes compute lazily off
+    // the critical path and arrive in a single coalesced map. [selectedRouteMode]
+    // is read once per selection (not collected): the flow restarts on the
+    // next selection change anyway, and collecting the tab here would re-plan
+    // every mode on each tab switch.
     @OptIn(ExperimentalCoroutinesApi::class)
     val routes = selectedFeature
         .flatMapLatest { feature ->
             val pos = userPosition.value
+            val selectedMode = selectedRouteMode
             val routeFeature = feature as? SpecificFeature.Route ?: return@flatMapLatest flowOf(null)
 
-            // Create a flow that emits results one by one
             flow {
-                // Start with an empty map
                 emit(emptyMap())
+
+                suspend fun plan(mode: RouteService.TravelMode): RouteService.RouteType? =
+                    try {
+                        OfflineRouter.getRouteForMode(application, routeFeature, pos, mode)
+                    } catch (_: Exception) {
+                        null
+                    } ?: RouteService.EmptyRoute()
 
                 // Offline-first routing with chained multi-waypoint support.
                 // TRANSIT prefers the on-device RAPTOR planner over any
@@ -200,14 +255,15 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
                 // falls back to the P10 online Transitous (MOTIS) planner.
                 // getRouteForMode owns that split so the road graph, which has no
                 // timetable, never sees TRANSIT.
-                RouteService.TravelMode.entries.forEach { mode ->
-                    val result = try {
-                        OfflineRouter.getRouteForMode(application, routeFeature, pos, mode)
-                    } catch (_: Exception) {
-                        null
-                    }
-                    emit(mapOf(mode to (result ?: RouteService.EmptyRoute())))
+                val first = plan(selectedMode)
+                emit(mapOf(selectedMode to first))
+
+                val rest = mutableMapOf<RouteService.TravelMode, RouteService.RouteType?>()
+                for (mode in RouteService.TravelMode.entries) {
+                    if (mode == selectedMode) continue
+                    rest[mode] = plan(mode)
                 }
+                emit(mapOf(selectedMode to first) + rest)
             }
                 .scan(RouteService.TravelMode.entries.associateWith { null as RouteService.RouteType? }) { accumulator, newEntry ->
                     accumulator + newEntry // Combine the old map with the new calculation

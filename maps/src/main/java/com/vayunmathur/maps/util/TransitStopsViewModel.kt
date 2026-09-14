@@ -27,10 +27,11 @@ import kotlinx.coroutines.withContext
 /**
  * Drives the P10 public-transit UI: the departure board for a tapped stop.
  *
- * The stop *pins* are no longer this class's business — they render straight from
- * the baked `transit_stops` basemap layer (see
- * [com.vayunmathur.maps.ui.TransitStopsLayer]), since stops are static data and a
- * per-viewport fetch on every camera idle bought nothing.
+ * The stop *pins* are no longer this class's business — and currently nobody's:
+ * they used to render straight from the baked `transit_stops` basemap layer,
+ * but the renderer has no vector source-layer API so [com.vayunmathur.maps.ui.TransitStopsLayer]
+ * is a no-op until it grows one (tracked gap). Stop taps arrive via baked POI
+ * hits / station-POI nearest-stop resolution instead.
  *
  * [departures] is the board for the [openStop]-selected stop, re-fetched on
  * [refresh]. The live countdown itself is computed client-side in the sheet from
@@ -39,8 +40,9 @@ import kotlinx.coroutines.withContext
  * All network is on [Dispatchers.IO], and is skipped entirely when
  * [ConnectivityMonitor] reports no validated internet — otherwise every offline
  * lookup pays a full HTTP timeout. The departure board is offline-first: the
- * baked `.transit` pack supplies the schedule and MOTIS supplies the realtime
- * overlay on top of it.
+ * on-device transit pack (the world pack in the archive when present, else a
+ * legacy `*.transit` sidecar) supplies the schedule and MOTIS supplies the
+ * realtime overlay on top of it.
  */
 class TransitStopsViewModel(application: Application) : AndroidViewModel(application) {
 

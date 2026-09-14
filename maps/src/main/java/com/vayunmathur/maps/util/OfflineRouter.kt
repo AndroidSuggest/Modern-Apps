@@ -151,6 +151,19 @@ object OfflineRouter {
             max: Int
     ): Array<RawDeparture>?
     /**
+     * Whether `<basePath>/basemap.mamaps` carries a transit section (kind 13).
+     *
+     * The archive already ships the world transit pack (packed by
+     * `mamaps_pack --transit` and read archive-first by the native
+     * `transit_index`), but the Kotlin discovery gate used to list only the
+     * per-region sidecar packs under `<basePath>` - so on an archive-only
+     * device every transit entry point short-circuited before any JNI call.
+     * A pure presence probe (section directory only, no pack parse), cheap
+     * enough to call on every entry.
+     */
+    internal external fun hasTransitArchiveNative(basePath: String): Boolean
+
+    /**
      * IANA timezone of the feed covering `(lat,lon)` in the given pack, or null
      * when the pack is stale/absent, doesn't cover the point, or its GTFS had no
      * `agency.txt`. Callers resolve this before deriving any query times.
@@ -245,6 +258,14 @@ object OfflineRouter {
      * (a graph swap can renumber ids).
      */
     private val componentBySquare = java.util.concurrent.ConcurrentHashMap<Int, TrafficComponents>()
+    /**
+     * Last published merge, for the unchanged-content skip in
+     * [republishComponents]. Volatile (not confined): fetches complete on
+     * IO threads, so the read-modify-publish must tolerate races — the worst
+     * case is one redundant publish, never a missed one.
+     */
+    @Volatile
+    private var lastPublishedComponents: TrafficComponents? = null
     private val _trafficComponents =
             kotlinx.coroutines.flow.MutableStateFlow(TrafficComponents.EMPTY)
 
@@ -267,7 +288,18 @@ object OfflineRouter {
             System.arraycopy(s.ratioPct, 0, ratios, off, s.ratioPct.size)
             off += s.ids.size
         }
-        _trafficComponents.value = TrafficComponents(ids, ratios)
+        // Skip the publish when the merged content is unchanged: every fetch
+        // lands here, and a fresh object wakes the trafficComponents
+        // collectors (table rebuild + renderer re-push) even when a refetch
+        // returned identical bytes. Content-compare is O(n) against the same
+        // concat that already ran, far cheaper than the downstream rebuild.
+        val last = lastPublishedComponents
+        if (last != null && last.ids.contentEquals(ids) && last.ratioPct.contentEquals(ratios)) {
+            return
+        }
+        val snapshot = TrafficComponents(ids, ratios)
+        lastPublishedComponents = snapshot
+        _trafficComponents.value = snapshot
     }
 
     private var cacheDirPath: String? = null
@@ -488,7 +520,7 @@ object OfflineRouter {
     )
 
     private var isInitialized = false
-    /** Base dir (external files) holding downloaded packs incl. `*.transit`. */
+    /** Base dir (external files) holding the downloaded `basemap.mamaps` archive and legacy `*.transit` packs. */
     private var basePath: String? = null
 
     /**
@@ -525,6 +557,7 @@ object OfflineRouter {
         // A new graph vintage can renumber edge/component ids, so the display cache from the
         // old graph must not survive the swap.
         componentBySquare.clear()
+        lastPublishedComponents = null
         _trafficComponents.value = TrafficComponents.EMPTY
         initialize(context)
     }
@@ -612,8 +645,9 @@ object OfflineRouter {
 
     /**
      * Offline transit routing (P11d): plan a journey with the on-device RAPTOR
-     * planner over any downloaded per-region `*.transit` index that covers the
-     * endpoints. Returns null when no index is present/covering or no journey is
+     * planner over the transit pack covering the endpoints (the world pack in
+     * the archive when present, else a downloaded per-region `*.transit`
+     * index). Returns null when no index is present/covering or no journey is
      * found — the caller then falls back to the P10 online Transitous planner.
      *
      * Runs at most **two** RAPTOR passes: a schedule-only plan, then, when the
@@ -652,7 +686,7 @@ object OfflineRouter {
     ): List<Vehicle> = OfflineRouterTransit.activeVehicles(context, minLat, minLon, maxLat, maxLon)
 
     /**
-     * Departure board from the baked `*.transit` index for the stop nearest
+     * Departure board from the on-device transit index for the stop nearest
      * `(lat,lon)` — see [OfflineRouterTransit.getStopDeparturesOffline] for the
      * shared implementation. Kept here as a thin delegate so existing callers
      * don't move.

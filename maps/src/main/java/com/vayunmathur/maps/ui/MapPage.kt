@@ -114,8 +114,22 @@ fun MapPage(
     val camera = rememberCameraState(INITIAL_CAMERA)
 
     val selectedFeature by viewModel.selectedFeature.collectAsState()
+    // Keep the router's plan order on the visible tab: routes plans the
+    // selected mode first, so a tab switch made before the flow restarts must
+    // still reach it. A plain assignment (not a flow input) so switching tabs
+    // never re-plans every mode — the flow restarts on selection change only.
+    val selectedRouteType = chrome.selectedRouteType
+    LaunchedEffect(selectedRouteType) {
+        viewModel.selectedRouteMode = selectedRouteType
+    }
     val inactiveNavigation by viewModel.inactiveNavigation.collectAsState()
     val route by viewModel.routes.collectAsState(null)
+    // Collected here (rather than inside the sheet) so the inner place sheet's
+    // contentKey can name them: the tab switch and the late-arriving reviews
+    // each change the sheet's content height, and without them in the key the
+    // learned ceiling from Details traps the taller Reviews list.
+    val poiSection by viewModel.poiSection.collectAsState()
+    val currentPoiInfo by viewModel.currentPoiInfo.collectAsState()
     val userPosition by viewModel.userPosition.collectAsState()
     val userBearing by viewModel.userBearing.collectAsState()
     val userHeadingAccuracy by viewModel.userHeadingAccuracy.collectAsState()
@@ -238,6 +252,8 @@ fun MapPage(
         selectedFeature = selectedFeature,
         inactiveNavigation = inactiveNavigation,
         route = route,
+        poiSection = poiSection,
+        poiEnrichmentKey = PoiEnrichmentKey.of(currentPoiInfo),
         userPosition = userPosition,
         userBearing = userBearing,
         userHeadingAccuracy = userHeadingAccuracy,
