@@ -6,93 +6,82 @@ package com.vayunmathur.library.downloadservice
  * The server must host each file under https://data.vayunmathur.com/models/
  * and set Content-Length + ETag.
  *
- * # Gemma 4 is five files, not one
+ * # Gemma 4 is nine files, not one
  *
- * The single `.litertlm` was replaced by this repo's own `.maml` format when `:openassistant`
- * moved off `com.google.ai.edge.litertlm` onto `:library:ml`. Several files rather than one because
- * they have different lifetimes and different readers:
+ * The chat LLM is `onnx-community/gemma-4-E2B-it-ONNX` (Apache-2.0 and ungated),
+ * specifically the q4f16 quant family, run on `:library:ml`'s reduced ONNX Runtime build
+ * via `GemmaOnnxHandle` (embed graph per turn + KV-cached decode, vision/audio towers as
+ * soft tokens). Files, with upstream names kept so external-data resolution needs no
+ * mapping:
  *
- *   * the decoder, which the GPU binds,
- *   * the embedding, which only the host reads a row at a time and which is therefore its own
- *     graph rather than tensors inside the decoder,
- *   * the tokenizer table, which is tiny and is read once into memory,
- *   * the vision tower and the audio tower, each of which is a separate encoder that produces
- *     soft tokens in the decoder's embedding space.
+ *   models/decoder_model_merged_q4f16.onnx + .onnx_data  (~1.5 GB decoder)
+ *   models/embed_tokens_q4f16.onnx + .onnx_data          (~1.6 GB embeddings)
+ *   models/tokenizer.json                               (~19 MB BPE table)
+ *   models/vision_encoder_q4f16.onnx + .onnx_data       (~99 MB, optional tower)
+ *   models/audio_encoder_q4f16.onnx + .onnx_data        (~171 MB, optional tower)
  *
- * The first three must be present before the assistant will start - see `Gemma4Handle.FILES`.
- * The two encoders are optional at load: a device that never sends a picture or a clip still
- * answers text.
- *
- * To populate the mirror, produce the files from the ONNX export and upload them:
- *
- *   models/gemma4_text.maml
- *     <- python3 scripts/ml/maml_convert.py decoder_model_merged_fp16.onnx \
- *          --graph gemma4_text -o gemma4_text.maml
- *   models/gemma4_embed.maml
- *     <- python3 scripts/ml/maml_convert.py embed_tokens_fp16.onnx \
- *          --graph gemma4_embed -o gemma4_embed.maml
- *   models/gemma4_tokenizer.spm1
- *     <- python3 scripts/ml/gemma4_tokenizer.py --tokenizer tokenizer.json \
- *          -o gemma4_tokenizer.spm1
- *   models/gemma4_vision.maml
- *     <- python3 scripts/ml/maml_convert.py vision_encoder_fp16.onnx \
- *          --graph gemma4_vision -o gemma4_vision.maml
- *   models/gemma4_audio.maml
- *     <- python3 scripts/ml/maml_convert.py audio_encoder_fp16.onnx \
- *          --graph gemma4_audio -o gemma4_audio.maml
- *
- * The ONNX inputs are `onnx-community/gemma-4-E2B-it-ONNX`, which is Apache-2.0 and ungated.
+ * The first five must be present before the assistant will start - see
+ * `GemmaOnnxHandle.FILES`. The two towers are optional at load: a device that never sends
+ * a picture or a clip still answers text.
  */
 object ModelUrls {
     const val MIRROR_BASE = "https://data.vayunmathur.com/models/"
 
-    /** The decoder: 35 layers at int4 with per-block scales. */
-    const val GEMMA_TEXT_FILE = "gemma4_text.maml"
-    const val GEMMA_TEXT_URL = "${MIRROR_BASE}gemma4_text.maml"
-    const val GEMMA_TEXT_SHA256 =
-        "f9043d69180c209ac57db30179bbca75342991a8a2fa6899916cff05cc155620"
+    /** The decoder export (graph only; weights ride alongside in the `.onnx_data`). */
+    const val GEMMA_DECODER_FILE = "decoder_model_merged_q4f16.onnx"
+    const val GEMMA_DECODER_URL = "${MIRROR_BASE}decoder_model_merged_q4f16.onnx"
+    const val GEMMA_DECODER_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
 
-    /** The two embedding tables, gathered on the host. */
-    const val GEMMA_EMBED_FILE = "gemma4_embed.maml"
-    const val GEMMA_EMBED_URL = "${MIRROR_BASE}gemma4_embed.maml"
-    const val GEMMA_EMBED_SHA256 =
-        "b1ca4f34c3f2a05a71cb231e8b1e3795267b2550b87dd51d49ea15f84c0ef90a"
+    const val GEMMA_DECODER_DATA_FILE = "decoder_model_merged_q4f16.onnx_data"
+    const val GEMMA_DECODER_DATA_URL = "${MIRROR_BASE}decoder_model_merged_q4f16.onnx_data"
+    const val GEMMA_DECODER_DATA_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
 
-    /** The BPE table: 262144 pieces, 514906 merges, byte fallback. */
-    const val GEMMA_TOKENIZER_FILE = "gemma4_tokenizer.spm1"
-    const val GEMMA_TOKENIZER_URL = "${MIRROR_BASE}gemma4_tokenizer.spm1"
-    const val GEMMA_TOKENIZER_SHA256 =
-        "bfb34775a267c98b4062edbd91848865fdf05583b9df3a49e6eab7a0ee251383"
+    /** The embedding graph + tables. */
+    const val GEMMA_EMBED_FILE = "embed_tokens_q4f16.onnx"
+    const val GEMMA_EMBED_URL = "${MIRROR_BASE}embed_tokens_q4f16.onnx"
+    const val GEMMA_EMBED_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
 
-    /**
-     * The vision tower: 16 layers at int4, with the patch and output projections left at fp16.
-     *
-     * Optional, and deliberately not in the same download as the decoder. It is 93 MB on top of
-     * 2.8 GB, a device that never sends a picture never needs it, and the assistant answers text
-     * perfectly well without it - see `Gemma4Engine.canSeeImages`.
-     */
-    const val GEMMA_VISION_FILE = "gemma4_vision.maml"
-    const val GEMMA_VISION_URL = "${MIRROR_BASE}gemma4_vision.maml"
-    const val GEMMA_VISION_SHA256 =
-        "4c53c0a8383f2ea99f8beed50bd5eac203565436313d0c2dd77b389ea1cf38e3"
+    const val GEMMA_EMBED_DATA_FILE = "embed_tokens_q4f16.onnx_data"
+    const val GEMMA_EMBED_DATA_URL = "${MIRROR_BASE}embed_tokens_q4f16.onnx_data"
+    const val GEMMA_EMBED_DATA_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+
+    /** The BPE table: 262,144 entries plus 24 added tokens. */
+    const val GEMMA_TOKENIZER_FILE = "tokenizer.json"
+    const val GEMMA_TOKENIZER_URL = "${MIRROR_BASE}tokenizer.json"
+    const val GEMMA_TOKENIZER_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
 
     /**
-     * The audio tower: a 12-layer conformer at int4, with the three end projections, the two
-     * subsampling convolutions, the twelve depthwise convolutions and the twelve
-     * relative-position tables all left at fp16.
-     *
-     * Optional on the same terms as the vision tower. 166 MB, and a device that never sends a
-     * clip never needs it.
+     * The vision tower (optional, same terms as the old `.maml` tower).
      */
-    const val GEMMA_AUDIO_FILE = "gemma4_audio.maml"
-    const val GEMMA_AUDIO_URL = "${MIRROR_BASE}gemma4_audio.maml"
-    const val GEMMA_AUDIO_SHA256 =
-        "be3ac4f968835fa257291f0845be642750f71e63e197a6e199ad5210316cb4f2"
+    const val GEMMA_VISION_FILE = "vision_encoder_q4f16.onnx"
+    const val GEMMA_VISION_URL = "${MIRROR_BASE}vision_encoder_q4f16.onnx"
+    const val GEMMA_VISION_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
 
-    val GEMMA_TEXT =
-        ModelDownloadItem(GEMMA_TEXT_URL, GEMMA_TEXT_FILE, "Model", GEMMA_TEXT_SHA256)
+    const val GEMMA_VISION_DATA_FILE = "vision_encoder_q4f16.onnx_data"
+    const val GEMMA_VISION_DATA_URL = "${MIRROR_BASE}vision_encoder_q4f16.onnx_data"
+    const val GEMMA_VISION_DATA_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+
+    /**
+     * The audio tower (optional, same terms as the old `.maml` tower).
+     */
+    const val GEMMA_AUDIO_FILE = "audio_encoder_q4f16.onnx"
+    const val GEMMA_AUDIO_URL = "${MIRROR_BASE}audio_encoder_q4f16.onnx"
+    const val GEMMA_AUDIO_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+
+    const val GEMMA_AUDIO_DATA_FILE = "audio_encoder_q4f16.onnx_data"
+    const val GEMMA_AUDIO_DATA_URL = "${MIRROR_BASE}audio_encoder_q4f16.onnx_data"
+    const val GEMMA_AUDIO_DATA_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+
+    val GEMMA_DECODER =
+        ModelDownloadItem(GEMMA_DECODER_URL, GEMMA_DECODER_FILE, "Model", GEMMA_DECODER_SHA256)
+    val GEMMA_DECODER_DATA = ModelDownloadItem(
+        GEMMA_DECODER_DATA_URL, GEMMA_DECODER_DATA_FILE, "Weights", GEMMA_DECODER_DATA_SHA256,
+    )
     val GEMMA_EMBED =
         ModelDownloadItem(GEMMA_EMBED_URL, GEMMA_EMBED_FILE, "Embeddings", GEMMA_EMBED_SHA256)
+    val GEMMA_EMBED_DATA = ModelDownloadItem(
+        GEMMA_EMBED_DATA_URL, GEMMA_EMBED_DATA_FILE, "Embeddings", GEMMA_EMBED_DATA_SHA256,
+    )
     val GEMMA_TOKENIZER = ModelDownloadItem(
         GEMMA_TOKENIZER_URL,
         GEMMA_TOKENIZER_FILE,
@@ -101,8 +90,14 @@ object ModelUrls {
     )
     val GEMMA_VISION =
         ModelDownloadItem(GEMMA_VISION_URL, GEMMA_VISION_FILE, "Vision", GEMMA_VISION_SHA256)
+    val GEMMA_VISION_DATA = ModelDownloadItem(
+        GEMMA_VISION_DATA_URL, GEMMA_VISION_DATA_FILE, "Vision", GEMMA_VISION_DATA_SHA256,
+    )
     val GEMMA_AUDIO =
         ModelDownloadItem(GEMMA_AUDIO_URL, GEMMA_AUDIO_FILE, "Audio", GEMMA_AUDIO_SHA256)
+    val GEMMA_AUDIO_DATA = ModelDownloadItem(
+        GEMMA_AUDIO_DATA_URL, GEMMA_AUDIO_DATA_FILE, "Audio", GEMMA_AUDIO_DATA_SHA256,
+    )
 
     /**
      * Everything downloaded on OpenAssistant first launch.
@@ -113,19 +108,38 @@ object ModelUrls {
      * make the assistant able to answer about a photograph or a recording, and a resume that
      * stalls in the decoder should not leave them unfetched.
      */
-    val INITIAL = listOf(GEMMA_TOKENIZER, GEMMA_VISION, GEMMA_AUDIO, GEMMA_TEXT, GEMMA_EMBED)
+    /**
+     * Everything downloaded on OpenAssistant first launch.
+     *
+     * Smallest first, so a user on a slow connection sees progress early and so the two large
+     * files are the ones a resume is most likely to land in the middle of. The two towers go
+     * after the tokenizer and before the two large ones: together they are ~270 MB, they are
+     * what make the assistant able to answer about a photograph or a recording, and a resume
+     * that stalls in the decoder should not leave them unfetched.
+     */
+    val INITIAL = listOf(
+        GEMMA_TOKENIZER,
+        GEMMA_VISION, GEMMA_VISION_DATA, GEMMA_AUDIO, GEMMA_AUDIO_DATA,
+        GEMMA_DECODER, GEMMA_DECODER_DATA, GEMMA_EMBED, GEMMA_EMBED_DATA,
+    )
 
     /**
      * Files an earlier build downloaded and this one does not use.
      *
-     * Deleted on startup rather than left to rot: the litertlm bundle alone was several
-     * gigabytes, and a user upgrading would otherwise carry both copies forever.
+     * Deleted on startup rather than left to rot: the `.maml` set alone was 2.8 GB, and a
+     * user upgrading would otherwise carry both copies forever.
      */
     val OBSOLETE = listOf(
         "gemma4-2b.litertlm",
         "gemma-4-E2B-it.litertlm",
         "gemma4.litertlm",
         "gemma4-4b.litertlm",
+        "gemma4_text.maml",
+        "gemma4_embed.maml",
+        "gemma4_tokenizer.spm1",
+        "gemma4_vision.maml",
+        "gemma4_audio.maml",
+        "gemma4_prefix.kv",
     )
 }
 

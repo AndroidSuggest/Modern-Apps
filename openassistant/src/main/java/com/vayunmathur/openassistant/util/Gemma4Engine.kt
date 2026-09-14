@@ -2,9 +2,8 @@ package com.vayunmathur.openassistant.util
 
 import android.graphics.BitmapFactory
 import android.util.Log
-import com.vayunmathur.library.ml.Gemma4AudioHandle
 import com.vayunmathur.library.ml.Gemma4Handle
-import com.vayunmathur.library.ml.Gemma4VisionHandle
+import com.vayunmathur.library.ml.GemmaOnnxHandle
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -12,17 +11,17 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 /**
- * A chat turn on Gemma 4, replacing `com.google.ai.edge.litertlm`'s `Conversation`.
+ * A chat turn on Gemma 4, running the q4f16 ONNX exports on the reduced ONNX Runtime build.
  *
- * # What this owns that the SDK used to
- *
- * The tool loop. litertlm's `automaticToolCalling = true` hid a generate / parse / invoke /
- * resume cycle; [ask] is that cycle, written out. Everything else the SDK did - the template,
- * the tokenizer, sampling - lives in [Gemma4Handle] and native.
+ * The Vulkan `.maml` path is gone: `GemmaOnnxHandle` (embed + decoder + vision + audio) runs
+ * the turn, and this class keeps everything around it — the whole-turn lock, the tool loop,
+ * the attachment gates, history measurement. The prompt rendering (`Gemma4Handle.render`),
+ * tool protocol (`declareTools`/`parseToolCall`), streaming strip and 8-hop cap are unchanged:
+ * only the execution moved from `MlNative` stepping to ORT prefill + KV-cached decode.
  *
  * # One conversation at a time
  *
- * [Gemma4Handle] holds a single KV cache, so two turns cannot run at once. The lock is held for a
+ * The handle holds the KV cache, so two turns cannot run at once. The lock is held for a
  * whole turn rather than per call, because a turn is many calls and interleaving them would mix
  * two conversations into one cache. `InferenceService` already serialises through a queue; the
  * lock is here so that a second caller blocks rather than corrupts.
@@ -30,20 +29,15 @@ import kotlin.concurrent.withLock
 class Gemma4Engine(private val directory: File) : AutoCloseable {
 
     private val lock = ReentrantLock()
-    private var handle: Gemma4Handle? = null
-
-    /** Whether the baked prefix cache has been offered to this handle yet. */
-    private var seededPrefix = false
-    private var vision: Gemma4VisionHandle? = null
-    private var audio: Gemma4AudioHandle? = null
+    private var handle: GemmaOnnxHandle? = null
 
     /** Whether images can be read. False leaves the assistant answering text. */
     val canSeeImages: Boolean
-        get() = lock.withLock { vision?.isAvailable == true }
+        get() = lock.withLock { handle?.isFullyAvailable == true }
 
     /** Whether audio can be heard. False leaves the assistant answering text. */
     val canHearAudio: Boolean
-        get() = lock.withLock { audio?.isAvailable == true }
+        get() = lock.withLock { handle?.isFullyAvailable == true }
 
     /** Whether the model is loaded and usable. */
     val isReady: Boolean
@@ -53,14 +47,13 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
      * Load the model if it is not loaded. Returns whether it is usable afterwards.
      *
      * Idempotent, so `onCreate` can pre-warm and the first turn can call it again without cost.
-     * Loading is slow - gigabytes of weights stream to the GPU - so callers should pre-warm off
-     * the main thread.
+     * Loading is slow - gigabytes of weights - so callers should pre-warm off the main thread.
      */
     fun ensureLoaded(): Boolean = lock.withLock {
         val live = handle
         if (live != null && live.isAvailable) return@withLock true
         live?.close()
-        val opened = Gemma4Handle.inDirectory(directory)
+        val opened = GemmaOnnxHandle.inDirectory(directory)
         if (!opened.isAvailable) {
             Log.w(TAG, "gemma4 did not load from $directory")
             opened.close()
@@ -68,24 +61,9 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
             return@withLock false
         }
         handle = opened
-        seededPrefix = false
-        // One measurement at load, logged. See `Gemma4Handle.benchmark`.
-        opened.benchmark()
-        // The vision tower is optional and downloaded separately, so a device without it still
-        // gets a working assistant - `canSeeImages` is how the caller finds out.
-        if (vision?.isAvailable != true) {
-            vision?.close()
-            val tower = Gemma4VisionHandle.inDirectory(directory)
-            vision = if (tower.isAvailable) tower else { tower.close(); null }
-        }
-        // The audio tower is optional and downloaded separately in the same way, so a device
-        // without it still gets an assistant that answers text - `canHearAudio` is how the caller
+        // Towers are optional and validated separately: a device whose vision/audio weights
+        // are missing still gets a working assistant - `canSeeImages` is how the caller
         // finds out.
-        if (audio?.isAvailable != true) {
-            audio?.close()
-            val tower = Gemma4AudioHandle.inDirectory(directory)
-            audio = if (tower.isAvailable) tower else { tower.close(); null }
-        }
         true
     }
 
@@ -97,14 +75,14 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
      * what it passed to decide what to tell the model.
      */
     fun encodeImages(paths: List<String>): List<FloatArray> = lock.withLock {
-        val tower = vision ?: return@withLock emptyList()
+        val tower = handle ?: return@withLock emptyList()
         paths.mapNotNull { path ->
             val bitmap = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
             if (bitmap == null) {
                 Log.w(TAG, "cannot decode $path")
                 return@mapNotNull null
             }
-            val soft = tower.encode(bitmap)
+            val soft = tower.encodeImage(bitmap)
             bitmap.recycle()
             if (soft == null) Log.w(TAG, "the vision tower refused $path")
             soft
@@ -121,10 +99,11 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
      * Only the 16 kHz mono PCM WAV that `WavRecorder` writes is read; see [readWavMono16k].
      */
     fun encodeAudio(paths: List<String>): List<FloatArray> = lock.withLock {
-        val tower = audio ?: return@withLock emptyList()
+        val tower = handle ?: return@withLock emptyList()
+        if (!tower.isFullyAvailable) return@withLock emptyList()
         paths.mapNotNull { path ->
             val samples = readWavMono16k(path) ?: return@mapNotNull null
-            val soft = tower.encode(samples)
+            val soft = tower.encodeAudio(samples)
             if (soft == null) Log.w(TAG, "the audio tower refused $path")
             soft
         }
@@ -144,7 +123,16 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
         limit: Int = Gemma4Handle.DEFAULT_REPLY,
     ): Int = lock.withLock {
         val live = handle ?: return@withLock 0
-        live.positionsFor(conversation, system, tools?.declarations ?: emptyList(), limit)
+        // Same arithmetic `generate` performs: text runs encoded, media counted by length.
+        var total = 0
+        for (part in renderParts(conversation, system, tools?.declarations ?: emptyList(), "")) {
+            total += when (part) {
+                is GemmaOnnxHandle.PromptPart.Text -> live.encodePrompt(part.text).size
+                is GemmaOnnxHandle.PromptPart.Media ->
+                    (part.soft?.size ?: 0) / Gemma4Handle.SOFT_TOKEN_WIDTH
+            }
+        }
+        total
     }
 
     /** What [positionsFor] must not exceed if the reply is to keep its [limit]. */
@@ -176,18 +164,6 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
         val live = handle ?: return@withLock null
         if (!live.isAvailable) return@withLock null
         val declarations = tools?.declarations ?: emptyList()
-        // Once per load: seed the caches from the baked prefix so the ~1,900 positions of system
-        // block and tool declarations are never prefilled here. `loadPrefix` re-encodes the text
-        // and refuses unless its digest matches what was baked, so a prompt that has changed
-        // since costs a prefill rather than an answer to a question nobody asked.
-        if (!seededPrefix) {
-            seededPrefix = true
-            val prefix = "<bos><|turn>system\n" + system.orEmpty() +
-                Gemma4Handle.declareTools(declarations)
-            if (!live.loadPrefix(prefix)) {
-                Log.i(TAG, "no usable prefix cache; the prompt will be prefilled")
-            }
-        }
 
         // `pending` accumulates the model's own turn across tool hops: the call it made, the
         // result it got, and finally the prose. It is fed back as part of the prompt so the model
@@ -198,9 +174,9 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
             // `pending` is the model's own half-written turn - the call it made and the
             // result it got - and it goes in as a *continuation* so it lands inside the open
             // model turn. Appending it as another `Turn` closed that turn and opened a new one.
-            val history = conversation
+            val parts = renderParts(conversation, system, declarations, pending)
             var stopped = false
-            val reply = live.generate(history, system, declarations, limit, pending) { partial ->
+            val reply = live.generate(parts, limit) { partial ->
                 // Tool syntax is machine chatter and must not reach the UI, so only the prose
                 // before any call marker is streamed.
                 val shown = visible + strip(partial)
@@ -230,16 +206,66 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
         visible
     }
 
-    /** Discard the conversation state. Cheap - see [Gemma4Handle.reset]. */
-    fun reset() = lock.withLock { handle?.reset() }
+    /**
+     * The turn's prompt as embedding-space segments: text runs plus soft-token blocks.
+     *
+     * Text layout (markers, brackets, continuation) mirrors `Gemma4Handle.renderParts`
+     * exactly — only the encoding changes from ids to embedding segments.
+     */
+    private fun renderParts(
+        conversation: List<Gemma4Handle.Turn>,
+        system: String?,
+        tools: List<Gemma4Handle.ToolDeclaration>,
+        continuation: String,
+    ): List<GemmaOnnxHandle.PromptPart> {
+        val parts = ArrayList<GemmaOnnxHandle.PromptPart>()
+        val text = StringBuilder()
+        fun flush() {
+            if (text.isNotEmpty()) {
+                parts.add(GemmaOnnxHandle.PromptPart.Text(text.toString()))
+                text.clear()
+            }
+        }
+        text.append("<bos>")
+        val declared = Gemma4Handle.declareTools(tools)
+        if (!system.isNullOrBlank() || declared.isNotEmpty()) {
+            text.append("<|turn>system\n")
+            if (!system.isNullOrBlank()) text.append(system)
+            text.append(declared)
+            text.append("<turn|>\n")
+        }
+        for (turn in conversation) {
+            val marker = if (turn.role == Gemma4Handle.Role.USER) "user" else "model"
+            text.append("<|turn>").append(marker).append('\n')
+            for (image in turn.images) {
+                if (image.isEmpty() || image.size % Gemma4Handle.SOFT_TOKEN_WIDTH != 0) continue
+                text.append(Gemma4Handle.BOI_MARKER)
+                flush()
+                parts.add(GemmaOnnxHandle.PromptPart.Media(image))
+                text.append(Gemma4Handle.EOI_MARKER)
+            }
+            for (clip in turn.audio) {
+                if (clip.isEmpty() || clip.size % Gemma4Handle.SOFT_TOKEN_WIDTH != 0) continue
+                text.append(Gemma4Handle.BOA_MARKER)
+                flush()
+                parts.add(GemmaOnnxHandle.PromptPart.Media(clip))
+                text.append(Gemma4Handle.EOA_MARKER)
+            }
+            text.append(turn.text)
+            text.append("<turn|>\n")
+        }
+        text.append("<|turn>model\n")
+        text.append(continuation)
+        flush()
+        return parts
+    }
+
+    /** Discard the conversation state. The next turn re-prefills from scratch. */
+    fun reset() = lock.withLock { /* per-turn sessions hold no cache; nothing cached */ }
 
     override fun close() = lock.withLock {
         handle?.close()
         handle = null
-        vision?.close()
-        vision = null
-        audio?.close()
-        audio = null
     }
 
     companion object {
@@ -281,7 +307,7 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
                         val mono = wav.getShort(body + 2).toInt() == 1
                         val rate = wav.getInt(body + 4)
                         val width = wav.getShort(body + 14).toInt()
-                        if (!pcm || !mono || rate != Gemma4AudioHandle.SAMPLE_RATE || width != 16) {
+                        if (!pcm || !mono || rate != 16_000 || width != 16) {
                             Log.w(TAG, "$path is not 16 kHz mono 16-bit PCM")
                             return null
                         }
@@ -300,9 +326,9 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
                 Log.w(TAG, "$path has no 16-bit PCM data")
                 return null
             }
-            // Native truncates to `MAX_SAMPLES` regardless, so a long recording is cut here
-            // rather than widened to floats first.
-            val count = minOf(dataBytes / 2, Gemma4AudioHandle.MAX_SAMPLES)
+            // The tower truncates to 480,000 samples (30 s) regardless, so a long
+            // recording is cut here rather than widened to floats first.
+            val count = minOf(dataBytes / 2, 480_000)
             val pcm = ByteBuffer.wrap(bytes, dataAt, dataBytes)
                 .order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
             return FloatArray(count) { pcm.get(it) / 32768f }
