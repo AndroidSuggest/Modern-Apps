@@ -112,7 +112,14 @@ object OfflineRouter {
      *
      * Returns walk + wait + ride legs as [RawStep]s, or null when the feed is
      * missing, doesn't cover the endpoints, or no journey exists.
+     *
+     * The [JvmName] is load-bearing: `internal` members mangle to
+     * `name$maps` in bytecode, but JNI resolves by the declared name -
+     * without it every call dies with UnsatisfiedLinkError (seen on-device
+     * 2026-09-14: the probe linked only after this was added, and the five
+     * older transit natives were silently broken the same way).
      */
+    @JvmName("findTransitRouteNative")
     internal external fun findTransitRouteNative(
             basePath: String,
             feed: String,
@@ -134,7 +141,10 @@ object OfflineRouter {
      * nearest `(lat,lon)` in `<basePath>/<feed>.transit`. Time and overlay
      * arguments are as in [findTransitRouteNative].
      * Returns null when the feed is missing or doesn't cover the point.
+     *
+     * [JvmName] keeps the JVM name JNI-visible; see [findTransitRouteNative].
      */
+    @JvmName("getStopDeparturesNative")
     internal external fun getStopDeparturesNative(
             basePath: String,
             feed: String,
@@ -160,14 +170,20 @@ object OfflineRouter {
      * device every transit entry point short-circuited before any JNI call.
      * A pure presence probe (section directory only, no pack parse), cheap
      * enough to call on every entry.
+     *
+     * [JvmName] keeps the JVM name JNI-visible; see [findTransitRouteNative].
      */
+    @JvmName("hasTransitArchiveNative")
     internal external fun hasTransitArchiveNative(basePath: String): Boolean
 
     /**
      * IANA timezone of the feed covering `(lat,lon)` in the given pack, or null
      * when the pack is stale/absent, doesn't cover the point, or its GTFS had no
      * `agency.txt`. Callers resolve this before deriving any query times.
+     *
+     * [JvmName] keeps the JVM name JNI-visible; see [findTransitRouteNative].
      */
+    @JvmName("getFeedTimezoneNative")
     internal external fun getFeedTimezoneNative(
             basePath: String,
             feed: String,
@@ -184,7 +200,10 @@ object OfflineRouter {
      * realtime overlay before it knows which stop the board is for, so it has to
      * name the stop up front — and since `/api/v1/map/stops` is gone, there is no
      * longer any network way to turn a coordinate into a MOTIS id.
+     *
+     * [JvmName] keeps the JVM name JNI-visible; see [findTransitRouteNative].
      */
+    @JvmName("nearestStopMotisIdNative")
     internal external fun nearestStopMotisIdNative(
             basePath: String,
             feed: String,
@@ -202,7 +221,10 @@ object OfflineRouter {
      * `>24:00:00` overnight trip is placed and a delayed/cancelled trip is drawn
      * live/suppressed. Returns [RawVehicle]s (possibly empty), or null when the
      * feed is missing/malformed.
+     *
+     * [JvmName] keeps the JVM name JNI-visible; see [findTransitRouteNative].
      */
+    @JvmName("activeVehiclesNative")
     internal external fun activeVehiclesNative(
             basePath: String,
             feed: String,
