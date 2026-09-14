@@ -150,4 +150,15 @@
     <string name="poweroff_finding_limit">Selline võimalus kehtib umbes kolme päeva jagu peale telefoni väljalülitamist. Tegemist on Bluetoothi kiibi tehnilise piiranguga ja seda ei saa seadistada.</string>
     <string name="poweroff_finding_off_hint">Kui lülitad selle seadistuse välja, siis telefon ei edasta väljalülitamisel mitte midagi.</string>
     <string name="poweroff_finding_unsupported">Selle telefoni Bluetoothi kiip ei suuda olla leitav väljalülitatud olekus.</string>
+    <string name="map_menu_content_description">Lisavalikud</string>
+    <string name="find_nearby_content_description">Otsi lähedusest</string>
+    <string name="verify_security_code_content_description">Kontrolli turvakoodi</string>
+    <string name="delete_person_content_description">Eemalda isik</string>
+    <string name="delete_place_content_description">Kustuta lisatud asukoht</string>
+    <string name="permission_grant_bluetooth">Luba Bluetoothi kasutamine</string>
+    <string name="permission_bluetooth_granted">Bluetoothi kasutamine on lülitatud sisse</string>
+    <string name="permission_bluetooth_explanation">Vajalik seadmete otsimiseks lähedusest.</string>
+    <string name="poweroff_grant_tracking_warning">Igaüks, kelle sa valid, võib seda telefoni ka ise otsima minna, millal iganes ta soovib, niikaua kui ta selles nimekirjas püsib. Selleks, et tuvastada, kus telefoni on nähtud, ja seda otsida, kasutatakse sama võtit, seega ei ole võimalik üht anda ilma teiseta. Vali ainult inimesed, kellele sa soovid, et nad selle telefoni üles leiaksid.</string>
+    <string name="poweroff_grant_revoke_warning">Kui keegi nimekirjast eemaldada, ei näe ta enam, kuhu see telefon edaspidi satub. See ei võta tagasi kohti, mida ta on juba kogunud, ega pane neid unustama. Kõik asukohad, kus seda telefoni hiljuti nähti, kuid mida keegi veel üles pole korjanud, võivad ka sinu jaoks kaduma minna.</string>
+    <string name="poweroff_grant_no_peers">Kui oled kellegagi ühendatud, saad tema siit valida.</string>
 </resources>
