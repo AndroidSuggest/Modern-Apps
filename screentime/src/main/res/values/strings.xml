@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- App name. Shown in the launcher and app info. -->
+    <string name="app_name">Screen Time</string>
+
+    <!-- Focus mode: title, also the label of its Settings row. Noun phrase. -->
+    <string name="focus_title">Focus mode</string>
+    <!-- One-line summary under the Focus mode row in Settings. -->
+    <string name="focus_summary">Pause distracting apps on demand or on a schedule</string>
+
+    <!-- Wind-down: title, also the label of its Settings row. Noun. -->
+    <string name="winddown_title">Bedtime</string>
+    <!-- One-line summary under the Bedtime row in Settings. -->
+    <string name="winddown_summary">Grayscale and Do Not Disturb overnight</string>
+
+    <!-- Details: usage section heading. Noun. -->
+    <string name="details_usage">Usage</string>
+    <!-- Per-app details: title of the drill-down screen. Noun phrase. -->
+    <string name="details_title">Time spent</string>
+    <!-- Details: today's usage row. Noun phrase. -->
+    <string name="details_today">Used today</string>
+    <!-- Details: timer row. Noun. -->
+    <string name="details_timer">Timer</string>
+    <!-- Details: focus-membership row. Verb phrase. -->
+    <string name="details_pause_in_focus">Pause in focus mode</string>
+    <!-- Details: explanation under the focus row. -->
+    <string name="details_pause_in_focus_hint">This app pauses while a focus session runs.</string>
+    <!-- Details: shown when focus is currently running. -->
+    <string name="details_focus_running">Focus is on now.</string>
+    <!-- Details: shown when no package was supplied. -->
+    <string name="details_no_app">Pick an app from the dashboard to see its details.</string>
+
+    <!-- Friction: mindful-nudge title. Noun phrase. -->
+    <string name="friction_nudge_title">Still want this?</string>
+    <!-- Friction: nudge explanation. -->
+    <string name="friction_nudge_hint">You asked for a reminder when you open this app a lot. Take a breath first.</string>
+    <!-- Friction: spent-timer title. Noun phrase. -->
+    <string name="friction_spent_title">Time\'s up</string>
+    <!-- Friction: spent explanation. -->
+    <string name="friction_spent_hint">This app\'s timer ran out. It stays paused until midnight.</string>
+    <!-- Friction: break button. Verb phrase. -->
+    <string name="friction_break">Take a break</string>
+    <!-- Friction: nudge continue button. Verb. -->
+    <string name="friction_continue">Continue</string>
+    <!-- Friction: spent continue button. Verb phrase. -->
+    <string name="friction_open_anyway">Open anyway</string>
+
+    <!-- Widget: description shown in the picker. -->
+    <string name="widget_description">Today\'s screen time at a glance.</string>
+    <!-- Widget: heading above the total. Noun phrase. -->
+    <string name="widget_today">Today</string>
+
+    <!-- Dashboard: heading of today's total row. Noun phrase. -->
+    <string name="dashboard_today">Today</string>
+    <!-- Dashboard: shown for an app with no timer set, and as the option that removes one. -->
+    <string name="timer_none">No timer</string>
+
+    <!-- Focus mode: title of the running notice. Noun phrase. -->
+    <string name="focus_running_title">Focus mode is on</string>
+    <!-- Focus mode: text of the running notice. -->
+    <string name="focus_running_text">Distracting apps are paused. Tap to manage.</string>
+    <!-- Focus mode: action that ends the session from the notice. Verb. -->
+    <string name="focus_stop">End focus</string>
+    <!-- Notifications: channel for the focus session. Noun phrase. -->
+    <string name="focus_channel_name">Focus session</string>
+    <!-- Notifications: channel description. -->
+    <string name="focus_channel_description">Shows while focus mode is pausing apps.</string>
+    <!-- Friction: button naming us as the pauser. -->
+    <string name="timer_paused_by">Paused by Screen Time</string>
+
+    <!-- Focus mode: the manual on/off row. Noun phrase. -->
+    <string name="focus_now">Focus mode</string>
+    <!-- Focus mode: explanation under the manual row. -->
+    <string name="focus_now_hint">Pause the apps below until you turn focus off.</string>
+    <!-- Focus mode: heading above schedule rows. Noun. -->
+    <string name="focus_schedule">Schedule</string>
+    <!-- Focus mode: the schedule on/off row. Verb phrase. -->
+    <string name="focus_schedule_enable">Turn on automatically</string>
+    <!-- Focus mode: schedule start row. Noun phrase. -->
+    <string name="focus_start">Starts at</string>
+    <!-- Focus mode: schedule end row. Noun phrase. -->
+    <string name="focus_end">Ends at</string>
+    <!-- Focus mode: single-letter day labels, Monday first, comma separated. -->
+    <string name="focus_day_initials">M,T,W,T,F,S,S</string>
+    <!-- Focus mode: heading above the paused-app list. Noun phrase. -->
+    <string name="focus_apps">Paused apps</string>
+
+    <!-- Wind-down: the main on/off switch. Verb phrase. -->
+    <string name="winddown_enable">Use wind-down</string>
+    <!-- Wind-down: explanation under the main switch. -->
+    <string name="winddown_enable_hint">The screen goes quiet overnight: grayscale first, silence alongside.</string>
+    <!-- Wind-down: schedule start row. Noun phrase. -->
+    <string name="winddown_start">Starts at</string>
+    <!-- Wind-down: schedule end row. Noun phrase. -->
+    <string name="winddown_end">Ends at</string>
+    <!-- Wind-down: heading above the effect toggles. Noun. -->
+    <string name="winddown_effects">Effects</string>
+    <!-- Wind-down: grayscale toggle. Noun. -->
+    <string name="winddown_grayscale">Grayscale</string>
+    <!-- Wind-down: grayscale explanation. -->
+    <string name="winddown_grayscale_hint">Drain the color out of the screen overnight.</string>
+    <!-- Wind-down: DND toggle. Noun phrase. -->
+    <string name="winddown_dnd">Do Not Disturb</string>
+    <!-- Wind-down: DND explanation. -->
+    <string name="winddown_dnd_hint">Silence calls and notifications overnight. Needs policy access.</string>
+
+    <!-- Shown in place of the app list while installed apps are still being read. -->
+    <string name="apps_loading">Loading apps…</string>
+
+    <!-- Dialog button that stores the chosen value. Verb. -->
+    <string name="save">Save</string>
+    <!-- Dialog button that discards the change. Verb. -->
+    <string name="cancel">Cancel</string>
+</resources>

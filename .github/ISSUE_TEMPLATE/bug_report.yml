@@ -53,6 +53,7 @@ body:
         - photos
         - pipes
         - parentalcontrols
+        - screentime
         - setupwizard
         - share
         - solitaire
@@ -67,6 +68,7 @@ body:
         - unblockjam
         - updater
         - vpn
+        - watch
         - voxels
         - weather
         - web
