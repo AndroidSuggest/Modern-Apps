@@ -1,0 +1,129 @@
+#version 450
+//! `conv_point_int8.comp` over channel-blocked (`CHANNEL_BLOCKED_4`) tensors.
+//!
+//! `out[o][p] = act(scale[o] * sum_i W[o][i] * in[i][p] + bias[o])`, `p` over positions.
+//!
+//! # What differs from `conv_point_int8.comp`
+//!
+//! Three address computations, and nothing structural. The tiling, the 2 x 2 register
+//! blocking, both barriers, the fused store — all unchanged; see `conv_point.comp` for
+//! why the tiling is shaped the way it is.
+//!
+//! * The input activation is channel-blocked: channel `c` at position `p` lives at
+//!   `in0 + (c / 4 * positions + p) * 4 + c % 4`, so a group of four channels is one
+//!   contiguous `vec4`. The staged input block therefore loads `vec4`s, and the inner
+//!   loop reads one lane each — four times the load width of the scalar path for the
+//!   same instruction count.
+//! * The int8 kernel is blocked over output rows: output group `og` at input `i` lives
+//!   at `weight + (og * in_c + i) * 4 + lane`. Staging reads the tile's four rows as
+//!   one contiguous run.
+//! * The output store is channel-blocked like the input, so the produced activation is
+//!   already in the layout the next blocked op consumes. No transpose pass exists and
+//!   none is needed: producer and consumer agree by construction (the loader's shape
+//!   + layout inference proves it at load).
+//!
+//! `p.weight` is a **32-bit word** offset, as in `conv_int8.comp`. `p.act_weight` holds
+//! the scale tensor as an fp16 element index. Scales stay per output channel (not
+//! blocked): one scale per finished accumulator, applied after the inner loop exactly
+//! as in the scalar kernel.
+
+#include "common.glsl"
+
+/// Output channels and positions per workgroup, and input channels per staging step.
+#define TILE 16u
+
+/// The staged blocks. `TILE * TILE` each, so 2 KB of shared memory at fp32.
+shared float weight_tile[TILE][TILE];
+shared float input_tile[TILE][TILE];
+
+/// One lane of a channel-blocked activation: channel `c` at position `p`.
+float blocked_at(uint base, uint c, uint p, uint positions) {
+    uint group = c >> 2u;
+    uint lane = c & 3u;
+    return float(arena[base + (group * positions + p) * 4u + lane]);
+}
+
+/// Store one lane of a channel-blocked activation.
+void blocked_store(uint base, uint c, uint p, uint positions, float value) {
+    uint group = c >> 2u;
+    uint lane = c & 3u;
+    arena[base + (group * positions + p) * 4u + lane] = float16_t(value);
+}
+
+void main() {
+    // The tile this workgroup owns. Uniform across the workgroup, so returning early cannot
+    // strand a barrier — every invocation takes the same branch.
+    uint tile = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    if (tile >= p.count) {
+        return;
+    }
+    uint positions = p.out_h * p.out_w;
+    uint tiles_across = (positions + TILE - 1u) / TILE;
+    uint channel_base = (tile / tiles_across) * TILE;
+    uint position_base = (tile % tiles_across) * TILE;
+
+    // This invocation's 2 x 2 corner of the tile.
+    uint lid = gl_LocalInvocationID.x;
+    uint local_row = (lid >> 3u) * 2u;
+    uint local_col = (lid & 7u) * 2u;
+
+    float acc[2][2] = { { 0.0, 0.0 }, { 0.0, 0.0 } };
+
+    for (uint k0 = 0u; k0 < p.in_c; k0 += TILE) {
+        // Stage both blocks. 256 elements each, 64 invocations, so four apiece. Out-of-range
+        // entries are zeroed rather than skipped, which lets the inner loop run unguarded.
+        for (uint n = 0u; n < 4u; n++) {
+            uint slot = lid + n * 64u;
+            uint r = slot >> 4u;
+            uint c = slot & 15u;
+
+            // Blocked kernel: output rows come in groups of four, contiguous.
+            uint channel = channel_base + r;
+            uint k_weight = k0 + c;
+            uint k_index = channel * p.in_c + k_weight;
+            weight_tile[r][c] = (channel < p.out_c && k_weight < p.in_c)
+                ? float(int8_at(p.weight, k_index))
+                : 0.0;
+
+            // Blocked input: lane `r % 4` of group `(k0 + r) / 4` at this position.
+            uint k_input = k0 + r;
+            uint position = position_base + c;
+            input_tile[r][c] = (k_input < p.in_c && position < positions)
+                ? blocked_at(p.in0, k_input, position, positions)
+                : 0.0;
+        }
+        barrier();
+
+        for (uint k = 0u; k < TILE; k++) {
+            float a0 = weight_tile[local_row][k];
+            float a1 = weight_tile[local_row + 1u][k];
+            float b0 = input_tile[k][local_col];
+            float b1 = input_tile[k][local_col + 1u];
+            acc[0][0] += a0 * b0;
+            acc[0][1] += a0 * b1;
+            acc[1][0] += a1 * b0;
+            acc[1][1] += a1 * b1;
+        }
+        // Both barriers are needed: the second stops the next step's staging from overwriting
+        // tiles an invocation is still reading.
+        barrier();
+    }
+
+    for (uint i = 0u; i < 2u; i++) {
+        uint channel = channel_base + local_row + i;
+        if (channel >= p.out_c) {
+            continue;
+        }
+        float scale = float(weights[p.act_weight + channel]);
+        float offset = float(weights[p.bias + channel]);
+        for (uint j = 0u; j < 2u; j++) {
+            uint position = position_base + local_col + j;
+            if (position >= positions) {
+                continue;
+            }
+            uint index = channel * positions + position;
+            float value = fused_store(acc[i][j] * scale + offset, p.act, channel, index);
+            blocked_store(p.out_at, channel, position, positions, value);
+        }
+    }
+}
