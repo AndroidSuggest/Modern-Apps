@@ -21,15 +21,15 @@ android {
         // heap buffer before ORT could open it. Int8 weights barely deflate, so it costs
         // nothing on download size. (The remaining `maml` entry covers the Supertonic and
         // legacy bundles until Phase 4 deletes them.)
-        noCompress += "maml"
         noCompress += "onnx"
     }
 }
 dependencies {
     // Speech-to-text is whisper-base on the reduced ONNX Runtime build (two int8 exports in
     // `assets/whisper-base/`, decode loop in WhisperHandle). Text-to-speech is Supertonic 3
-    // (§Phase 2 ports it next); until then it stays on :library:ml's Vulkan runtime.
-    implementation(libs.onnxruntime.reduced.android)
+    // on the same build (four upstream exports, sampler loop in SupertonicSynthesizer).
+    // Both handles live in :library:ml, which also carries the ORT dependency.
+    implementation(project(":library:ml"))
     // No `:library:downloadservice` and no DataStore: both models ship in the APK, so this app
     // downloads nothing and stores no preferences. They went when Piper's 1,834 MB of voices did.
 }

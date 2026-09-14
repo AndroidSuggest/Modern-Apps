@@ -14,10 +14,10 @@ android {
         applicationId = "com.vayunmathur.games.chess"
     }
     androidResources {
-        // Maia3's weights are read in place through an `AssetFileDescriptor`, and
-        // `AssetManager.openFd` throws for a deflated entry. Costs nothing on download size:
-        // fp16 weights barely compress.
-        noCompress += "maml"
+        // Maia3's weights are read straight out of the APK, and a compressed asset would have
+        // to be inflated into a heap buffer before ORT could open it. Costs nothing on download
+        // size: quantised weights barely compress.
+        noCompress += "onnx"
     }
 }
 

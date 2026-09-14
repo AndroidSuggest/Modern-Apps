@@ -1,6 +1,14 @@
 plugins {
     id("common-conventions-library")
 }
+
+android {
+    androidResources {
+        // The two PP-OCRv5 .onnx files are read straight out of the APK. Uncompressed entries
+        // avoid an inflate into a heap buffer before ORT opens them.
+        noCompress += "onnx"
+    }
+}
 dependencies {
     // On-device OCR via PP-OCRv5 on the Vulkan compute runtime in `:library:ml`. Both
     // models ship as `.maml` in this module's assets and the whole detect-crop-recognise
