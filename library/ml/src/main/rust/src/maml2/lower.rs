@@ -265,18 +265,18 @@ impl<'a> NodeAttrs<'a> {
 /// indices the nodes name; `shapes` supplies the graph-input shapes.
 ///
 /// Blocked-kernel selection happens here, after emission, unless `nchw_only`
-/// is set: nodes whose input, weight, and output layouts are all
+/// is set: nodes whose activation input and output are both
 /// `CHANNEL_BLOCKED_4` have their tiled int8 dispatches rewritten to the
-/// blocked twin ([`Kind::ConvPointCb4Int8`]). Routing stays shape-driven in
+/// blocked twin ([`Kind::ConvPointCb4Int8`]). Kernels are always NCHW in the
+/// file — the twin reads its kernel NCHW and only its activations blocked —
+/// so the kernel layout needs no check here. Routing stays shape-driven in
 /// `emit`; this rewrite is layout-driven and lives with the layout
 /// knowledge. See [`BLOCKED_KINDS`].
 ///
-/// `nchw_only` is the NCHW-first device path: every dispatch keeps the
-/// kernel the device parity suite already covers, proving file → device
-/// execution plus the barrier win before the blocked-layout boundary design
-/// (transpose ops vs full-kernel port) lands. The file's blocked payloads
-/// are *not* consumed on this path — the caller must upload NCHW weights
-/// (the v1 blob) alongside the v2 plan.
+/// `nchw_only` forces the rewrite off. While every emitted file is all-NCHW
+/// the two paths lower identically (the rewrite qualifies nothing); once
+/// transpose boundaries + blocked twins land per net, `lower` runs the mixed
+/// plan and `lower_nchw` stays the all-NCHW proof path.
 pub fn lower(
     verified: &Verified<'_>,
     inferred: &InferredGraph,

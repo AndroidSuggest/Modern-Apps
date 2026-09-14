@@ -1,4 +1,4 @@
-// The v2 sampler on the device (NCHW-first), behind the v1 bridge.
+// The v2 sampler on the device, through the v2 bridge.
 //
 // `#[ignore]`: needs a Vulkan device and the v1 + v2 sampler assets.
 //
@@ -8,11 +8,11 @@
 //   /data/local/tmp/mr_test --ignored --nocapture v2_sampler_on_device
 // ```
 //
-// Runs the v2 NCHW plan (verify → infer → `lower_nchw`) on the device
-// against the v1 data blob, and requires it to agree with the CPU
-// reference interpreter. The v1 blob is the right weights here: the NCHW
-// plan addresses NCHW layouts, which is exactly what the v1 file holds.
-// (The v2 file's blocked payloads wait on the boundary design.)
+// Runs the v2 plan (verify → infer → `lower_nchw`) on the device against
+// the bridge blob, and requires it to agree with the CPU reference
+// interpreter. Kernels are NCHW in the file, so the NCHW kernels both sides
+// run read true values and the agreement is numeric truth, not two sides
+// misreading one repack identically.
 //
 // This is the pilot exit's device half: file → device execution plus the
 // schedule-driven recorder, on real weights, with the interpreter as oracle.

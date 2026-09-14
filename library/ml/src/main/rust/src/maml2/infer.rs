@@ -238,9 +238,13 @@ fn infer_node(
         shapes.get(&t).ok_or_else(|| err(&format!("tensor {t} has no shape")))
     };
     let attrs = attrs.ok_or_else(|| err("no attributes"))?;
-    // Computed tensors default to CHANNEL_BLOCKED_4 (spec 3.4); View keeps
-    // its source layout (zero-copy reinterpret).
-    let blocked = fb::Layout::CHANNEL_BLOCKED_4;
+    // Computed tensors default to NCHW during the migration: every kernel
+    // the loader can dispatch today addresses NCHW, so the arena is NCHW
+    // and the file declares it. (Spec 3.4's CHANNEL_BLOCKED_4 default
+    // describes the end state, when blocked twins + transpose boundaries
+    // land and files are re-emitted.) View keeps its source layout
+    // (zero-copy reinterpret).
+    let computed_layout = fb::Layout::NCHW;
     match op {
         fb::Op::Conv => {
             if inputs.len() != 3 {
@@ -268,7 +272,7 @@ fn infer_node(
             let out_h = conv_out(x[1], kh, sh, dh, pt * 2);
             let out_w = conv_out(x[2], kw, sw, dw, pl * 2);
             let _ = groups;
-            Ok(vec![Inferred { dims: vec![m, out_h, out_w], layout: blocked }])
+            Ok(vec![Inferred { dims: vec![m, out_h, out_w], layout: computed_layout }])
         }
         fb::Op::MatMul => {
             if inputs.len() != 4 && inputs.len() != 3 {
@@ -280,7 +284,7 @@ fn infer_node(
                 return Err(err("MatMul shapes are not [c, h, w] / [m, ...]"));
             }
             // Pointwise: `[m, 1, positions]`.
-            Ok(vec![Inferred { dims: vec![w[0], a[1], a[2]], layout: blocked }])
+            Ok(vec![Inferred { dims: vec![w[0], a[1], a[2]], layout: computed_layout }])
         }
         fb::Op::Add | fb::Op::Mul => {
             if inputs.len() != 2 {
@@ -291,7 +295,7 @@ fn infer_node(
             if a != b {
                 return Err(err(&format!("binary shape mismatch {a:?} vs {b:?}")));
             }
-            Ok(vec![Inferred { dims: a, layout: blocked }])
+            Ok(vec![Inferred { dims: a, layout: computed_layout }])
         }
         fb::Op::AddBroadcast | fb::Op::MulBroadcast => {
             if inputs.len() != 2 {
@@ -302,14 +306,14 @@ fn infer_node(
             if b.len() != 3 || b[1] != 1 || b[2] != 1 || b[0] != a[0] {
                 return Err(err(&format!("broadcast {b:?} is not [c, 1, 1] over {a:?}")));
             }
-            Ok(vec![Inferred { dims: a, layout: blocked }])
+            Ok(vec![Inferred { dims: a, layout: computed_layout }])
         }
         fb::Op::LayerNorm | fb::Op::RmsNorm => {
             if inputs.is_empty() {
                 return Err(err("norm wants [x, ...]"));
             }
             let x = shape_of(inputs[0])?.dims.clone();
-            Ok(vec![Inferred { dims: x, layout: blocked }])
+            Ok(vec![Inferred { dims: x, layout: computed_layout }])
         }
         fb::Op::Attention => {
             // Two phases share one op: phase 0 scores (q, k -> map), phase 1
@@ -325,7 +329,7 @@ fn infer_node(
                 if q.len() != 3 || k.len() != 3 {
                     return Err(err("Attention shapes are not sequences"));
                 }
-                Ok(vec![Inferred { dims: vec![heads, q[2], k[2]], layout: blocked }])
+                Ok(vec![Inferred { dims: vec![heads, q[2], k[2]], layout: computed_layout }])
             } else {
                 if inputs.len() != 2 {
                     return Err(err("Attention apply wants [probs, v]"));
@@ -340,7 +344,7 @@ fn infer_node(
                 // value width scaled to query heads (GQA: kv_heads <= heads).
                 let kv_heads = attrs.opt_int("kv_heads")?.unwrap_or(heads);
                 let head_dim = v[0] / kv_heads.max(1);
-                Ok(vec![Inferred { dims: vec![heads * head_dim, 1, probs[1]], layout: blocked }])
+                Ok(vec![Inferred { dims: vec![heads * head_dim, 1, probs[1]], layout: computed_layout }])
             }
         }
         fb::Op::Softmax => {
@@ -348,14 +352,14 @@ fn infer_node(
                 return Err(err("Softmax wants [x]"));
             }
             let x = shape_of(inputs[0])?.dims.clone();
-            Ok(vec![Inferred { dims: x, layout: blocked }])
+            Ok(vec![Inferred { dims: x, layout: computed_layout }])
         }
         fb::Op::RotaryEmbedding => {
             if inputs.len() != 2 {
                 return Err(err("RotaryEmbedding wants [x, angles]"));
             }
             let x = shape_of(inputs[0])?.dims.clone();
-            Ok(vec![Inferred { dims: x, layout: blocked }])
+            Ok(vec![Inferred { dims: x, layout: computed_layout }])
         }
         fb::Op::View => {
             if inputs.len() != 1 {

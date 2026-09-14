@@ -39,51 +39,17 @@ enum WeightQuant {
     },
 }
 
-/// Channel-blocked-4 repack of an fp16 NCHW plane.
+/// Kernels are stored verbatim (NCHW), never repacked.
 ///
-/// Groups channels in fours: `[c, h, w]` becomes `[(c + 3) / 4, h, w, 4]`
-/// with zero padding in the final group. Element count grows to the padded
-/// size; the loader's shape inference knows the logical shape from `dims`.
-fn repack_channel_blocked_4(values: &[u16], c: u32, h: u32, w: u32) -> Vec<u16> {
-    let (c, h, w) = (c as usize, h as usize, w as usize);
-    let groups = c.div_ceil(4);
-    let mut out = vec![0u16; groups * h * w * 4];
-    for channel in 0..c {
-        let group = channel / 4;
-        let lane = channel % 4;
-        for row in 0..h {
-            for col in 0..w {
-                let src = (channel * h + row) * w + col;
-                let dst = ((group * h + row) * w + col) * 4 + lane;
-                out[dst] = values[src];
-            }
-        }
-    }
-    out
-}
-
-/// Channel-blocked-4 repack of an int8 kernel.
-///
-/// Same permutation as [`repack_channel_blocked_4`], over bytes. The
-/// contraction axis the kernel reduces over is laid out so a channel group
-/// of four is contiguous at every position.
-fn repack_channel_blocked_4_u8(values: &[u8], c: u32, h: u32, w: u32) -> Vec<u8> {
-    let (c, h, w) = (c as usize, h as usize, w as usize);
-    let groups = c.div_ceil(4);
-    let mut out = vec![0u8; groups * h * w * 4];
-    for channel in 0..c {
-        let group = channel / 4;
-        let lane = channel % 4;
-        for row in 0..h {
-            for col in 0..w {
-                let src = (channel * h + row) * w + col;
-                let dst = ((group * h + row) * w + col) * 4 + lane;
-                out[dst] = values[src];
-            }
-        }
-    }
-    out
-}
+/// The channel-blocked twins (`Kind::ConvPointCb4Int8` and its successors)
+/// read their kernel NCHW — only the activations are blocked — so the file
+/// holds v1-order bytes and one stored layout serves every execution
+/// layout. Repacking kernels would silently fork the host interpreter
+/// (NCHW) from the device (blocked) with both sides self-consistent;
+/// storing one layout keeps that class of bug inexpressible. (The pilot
+/// stored blocked kernels, which made NCHW-kernel runs read permuted
+/// weights on both sides and agree anyway; the repack pair was deleted
+/// with that lesson.)
 
 /// The v2 tensor rows for one v1 weight tensor, in emission order.
 ///
@@ -175,32 +141,23 @@ fn emit_weight_tensor(
 ) -> Result<(), String> {
     let (tensor, payload) = read_weight_payload(table, data, index)?;
     let mut dims = rank_hint.unwrap_or_else(|| logical_dims(&tensor));
-    // A `[c, 1, 1]` shorthand (per-channel vectors stored rank-3) repacks as
-    // `[c, 1, 1]`; a `[n]` vector repacks as `[n, 1, 1]`.
+    // A `[c, 1, 1]` shorthand (per-channel vectors stored rank-3) stays
+    // `[c, 1, 1]`; a `[n]` vector stays `[n, 1, 1]`. Padding is descriptive
+    // only: stored bytes are verbatim either way.
     while dims.len() < 3 {
         dims.push(1);
     }
-    let (c, h, w) = (dims[0] as u32, dims[1] as u32, dims[2] as u32);
     match (payload, quant) {
         (WeightPayload::F16(words), WeightQuant::None) => {
-            let bytes: Vec<u8> = if dims.len() == 3
-                || (dims.len() == 4 && dims[2] == 1 && dims[3] == 1)
-            {
-                repack_channel_blocked_4(&words, c, h, w)
-                    .iter()
-                    .flat_map(|w| w.to_le_bytes())
-                    .collect()
-            } else {
-                // Rank-4 spatial kernels stay in kernel order; the blocked
-                // lowering applies at dispatch, not to the stored bytes.
-                words.iter().flat_map(|w| w.to_le_bytes()).collect()
-            };
+            // Verbatim NCHW: every kernel reads fp16 weights NCHW, so the
+            // file holds v1-order bytes (see the module note on kernels).
+            let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
             let elems = words.len() as u64;
             out.push(EmittedTensor {
-                name: format!("w{index}.cb4"),
+                name: format!("w{index}"),
                 dims,
                 dtype: fb::DType::F16,
-                layout: fb::Layout::CHANNEL_BLOCKED_4,
+                layout: fb::Layout::NCHW,
                 bytes,
                 elems,
                 quant: WeightQuant::None,
@@ -210,17 +167,14 @@ fn emit_weight_tensor(
             return Err(format!("tensor {index} is fp16 but read as a quantised kernel"));
         }
         (WeightPayload::I8(bytes), WeightQuant::Int8 { .. }) => {
-            // Kernels arrive `[out, in]` (possibly `[out, in, 1, 1]`); block
-            // over the output rows: `[out/4, in, 4]`.
-            let rows = dims[0] as usize;
-            let cols: usize = dims[1..].iter().map(|&d| d as usize).product();
-            let blocked = repack_channel_blocked_4_u8(&bytes, rows as u32, 1, cols as u32);
+            // Verbatim NCHW: the int8 twins read `channel * in_c + tap`
+            // exactly as the NCHW kernel does — only activations block.
             out.push(EmittedTensor {
-                name: format!("w{index}.kernel.cb4"),
+                name: format!("w{index}.kernel"),
                 dims,
                 dtype: fb::DType::I8,
-                layout: fb::Layout::CHANNEL_BLOCKED_4,
-                bytes: blocked,
+                layout: fb::Layout::NCHW,
+                bytes: bytes.clone(),
                 elems: bytes.len() as u64,
                 quant,
             });
@@ -236,7 +190,7 @@ fn emit_weight_tensor(
                 name: format!("w{index}.scale"),
                 dims: scale_dims,
                 dtype: fb::DType::F16,
-                layout: fb::Layout::CHANNEL_BLOCKED_4,
+                layout: fb::Layout::NCHW,
                 bytes: scale_bytes,
                 elems: scale_words.len() as u64,
                 quant: WeightQuant::None,
@@ -464,7 +418,10 @@ fn emit_nodes(
             name: format!("t{id}"),
             dims: vec![shape.c as i32, shape.h as i32, shape.w as i32],
             dtype: fb::DType::F16,
-            layout: fb::Layout::CHANNEL_BLOCKED_4,
+            // NCHW during the migration: the recording ran NCHW kernels, so
+            // the arena the loader rebuilds is NCHW too, and the file
+            // declares it. Re-emitted blocked when twins land.
+            layout: fb::Layout::NCHW,
             bytes: Vec::new(),
             elems: shape.len() as u64,
             quant: WeightQuant::None,
@@ -894,7 +851,7 @@ pub fn emit_sampler(
             name: format!("in{}", input.0),
             dims: vec![shape.c as i32, shape.h as i32, shape.w as i32],
             dtype: fb::DType::F16,
-            layout: fb::Layout::CHANNEL_BLOCKED_4,
+            layout: fb::Layout::NCHW,
             bytes: Vec::new(),
             elems: shape.len() as u64,
             quant: WeightQuant::None,

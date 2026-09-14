@@ -55,7 +55,7 @@ fn main() {
         &recorded,
         &tensors,
         weights.data(),
-        "supertonic-sampler ve fp16/int8 cb4 (Phase 1 pilot)",
+        "supertonic-sampler ve fp16/int8 nchw (v2 pilot)",
         "maml2 emit_sampler_maml2",
         weights.source_sha256,
     )

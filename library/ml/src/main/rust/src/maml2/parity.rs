@@ -140,3 +140,73 @@ fn lowered_plan_schedules_like_v1() {
         v1plan.ops.len()
     );
 }
+
+/// True numeric parity: the v2-lowered plan against the v1 plan, same
+/// interpreter, same invented inputs, real weights both sides.
+///
+/// Both plans run through `run_multi` on their own blob (v1 data section vs
+/// bridge blob) — different address spaces, same values, since kernels are
+/// NCHW in both files. The arithmetic is identical kind-for-kind (the
+/// blocked rewrite qualifies nothing on an all-NCHW file), so the outputs
+/// must be bit-exact, not within tolerance: any divergence is a loader bug
+/// (wrong offset, dropped res/shift, permuted kernel), never rounding.
+/// Skips quietly when either asset is absent.
+#[test]
+fn v2_plan_matches_v1_bit_exact() {
+    let Some((v1data, tensors)) = v1_table() else {
+        return;
+    };
+    let source = crate::nets::tests::Shapes::new(tensors.len());
+    let v1plan = supertonic_sampler::build(&source, 49, 55).expect("build v1");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(4)
+        .expect("workspace root")
+        .to_path_buf();
+    let path = root.join("speech/src/main/assets/supertonic/supertonic_ve.maml2");
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => panic!("cannot read {}: {e}", path.display()),
+    };
+    let verified = verify::verify(&bytes).expect("verify");
+    let inferred = infer::infer(&verified).expect("infer");
+    let bridge = lower::V2Weights::new(&verified).expect("bridge");
+    let plan = lower::lower(&verified, &inferred[0], &bridge, 0).expect("lower");
+    // Same invented inputs both sides: the seven sampler inputs at the
+    // recorded shape, distinct and asymmetric about zero.
+    let shapes = [
+        (144usize, 1usize, 49usize),
+        (256, 1, 55),
+        (1024, 1, 50),
+        (256, 1, 50),
+        (2048, 1, 1),
+        (64, 1, 49),
+        (64, 1, 55),
+    ];
+    let inputs: Vec<Vec<f32>> = shapes
+        .iter()
+        .enumerate()
+        .map(|(k, (c, h, w))| {
+            (0..c * h * w)
+                .map(|i| (i as f32 * 0.7 + k as f32 * 1.7).sin() * 0.8 + 0.1)
+                .collect()
+        })
+        .collect();
+    let refs: Vec<&[f32]> = inputs.iter().map(|v| v.as_slice()).collect();
+    let v1out = crate::nets::reference::run_multi(&v1plan, &v1data, &refs).expect("run v1");
+    let v2out = crate::nets::reference::run_multi(&plan, &bridge.blob(), &refs).expect("run v2");
+    // The zero oracle: invented inputs through 212 real-weight ops cannot be
+    // zero; an all-zeros output means the inputs never reached the graph.
+    assert!(
+        v1out.iter().flat_map(|v| v.iter()).any(|&v| v != 0.0),
+        "the v1 interpreter output is all zeros"
+    );
+    assert_eq!(v2out.len(), v1out.len(), "same output count");
+    for (index, (a, b)) in v1out.iter().zip(v2out.iter()).enumerate() {
+        assert_eq!(a.len(), b.len(), "output {index} length");
+        for (at, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+            assert!(x == y, "output {index} element {at}: v1 {x} vs v2 {y}");
+        }
+    }
+}

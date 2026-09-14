@@ -146,17 +146,27 @@ Quantization {
 Layout : byte { NCHW = 0; CHANNEL_BLOCKED_4 = 1; POSITION_MAJOR = 2; }
 ```
 
-* Each tensor declares its layout. The converter **repacks weights into
-  whatever the kernels consume** (kernel-chosen layout at convert time, per
-  the v1 lesson that init-time repack forfeits zero-copy upload).
-* Computed tensors default to `CHANNEL_BLOCKED_4` (the PHWC4 equivalent):
-  channel groups of 4 contiguous, so a channel reduction is a `vec4` load.
-  The v1 NCHW strided-reduction defect (§0.3) becomes inexpressible.
+* Each tensor declares its layout. Kernels are **always NCHW** in the file:
+  every kernel — NCHW or blocked twin — reads kernel bytes NCHW, so one
+  stored layout serves every execution layout and the host interpreter
+  (NCHW-only) stays a valid oracle for all of them. Only activations block.
+  (The pilot stored blocked kernels; that forked the interpreter from the
+  device with both sides self-consistent, and was reverted.)
+* Computed tensors are `CHANNEL_BLOCKED_4` where the dispatched kernels
+  consume blocked activations (the PHWC4 equivalent): channel groups of 4
+  contiguous, so a channel reduction is a `vec4` load. The v1 NCHW
+  strided-reduction defect (§0.3) becomes inexpressible wherever twins run.
+* Mixed plans carry explicit transpose ops at NCHW↔blocked boundaries; a
+  producer/consumer pair with different layouts and no transpose between
+  them is a loader bug, caught by shape+layout inference at load.
+* During the migration most files are all-NCHW (few dispatched kernels have
+  blocked twins yet): they declare NCHW throughout, honestly. A file is
+  re-emitted blocked when its net's transpose boundaries + twins land —
+  files are generated artifacts, and the layout declaration always matches
+  the execution the file was emitted for.
 * KV-caches are `POSITION_MAJOR`: `[K, 1, d]` positions appended per step
   (v1's decode-cache layout, kept and now declared instead of implicit).
-* Layout is part of the pipeline cache key (§8.2). No runtime transpose
-  passes: a layout mismatch between producer and consumer is a converter
-  bug, caught by shape+layout inference at load.
+* Layout is part of the pipeline cache key (§8.2).
 
 ## 4. Tensors and buffers
 
