@@ -30,6 +30,8 @@ dependencies {
     // on the same build (four upstream exports, sampler loop in SupertonicSynthesizer).
     // Both handles live in :library:ml, which also carries the ORT dependency.
     implementation(project(":library:ml"))
+    // Runtime model download (mirror-hosted, SHA-256 pinned) — the Supertonic ONNX bundle.
+    implementation(project(":library:downloadservice"))
     // No `:library:downloadservice` and no DataStore: both models ship in the APK, so this app
     // downloads nothing and stores no preferences. They went when Piper's 1,834 MB of voices did.
 }

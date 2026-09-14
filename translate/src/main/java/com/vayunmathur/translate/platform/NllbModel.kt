@@ -26,26 +26,30 @@ object NllbModel {
     private const val BASE = "https://data.vayunmathur.com/models/nllb600/"
     const val DIR = "nllb600"
 
-    /** The 2 runtime files, SHA-256 pinned. Names and order come from [NllbHandle.FILES]. */
+    /** The 3 runtime files, SHA-256 pinned. Names and order come from [NllbHandle.FILES]. */
     val FILES: List<ModelDownloadItem> = listOf(
         item(
-            NllbHandle.GRAPH,
-            // 617,059,520 bytes, verified against build/nllb600/nllb600.maml.
-            "1f08cebe3cb6e629fc40fbc93c71c82c4e23cd379fe0da798ebc817cc769553c",
+            NllbHandle.ENCODER_FILE,
+            // 415,378,190 bytes, `venddair/nllb-200-distilled-600M-onnx` int8.
+            "404eefb59a29f947d7d3b05bd92ca10fa1200f39f854907fc2a84cfdfe4f881e",
+        ),
+        item(
+            NllbHandle.DECODER_FILE,
+            // 728,792,767 bytes, `venddair/nllb-200-distilled-600M-onnx` int8.
+            "b2f3febbb66b7679d9b54b41ed4786fd58dfbef8b269e5f99101d96dcc1e229c",
         ),
         item(
             NllbHandle.TOKENIZER,
-            // 3,849,114 bytes, verified against build/nllb600/tokenizer.bin.
+            // 3,849,114 bytes, built by `scripts/ml/nllb_tokenizer.py`, SHA-verified.
             "36a6bed003d4a66cb9a513d1056355fe4bc1c73518cff82477671811fd482b57",
         ),
     )
 
     /**
-     * The retired SMaLL-100 files, deleted from an existing install the first time this
-     * runs: the two maml-era files plus the seven ncnn files an earlier version
-     * downloaded.
+     * The retired files, deleted from an existing install the first time this runs: the
+     * SMaLL-100 set plus the `.maml`-era NLLB weights this build replaces.
      *
-     * Without this an upgrade leaves ~320 MB of unreachable weights in the app's
+     * Without this an upgrade leaves ~900 MB of unreachable weights in the app's
      * external files directory, which nothing else will ever remove. Kept as names
      * rather than a wildcard so a future file of ours cannot be caught by it.
      */
@@ -61,6 +65,9 @@ object NllbModel {
         "vocab.txt",
         "pos_weights.f32.bin",
     )
+
+    /** The `.maml`-era NLLB file this build's ONNX pair replaces, in the live directory. */
+    private val RETIRED_CURRENT = listOf("nllb600.maml")
 
     private fun item(name: String, sha256: String?) =
         ModelDownloadItem("$BASE$name", "$DIR/$name", "NLLB-200 $name", sha256)
@@ -90,8 +97,8 @@ object NllbModel {
      */
     fun deleteRetired(context: Context): Long {
         val root = context.getExternalFilesDir(null) ?: return 0L
-        val directory = File(root, RETIRED_DIR)
         var reclaimed = 0L
+        val directory = File(root, RETIRED_DIR)
         for (name in RETIRED) {
             val file = File(directory, name)
             if (!file.isFile) continue
@@ -100,6 +107,12 @@ object NllbModel {
         }
         if (directory.isDirectory && (directory.list()?.isEmpty() == true)) {
             directory.delete()
+        }
+        for (name in RETIRED_CURRENT) {
+            val file = File(root, "$DIR/$name")
+            if (!file.isFile) continue
+            val size = file.length()
+            if (file.delete()) reclaimed += size
         }
         return reclaimed
     }

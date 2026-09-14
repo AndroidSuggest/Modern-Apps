@@ -30,47 +30,56 @@ object ModelUrls {
     /** The decoder export (graph only; weights ride alongside in the `.onnx_data`). */
     const val GEMMA_DECODER_FILE = "decoder_model_merged_q4f16.onnx"
     const val GEMMA_DECODER_URL = "${MIRROR_BASE}decoder_model_merged_q4f16.onnx"
-    const val GEMMA_DECODER_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+    const val GEMMA_DECODER_SHA256 =
+        "73c0f1fe04f9a3a048fb3319c0671b6cf0346bf33a3a8624c853bcffe01c24a4"
 
     const val GEMMA_DECODER_DATA_FILE = "decoder_model_merged_q4f16.onnx_data"
     const val GEMMA_DECODER_DATA_URL = "${MIRROR_BASE}decoder_model_merged_q4f16.onnx_data"
-    const val GEMMA_DECODER_DATA_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+    const val GEMMA_DECODER_DATA_SHA256 =
+        "3b27245a7396cb7039a4e4118bd2a8aa35106bae381522edf7c4867b5f22bb10"
 
     /** The embedding graph + tables. */
     const val GEMMA_EMBED_FILE = "embed_tokens_q4f16.onnx"
     const val GEMMA_EMBED_URL = "${MIRROR_BASE}embed_tokens_q4f16.onnx"
-    const val GEMMA_EMBED_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+    const val GEMMA_EMBED_SHA256 =
+        "d7ca53f6a169471b5699b2f57ee4c7aa2c73732b0152f3909e64b71384444825"
 
     const val GEMMA_EMBED_DATA_FILE = "embed_tokens_q4f16.onnx_data"
     const val GEMMA_EMBED_DATA_URL = "${MIRROR_BASE}embed_tokens_q4f16.onnx_data"
-    const val GEMMA_EMBED_DATA_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+    const val GEMMA_EMBED_DATA_SHA256 =
+        "024b199e6358ed42970f807686add5f9430d7e254ca7ce22fc9c83f015b9c517"
 
     /** The BPE table: 262,144 entries plus 24 added tokens. */
     const val GEMMA_TOKENIZER_FILE = "tokenizer.json"
     const val GEMMA_TOKENIZER_URL = "${MIRROR_BASE}tokenizer.json"
-    const val GEMMA_TOKENIZER_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+    const val GEMMA_TOKENIZER_SHA256 =
+        "47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566"
 
     /**
      * The vision tower (optional, same terms as the old `.maml` tower).
      */
     const val GEMMA_VISION_FILE = "vision_encoder_q4f16.onnx"
     const val GEMMA_VISION_URL = "${MIRROR_BASE}vision_encoder_q4f16.onnx"
-    const val GEMMA_VISION_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+    const val GEMMA_VISION_SHA256 =
+        "e0a4e48e519ade4eeddbb4cdadb812a7251aea871f7fb5f50576615fd3af22a3"
 
     const val GEMMA_VISION_DATA_FILE = "vision_encoder_q4f16.onnx_data"
     const val GEMMA_VISION_DATA_URL = "${MIRROR_BASE}vision_encoder_q4f16.onnx_data"
-    const val GEMMA_VISION_DATA_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+    const val GEMMA_VISION_DATA_SHA256 =
+        "0835071d2c79c105f8e1b549b7f8dd8c9af07fa95f01ead2e7add280602d3c6d"
 
     /**
      * The audio tower (optional, same terms as the old `.maml` tower).
      */
     const val GEMMA_AUDIO_FILE = "audio_encoder_q4f16.onnx"
     const val GEMMA_AUDIO_URL = "${MIRROR_BASE}audio_encoder_q4f16.onnx"
-    const val GEMMA_AUDIO_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+    const val GEMMA_AUDIO_SHA256 =
+        "5e0deb22791685c792d4b8e089deef9670fa4a4cecde434213d6a742e58fc3fa"
 
     const val GEMMA_AUDIO_DATA_FILE = "audio_encoder_q4f16.onnx_data"
     const val GEMMA_AUDIO_DATA_URL = "${MIRROR_BASE}audio_encoder_q4f16.onnx_data"
-    const val GEMMA_AUDIO_DATA_SHA256 = "REPLACE_WITH_MIRRORED_SHA256"
+    const val GEMMA_AUDIO_DATA_SHA256 =
+        "df58e61a00bafa9449ee5fd52895ce952f158bbdd1fe38df8a68f48f36842e62"
 
     val GEMMA_DECODER =
         ModelDownloadItem(GEMMA_DECODER_URL, GEMMA_DECODER_FILE, "Model", GEMMA_DECODER_SHA256)
@@ -99,15 +108,6 @@ object ModelUrls {
         GEMMA_AUDIO_DATA_URL, GEMMA_AUDIO_DATA_FILE, "Audio", GEMMA_AUDIO_DATA_SHA256,
     )
 
-    /**
-     * Everything downloaded on OpenAssistant first launch.
-     *
-     * Smallest first, so a user on a slow connection sees progress early and so the two large
-     * files are the ones a resume is most likely to land in the middle of. The two encoders go
-     * after the tokenizer and before the two large ones: together they are 259 MB, they are what
-     * make the assistant able to answer about a photograph or a recording, and a resume that
-     * stalls in the decoder should not leave them unfetched.
-     */
     /**
      * Everything downloaded on OpenAssistant first launch.
      *

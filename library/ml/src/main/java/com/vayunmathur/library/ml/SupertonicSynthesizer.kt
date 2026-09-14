@@ -225,16 +225,28 @@ class SupertonicSynthesizer private constructor(
     }
 
     private class Assets(private val assets: AssetManager, private val path: String) : Bundle {
-        override fun read(name: String): ByteArray =
-            assets.open("$path/$name").use { it.readBytes() }
+        override fun read(name: String): ByteArray {
+            // Voice styles ship in the APK under `voices/`; plans + indexer at the top.
+            val full = if (name.startsWith("style_")) "$path/voices/$name" else "$path/$name"
+            return assets.open(full).use { it.readBytes() }
+        }
 
         override fun key(): String = "asset:$path/"
 
         override fun toString(): String = "the APK's $path/"
     }
 
-    private class Directory(private val directory: File) : Bundle {
+    private class Directory(
+        private val directory: File,
+        private val assets: AssetManager,
+        private val assetPath: String,
+    ) : Bundle {
         override fun read(name: String): ByteArray {
+            // Plans + indexer download; voice styles ship in the APK and are read from
+            // there even when the plans came from disk.
+            if (name.startsWith("style_")) {
+                return assets.open("$assetPath/voices/$name").use { it.readBytes() }
+            }
             val file = File(directory, name)
             require(file.isFile) { "$name is missing from $directory" }
             return file.readBytes()
@@ -516,11 +528,17 @@ class SupertonicSynthesizer private constructor(
             voice: String = DEFAULT_VOICE,
         ): SupertonicSynthesizer = SupertonicSynthesizer(Assets(assets, path), voice)
 
-        /** The bundle in a folder on disk, as a downloaded one is. */
+        /**
+         * The bundle in a folder on disk, as a downloaded one is.
+         *
+         * [assets] backs the voice styles, which ship in the APK rather than downloading.
+         */
         fun inDirectory(
             directory: File,
+            assets: AssetManager,
+            assetPath: String = ASSET_PATH,
             voice: String = DEFAULT_VOICE,
-        ): SupertonicSynthesizer = SupertonicSynthesizer(Directory(directory), voice)
+        ): SupertonicSynthesizer = SupertonicSynthesizer(Directory(directory, assets, assetPath), voice)
 
         fun styleName(voice: String): String = "style_$voice.json"
 

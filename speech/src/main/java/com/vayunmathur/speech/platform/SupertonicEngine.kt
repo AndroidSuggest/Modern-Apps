@@ -132,7 +132,14 @@ class SupertonicEngine(private val context: Context) {
         synthesizer?.let { return it }
         if (closed || attempts >= MAX_ATTEMPTS) return null
         attempts++
-        val built = SupertonicSynthesizer.inAssets(context.assets, voice = voice)
+        // The download directory first (the 395 MB ONNX bundle cannot ship in the APK);
+        // APK assets as fallback for side-loaded bundles.
+        val dir = SupertonicModel.modelDir(context)
+        val built = if (SupertonicModel.isDownloaded(context)) {
+            SupertonicSynthesizer.inDirectory(dir, context.assets, voice = voice)
+        } else {
+            SupertonicSynthesizer.inAssets(context.assets, voice = voice)
+        }
         if (!built.isAvailable) {
             Log.e(TAG, "the Supertonic bundle is not usable on this device (attempt $attempts)")
             built.close()
@@ -180,6 +187,12 @@ object SupertonicBundle {
 
     fun isPresent(context: Context): Boolean {
         present?.let { return it }
+        // Download directory first; APK assets as fallback.
+        val dir = SupertonicModel.modelDir(context)
+        if (REQUIRED.all { File(dir, it).isFile }) {
+            present = true
+            return true
+        }
         val entries = try {
             context.assets.list(SupertonicSynthesizer.ASSET_PATH)?.toSet().orEmpty()
         } catch (e: Throwable) {
@@ -223,14 +236,13 @@ object SupertonicBundle {
      *
      * The other nine voices are not required: a bundle missing one of those loses a voice, while a
      * bundle missing a plan cannot speak at all, and only the second should stop the engine being
-     * advertised.
+     * advertised. Checks the download directory first, then APK assets.
      */
     private val REQUIRED = listOf(
-        "supertonic_dp.maml",
-        "supertonic_ttl.maml",
-        "supertonic_ve.maml",
-        "supertonic_voc.maml",
-        "unicode_indexer.bin",
-        SupertonicSynthesizer.styleName(SupertonicVoices.DEFAULT_VOICE),
+        "duration_predictor.onnx",
+        "text_encoder.onnx",
+        "vector_estimator.onnx",
+        "vocoder.onnx",
+        "unicode_indexer.json",
     )
 }
