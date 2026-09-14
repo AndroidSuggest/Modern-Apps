@@ -95,6 +95,19 @@ internal fun SurfaceMapRenderer.setOverlayRoute(overlay: RouteOverlay?) {
 }
 
 /**
+ * Draw the pack-driven rail-lines network under the navigation route (see
+ * [RouteOverlay]). `null` or an all-empty overlay draws nothing, which is how
+ * the network is cleared (transit toggle off, or the pack carries no shapes
+ * for the viewport). One tessellation per push, like the route.
+ */
+internal fun SurfaceMapRenderer.setRailLines(overlay: RouteOverlay?) {
+    railSegments = overlay?.segments
+    railStyle = overlay?.style ?: RouteStyle()
+    applyRailLines()
+    invalidate()
+}
+
+/**
  * Push the live-traffic colour table: [ids] holds each segment's `component_id` and
  * [argbColors] the fully-resolved ARGB to draw it, index for index. The host owns the
  * theme, so the colours are final. Replaces the whole table each call; a segment whose id
@@ -203,6 +216,39 @@ internal fun SurfaceMapRenderer.applyRoute() {
         routeStyle.width.value,
         routeStyle.casingWidth.value,
         routeStyle.casingColor.toArgb(),
+    )
+}
+
+internal fun SurfaceMapRenderer.applyRailLines() {
+    if (handle == 0L) return
+    // Drawable segments only, like the route: fewer than two points strokes
+    // nothing, and dropping them keeps the native per-segment ranges aligned.
+    val drawable = railSegments?.filter { it.points.size >= 2 }
+    if (drawable.isNullOrEmpty()) {
+        MapNative.clearRailLines(handle)
+        return
+    }
+    val flat = FloatArray(drawable.sumOf { it.points.size } * 2)
+    val lengths = IntArray(drawable.size)
+    val colors = IntArray(drawable.size)
+    var at = 0
+    drawable.forEachIndexed { i, segment ->
+        lengths[i] = segment.points.size
+        colors[i] = segment.color.toArgb()
+        for (point in segment.points) {
+            flat[at * 2] = point.longitude.toFloat()
+            flat[at * 2 + 1] = point.latitude.toFloat()
+            at++
+        }
+    }
+    MapNative.setRailLines(
+        handle,
+        flat,
+        lengths,
+        colors,
+        railStyle.width.value,
+        railStyle.casingWidth.value,
+        railStyle.casingColor.toArgb(),
     )
 }
 

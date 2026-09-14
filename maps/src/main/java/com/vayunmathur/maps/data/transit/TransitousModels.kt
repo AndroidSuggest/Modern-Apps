@@ -1,5 +1,6 @@
 package com.vayunmathur.maps.data.transit
 
+import com.vayunmathur.library.map.GeoPoint
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -37,6 +38,47 @@ data class TransitStop(
 )
 
 /**
+ * One stop on a trip's itinerary, for the vehicle-details sheet. Times are
+ * epoch millis like [Departure], so the sheet countdown shares its logic;
+ * [arrivesMillis]/[departsMillis] already include any realtime shift.
+ */
+data class TripStop(
+    val name: String,
+    val lat: Double,
+    val lon: Double,
+    val arrivesMillis: Long,
+    val departsMillis: Long,
+    /** Baked MOTIS id when the pack carries one, else empty. */
+    val motisId: String,
+)
+
+/**
+ * A trip's full run for the vehicle-details sheet: header plus one [TripStop]
+ * per stop in travel order.
+ */
+data class TripItinerary(
+    val routeName: String,
+    val headsign: String,
+    /** GTFS route colour as a 6-digit hex WITHOUT a leading `#`, or null. */
+    val routeColor: String?,
+    val mode: String,
+    val cancelled: Boolean,
+    val stops: List<TripStop>,
+)
+
+/**
+ * One drawable rail line for the pack-driven lines overlay: the route's full
+ * GTFS-shape polyline with its agency colour.
+ */
+data class RailLine(
+    val name: String,
+    /** GTFS route colour as a 6-digit hex WITHOUT a leading `#`, or null. */
+    val color: String?,
+    val mode: String,
+    val points: List<GeoPoint>,
+)
+
+/**
  * One upcoming departure at a stop. Times are epoch millis so the sheet can run
  * a purely client-side live countdown; [delayMinutes] is realtime − scheduled
  * (positive = late, negative = early) and drives the delay colouring.
@@ -60,6 +102,13 @@ data class Departure(
      * cannot be used to join realtime onto the offline schedule.
      */
     val tripId: String? = null,
+    /**
+     * The pack trip behind this departure, packed like a vehicle id
+     * (`(route_idx << 32) | (trip_index << 1) | prev_day`). Set on offline
+     * board entries so tapping one opens the same trip sheet a tapped
+     * vehicle opens; null on online-only entries.
+     */
+    val tripVehicleId: Long? = null,
 )
 
 // --- MOTIS v1 wire DTOs ----------------------------------------------------

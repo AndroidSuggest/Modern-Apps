@@ -7,6 +7,7 @@ import com.vayunmathur.library.util.ConnectivityMonitor
 import com.vayunmathur.maps.data.transit.Departure
 import com.vayunmathur.maps.data.transit.TransitStop
 import com.vayunmathur.maps.data.transit.TransitousDataSource
+import com.vayunmathur.maps.data.transit.TripItinerary
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -162,6 +163,69 @@ class TransitStopsViewModel(application: Application) : AndroidViewModel(applica
     fun refresh() {
         if (_selected.value != null) _refreshTick.value += 1
     }
+
+    // --- Trip details ------------------------------------------------------
+
+    /**
+     * The vehicle whose trip sheet is open: the stable per-trip id from
+     * `activeVehicles` plus where it was tapped (resolving the feed timezone
+     * needs a coordinate on the trip). Null when no trip sheet is open.
+     */
+    private val _selectedTrip = MutableStateFlow<TripSelection?>(null)
+    val selectedTrip: StateFlow<TripSelection?> = _selectedTrip.asStateFlow()
+
+    private val _tripItinerary = MutableStateFlow<TripItineraryState>(TripItineraryState.Idle)
+    val tripItinerary: StateFlow<TripItineraryState> = _tripItinerary.asStateFlow()
+
+    /** Open the trip sheet for a tapped vehicle sprite. */
+    fun openTrip(vehicleId: Long, lat: Double, lon: Double) {
+        _selectedTrip.value = TripSelection(vehicleId, lat, lon)
+        viewModelScope.launch {
+            _tripItinerary.value = TripItineraryState.Loading
+            val itin = withContext(Dispatchers.IO) {
+                runCatching {
+                    OfflineRouter.tripItinerary(getApplication(), vehicleId, lat, lon)
+                }.getOrNull()
+            }
+            // The selection may have moved on while the fetch ran.
+            if (_selectedTrip.value?.vehicleId == vehicleId) {
+                _tripItinerary.value = if (itin == null) TripItineraryState.Missing
+                                       else TripItineraryState.Loaded(itin)
+            }
+        }
+    }
+
+    /**
+     * Open the trip sheet for a departure tapped on a board. The board's
+     * departures carry the pack trip identity ([Departure.tripVehicleId]),
+     * resolved at the board's own coordinate.
+     */
+    fun openTripForDeparture(departure: Departure, lat: Double, lon: Double) {
+        val id = departure.tripVehicleId ?: return
+        openTrip(id, lat, lon)
+    }
+
+    /** Close the trip sheet. */
+    fun closeTrip() {
+        _selectedTrip.value = null
+        _tripItinerary.value = TripItineraryState.Idle
+    }
+}
+
+/** Which vehicle the trip sheet names: stable trip id + tap coordinate. */
+data class TripSelection(
+    val vehicleId: Long,
+    val lat: Double,
+    val lon: Double,
+)
+
+/** UI state for the vehicle trip sheet. */
+sealed interface TripItineraryState {
+    data object Idle : TripItineraryState
+    data object Loading : TripItineraryState
+    /** The id did not resolve or the trip does not run today. */
+    data object Missing : TripItineraryState
+    data class Loaded(val itinerary: TripItinerary) : TripItineraryState
 }
 
 /** UI state for the departure board. */

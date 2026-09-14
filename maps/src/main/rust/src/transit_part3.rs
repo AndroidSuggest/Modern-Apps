@@ -319,6 +319,10 @@ pub struct StopDeparture {
     pub cancelled: bool,
     /// Whether the overlay had live data for this departure at all.
     pub real_time: bool,
+    /// The trip behind this departure, packed exactly like [`Vehicle::id`]:
+    /// `(route_idx << 32) | (trip_index << 1) | prev_day`. Lets a tapped
+    /// departure open the same trip sheet a tapped vehicle opens.
+    pub trip_id: i64,
 }
 
 /// A simulated in-service vehicle: a point interpolated along a trip's shape at
@@ -417,6 +421,8 @@ pub fn stop_departures(
                         delay_secs: adj.map_or(0, |a| a.delay_secs),
                         cancelled: adj.is_some_and(|a| a.cancelled),
                         real_time: adj.is_some(),
+                        trip_id: ((r as i64) << 32) | ((ti as i64) << 1)
+                            | prev_day as i64,
                     });
                 }
             }

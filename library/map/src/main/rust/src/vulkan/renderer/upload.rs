@@ -14,17 +14,10 @@ use std::collections::HashSet;
 impl Renderer {
     /// Draw `mesh` as the navigation route, or take the route away with `None`.
     ///
-    /// Pure state like [`set_user_puck`](Self::set_user_puck), and for a stronger reason:
-    /// a route arrives once when the driver starts navigating and then does not change
-    /// for the rest of the trip, so it has no business being an argument on
-    /// [`render`](Self::render).
-    ///
-    /// The old buffers go through the same frames-in-flight grace queue the transient
-    /// symbol buffers use — a command buffer submitted last frame may still be reading
-    /// them, and freeing a live vertex buffer is the classic Vulkan use-after-free.
-    ///
-    /// On upload failure the route is left cleared rather than half-set, so a device that
-    /// cannot allocate draws no route instead of a route with no indices.
+    /// Pure state: a route arrives once and then does not change, so it has
+    /// no business being an argument on [`render`](Self::render). Old buffers
+    /// retire through the frames-in-flight grace queue; on upload failure the
+    /// route is left cleared rather than half-set.
     pub fn set_route(&mut self, mesh: Option<&RouteMesh>) -> Result<(), String> {
         if let Some(previous) = self.route.take() {
             self.transients.push(TransientBuffers {
@@ -37,36 +30,66 @@ impl Renderer {
         if mesh.indices.is_empty() {
             return Ok(());
         }
-        unsafe {
-            let vertices = Buffer::upload(
-                &self.context.instance,
-                self.context.physical_device,
-                &self.context.device,
-                vk::BufferUsageFlags::VERTEX_BUFFER,
-                &mesh.vertices,
-            )?;
-            let indices = match Buffer::upload(
-                &self.context.instance,
-                self.context.physical_device,
-                &self.context.device,
-                vk::BufferUsageFlags::INDEX_BUFFER,
-                &mesh.indices,
-            ) {
-                Ok(buffer) => buffer,
-                Err(e) => {
-                    vertices.destroy(&self.context.device);
-                    return Err(e);
-                }
-            };
-            self.route = Some(RouteBuffers {
-                placement: mesh.placement,
-                vertices,
-                indices,
-                index_count: mesh.indices.len() as u32,
-                segments: mesh.segments.clone(),
+        // SAFETY: uploading fresh GPU buffers; the old ones retired above.
+        let buffers = unsafe { self.upload_route_buffers(mesh)? };
+        self.route = Some(buffers);
+        Ok(())
+    }
+
+    /// Draw `mesh` as the pack-driven rail-lines overlay, or take it away
+    /// with `None`. Same mesh, grace queue and cleared-on-failure contract
+    /// as [`set_route`](Self::set_route); a frame does nothing but draw.
+    pub fn set_rail_lines(&mut self, mesh: Option<&RouteMesh>) -> Result<(), String> {
+        if let Some(previous) = self.rail_lines.take() {
+            self.transients.push(TransientBuffers {
+                vbuf: previous.vertices,
+                ibuf: previous.indices,
+                frames: FRAMES_IN_FLIGHT,
             });
         }
+        let Some(mesh) = mesh else { return Ok(()) };
+        if mesh.indices.is_empty() {
+            return Ok(());
+        }
+        // SAFETY: uploading fresh GPU buffers; the old ones retired above.
+        let buffers = unsafe { self.upload_route_buffers(mesh)? };
+        self.rail_lines = Some(buffers);
         Ok(())
+    }
+    /// Upload a [`RouteMesh`] into GPU [`RouteBuffers`], shared by the route
+    /// and rail-lines slots. On failure the vertices are destroyed and the
+    /// slot stays cleared rather than half-set.
+    ///
+    /// # Safety: call only after retiring the slot's previous buffers — a
+    /// command buffer submitted last frame may still be reading them.
+    unsafe fn upload_route_buffers(&self, mesh: &RouteMesh) -> Result<RouteBuffers, String> {
+        let vertices = Buffer::upload(
+            &self.context.instance,
+            self.context.physical_device,
+            &self.context.device,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            &mesh.vertices,
+        )?;
+        let indices = match Buffer::upload(
+            &self.context.instance,
+            self.context.physical_device,
+            &self.context.device,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            &mesh.indices,
+        ) {
+            Ok(buffer) => buffer,
+            Err(e) => {
+                vertices.destroy(&self.context.device);
+                return Err(e);
+            }
+        };
+        Ok(RouteBuffers {
+            placement: mesh.placement,
+            vertices,
+            indices,
+            index_count: mesh.indices.len() as u32,
+            segments: mesh.segments.clone(),
+        })
     }
 
     /// Upload a tile's geometry, replacing anything already resident for it.

@@ -112,3 +112,81 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_clearRoute<'l>
         }
     }
 }
+
+/// Draw the pack-driven rail-lines network under the navigation route.
+///
+/// Same bulk arrays and tessellation as
+/// [`setRoute`](Java_com_vayunmathur_library_map_MapNative_setRoute) — a
+/// list of coloured runs with one casing — into the separate rail slot, so
+/// the network and a selected route coexist. Uploaded once per push like the
+/// route; the host re-pushes when the viewport outgrows the covered bbox or
+/// the toggle flips. Empty draws nothing, like [`clearRailLines`].
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setRailLines<'l>(
+    env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    points: JFloatArray<'l>,
+    segment_lengths: JIntArray<'l>,
+    segment_colors: JIntArray<'l>,
+    width_dp: jfloat,
+    casing_dp: jfloat,
+    casing_color: jint,
+) {
+    let Some(map) = handle_mut(handle) else { return };
+    let point_floats = match env.get_array_length(&points) {
+        Ok(length) => length.max(0) as usize,
+        Err(_) => {
+            log("the rail points array could not be measured; leaving the network unchanged");
+            return;
+        }
+    };
+    let segment_count = env.get_array_length(&segment_lengths).unwrap_or(0).max(0) as usize;
+    let color_count = env.get_array_length(&segment_colors).unwrap_or(0).max(0) as usize;
+    let segment_count = segment_count.min(color_count);
+    let mut flat = vec![0f32; point_floats];
+    if env.get_float_array_region(&points, 0, &mut flat).is_err() {
+        log("the rail points array could not be read; leaving the network unchanged");
+        return;
+    }
+    let mut lengths = vec![0i32; segment_count];
+    let mut colors = vec![0i32; segment_count];
+    if segment_count > 0
+        && (env.get_int_array_region(&segment_lengths, 0, &mut lengths).is_err()
+            || env.get_int_array_region(&segment_colors, 0, &mut colors).is_err())
+    {
+        log("the rail segment arrays could not be read; leaving the network unchanged");
+        return;
+    }
+    let mut segments: Vec<RouteSegment> = Vec::with_capacity(segment_count);
+    let mut cursor = 0usize;
+    for (len, color) in lengths.into_iter().zip(colors) {
+        let count = len.max(0) as usize;
+        let end = (cursor + count * 2).min(flat.len());
+        let run: Vec<(f64, f64)> =
+            flat[cursor..end].chunks_exact(2).map(|pair| (pair[0] as f64, pair[1] as f64)).collect();
+        cursor = end;
+        segments.push(RouteSegment { points: run, color: color as u32 });
+    }
+
+    let style = RouteStyle { width_dp, casing_dp, casing_color: casing_color as u32 };
+    let mesh = crate::overlay::tessellate(&segments, style);
+    if let Err(e) = map.renderer.set_rail_lines(mesh.as_ref()) {
+        log(&format!("uploading the rail network failed: {e}"));
+    }
+}
+
+/// Take the rail network away: the transit toggle went off, or the host cleared it.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_clearRailLines<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+) {
+    if let Some(map) = handle_mut(handle) {
+        if let Err(e) = map.renderer.set_rail_lines(None) {
+            log(&format!("clearing the rail network failed: {e}"));
+        }
+    }
+}

@@ -98,6 +98,11 @@ fun VectorMap(
     trafficColors: TrafficColorTable? = null,
     route: RouteOverlay? = null,
     /**
+     * The pack-driven rail-lines network, drawn under [route] in its own
+     * slot so the two coexist. `null` draws nothing.
+     */
+    railLines: RouteOverlay? = null,
+    /**
      * App pins the renderer draws inside its own frame, glued to the ground so they pan and tilt
      * in lock-step with the basemap instead of trailing it the way a Compose overlay does (see
      * [MapMarker]). A tap resolves back to one through [Projection.pickMarker]. Empty draws none.
@@ -188,6 +193,7 @@ fun VectorMap(
             regionMask = regionMask,
             trafficColors = trafficColors,
             route = route,
+            railLines = railLines,
             markers = markers,
             vehicles = vehicles,
             modifier = Modifier.fillMaxSize(),

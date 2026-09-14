@@ -5,8 +5,11 @@ import android.util.Log
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.util.ConnectivityMonitor
 import com.vayunmathur.maps.data.transit.Departure
+import com.vayunmathur.maps.data.transit.RailLine
 import com.vayunmathur.maps.data.transit.TransitStop
 import com.vayunmathur.maps.data.transit.TransitousDataSource
+import com.vayunmathur.maps.data.transit.TripItinerary
+import com.vayunmathur.maps.data.transit.TripStop
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -307,6 +310,125 @@ internal object OfflineRouterTransit {
     }
 
     /**
+     * Drawable rail lines serving the bbox, read straight from the on-device
+     * timetable pack (GTFS-shape polylines per route) rather than the tile
+     * layer that needs an archive rebuild. Colours are the agencies' own
+     * `route_color`. Empty when no pack covers the bbox.
+     */
+    suspend fun railLines(
+            context: Context,
+            minLat: Double,
+            minLon: Double,
+            maxLat: Double,
+            maxLon: Double,
+    ): List<RailLine> = withContext(Dispatchers.Default) {
+        val base = OfflineRouter.transitBase(context) ?: return@withContext emptyList()
+        val feeds = transitFeeds(base)
+        if (feeds.isEmpty()) return@withContext emptyList()
+
+        val out = mutableListOf<RailLine>()
+        for (feed in feeds) {
+            val raw = try {
+                OfflineRouter.getRailLinesNative(
+                        base, feed, minLat, minLon, maxLat, maxLon
+                )
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            for (line in raw) {
+                if (line.coords.size < 4) continue
+                val points = mutableListOf<GeoPoint>()
+                var i = 0
+                while (i + 1 < line.coords.size) {
+                    // Native emits [lon, lat] pairs like a RawStep geometry.
+                    points.add(GeoPoint(line.coords[i], line.coords[i + 1]))
+                    i += 2
+                }
+                if (points.size < 2) continue
+                out.add(
+                        RailLine(
+                                name = line.name,
+                                color = if (line.color == 0) null
+                                        else String.format("%06X", line.color and 0xFFFFFF),
+                                mode = gtfsRouteTypeToMode(line.routeType),
+                                points = points,
+                        )
+                )
+            }
+        }
+        out
+    }
+
+    /**
+     * A trip's full stop-by-stop itinerary for the vehicle-details sheet,
+     * decoded from the stable per-trip id `activeVehicles` returns. Runs the
+     * same two-pass pattern as the route planner: a schedule-only fetch
+     * names the stops (with baked MOTIS ids), then, when online, a replan
+     * against the MOTIS boards for those stops folds realtime in. Null when
+     * the id does not resolve or the trip does not run today.
+     *
+     * [lat]/[lon] is the vehicle's tapped position, used only to resolve the
+     * feed timezone the query times must be expressed in.
+     */
+    suspend fun tripItinerary(
+            context: Context,
+            vehicleId: Long,
+            lat: Double,
+            lon: Double,
+    ): TripItinerary? = withContext(Dispatchers.Default) {
+        val base = OfflineRouter.transitBase(context) ?: return@withContext null
+        val feeds = transitFeeds(base)
+        for (feed in feeds) {
+            val zoneId = runCatching {
+                OfflineRouter.getFeedTimezoneNative(base, feed, lat, lon)
+            }.getOrNull()
+            val clock = transitClock(zoneId)
+            val pass = { overlay: Overlay ->
+                try {
+                    OfflineRouter.getTripItineraryNative(
+                            base, feed, vehicleId,
+                            clock.weekday, clock.date,
+                            clock.prevWeekday, clock.prevDate,
+                            overlay.coords, overlay.routes, overlay.times
+                    )
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            val scheduled = pass(Overlay.EMPTY) ?: continue
+            val overlay = realtimeOverlay(
+                    context,
+                    scheduled.stops.mapNotNull { s ->
+                        s.motisId.ifBlank { null }?.let { GeoPoint(s.lon, s.lat) to it }
+                    },
+                    clock,
+            )
+            val raw = if (overlay.isEmpty) scheduled else pass(overlay) ?: scheduled
+            return@withContext TripItinerary(
+                    routeName = raw.routeName,
+                    headsign = raw.headsign,
+                    routeColor = if (raw.color == 0) null
+                                 else String.format("%06X", raw.color and 0xFFFFFF),
+                    mode = gtfsRouteTypeToMode(raw.routeType),
+                    cancelled = raw.cancelled,
+                    stops = raw.stops.map { s ->
+                        val arr = clock.midnightMillis + s.arrSecs.toLong() * 1000L
+                        val dep = clock.midnightMillis + s.depSecs.toLong() * 1000L
+                        TripStop(
+                                name = s.name,
+                                lat = s.lat,
+                                lon = s.lon,
+                                arrivesMillis = arr,
+                                departsMillis = dep,
+                                motisId = s.motisId,
+                        )
+                    },
+            )
+        }
+        null
+    }
+
+    /**
      * Departure board from the on-device transit index for the stop nearest
      * `(lat,lon)`. Scheduled times come from the pack; when the device is online
      * the MOTIS board for that stop is folded in as a realtime overlay, so
@@ -400,6 +522,7 @@ internal object OfflineRouterTransit {
                                     routeColor = if (d.routeColor == 0) null
                                                  else String.format("%06X", d.routeColor and 0xFFFFFF),
                                     cancelled = d.cancelled,
+                                    tripVehicleId = d.tripId,
                             )
                     )
                 }

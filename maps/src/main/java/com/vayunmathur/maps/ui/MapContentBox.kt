@@ -283,6 +283,29 @@ internal fun MapPageScope.MapContentBox(
                         departures = departuresState,
                         onCloseStop = { transitViewModel.closeStop() },
                         onRefreshDepartures = { transitViewModel.refresh() },
+                        // A tapped train opens its trip sheet, replacing the
+                        // board (one tap, one back): the board's stop stays
+                        // selected underneath so dismissing the trip returns
+                        // to it rather than to the bare map.
+                        onTrainTap = { dep ->
+                            transitViewModel.openTripForDeparture(
+                                dep,
+                                selectedTransitStop?.lat ?: 0.0,
+                                selectedTransitStop?.lon ?: 0.0,
+                            )
+                        },
+                        tripSheet = tripItineraryState,
+                        onCloseTrip = { transitViewModel.closeTrip() },
+                        // A tapped station opens its departure board,
+                        // replacing the trip sheet (one tap, one back).
+                        onTripStopTap = { stop ->
+                            transitViewModel.closeTrip()
+                            transitViewModel.openNearestStop(
+                                stop.lat,
+                                stop.lon,
+                                stop.name.ifBlank { null },
+                            )
+                        },
                     )
                 }
             }

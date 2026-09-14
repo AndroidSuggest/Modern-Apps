@@ -1,5 +1,6 @@
 package com.vayunmathur.maps.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,6 +63,7 @@ fun DeparturesSheet(
     state: DeparturesState,
     onDismiss: () -> Unit,
     onRefresh: () -> Unit,
+    onTrainTap: (Departure) -> Unit = {},
 ) {
     val stop: TransitStop? = when (state) {
         is DeparturesState.Loading -> state.stop
@@ -126,7 +128,7 @@ fun DeparturesSheet(
                     if (state.departures.isEmpty()) {
                         EmptyState(title = stringResource(R.string.transit_departures_none))
                     } else {
-                        DepartureList(state.departures, now)
+                        DepartureList(state.departures, now, onTrainTap)
                     }
                 }
             }
@@ -151,7 +153,12 @@ fun DeparturesSheet(
  * for cannot answer it. Anything further out is next week's timetable.
  */
 @Composable
-private fun DepartureList(departures: List<Departure>, now: Long, modifier: Modifier = Modifier) {
+private fun DepartureList(
+    departures: List<Departure>,
+    now: Long,
+    onTrainTap: (Departure) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     // Keyed on the departures rather than on `now`: `now` ticks every 15 s and re-sorting the
     // board on every tick would be wasted work and would fight the scroll position.
     val shown = remember(departures) {
@@ -175,16 +182,26 @@ private fun DepartureList(departures: List<Departure>, now: Long, modifier: Modi
 
     LazyColumn(modifier.fillMaxWidth().heightIn(max = 420.dp), state = listState) {
         items(shown, key = { "${it.line}|${it.headsign}|${it.scheduledMillis}" }) { dep ->
-            DepartureRow(dep, now)
+            DepartureRow(dep, now, onTrainTap)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }
 
 @Composable
-private fun DepartureRow(dep: Departure, now: Long, modifier: Modifier = Modifier) {
+private fun DepartureRow(
+    dep: Departure,
+    now: Long,
+    onTrainTap: (Departure) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // A row with a pack trip behind it opens that trip's sheet: the same
+    // trip a tapped vehicle sprite opens. Online-only rows (no pack trip)
+    // stay inert.
+    val tap = dep.tripVehicleId?.let { { onTrainTap(dep) } }
     Row(
-        modifier.fillMaxWidth().padding(vertical = 6.dp).alpha(departedAlpha(dep.realtimeMillis, now)),
+        (if (tap == null) modifier else modifier.clickable(onClick = tap))
+            .fillMaxWidth().padding(vertical = 6.dp).alpha(departedAlpha(dep.realtimeMillis, now)),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -2,12 +2,10 @@ package com.vayunmathur.maps.ui.map
 
 import android.app.Activity
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpRect
@@ -37,9 +35,6 @@ import com.vayunmathur.maps.util.RouteService
 import com.vayunmathur.maps.util.SearchResult
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
 import com.vayunmathur.maps.util.TransitStopsViewModel
-import com.vayunmathur.maps.util.visibleBoundsOrWorld
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
@@ -159,24 +154,11 @@ fun MapSurface(
     // transit is off, the map is hidden, or the viewport is too wide to enumerate cheaply.
     val vehicles = rememberTransitVehicles(camera, transitEnabled)
 
-    // Prefetch traffic for the visible 1° squares once the camera settles, so the overlay has
-    // data independent of route search (today traffic is fetched only during a route search).
-    // The native side dedups squares for the session, so a re-pan over an already-fetched
-    // square is a cheap no-op and the fetched data is kept. Keyed on the toggle so it stops
-    // when traffic is off. `collectLatest { delay() }` is the repo's debounce idiom (see
-    // GooglePoiMapViewModel): a newer camera position cancels the pending delay, so the fetch
-    // only fires after the camera stops moving.
-    LaunchedEffect(camera, trafficEnabled) {
-        if (!trafficEnabled) return@LaunchedEffect
-        snapshotFlow { camera.position }.collectLatest {
-            delay(TRAFFIC_PREFETCH_DEBOUNCE_MS)
-            // The component overlay is dense and zoom-gated in the archive/renderer, and a
-            // world-zoom viewport would enumerate hundreds of 1° squares, so only prefetch
-            // once zoomed in enough for it to be useful.
-            if (camera.position.zoom < TRAFFIC_MIN_ZOOM) return@collectLatest
-            prefetchTrafficSquares(camera.visibleBoundsOrWorld())
-        }
-    }
+    // Pack-driven rail network for the viewport, drawn in the separate rail
+    // slot under the navigation route.
+    val railLines = rememberRailLines(camera, transitEnabled, tokens)
+
+    TrafficPrefetchEffect(camera, trafficEnabled)
 
     VectorMap(
         cameraState = camera,
@@ -204,6 +186,8 @@ fun MapSurface(
         // The route line, coloured per segment (traffic/transit/travelled) and drawn inside
         // the renderer's frame so it stays glued to the basemap on a pan. Null draws nothing.
         route = routeOverlay,
+        // The pack-driven rail network, drawn under the route in its own slot.
+        railLines = railLines,
         // The app's pins, drawn by the renderer as billboarded sprites so they pan/tilt in
         // lock-step with the basemap. Their taps resolve through the id buffer below.
         markers = markers,
@@ -318,6 +302,16 @@ fun MapSurface(
                     viewModel.stashRouteSelection()
                     viewModel.set(label)
                     sheetState?.partialExpand()
+                    return@launch
+                }
+
+                // A tapped vehicle sprite opens its trip sheet (CPU nearest
+                // check; vehicles sit outside the GPU pick path).
+                if (openVehicleTrip(
+                        vehicles, projection, offset,
+                        viewModel, transitViewModel, sheetState,
+                    )
+                ) {
                     return@launch
                 }
 

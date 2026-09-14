@@ -94,6 +94,10 @@ impl Drop for Renderer {
                 route.vertices.destroy(&self.context.device);
                 route.indices.destroy(&self.context.device);
             }
+            if let Some(rails) = &self.rail_lines {
+                rails.vertices.destroy(&self.context.device);
+                rails.indices.destroy(&self.context.device);
+            }
             for transient in &self.transients {
                 transient.vbuf.destroy(&self.context.device);
                 transient.ibuf.destroy(&self.context.device);

@@ -173,6 +173,7 @@ impl Renderer {
             quad,
             selected_region: None,
             route: None,
+            rail_lines: None,
             traffic_colors: HashMap::new(),
             traffic_enabled: false,
             pick,

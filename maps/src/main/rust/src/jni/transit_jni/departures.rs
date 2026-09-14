@@ -86,8 +86,10 @@ pub extern "system" fn Java_com_vayunmathur_maps_util_OfflineRouter_getStopDepar
         Ok(c) => c,
         Err(_) => return null,
     };
+    // MUST match the RawDeparture ctor: 4 strings, 4 ints, 2 bools, then the
+    // packed trip id (J) LAST so older descriptors never renumber.
     let ctor =
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIZZ)V";
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIZZJ)V";
     let array = match env.new_object_array(deps.len() as i32, &class, JObject::null()) {
         Ok(a) => a,
         Err(_) => return null,
@@ -124,6 +126,7 @@ pub extern "system" fn Java_com_vayunmathur_maps_util_OfflineRouter_getStopDepar
                 JValue::Int(d.delay_secs),
                 JValue::Bool(d.cancelled as u8),
                 JValue::Bool(d.real_time as u8),
+                JValue::Long(d.trip_id),
             ],
         ) {
             Ok(o) => o,

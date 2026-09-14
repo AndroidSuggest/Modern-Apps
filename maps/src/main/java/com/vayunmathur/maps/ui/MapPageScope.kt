@@ -17,6 +17,7 @@ import com.vayunmathur.maps.data.transit.TransitStop
 import com.vayunmathur.maps.ipc.FamilyMember
 import com.vayunmathur.maps.ui.map.MapChromeState
 import com.vayunmathur.maps.util.DeparturesState
+import com.vayunmathur.maps.util.TripItineraryState
 import com.vayunmathur.maps.util.MapSettingsViewModel
 import com.vayunmathur.maps.util.MapsSearchViewModel
 import com.vayunmathur.maps.util.NavigationProgress
@@ -121,6 +122,7 @@ internal class MapPageScope(
     val searchRecents: List<String>,
     val selectedTransitStop: TransitStop?,
     val departuresState: DeparturesState,
+    val tripItineraryState: TripItineraryState,
     val familyMembers: List<FamilyMember>,
     val trafficEnabled: Boolean,
     val satelliteEnabled: Boolean,

@@ -87,6 +87,12 @@ pub struct Renderer {
     pub(crate) selected_region: Option<u64>,
     /// The navigation route line, or `None` when no route is set.
     pub(crate) route: Option<RouteBuffers>,
+    /// The pack-driven rail-lines overlay, or `None` when the transit layer
+    /// is off or the pack carries no shapes for the viewport. A second
+    /// `RouteBuffers` slot beside the navigation route (same mesh, upload and
+    /// draw path) so the network and a selected route coexist — the network
+    /// draws first, the route over it.
+    pub(crate) rail_lines: Option<RouteBuffers>,
     /// The live-traffic colour table: `component_id → ARGB`, pushed from the host each update.
     ///
     /// The device owns the theme and palette, so it sends fully-resolved colours; the renderer

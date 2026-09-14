@@ -67,6 +67,13 @@ internal fun VulkanMapSurface(
      * it pans in lock-step with the basemap.
      */
     route: RouteOverlay? = null,
+    /**
+     * The pack-driven rail-lines network to draw under [route]. `null` or an
+     * all-empty overlay draws nothing. Pushed like [route] but on the
+     * viewport's cadence (re-fetched when the camera outgrows the covered
+     * bbox), into the separate rail slot so the two coexist.
+     */
+    railLines: RouteOverlay? = null,
     /** App pins the renderer draws as billboarded sprites; empty draws none. */
     markers: List<MapMarker> = emptyList(),
     /**
@@ -183,6 +190,10 @@ internal fun VulkanMapSurface(
     // overlay's *value* (data-class equality) so the phone rebuilding an identical route on
     // recomposition does not re-tessellate. `null` or an all-empty overlay clears it.
     LaunchedEffect(route, host) { renderer.setRoute(route) }
+
+    // The rail network: pushed like the route, into the separate rail slot so
+    // the two coexist. Keyed on the overlay's value for the same reason.
+    LaunchedEffect(railLines, host) { renderer.setRailLines(railLines) }
 
     // App pins: pushed like the puck, out of band from the frame loop, so they pan and tilt in
     // lock-step with the basemap. Keyed on the list's value so an identical set rebuilt on

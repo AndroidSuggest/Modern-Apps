@@ -11,6 +11,8 @@
 
 pub mod cache;
 pub mod departures;
+pub mod itinerary;
+pub mod lines;
 pub mod lookups;
 pub mod overlay;
 pub mod route;

@@ -149,6 +149,7 @@ fun MapPage(
     val searching by searchViewModel.searching.collectAsState()
     val selectedTransitStop by transitViewModel.selected.collectAsState()
     val departuresState by transitViewModel.departures.collectAsState()
+    val tripItineraryState by transitViewModel.tripItinerary.collectAsState()
 
     // The findfamily service is bound only while this screen is composed, so this is empty when
     // findfamily is absent.
@@ -263,6 +264,7 @@ fun MapPage(
         searchRecents = searchRecents,
         selectedTransitStop = selectedTransitStop,
         departuresState = departuresState,
+        tripItineraryState = tripItineraryState,
         familyMembers = familyMembers,
         trafficEnabled = trafficEnabled,
         satelliteEnabled = satelliteEnabled,

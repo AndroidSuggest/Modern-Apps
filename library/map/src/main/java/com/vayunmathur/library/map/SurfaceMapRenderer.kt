@@ -230,6 +230,15 @@ class SurfaceMapRenderer(
     internal var routeStyle = RouteStyle()
 
     /**
+     * The pack-driven rail-lines network to draw, and how — a second coloured
+     * overlay beside the navigation route so the network and a selected route
+     * coexist. Remembered on the same terms as [routeSegments] so a push that
+     * arrived before the surface existed is re-applied in the first frame.
+     */
+    internal var railSegments: List<RouteSegment>? = null
+    internal var railStyle = RouteStyle()
+
+    /**
      * The last-pushed live-traffic colour table (`component_id`s and their ARGB), remembered so
      * a push that arrived before the surface existed — or that has to outlive the surface being
      * recreated — is re-applied in the first frame, the same way [route] is. `null` means the
@@ -294,6 +303,7 @@ class SurfaceMapRenderer(
         MapNative.setTrafficEnabled(handle, layers.traffic)
         applyUserPuck()
         applyRoute()
+        applyRailLines()
         applyRegionMask()
         applyTraffic()
         applyMarkers()

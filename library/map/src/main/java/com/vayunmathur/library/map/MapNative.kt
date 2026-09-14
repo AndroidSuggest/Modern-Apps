@@ -297,6 +297,27 @@ internal object MapNative {
     external fun clearRoute(handle: Long)
 
     /**
+     * Draw the pack-driven rail-lines network under the navigation route.
+     *
+     * Same bulk arrays as [setRoute] — flat lon/lat pairs, per-run point
+     * counts and ARGB colours, plus the style widths — into the separate rail
+     * slot, so the network and a selected route coexist. An empty push draws
+     * nothing, like [clearRailLines].
+     */
+    external fun setRailLines(
+        handle: Long,
+        points: FloatArray,
+        segmentLengths: IntArray,
+        segmentColors: IntArray,
+        widthDp: Float,
+        casingDp: Float,
+        casingColor: Int,
+    )
+
+    /** Take the rail network away: the transit toggle went off, or the host cleared it. */
+    external fun clearRailLines(handle: Long)
+
+    /**
      * Dim everything outside the region containing [lon]/[lat], and return which region
      * that is.
      *

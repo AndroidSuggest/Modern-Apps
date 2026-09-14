@@ -332,6 +332,8 @@
 
     <!-- Departure board: section subtitle under the stop name. Noun. -->
     <string name="transit_departures_title">Departures</string>
+    <!-- Vehicle trip sheet: section subtitle under the line headsign. Noun. -->
+    <string name="transit_trip_title">Trip stops</string>
     <!-- Departure board: shown while the live board is loading. -->
     <string name="transit_departures_loading">Loading departures\u2026</string>
     <!-- Departure board: shown when no upcoming departures were found. -->

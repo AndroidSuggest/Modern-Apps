@@ -3,10 +3,14 @@ package com.vayunmathur.maps.ui.map
 import androidx.compose.runtime.Composable
 import com.vayunmathur.maps.data.ParkingSpot
 import com.vayunmathur.maps.data.transit.TransitStop
+import com.vayunmathur.maps.data.transit.TripStop
+import com.vayunmathur.maps.data.transit.Departure
 import com.vayunmathur.maps.ui.DeparturesSheet
 import com.vayunmathur.maps.ui.LayersSheet
 import com.vayunmathur.maps.ui.ParkingSheet
+import com.vayunmathur.maps.ui.TripSheet
 import com.vayunmathur.maps.util.DeparturesState
+import com.vayunmathur.maps.util.TripItineraryState
 
 /** The layer toggles, grouped so the signature does not carry eight loose parameters. */
 class LayerToggles(
@@ -44,6 +48,10 @@ fun MapOverlays(
     departures: DeparturesState,
     onCloseStop: () -> Unit,
     onRefreshDepartures: () -> Unit,
+    onTrainTap: (Departure) -> Unit,
+    tripSheet: TripItineraryState,
+    onCloseTrip: () -> Unit,
+    onTripStopTap: (TripStop) -> Unit,
 ) {
     when (overlay) {
         MapOverlay.None -> Unit
@@ -75,12 +83,28 @@ fun MapOverlays(
     }
 
     // Departure board (P10): opened by tapping a transit stop. Live board from Transitous
-    // (online-only); dismiss clears the selection.
+    // (online-only); dismiss clears the selection. A tapped train opens its
+    // trip sheet, replacing the board (one tap, one back).
     if (selectedStop != null) {
         DeparturesSheet(
             state = departures,
             onDismiss = onCloseStop,
             onRefresh = onRefreshDepartures,
+            onTrainTap = onTrainTap,
+        )
+    }
+
+    // Vehicle trip sheet: opened by tapping a vehicle sprite or a train on a
+    // board. A tapped station opens its departure board, replacing this sheet.
+    // Shown whenever a trip is selected, including over the board it came from.
+    if (tripSheet is TripItineraryState.Loaded ||
+        tripSheet is TripItineraryState.Loading ||
+        tripSheet is TripItineraryState.Missing
+    ) {
+        TripSheet(
+            state = tripSheet,
+            onDismiss = onCloseTrip,
+            onStopTap = onTripStopTap,
         )
     }
 }

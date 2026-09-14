@@ -12,10 +12,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.Executors
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.map.GeoPoint
 
@@ -211,6 +208,45 @@ object OfflineRouter {
             lon: Double
     ): String?
     /**
+     * Drawable rail lines serving the bbox, read from the timetable pack's
+     * GTFS-shape sections (no tile rebuild needed). `coords` is flat
+     * `[lon0, lat0, ...]`; `routeColor` is 0xRRGGBB (`0` when absent).
+     * Empty array (not null) when the pack is absent; null on JNI failure.
+     *
+     * [JvmName] keeps the JVM name JNI-visible; see [findTransitRouteNative].
+     */
+    @JvmName("getRailLinesNative")
+    internal external fun getRailLinesNative(
+            basePath: String,
+            feed: String,
+            minLat: Double,
+            minLon: Double,
+            maxLat: Double,
+            maxLon: Double
+    ): Array<RawRailLine>?
+    /**
+     * A trip's stop-by-stop itinerary for the vehicle-details sheet, decoded
+     * from the stable per-trip id `activeVehiclesNative` returns. Times are
+     * feed-local-midnight seconds in the query-day frame, like board times.
+     * Null when the id does not resolve or the trip does not run today; a
+     * cancelled trip still returns with `cancelled` set.
+     *
+     * [JvmName] keeps the JVM name JNI-visible; see [findTransitRouteNative].
+     */
+    @JvmName("getTripItineraryNative")
+    internal external fun getTripItineraryNative(
+            basePath: String,
+            feed: String,
+            vehicleId: Long,
+            weekday: Int,
+            date: Int,
+            prevWeekday: Int,
+            prevDate: Int,
+            overlayCoords: DoubleArray,
+            overlayRoutes: Array<String>,
+            overlayTimes: IntArray
+    ): RawTripItinerary?
+    /**
      * Simulated in-service transit vehicles for the visible bbox (WS-F): every
      * trip in `<basePath>/<feed>.transit` running at `nowSecs` (seconds since
      * feed-local midnight), interpolated to a live `lon,lat,bearing` along its
@@ -250,95 +286,18 @@ object OfflineRouter {
     private external fun notifyTrafficFetchFinishedNative(packedSquare: Int)
     external fun getTrafficTileNative(z: Int, x: Int, y: Int): ByteArray?
 
-    private val _trafficVersion = kotlinx.coroutines.flow.MutableStateFlow(0)
-    val trafficVersion = _trafficVersion.asStateFlow()
+    /** Display-traffic version counter — see [OfflineRouterTraffic]. */
+    val trafficVersion get() = OfflineRouterTraffic.trafficVersion
 
-    /**
-     * Live per-component traffic for **display**, as a flat id→ratio table.
-     *
-     * Separate from the big-edge speeds that feed [updateTrafficNative] (routing/ETA, which
-     * stay entirely native): these component-level values are pushed to the renderer as an
-     * id→colour table by the map layer, which resolves the colour from the theme. [ids] and
-     * [ratioPct] are parallel; [ratioPct] is the wire's `u8 = round(speedRatio*100)`, where
-     * `0` means "no data" (the consumer skips those). The renderer draws a colour only for
-     * ids present here and present in a resident tile, so ids for squares that scrolled off
-     * are harmless — which is why this is an accumulating session cache rather than something
-     * pruned on every pan (see [trafficComponents]).
-     */
-    class TrafficComponents(val ids: LongArray, val ratioPct: ByteArray) {
-        companion object {
-            val EMPTY = TrafficComponents(LongArray(0), ByteArray(0))
-        }
-    }
+    /** Merged per-component display table — see [OfflineRouterTraffic]. */
+    internal val trafficComponents get() = OfflineRouterTraffic.trafficComponents
 
-    /**
-     * Component traffic keyed by the packed 1° square it was fetched for (the same
-     * `packedSquare` [fetchTrafficData] receives). The native prefetch dedups squares for the
-     * whole session ([ensureTrafficLoadedNative] never re-asks for a square it already
-     * requested), so a square is fetched once and kept: dropping it here would leave a
-     * re-panned area permanently uncoloured with no way to refetch. Cleared only on [reload]
-     * (a graph swap can renumber ids).
-     */
-    private val componentBySquare = java.util.concurrent.ConcurrentHashMap<Int, TrafficComponents>()
-    /**
-     * Last published merge, for the unchanged-content skip in
-     * [republishComponents]. Volatile (not confined): fetches complete on
-     * IO threads, so the read-modify-publish must tolerate races — the worst
-     * case is one redundant publish, never a missed one.
-     */
-    @Volatile
-    private var lastPublishedComponents: TrafficComponents? = null
-    private val _trafficComponents =
-            kotlinx.coroutines.flow.MutableStateFlow(TrafficComponents.EMPTY)
-
-    /**
-     * The merged component table across every fetched square, republished whenever a fetch
-     * lands. The map layer collects this, converts each ratio to an ARGB colour against the
-     * current palette, and pushes `id→colour` to the renderer.
-     */
-    val trafficComponents = _trafficComponents.asStateFlow()
-
-    /** Concatenate the per-square tables into one flat id/ratio snapshot and publish it. */
-    private fun republishComponents() {
-        val squares = componentBySquare.values.toList()
-        val total = squares.sumOf { it.ids.size }
-        val ids = LongArray(total)
-        val ratios = ByteArray(total)
-        var off = 0
-        for (s in squares) {
-            System.arraycopy(s.ids, 0, ids, off, s.ids.size)
-            System.arraycopy(s.ratioPct, 0, ratios, off, s.ratioPct.size)
-            off += s.ids.size
-        }
-        // Skip the publish when the merged content is unchanged: every fetch
-        // lands here, and a fresh object wakes the trafficComponents
-        // collectors (table rebuild + renderer re-push) even when a refetch
-        // returned identical bytes. Content-compare is O(n) against the same
-        // concat that already ran, far cheaper than the downstream rebuild.
-        val last = lastPublishedComponents
-        if (last != null && last.ids.contentEquals(ids) && last.ratioPct.contentEquals(ratios)) {
-            return
-        }
-        val snapshot = TrafficComponents(ids, ratios)
-        lastPublishedComponents = snapshot
-        _trafficComponents.value = snapshot
-    }
+    /** Bump the display-traffic version — see [OfflineRouterTraffic]. */
+    fun notifyTrafficUpdated() = OfflineRouterTraffic.notifyTrafficUpdated()
 
     private var cacheDirPath: String? = null
-    private var trafficUpdateJob: kotlinx.coroutines.Job? = null
-
-    fun notifyTrafficUpdated() {
-        trafficUpdateJob?.cancel()
-        trafficUpdateJob = trafficScope.launch {
-            _trafficVersion.value++
-        }
-    }
 
     external fun ensureTrafficLoadedNative(lat: Double, lon: Double, forceAsync: Boolean)
-
-    private val trafficScope = CoroutineScope(Dispatchers.IO)
-
-    @Keep
     private fun fetchTrafficData(
             minLat: Double,
             minLon: Double,
@@ -409,8 +368,10 @@ object OfflineRouter {
                             "fetchTrafficData PROCESSING: $nBigI big edges, $nComponentI components"
                     )
                     updateTrafficNative(edgeIds, speeds, packedSquare)
-                    componentBySquare[packedSquare] = TrafficComponents(compIds, compRatios)
-                    republishComponents()
+                    OfflineRouterTraffic.storeSquare(
+                            packedSquare,
+                            OfflineRouterTraffic.TrafficComponents(compIds, compRatios),
+                    )
                     notifyTrafficUpdated()
                 } else {
                     Log.w("TRAFFIC_DATA", "fetchTrafficData NO DATA: status=$status")
@@ -424,7 +385,7 @@ object OfflineRouter {
         }
 
         if (forceAsync) {
-            trafficScope.launch { block() }
+            OfflineRouterTraffic.launch(block)
         } else {
             // Previously called runBlocking(Dispatchers.IO) which blocked the
             // native caller's thread (often a Dispatchers.Default worker via
@@ -432,7 +393,7 @@ object OfflineRouter {
             // Default pool. Always async; the native side reacts to
             // notifyTrafficUpdated / notifyTrafficFetchFinishedNative when the
             // HTTP response is processed.
-            trafficScope.launch { block() }
+            OfflineRouterTraffic.launch(block)
         }
     }
 
@@ -504,7 +465,12 @@ object OfflineRouter {
             val delaySecs: Int,
             val cancelled: Boolean,
             /** Whether the realtime overlay covered this departure. */
-            val realTime: Boolean
+            val realTime: Boolean,
+            // The trip behind this departure, packed like a vehicle id
+            // (`(route_idx << 32) | (trip_index << 1) | prev_day`) so a tap
+            // opens the same trip sheet. Kept LAST so the shared descriptor
+            // never renumbers the arguments above.
+            val tripId: Long,
     )
 
     /**
@@ -539,6 +505,57 @@ object OfflineRouter {
             val colour: Int,
             val mode: String,
             val id: Long,
+    )
+
+    /**
+     * One drawable rail line as it crosses the JNI boundary: the route's full
+     * GTFS-shape polyline with its agency colour. Flat like [RawVehicle].
+     */
+    class RawRailLine
+    @Keep
+    constructor(
+            val name: String,
+            /** GTFS `route_color` packed as 0xRRGGBB, or 0 when absent. */
+            val color: Int,
+            /** GTFS `route_type`. */
+            val routeType: Int,
+            val feed: String,
+            /** Flat `[lon0, lat0, ...]`, like a [RawStep] geometry. */
+            val coords: DoubleArray,
+    )
+
+    /**
+     * One itinerary stop as it crosses the JNI boundary. Times are
+     * feed-local-midnight seconds in the query-day frame, converted by
+     * callers exactly like board times.
+     */
+    class RawTripStop
+    @Keep
+    constructor(
+            val name: String,
+            val lat: Double,
+            val lon: Double,
+            val arrSecs: Int,
+            val depSecs: Int,
+            /** Baked MOTIS id when the pack carries one, else empty. */
+            val motisId: String,
+            /** Set on every stop when the trip is cancelled. */
+            val cancelled: Boolean,
+    )
+
+    /** A trip's full run: header plus one [RawTripStop] per stop, in order. */
+    class RawTripItinerary
+    @Keep
+    constructor(
+            val routeName: String,
+            val headsign: String,
+            /** GTFS `route_color` packed as 0xRRGGBB, or 0 when absent. */
+            val color: Int,
+            /** GTFS `route_type`. */
+            val routeType: Int,
+            val feed: String,
+            val cancelled: Boolean,
+            val stops: Array<RawTripStop>,
     )
 
     private var isInitialized = false
@@ -576,11 +593,7 @@ object OfflineRouter {
     fun reload(context: Context) {
         isInitialized = false
         OfflineRouterTransit.onReload()
-        // A new graph vintage can renumber edge/component ids, so the display cache from the
-        // old graph must not survive the swap.
-        componentBySquare.clear()
-        lastPublishedComponents = null
-        _trafficComponents.value = TrafficComponents.EMPTY
+        OfflineRouterTraffic.onReload()
         initialize(context)
     }
 
@@ -706,6 +719,25 @@ object OfflineRouter {
             maxLat: Double,
             maxLon: Double,
     ): List<Vehicle> = OfflineRouterTransit.activeVehicles(context, minLat, minLon, maxLat, maxLon)
+
+    /** Drawable rail lines — see [OfflineRouterTransit.railLines]. */
+    suspend fun railLines(
+            context: Context,
+            minLat: Double,
+            minLon: Double,
+            maxLat: Double,
+            maxLon: Double,
+    ): List<com.vayunmathur.maps.data.transit.RailLine> =
+            OfflineRouterTransit.railLines(context, minLat, minLon, maxLat, maxLon)
+
+    /** Trip itinerary for the vehicle sheet — see [OfflineRouterTransit.tripItinerary]. */
+    suspend fun tripItinerary(
+            context: Context,
+            vehicleId: Long,
+            lat: Double,
+            lon: Double,
+    ): com.vayunmathur.maps.data.transit.TripItinerary? =
+            OfflineRouterTransit.tripItinerary(context, vehicleId, lat, lon)
 
     /**
      * Departure board from the on-device transit index for the stop nearest

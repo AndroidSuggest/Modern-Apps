@@ -5,6 +5,66 @@
     /// -122.400 meridian between 37.700 and 37.720).
     const VEH_BBOX: (f64, f64, f64, f64) = (37.69, -122.41, 37.73, -122.39);
 
+    // --- `transit_part11`: pack-driven rail lines + trip itineraries ---
+
+    #[test]
+    fn rail_lines_serve_a_shaped_route_with_its_colour() {
+        let idx = shaped_route_pack().index();
+        let lines = rail_lines(&idx, 37.69, -122.41, 37.73, -122.39);
+        assert_eq!(lines.len(), 1, "the one shaped route serves the bbox");
+        let l = &lines[0];
+        assert_eq!(l.name, "N");
+        assert_eq!(l.color, 0x0000FF);
+        assert_eq!(l.feed, "sfmuni");
+        // The fitted shape detours east: 5 vertices = 10 doubles, and the
+        // second point must swing off the stops' shared meridian.
+        assert_eq!(l.coords.len(), 10);
+        assert!(l.coords[2] > -122.400, "on the eastward detour");
+    }
+
+    #[test]
+    fn rail_lines_skip_a_bbox_no_stop_serves() {
+        let idx = shaped_route_pack().index();
+        let lines = rail_lines(&idx, 40.0, -75.0, 41.0, -74.0);
+        assert!(lines.is_empty(), "far from the SF stops: nothing to draw");
+    }
+
+    #[test]
+    fn trip_itinerary_lists_every_stop_with_times() {
+        let idx = one_route_pack().index();
+        // Vehicle id for route 0, trip 0, today: the packing active_vehicles uses.
+        let id = (0i64 << 32) | (0i64 << 1) | 0;
+        let itin =
+            trip_itinerary(&idx, id, sched(wednesday())).expect("trip 0 runs Wednesday");
+        assert_eq!(itin.route_name, "N");
+        assert_eq!(itin.headsign, "Downtown");
+        assert!(!itin.cancelled);
+        assert_eq!(itin.stops.len(), 3);
+        assert_eq!(itin.stops[0].name, "Alpha");
+        assert_eq!(itin.stops[2].name, "Gamma");
+        assert_eq!(
+            (itin.stops[0].dep_secs, itin.stops[2].arr_secs),
+            (28_800, 29_400)
+        );
+        // Dwell at Beta: arrives 29_100, departs 29_160.
+        assert_eq!(
+            (itin.stops[1].arr_secs, itin.stops[1].dep_secs),
+            (29_100, 29_160)
+        );
+    }
+
+    #[test]
+    fn trip_itinerary_refuses_an_unknown_trip() {
+        let idx = one_route_pack().index();
+        // Route 9 does not exist; trip 99 neither.
+        assert!(
+            trip_itinerary(&idx, (9i64 << 32) | (0i64 << 1), sched(wednesday())).is_none()
+        );
+        assert!(
+            trip_itinerary(&idx, (0i64 << 32) | (99i64 << 1), sched(wednesday())).is_none()
+        );
+    }
+
     #[test]
     fn a_vehicle_sits_exactly_on_a_stop_at_its_scheduled_time() {
         let idx = one_route_pack().index();

@@ -23,6 +23,9 @@ import com.vayunmathur.maps.ui.toSelectedSearchResult
 import com.vayunmathur.maps.ui.theme.MapTokens
 import com.vayunmathur.maps.util.MapTileCache
 import com.vayunmathur.maps.util.OfflineRouter
+import com.vayunmathur.maps.util.OfflineRouterTraffic
+import com.vayunmathur.maps.util.SelectedFeatureViewModel
+import com.vayunmathur.maps.util.TransitStopsViewModel
 import com.vayunmathur.maps.util.PoiCategories
 import com.vayunmathur.maps.util.SearchResult
 import kotlin.math.floor
@@ -118,7 +121,7 @@ internal fun prefetchTrafficSquares(bounds: GeoBounds) {
  * only looks them up. Returns null when nothing is left to draw.
  */
 internal fun buildTrafficColorTable(
-    components: OfflineRouter.TrafficComponents,
+    components: OfflineRouterTraffic.TrafficComponents,
     tokens: MapTokens,
 ): TrafficColorTable? {
     val n = components.ids.size
@@ -227,4 +230,62 @@ internal fun buildMarkers(
         id++
     }
     return markers to hits
+}
+
+/**
+ * The vehicle sprite under [offset], or null.
+ *
+ * Vehicles are deliberately outside the GPU pick path (a moving simulated
+ * sprite is not a pin tap target), so this projects each pushed vehicle to
+ * the screen on the CPU and takes the nearest inside the same tolerance box
+ * the pin picker uses ([MapChromeMetrics.hitSlop]). Ranked below the app's
+ * own pins by the caller.
+ */
+internal fun pickVehicle(
+    vehicles: List<MapMarker>,
+    projection: com.vayunmathur.library.map.Projection,
+    offset: androidx.compose.ui.unit.DpOffset,
+    slop: androidx.compose.ui.unit.Dp = com.vayunmathur.maps.ui.theme.MapChromeMetrics.hitSlop,
+): MapMarker? {
+    var best: MapMarker? = null
+    var bestDist = slop.value * slop.value
+    for (marker in vehicles) {
+        val screen = try {
+            projection.screenLocationFromPosition(marker.position)
+        } catch (_: Exception) {
+            continue
+        }
+        val dx = screen.x.value - offset.x.value
+        val dy = screen.y.value - offset.y.value
+        val dist = dx * dx + dy * dy
+        if (dist <= bestDist) {
+            bestDist = dist
+            best = marker
+        }
+    }
+    return best
+}
+
+/**
+ * Open the trip sheet for the vehicle sprite under [offset]. True when a
+ * sprite was hit (the caller returns from the tap); false to fall through to
+ * ambient furniture. Replaces any place sheet rather than stacking it.
+ */
+internal suspend fun openVehicleTrip(
+    vehicles: List<MapMarker>,
+    projection: com.vayunmathur.library.map.Projection,
+    offset: androidx.compose.ui.unit.DpOffset,
+    viewModel: SelectedFeatureViewModel,
+    transitViewModel: TransitStopsViewModel,
+    sheetState: com.vayunmathur.library.ui.FreeHeightSheetState?,
+): Boolean {
+    val marker = pickVehicle(vehicles, projection, offset) ?: return false
+    viewModel.set(null)
+    transitViewModel.openTrip(
+        marker.id,
+        marker.position.latitude,
+        marker.position.longitude,
+    )
+    sheetState?.partialExpand()
+    return true
 }

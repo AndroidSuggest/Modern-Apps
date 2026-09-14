@@ -1,8 +1,8 @@
 use super::{
     ARROW_COLOR, ARROW_DP, BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, Overlay, PUCK_COLOR, PUCK_CONE_DP,
     PUCK_CONE_HALF_STROKE_DP, PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, Renderer,
-    SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, VEHICLE_RING_DP, VEHICLE_RING_QUAD_DP, anchors_for,
-    argb_to_rgba, scale_alpha,
+    RouteBuffers, SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, VEHICLE_RING_DP, VEHICLE_RING_QUAD_DP,
+    anchors_for, argb_to_rgba, scale_alpha,
 };
 use crate::camera::Camera;
 use crate::marker::{Marker, MARKER_SIZE_DP};
@@ -206,20 +206,46 @@ impl Renderer {
         camera: &Camera,
         submitted: &mut usize,
     ) {
-        let Some(route) = &self.route else { return };
-        let device = &self.context.device;
+        if let Some(route) = &self.route {
+            Self::record_route_buffers(self, command_buffer, camera, route, submitted);
+        }
+    }
+
+    /// Draw the pack-driven rail-lines network under the navigation route.
+    ///
+    /// Same mesh, pipeline and casing/fill structure as [`record_route`](Self::record_route);
+    /// the network draws first so a selected route reads over it.
+    pub(super) unsafe fn record_rail_lines(
+        &self,
+        command_buffer: vk::CommandBuffer,
+        camera: &Camera,
+        submitted: &mut usize,
+    ) {
+        if let Some(rails) = &self.rail_lines {
+            Self::record_route_buffers(self, command_buffer, camera, rails, submitted);
+        }
+    }
+
+    unsafe fn record_route_buffers(
+        renderer: &Renderer,
+        command_buffer: vk::CommandBuffer,
+        camera: &Camera,
+        route: &RouteBuffers,
+        submitted: &mut usize,
+    ) {
+        let device = &renderer.context.device;
         let (origin, span) = route.placement.at_zoom(camera.zoom);
         let matrix = camera.world_quad_to_clip(origin, span);
         // What `line.vert` divides a pixel offset by to reach local units. The route's
         // square stands in for a tile here, which is the whole reason the two share a
         // vertex format.
         let span_px = (span * camera.density as f64) as f32;
-        let edge_aa = f32::from(self.swapchain.samples == vk::SampleCountFlags::TYPE_1);
+        let edge_aa = f32::from(renderer.swapchain.samples == vk::SampleCountFlags::TYPE_1);
 
         device.cmd_bind_pipeline(
             command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            self.pipelines.line,
+            renderer.pipelines.line,
         );
         device.cmd_bind_vertex_buffers(command_buffer, 0, &[route.vertices.buffer], &[0]);
         device.cmd_bind_index_buffer(
@@ -252,7 +278,7 @@ impl Renderer {
             };
             device.cmd_push_constants(
                 command_buffer,
-                self.pipelines.layout,
+                renderer.pipelines.layout,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                 0,
                 push.as_bytes(),

@@ -317,6 +317,7 @@ include!("transit_part3.rs");
 include!("transit_part4.rs");
 include!("transit_part5.rs");
 include!("transit_part10.rs");
+include!("transit_part11.rs");
 #[cfg(test)]
 mod tests {
     include!("transit_part6.rs");

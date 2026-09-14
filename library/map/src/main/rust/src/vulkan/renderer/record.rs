@@ -67,6 +67,8 @@ impl Renderer {
     /// 4. **`record_arrows`** — lane turn arrows over the roads.
     /// 5. **`record_region_mask`** — stencil + scrim; dims 1–4, not the route/puck.
     /// 6. **`record_route`** — over the scrim (a followed route must not dim), under the puck.
+    ///    **`record_rail_lines`** draws immediately before it: same mesh path, so the
+    ///    pack-driven rail network sits under a selected route.
     /// 7. **`record_overlays`** — markers (app pins; WS-F vehicles) billboarded upright under tilt,
     ///    then the puck on top; last.
     ///
@@ -415,6 +417,7 @@ impl Renderer {
         self.record_traffic(command_buffer, camera, &mut submitted);
         self.record_arrows(command_buffer, camera, layers, &mut submitted);
         self.record_region_mask(command_buffer, camera, &mut submitted);
+        self.record_rail_lines(command_buffer, camera, &mut submitted);
         self.record_route(command_buffer, camera, &mut submitted);
         self.record_overlays(command_buffer, camera, palette, &mut submitted);
 
