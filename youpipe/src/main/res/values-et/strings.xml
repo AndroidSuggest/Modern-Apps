@@ -142,4 +142,6 @@
     <string name="cast_install_prompt">Ma Meediumilevi (MA Cast) rakendus pole paigaldatud. Ava tema vaade rakenduste poes ja paigalda ta.</string>
     <string name="cast_update_prompt">Ma Meediumilevi (MA Cast) rakendus on sisu edastamiseks sinu telerisse liiga vana. Ava tema vaade rakenduste poes ja uuenda ta.</string>
     <string name="cast_failed">Edastamist sinu telerisse ei õnnestunud käivitada</string>
+    <string name="playback_error">Taasesitus lõppes ootamatult. Palun proovi uuesti.</string>
+    <string name="restore_unsupported_format">See varukoopiafaili vorming pole toetatud.</string>
 </resources>
