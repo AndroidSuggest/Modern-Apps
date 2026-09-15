@@ -42,4 +42,10 @@
     <string name="settings_mirror_front">Lustrzane odbicie selfie</string>
     <string name="settings_mirror_front_description">Lustrzane odbicie podglądu z przedniego aparatu oraz zapisanych zdjęć selfie</string>
     <string name="qr_scanning_paused">Skanowanie kodów QR wstrzymane</string>
+    <string name="lens_ultrawide">UW</string>
+    <string name="lens_wide">1x</string>
+    <string name="lens_tele">Tele</string>
+    <string name="lens_mono">Mono</string>
+    <string name="lens_front">Przód</string>
+    <string name="lens_picker_description">Obiektyw</string>
 </resources>
