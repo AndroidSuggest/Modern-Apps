@@ -132,4 +132,5 @@
     <string name="local_network_message">%1$s выглядит как устройство в вашей сети. Android нуждается в разрешении локальной сети, прежде чем эта страница сможет загрузиться.</string>
     <string name="blocks_doubleclick_googletagmanager_anal">Блокирует doubleclick, googletagmanager, analytics</string>
     <string name="shields_https_desc">Также удаляет utm_, fbclid и другие параметры отслеживания</string>
+    <string name="content_filter_blocked_html"><![CDATA[<!DOCTYPE html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:sans-serif;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#11;color:#eee}mainmax-width:22rem; Спросите того, кто установил родительский контроль, если вы считаете, что это ошибка.</p></main></body></html>]]></string>
 </resources>
