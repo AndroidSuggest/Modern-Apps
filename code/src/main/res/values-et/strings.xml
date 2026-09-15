@@ -117,4 +117,25 @@
     <string name="experimental_editor">Katseline muutmisvaade</string>
     <string name="conflict_ours">Praegune (meie)</string>
     <string name="conflict_theirs">Lisatav (nende)</string>
+    <string name="git_credentials">Andmed autentimiseks (HTTPS + tunnusluba)</string>
+    <string name="terminal">Terminal</string>
+    <string name="side_by_side">Kõrvuti</string>
+    <string name="experimental_editor_desc">Kasuta uut virtualiseeritud tekstiprotsessorit (riistvaraline klahvistik; arendamisel)</string>
+    <string name="show_whitespace">Näita tühemikke</string>
+    <string name="show_whitespace_desc">Märgi visuaalselt uus tekstiprotsessoris alguses olevad tühikud ja tabulaatorisammud</string>
+    <string name="show_indent_guides">Taandjooned</string>
+    <string name="show_indent_guides_desc">Märgi püstjoonega iga taandesamm</string>
+    <string name="show_minimap">Minikaart</string>
+    <string name="show_minimap_desc">Näita katselise tekstiprotsessori vaates koodi ülevaatekasti</string>
+    <string name="branch">Alamharu</string>
+    <string name="new_branch">Uus alamharu</string>
+    <string name="switch_branch">Vaheta</string>
+    <string name="git_pull">Mesti</string>
+    <string name="git_push">Tõuka</string>
+    <string name="commit">Tee sissekanne</string>
+    <string name="commit_message">Sissekande sõnum</string>
+    <string name="staged_changes">Ettevalmistatud muudatused</string>
+    <string name="changes">Muudatused</string>
+    <string name="no_changes">Muudatusi pole</string>
+    <string name="diff">Diff</string>
 </resources>
