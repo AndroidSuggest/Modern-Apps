@@ -42,4 +42,10 @@
     <string name="settings_mirror_front">Peegepilt selfie jaoks</string>
     <string name="settings_mirror_front_description">Peegelda esikaamera pilti selfie jaoks nii eelvaates, kui salvestatud failides</string>
     <string name="qr_scanning_paused">QR-koodi skaneerimine on peatatud</string>
+    <string name="lens_ultrawide">Ülilai</string>
+    <string name="lens_wide">1x</string>
+    <string name="lens_tele">Tele</string>
+    <string name="lens_mono">Mustvalge</string>
+    <string name="lens_picker_description">Kaamera</string>
+    <string name="lens_front">Esikaamera</string>
 </resources>
