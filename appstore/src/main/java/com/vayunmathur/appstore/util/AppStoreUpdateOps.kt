@@ -1,5 +1,8 @@
 package com.vayunmathur.appstore.util
 
+import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.CAROUSEL_LIMIT
+import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.INSTALL_SETTLE_MS
+import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.REPEATED_FAILURE_LIMIT
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.AppSource
@@ -109,7 +112,7 @@ internal fun AppStoreViewModel.updateAllImpl() {
                     repeats = 0
                     continue
                 }
-                val reason = outcome.verification.reason()
+                val reason = reason(outcome.verification)
                 failures += reason
                 repeats = if (reason == previousReason) repeats + 1 else 1
                 previousReason = reason

@@ -8,6 +8,10 @@ import android.util.Log
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.RestrictedPackages
 import com.vayunmathur.library.util.AppMessages
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 /**
  * Receives PackageInstaller commit callbacks.
@@ -50,13 +54,16 @@ class InstallStatusReceiver : BroadcastReceiver() {
             }
             PackageInstaller.STATUS_SUCCESS -> {
                 Log.i(TAG, "Install success for $pkg")
+                pkg?.let { InstallEvents.publish(InstallResult(it, success = true)) }
             }
             // The user backing out of the system prompt is not a failure worth reporting back.
             PackageInstaller.STATUS_FAILURE_ABORTED -> {
                 Log.i(TAG, "Install aborted for $pkg")
+                pkg?.let { InstallEvents.publish(InstallResult(it, success = false)) }
             }
             else -> {
                 Log.w(TAG, "Install failed for $pkg status=$status message=$message")
+                pkg?.let { InstallEvents.publish(InstallResult(it, success = false)) }
                 // A source-restricted refusal is the OS's final answer, so stop offering it.
                 RestrictedPackages.recordIfRestricted(context, pkg, message)
                 val reason = when (status) {
@@ -118,5 +125,32 @@ object InstallFailureBatch {
         if (!active) return false
         collected += reason
         return true
+    }
+}
+
+/** Terminal outcome of a committed PackageInstaller session, per package. */
+data class InstallResult(val packageName: String, val success: Boolean)
+
+/**
+ * How the OS's install outcome reaches the rest of the app.
+ *
+ * [SessionInstaller.commit] only hands the session over; the real install finishes later
+ * and its outcome arrives at the manifest-declared [InstallStatusReceiver], which the
+ * system instantiates fresh each time and so cannot hold a reference to the ViewModel or
+ * the [InstallCoordinator]. This process-wide flow bridges that gap: the receiver publishes
+ * each terminal result and whoever cares — the coordinator, to end its "Installing" stage,
+ * and the ViewModel, to re-read the device — collects it. Replay is off (a result only
+ * matters to collectors already listening) but a small buffer keeps a burst from an
+ * "update all" run from being dropped.
+ */
+object InstallEvents {
+    private val _results = MutableSharedFlow<InstallResult>(
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val results: SharedFlow<InstallResult> = _results.asSharedFlow()
+
+    fun publish(result: InstallResult) {
+        _results.tryEmit(result)
     }
 }

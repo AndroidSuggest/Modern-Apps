@@ -1,5 +1,6 @@
 package com.vayunmathur.appstore.util
 
+import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.INSTALL_SETTLE_MS
 import android.content.Intent
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.appstore.R

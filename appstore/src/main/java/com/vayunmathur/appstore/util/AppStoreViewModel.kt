@@ -25,6 +25,7 @@ import com.vayunmathur.appstore.data.accrescent.AccrescentRepository
 import com.vayunmathur.appstore.data.grapheneos.GrapheneOSRepository
 import com.vayunmathur.appstore.data.grapheneos.toUnifiedApp
 import com.vayunmathur.appstore.data.installer.InstallCoordinator
+import com.vayunmathur.appstore.data.installer.InstallEvents
 import com.vayunmathur.appstore.data.installer.InstallFailureBatch
 import com.vayunmathur.appstore.data.installer.InstallStage
 import com.vayunmathur.appstore.data.play.PlayAuthState
@@ -66,7 +67,7 @@ class AppStoreViewModel(
     internal val installedRepo = InstalledAppsRepository(context)
     internal val settings = SettingsRepository(context, viewModelScope)
     internal val installer =
-        InstallCoordinator(context, db, play, accrescent, grapheneOS) { ownSigningCertificates }
+        InstallCoordinator(context, db, play, accrescent, grapheneOS, viewModelScope) { ownSigningCertificates }
 
     /** Off-by-default: the periodic check may also download and install updates unattended. */
     val autoInstallUpdates: StateFlow<Boolean> = settings.autoInstallUpdates
@@ -358,6 +359,17 @@ class AppStoreViewModel(
             _categories.value = catalog.categories()
         }
         viewModelScope.launch {
+            // The OS install finishes asynchronously, well after commit for a large app.
+            // Re-read the device when it lands so the row switches to Open/Uninstall and
+            // picks up the launcher icon, instead of waiting for the next onResume.
+            InstallEvents.results.collect { result ->
+                if (result.success) {
+                    installedRepo.refresh()
+                    refreshPlayInstalledPackages()
+                }
+            }
+        }
+        viewModelScope.launch {
             // Say so when Play is unreachable. Without this the store just quietly shows
             // fewer results, which looks like the search finding nothing.
             play.authState.collect { state ->
@@ -541,14 +553,14 @@ class AppStoreViewModel(
 
     // --- Helpers --------------------------------------------------------------------------
 
-    private fun startActivity(intent: Intent): Boolean = try {
+    internal fun startActivity(intent: Intent): Boolean = try {
         context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         true
     } catch (_: Exception) {
         false
     }
 
-    private fun String.toUri(): Uri = Uri.parse(this)
+    internal fun String.toUri(): Uri = Uri.parse(this)
 
     /** An installed package as a listing, for the library screen. */
     private fun InstalledInfo.toUnifiedApp(source: AppSource) = UnifiedApp(

@@ -1,5 +1,6 @@
 package com.vayunmathur.appstore.util
 
+import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.SEARCH_DEBOUNCE_MS
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.appstore.data.AppSource
 import com.vayunmathur.appstore.data.UnifiedApp

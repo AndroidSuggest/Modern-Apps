@@ -17,10 +17,12 @@ import com.vayunmathur.appstore.data.security.InstallRequirement
 import com.vayunmathur.appstore.data.security.VerificationResult
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FilterInputStream
@@ -61,6 +63,7 @@ class InstallCoordinator(
     private val play: PlayRepository,
     private val accrescent: AccrescentRepository,
     private val grapheneOS: GrapheneOSRepository,
+    scope: CoroutineScope,
     private val ownSigningCertificates: () -> Set<String>,
 ) {
     private val sessionInstaller = SessionInstaller(context)
@@ -72,6 +75,20 @@ class InstallCoordinator(
     /** Per-package result of the last install attempt's certificate/hash checks. */
     private val _verification = MutableStateFlow<Map<String, VerificationResult>>(emptyMap())
     val verification: StateFlow<Map<String, VerificationResult>> = _verification.asStateFlow()
+
+    init {
+        // The session is committed on a background thread and the OS reports the real
+        // outcome later, at InstallStatusReceiver. Until it arrives the row sits at
+        // InstallStage.Installing; this ends that stage once the install has actually
+        // finished (or was aborted/failed), rather than leaving the button stuck.
+        scope.launch {
+            InstallEvents.results.collect { result ->
+                if (_stages.value[result.packageName] is InstallStage.Installing) {
+                    clear(result.packageName)
+                }
+            }
+        }
+    }
 
     /** True while anything is downloading or installing. */
     fun isBusy(packageName: String): Boolean =
@@ -96,7 +113,10 @@ class InstallCoordinator(
                 else -> installFromUrl(app)
             }.also { outcome ->
                 if (outcome.started) {
-                    clear(app.packageName)
+                    // The bytes are committed but the OS is still writing them in; hold the
+                    // row at Installing until InstallStatusReceiver reports the real outcome
+                    // (a large split install can take several seconds past this point).
+                    stage(app.packageName, InstallStage.Installing)
                 } else {
                     stage(app.packageName, InstallStage.Failed(outcome.verification.shortReason()))
                 }

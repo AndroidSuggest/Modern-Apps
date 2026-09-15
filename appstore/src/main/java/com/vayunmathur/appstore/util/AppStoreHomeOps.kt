@@ -1,5 +1,8 @@
 package com.vayunmathur.appstore.util
 
+import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.CAROUSEL_LIMIT
+import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.PLAY_CLUSTER_LIMIT
+import com.vayunmathur.appstore.util.AppStoreViewModel.Companion.RECENT_LIMIT
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.appstore.R
 import com.vayunmathur.appstore.data.AppSource

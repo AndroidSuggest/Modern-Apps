@@ -145,7 +145,7 @@ class UpdateCheckWorker(
         if (autoInstall && updates.isNotEmpty()) {
             val eligible = updates.filter { canSilentlyUpdate(it.packageName) }
             if (eligible.isNotEmpty()) {
-                autoInstall(eligible, db, play, accrescent, grapheneOS)
+                autoInstall(eligible, db, play, accrescent, grapheneOS, scope)
                 installedRepo.refresh()
             }
             // Only nag about the updates we could not apply on our own.
@@ -245,6 +245,7 @@ class UpdateCheckWorker(
         play: PlayRepository,
         accrescent: AccrescentRepository,
         grapheneOS: GrapheneOSRepository,
+        scope: CoroutineScope,
     ) {
         runCatching { setForeground(installingForegroundInfo(apps.size)) }
         val installer = InstallCoordinator(
@@ -253,6 +254,7 @@ class UpdateCheckWorker(
             play = play,
             accrescent = accrescent,
             grapheneOS = grapheneOS,
+            scope = scope,
             ownSigningCertificates = { ApkCertificates.selfSigners(context) },
         )
         var installed = 0
