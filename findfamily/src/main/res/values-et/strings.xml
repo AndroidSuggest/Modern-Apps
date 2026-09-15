@@ -161,4 +161,19 @@
     <string name="poweroff_grant_tracking_warning">Igaüks, kelle sa valid, võib seda telefoni ka ise otsima minna, millal iganes ta soovib, niikaua kui ta selles nimekirjas püsib. Selleks, et tuvastada, kus telefoni on nähtud, ja seda otsida, kasutatakse sama võtit, seega ei ole võimalik üht anda ilma teiseta. Vali ainult inimesed, kellele sa soovid, et nad selle telefoni üles leiaksid.</string>
     <string name="poweroff_grant_revoke_warning">Kui keegi nimekirjast eemaldada, ei näe ta enam, kuhu see telefon edaspidi satub. See ei võta tagasi kohti, mida ta on juba kogunud, ega pane neid unustama. Kõik asukohad, kus seda telefoni hiljuti nähti, kuid mida keegi veel üles pole korjanud, võivad ka sinu jaoks kaduma minna.</string>
     <string name="poweroff_grant_no_peers">Kui oled kellegagi ühendatud, saad tema siit valida.</string>
+    <string name="notification_channel_noshow_name"><xliff:g id="person_name" example="Kadri">%1$s</xliff:g> · Teateid ei kuvata</string>
+    <string name="notification_channel_noshow_desc">Teaded, kui <xliff:g id="person_name" example="Kadri">%1$s</xliff:g> ei saabu eeldatud kohta</string>
+    <string name="noshow_watch_button">Jälgi kohale mittetulemist</string>
+    <string name="noshow_title">Jälgi, kui <xliff:g id="person_name" example="Kadri">%1$s</xliff:g> ei tule kohale</string>
+    <string name="noshow_place_label">Eeldatud asukoht</string>
+    <string name="noshow_place_any">Kõikjal</string>
+    <string name="noshow_pick_date">Vali kuupäev</string>
+    <string name="noshow_pick_time">Vali aeg</string>
+    <string name="noshow_grace_label">Täiendav ooteaeg</string>
+    <plurals name="noshow_grace_minutes">
+        <item quantity="one"><xliff:g id="minutes" example="1">%1$d</xliff:g> minut</item>
+        <item quantity="other"><xliff:g id="minutes" example="1">%1$d</xliff:g> minutit</item>
+    </plurals>
+    <string name="noshow_save">Jälgi</string>
+    <string name="noshow_scheduled">Kohale mittetulemise jälgimise reeglistik</string>
 </resources>
