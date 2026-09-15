@@ -18,4 +18,5 @@
     <string name="line">Riga</string>
     <string name="go">Vai</string>
     <string name="discard">Scarta</string>
+    <string name="enable">Abilita</string>
 </resources>
