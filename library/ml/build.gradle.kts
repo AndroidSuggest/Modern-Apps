@@ -3,8 +3,7 @@ plugins {
 }
 
 dependencies {
-    // On-device inference executor: reduced-operator ONNX Runtime rebuild (arm64-only,
-    // 10 MB native). All models run as `.onnx` through the handles in this module; the old
-    // Vulkan `modelrunner` crate is deleted.
-    implementation(libs.onnxruntime.reduced.android)
+    // On-device inference executor: full ONNX Runtime (the reduced 1.27.0-r1 rebuild lacks
+    // Conv(11) and other vision ops; it returns as -r2 with the full op set).
+    implementation(libs.onnxruntime.android)
 }

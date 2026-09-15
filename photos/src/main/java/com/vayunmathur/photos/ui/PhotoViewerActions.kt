@@ -1,6 +1,7 @@
 package com.vayunmathur.photos.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -20,7 +21,7 @@ import com.vayunmathur.photos.R
  * chrome that triggers it, so the viewer body keeps one public composable.
  */
 @Composable
-fun PhotoViewerActions(
+fun BoxScope.PhotoViewerActions(
     isPanorama: Boolean,
     isSphere: Boolean,
     isMotionPhoto: Boolean,

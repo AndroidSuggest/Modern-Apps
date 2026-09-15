@@ -6,8 +6,10 @@ use crate::tile::cache::{RangeCache, DEFAULT_MAX_BYTES};
 use crate::tile::geometry;
 use crate::tile::select::TileId;
 use crate::tile::source::BASEMAP_ARCHIVE_URL;
-use crate::tile::source::{basemap_origin, CachingRangeReader, JniRangeFetcher};
+use crate::tile::source::{basemap_origin, CachingRangeReader, JniRangeFetcher, RangeFetcher};
+use tilecodec::mamaps::header::Header;
 use tilecodec::mamaps::MamapsArchive;
+use tilecodec::stream::OPEN_PREFIX_BYTES;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use super::handle::{OnlineFlag, TileResult, ZoomRange};
@@ -34,9 +36,33 @@ pub(crate) fn spawn_worker(
     let started = std::thread::Builder::new()
         .name(format!("map-tiles-{index}"))
         .spawn(move || {
-            // Unchecked: the origin marker includes the archive's `build_id`, which is in the
-            // header, which is read through this cache. Checked below, once, when it is known.
-            let cache = RangeCache::open_unchecked(cache_dir, DEFAULT_MAX_BYTES);
+            // Single open: the header prefix is fetched *before* the cache opens, the
+            // `build_id` is read out of it, and the cache opens once with the full
+            // origin marker — wiping on mismatch up front. No two-step reset.
+            let build_id = match JniRangeFetcher.fetch(&archive_url, "bytes=0-127") {
+                Ok(r) if r.status == 206 && r.body.len() == tilecodec::mamaps::header::HEADER_LEN => {
+                    match Header::parse(&r.body) {
+                        Ok(h) => h.build_id,
+                        Err(e) => {
+                            log(&format!("worker {index} cannot parse the mamaps header: {e}"));
+                            return;
+                        }
+                    }
+                }
+                Ok(r) => {
+                    log(&format!(
+                        "worker {index} cannot fetch the mamaps header: HTTP {}",
+                        r.status
+                    ));
+                    return;
+                }
+                Err(e) => {
+                    log(&format!("worker {index} cannot fetch the mamaps header: {e}"));
+                    return;
+                }
+            };
+            let cache =
+                RangeCache::open(cache_dir, &basemap_origin(&archive_url, build_id), DEFAULT_MAX_BYTES);
             let reader = CachingRangeReader::new(archive_url.clone(), cache, JniRangeFetcher);
             reader.set_online(online.get());
 
@@ -47,12 +73,6 @@ pub(crate) fn spawn_worker(
                     return;
                 }
             };
-            // Now the `build_id` is known, so the cache can be told which build it holds. A
-            // republish under the same name wipes it here rather than serving byte offsets from
-            // the build before.
-            archive
-                .reader()
-                .reset_origin(&basemap_origin(&archive_url, archive.header.build_id));
             // Publish the real range. Until this lands the renderer works from a guess, and
             // a guess that is too high asks for a zoom the archive does not contain and
             // silently gets nothing back.
@@ -103,105 +123,4 @@ pub(crate) fn spawn_worker(
     if !started {
         log(&format!("cannot start tile worker {index}"));
     }
-}
-
-pub(crate) fn spawn_file_worker(
-    index: usize,
-    path: Option<std::path::PathBuf>,
-    queue: Arc<Mutex<Receiver<TileId>>>,
-    finished: Sender<(u64, TileResult)>,
-    zoom_range: Arc<ZoomRange>,
-    toggles: Arc<SharedToggles>,
-) {
-    let Some(path) = path else {
-        // Empty archive_path == remote fallback already handled by caller printing a log,
-        // but keep symmetry for direct callers.
-        return;
-    };
-    let started = std::thread::Builder::new()
-        .name(format!("map-tiles-file-{index}"))
-        .spawn(move || {
-            let reader = match crate::tile::source::FileRangeReader::open(&path) {
-                Ok(r) => r,
-                Err(e) => {
-                    log(&format!("file worker {index} cannot open {}: {e}", path.display()));
-                    return;
-                }
-            };
-            let mut archive = match MamapsArchive::open(reader) {
-                Ok(a) => a,
-                Err(e) => {
-                    log(&format!("file worker {index} cannot open mamaps archive {}: {e}", path.display()));
-                    return;
-                }
-            };
-            zoom_range.set(archive.header.min_zoom, archive.header.max_zoom);
-            let layers = style::layers();
-            let rings_validated = archive.header.rings_validated();
-            loop {
-                let next = match queue.lock() {
-                    Ok(guard) => guard.recv(),
-                    Err(_) => return,
-                };
-                let Ok(tile) = next else { return };
-                let key = tile.key();
-                let (enabled, kinds, generation) = toggles.get();
-                let result = match archive.tile(tile.z, tile.x, tile.y) {
-                    Ok(Some(body)) => TileResult::Ready(geometry::build_toggled(
-                        &body, layers, tile.z, tile.x, tile.y, rings_validated, enabled, &kinds,
-                        generation,
-                    )),
-                    Ok(None) => TileResult::Absent,
-                    Err(e) => {
-                        log(&format!("file tile {}/{}/{} failed: {e}", tile.z, tile.x, tile.y));
-                        TileResult::Failed
-                    }
-                };
-                if finished.send((key, result)).is_err() {
-                    return;
-                }
-            }
-        })
-        .is_ok();
-    if !started {
-        log(&format!("cannot start file tile worker {index}"));
-    }
-}
-
-pub(crate) enum ArchiveSource {
-    Default,
-    RemoteUrl(String),
-    LocalFile(std::path::PathBuf),
-}
-
-pub(crate) fn normalize_local_archive_path(raw: &str) -> ArchiveSource {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return ArchiveSource::Default;
-    }
-    let stripped = if let Some(rest) = trimmed.strip_prefix("file://") {
-        rest
-    } else {
-        trimmed
-    };
-    let stripped = stripped.trim();
-    if stripped.is_empty() {
-        return ArchiveSource::Default;
-    }
-    if stripped.starts_with("http://") || stripped.starts_with("https://") {
-        return ArchiveSource::RemoteUrl(stripped.to_string());
-    }
-    if stripped.contains("://") {
-        return ArchiveSource::Default;
-    }
-    let looks_local = stripped.starts_with('/')
-        || stripped.starts_with("C:\\")
-        || stripped.starts_with("C:/")
-        || stripped.starts_with("/sdcard")
-        || stripped.starts_with("/data/")
-        || stripped.starts_with("/storage/");
-    if looks_local {
-        return ArchiveSource::LocalFile(std::path::PathBuf::from(stripped));
-    }
-    ArchiveSource::Default
 }

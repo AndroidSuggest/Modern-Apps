@@ -109,6 +109,7 @@ apksig = "8.7.3"
 quickjs = "1.0.15"
 
 # On-device AI
+onnxruntimeAndroid = "1.27.0"
 onnxruntimeReduced = "1.27.0-r1"
 litertlmAndroid = "0.14.0"
 
@@ -295,10 +296,11 @@ quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
 
 # On-device AI: reduced-operator ORT rebuild (arm64-only). Version tracks upstream plus an
 # -rN suffix for the operator-set revision, so a rebuild with different ops gets a new version.
-# Same source as onnxruntime-android, built with --include_ops_by_config: 10 MB of native code
-# instead of 28 MB. A model with an operator outside the configured set fails at session
-# creation, not at inference — regenerate the AAR rather than falling back to a full build.
+# CURRENTLY UNUSED: 1.27.0-r1 lacks Conv(11) and other vision ops. Kept pinned so the -r2
+# rebuild has a base to extend. :library:ml uses the full build until then.
 onnxruntime-reduced-android = { module = "io.github.vayun-mathur:onnxruntime-reduced-android", version.ref = "onnxruntimeReduced" }
+# Full ONNX Runtime: every op, ~28 MB native. Temporary until the -r2 reduced rebuild.
+onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntimeAndroid" }
 # Conversational LLM (Gemma) via LiteRT-LM. litertlm 0.14.0 is compiled against coroutines
 # 1.11.0 (close$default moved onto the SendChannel interface via -Xjvm-default=all); older
 # versions crash its JNI callback with NoSuchMethodError, so keep kotlinxCoroutines at 1.11.0.
