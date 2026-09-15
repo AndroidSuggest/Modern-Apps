@@ -117,4 +117,15 @@
     <string name="segments">Segmente</string>
     <string name="laps">Ringe</string>
     <string name="lap">Ring <xliff:g id="lap_index" example="1">%1$s</xliff:g></string>
+    <string name="vaccinations">Vaktsineerimised</string>
+    <string name="allergies">Allergiad</string>
+    <plurals name="records_recorded">
+        <item quantity="one">%1$d kirje</item>
+        <item quantity="other">%1$d kirjet</item>
+    </plurals>
+    <string name="nothing_recorded">Midagi pole veel salvestunud</string>
+    <string name="phr_unavailable">Selle nutiseadme Health Connect ei saa terviseandmeid salvestada ja see hoiame beid vaid antud rakenduses.</string>
+    <string name="no_vaccinations">Ühtegi vaktsineerimist veel pole</string>
+    <string name="nav_records">Kirjed</string>
+    <string name="nav_medication">Ravimid</string>
 </resources>
