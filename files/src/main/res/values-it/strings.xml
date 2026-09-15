@@ -1,9 +1,85 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="bookmarks">Segnalibri</string>
     <string name="new_folder">Nuova cartella</string>
     <string name="create">Crea</string>
     <string name="new_file">Nuovo file</string>
     <string name="rename">Rinomina</string>
     <string name="close">Chiudi</string>
+    <string name="app_name">File</string>
+    <string name="enable_notifications">Abilitare le notifiche?</string>
+    <string name="notification_permission_rationale">Attivando le notifiche potrai vedere il progresso delle azioni in background, come la compressione e l\'estrazione dei file.</string>
+    <string name="enable">Abilita</string>
+    <string name="skip">Salta</string>
+    <string name="grant_all_files_access">Concedi accesso a tutti i file</string>
+    <string name="archive_selection">Archivia selezione</string>
+    <string name="zip_file_name_label">Nome file zip</string>
+    <string name="archiving_started">Archiviazione avviata…</string>
+    <string name="archive">Archivia</string>
+    <string name="unzipping_started_to">Estrazione avviata in <xliff:g id="dest_name" example="Downloads">%1$s</xliff:g></string>
+    <string name="move_failed">Spostamento non riuscito: <xliff:g id="error" example="Permission denied">%1$s</xliff:g></string>
+    <string name="could_not_open_zip">Impossibile aprire lo zip: <xliff:g id="error" example="Invalid format">%1$s</xliff:g></string>
+    <string name="zip_too_large_to_extract">Troppo grande da estrarre: necessari <xliff:g id="needed" example="4.2 GB">%1$s</xliff:g>, solo <xliff:g id="available" example="1.1 GB">%2$s</xliff:g> disponibili</string>
+    <string name="no_app_found_to_open_file">Nessuna app trovata per aprire questo file</string>
+    <string name="zip_browse_only">I file negli zip possono essere solo sfogliati</string>
+    <string name="install_permission_needed">Consenti a File di installare app sconosciute, dopo tocca nuovamente l\'APK</string>
+    <string name="install_permission_denied">L\'autorizzazione ad installare app sconosciute non è stata concessa</string>
+    <string name="file_fallback">File</string>
+    <string name="unzip_channel_name">Operazione di estrazione</string>
+    <string name="unzipping">Estrazione…</string>
+    <string name="zip_channel_name">Operazioni di archiviazione</string>
+    <string name="archiving">Archiviazione…</string>
+    <string name="files_saved">File salvati correttamente</string>
+    <string name="search_files">Cerca file…</string>
+    <string name="sort_name">Nome</string>
+    <string name="sort_date">Data</string>
+    <string name="sort_size">Dimensione</string>
+    <string name="sort_type">Tipo</string>
+    <string name="sort_ascending">Ascendente</string>
+    <string name="sort_descending">Discendente</string>
+    <string name="home">Home</string>
+    <string name="grid_view">Visualizzazione a griglia</string>
+    <string name="list_view">Visualizzazione a elenco</string>
+    <string name="select_all">Seleziona tutto</string>
+    <string name="copy">Copia</string>
+    <string name="cut">Taglia</string>
+    <string name="paste">Incolla</string>
+    <string name="share">Condividi</string>
+    <string name="new_name_label">Nuovo nome</string>
+    <string name="copied_n">Copiati <xliff:g id="count" example="3">%1$d</xliff:g> elementi</string>
+    <string name="cut_n">Taglia <xliff:g id="count" example="3">%1$d</xliff:g> elementi</string>
+    <string name="ready_to_paste"><xliff:g id="count" example="3">%1$d</xliff:g> elementi pronti da incollare</string>
+    <string name="create_failed">Impossibile creare l\'elemento</string>
+    <string name="bookmark_added">Segnalibro aggiunto</string>
+    <string name="cat_images">Immagini</string>
+    <string name="cat_videos">Video</string>
+    <string name="cat_audio">Audio</string>
+    <string name="cat_documents">Documenti</string>
+    <string name="cat_downloads">Download</string>
+    <string name="internal_storage">Memoria interna</string>
+    <string name="categories">Categorie</string>
+    <string name="recent_files">File recenti</string>
+    <string name="storage_usage"><xliff:g id="used" example="12 GB">%1$s</xliff:g> usati su <xliff:g id="total" example="128 GB">%2$s</xliff:g></string>
+    <string name="folder_name_label">Nome cartella</string>
+    <string name="file_name_label">Nome file</string>
+    <string name="open_with">Apri con</string>
+    <string name="properties">Proprietà</string>
+    <string name="add_bookmark">Aggiungi segnalibro</string>
+    <string name="show_hidden">Mostra file nascosti</string>
+    <string name="hide_hidden">Nascondi file nascosti</string>
+    <string name="no_files">Non c\'è niente qui</string>
+    <string name="prop_path">Percorso</string>
+    <string name="prop_type">Tipo</string>
+    <string name="prop_size">Dimensione</string>
+    <string name="prop_modified">Modificato</string>
+    <string name="prop_items">Contenuti</string>
+    <string name="type_folder">Cartella</string>
+    <string name="type_file">File</string>
+    <string name="items_count"><xliff:g id="count" example="12">%1$d</xliff:g> elementi</string>
+    <string name="saf_title_open">Seleziona un file</string>
+    <string name="saf_title_create">Salva file</string>
+    <string name="saf_title_tree">Seleziona una cartella</string>
+    <string name="saf_use_this_folder">Usa questa cartella</string>
+    <string name="saf_save">Salva</string>
+    <string name="saf_select_count">Seleziona (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
 </resources>
