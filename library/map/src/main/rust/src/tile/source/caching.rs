@@ -34,13 +34,6 @@ impl<F: RangeFetcher> CachingRangeReader<F> {
         self.online.store(online, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Re-check the cache's origin marker, now that the archive's `build_id` is known.
-    ///
-    /// See [`crate::tile::source::basemap_origin`] for why this is a second step rather than part of opening the cache.
-    pub fn reset_origin(&self, origin: &str) {
-        self.cache.reset_if_origin_changed(origin);
-    }
-
     fn is_online(&self) -> bool {
         self.online.load(std::sync::atomic::Ordering::Relaxed)
     }
@@ -79,19 +72,10 @@ impl<F: RangeFetcher> RangeReader for CachingRangeReader<F> {
 
         let response = match self.fetcher.fetch(&self.url, &range) {
             Ok(r) => r,
-            Err(e) => {
-                // Went offline mid-session: a stale entry is far better than a hole.
-                if let Some(entry) = cached {
-                    return Ok(entry.body);
-                }
-                return Err(e);
-            }
+            Err(e) => return Err(e),
         };
 
         if !(200..300).contains(&response.status) {
-            if let Some(entry) = cached {
-                return Ok(entry.body);
-            }
             return err(format!(
                 "range request for {range} of {} failed with HTTP {}",
                 self.url, response.status

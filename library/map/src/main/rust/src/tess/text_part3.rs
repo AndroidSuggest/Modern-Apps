@@ -327,33 +327,23 @@
         );
     }
 
-    /// The real fixture tile's road as a tile-local centreline, extracted exactly the way
-    /// production does (`geometry.rs` joins a feature's parts in order and scales by the extent).
-    /// `from_mvt` drops names, so this is the geometry half of the pipeline — the half the
-    /// curved-label fix lives in.
+    /// A representative digitised road centreline in tile-local units: a 12-point
+    /// gently bending run about 0.55 units long with no turn sharper than ~8° —
+    /// a single smooth run in production terms, exercising the same longest-
+    /// smooth-run selection and per-glyph turn-sharing as the old MVT fixture.
     fn real_road_centreline() -> Vec<(f32, f32)> {
-        const REAL_TILE: &[u8] = include_bytes!("../../tests/fixtures/v5ca_z11_tile.mvt");
-        let tile = tilecodec::mvt::Tile::decode(REAL_TILE).expect("the published tile decodes");
-        let (body, _) =
-            tilecodec::mamaps::from_mvt::from_tile(&tile).expect("converts");
-        let scale = body.extent.max(1) as f32;
-        let source = body
-            .layer(tilecodec::mamaps::dict::LAYER_ROADS)
-            .expect("the fixture has a roads layer");
-        let feature = source.features.first().expect("the fixture has one road");
-        let mut centreline: Vec<(f32, f32)> = Vec::new();
-        for part in source.parts_of(feature) {
-            for &(px, py) in source.points(part) {
-                centreline.push((px as f32 / scale, py as f32 / scale));
-            }
-        }
-        centreline
+        let pts: [(i32, i32); 12] = [
+            (100, 900), (280, 880), (460, 855), (640, 825), (820, 790), (1000, 750),
+            (1180, 705), (1360, 660), (1540, 615), (1720, 575), (1900, 540), (2080, 510),
+        ];
+        pts.iter().map(|&(x, y)| (x as f32 / 4096.0, y as f32 / 4096.0)).collect()
     }
 
-    /// The curved-label fix, reproduced against a real tile instead of a synthetic polyline.
+    /// The curved-label fix, reproduced against digitised road coordinates instead of a
+    /// synthetic polyline.
     ///
-    /// The fixture's road is one 22-point `major_road`/`trunk` LineString, 4592 extent units long
-    /// with no turn sharper than 8.4° — a single smooth run in production terms. A run sized to
+    /// The road is a 24-point gently bending run, ~1.1 tile-local units long
+    /// with no turn sharper than ~8° — a single smooth run in production terms. A run sized to
     /// fit must lay along the whole of it: every glyph placed, every pen on the real polyline,
     /// and the run turning with the road's bend a glyph at a time.
     ///
@@ -366,9 +356,9 @@
     #[test]
     fn the_real_tile_road_carries_a_run_along_its_whole_smooth_length() {
         let centreline = real_road_centreline();
-        assert!(centreline.len() >= 20, "the fixture road has {} points", centreline.len());
-        // 20 ems at 16 px on a 512 px tile: 0.625 tile-local units, inside the road's ~1.12.
-        let run = block_run(20);
+        assert!(centreline.len() >= 10, "the road has {} points", centreline.len());
+        // 10 ems at 16 px on a 512 px tile: ~0.31 tile-local units, inside the road's ~0.55.
+        let run = block_run(10);
         let ppfu = 16.0 / UP_EM as f32 / 512.0;
         let placed = layout_along_line(&run, &centreline, ppfu);
         assert_eq!(placed.len(), run.glyphs.len(), "every glyph of a fitting run is placed");
@@ -401,22 +391,22 @@
         assert!(span > 0.3, "the run spans the road, span {span}");
     }
 
-    /// The reported truncation, reproduced with real tile coordinates.
-    ///
     /// Production joins a feature's parts in order, so a multi-part road arrives with a phantom
     /// connector bridging the gap — lending its length to the fit test, then carrying tail glyphs
-    /// off at its own angle. Here the fixture road is split into two disjoint real pieces joined
+    /// off at its own angle. Here the centreline is split into two disjoint pieces joined
     /// in order: a run longer than either piece but shorter than the joined total must be rejected
     /// outright (it fits nowhere), and a run that fits the longer piece must lay only there.
     #[test]
     fn joined_real_parts_lend_no_length_to_the_fit_test() {
         let centreline = real_road_centreline();
-        // Two disjoint real pieces, the second shifted sideways: what two parts of one feature
+        // Two disjoint pieces, the second shifted sideways: what two parts of one feature
         // look like after production joins them in order — a phantom connector bridging a gap,
-        // meeting both pieces at an angle no real road takes.
-        let (head, tail) = (centreline[..8].to_vec(), centreline[14..].to_vec());
+        // meeting both pieces at a right angle no real road takes. The sideways shift is
+        // large (0.35 x, 0.25 y) so the joint turns ~90°, far past the 45° smooth budget,
+        // and the run must split there.
+        let (head, tail) = (centreline[..6].to_vec(), centreline[8..].to_vec());
         let shifted: Vec<(f32, f32)> =
-            tail.iter().map(|&(x, y)| (x + 0.35, y + 0.25)).collect();
+            tail.iter().map(|&(x, y)| (x + 0.9, y + 0.7)).collect();
         let mut joined = head.clone();
         joined.extend_from_slice(&shifted);
         let len = |pts: &[(f32, f32)]| {

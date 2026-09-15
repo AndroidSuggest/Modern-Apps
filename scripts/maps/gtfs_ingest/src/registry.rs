@@ -1,8 +1,9 @@
 //! Resolving the Transitous registry against transitland-atlas, so a feed's stops
 //! can carry MOTIS ids.
 //!
-//! A port of `build_ca_transit.ps1`'s resolution, generalised from one region file
-//! to a glob over all of them. `build_world_transit.sh` used to scrape `url` fields
+//! A port of the old `build_ca_transit.ps1`'s resolution (now deleted; the world
+//! build mirrors Transitous' published directory instead), generalised from one
+//! region file to a glob over all of them. `build_world_transit.sh` used to scrape `url` fields
 //! out of the registry, which silently dropped every source referenced only by
 //! `transitland-atlas-id` -- **38 of California's 49**. Worse, index-based feed names
 //! (`us_ca_0`, `us_ca_1`, …) meant its manifest was two-field, so nothing had a

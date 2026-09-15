@@ -4,11 +4,9 @@
 use crate::style::{Layer, Palette, SharedToggles};
 use crate::tile::geometry::TileMesh;
 use crate::tile::select::TileId;
-use crate::tile::source::{basemap_origin, CachingRangeReader, JniRangeFetcher};
 use crate::vulkan::renderer::Renderer;
 use jni::sys::jlong;
 use std::collections::{HashMap, HashSet};
-use tilecodec::mamaps::MamapsArchive;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 /// The archive's zoom range, shared with the worker that reads it out of the header.

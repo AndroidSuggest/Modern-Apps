@@ -203,7 +203,7 @@ use crate::store::Sink;
 /// The shallowest zoom lane connectors are **tiled** into.
 ///
 /// This is a tiling gate and nothing else, so it is bounded above by the deepest zoom an archive
-/// is built to — `--max-zoom`, which defaults to [`crate::DEFAULT_MAX_ZOOM`]. Set past that there
+/// is built to — z14, [`crate::DEFAULT_MAX_ZOOM`]. Set past that there
 /// is no tile deep enough to hold a connector, so every one of them is computed and then dropped,
 /// and the layer is missing from the archive entirely while the build still reports success.
 ///

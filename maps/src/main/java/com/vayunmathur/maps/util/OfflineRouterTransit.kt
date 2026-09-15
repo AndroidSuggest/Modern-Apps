@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.util.ConnectivityMonitor
+import com.vayunmathur.maps.BuildConfig
 import com.vayunmathur.maps.data.transit.Departure
 import com.vayunmathur.maps.data.transit.RailLine
 import com.vayunmathur.maps.data.transit.TransitStop
@@ -293,6 +294,14 @@ internal object OfflineRouterTransit {
             } catch (_: Exception) {
                 null
             } ?: continue
+            // TEMP-DIAG-A (light-rail icon): histogram the raw GTFS
+            // route_type ints the pack returns plus the mapped label, so a
+            // Seattle Link viewport shows the exact value behind the icon.
+            // Remove once the mapping fix lands.
+            if (BuildConfig.DEBUG) {
+                val hist = raw.groupingBy { it.mode }.eachCount().toSortedMap()
+                Log.d("TransitIconDiag", "feed=$feed n=${raw.size} rawRouteType->count=$hist")
+            }
             for (v in raw) {
                 out.add(
                         OfflineRouter.Vehicle(

@@ -2,8 +2,8 @@
 //!
 //! # Why this exists
 //!
-//! Measured on `california-latest.osm.pbf`, the generator peaked at 10.03 GB, and a `--max-zoom 12`
-//! run peaked at 10.01 GB — so essentially none of it was the tiler. It was all stage A, where three
+//! Measured on `california-latest.osm.pbf`, the generator peaked at 10.03 GB — so essentially
+//! none of it was the tiler. It was all stage A, where three
 //! large things were alive at once:
 //!
 //! | | California |

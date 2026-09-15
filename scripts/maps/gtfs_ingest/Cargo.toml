@@ -17,6 +17,11 @@ description = "GTFS -> compact on-device transit index for the Maps offline pack
 # The crate carries several binaries, so a bare `cargo run` would be ambiguous.
 # Name the pack builder as the default so existing callers keep working.
 default-run = "gtfs_ingest"
+# `src/bin/*_extra*.rs` are `#[path]`-included helper/test modules, not
+# standalone binaries. Without this Cargo autodiscovers every file directly
+# under `src/bin/` as a bin target and tries to compile them as crate roots,
+# where their `use super::...` imports fail and no `main` exists.
+autobins = false
 
 [[bin]]
 name = "gtfs_ingest"

@@ -8,8 +8,8 @@
 //! # `ocean` comes from the tiler, not from a tag
 //!
 //! There is no `natural=ocean` way in OpenStreetMap — water is defined by the absence of land — so
-//! the sea cannot be classified here. It is derived per tile in [`crate::tiler::add_ocean`] as the
-//! tile rectangle minus the coastline land, and appended to this layer.
+//! the sea cannot be classified here. The renderer paints the sea as its background colour; the
+//! `ocean` kind below stays in the dictionary so archives that name it keep parsing.
 //!
 //! It used to be the renderer's background colour instead, which is why that colour is the water
 //! one rather than the land one. That worked until something drew *over* the sea: marine protected

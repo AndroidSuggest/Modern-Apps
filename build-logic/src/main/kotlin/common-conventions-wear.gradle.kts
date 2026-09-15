@@ -27,6 +27,30 @@ val proguardFile
 
 val (appVersionCode, appVersionName) = readVersionInfo()
 
+// Adaptive launcher icons are generated at build time from Material Symbols
+// (same mechanism as common-conventions-app). Each app declares its symbol via
+// `launcherIcon { symbol = "..." }`.
+val launcherIcon = extensions.create("launcherIcon", LauncherIconExtension::class.java).apply {
+    scale.convention(0.435)
+}
+val materialSymbolsRef = "819d78680a849ceef4c78f863d8753e3160b7c89"
+val materialSymbolsCache = File(gradle.gradleUserHomeDir, "material-symbols-cache")
+
+extensions.configure<com.android.build.api.variant.ApplicationAndroidComponentsExtension> {
+    onVariants { variant ->
+        val gen = tasks.register(
+            "generate${variant.name.replaceFirstChar { it.uppercase() }}LauncherIcon",
+            GenerateLauncherIconTask::class.java,
+        ) {
+            symbol.set(launcherIcon.symbol)
+            scale.set(launcherIcon.scale)
+            ref.set(materialSymbolsRef)
+            cacheDir.set(materialSymbolsCache)
+        }
+        variant.sources.res?.addGeneratedSourceDirectory(gen, GenerateLauncherIconTask::outputDir)
+    }
+}
+
 configure<com.android.build.api.dsl.ApplicationExtension> {
     dependenciesInfo {
         includeInApk = false
@@ -44,6 +68,12 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
     androidResources {
         generateLocaleConfig = true
     }
+
+    // Every app declares the same res/resources.properties (unqualifiedResLocale) for
+    // per-app locale config. Share a single committed copy instead of one file per app.
+    // (Generated res dirs are NOT scanned by extractSupportedLocales, so this must be a
+    // real res source directory.)
+    sourceSets.getByName("main").res.directories.add(File(rootDir, "build-logic/shared-res").absolutePath)
 
     ndkVersion = NDK_VERSION
 

@@ -7,8 +7,8 @@
 use crate::proto::{err, Result};
 
 use super::consts::{
-    COMPRESSION_DEFLATE, COMPRESSION_NONE, FLAG_LEAF_LEN_64, FORMAT_VERSION, FORMAT_VERSION_V8,
-    HEADER_LEN, HEADER_LEN_V8, KNOWN_FLAGS, MAGIC, MAX_ZOOM,
+    COMPRESSION_DEFLATE, COMPRESSION_NONE, FLAG_LEAF_LEN_64, FORMAT_VERSION, HEADER_LEN,
+    KNOWN_FLAGS, MAGIC, MAX_ZOOM,
 };
 use super::types::Header;
 
@@ -21,12 +21,7 @@ impl Header {
     /// `44..48` leaf_entry_capacity, `48..56` root_offset, `56..60` root_len, `60..64`
     /// leaf_count, `64..72` leaf_offset, `72..76` leaf_len, `76..80` reserved, `80..88`
     /// data_offset, `88..96` data_len, `96..104` tiles_addressed, `104..112` bodies_written,
-    /// `112..128` the bbox as four `i32` of degrees times 1e7. On a v8 archive (byte 7 is 8,
-    /// `header_len` 160) the tail follows: `128..136` shared_offset, `136..144` shared_len,
-    /// `144..146` shared_flags, `146..150` shared_pools, `150..160` reserved zero. A
-    /// version-7 header is 128 bytes and parses with the shared fields zeroed; anything past
-    /// byte 128 in its buffer is the dictionary, not the header, and is ignored the way it
-    /// always was.
+    /// `112..128` the bbox as four `i32` of degrees times 1e7.
     ///
     /// Every `u64` sits on an 8-byte boundary so a reader may take them as aligned loads.
     pub fn parse(buf: &[u8]) -> Result<Header> {
@@ -37,9 +32,9 @@ impl Header {
             return err("not a .mamaps archive (bad magic)");
         }
         let version = buf[7];
-        if version != FORMAT_VERSION && version != FORMAT_VERSION_V8 {
+        if version != FORMAT_VERSION {
             return err(format!(
-                "unsupported .mamaps format version {version} (this reader speaks v{FORMAT_VERSION} and v{FORMAT_VERSION_V8})",
+                "unsupported .mamaps format version {version} (this reader speaks v{FORMAT_VERSION})",
             ));
         }
         let u16_at = |o: usize| u16::from_le_bytes([buf[o], buf[o + 1]]);
@@ -58,19 +53,17 @@ impl Header {
             ])
         };
 
-        // v7 ⟺ 128 bytes, v8 ⟺ 160: each version declares exactly one length, so a header
-        // claiming otherwise — a v7 length behind a v8 version or the reverse — is refused
+        // The version declares exactly one length: 128. Anything else is refused
         // rather than parsed as the shape it resembles.
         let header_len = u16_at(8);
-        let wire_len = if version == FORMAT_VERSION { HEADER_LEN } else { HEADER_LEN_V8 };
-        if header_len as usize != wire_len {
+        if header_len as usize != HEADER_LEN {
             return err(format!(
-                "a .mamaps v{version} header declares {header_len} bytes, not {wire_len}"
+                "a .mamaps v{version} header declares {header_len} bytes, not {HEADER_LEN}"
             ));
         }
-        if buf.len() < wire_len {
+        if buf.len() < HEADER_LEN {
             return err(format!(
-                "a .mamaps v{version} header needs {wire_len} bytes, got {}",
+                "a .mamaps v{version} header needs {HEADER_LEN} bytes, got {}",
                 buf.len()
             ));
         }
@@ -101,31 +94,8 @@ impl Header {
             }
             u32_at(72) as u64
         };
-        // The v8 tail. A v7 header has no tail: its bytes past 128 are the dictionary the
-        // prefix also carries, so they are ignored and the shared fields read as zero. v8
-        // names a section or it is malformed: a 160-byte header with a zero-length section,
-        // unknown shared flags, or a dirty reserved tail is refused here.
-        let (shared_offset, shared_len, shared_flags, shared_pools) =
-            if version == FORMAT_VERSION_V8 {
-                let shared_offset = u64_at(128);
-                let shared_len = u64_at(136);
-                let shared_flags = u16_at(144);
-                let shared_pools = u32_at(146);
-                if shared_len == 0 {
-                    return err("a .mamaps v8 header names a zero-length shared section");
-                }
-                if shared_flags != 0 {
-                    return err(format!(
-                        "a .mamaps v8 header sets unknown shared flags {shared_flags:#06X}"
-                    ));
-                }
-                if buf[150..160].iter().any(|&b| b != 0) {
-                    return err("a .mamaps v8 header has a non-zero reserved tail");
-                }
-                (shared_offset, shared_len, shared_flags, shared_pools)
-            } else {
-                (0, 0, 0, 0)
-            };
+        // Anything past byte 128 in the buffer is the dictionary, not the header,
+        // and is ignored the way it always was.
         let header = Header {
             flags,
             compression: buf[12],
@@ -150,10 +120,6 @@ impl Header {
             min_lat_e7: i32_at(116),
             max_lon_e7: i32_at(120),
             max_lat_e7: i32_at(124),
-            shared_offset,
-            shared_len,
-            shared_flags,
-            shared_pools,
         };
         header.check()?;
         Ok(header)
@@ -187,53 +153,10 @@ impl Header {
         if self.leaf_count == 0 {
             return err("a .mamaps archive needs at least one leaf");
         }
-        // A v8 archive's header is 160 bytes, so a section may not start inside the tail any
-        // more than inside the first 128. Absent ⟺ all four shared fields zero; anything else
-        // beside a zero length is a section claimed and not named.
-        let header_floor = if self.shared_len == 0 {
-            if self.shared_offset != 0 || self.shared_flags != 0 || self.shared_pools != 0 {
-                return err("a .mamaps header names a shared section of zero length");
-            }
-            HEADER_LEN as u64
-        } else {
-            HEADER_LEN_V8 as u64
-        };
+        // No section may start inside the 128-byte header.
+        let header_floor = HEADER_LEN as u64;
         if self.file_len < header_floor {
             return err(format!("a .mamaps header declares a {} byte file", self.file_len));
-        }
-        if self.shared_len != 0 {
-            // The pool directory sits at the section's head: its entries must fit inside the
-            // section, and the directory itself must fit the opening prefix — hundreds of
-            // pools past the seven kinds the shared section defines is corruption, refused
-            // before any pool is fetched rather than allocated into.
-            let dir = (crate::mamaps::shared::SHARED_HEADER_LEN as u64)
-                .checked_add(
-                    (self.shared_pools as u64)
-                        .checked_mul(crate::mamaps::shared::SHARED_POOL_ENTRY_LEN as u64)
-                        .ok_or_else(|| {
-                            crate::proto::Error(
-                                "a .mamaps shared section's directory overflows".to_string(),
-                            )
-                        })?,
-                )
-                .ok_or_else(|| {
-                    crate::proto::Error(
-                        "a .mamaps shared section's directory overflows".to_string(),
-                    )
-                })?;
-            if dir > self.shared_len {
-                return err(format!(
-                    "a .mamaps shared section of {} bytes cannot hold its {} pool(s)",
-                    self.shared_len, self.shared_pools,
-                ));
-            }
-            if dir > crate::stream::OPEN_PREFIX_BYTES as u64 {
-                return err(format!(
-                    "a .mamaps shared section names {} pool(s), whose directory does not fit the {} byte opening prefix",
-                    self.shared_pools,
-                    crate::stream::OPEN_PREFIX_BYTES,
-                ));
-            }
         }
         let sections = [
             ("the dictionary", self.dict_offset, self.dict_len as u64),
@@ -259,36 +182,6 @@ impl Header {
                 }
                 if *offset < other_offset + other_len && *other_offset < offset + len {
                     return err(format!("{what} and {other} overlap in the .mamaps file"));
-                }
-            }
-        }
-        // The shared section against each of the four above: same three refusals — inside
-        // the header, past the end (including an offset+length that wraps), overlapping a
-        // section — with its own name on the diagnostic.
-        if self.shared_len != 0 {
-            if self.shared_offset < header_floor {
-                return err("the shared section overlaps the .mamaps header");
-            }
-            // Checked once, so the overlap compares below cannot wrap.
-            let shared_end =
-                self.shared_offset.checked_add(self.shared_len).ok_or_else(|| {
-                    crate::proto::Error(
-                        "a .mamaps shared section's extent overflows".to_string(),
-                    )
-                })?;
-            if shared_end > self.file_len {
-                return err("the shared section runs past the end of the .mamaps file");
-            }
-            for &(other, other_offset, other_len) in &sections {
-                if other_len == 0 {
-                    continue;
-                }
-                if self.shared_offset < other_offset + other_len
-                    && other_offset < shared_end
-                {
-                    return err(format!(
-                        "the shared section and {other} overlap in the .mamaps file"
-                    ));
                 }
             }
         }

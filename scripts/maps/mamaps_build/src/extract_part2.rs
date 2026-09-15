@@ -161,54 +161,52 @@ fn spill_node_labels(
     //
     // Only label layers are consulted here: a node is never a road, a lake or a building, and
     // running the full schema over 2 B nodes would pay the tag scan for nothing.
-    if layers.places || layers.poi {
-        pbf::run_pass_sink(
-            input,
-            &blobs,
-            Some(&blob_kinds),
-            KIND_NODES,
-            "Pass 4: nodes",
-            Vec::<(Class, f64, f64, Option<String>, u64)>::new,
-            |state, block| {
-                let mut kinds = 0u8;
-                visit_block(block, KIND_NODES, &mut kinds, &mut |el| {
-                    if let Element::Node(node) = el {
-                        if !select.matches(|k| node.tags.get_str(k)) {
-                            return Ok(());
-                        }
-                        if let Some(class) = schema::classify(&node.tags, false, layers) {
-                            if is_label(class.layer) {
-                                let name = schema::display_name(&node.tags, class.layer);
-                                state.push((
-                                    class,
-                                    node.lon_e7 as f64 * 1e-7,
-                                    node.lat_e7 as f64 * 1e-7,
-                                    name,
-                                    tagged_id(node.id, ELEMENT_NODE),
-                                ));
-                            }
+    pbf::run_pass_sink(
+        input,
+        &blobs,
+        Some(&blob_kinds),
+        KIND_NODES,
+        "Pass 4: nodes",
+        Vec::<(Class, f64, f64, Option<String>, u64)>::new,
+        |state, block| {
+            let mut kinds = 0u8;
+            visit_block(block, KIND_NODES, &mut kinds, &mut |el| {
+                if let Element::Node(node) = el {
+                    if !select.matches(|k| node.tags.get_str(k)) {
+                        return Ok(());
+                    }
+                    if let Some(class) = schema::classify(&node.tags, false, layers) {
+                        if is_label(class.layer) {
+                            let name = schema::display_name(&node.tags, class.layer);
+                            state.push((
+                                class,
+                                node.lon_e7 as f64 * 1e-7,
+                                node.lat_e7 as f64 * 1e-7,
+                                name,
+                                tagged_id(node.id, ELEMENT_NODE),
+                            ));
                         }
                     }
-                    Ok(())
-                })?;
-                Ok(kinds)
-            },
-            |hits| {
-                for (class, lon, lat, name, id) in hits {
-                    sink.push_named(
-                        &class,
-                        &Geometry::Points(vec![(lon, lat)]),
-                        name.as_deref(),
-                        id,
-                    )?;
-                    stats.features += 1;
-                    stats.nodes_classified += 1;
                 }
                 Ok(())
-            },
-        )?;
-        mark("nodes labelled");
-    }
+            })?;
+            Ok(kinds)
+        },
+        |hits| {
+            for (class, lon, lat, name, id) in hits {
+                sink.push_named(
+                    &class,
+                    &Geometry::Points(vec![(lon, lat)]),
+                    name.as_deref(),
+                    id,
+                )?;
+                stats.features += 1;
+                stats.nodes_classified += 1;
+            }
+            Ok(())
+        },
+    )?;
+    mark("nodes labelled");
 
     Ok(())
 }

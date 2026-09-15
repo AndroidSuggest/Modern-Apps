@@ -118,9 +118,7 @@
     // `build_archive` is covered by every test above, so pinning the streaming producer
     // against it byte for byte inherits all of it -- the drop policy, the importance
     // order, the simplification, the header, the deduplication, the run coalescing and
-    // the directory split -- without restating any of it. This is the same contract
-    // `tiling.rs`'s `the_streaming_join_is_byte_identical_to_the_in_memory_one` holds
-    // the merge to.
+    // without restating any of it.
 
     struct Scratch(std::path::PathBuf);
 

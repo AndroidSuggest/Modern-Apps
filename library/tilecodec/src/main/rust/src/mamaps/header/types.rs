@@ -3,7 +3,7 @@
 //!
 //! Pure moves out of the former single-file header module; nothing here changed.
 
-use super::consts::{FLAG_BODIES_COMPRESSED, FLAG_RINGS_VALIDATED, HEADER_LEN, HEADER_LEN_V8};
+use super::consts::{FLAG_BODIES_COMPRESSED, FLAG_RINGS_VALIDATED, HEADER_LEN};
 
 /// What a reader must know before it can address anything.
 ///
@@ -49,24 +49,6 @@ pub struct Header {
     pub min_lat_e7: i32,
     pub max_lon_e7: i32,
     pub max_lat_e7: i32,
-    /// Where the v8 shared section lives.
-    ///
-    /// `shared_len == 0` means no shared section: a v7 archive, whose serialization is the
-    /// byte-identical 128-byte header with version byte 7. Nonzero means a v8 archive (160
-    /// bytes, version byte 8) whose shared section starts at `shared_offset` and runs
-    /// `shared_len` bytes. What lane C's `shared_location()` hook reads.
-    pub shared_offset: u64,
-    pub shared_len: u64,
-    /// Header-level shared-section flags. None are defined yet, so any set bit is refused —
-    /// the same rule as the top-level flags: a flag changes how the section must be handled,
-    /// and ignoring one would draw the map wrong.
-    pub shared_flags: u16,
-    /// How many pool directory entries the shared section carries.
-    ///
-    /// Mirrors the section's own pool count so `Header::check` can require the directory (its
-    /// header plus this many pool entries) to fit inside the section — and inside the opening
-    /// prefix — before any pool is fetched.
-    pub shared_pools: u32,
 }
 
 impl Header {
@@ -78,24 +60,8 @@ impl Header {
         self.flags & FLAG_RINGS_VALIDATED != 0
     }
 
-    /// `(offset, len)` of the shared section, or `None` on a v7 archive.
-    ///
-    /// Absent ⟺ `shared_len == 0`. What lane C's `shared_location()` hook calls: on `Some`
-    /// it fetches and parses the section, on `None` it stays on the v7 cost contract with no
-    /// request made. Reads the header only, never the wire.
-    pub fn shared_location(&self) -> Option<(u64, u64)> {
-        (self.shared_len != 0).then_some((self.shared_offset, self.shared_len))
-    }
-
-    /// This header's wire length: 128 without a shared section, 160 with one.
-    ///
-    /// What the writer offsets the dictionary by: the dictionary starts where the header
-    /// ends, and the header ends 32 bytes later on a v8 archive.
+    /// This header's wire length: always 128 (v7 only).
     pub fn wire_len(&self) -> usize {
-        if self.shared_len == 0 {
-            HEADER_LEN
-        } else {
-            HEADER_LEN_V8
-        }
+        HEADER_LEN
     }
 }

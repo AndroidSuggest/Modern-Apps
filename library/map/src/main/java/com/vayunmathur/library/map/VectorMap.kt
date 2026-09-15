@@ -30,9 +30,9 @@ import kotlin.math.roundToInt
 /**
  * The vector map.
  *
- * Renders the self-hosted PMTiles archive at `data.vayunmathur.com/v4.pmtiles` — the same
- * one `maps` streams through MapLibre — with our own Vulkan renderer. No third-party tile
- * CDN and no API key, which is the whole point: CARTO's keyless raster tiles now come back
+ * Renders the planet-scale v7 single-file `planet.mamaps` archive
+ * (`data.vayunmathur.com/planet.mamaps`: 12 layers, 128-byte header) with our own
+ * Vulkan renderer. No third-party tile CDN and no API key, which is the whole point:
  * watermarked, and that broke the basemap in five apps (#615).
  *
  * The signature is deliberately close to the `RasterMap` it replaces, so migrating a
@@ -128,7 +128,6 @@ fun VectorMap(
      */
     onMapClickWithScreen: ((MapClick) -> Unit)? = null,
     onFrame: () -> Unit = {},
-    archivePath: String? = null,
     fallback: @Composable (MapRenderState.Unavailable) -> Unit = {},
     content: @Composable MapScope.() -> Unit = {},
 ) {
@@ -188,7 +187,6 @@ fun VectorMap(
             darkBasemap = darkBasemap,
             muted = style == MapStyle.Muted,
             layerOptions = options.layerOptions,
-            archivePath = archivePath,
             userPuck = userPuck,
             regionMask = regionMask,
             trafficColors = trafficColors,

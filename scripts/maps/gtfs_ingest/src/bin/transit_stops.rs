@@ -7,7 +7,7 @@
 //!
 //! `<feed>` is `feed_name=gtfs_dir[=motis_prefix]` or a bare `gtfs_dir`, exactly
 //! as `gtfs_ingest` takes them, so the same `feeds.manifest`
-//! `build_ca_transit.ps1` writes drives both tools.
+//! `build_world_transit.sh` writes drives both tools.
 //!
 //! This replaces the per-viewport `GET /api/v1/map/stops` fetch: stops are static
 //! data, so they belong in the basemap rather than behind a network round-trip on

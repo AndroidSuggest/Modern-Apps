@@ -64,19 +64,13 @@ mod tests {
     }
 
     pub(super) fn settings(min_zoom: u8, max_zoom: u8) -> Settings {
+        // `min_zoom`/`max_zoom` are kept as arguments so call sites read unchanged;
+        // the tiler builds z0-14 regardless.
+        let _ = (min_zoom, max_zoom);
         Settings {
-            min_zoom,
-            max_zoom,
-            simplification: DEFAULT_SIMPLIFICATION,
             build_id: 7,
             scratch: scratch(),
-            // Off by default here: these fixtures carry no coastline, so "no land in this tile"
-            // would flood every one of them. `ocean_fills_a_tile_with_no_land` opts in.
-            ocean: false,
-            dem: None,
-            // Off: the shared-table tests opt in per test, so every existing test keeps asserting
-            // byte-identical v7.
-            shared_table: false,
+            dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
         }
     }
 
@@ -446,7 +440,7 @@ mod tests {
         }
         let dem =
             crate::dem::Dem::from_grids(z, dim, vec![(tile_id(z, tx, ty), grid.clone())]);
-        let with_dem = Settings { dem: Some(dem), ..settings(14, 14) };
+        let with_dem = Settings { dem, ..settings(14, 14) };
         let (bytes, _) = build(&spilled(&[building()]), &with_dem).expect("build with dem");
         assert_eq!(
             bytes[7],

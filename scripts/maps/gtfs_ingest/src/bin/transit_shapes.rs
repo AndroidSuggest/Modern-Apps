@@ -8,7 +8,7 @@
 //!
 //! `<feed>` is `feed_name=gtfs_dir[=motis_prefix]` or a bare `gtfs_dir`, exactly
 //! as `gtfs_ingest` takes them, so the same `feeds.manifest`
-//! `build_ca_transit.ps1` writes drives every tool in this crate.
+//! `build_world_transit.sh` writes drives every tool in this crate.
 //!
 //! # Why GTFS rather than OSM route relations
 //!

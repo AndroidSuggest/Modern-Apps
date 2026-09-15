@@ -33,10 +33,9 @@
 //! planet z14 projects to ~244 GB, which is not a tuning problem.
 //!
 //! The spill is created and dropped **per zoom**, so peak scratch is the largest single zoom rather
-//! than the sum: ~23 GB at a north-america z14, ~100 GB at a planet one. It is deliberately not
-//! covered by `--keep-store`/`--reuse-store`. Those govern the stage-A feature store, which is a
-//! reusable input; this is a within-zoom temporary, and keeping it would strand a hundred gigabytes
-//! for nothing.
+//! than the sum: ~23 GB at a north-america z14, ~100 GB at a planet one. The stage-A feature
+//! store is a within-build temporary, removed on success; this is a within-zoom temporary, and
+//! keeping either would strand gigabytes for nothing.
 //!
 //! # Parallelism, and why the bytes do not move
 //!
@@ -98,11 +97,10 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use rayon::prelude::*;
-use tile_build::boolean;
 use tile_build::geom::{self, Geometry, IntGeometry, SigPt, Vertex};
 use tile_build::par;
 use tile_build::subdivide;
@@ -242,34 +240,16 @@ pub struct ZoomStats {
 }
 
 pub struct Settings {
-    pub min_zoom: u8,
-    pub max_zoom: u8,
-    pub simplification: f64,
     pub build_id: u64,
     /// Where one zoom's chunks go while they wait for the merge. See [`crate::tilespill`].
     ///
     /// Beside the output archive, as `<out>.tilechunks`, matching where the feature spill is placed.
     /// Truncated at the start of every zoom and removed at the end of each, so it holds one zoom.
     pub scratch: PathBuf,
-    /// Whether to synthesise the sea, as tile rectangle minus land. See [`add_ocean`].
-    ///
-    /// Only sound when the `earth` layer is being built from a real coastline, because the rule
-    /// "no land in this tile means the tile is open water" is only true if land is authoritative.
-    /// Without it, every inland tile would come out flooded.
-    pub ocean: bool,
-    /// The DEM heightmap dataset to sample one grid per output tile from, or `None` for a build
-    /// with no terrain. See [`crate::dem::Dem`]. A tile with no DEM under it carries no heightmap
-    /// section (stays 16-byte), and a build without a dataset leaves every tile's `heightmap` unset.
-    pub dem: Option<crate::dem::Dem>,
-    /// Whether to intern v8 shared-table logical rows while encoding.
-    ///
-    /// Off by default, and off is byte-identical v7: nothing is interned and the writer emits no
-    /// shared section. On, every tile contributes its roads/buildings/traffic/junction logicals —
-    /// keyed by full content, see [`shared_row_key`] — to the writer's shared builder in
-    /// ascending tile-id order, which is what keeps first-use order deterministic. Bodies are
-    /// unchanged either way: slim refs ride the shared section, and how they ride a body is lane
-    /// C's wire, not this flag's.
-    pub shared_table: bool,
+    /// The DEM heightmap dataset to sample one grid per output tile from.
+    /// See [`crate::dem::Dem`]. A tile with no DEM under it carries no heightmap
+    /// section (stays 16-byte).
+    pub dem: crate::dem::Dem,
 }
 
 /// One chunk's share of a zoom, keyed on `(tile id, layer id)`.
@@ -373,7 +353,6 @@ impl Tally {
 include!("tiler_part1.rs");
 include!("tiler_part2.rs");
 include!("tiler_part3.rs");
-include!("tiler_part4.rs");
 include!("tiler_part5.rs");
 include!("tiler_part6.rs");
 include!("tiler_part7.rs");

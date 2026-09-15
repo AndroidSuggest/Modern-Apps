@@ -1,4 +1,4 @@
-//! Header wire tests: round-trips, refusals, and the v8 fail-watch suite.
+//! Header wire tests: round-trips and refusals, v7 only.
 //!
 //! Pure moves out of the former single-file header module; nothing here changed.
 
@@ -30,10 +30,6 @@ fn plausible() -> Header {
         min_lat_e7: 324_000_000,
         max_lon_e7: -1_140_000_000,
         max_lat_e7: 420_000_000,
-        shared_offset: 0,
-        shared_len: 0,
-        shared_flags: 0,
-        shared_pools: 0,
     }
 }
 
@@ -48,7 +44,7 @@ fn a_header_round_trips_through_its_own_bytes() {
 #[test]
 fn every_u64_field_is_eight_byte_aligned() {
     // So a reader may take them as aligned loads out of a zero-copy prefix slice.
-    for offset in [16, 24, 32, 48, 64, 80, 88, 96, 104, 128, 136] {
+    for offset in [16, 24, 32, 48, 64, 80, 88, 96, 104] {
         assert_eq!(offset % 8, 0, "a u64 sits at byte {offset}");
     }
 }
@@ -69,8 +65,11 @@ fn a_truncated_or_foreign_header_is_refused() {
     wrong_magic[0] = b'P';
     assert!(Header::parse(&wrong_magic).is_err(), "PMTiles is not this format");
     let mut wrong_version = bytes.clone();
-    wrong_version[7] = FORMAT_VERSION_V8 + 1;
-    assert!(Header::parse(&wrong_version).is_err(), "a version past v8");
+    wrong_version[7] = FORMAT_VERSION + 1;
+    assert!(Header::parse(&wrong_version).is_err(), "a version past v7");
+    let mut wrong_len = bytes.clone();
+    wrong_len[8..10].copy_from_slice(&160u16.to_le_bytes());
+    assert!(Header::parse(&wrong_len).is_err(), "a v7 version declaring 160");
 }
 
 /// An unknown flag means the writer said something about the bodies this reader would
@@ -171,185 +170,4 @@ fn a_leaf_len_past_u32_max_round_trips_and_common_path_stays_byte_identical() {
     bad.data_offset = bad.leaf_offset + bad.leaf_len;
     bad.file_len = bad.data_offset + bad.data_len;
     assert!(Header::parse(&bad.serialize()).is_err(), "extended with small leaf_len must be rejected");
-}
-
-// Fail-watch convention (lane B): each test pins one wire fact as a literal, so a
-// revert of that fact quotes its failure (`left` vs `right`) rather than a vague
-// mismatch. Revert → quote the failure → restore.
-
-/// A header naming a shared section past the tile data: every v7 section shifted by
-/// the 32-byte tail, the section itself last, `file_len` covering it.
-fn plausible_v8() -> Header {
-    let v7 = plausible();
-    let shift = (HEADER_LEN_V8 - HEADER_LEN) as u64;
-    Header {
-        dict_offset: v7.dict_offset + shift,
-        root_offset: v7.root_offset + shift,
-        leaf_offset: v7.leaf_offset + shift,
-        data_offset: v7.data_offset + shift,
-        shared_offset: v7.data_offset + shift + v7.data_len,
-        shared_len: 512,
-        file_len: v7.data_offset + shift + v7.data_len + 512,
-        shared_flags: 0,
-        // The seven pool kinds the shared section defines.
-        shared_pools: 7,
-        ..v7
-    }
-}
-
-/// Fail-watched: the v8 shape. 160 bytes behind version byte 8, field positions
-/// identical to v7 (lengths untouched, offsets shifted by exactly the tail), the tail
-/// naming the section. A revert of the version byte quotes `left: 7, right: 8`; of the
-/// length, `left: 128, right: 160`.
-#[test]
-fn a_v8_header_is_160_bytes_with_a_v7_identical_first_128() {
-    let v8 = plausible_v8();
-    let bytes = v8.serialize();
-    let v7bytes = plausible().serialize();
-    assert_eq!(bytes.len(), 160, "a v8 header is 160 bytes");
-    assert_eq!(bytes[7], 8, "the version byte marks v8");
-    assert_eq!(&bytes[8..10], &160u16.to_le_bytes(), "the header declares 160");
-    assert_eq!(&bytes[0..7], &v7bytes[0..7], "magic");
-    assert_eq!(&bytes[10..24], &v7bytes[10..24], "flags through build_id");
-    assert_eq!(&bytes[24..32], &4640u64.to_le_bytes(), "file_len covers the section");
-    // Offsets shift by exactly the 32-byte tail; lengths are untouched.
-    for (at, off) in [(32usize, 160u64), (48, 672u64), (64, 736u64), (80, 768u64)] {
-        assert_eq!(&bytes[at..at + 8], &off.to_le_bytes(), "offset at {at}");
-    }
-    assert_eq!(&bytes[40..44], &v7bytes[40..44], "dict_len");
-    assert_eq!(&bytes[56..60], &v7bytes[56..60], "root_len");
-    assert_eq!(&bytes[72..76], &v7bytes[72..76], "leaf_len low");
-    assert_eq!(&bytes[88..112], &v7bytes[88..112], "data_len, tiles, bodies");
-    assert_eq!(&bytes[112..128], &v7bytes[112..128], "bbox");
-    // The tail itself, little-endian: section at 4128 for 512 bytes, 7 pools.
-    assert_eq!(&bytes[128..136], &4128u64.to_le_bytes(), "shared_offset");
-    assert_eq!(&bytes[136..144], &512u64.to_le_bytes(), "shared_len");
-    assert_eq!(&bytes[144..146], &0u16.to_le_bytes(), "shared_flags");
-    assert_eq!(&bytes[146..150], &7u32.to_le_bytes(), "shared_pools");
-    assert_eq!(&bytes[150..160], &[0u8; 10], "reserved tail");
-    assert_eq!(Header::parse(&bytes).expect("should parse"), v8);
-    // It arrives inside a 16 KiB prefix like every header.
-    let mut prefixed = bytes.clone();
-    prefixed.extend_from_slice(&[0xAB; 1024]);
-    assert!(Header::parse(&prefixed).is_ok());
-}
-
-/// Fail-watched: the v8 reader still opens a 128-byte v7 header, with the shared
-/// fields zeroed and no shared section.
-#[test]
-fn a_128_byte_v7_header_opens_with_no_shared_section() {
-    let header = Header::parse(&plausible().serialize()).expect("v7 still parses");
-    assert_eq!((header.shared_offset, header.shared_len), (0, 0));
-    assert_eq!(header.shared_location(), None, "v7 carries no shared section");
-    assert_eq!(header.wire_len(), 128);
-}
-
-/// Fail-watched: version and length are bound together. A v7 version declaring 160,
-/// a v8 version declaring 128, a v8 header cut to 159 bytes, and anything past v8
-/// are all refused — while 8 itself parses.
-#[test]
-fn a_version_length_mismatch_is_refused() {
-    let mut v7declares160 = plausible().serialize();
-    v7declares160[8..10].copy_from_slice(&160u16.to_le_bytes());
-    assert!(Header::parse(&v7declares160).is_err(), "v7 declaring 160");
-    let mut v8declares128 = plausible_v8().serialize();
-    v8declares128[8..10].copy_from_slice(&128u16.to_le_bytes());
-    assert!(Header::parse(&v8declares128).is_err(), "v8 declaring 128");
-    let full = plausible_v8().serialize();
-    assert!(Header::parse(&full[..159]).is_err(), "a v8 header cut to 159 bytes");
-    assert!(Header::parse(&full[..128]).is_err(), "a v8 version in 128 bytes");
-    let mut past = full.clone();
-    past[7] = 9;
-    assert!(Header::parse(&past).is_err(), "a version past v8");
-}
-
-/// Fail-watched: the tail's own hygiene. Unknown shared flags and a dirty reserved
-/// tail are refused at parse; a 160-byte header naming a zero-length section is
-/// refused with it.
-#[test]
-fn a_dirty_shared_tail_is_refused() {
-    let mut flags = plausible_v8().serialize();
-    flags[144] = 1;
-    assert!(Header::parse(&flags).is_err(), "unknown shared flags");
-    let mut reserved = plausible_v8().serialize();
-    reserved[159] = 1;
-    assert!(Header::parse(&reserved).is_err(), "a dirty reserved tail");
-    let mut zero_len = plausible_v8().serialize();
-    zero_len[136..144].copy_from_slice(&0u64.to_le_bytes());
-    assert!(Header::parse(&zero_len).is_err(), "v8 naming a zero-length section");
-}
-
-/// Fail-watched: the shared section gets the same three refusals as every other
-/// section — inside the header (including the 32-byte v8 tail), past the end
-/// (including an offset+length that wraps), overlapping a section — plus the
-/// zero-length contradiction a hand-built header can state.
-#[test]
-fn a_shared_section_must_fit_without_overlapping() {
-    let cases: &[(&str, fn(&mut Header))] = &[
-        ("shared over the dictionary", |h| {
-            h.shared_offset = 200;
-        }),
-        ("shared over the tile data", |h| {
-            h.shared_offset = 1000;
-            h.shared_len = 100;
-        }),
-        ("shared past the end", |h| {
-            h.shared_offset = h.file_len - 100;
-        }),
-        ("shared inside the v8 tail", |h| {
-            h.shared_offset = 140;
-        }),
-        ("shared wrapping the address space", |h| {
-            h.shared_offset = u64::MAX - 8;
-            h.shared_len = 64;
-        }),
-    ];
-    for (what, break_it) in cases {
-        let mut header = plausible_v8();
-        break_it(&mut header);
-        assert!(Header::parse(&header.serialize()).is_err(), "{what} should be refused");
-    }
-    // Zero length beside a nonzero offset is a section claimed and not named.
-    let mut header = plausible();
-    header.shared_offset = 4096;
-    assert!(header.check().is_err(), "a zero-length section with an offset");
-}
-
-/// Fail-watched: the pool directory must fit its section and the opening prefix.
-/// 100 pools need 2432 bytes of directory, past the 512-byte section; 1000 pools
-/// need 24032, inside a 1 MiB section but past the 16 KiB prefix a corrupt count
-/// must never make a reader allocate into.
-#[test]
-fn a_pool_directory_must_fit_its_section_and_the_opening_prefix() {
-    let mut past_section = plausible_v8();
-    past_section.shared_pools = 100;
-    assert!(
-        Header::parse(&past_section.serialize()).is_err(),
-        "a directory past its section"
-    );
-    let mut past_prefix = plausible_v8();
-    past_prefix.shared_len = 1 << 20;
-    past_prefix.file_len = past_prefix.shared_offset + past_prefix.shared_len;
-    past_prefix.shared_pools = 1000;
-    assert!(
-        Header::parse(&past_prefix.serialize()).is_err(),
-        "a directory past the opening prefix"
-    );
-    let mut absurd = plausible_v8();
-    absurd.shared_pools = u32::MAX;
-    assert!(
-        Header::parse(&absurd.serialize()).is_err(),
-        "an absurd pool count"
-    );
-}
-
-/// Fail-watched: the lane C wiring. `shared_location()` is `None` on v7 and the
-/// section on v8; `wire_len()` is the dictionary's offset on either shape.
-#[test]
-fn shared_location_is_none_for_v7_and_the_section_for_v8() {
-    assert_eq!(plausible().shared_location(), None);
-    assert_eq!(plausible().wire_len(), HEADER_LEN);
-    let v8 = plausible_v8();
-    assert_eq!(v8.shared_location(), Some((4128, 512)));
-    assert_eq!(v8.wire_len(), HEADER_LEN_V8);
 }

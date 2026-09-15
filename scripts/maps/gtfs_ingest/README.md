@@ -281,30 +281,24 @@ departure *from that stop*, and the footpaths leading away — flagging the ones
 that reach a different feed's stops, since cross-feed transfers working is the
 whole point of merging feeds into one pack.
 
-## Building a regional pack
+## Building the world pack
 
-`build_ca_transit.ps1` (repo root: `scripts/maps/`) builds a state-wide pack
-natively on Windows, the way `build_graph.ps1` does for the road graph:
+`build_world_transit.sh` (repo root: `scripts/maps/`) builds the single global
+pack by mirroring Transitous' own published GTFS directory and merging every
+zip into one TRX2 pack:
 
-```powershell
-.\build_ca_transit.ps1                 # -> california.transit
-.\build_ca_transit.ps1 -Resolve        # report feed resolution only
-.\build_ca_transit.ps1 -Region us-ny -PackName newyork
+```sh
+./build_world_transit.sh --region 'us-ca' --out /tmp/wt   # stage: California first
+./build_world_transit.sh --work /data/transit --publish  # whole world, then publish
 ```
 
-It exists because `build_world_transit.sh` scrapes `url` fields out of the
-Transitous registry, and most US sources have none: 38 of California's 49 are
-`transitland-atlas` references carrying only a feed id. Scraping URLs yields a
-third of the state. This script resolves those ids through the transitland-atlas
-DMFR files, prefers a key-free `static_historic` zip when `static_current` sits
-behind an API key, and rejects GTFS-realtime endpoints — an agency is often listed
-twice, once static and once realtime, and only the atlas entry's `spec`
-distinguishes them.
-
-A California run in 2026 resolved 27 static feeds (58,566 stops, 4,441 routes,
-267,929 trips) into an 18 MB pack, 95% of routes carrying `shapes.txt` geometry
-and `SHAPE_COORDS` taking 2.6 MB of it. Everything it skips is either a realtime
-duplicate of a feed already included, or documented upstream as broken.
+It mirrors rather than resolving the Transitous registry feed-by-feed because
+the upstreams are third parties in every state of disrepair: 401s, 403s, 404s
+from dead rehosts, hostname-mismatched TLS certs, broken pipes. Transitous
+already solves that problem — including the API keys we do not have — so the
+script takes its output instead of repeating its work badly. Each zip's feed id
+(`<region>-<Source>`) becomes the MOTIS id namespace, so live delays can be
+matched to a stop.
 
 **The app enumerates every `*.transit` file in its external files dir and
 concatenates their departure boards without deduplicating**, so ship exactly one

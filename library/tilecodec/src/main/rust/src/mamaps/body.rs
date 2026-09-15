@@ -52,7 +52,6 @@ pub mod consts;
 pub mod emit;
 pub mod emit_extra;
 pub mod model;
-pub mod slim;
 pub mod tables;
 pub mod tables_extra;
 
@@ -78,7 +77,6 @@ pub use model::{
     ROOF_ORIENT_ACROSS, ROOF_ORIENT_ALONG, ROOF_ORIENT_MAX, ROOF_PYRAMIDAL, ROOF_SHAPE_MAX,
     ROOF_SKILLION,
 };
-pub use emit::{MixedLayer, Scratch, serialize, serialize_into, serialize_mixed_body};
-pub use slim::{assemble_slim_payload, encode_slim_instance};
+pub use emit::{Scratch, serialize, serialize_into};
 pub(crate) use codec::parse_layer;
 pub(crate) use tables::align4;

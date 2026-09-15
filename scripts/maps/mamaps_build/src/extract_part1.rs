@@ -6,9 +6,9 @@
 pub fn extract(
     input: &Path,
     layers: Layers,
-    coastline: Option<&Path>,
-    transit_routes: Option<&Path>,
-    graph: Option<&Path>,
+    coastline: &Path,
+    transit_routes: &Path,
+    graph: &Path,
     spill_path: &Path,
 ) -> Result<(Store, Stats)> {
     // Stage A's boundaries are printed with their elapsed time so an external RSS sampler can say
@@ -20,7 +20,7 @@ pub fn extract(
         println!("  [stage A] {what} at {:.1}s", started.elapsed().as_secs_f64());
     };
     let blobs = pbf::scan_blobs(input)?;
-    let select = Select::parse(&schema::filters(layers))?;
+    let select = Select::parse(&schema::filters())?;
     let mut stats = Stats::default();
     // Scratch for this function alone: written in pass 1, read twice below, and removed as soon as
     // the last read is done. Beside the feature spill, so a build directed at a writable output
@@ -244,20 +244,18 @@ fn run_pass1(
                             // which nothing draws and the region mask reads. They cannot be one
                             // feature — a clipped polygon grows tile-edge segments and the border
                             // layer strokes them into a grid. See `schema::boundaries`.
-                            if layers.boundaries {
-                                if let Some(shape) =
-                                    schema::boundaries::region_area(&relation.tags, false)
-                                {
-                                    state.1.push(Relation {
-                                        class: shape,
-                                        members: members.clone(),
-                                        area: true,
-                                        name: name.clone(),
-                                        id: relation.id,
-                                        building: None,
-                                        iso: iso.clone(),
-                                    });
-                                }
+                            if let Some(shape) =
+                                schema::boundaries::region_area(&relation.tags, false)
+                            {
+                                state.1.push(Relation {
+                                    class: shape,
+                                    members: members.clone(),
+                                    area: true,
+                                    name: name.clone(),
+                                    id: relation.id,
+                                    building: None,
+                                    iso: iso.clone(),
+                                });
                             }
                             state.1.push(Relation {
                                 class,

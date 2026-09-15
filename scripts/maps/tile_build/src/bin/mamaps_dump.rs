@@ -3,10 +3,11 @@
 //! Usage:
 //!   mamaps_dump IN.mamaps [--mode summary|tiles|header|dict] [--layer NAME]
 //!
-//! The `.mamaps` counterpart of `pmtiles_dump`, and for the same reason: a binary container is
-//! only reviewable if there is a text rendering of it, and a golden file only diffs if that
-//! rendering is deterministic. Everything here is `BTreeMap`/`BTreeSet` ordered, so there is no
-//! sort step and no way for output order to depend on a hash seed.
+//! Print a canonical, line-oriented summary of a `.mamaps` archive: a binary
+//! container is only reviewable if there is a text rendering of it, and a golden
+//! file only diffs if that rendering is deterministic. Everything here is
+//! `BTreeMap`/`BTreeSet` ordered, so there is no sort step and no way for output
+//! order to depend on a hash seed.
 //!
 //! Modes:
 //!   summary  one line per (zoom, layer): tile/feature counts, geometry-type counts and the
@@ -20,19 +21,13 @@
 //!            same picture when they do not hold the same bytes.
 //!   header   the header fields, one per line. Also what checks a published file is sane.
 //!   dict     the interned tables, one id per line.
-//!   shared   the v8 shared section 4-tuple — rows, strings, pools, id runs — then one line
-//!            per pool with its decoded count. `shared\tabsent` on an archive built without
-//!            `--shared-table`, which is the expected answer there rather than a fault.
 //!
-//! Unlike `pmtiles_dump` this reads the whole file into memory. A `.mamaps` archive is opened by
+//! Unlike the on-device reader this reads the whole file into memory. A `.mamaps` archive is opened by
 //! range request on device, but a dump is a host tool run against a file that is already local, and
 //! the format's whole point is that it is smaller than the MVT it replaces.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::ExitCode;
-
-#[path = "mamaps_dump_extra.rs"]
-mod extra;
 
 use tile_build::mamaps::body::{Body, GEOM_LINE, GEOM_POINT, GEOM_POLYGON};
 use tile_build::mamaps::{dict, read};
@@ -174,10 +169,6 @@ fn run(
         for (index, name) in dictionary.details.iter().enumerate() {
             println!("kind_detail\t{}\t{name}", index + 1);
         }
-        return Ok(ExitCode::SUCCESS);
-    }
-    if mode == "shared" {
-        print!("{}", extra::shared_section_text(bytes));
         return Ok(ExitCode::SUCCESS);
     }
     if !matches!(mode, "summary" | "tiles" | "geometry" | "rings" | "names" | "ids") {
@@ -448,6 +439,6 @@ fn join_counts_owned(m: &BTreeMap<String, usize>) -> String {
 
 fn usage() {
     eprintln!(
-        "usage: mamaps_dump IN.mamaps [--mode summary|tiles|geometry|rings|names|ids|header|dict|shared] [--layer NAME] [--tile Z/X/Y]"
+        "usage: mamaps_dump IN.mamaps [--mode summary|tiles|geometry|rings|names|ids|header|dict] [--layer NAME] [--tile Z/X/Y]"
     );
 }

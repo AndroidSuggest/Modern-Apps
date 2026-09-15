@@ -175,7 +175,7 @@ mod tests {
 
     /// **A tiler-side `min_zoom` past the archive's deepest zoom deletes a layer in silence.**
     ///
-    /// The tiler writes a feature into tiles from its `min_zoom` down. Nothing above `--max-zoom`
+    /// The tiler writes a feature into tiles from its `min_zoom` down. Nothing deeper than z14
     /// is ever built, so a layer gated deeper than that is computed in full, costs its whole run
     /// time, and then lands in no tile at all — while the build exits zero and prints the count it
     /// generated. Junction shipped at 16 against a 14-deep archive and the only symptom was a

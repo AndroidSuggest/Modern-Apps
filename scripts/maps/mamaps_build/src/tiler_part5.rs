@@ -1,8 +1,7 @@
 fn encode_batch(
     batch: Vec<(u64, Vec<ChunkEntry>)>,
-    dem: Option<&crate::dem::Dem>,
+    dem: &crate::dem::Dem,
     conventions: &crate::schema::boundaries::Conventions,
-    shared: bool,
 ) -> Result<Vec<Encoded>> {
     let min_len = par::min_task_len(batch.len());
     let on = timing();
@@ -48,18 +47,6 @@ fn encode_batch(
                             Some(&mut entry.carriageways),
                         ));
                     }
-                    // **The sea.** There is no `natural=ocean` in OpenStreetMap — water is defined
-                    // by the absence of land — so the only way to have ocean geometry is to
-                    // subtract the land from the tile. Before this, the sea was the renderer's
-                    // background colour, which meant nothing was ever drawn *over* it: marine
-                    // protected areas, which are real `landuse` polygons hundreds of kilometres
-                    // across, painted green across open water with nothing to repaint them.
-                    //
-                    // Here rather than in a schema rule because it is the one feature that is a
-                    // property of the tile rather than of any OSM element, and this is the first
-                    // point at which the tile's land is known: clipped, coalesced, and in
-                    // tile-local coordinates.
-                    add_ocean(&mut layers);
                     // **Stage C**, per tile: winding normalised, hole containment resolved,
                     // degenerate rings dropped. Once, here, in `f64` with no frame budget, instead
                     // of every frame on device in `i32` under one. This is what makes
@@ -80,7 +67,7 @@ fn encode_batch(
                         layers.retain(|entry| !entry.layer.features.is_empty());
                     });
                     if layers.is_empty() {
-                        return Ok((id, None, rings, lines, Vec::new(), SlimEmitInputs::default()));
+                        return Ok((id, None, rings, lines));
                     }
                     // What the `u16` feature index in the body format has to hold. Sampled here
                     // because this is the shape that reaches the encoder: after coalescing merged
@@ -225,62 +212,6 @@ fn encode_batch(
                             .push((entry.layer.layer_id, std::mem::take(&mut entry.carriageways)));
                     }
                     let convention = (!carriageways.is_empty()).then_some(convention);
-                    // Shared intents are per-tile pure — safe to build on the worker — while the
-                    // drain stays serial in `build`. Skipped entirely when the flag is off, so a
-                    // v7 build pays nothing for the table it did not ask for.
-                    let shared_intents = if shared {
-                        shared_intents_for_tile(
-                            &layers,
-                            &names,
-                            &ids,
-                            &turn_lanes,
-                            &buildings,
-                            &carriageways,
-                        )
-                    } else {
-                        Vec::new()
-                    };
-                    // Slim emission inputs ride alongside for the serial loop: with
-                    // the flag on it drains this tile's intents (assigning
-                    // logical ids) and re-emits slim-mode layers through
-                    // `emit_mixed_body`, replacing the v7 bytes below. Without
-                    // the flag everything stays empty and the v7 bytes append
-                    // untouched.
-                    let slim_inputs = if shared {
-                        SlimEmitInputs {
-                            layers: layers
-                                .iter()
-                                .map(|entry| ChunkEntry {
-                                    layer: BodyLayer {
-                                        layer_id: entry.layer.layer_id,
-                                        features: entry.layer.features.clone(),
-                                        parts: entry.layer.parts.clone(),
-                                        coords: entry.layer.coords.clone(),
-                                    },
-                                    names: entry.names.clone(),
-                                    ids: entry.ids.clone(),
-                                    turn_lanes: entry.turn_lanes.clone(),
-                                    buildings: entry.buildings.clone(),
-                                    carriageways: entry.carriageways.clone(),
-                                })
-                                .collect(),
-                            names: names.clone(),
-                            ids: ids.clone(),
-                            turn_lanes: turn_lanes.clone(),
-                            buildings: buildings.clone(),
-                            carriageways: carriageways.clone(),
-                            heightmap: dem.and_then(|d| d.heightmap_for(z, x, y)),
-                            convention,
-                            intents: Vec::new(),
-                        }
-                    } else {
-                        SlimEmitInputs::default()
-                    };
-                    // The intents ride the emit inputs too: the serial loop
-                    // drains a clone for ids while emission zips the original
-                    // onto (layer, feature) positions.
-                    let mut slim_inputs = slim_inputs;
-                    slim_inputs.intents = shared_intents.clone();
                     let body = Body {
                         extent: EXTENT as u16,
                         layers: layers.into_iter().map(|entry| entry.layer).collect(),
@@ -289,10 +220,9 @@ fn encode_batch(
                         turn_lanes,
                         buildings,
                         // The DEM heightmap is produced by a separate ingest stage keyed by tile,
-                        // not from OSM geometry. When a dataset was given, sample its grid onto this
-                        // tile's z/x/y; a tile with no DEM under it (ocean, off-coverage) gets None
-                        // and stays 16-byte. Without a dataset every tile stays None.
-                        heightmap: dem.and_then(|d| d.heightmap_for(z, x, y)),
+                        // not from OSM geometry. Sample its grid onto this tile's z/x/y; a tile
+                        // with no DEM under it (ocean, off-coverage) gets None and stays 16-byte.
+                        heightmap: dem.heightmap_for(z, x, y),
                         carriageways,
                         convention,
                     };
@@ -303,7 +233,7 @@ fn encode_batch(
                     let stored = timed(on, &DEFLATE_NANOS, || {
                         tilecodec::mamaps::write::compress_body_with(deflate, encoded)
                     });
-                    Ok((id, Some((stored, raw_len)), rings, lines, shared_intents, slim_inputs))
+                    Ok((id, Some((stored, raw_len)), rings, lines))
                 },
             )
             .collect()

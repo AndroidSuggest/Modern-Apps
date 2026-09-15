@@ -1,11 +1,8 @@
-use super::slim::SlimBody;
 use crate::mamaps::body::Body;
 use crate::mamaps::dict::Dictionary;
 use crate::mamaps::header::{COMPRESSION_DEFLATE, COMPRESSION_NONE, Header, HEADER_LEN};
 use crate::mamaps::index::{self, RootEntry};
-use crate::mamaps::shared::SharedView;
 use crate::proto::{Error, Result, err};
-use crate::stream::RangeReader;
 
 /// Inflate one body frame, allocating exactly once.
 ///

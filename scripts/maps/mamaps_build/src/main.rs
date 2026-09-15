@@ -6,16 +6,12 @@
 //!
 //! ```text
 //! mamaps_build --input california.osm.pbf --out california.mamaps
-//!              [--layers water,buildings] [--min-zoom 0] [--max-zoom 14]
-//!              [--simplification 1.0] [--build-id N] [--report FILE]
-//!              [--keep-store] [--reuse-store]
+//!              --coastline LAND.shp --graph GRAPH_DIR
+//!              --transit-routes ROUTES.geojsonseq --dem HEIGHTMAPS.mdem
 //!
-//! `--keep-store` leaves the feature spill and writes a small index beside it; `--reuse-store` then
-//! skips stage A entirely and tiles from that spill. Stage A is 17.6 minutes of a north-america
-//! build and identical every run for the same input and layer set, so the pair is what makes
-//! iterating on the tiler affordable. The index records the source's length and mtime plus the layer
-//! selection, and reuse refuses a spill that does not match — a stale spill would otherwise produce
-//! an archive that looks fine and is missing most of the world.
+//! All six flags are required. Every build carries all 12 layers at z0-14 as
+//! FORMAT_VERSION 7: there is no layer selection, no zoom selection and no
+//! store reuse, so a build is a pure function of its six inputs.
 //! ```
 //!
 //! # Why not through the existing tiler
@@ -36,7 +32,6 @@ mod corridor;
 mod dem;
 mod extract;
 mod lanefill;
-mod layercodec;
 mod rings;
 mod shapefile;
 mod schema;
@@ -88,7 +83,7 @@ mod tilespill;
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-/// The deepest zoom an archive is built to unless `--max-zoom` says otherwise.
+/// The deepest zoom an archive is built to. Fixed: every build is z0-14.
 ///
 /// Named rather than inlined because layer code is bounded by it: a layer's tiler-side `min_zoom`
 /// past this lands its features in no tile at all, so [`schema::junction`] pins itself against
@@ -99,15 +94,6 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let mut input: Option<PathBuf> = None;
     let mut out: Option<PathBuf> = None;
-    let mut report: Option<PathBuf> = None;
-    let mut keep_store = false;
-    let mut reuse_store = false;
-    let mut shared_table = false;
-    let mut layers = schema::Layers::all();
-    let mut min_zoom = 0u8;
-    let mut max_zoom = DEFAULT_MAX_ZOOM;
-    let mut simplification = tiler::DEFAULT_SIMPLIFICATION;
-    let mut build_id: Option<u64> = None;
     let mut coastline: Option<PathBuf> = None;
     let mut transit_routes: Option<PathBuf> = None;
     let mut graph: Option<PathBuf> = None;
@@ -127,22 +113,6 @@ fn main() -> ExitCode {
                 out = Some(PathBuf::from(v));
                 2
             }),
-            "--report" => value("--report").map(|v| {
-                report = Some(PathBuf::from(v));
-                2
-            }),
-            "--keep-store" => {
-                keep_store = true;
-                Ok(1)
-            }
-            "--reuse-store" => {
-                reuse_store = true;
-                Ok(1)
-            }
-            "--shared-table" => {
-                shared_table = true;
-                Ok(1)
-            }
             "--coastline" => value("--coastline").map(|v| {
                 coastline = Some(PathBuf::from(v));
                 2
@@ -158,27 +128,6 @@ fn main() -> ExitCode {
             "--dem" => value("--dem").map(|v| {
                 dem = Some(PathBuf::from(v));
                 2
-            }),
-            "--layers" => value("--layers").and_then(|v| {
-                layers = schema::Layers::parse(&v)?;
-                Ok(2)
-            }),
-            "--min-zoom" => value("--min-zoom").and_then(|v| {
-                min_zoom = v.parse().map_err(|_| "--min-zoom must be a number".to_string())?;
-                Ok(2)
-            }),
-            "--max-zoom" => value("--max-zoom").and_then(|v| {
-                max_zoom = v.parse().map_err(|_| "--max-zoom must be a number".to_string())?;
-                Ok(2)
-            }),
-            "--simplification" => value("--simplification").and_then(|v| {
-                simplification =
-                    v.parse().map_err(|_| "--simplification must be a number".to_string())?;
-                Ok(2)
-            }),
-            "--build-id" => value("--build-id").and_then(|v| {
-                build_id = Some(v.parse().map_err(|_| "--build-id must be a number".to_string())?);
-                Ok(2)
             }),
             "-h" | "--help" => {
                 usage();
@@ -196,30 +145,14 @@ fn main() -> ExitCode {
         }
     }
 
-    let (Some(input), Some(out)) = (input, out) else {
+    let (Some(input), Some(out), Some(coastline), Some(transit_routes), Some(graph), Some(dem)) =
+        (input, out, coastline, transit_routes, graph, dem)
+    else {
         usage();
         return ExitCode::from(2);
     };
-    if min_zoom > max_zoom {
-        eprintln!("mamaps_build: --min-zoom {min_zoom} is deeper than --max-zoom {max_zoom}");
-        return ExitCode::from(2);
-    }
 
-    let settings = RunSettings {
-        report,
-        keep_store,
-        reuse_store,
-        shared_table,
-        coastline,
-        transit_routes,
-        graph,
-        dem,
-        layers,
-        min_zoom,
-        max_zoom,
-        simplification,
-        build_id,
-    };
+    let settings = RunSettings { coastline, transit_routes, graph, dem };
     match run(&input, &out, &settings) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -230,34 +163,19 @@ fn main() -> ExitCode {
 }
 
 /// Everything a run needs beyond its input and output paths.
+///
+/// All four side inputs are required: every build carries all 12 layers.
 struct RunSettings {
-    report: Option<PathBuf>,
-    /// A prepared land polygon for `earth`'s mainland. Required whenever `earth` is being
-    /// built — see [`check_coastline`].
-    coastline: Option<PathBuf>,
-    /// A prepared GTFS export for `transit`'s coloured rail lines. Without it the layer is empty:
-    /// nothing in the `.osm.pbf` produces one.
-    transit_routes: Option<PathBuf>,
+    /// A prepared land polygon for `earth`'s mainland — see [`check_required`].
+    coastline: PathBuf,
+    /// A prepared GTFS export for `transit`'s coloured rail lines.
+    transit_routes: PathBuf,
     /// The v6 routing graph directory (`nodes.bin`/`edges.bin`/`intermediate.bin`/`metadata.bin`)
-    /// for `traffic`'s per-component lines. Without it the layer is empty: its geometry is the
-    /// graph, not the `.osm.pbf`.
-    graph: Option<PathBuf>,
-    /// The `.mdem` heightmap dataset `dem_ingest` produced (via `build_all.sh --dem`). Without it
-    /// every tile's `heightmap` stays `None` and the archive is a valid v6 with no terrain grids;
-    /// with it, each output tile carries the DEM grid sampled to its own z/x/y.
-    dem: Option<PathBuf>,
-    layers: schema::Layers,
-    min_zoom: u8,
-    max_zoom: u8,
-    simplification: f64,
-    build_id: Option<u64>,
-    /// Keep the feature spill and write its index, so a later run can `--reuse-store`.
-    keep_store: bool,
-    /// Skip stage A and read the spill an earlier `--keep-store` run left behind.
-    reuse_store: bool,
-    /// Intern v8 shared-table logical rows while tiling; see [`tiler::Settings::shared_table`].
-    /// Off by default, and off is byte-identical v7.
-    shared_table: bool,
+    /// for `traffic`'s per-component lines and `junction`'s lane connectors.
+    graph: PathBuf,
+    /// The `.mdem` heightmap dataset `dem_ingest` produced.
+    /// Every tile carries the DEM grid sampled to its own z/x/y.
+    dem: PathBuf,
 }
 
 include!("main_part1.rs");

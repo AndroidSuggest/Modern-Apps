@@ -1,9 +1,7 @@
 # Host-side vector-tile build tools for the Maps basemap.
 #
-# Replaces `tippecanoe` and `tile-join`, which have no Windows path (see the note
-# at `build_graph.ps1:29`) and would otherwise leave the `transit_stops` layer
-# unbuildable on the dev box. This crate reads and writes MVT and PMTiles v3
-# natively, so the whole tile chain is cargo-only.
+# Replaces `tippecanoe` and `tile-join`, which have no Windows path, so the whole
+# tile chain is cargo-only and `build_graph.ps1` can drive it from one command.
 #
 # Deliberately DETACHED from the Android Rust workspace (the empty [workspace]
 # table below), exactly like `scripts/maps/gtfs_ingest` and
@@ -34,35 +32,8 @@ description = "MVT + PMTiles v3 reader/writer for the Maps basemap (replaces tip
 name = "tile_build"
 path = "src/lib.rs"
 [[bin]]
-name = "tile_points"
-path = "src/bin/tile_points.rs"
-[[bin]]
-name = "tile_lines"
-path = "src/bin/tile_lines.rs"
-[[bin]]
-name = "tile_polygons"
-path = "src/bin/tile_polygons.rs"
-[[bin]]
-name = "tile_join"
-path = "src/bin/tile_join.rs"
-[[bin]]
-name = "pmtiles_dump"
-path = "src/bin/pmtiles_dump.rs"
-[[bin]]
-name = "pmtiles_extract"
-path = "src/bin/pmtiles_extract.rs"
-
-[[bin]]
 name = "mamaps_dump"
 path = "src/bin/mamaps_dump.rs"
-
-[[bin]]
-name = "mamaps_pack"
-path = "src/bin/mamaps_pack.rs"
-
-[[bin]]
-name = "mamaps_from_pmtiles"
-path = "src/bin/mamaps_from_pmtiles.rs"
 [dependencies]
 # The PMTiles + MVT codec, shared with the Android renderer in `:library:map`.
 # A path dependency on a detached crate: `tilecodec` belongs to no workspace, so

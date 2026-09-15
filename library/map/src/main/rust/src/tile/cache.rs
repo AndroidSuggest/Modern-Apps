@@ -1,7 +1,6 @@
-//! Disk cache for HTTP byte ranges of the pmtiles archive.
+//! Disk cache for HTTP byte ranges of the mamaps archive.
 //!
-//! A port of the policy in `maps/src/main/java/com/vayunmathur/maps/util/MapTileCache.kt`,
-//! which is the version that has been in production against this archive. Everything
+//! A port of the policy in `maps/src/main/java/com/vayunmathur/maps/util/MapTileCache.kt`. Everything
 //! load-bearing there is kept:
 //!
 //! * **`SHA-256(url + "\n" + range)` keys**, so a repointed archive cannot collide with
@@ -9,7 +8,9 @@
 //! * **`.data`/`.meta` pairs written temp-then-rename**, meta first, so the presence of
 //!   a data file implies its meta is already complete and a reader never sees a
 //!   half-written entry.
-//! * **An `.origin` marker**: when it changes every entry is dropped. The URL is part of
+//! * **An `.origin` marker**: the cache is opened once with the full marker
+//!   (`CACHE_FORMAT | URL | build_id`, the id read from a header prefix fetched
+//!   before the cache opens), and any mismatch wipes every entry. The URL is part of
 //!   it because the archive is republished under the same name, and a cached directory
 //!   chunk from the previous build addresses the previous build's byte offsets. That is
 //!   what the marker exists to prevent.
@@ -55,23 +56,14 @@ pub struct RangeCache {
 }
 
 impl RangeCache {
-    /// Open the cache, dropping every entry if `origin` differs from the marker.
+    /// Open the cache once with the full origin marker, dropping every entry
+    /// when the marker differs from the one on disk.
+    ///
+    /// The caller fetches the archive header prefix *before* opening, reads the
+    /// `build_id` out of it, and passes the full marker — so there is no second
+    /// step and no window where the cache is open but unvalidated.
     pub fn open(dir: impl Into<PathBuf>, origin: &str, max_bytes: u64) -> RangeCache {
         Self::with_clock(dir, origin, max_bytes, Box::new(now_ms))
-    }
-
-    /// Open the cache **without** checking its origin marker, leaving that to a later
-    /// [`reset_if_origin_changed`](Self::reset_if_origin_changed).
-    ///
-    /// For the one caller that cannot know its own origin yet: the archive's `build_id` belongs in
-    /// the marker and lives in a header read *through* this cache. Checking a partial origin first
-    /// and the full one after would wipe the cache on every single start, because the two markers
-    /// never match each other — which is a bug this exists to make impossible rather than to
-    /// document.
-    pub fn open_unchecked(dir: impl Into<PathBuf>, max_bytes: u64) -> RangeCache {
-        let dir = dir.into();
-        let _ = fs::create_dir_all(&dir);
-        RangeCache { dir, max_bytes, clock: Box::new(now_ms) }
     }
 
     pub fn with_clock(
@@ -216,15 +208,6 @@ impl RangeCache {
     }
 
     /// Wipe the cache if `origin` differs from its marker.
-    ///
-    /// Idempotent and cheap, so it can be called again once something is known that was not known
-    /// when the cache was opened. That is exactly the `build_id` case: it lives in the archive
-    /// header, which is read *through* this cache, so the marker cannot include it until after the
-    /// first read.
-    pub fn reset_if_origin_changed(&self, origin: &str) {
-        self.invalidate_on_origin_change(origin);
-    }
-
     fn invalidate_on_origin_change(&self, origin: &str) {
         let marker = self.dir.join(ORIGIN_FILE);
         if fs::read_to_string(&marker).map(|s| s.trim() == origin).unwrap_or(false) {
@@ -284,8 +267,8 @@ mod tests {
         }
     }
 
-    const URL: &str = "https://data.vayunmathur.com/v4.pmtiles";
-    const ORIGIN: &str = "v1|https://data.vayunmathur.com/v4.pmtiles";
+    const URL: &str = "https://data.vayunmathur.com/planet.mamaps";
+    const ORIGIN: &str = "v1|https://data.vayunmathur.com/planet.mamaps";
 
     fn cache_with(dir: &Path, clock: Arc<AtomicU64>, max_bytes: u64) -> RangeCache {
         let c = clock.clone();

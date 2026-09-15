@@ -4,169 +4,90 @@ fn run(
     run: &RunSettings,
 ) -> Result<(), String> {
     let (layers, min_zoom, max_zoom, simplification) =
-        (run.layers, run.min_zoom, run.max_zoom, run.simplification);
-    let report = run.report.as_deref();
+        (schema::Layers::all(), 0u8, DEFAULT_MAX_ZOOM, tiler::DEFAULT_SIMPLIFICATION);
     let started = std::time::Instant::now();
     println!("reading {}", input.display());
     // Features are spilled here rather than held: it was 4.9 GB of a measured 10.03 GB California
     // peak, and nothing reads them until the tiler does.
     let spill = out.with_extension("features.tmp");
-    check_coastline(run.coastline.as_deref(), layers.earth)?;
-    // The same asymmetry, for the same reasons: the flag without the layer is a mistake worth
-    // stopping for, the layer without the flag is a legitimate build of an archive with no transit.
-    if run.transit_routes.is_some() && !layers.transit {
-        return Err("--transit-routes was given but the transit layer is not selected".to_string());
-    }
-    if run.transit_routes.is_none() && layers.transit {
-        println!(
-            "no --transit-routes given, so `transit` is empty; its lines come from GTFS, not the .pbf"
-        );
-    }
-    // The same asymmetry once more, for the two layers the routing graph feeds: the flag without
-    // either layer is a mistake worth stopping for, a layer without the flag is a legitimate build
-    // of an archive with no traffic overlay and no lane connectors.
-    if run.graph.is_some() && !layers.traffic && !layers.junction {
-        return Err(
-            "--graph was given but neither the traffic nor the junction layer is selected"
-                .to_string(),
-        );
-    }
-    if run.graph.is_none() && (layers.traffic || layers.junction) {
-        println!(
-            "no --graph given, so `traffic` and `junction` are empty; their lines come from the v6 routing graph, not the .pbf"
-        );
-    }
-    let provenance = store::Provenance::of(
+    check_required(&run.coastline, "--coastline")?;
+    check_required(&run.transit_routes, "--transit-routes")?;
+    check_required(&run.graph, "--graph")?;
+    check_required(&run.dem, "--dem")?;
+    let (store, stats) = extract::extract(
         input,
         layers,
-        run.coastline.is_some(),
-        run.transit_routes.is_some(),
-        run.graph.is_some(),
+        &run.coastline,
+        &run.transit_routes,
+        &run.graph,
+        &spill,
     )
-    .map_err(|e| e.to_string())?;
-    // Stage A is most of a large build -- 17.6 minutes of a north-america run, and identical every
-    // time for the same input and layer set. `--reuse-store` skips it, which is what makes iterating
-    // on the tiler affordable. The index records what it was built from and `Store::open` refuses a
-    // mismatch, so the shortcut cannot silently produce an archive missing most of the world.
-    let (store, stats) = if run.reuse_store {
-        let (store, features) =
-            store::Store::open(&spill, provenance).map_err(|e| e.to_string())?;
+    .map_err(|e| format!("{}: {e}", input.display()))?;
+    println!(
+        "classified {} way(s), {} relation(s) and {} node(s) -> {} feature(s), {} node(s) resolved",
+        stats.ways_classified,
+        stats.relations_classified,
+        stats.nodes_classified,
+        stats.features,
+        stats.nodes_needed,
+    );
+    if stats.geometry_failed > 0 {
+        // Expected at an extract's cut edges, and worth reporting because a large count means
+        // something else.
+        println!("  {} classified element(s) produced no geometry", stats.geometry_failed);
+    }
+    if stats.land_polygons > 0 {
+        println!("  including {} prepared land polygon(s)", stats.land_polygons);
+    }
+    if stats.transit_routes > 0 {
+        println!("  including {} coloured transit route(s) from GTFS", stats.transit_routes);
+    }
+    if stats.traffic_segments > 0 {
         println!(
-            "reusing the feature spill at {} ({} feature(s)); stage A skipped",
-            spill.display(),
-            features,
+            "  including {} drivable component segment(s) for the traffic layer",
+            stats.traffic_segments,
         );
-        (store, extract::Stats { features, ..Default::default() })
-    } else {
-        let (store, stats) = extract::extract(
-            input,
-            layers,
-            run.coastline.as_deref(),
-            run.transit_routes.as_deref(),
-            run.graph.as_deref(),
-            &spill,
-        )
-        .map_err(|e| format!("{}: {e}", input.display()))?;
+    }
+    if stats.junction_connectors > 0 {
         println!(
-            "classified {} way(s), {} relation(s) and {} node(s) -> {} feature(s), {} node(s) resolved",
-            stats.ways_classified,
-            stats.relations_classified,
-            stats.nodes_classified,
-            stats.features,
-            stats.nodes_needed,
+            "  including {} lane connector(s) for the junction layer",
+            stats.junction_connectors,
         );
-        if stats.geometry_failed > 0 {
-            // Expected at an extract's cut edges, and worth reporting because a large count means
-            // something else.
-            println!("  {} classified element(s) produced no geometry", stats.geometry_failed);
-        }
-        if stats.land_polygons > 0 {
-            println!("  including {} prepared land polygon(s)", stats.land_polygons);
-        }
-        if stats.transit_routes > 0 {
-            println!("  including {} coloured transit route(s) from GTFS", stats.transit_routes);
-        }
-        if stats.traffic_segments > 0 {
-            println!(
-                "  including {} drivable component segment(s) for the traffic layer",
-                stats.traffic_segments,
-            );
-        }
-        if stats.junction_connectors > 0 {
-            println!(
-                "  including {} lane connector(s) for the junction layer",
-                stats.junction_connectors,
-            );
-        }
-        if stats.corridor_promotions > 0 {
-            println!(
-                "  {} road way(s) pulled to their corridor's zoom",
-                stats.corridor_promotions,
-            );
-        }
-        if stats.lanes_inherited > 0 {
-            println!(
-                "  {} untagged road way(s) took a lane count from a neighbour",
-                stats.lanes_inherited,
-            );
-        }
-        if run.keep_store {
-            let index = store.save_index(provenance, stats.features).map_err(|e| e.to_string())?;
-            println!("  wrote {} so --reuse-store can skip stage A", index.display());
-        }
-        (store, stats)
-    };
+    }
+    if stats.corridor_promotions > 0 {
+        println!(
+            "  {} road way(s) pulled to their corridor's zoom",
+            stats.corridor_promotions,
+        );
+    }
+    if stats.lanes_inherited > 0 {
+        println!(
+            "  {} untagged road way(s) took a lane count from a neighbour",
+            stats.lanes_inherited,
+        );
+    }
 
-    // The build id identifies the *data*: change the input, the zoom range, the layer set or the
-    // simplification and every reader has to drop its cache. Derived rather than asked for, so a
-    // forgotten `--build-id` cannot silently republish under the old one.
-    let build_id = run.build_id.unwrap_or_else(|| {
-        derive_build_id(
-            input,
-            layers,
-            min_zoom,
-            max_zoom,
-            simplification,
-            stats.features,
-            run.transit_routes.is_some(),
-            run.graph.is_some(),
-            run.shared_table,
-        )
-    });
+    // The build id identifies the *data*: change the input and every reader has to drop its
+    // cache. Derived rather than asked for, so a forgotten input cannot silently republish
+    // under the old one.
+    let build_id = derive_build_id(input, layers, min_zoom, max_zoom, simplification, stats.features);
 
-    // The DEM heightmap dataset, if one was fetched. Loaded here (this is where I/O belongs) and
+    // The DEM heightmap dataset. Loaded here (this is where I/O belongs) and
     // handed to the tiler, which samples one grid per output tile into the body's heightmap section.
-    let dem = match run.dem.as_deref() {
-        Some(path) => {
-            let dem = dem::Dem::load(path).map_err(|e| e.to_string())?;
-            println!("loaded the DEM dataset at {}", path.display());
-            Some(dem)
-        }
-        None => None,
-    };
+    let dem = dem::Dem::load(&run.dem).map_err(|e| e.to_string())?;
+    println!("loaded the DEM dataset at {}", run.dem.display());
 
     let settings = tiler::Settings {
-        min_zoom,
-        max_zoom,
-        simplification,
         build_id,
         // Beside the archive, as the feature spill is. One zoom at a time, removed as each finishes.
         scratch: scratch_path(out),
-        // OFF. Deriving sea geometry per tile was tried twice and failed twice; see
-        // `tiler::add_ocean`. The green-over-water problem it existed to solve is handled in the
-        // style instead, by not painting marine protected areas green in the first place.
-        ocean: false,
         dem,
-        shared_table: run.shared_table,
     };
     let (bytes, per_zoom) = tiler::build(&store, &settings).map_err(|e| e.to_string())?;
     tiler::check_not_empty(&per_zoom).map_err(|e| e.to_string())?;
     std::fs::write(out, &bytes).map_err(|e| format!("cannot write {}: {e}", out.display()))?;
-    // The spill is scratch. Removed on success; left behind on failure, where it is evidence, and
-    // kept deliberately under `--keep-store`, where it is the input to the next run.
-    if !run.keep_store && !run.reuse_store {
-        let _ = std::fs::remove_file(&spill);
-    }
+    // The spill is scratch. Removed on success; left behind on failure, where it is evidence.
+    let _ = std::fs::remove_file(&spill);
 
     println!(
         "\n{:<6}{:>10}{:>12}{:>12}{:>10}{:>12}{:>8}{:>8}{:>8}{:>8}",
@@ -262,11 +183,6 @@ fn run(
         bytes.len(),
         started.elapsed().as_secs_f64(),
     );
-    if let Some(path) = report {
-        std::fs::write(path, build_report(&stats, &per_zoom, build_id, bytes.len()))
-            .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
-        println!("report {}", path.display());
-    }
     Ok(())
 }
 
@@ -299,9 +215,6 @@ fn derive_build_id(
     max_zoom: u8,
     simplification: f64,
     features: u64,
-    transit_routes: bool,
-    graph: bool,
-    shared_table: bool,
 ) -> u64 {
     let mut h = 0xcbf2_9ce4_8422_2325u64;
     let mut eat = |bytes: &[u8]| {
@@ -310,59 +223,10 @@ fn derive_build_id(
             h = h.wrapping_mul(0x100_0000_01b3);
         }
     };
-    // Revision 13: a `junction` layer (id 11) is baked from the same v6 routing graph — one line
-    // per lane connector through an intersection. Folded into `.mamaps` v7 rather than bumping the
-    // format, because no v7 archive has been built, but the layer set moves and the dictionary
-    // every archive carries gains an entry, so a warm cache must miss.
-    //
-    // Revision 12: `.mamaps` v4. A `traffic` layer (id 10) is baked from the v6 routing graph —
-    // one line per drivable component segment, each carrying its packed `component_id` in the
-    // body id table — and `FORMAT_VERSION` bumps 3->4. The layer set and the format both move, so
-    // a warm cache must miss.
-    //
-    // Revision 11: the `boundaries` layer populates the id side table, so a region's shape carries
-    // its OSM relation id. Without it a region is an anonymous polygon per tile and nothing says
-    // which pieces belong to the same region, so a mask could only ever punch out the one tile
-    // under the finger.
-    //
-    // Revision 10: POI `min_zoom` floors moved. The kinds a category chip selects are carried
-    // from z12, most other destinations from z13, and `railway=tram_stop` is classified at all
-    // (it was matched by nothing, so street tram stops were absent). Same `.pbf`, different
-    // features in the spill.
-    //
-    // Also `dict::KINDS` gains `region_area`, and an administrative relation now emits the
-    // region's shape alongside its border line, for the region mask to read. Appending to the
-    // frozen table moves no existing id, but it is still a format change: an older reader would
-    // not know the kind.
-    //
-    // Revision 9: burned. It was taken for boundary relations as areas and a synthesised sea, both
-    // of which were reverted before shipping — the areas grew tile-edge segments that the boundary
-    // style stroked as a grid across the map, and neither sea derivation survived contact with a
-    // real coastline (see `tiler::add_ocean`). Nothing was published under it. Left in the sequence
-    // rather than reused, because a revision number's only job is to differ from the last one.
-    //
-    // Revision 8: `.mamaps` v3. `places` and `poi` features carry a stable OSM id in a new body
-    // side table, `dict::KINDS` gains `fuel`, `hotel`, `atm` and `bank`, and v1 bodies are no
-    // longer read. Every byte offset in the archive moves, so a warm cache must miss.
-    //
-    // Revision 7: a `transit` feature carries the lane *inputs* (ordinal, colour count, taper)
-    // rather than a baked offset, so the same feeds yield different transit records again.
-    //
-    // Revision 6: a `transit` feature carries a corridor slot (`transit_spread`), the exporter
-    // collapses a route's two directions into one line, and `coalesce` keys on the slot -- so
-    // the same feeds now yield different transit geometry again.
-    //
-    // Revision 5: the `transit` layer is sourced from a GTFS export (`--transit-routes`) rather
-    // than from OSM route relations, so the same `.pbf` now yields entirely different transit
-    // geometry and colours -- and none at all without the flag.
-    //
-    // Revision 4: `coalesce` keys line merging on `transit_color` too, so transit lines of one
-    // mode but different operator colours no longer collapse into one feature.
-    //
-    // Revision 3: road `min_zoom` is decided per corridor (`corridor`), and place
-    // `kind_detail` carries the reference basemap's 0-15 population rank rather than a
-    // three-step one (`schema::places::rank_of`).
-    eat(b"mamaps_build/13");
+    // Revision 14: the v7-only purge. No more layer selection, zoom selection, store reuse or
+    // shared-table builds: every archive is all 12 layers at z0-14 as FORMAT_VERSION 7, so a
+    // warm cache from any earlier shape must miss.
+    eat(b"mamaps_build/14");
     eat(input.to_string_lossy().as_bytes());
     if let Ok(meta) = std::fs::metadata(input) {
         eat(&meta.len().to_le_bytes());
@@ -387,15 +251,6 @@ fn derive_build_id(
         u8::from(layers.junction),
         min_zoom,
         max_zoom,
-        // A build with a transit-routes file and one without carry different layers from the
-        // same `.pbf`, and readers cache byte ranges under `(url, build_id)`.
-        u8::from(transit_routes),
-        // Likewise a build with a graph carries the whole traffic and junction layers that one
-        // without does not.
-        u8::from(graph),
-        // Likewise a shared-table build appends the v8 section past the tile data that a v7
-        // build does not carry.
-        u8::from(shared_table),
     ]);
     eat(&simplification.to_le_bytes());
     eat(&features.to_le_bytes());

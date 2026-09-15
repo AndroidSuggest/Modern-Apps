@@ -183,84 +183,9 @@ impl Layers {
             landuse: true,
             places: true,
             poi: true,
-            // Reserved by v2; populated when transit lands (task 52). Selected by default so
-            // the layer set — and therefore the build id — does not shift when it does.
             transit: true,
-            // v4's live traffic overlay. Selected by default like `transit`, and empty without
-            // its data source (`--graph`) rather than an error: an archive with no traffic layer
-            // is an obvious "no overlay", not the silent disaster an archive with no mainland is.
             traffic: true,
-            // v7's lane connectors, from the same `--graph` and empty without it for the same
-            // reason.
             junction: true,
-        }
-    }
-
-    pub fn none() -> Layers {
-        Layers {
-            earth: false,
-            water: false,
-            buildings: false,
-            roads: false,
-            boundaries: false,
-            landcover: false,
-            landuse: false,
-            places: false,
-            poi: false,
-            transit: false,
-            traffic: false,
-            junction: false,
-        }
-    }
-
-    /// Parse a comma-separated list, e.g. `water,roads`.
-    pub fn parse(list: &str) -> Result<Layers, String> {
-        let mut layers = Layers::none();
-        for name in list.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-            match name {
-                "earth" => layers.earth = true,
-                "water" => layers.water = true,
-                "buildings" => layers.buildings = true,
-                "roads" => layers.roads = true,
-                "boundaries" => layers.boundaries = true,
-                "landcover" => layers.landcover = true,
-                "landuse" => layers.landuse = true,
-                "places" => layers.places = true,
-                "poi" => layers.poi = true,
-                "transit" => layers.transit = true,
-                "traffic" => layers.traffic = true,
-                "junction" => layers.junction = true,
-                other => {
-                    return Err(format!(
-                        "unknown layer `{other}`; this generator produces earth, water, buildings, \
-                         roads, boundaries, landcover, landuse, places, poi, transit, traffic and \
-                         junction"
-                    ))
-                }
-            }
-        }
-        if layers == Layers::none() {
-            return Err("no layers selected".to_string());
-        }
-        Ok(layers)
-    }
-
-    /// Is this the layer a classifier just returned one for?
-    fn wants(&self, layer: u8) -> bool {
-        match layer {
-            dict::LAYER_EARTH => self.earth,
-            dict::LAYER_WATER => self.water,
-            dict::LAYER_BUILDINGS => self.buildings,
-            dict::LAYER_ROADS => self.roads,
-            dict::LAYER_BOUNDARIES => self.boundaries,
-            dict::LAYER_LANDCOVER => self.landcover,
-            dict::LAYER_LANDUSE => self.landuse,
-            dict::LAYER_PLACES => self.places,
-            dict::LAYER_POI => self.poi,
-            dict::LAYER_TRANSIT => self.transit,
-            dict::LAYER_TRAFFIC => self.traffic,
-            dict::LAYER_JUNCTION => self.junction,
-            _ => false,
         }
     }
 }
@@ -270,60 +195,44 @@ impl Layers {
 /// Ordered and first-match-wins. `is_way` distinguishes a way from a relation, which matters
 /// because a closed way's area-ness is a tag question while a multipolygon relation is always an
 /// area.
+///
+/// Every build carries all 12 layers, so there is no layer selection to gate on.
 pub fn classify(
     tags: &(impl TagSource + ?Sized),
     is_way: bool,
     layers: Layers,
 ) -> Option<Class> {
-    if layers.earth {
-        if let Some(class) = earth::classify(tags) {
-            return Some(class);
-        }
+    debug_assert_eq!(layers, Layers::all(), "every build carries all 12 layers");
+    if let Some(class) = earth::classify(tags) {
+        return Some(class);
     }
-    if layers.water {
-        if let Some(class) = water::classify(tags, is_way) {
-            return Some(class);
-        }
+    if let Some(class) = water::classify(tags, is_way) {
+        return Some(class);
     }
     // Before buildings, because a road bridge over a building passage is a road.
-    if layers.roads {
-        if let Some(class) = roads::classify(tags) {
-            return Some(class);
-        }
+    if let Some(class) = roads::classify(tags) {
+        return Some(class);
     }
-    if layers.buildings {
-        if let Some(class) = buildings::classify(tags) {
-            return Some(class);
-        }
+    if let Some(class) = buildings::classify(tags) {
+        return Some(class);
     }
-    if layers.boundaries {
-        if let Some(class) = boundaries::classify(tags) {
-            return Some(class);
-        }
+    if let Some(class) = boundaries::classify(tags) {
+        return Some(class);
     }
     // Last among geometry, because it is the layer everything else is drawn on top of. One
-    // classifier produces both `landcover` and `landuse`, so which of the two was asked for is
-    // checked after the fact.
-    if layers.landcover || layers.landuse {
-        if let Some(class) = land::classify(tags) {
-            if layers.wants(class.layer) {
-                return Some(class);
-            }
-        }
+    // classifier produces both `landcover` and `landuse`.
+    if let Some(class) = land::classify(tags) {
+        return Some(class);
     }
     // Labels last of all: an area-mapped feature keeps its fill (a park stays a `landuse`
     // polygon, a museum its `buildings` footprint) and only what no geometry layer claimed —
     // overwhelmingly nodes — becomes a point label. Ways that reach here are centroided by
     // extract; see `places` for why points.
-    if layers.places {
-        if let Some(class) = places::classify(tags) {
-            return Some(class);
-        }
+    if let Some(class) = places::classify(tags) {
+        return Some(class);
     }
-    if layers.poi {
-        if let Some(class) = poi::classify(tags) {
-            return Some(class);
-        }
+    if let Some(class) = poi::classify(tags) {
+        return Some(class);
     }
     None
 }
@@ -361,35 +270,21 @@ fn line_name(tags: &(impl TagSource + ?Sized)) -> Option<String> {
 /// Reading three tags to reject a feature instead of the thirty the rules would read between them.
 /// A superset of what the rules accept, so a screen that lets something through is harmless and one
 /// that rejects something is a bug.
-pub fn filters(layers: Layers) -> Vec<&'static str> {
+///
+/// Every build carries all 12 layers, so the screen is unconditional.
+pub fn filters() -> Vec<&'static str> {
     let mut out = Vec::new();
-    if layers.earth {
-        out.extend_from_slice(earth::FILTERS);
-    }
-    if layers.water {
-        out.extend_from_slice(water::FILTERS);
-    }
-    if layers.roads {
-        out.extend_from_slice(roads::FILTERS);
-    }
-    if layers.buildings {
-        out.extend_from_slice(buildings::FILTERS);
-    }
-    if layers.boundaries {
-        out.extend_from_slice(boundaries::FILTERS);
-    }
-    if layers.places {
-        out.extend_from_slice(places::FILTERS);
-    }
-    if layers.poi {
-        out.extend_from_slice(poi::FILTERS);
-    }
+    out.extend_from_slice(earth::FILTERS);
+    out.extend_from_slice(water::FILTERS);
+    out.extend_from_slice(roads::FILTERS);
+    out.extend_from_slice(buildings::FILTERS);
+    out.extend_from_slice(boundaries::FILTERS);
+    out.extend_from_slice(places::FILTERS);
+    out.extend_from_slice(poi::FILTERS);
     // No `transit` entry: the layer's geometry comes from a GTFS export rather than the `.osm.pbf`,
     // and the one tag it still reads — `station`, for a station POI's `kind_detail` — is screened by
-    // `poi::FILTERS`. A `--layers poi` build must keep that detail, which is why it lives there.
-    if layers.landcover || layers.landuse {
-        out.extend_from_slice(land::FILTERS);
-    }
+    // `poi::FILTERS`.
+    out.extend_from_slice(land::FILTERS);
     out
 }
 
@@ -427,22 +322,24 @@ mod tests {
     }
 
     #[test]
-    fn a_layer_list_parses_and_rejects_what_this_generator_cannot_build() {
-        assert_eq!(
-            Layers::parse("water").expect("water"),
-            Layers { water: true, ..Layers::none() },
-        );
-        assert_eq!(
-            Layers::parse("earth,water,buildings,roads,boundaries,landcover,landuse,places,poi,transit,traffic,junction")
-                .expect("all"),
-            Layers::all(),
-        );
-        assert_eq!(
-            Layers::parse("places,poi").expect("labels"),
-            Layers { places: true, poi: true, ..Layers::none() },
-        );
-        assert!(Layers::parse("labels").is_err(), "this generator draws no labels layer");
-        assert!(Layers::parse("").is_err(), "nothing selected");
+    fn every_build_carries_all_twelve_layers() {
+        let all = Layers::all();
+        for layer in [
+            all.earth,
+            all.water,
+            all.buildings,
+            all.roads,
+            all.boundaries,
+            all.landcover,
+            all.landuse,
+            all.places,
+            all.poi,
+            all.transit,
+            all.traffic,
+            all.junction,
+        ] {
+            assert!(layer, "every build carries all 12 layers");
+        }
     }
 
     /// Order is load-bearing and first match wins. A way tagged as both a road and a building is a
@@ -456,12 +353,6 @@ mod tests {
         let water: &[(&str, &str)] =
             &[("natural", "water"), ("highway", "residential"), ("building", "yes")];
         assert_eq!(classify(water, true, Layers::all()).expect("water").layer, dict::LAYER_WATER);
-        // A layer that is switched off is not consulted, so the next rule wins instead.
-        let only_buildings = Layers { buildings: true, ..Layers::none() };
-        assert_eq!(
-            classify(both, true, only_buildings).expect("building").layer,
-            dict::LAYER_BUILDINGS,
-        );
     }
 
     #[test]
@@ -469,16 +360,12 @@ mod tests {
         // Not provable in general, so this pins the shape: the screen is a list of tag *keys* the
         // rules actually read, in osmium's `tags-filter` spelling, and no layer has an empty one —
         // an empty screen would let every element in the file through to the rules.
-        let all = filters(Layers::all());
+        let all = filters();
         assert!(!all.is_empty());
         for filter in &all {
             assert!(!filter.is_empty(), "an empty screen matches everything");
             assert!(!filter.contains(' '), "`{filter}` is not a bare tag key");
         }
-        assert!(
-            filters(Layers { water: true, ..Layers::none() }).len()
-                < all.len()
-        );
         // Every key a rule reads for a *decision* has to be in the screen, or the rule never runs.
         for key in [
             "natural", "waterway", "landuse", "building", "highway", "railway", "boundary",
@@ -487,11 +374,8 @@ mod tests {
         ] {
             assert!(all.contains(&key), "the screen omits `{key}`");
         }
-        // `station` is what `transit::station_detail` reads, and it has to survive a build that
-        // asks for POIs without transit -- otherwise every station silently loses its mode.
-        assert!(
-            filters(Layers { poi: true, ..Layers::none() }).contains(&"station"),
-            "a --layers poi build would drop station detail",
-        );
+        // `station` is what `transit::station_detail` reads, and it is screened by
+        // `poi::FILTERS` — otherwise every station silently loses its mode.
+        assert!(all.contains(&"station"), "the screen omits `station`");
     }
 }

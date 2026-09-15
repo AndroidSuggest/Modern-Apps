@@ -1,17 +1,14 @@
 use super::helpers::decompress;
-use super::resolve::resolve_body;
-use super::slim::{SlimBody, is_v8_body};
 use crate::mamaps::body::Body;
 use crate::mamaps::dict::Dictionary;
 use crate::mamaps::header::Header;
 use crate::mamaps::index::{LeafEntry, RootEntry, self};
-use crate::mamaps::shared::SharedView;
 use crate::pmtiles::tile_id;
 use crate::proto::{Error, Result, err};
 use crate::stream::{OPEN_PREFIX_BYTES, RangeReader};
 
-/// How many parsed leaves to keep. Sixteen, matching `stream::StreamArchive`, because the access
-/// pattern is the same one: a viewport walks a contiguous stretch of the curve.
+/// How many parsed leaves to keep. Sixteen: a viewport walks a contiguous stretch
+/// of the tile curve, so a small MRU covers panning without re-fetching.
 const MAX_CACHED_LEAVES: usize = 16;
 
 /// An open archive.
@@ -24,10 +21,6 @@ pub struct MamapsArchive<R: RangeReader> {
     root: Vec<RootEntry>,
     /// `(leaf offset, entries)`, most-recently-used last.
     leaves: Vec<(u64, Vec<LeafEntry>)>,
-    /// The parsed v8 shared section, fetched on first use. `None` until a v8
-    /// tile needs it — and always `None` on a v7 archive, which carries no
-    /// shared section.
-    pub(crate) shared: Option<SharedView>,
 }
 
 impl<R: RangeReader> MamapsArchive<R> {
@@ -72,7 +65,7 @@ impl<R: RangeReader> MamapsArchive<R> {
                 root.len(),
             ));
         }
-        Ok(MamapsArchive { reader, header, dictionary, root, leaves: Vec::new(), shared: None })
+        Ok(MamapsArchive { reader, header, dictionary, root, leaves: Vec::new() })
     }
 
     /// The decoded body for a tile, or `None` when the archive does not hold it.
@@ -149,76 +142,5 @@ impl<R: RangeReader> MamapsArchive<R> {
             ));
         }
         Ok(body)
-    }
-
-    /// Whether this archive carries a v8 shared section.
-    ///
-    /// False on every v7 archive — which is all of them until lane B lands
-    /// `shared_offset`/`shared_len` on the header.
-    pub fn has_shared(&self) -> bool {
-        self.shared_location().is_some()
-    }
-
-    /// The parsed shared table, fetching it on first use and caching it after.
-    ///
-    /// `None` on a v7 archive, with no request made: the v7 cost contract
-    /// (open 1 / warm 1 / cold 2 / never 3) is untouched. On a v8 archive this
-    /// is one range request for the whole shared section the first time a v8
-    /// tile needs it, then zero — the pools are archive-global.
-    pub fn shared_table(&mut self) -> Result<Option<&SharedView>> {
-        if self.shared.is_some() {
-            return Ok(self.shared.as_ref());
-        }
-        let Some((offset, len)) = self.shared_location() else { return Ok(None) };
-        match offset.checked_add(len) {
-            Some(end) if end <= self.header.file_len => {}
-            _ => return err("a .mamaps shared section runs past the end of the file"),
-        }
-        let length = u32::try_from(len).map_err(|_| {
-            Error("a .mamaps shared section is larger than a single read".to_string())
-        })?;
-        let raw = self.exact(offset, length, "the shared section")?;
-        let view = SharedView::parse(&raw)?;
-        if view.header.total_len as u64 != len {
-            return err(format!(
-                "a .mamaps shared section declares {} bytes but its header names {len}",
-                view.header.total_len,
-            ));
-        }
-        self.shared = Some(view);
-        Ok(self.shared.as_ref())
-    }
-
-    /// The decoded body for a tile, resolving v8 slim refs through the shared
-    /// table and reading v7 bodies exactly as [`tile`](Self::tile) does.
-    ///
-    /// On a v7 archive this is byte-for-byte [`tile`](Self::tile): the bytes
-    /// come from [`tile_bytes`](Self::tile_bytes) untouched and a version-7
-    /// body goes to [`Body::parse`] as before. A version-8 body is parsed as
-    /// slim refs and resolved against [`shared_table`](Self::shared_table);
-    /// without a shared section that is an error rather than a wrong map.
-    ///
-    /// `pub` (not `pub(crate)`) so the tiler's own tests can assert
-    /// resolve-equals-v7 on the archives they build.
-    pub fn tile_resolved(&mut self, z: u8, x: u32, y: u32) -> Result<Option<Body>> {
-        let Some(bytes) = self.tile_bytes(z, x, y)? else { return Ok(None) };
-        if !is_v8_body(&bytes) {
-            return Ok(Some(Body::parse(&bytes)?));
-        }
-        let slim = SlimBody::parse(&bytes)?;
-        let Some(shared) = self.shared_table()? else {
-            return err(
-                "a v8 tile body needs the archive's shared section, which this file does not carry",
-            );
-        };
-        Ok(Some(resolve_body(shared, &slim)?))
-    }
-
-    /// `(offset, len)` of the shared section, or `None` on a v7 archive.
-    ///
-    /// Delegates to [`Header::shared_location`](super::header::Header::shared_location):
-    /// absent ⟺ `shared_len == 0`. Reads the header only, never the wire.
-    fn shared_location(&self) -> Option<(u64, u64)> {
-        self.header.shared_location()
     }
 }

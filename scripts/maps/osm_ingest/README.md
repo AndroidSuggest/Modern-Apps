@@ -31,10 +31,10 @@ Maps app's offline artifacts. Three binaries share one library:
 ## Usage
 
 ```sh
-# Routing graph -> map_data/ (the directory run_generator.sh uploads to R2)
+# Routing graph -> map_data/ (the directory publish_r2.sh uploads to R2)
 cargo run --release --bin road_graph -- california-latest.osm.pbf --out map_data
 
-# POI layer side files + the geojsonseq tippecanoe consumes
+# POI layer side files + the geojsonseq the tiler consumes
 cargo run --release --bin poi_extract -- california-latest.osm.pbf \
     --geojson pois.geojsonseq --names poi_names.bin --index poi_index.bin \
     --attrs poi_attrs.bin \
@@ -66,10 +66,8 @@ Neither changes the on-disk contract, and `--rounds` does not change the output
 at all — a test asserts every byte is identical across `--rounds 1`, `4` and
 `17`. See [Build-time memory](#build-time-memory).
 
-From Windows, `scripts/maps/build_graph.ps1` wraps the road-graph build in one
-command and `scripts/maps/build_all.ps1` chains every cargo-only stage.
-`scripts/maps/build_all.sh` and the per-layer `build_*_layer.sh` scripts call
-these binaries for the full pipelines.
+From Windows, `scripts/maps/build_graph.ps1` builds the full `.mamaps` archive
+end to end (road graph, transit routes, tiling, header checks) in one command.
 
 ## `osm_extract` and the vector layers
 
@@ -106,15 +104,12 @@ coordinate array, looked up by `binary_search`, 16 bytes per *needed* node — a
 `BITSET_SIZE = 20e9`, i.e. 2.5 GB keyed by raw node id, and peaks around 10 GB on
 California.
 
-### The Python normalisers are still the contract of record
+### The port rules, pinned by tests in `src/safety.rs`
 
-Each `normalize_*.py` stays in the tree until its layer is ported, and the layer
-script keeps an `--engine legacy` so both can be run over the same PBF and diffed
-with `scripts/maps/test/diff_geojsonseq.py`. For `safety` the two agree exactly:
-same properties, same order, same coordinates.
-
-The two rules easiest to break in that port, both pinned by tests in
-`src/safety.rs`:
+The Python normalisers (`normalize_*.py`) were the contract of record during the
+port and have since been deleted with the legacy `--engine legacy` scripts and
+the differential harness. What remains are the two rules easiest to break,
+pinned by tests in `src/safety.rs`:
 
 * `enforcement=maxspeed` is checked **before** the `man_made=surveillance`
   branch. A camera tagged both ways is a speed camera, and swapping the order
@@ -1329,6 +1324,3 @@ Two deliberate differences:
   `BITSET_SIZE = 20e9`, so node ids at or above it are skipped exactly as
   before) plus the node and edge arrays: roughly 10 GB peak on California. Same
   ballpark as the C++, and it will not run on a small machine.
-- `build_pois_layer.sh` still needs `tippecanoe` and `osmium-tool` for the
-  `.pmtiles` output, so the POI *tile* build stays non-Windows. Only the two side
-  files became native.

@@ -13,11 +13,9 @@ fn materialise_relations(
         true,
     );
     // Which driving side and centre-line colour applies where, accumulated as the country shapes
-    // go past. Empty on a build with `boundaries` switched off, because nothing classifies an
-    // administrative relation then and there is no country geometry to resolve against — such a
-    // build's tiles carry no convention and the renderer falls back to right-hand and white.
+    // go past.
     let mut conventions = schema::boundaries::Conventions::default();
-    for relation in &relations {
+    for relation in relations {
         bar.tick("relation(s)");
         // A `places` relation (a country, a region) is labelled at its centroid: one point, not
         // a stitched shape. The border itself lives in `boundaries`; this is the name.
@@ -101,9 +99,9 @@ fn materialise_relations(
 
 /// Coastline, transit, graph, then finish the store. Moved whole from `extract`.
 fn append_external_and_finish(
-    coastline: Option<&Path>,
-    transit_routes: Option<&Path>,
-    graph: Option<&Path>,
+    coastline: &Path,
+    transit_routes: &Path,
+    graph: &Path,
     mut sink: Sink,
     stats: &mut Stats,
     conventions: schema::boundaries::Conventions,
@@ -114,57 +112,51 @@ fn append_external_and_finish(
     // only known once every OSM feature has been through the sink. Order in the file does not
     // matter: the tiler groups by layer id, so `earth` is the first layer of every body whenever it
     // was written.
-    if let Some(path) = coastline {
-        match sink.bbox_degrees() {
-            Some(bbox) => {
-                println!(
-                    "reading land polygons within {:.3},{:.3} .. {:.3},{:.3}",
-                    bbox.0, bbox.1, bbox.2, bbox.3,
-                );
-                stats.land_polygons = schema::earth::stream_prepared(path, bbox, &mut sink)?;
-                stats.features += stats.land_polygons;
-            }
-            // Nothing to clip against. Land alone would be an archive of one layer, and the caller
-            // almost certainly pointed at the wrong extract.
-            None => return err("the extract produced no features to place land against".to_string()),
+    match sink.bbox_degrees() {
+        Some(bbox) => {
+            println!(
+                "reading land polygons within {:.3},{:.3} .. {:.3},{:.3}",
+                bbox.0, bbox.1, bbox.2, bbox.3,
+            );
+            stats.land_polygons = schema::earth::stream_prepared(coastline, bbox, &mut sink)?;
+            stats.features += stats.land_polygons;
         }
+        // Nothing to clip against. Land alone would be an archive of one layer, and the caller
+        // almost certainly pointed at the wrong extract.
+        None => return err("the extract produced no features to place land against".to_string()),
     }
     // The `transit` layer, for the same reason and against the same bounding box: its geometry is
     // GTFS rather than OSM (see [`schema::transit`]), so it is read here rather than classified in
     // any of the passes above.
-    if let Some(path) = transit_routes {
-        match sink.bbox_degrees() {
-            Some(bbox) => {
-                println!(
-                    "reading transit routes within {:.3},{:.3} .. {:.3},{:.3}",
-                    bbox.0, bbox.1, bbox.2, bbox.3,
-                );
-                stats.transit_routes = schema::transit::stream_routes(path, bbox, &mut sink)?;
-                stats.features += stats.transit_routes;
-            }
-            None => {
-                return err("the extract produced no features to place transit routes against"
-                    .to_string())
-            }
+    match sink.bbox_degrees() {
+        Some(bbox) => {
+            println!(
+                "reading transit routes within {:.3},{:.3} .. {:.3},{:.3}",
+                bbox.0, bbox.1, bbox.2, bbox.3,
+            );
+            stats.transit_routes = schema::transit::stream_routes(transit_routes, bbox, &mut sink)?;
+            stats.features += stats.transit_routes;
+        }
+        None => {
+            return err("the extract produced no features to place transit routes against"
+                .to_string())
         }
     }
     // The `traffic` layer, last of the non-OSM sources: its geometry is the v6 routing graph
     // (see [`schema::traffic`]), read straight off disk rather than classified from the `.pbf`.
     // Not clipped to the bbox here — the graph is already the built region, and the tiler clips
     // each component segment per tile like any other line.
-    if let Some(dir) = graph {
-        println!("reading the v6 routing graph at {} for the traffic layer", dir.display());
-        stats.traffic_segments = schema::traffic::stream_graph(dir, &mut sink)?;
-        stats.features += stats.traffic_segments;
-        println!("  {} drivable component segment(s)", stats.traffic_segments);
-        // The `junction` layer rides the same graph: a lane connector is built from the junction
-        // node's own incident edges, so there is nothing to read that the traffic pass did not
-        // already need. `conventions` decides which side of a road the direction of travel sits
-        // on, and is borrowed here because it is moved into the store below.
-        stats.junction_connectors = schema::junction::stream_junctions(dir, &conventions, &mut sink)?;
-        stats.features += stats.junction_connectors;
-        println!("  {} lane connector(s)", stats.junction_connectors);
-    }
+    println!("reading the v6 routing graph at {} for the traffic layer", graph.display());
+    stats.traffic_segments = schema::traffic::stream_graph(graph, &mut sink)?;
+    stats.features += stats.traffic_segments;
+    println!("  {} drivable component segment(s)", stats.traffic_segments);
+    // The `junction` layer rides the same graph: a lane connector is built from the junction
+    // node's own incident edges, so there is nothing to read that the traffic pass did not
+    // already need. `conventions` decides which side of a road the direction of travel sits
+    // on, and is borrowed here because it is moved into the store below.
+    stats.junction_connectors = schema::junction::stream_junctions(graph, &conventions, &mut sink)?;
+    stats.features += stats.junction_connectors;
+    println!("  {} lane connector(s)", stats.junction_connectors);
     let store = sink.finish(spill_path)?;
     let store = store.with_conventions(conventions);
     // The one phase that had no mark after it, and it turned out to be the largest single item in the

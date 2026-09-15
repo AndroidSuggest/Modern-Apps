@@ -5,22 +5,17 @@
 /// sequential passes over a file cost seconds on any modern disk; holding the features cost 4.9 GB of
 /// a measured 10.03 GB California peak.
 pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomStats>)> {
-    // Before any tile is encoded, so every worker sees the same value.
-    OCEAN.store(settings.ocean, Ordering::Relaxed);
     adopt_thread_budget();
     let bbox = store.bbox();
     let mut writer = StreamWriter::new(Options {
-        min_zoom: settings.min_zoom,
-        max_zoom: settings.max_zoom,
+        min_zoom: 0,
+        max_zoom: crate::DEFAULT_MAX_ZOOM,
         build_id: settings.build_id,
         compress: true,
         // Stage C runs on every tile below, so the claim is true. It is what lets the renderer
         // skip its repair pass — and the renderer still keeps that pass, gated, because a claim is
         // only as good as the generator making it.
         rings_validated: true,
-        // Off by default: byte-identical v7. On, tiles intern shared logical rows as they encode
-        // (see `Settings::shared_table`).
-        shared_table: settings.shared_table,
         min_lon_e7: bbox.0,
         min_lat_e7: bbox.1,
         max_lon_e7: bbox.2,
@@ -29,13 +24,10 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
     })?;
 
     let mut per_zoom = Vec::new();
-    // First sightings of every shared logical are interned by the builder
-    // itself (content-keyed, sequential ids in first-sighting order), so no
-    // local dedup map is needed: the drain consults the builder, and this
-    // loop's tile-id order is what keeps first-use order deterministic.
-    for z in settings.min_zoom..=settings.max_zoom {
+    for z in 0..=crate::DEFAULT_MAX_ZOOM {
         let mut stats = ZoomStats { zoom: z, ..ZoomStats::default() };
-        let tolerance = simplify::tolerance_for(z, settings.max_zoom, settings.simplification);
+        let tolerance =
+            simplify::tolerance_for(z, crate::DEFAULT_MAX_ZOOM, DEFAULT_SIMPLIFICATION);
         let buffer = geom::buffer_for(EXTENT);
 
         // Per zoom, so peak scratch is the largest single zoom rather than the sum, and so a build
@@ -76,42 +68,13 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
                 break;
             }
             let encoding = std::time::Instant::now();
-            let done = encode_batch(batch, settings.dem.as_ref(), store.conventions(), settings.shared_table)?;
+            let done = encode_batch(batch, &settings.dem, store.conventions())?;
             stats.encode_ms += encoding.elapsed().as_millis() as u64;
             let appending = std::time::Instant::now();
-            for (id, encoded, rings, lines, intents, slim_inputs) in done {
+            for (id, encoded, rings, lines) in done {
                 stats.rings.add(rings);
                 stats.lines.add(lines);
-                // The serial half of shared interning: intents are per-tile pure (built in parallel),
-                // and this loop is tile-id ordered, so pushes reach the builder in first-use order.
-                // `None` when the flag is off — and then `intents` is always empty anyway.
-                //
-                // Slim emission happens here, after the drain assigns this tile's logical ids:
-                // `emit_mixed_body` re-emits slim-mode layers through `serialize_mixed_body`,
-                // replacing the v7 bytes below. Without the flag the v7 bytes append untouched.
-                let mut encoded = encoded;
-                if writer.shared_builder().is_some() {
-                    // The tile's own zoom, from its id: keep-masks are per
-                    // (row, zoom) in lane A's pool.
-                    let (zoom, _, _) = tilecodec::pmtiles::tile_zxy(id);
-                    let builder = writer.shared_builder().expect("checked above");
-                    let logical_ids = drain_shared_rows(builder, intents, zoom)?;
-                    // Serial slim emit: a fresh scratch + compressor per tile
-                    // (the worker pool's are consumed by the batch). Slim
-                    // bodies are smaller than the v7 ones they replace, and
-                    // correctness comes before throughput here — a parallel
-                    // DEFLATE pass can move this later.
-                    let mut emit_scratch = tilecodec::mamaps::body::Scratch::default();
-                    let mut emit_deflate = tilecodec::gz::Compressor::new();
-                    encoded = emit_mixed_body(
-                        &logical_ids,
-                        &slim_inputs.intents,
-                        &slim_inputs,
-                        encoded,
-                        &mut emit_deflate,
-                        &mut emit_scratch,
-                    )?;
-                }
+                let encoded = encoded;
                 let Some((stored, raw_len)) = encoded else { continue };
                 // Uncompressed, as this column has always meant.
                 stats.bytes += raw_len as u64;

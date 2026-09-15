@@ -1,12 +1,18 @@
 use super::consts::{FEATURE_RECORD_LEN, PART_ENTRY_LEN};
 use super::model::Layer;
-use super::slim::push_uvarint;
+
+pub(crate) fn push_uvarint(out: &mut Vec<u8>, mut value: u64) {
+    while value >= 0x80 {
+        out.push((value as u8) | 0x80);
+        value >>= 7;
+    }
+    out.push(value as u8);
+}
 
 /// One layer's full v7 payload bytes: features, part table, align4, arena.
 ///
-/// Factored out of [`super::emit::serialize_into`] so v8.1 mixed bodies reuse it for their
-/// full layers — one implementation, so a full layer inside a v8 body is byte
-/// for byte the v7 layer it would have been.
+/// Factored out of [`super::emit::serialize_into`] so the emit path has one
+/// implementation for every full layer it writes.
 pub(crate) fn write_full_layer_payload(layer: &Layer, out: &mut Vec<u8>) {
     // Sized up front rather than doubled into. Feature and part records are fixed width, and
     // two zigzag varints average under three bytes a point on clipped tile geometry -- an

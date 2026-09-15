@@ -89,7 +89,7 @@ impl RangeFetcher for Fake {
     }
 }
 
-const URL: &str = BASEMAP_PMTILES_URL;
+const URL: &str = BASEMAP_ARCHIVE_URL;
 
 fn reader(dir: &std::path::Path, clock: Arc<AtomicU64>, fetcher: Fake) -> CachingRangeReader<Fake> {
     let c = clock.clone();
@@ -204,8 +204,10 @@ fn a_stale_entry_is_served_offline_rather_than_failing() {
     assert!(r.fetcher.ranges.borrow().is_empty(), "offline must not attempt a request");
 }
 
+/// A failed refetch is an error: the reader never serves a stale entry for a
+/// range whose refetch failed.
 #[test]
-fn a_failed_fetch_falls_back_to_a_stale_entry() {
+fn a_failed_fetch_is_an_error_not_a_stale_fallback() {
     let f = Fixture::new("failover");
     let clock = Arc::new(AtomicU64::new(1_000_000));
     {
@@ -215,7 +217,7 @@ fn a_failed_fetch_falls_back_to_a_stale_entry() {
     clock.fetch_add(crate::tile::cache::REFRESH_INTERVAL_MS + 1, Ordering::SeqCst);
     let failing = Fake { status: 206, body: Vec::new(), fail: true, ranges: RefCell::new(Vec::new()) };
     let r = reader(&f.dir, clock, failing);
-    assert_eq!(r.read(0, 4).unwrap(), vec![1u8; 4], "went offline mid-session");
+    assert!(r.read(0, 4).is_err(), "a failed refetch must not serve the stale entry");
 }
 
 #[test]
@@ -227,8 +229,9 @@ fn a_failed_fetch_with_nothing_cached_propagates() {
     assert!(r.read(0, 4).is_err());
 }
 
+/// A non-2xx is an error too, cached entry or not.
 #[test]
-fn a_server_error_falls_back_to_the_cache_and_otherwise_fails() {
+fn a_server_error_is_an_error_not_a_cache_fallback() {
     let f = Fixture::new("servererror");
     let clock = Arc::new(AtomicU64::new(1_000_000));
     {
@@ -238,7 +241,7 @@ fn a_server_error_falls_back_to_the_cache_and_otherwise_fails() {
     clock.fetch_add(crate::tile::cache::REFRESH_INTERVAL_MS + 1, Ordering::SeqCst);
     let erroring = Fake { status: 503, body: vec![9u8; 4], fail: false, ranges: RefCell::new(Vec::new()) };
     let r = reader(&f.dir, clock, erroring);
-    assert_eq!(r.read(0, 4).unwrap(), vec![1u8; 4], "a 503 must not replace a good entry");
+    assert!(r.read(0, 4).is_err(), "a 503 must not serve the stale entry");
     // With nothing cached for a different range, it is an error.
     assert!(r.read(64, 4).is_err());
 }
@@ -277,28 +280,24 @@ fn a_206_whose_body_is_the_wrong_length_is_never_cached() {
 /// every build, so the URL alone cannot invalidate anything: a cached leaf index keeps addressing
 /// byte offsets from the build it came from, and a user sits on a stale map with no way to
 /// notice. The id is what changes.
+///
+/// The origin marker is computed from a header prefix fetch *before* the cache opens, and the
+/// cache opens once with the full marker — so a republish wipes on open, not on a later reset.
 #[test]
 fn republishing_under_the_same_url_wipes_the_cache_when_the_build_id_changes() {
     let dir = std::env::temp_dir().join(format!("mamaps_origin_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let url = "https://example.invalid/basemap.mamaps";
 
-    // First run against a brand-new cache. The prefix was fetched before the id was known, so
-    // recording the id drops it: one wasted request, once, on a fresh install. Cheaper than any
-    // scheme that avoids it.
-    let cache = RangeCache::open_unchecked(&dir, 1 << 20);
-    cache.write(&RangeCache::key(url, "bytes=0-15"), b"the first build");
-    cache.reset_if_origin_changed(&basemap_origin(url, 1));
-
-    // Everything cached from here on belongs to build 1 and survives.
+    // First run against a brand-new cache: entries written under build 1 survive.
+    let cache = RangeCache::open(&dir, &basemap_origin(url, 1), 1 << 20);
     cache.write(&RangeCache::key(url, "bytes=0-15"), b"the first build");
     cache.write(&RangeCache::key(url, "bytes=64-79"), b"a leaf of one  ");
 
-    // Second run, same build. **The regression this test exists for**: a marker scheme that
-    // wiped here would clear the whole cache on every single start, and the map would refetch
-    // the world every time the app opened.
-    let cache = RangeCache::open_unchecked(&dir, 1 << 20);
-    cache.reset_if_origin_changed(&basemap_origin(url, 1));
+    // Second run, same build: the marker matches, so everything survives —
+    // including across restarts. A marker scheme that wiped here would clear
+    // the whole cache on every single start.
+    let cache = RangeCache::open(&dir, &basemap_origin(url, 1), 1 << 20);
     assert!(
         cache.read(&RangeCache::key(url, "bytes=0-15")).is_some(),
         "restarting against the same build wiped the cache",
@@ -306,7 +305,7 @@ fn republishing_under_the_same_url_wipes_the_cache_when_the_build_id_changes() {
     assert!(cache.read(&RangeCache::key(url, "bytes=64-79")).is_some());
 
     // A republish, same URL. Every entry goes, because every offset in it belongs to build 1.
-    cache.reset_if_origin_changed(&basemap_origin(url, 2));
+    let cache = RangeCache::open(&dir, &basemap_origin(url, 2), 1 << 20);
     for range in ["bytes=0-15", "bytes=64-79"] {
         assert!(
             cache.read(&RangeCache::key(url, range)).is_none(),

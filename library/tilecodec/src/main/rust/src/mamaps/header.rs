@@ -1,5 +1,4 @@
-//! The `.mamaps` header: 128 bytes that locate every other section — 160 on a v8 archive,
-//! whose trailing 32 name the shared section.
+//! The `.mamaps` header: 128 bytes that locate every other section.
 //!
 //! Every section is found **only** through an offset declared here. Nothing is inferred from
 //! layout, because layout is not fixed: the real 137 GB PMTiles archive puts its leaf
@@ -25,7 +24,6 @@ mod tests;
 
 pub use consts::{
     COMPRESSION_DEFLATE, COMPRESSION_NONE, FLAG_BODIES_COMPRESSED, FLAG_LEAF_LEN_64,
-    FLAG_RINGS_VALIDATED, FLAG_RUN_LENGTH_PRESENT, FORMAT_VERSION, FORMAT_VERSION_V8,
-    HEADER_LEN, HEADER_LEN_V8, MAGIC, MAX_ZOOM,
+    FLAG_RINGS_VALIDATED, FLAG_RUN_LENGTH_PRESENT, FORMAT_VERSION, HEADER_LEN, MAGIC, MAX_ZOOM,
 };
 pub use types::Header;

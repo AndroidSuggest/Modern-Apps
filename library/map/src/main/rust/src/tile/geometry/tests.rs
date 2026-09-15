@@ -4,20 +4,85 @@ use crate::style::{KindFilter, Layer, LayerKind, LayerToggles};
 use crate::style::paint::Ramp;
 use crate::style;
 use crate::tess::{fill, stroke};
-use tilecodec::mamaps::body::{Body, GEOM_LINE};
+use tilecodec::mamaps::body::{Body, Feature, Layer as BodyLayer, Part, GEOM_LINE, GEOM_POLYGON, NAME_NONE, WINDING_OUTER};
+use tilecodec::mamaps::dict;
 
-const REAL_TILE: &[u8] = include_bytes!("../../../tests/fixtures/v5ca_z11_tile.mvt");
-
-/// The published tile, converted to a `.mamaps` body.
+/// A representative v7 body: one `earth` polygon, one `major_road` LineString
+/// (kind 45) and two `water` polygons — the same layers the old MVT fixture
+/// carried, built directly as a body so the tests no longer depend on the
+/// MVT→body converter.
 ///
-/// The fixture is still MVT because it was lifted out of the published archive with a ranged
-/// GET, and there is no published `.mamaps` archive yet. Going through `from_mvt` is what
-/// Phase 4 of the plan is: the container and this module are validated on data the tiler
-/// already produced and the app already drew, before any tag→kind schema work exists to be
-/// wrong.
+/// The road is named, so the curved-label tests in `tess::text` share this
+/// fixture's shape: their own centreline below is this road's coordinates.
 fn real() -> Body {
-    let tile = tilecodec::mvt::Tile::decode(REAL_TILE).expect("the published tile decodes");
-    tilecodec::mamaps::from_mvt::from_tile(&tile).expect("converts").0
+    let mut body = Body::new(4096);
+    body.names.push("Old Madrone Road".to_string());
+    let mut earth = BodyLayer::new(dict::LAYER_EARTH);
+    earth.features.push(Feature {
+        kind: 1,
+        kind_detail: dict::NONE,
+        geom_type: GEOM_POLYGON,
+        flags: 0,
+        name_idx: NAME_NONE,
+        parts_offset: 0,
+        part_count: 1,
+        transit_color: 0,
+        transit_ordinal: 0,
+        transit_lanes: 0,
+        transit_taper: 0,
+        lane_count: 0,
+    });
+    earth.parts.push(Part { coord_start: 0, point_count: 4, winding: WINDING_OUTER });
+    earth.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
+    body.layers.push(earth);
+    let mut roads = BodyLayer::new(dict::LAYER_ROADS);
+    roads.features.push(Feature {
+        kind: crate::style::kind_id_for_test("major_road"),
+        kind_detail: dict::NONE,
+        geom_type: GEOM_LINE,
+        flags: 0,
+        name_idx: 1,
+        parts_offset: 0,
+        part_count: 1,
+        transit_color: 0,
+        transit_ordinal: 0,
+        transit_lanes: 0,
+        transit_taper: 0,
+        lane_count: 1,
+    });
+    roads.parts.push(Part { coord_start: 0, point_count: 4, winding: WINDING_OUTER });
+    roads.coords = vec![(100, 100), (1500, 900), (2600, 1800), (3900, 2700)];
+    body.layers.push(roads);
+    let mut water = BodyLayer::new(dict::LAYER_WATER);
+    for (i, base) in [(500i16, 3000i16), (2500, 500)].iter().enumerate() {
+        water.features.push(Feature {
+            kind: 4,
+            kind_detail: dict::NONE,
+            geom_type: GEOM_POLYGON,
+            flags: 0,
+            name_idx: NAME_NONE,
+            parts_offset: i as u32,
+            part_count: 1,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+        });
+        water.parts.push(Part {
+            coord_start: water.coords.len() as u32,
+            point_count: 4,
+            winding: WINDING_OUTER,
+        });
+        water.coords.extend_from_slice(&[
+            *base,
+            (base.0 + 600, base.1),
+            (base.0 + 600, base.1 + 400),
+            (base.0, base.1 + 400),
+        ]);
+    }
+    body.layers.push(water);
+    body
 }
 
 fn mesh_for<'a>(mesh: &'a TileMesh, layers: &[Layer], id: &str) -> Option<&'a LayerMesh> {
@@ -26,10 +91,10 @@ fn mesh_for<'a>(mesh: &'a TileMesh, layers: &[Layer], id: &str) -> Option<&'a La
 
 #[test]
 fn the_real_tile_produces_geometry_for_the_layers_it_has_data_in() {
-    // The published tile carries one `earth` polygon, one `roads` LineString of
+    // The fixture body carries one `earth` polygon, one `roads` LineString of
     // kind = major_road, and two `water` polygons.
     let layers = style::layers();
-    let mesh = build(&real(), &layers, 11, 339, 770, false);
+    let mesh = build(&real(), &layers, 14, 339, 770, false);
 
     assert!(mesh_for(&mesh, &layers, "earth").is_some(), "the earth polygon tessellates");
     assert!(mesh_for(&mesh, &layers, "water").is_some(), "both water polygons tessellate");

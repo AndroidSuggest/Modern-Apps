@@ -1,18 +1,18 @@
 //! The Vulkan vector-tile map renderer behind `:library:map`.
 //!
 //! Replaces the CARTO raster basemap in findfamily, photos, weather, taxi and
-//! fooddelivery (#615) with our own renderer over the self-hosted pmtiles archive at
-//! `data.vayunmathur.com/v4.pmtiles` — the same archive `maps` streams through
-//! MapLibre.
+//! fooddelivery (#615) with our own renderer over the planet-scale v7
+//! single-file `planet.mamaps` archive at `data.vayunmathur.com/planet.mamaps`
+//! (12 layers, 128-byte header).
 //!
 //! # Layout
 //!
-//! * [`tess`] — MVT geometry to triangles: earcut fills, stroked lines. Pure, and the
+//! * [`tess`] — mamaps geometry to triangles: earcut fills, stroked lines. Pure, and the
 //!   half of a frame that actually costs something.
 //! * [`style`] — which layers are drawn, in what order, in what colour.
 //! * [`camera`] — a camera snapshot from Kotlin to a per-tile clip matrix.
 //! * [`overlay`] — geographic polylines that are not tile data: the navigation route.
-//! * [`tile`] — the streaming PMTiles reader, its range cache, and tile selection.
+//! * [`tile`] — the streaming mamaps reader, its range cache, and tile selection.
 //! * `vulkan` — device, swapchain, pipelines, frame. Android only.
 //!
 //! # The JNI boundary

@@ -122,24 +122,40 @@ class CarAppHost(
         }
         val conn = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                if (binder == null) return
+                Log.i(TAG, "maps service connected; starting handshake")
+                if (binder == null) {
+                    Log.w(TAG, "maps service connected with null binder")
+                    return
+                }
                 thread(name = "ma-auto-carhost", isDaemon = true) {
                     runHandshake(ICarApp.Stub.asInterface(binder))
                 }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
+                Log.w(TAG, "maps service disconnected")
                 carApp = null
                 bound = false
                 handshakeDone = false
                 mainHandler.post { onTemplate(HostNavState(mapsPresent = true, connected = false)) }
             }
+
+            override fun onBindingDied(name: ComponentName?) {
+                Log.w(TAG, "maps service binding died")
+            }
+
+            override fun onNullBinding(name: ComponentName?) {
+                Log.w(TAG, "maps service returned null binding")
+                mainHandler.post { onTemplate(HostNavState(mapsPresent = true, connected = false)) }
+            }
         }
         connection = conn
+        Log.i(TAG, "binding maps car service $MAPS_PACKAGE/$MAPS_CAR_SERVICE_CLASS")
         val ok = runCatching {
             appContext.bindService(intent, conn, Context.BIND_AUTO_CREATE)
         }.getOrDefault(false)
         bound = ok
+        Log.i(TAG, "bindService returned $ok")
         if (!ok) {
             Log.w(TAG, "bindService to maps failed; nav card stays a launch tile")
             mainHandler.post { onTemplate(HostNavState(mapsPresent = true, connected = false)) }
@@ -261,6 +277,7 @@ class CarAppHost(
 
     private fun runHandshake(app: ICarApp) {
         carApp = app
+        Log.i(TAG, "starting car-app handshake")
         val handshake = bundleOf(HandshakeInfo(appContext.packageName, HOST_API_LEVEL)) ?: return
         if (!roundTrip("onHandshakeCompleted") { cb -> app.onHandshakeCompleted(handshake, cb) }) return
         val config = Configuration(appContext.resources.configuration)
@@ -283,14 +300,17 @@ class CarAppHost(
 
     /** One blocking binder call with a 5s cap; false means the session is dead. */
     private fun roundTrip(name: String, call: (IOnDoneCallback) -> Unit): Boolean {
+        Log.i(TAG, "$name: calling")
         val latch = CountDownLatch(1)
         val failure = AtomicReference<Throwable?>(null)
         val cb = object : IOnDoneCallback.Stub() {
             override fun onSuccess(response: Bundleable?) {
+                Log.i(TAG, "$name: success")
                 latch.countDown()
             }
 
             override fun onFailure(response: Bundleable?) {
+                Log.w(TAG, "$name: failure $response")
                 failure.set(RuntimeException("$name failed: $response"))
                 latch.countDown()
             }
@@ -308,6 +328,7 @@ class CarAppHost(
     /** Pulls the current template and forwards the nav state. Background thread. */
     private fun fetchTemplate() {
         val app = carApp ?: return
+        Log.i(TAG, "fetchTemplate: getManager(app)")
         // The success payload deserializes through `Bundler`: the manager
         // stub is an `IInterface`, so `deserializeIInterface` returns the
         // `IAppManager` proxy itself (via `Stub.asInterface`), never a raw
@@ -316,17 +337,21 @@ class CarAppHost(
         val latch = CountDownLatch(1)
         val managerCb = object : IOnDoneCallback.Stub() {
             override fun onSuccess(response: Bundleable?) {
+                Log.i(TAG, "fetchTemplate: getManager success, extracting")
                 managerRef.set(runCatching { response?.get() as? androidx.car.app.IAppManager }.getOrNull())
                 latch.countDown()
             }
 
             override fun onFailure(response: Bundleable?) {
+                Log.w(TAG, "fetchTemplate: getManager failure $response")
                 latch.countDown()
             }
         }
         runCatching { app.getManager(CarContext.APP_SERVICE, managerCb) }
             .onFailure { Log.w(TAG, "getManager threw", it); return }
-        latch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        Log.i(TAG, "fetchTemplate: awaiting getManager")
+        val managerDone = latch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        Log.i(TAG, "fetchTemplate: getManager await done=$managerDone")
         val manager = managerRef.get() ?: run {
             Log.w(TAG, "getManager returned no manager")
             return
@@ -335,18 +360,23 @@ class CarAppHost(
         val templateLatch = CountDownLatch(1)
         val templateCb = object : IOnDoneCallback.Stub() {
             override fun onSuccess(response: Bundleable?) {
+                Log.i(TAG, "fetchTemplate: getTemplate success, extracting")
                 templateRef.set(runCatching { response?.get() }.getOrNull())
                 templateLatch.countDown()
             }
 
             override fun onFailure(response: Bundleable?) {
+                Log.w(TAG, "fetchTemplate: getTemplate failure $response")
                 templateLatch.countDown()
             }
         }
         runCatching { manager.getTemplate(templateCb) }
             .onFailure { Log.w(TAG, "getTemplate threw", it); return }
-        templateLatch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        Log.i(TAG, "fetchTemplate: awaiting getTemplate")
+        val templateDone = templateLatch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        Log.i(TAG, "fetchTemplate: getTemplate await done=$templateDone")
         val wrapper = templateRef.get() as? TemplateWrapper
+        Log.i(TAG, "fetchTemplate: wrapper=$wrapper")
         val state = wrapper?.let { parseTemplate(it) } ?: HostNavState(mapsPresent = true, connected = true)
         mainHandler.post { onTemplate(state) }
     }

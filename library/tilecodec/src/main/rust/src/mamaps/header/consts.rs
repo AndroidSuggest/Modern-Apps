@@ -53,34 +53,11 @@ pub const MAGIC: &[u8; 7] = b"MAMAPS\0";
 /// `check_matches_schema` validates the whole dictionary on open, so an older reader would
 /// reject a v3 archive anyway. v1 is no longer read — the last v1 archive predates `places`,
 /// `poi` and `transit` entirely.
+///
+/// The reader speaks v7 only: any other version byte is refused on open.
 pub const FORMAT_VERSION: u8 = 7;
 
-/// The archive version byte of a v8 archive: one carrying a shared section.
-///
-/// v8 interns the long-lived per-feature attributes (names, logical rows, S3DB extrusion,
-/// carriageway splits, lane turns, stable ids) into one archive-global shared section behind
-/// `MBSH`, and appends a 32-byte tail to the header (bytes 128..160) naming it:
-/// `shared_offset`/`shared_len`, `shared_flags`, `shared_pools`, reserved. An archive without
-/// a shared section is byte-identical v7 — 128 bytes with version byte 7. With one it is 160
-/// bytes with version byte 8. The bump is forced twice over, the way v6's and v7's were: an
-/// older reader rejects both an unknown version byte and a header length that is not 128, so
-/// a v8 archive is a clean rejection rather than a misread map. A v8 reader opens both
-/// shapes: a 128-byte header reads as v7 with no shared section, a 160-byte header parses
-/// the tail.
-///
-/// Tile bodies version independently: a v8 slim body carries body version 8 and resolves
-/// through the shared section, while a v7 full body still carries 7. `Body::parse` keeps
-/// gating on [`FORMAT_VERSION`], which is why this const exists beside it rather than
-/// replacing it.
-pub const FORMAT_VERSION_V8: u8 = 8;
-
 pub const HEADER_LEN: usize = 128;
-
-/// A v8 header's wire length: the 128 v7 bytes plus the 32-byte shared-section tail.
-///
-/// The first 128 bytes keep their v7 field positions exactly, so everything up to the tail
-/// reads the same out of either shape.
-pub const HEADER_LEN_V8: usize = 160;
 
 /// Bodies are compressed frames; clear means the body is stored raw.
 pub const FLAG_BODIES_COMPRESSED: u16 = 1 << 0;

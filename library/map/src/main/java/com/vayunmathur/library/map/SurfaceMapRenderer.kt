@@ -70,14 +70,11 @@ import java.io.File
  *   Android Auto, `LocalDensity.current.density` in Compose. The renderer scales line
  *   widths, icons and text with it, so a wrong value gives a legible-but-wrong map rather
  *   than a visible failure.
- * @param archivePath overrides the built-in archive URL for local iteration. `null` or empty
- *   keeps the remote archive.
  * @param onFrame called on the main thread after each frame that was actually presented.
  */
 class SurfaceMapRenderer(
     context: Context,
     private val density: Float,
-    private val archivePath: String? = null,
     private val onFrame: () -> Unit = {},
 ) {
 
@@ -94,9 +91,8 @@ class SurfaceMapRenderer(
         widthPx: Int,
         heightPx: Int,
         density: Float,
-        archivePath: String? = null,
         onFrame: () -> Unit = {},
-    ) : this(context, density, archivePath, onFrame) {
+    ) : this(context, density, onFrame) {
         attachSurface(surface, widthPx, heightPx)
     }
 
@@ -290,7 +286,7 @@ class SurfaceMapRenderer(
             renderState = MapRenderState.Unavailable(MapRenderState.Reason.RendererLibraryMissing)
             return
         }
-        handle = MapNative.create(surface, cacheDir.absolutePath, widthPx, heightPx, dark, muted, archivePath)
+        handle = MapNative.create(surface, cacheDir.absolutePath, widthPx, heightPx, dark, muted)
         if (handle == 0L) {
             Log.e(TAG, "the Vulkan renderer failed to start; see MapRenderer in logcat")
             renderState = MapRenderState.Unavailable(MapRenderState.Reason.RendererStartFailed)

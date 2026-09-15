@@ -14,7 +14,7 @@ use std::os::raw::c_void;
 use std::sync::{Arc, Mutex};
 use super::handle::{handle_mut, MapHandle, OnlineFlag, TileResult, ZoomRange, WORKER_COUNT};
 use super::log::log;
-use super::workers::{ArchiveSource, normalize_local_archive_path, spawn_file_worker, spawn_worker};
+use super::workers::spawn_worker;
 /// Create the renderer for `surface`. Returns 0 on failure, having logged why.
 ///
 /// # Safety
@@ -30,28 +30,18 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
     height: jint,
     dark: jboolean,
     muted: jboolean,
-    archive_path: JString<'l>,
 ) -> jlong {
     // The bridge back to `:library:network` has to be resolved before any worker thread
     // needs it; doing it here means the failure is visible at startup rather than as a
-    // silently blank map. For a local file archive it is not used but still initialised;
-    // a missing bridge is not a file-archive failure.
+    // silently blank map.
     if !jni_http::init(&mut env) {
         log("library:network is missing, so remote tiles cannot be fetched");
-        // Continue — a file:// archive does not need the HTTP bridge.
+        return 0;
     }
 
     let cache_dir: String = match env.get_string(&cache_dir) {
         Ok(s) => s.into(),
         Err(_) => return 0,
-    };
-    let archive_path: String = if archive_path.is_null() {
-        String::new()
-    } else {
-        match env.get_string(&archive_path) {
-            Ok(s) => s.into(),
-            Err(_) => String::new(),
-        }
     };
 
     let window = unsafe {
@@ -93,49 +83,17 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
     let toggles = Arc::new(SharedToggles::new(LayerToggles::default()));
     // One `Receiver` shared by every worker, so whichever is free takes the next tile.
     let queue = Arc::new(Mutex::new(wanted_rx));
-    match normalize_local_archive_path(&archive_path) {
-        ArchiveSource::Default => {
-            for index in 0..WORKER_COUNT {
-                spawn_worker(
-                    index,
-                    BASEMAP_ARCHIVE_URL.to_string(),
-                    cache_dir.clone(),
-                    queue.clone(),
-                    finished_tx.clone(),
-                    online.clone(),
-                    zoom_range.clone(),
-                    toggles.clone(),
-                );
-            }
-        }
-        ArchiveSource::RemoteUrl(url) => {
-            log(&format!("using remote archive override {}", url));
-            for index in 0..WORKER_COUNT {
-                spawn_worker(
-                    index,
-                    url.clone(),
-                    cache_dir.clone(),
-                    queue.clone(),
-                    finished_tx.clone(),
-                    online.clone(),
-                    zoom_range.clone(),
-                    toggles.clone(),
-                );
-            }
-        }
-        ArchiveSource::LocalFile(path) => {
-            log(&format!("using local archive {}", path.display()));
-            for index in 0..WORKER_COUNT {
-                spawn_file_worker(
-                    index,
-                    Some(path.clone()),
-                    queue.clone(),
-                    finished_tx.clone(),
-                    zoom_range.clone(),
-                    toggles.clone(),
-                );
-            }
-        }
+    for index in 0..WORKER_COUNT {
+        spawn_worker(
+            index,
+            BASEMAP_ARCHIVE_URL.to_string(),
+            cache_dir.clone(),
+            queue.clone(),
+            finished_tx.clone(),
+            online.clone(),
+            zoom_range.clone(),
+            toggles.clone(),
+        );
     }
 
     let handle = Box::new(MapHandle {

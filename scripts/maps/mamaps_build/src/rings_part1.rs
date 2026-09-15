@@ -288,15 +288,10 @@ mod tests {
             },
         ];
         let settings = crate::tiler::Settings {
-            min_zoom: 0,
-            max_zoom: 10,
-            simplification: crate::tiler::DEFAULT_SIMPLIFICATION,
             build_id: 1,
             scratch: std::env::temp_dir()
                 .join(format!("mamaps_rings_{}.tilechunks", std::process::id())),
-            ocean: false,
-            dem: None,
-            shared_table: false,
+            dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
         };
         let store = crate::store::Store::of(&features).expect("spill");
         let (bytes, stats) = crate::tiler::build(&store, &settings).expect("build");

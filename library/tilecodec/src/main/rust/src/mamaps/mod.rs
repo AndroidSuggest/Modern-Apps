@@ -1,5 +1,8 @@
 //! `.mamaps` — the container the Vulkan renderer reads, shaped like what it draws.
 //!
+//! v7 only: a 128-byte header, 12 layers, full tile bodies. Anything else is
+//! refused on open rather than reinterpreted.
+//!
 //! # Why not MVT inside PMTiles
 //!
 //! Because almost none of it is used. An MVT tile is protobuf varints, a per-tile string table and
@@ -43,11 +46,7 @@ pub mod dict;
 pub mod header;
 pub mod index;
 pub mod read;
-pub mod shared;
-pub mod archive;
 
-#[cfg(feature = "write")]
-pub mod from_mvt;
 #[cfg(feature = "write")]
 pub mod write;
 

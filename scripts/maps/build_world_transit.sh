@@ -37,45 +37,20 @@ set -euo pipefail
 # Requirements: bash, wget, unzip, cargo, and sha256sum (or shasum).
 #
 # Usage:
-#   ./build_world_transit.sh [options]
+#   ./build_world_transit.sh
 #
-# Options:
-#   --work DIR       Scratch dir for the mirror + unzipped GTFS
-#                    (default: ./world_transit_work). Reused/resumable.
-#   --out DIR        Output dir for world.transit (+ .json)  (default: --work).
-#   --region GLOB    Only use feeds whose region (the part before the first `_`)
-#                    matches this glob: 'us-ca', 'us-*', 'de-*'. Default '*' (the
-#                    whole world). USE THIS to stage the build.
-#   --max-feeds N    Cap the number of feeds (0 = no cap, default 0). Applied to a
-#                    name-sorted list, so the cap takes a stable prefix.
-#   --manifest FILE  Skip the mirror entirely; build straight from a manifest
-#                    of `name=dir[=motis_prefix]` lines (already-unzipped feeds).
-#   --mirror-dir DIR Where the mirror lives (default <work>/transitous). Point this
-#                    at an existing mirror to build fully offline.
-#   --skip-mirror    Use whatever is already in --mirror-dir; fetch nothing.
-#   --rate LIMIT     wget --limit-rate (default 30m). Be kind to a volunteer host.
-#   --pack-name NAME Output pack name (default 'world' -> world.transit).
-#   --list-only      List the feeds that would be used, then stop.
-#   --publish        After building, upload the pack via publish_r2.sh.
-#   --dry-run        Print what would happen; download/build nothing.
-#   -h|--help        Show this help.
+# No options. Work/out dirs are fixed:
+#   <script-dir>/world_transit_work (mirror + unzipped GTFS + feeds.manifest)
+#   <script-dir>/inputs/world.transit (+ .json, the pack)
 #
 # Examples:
-#   # California only, the known-good staging step:
-#   ./build_world_transit.sh --region 'us-ca' --out /tmp/catransit
-#
-#   # See which feeds the mirror offers, without building a pack:
-#   ./build_world_transit.sh --list-only
-#
-#   # Whole world, then publish:
-#   export R2_ENDPOINT=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=...
-#   ./build_world_transit.sh --work /data/transit --publish
+#   ./build_world_transit.sh
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 INGEST_DIR="$HERE/gtfs_ingest"
 
-WORK="./world_transit_work"
-OUT=""
+WORK="$HERE/world_transit_work"
+OUT="$HERE/inputs"
 REGION="*"
 MAX_FEEDS=0
 MANIFEST=""
@@ -85,7 +60,7 @@ MANIFEST=""
 # see its own comment. Unzipping is CPU-bound (inflate) and touches only per-feed
 # directories, so this is the one place in this script that fans out safely.
 JOBS="${MAPS_JOBS:-4}"
-MIRROR_DIR=""
+MIRROR_DIR="$WORK/transitous"
 SKIP_MIRROR=0
 RATE="30m"
 PACK_NAME="world"
@@ -97,27 +72,7 @@ DRY_RUN=0
 # plus the `scripts/` transforms that name each feed's MOTIS id.
 GTFS_INDEX_URL="https://api.transitous.org/gtfs/"
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --work) WORK="$2"; shift 2 ;;
-        --out) OUT="$2"; shift 2 ;;
-        --region) REGION="$2"; shift 2 ;;
-        --max-feeds) MAX_FEEDS="$2"; shift 2 ;;
-        --manifest) MANIFEST="$2"; shift 2 ;;
-        --jobs) JOBS="$2"; shift 2 ;;
-        --mirror-dir) MIRROR_DIR="$2"; shift 2 ;;
-        --skip-mirror) SKIP_MIRROR=1; shift ;;
-        --rate) RATE="$2"; shift 2 ;;
-        --pack-name) PACK_NAME="$2"; shift 2 ;;
-        --list-only) LIST_ONLY=1; shift ;;
-        --publish) PUBLISH=1; shift ;;
-        --dry-run) DRY_RUN=1; shift ;;
-        -h|--help) sed -n '4,72p' "$0" | sed 's/^# \?//'; exit 0 ;;
-        *) echo "Unknown arg: $1" >&2; exit 1 ;;
-    esac
-done
-OUT="${OUT:-$WORK}"
-MIRROR_DIR="${MIRROR_DIR:-$WORK/transitous}"
+# Fixed paths -- no options.
 
 need() { command -v "$1" >/dev/null || { echo "ERROR: '$1' is required but not installed" >&2; exit 1; }; }
 need unzip
@@ -358,11 +313,5 @@ echo "=== running gtfs_ingest merge -> $OUT/$PACK_NAME.transit ==="
 "$INGEST_BIN" "$OUT" "$PACK_NAME" --manifest "$BUILD_MANIFEST"
 echo "--- size + section breakdown ($OUT/$PACK_NAME.transit.json) ---"
 cat "$OUT/$PACK_NAME.transit.json"
-
-# --- 5. Publish (optional) ---
-if [[ "$PUBLISH" == "1" ]]; then
-    echo "=== publishing $PACK_NAME.transit to R2 ==="
-    "$HERE/publish_r2.sh" "$OUT/$PACK_NAME.transit" --key "$PACK_NAME.transit"
-fi
 
 echo "Done."

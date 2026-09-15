@@ -6,16 +6,6 @@
 //!
 //! Built in layers, each usable on its own:
 //!
-//!   * [`proto`] — protobuf wire codec. Read half mirrors `osm_ingest`'s
-//!     decode-only reader; write half is new.
-//!   * [`mvt`] — vector tile 2.1 decode/encode. A feature's geometry is stored as
-//!     raw command integers, so anything we are merely compositing passes through
-//!     untouched; the `encode_*`/`decode_*` functions beside that path are for the
-//!     layers we build ourselves.
-//!   * [`gz`] — gzip framing over `miniz_oxide`'s raw DEFLATE, which PMTiles needs
-//!     for both its directories and its tiles.
-//!   * [`pmtiles`] — the v3 container, read and write, including Hilbert tile ids
-//!     and the root/leaf directory split.
 //!   * [`geojson`] — the GeoJSONSeq reader the tilers share. Hand-rolled, not
 //!     serde: `miniz_oxide` being the only dependency is what lets this crate
 //!     build offline.
@@ -34,20 +24,9 @@
 //!   * [`spill`] — the on-disk record format and `tile_id`-range buckets the streaming
 //!     tiler partitions through, so peak memory tracks the tile COUNT rather than the
 //!     input bytes.
-//!   * [`tiling`] — bucket points into tiles, and merge tilesets.
 //!
 //! [`geom`], [`clip`] and [`simplify`] compose in one fixed order; [`geom`]'s module
 //! docs give the pipeline.
-//!
-//! Five binaries sit on top: `tile_points`, `tile_lines` and `tile_polygons` (the
-//! `tippecanoe` replacements, one per geometry kind), `tile_join` (the `tile-join`
-//! replacement) and `pmtiles_dump` (a canonical text dump, for the differential
-//! harness).
-//!
-//! Verified against the published `v5-ca.pmtiles` during development: its header,
-//! gzipped root directory and gzipped leaf directories all decode with byte-exact
-//! payload consumption, and a real tile's layers decode to the same names,
-//! extents and feature counts tippecanoe wrote.
 //!
 //! **Output is not byte-identical to tippecanoe, by design.** Its
 //! `--drop-densest-as-needed` is a lossy per-tile heuristic and
@@ -69,7 +48,6 @@ pub mod simplify;
 pub mod simplify_extra;
 pub mod spill;
 pub mod subdivide;
-pub mod tiling;
 
 // The formats themselves live in `tilecodec`, shared with the Android renderer in
 // `:library:map` — it has to read exactly what this crate writes, and one codec is
@@ -77,6 +55,6 @@ pub mod tiling;
 //
 // Re-exported at the crate root rather than referenced as `tilecodec::mvt`, so
 // every `crate::mvt` / `crate::pmtiles` / `crate::gz` / `crate::proto` path in
-// `pyramid`, `tiling`, `spill` and `geom` keeps resolving unchanged. The extraction
+// `pyramid`, `spill` and `geom` keeps resolving unchanged. The extraction
 // is meant to be invisible to the tiler.
 pub use tilecodec::{gz, mamaps, mvt, pmtiles, proto};

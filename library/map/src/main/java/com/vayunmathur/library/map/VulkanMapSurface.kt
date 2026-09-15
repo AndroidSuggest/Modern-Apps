@@ -51,7 +51,6 @@ internal fun VulkanMapSurface(
     darkBasemap: Boolean,
     muted: Boolean,
     layerOptions: LayerOptions = LayerOptions(),
-    archivePath: String? = null,
     userPuck: UserPuck? = null,
     /** Dim everything outside the administrative region this names. `null` draws no mask. */
     regionMask: RegionMask? = null,
@@ -89,7 +88,7 @@ internal fun VulkanMapSurface(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current.density
-    val host = remember(context, archivePath) { MapSurfaceHost(context, cameraState, density, archivePath, onFrame) }
+    val host = remember(context) { MapSurfaceHost(context, cameraState, density, onFrame) }
     val renderer = host.renderer
 
     // Task-17 pick wiring: the projection answers queryRenderedLabels from
@@ -251,11 +250,10 @@ private class MapSurfaceHost(
     context: Context,
     cameraState: CameraState,
     density: Float,
-    archivePath: String?,
     onFrame: () -> Unit,
 ) : TextureView.SurfaceTextureListener {
 
-    val renderer = SurfaceMapRenderer(context, density, archivePath, onFrame).apply {
+    val renderer = SurfaceMapRenderer(context, density, onFrame).apply {
         composeCamera = cameraState
     }
 

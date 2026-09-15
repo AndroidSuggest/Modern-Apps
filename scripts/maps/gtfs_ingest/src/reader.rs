@@ -42,7 +42,7 @@ pub const SEC_ROUTE_TRIP_RECS: usize = 25;
 pub const SEC_ROUTE_TRIP_OFF: usize = 26;
 
 /// Bytes per v6 trip record: `u32 start_time, profile_id, service_idx, headsign_off`.
-use crate::index::{HEADER_LEN, MAGIC, NONE, SECTION_COUNT, VERSION, VERSION_MIN};
+pub const TRIP_REC_BYTES: usize = 16;
 use crate::reader_extra::{ri32, ru32, ru64, zigzag};
 pub use crate::reader_extra::read_uvarint;
 

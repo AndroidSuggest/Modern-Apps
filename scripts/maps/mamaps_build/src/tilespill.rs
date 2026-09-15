@@ -75,7 +75,7 @@ use std::sync::Mutex;
 
 use tilecodec::mamaps::body::{
     BuildingAttrs, Carriageway, Feature as BodyFeature, Layer as BodyLayer, Part,
-    CARRIAGEWAY_RECORD_LEN,
+    consts::CARRIAGEWAY_RECORD_LEN,
 };
 use tilecodec::proto::{err, Error, Result};
 

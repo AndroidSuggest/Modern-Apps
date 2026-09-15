@@ -239,8 +239,8 @@ mod tests {
         );
     }
 
-    /// `--reuse-store` has to reproduce the run that built the spill. A grid that did not survive
-    /// the index would leave a reused build drawing every road right-hand and white, which is not
+    /// The store index has to reproduce the run that built the spill. A grid that did not survive
+    /// the index would leave a build drawing every road right-hand and white, which is not
     /// a difference anything downstream could see.
     #[test]
     fn the_grid_survives_the_store_index() {

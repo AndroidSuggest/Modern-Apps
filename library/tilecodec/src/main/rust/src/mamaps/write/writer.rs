@@ -44,17 +44,6 @@ pub struct StreamWriter {
     /// one body and two entries.
     pub(crate) distinct: u64,
     pub(crate) runs_used: bool,
-    /// The v8 shared section under construction, or `None` when
-    /// [`Options::shared_table`] is off (the default) or no row has been
-    /// interned yet.
-    ///
-    /// Rows arrive in ascending tile-id order — the same order bodies do —
-    /// because the tiler interns through [`Self::shared_builder`] as it
-    /// encodes each tile. Nothing here iterates a hash map at emit time:
-    /// [`SharedBuilder::serialize`](crate::mamaps::shared::SharedBuilder::serialize)
-    /// sorts rows by `logical_id`, so first-use order is tile-id order by
-    /// construction, never hash order.
-    shared: Option<crate::mamaps::shared::SharedBuilder>,
 }
 
 /// One stored body's index entry, before it knows which leaf it belongs to.
@@ -108,7 +97,6 @@ impl StreamWriter {
         // After the option checks, so a build with an impossible zoom range fails without having
         // created a file to clean up.
         let data = Spill::create(options.spill_dir.as_deref())?;
-        let shared = options.shared_table.then(crate::mamaps::shared::SharedBuilder::new);
         Ok(StreamWriter {
             options,
             data,
@@ -119,19 +107,7 @@ impl StreamWriter {
             tiles_addressed: 0,
             distinct: 0,
             runs_used: false,
-            shared,
         })
-    }
-
-    /// The v8 shared-section builder, or `None` when [`Options::shared_table`] is off.
-    ///
-    /// Lane E's tiler interns logical rows and pushes slim refs through this
-    /// as it encodes each tile, in ascending tile-id order — which is what
-    /// keeps first-use order deterministic. `None` is not an error to ignore:
-    /// a caller that asked for a shared table always gets one, and a caller
-    /// that did not must not be writing shared rows.
-    pub fn shared_builder(&mut self) -> Option<&mut crate::mamaps::shared::SharedBuilder> {
-        self.shared.as_mut()
     }
 
     /// Encode and append one tile. Ids must ascend.
@@ -265,18 +241,8 @@ impl StreamWriter {
     ///
     /// The header is parsed before the destination is touched, so a build that would not open does
     /// not leave a file behind that looks like it might.
-    ///
-    /// With [`Options::shared_table`] on, the shared section follows the tile
-    /// data immediately — it starts exactly at `data_offset + data_len` — and
-    /// `file_len` covers it. Off, nothing is appended and the file is
-    /// byte-identical v7.
     pub fn finish_to_path(mut self, path: &Path) -> Result<()> {
-        let shared = self.take_shared_bytes()?;
-        let (shared_len, shared_pools) = match &shared {
-            Some((bytes, pools)) => (bytes.len() as u64, *pools),
-            None => (0, 0),
-        };
-        let (header, prefix) = self.prefix(shared_len, shared_pools)?;
+        let (header, prefix) = self.prefix()?;
         let mut out = File::create(path).map_err(|e| {
             crate::proto::Error(format!("cannot write {}: {e}", path.display()))
         })?;
@@ -289,11 +255,6 @@ impl StreamWriter {
                 header.data_len,
             ));
         }
-        if let Some((shared, _)) = &shared {
-            out.write_all(shared).map_err(|e| {
-                crate::proto::Error(format!("cannot write {}: {e}", path.display()))
-            })?;
-        }
         Ok(())
     }
 
@@ -302,17 +263,8 @@ impl StreamWriter {
     /// Kept for callers small enough not to care — the tests, and the tools that read an archive
     /// back before writing it — and for them the peak is one copy of the archive rather than the two
     /// it used to be. Anything the size of a region should use [`Self::finish_to_path`].
-    ///
-    /// With [`Options::shared_table`] on, the shared section is appended after
-    /// the tile data exactly as [`Self::finish_to_path`] appends it, so the two
-    /// finishes stay two ways of emitting one archive.
     pub fn finish(mut self) -> Result<Vec<u8>> {
-        let shared = self.take_shared_bytes()?;
-        let (shared_len, shared_pools) = match &shared {
-            Some((bytes, pools)) => (bytes.len() as u64, *pools),
-            None => (0, 0),
-        };
-        let (header, prefix) = self.prefix(shared_len, shared_pools)?;
+        let (header, prefix) = self.prefix()?;
         // TEMPORARY instrumentation.
         eprintln!(
             "spill: {} confirms, {} from file ({:.2}%), {} bytes read back",
@@ -330,26 +282,8 @@ impl StreamWriter {
                 header.data_len,
             ));
         }
-        if let Some((shared, _)) = &shared {
-            out.extend_from_slice(shared);
-        }
         debug_assert_eq!(out.len() as u64, header.file_len);
         Ok(out)
-    }
-
-    /// The shared section bytes plus its pool count, or `None` when the flag is off.
-    ///
-    /// Taken (not borrowed) because [`SharedBuilder::serialize`](crate::mamaps::shared::SharedBuilder::serialize)
-    /// consumes the builder to sort its rows. Called once at the top of each
-    /// finish, before [`Self::prefix`], so the header's `file_len` already
-    /// covers the section both finishes then append. The pool count comes out
-    /// of the section's own header — never a literal — so it stays right
-    /// however many pools the builder emits.
-    fn take_shared_bytes(&mut self) -> Result<Option<(Vec<u8>, u32)>> {
-        let Some(builder) = self.shared.take() else { return Ok(None) };
-        let bytes = builder.serialize()?;
-        let pools = crate::mamaps::shared::SharedHeader::parse(&bytes)?.pool_count;
-        Ok(Some((bytes, pools)))
     }
 
     /// Chop the entries into leaves
@@ -446,7 +380,6 @@ impl StreamWriter {
             tiles_addressed: entries.len() as u64,
             distinct: entries.len() as u64,
             runs_used: false,
-            shared: None,
         };
         w.partition(capacity)
     }

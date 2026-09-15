@@ -5,21 +5,52 @@ use crate::style;
 use crate::style::paint::Ramp;
 use crate::style::{KindFilter, Layer, LayerKind, LayerToggles};
 use crate::tess::{roof, terrain};
-use tilecodec::mamaps::body::{Body, GEOM_LINE, GEOM_POLYGON};
+use tilecodec::mamaps::body::{Body, Feature, GEOM_LINE, GEOM_POLYGON, Layer as BodyLayer, NAME_NONE, Part, WINDING_OUTER};
+use tilecodec::mamaps::dict;
 use tilecodec::mamaps::dict::LAYER_TRAFFIC;
 
-const REAL_TILE: &[u8] = include_bytes!("../../../tests/fixtures/v5ca_z11_tile.mvt");
-
-/// The published tile, converted to a `.mamaps` body.
-///
-/// The fixture is still MVT because it was lifted out of the published archive with a ranged
-/// GET, and there is no published `.mamaps` archive yet. Going through `from_mvt` is what
-/// Phase 4 of the plan is: the container and this module are validated on data the tiler
-/// already produced and the app already drew, before any tag→kind schema work exists to be
-/// wrong.
+/// A representative v7 body: one `earth` polygon and one `water` polygon —
+/// the same layers the old MVT fixture carried, built directly as a body so
+/// the tests no longer depend on the MVT→body converter.
 fn real() -> Body {
-    let tile = tilecodec::mvt::Tile::decode(REAL_TILE).expect("the published tile decodes");
-    tilecodec::mamaps::from_mvt::from_tile(&tile).expect("converts").0
+    let mut body = Body::new(4096);
+    let mut earth = BodyLayer::new(dict::LAYER_EARTH);
+    earth.features.push(Feature {
+        kind: 1,
+        kind_detail: dict::NONE,
+        geom_type: GEOM_POLYGON,
+        flags: 0,
+        name_idx: NAME_NONE,
+        parts_offset: 0,
+        part_count: 1,
+        transit_color: 0,
+        transit_ordinal: 0,
+        transit_lanes: 0,
+        transit_taper: 0,
+        lane_count: 0,
+    });
+    earth.parts.push(Part { coord_start: 0, point_count: 4, winding: WINDING_OUTER });
+    earth.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
+    body.layers.push(earth);
+    let mut water = BodyLayer::new(dict::LAYER_WATER);
+    water.features.push(Feature {
+        kind: 4,
+        kind_detail: dict::NONE,
+        geom_type: GEOM_POLYGON,
+        flags: 0,
+        name_idx: NAME_NONE,
+        parts_offset: 0,
+        part_count: 1,
+        transit_color: 0,
+        transit_ordinal: 0,
+        transit_lanes: 0,
+        transit_taper: 0,
+        lane_count: 0,
+    });
+    water.parts.push(Part { coord_start: 0, point_count: 4, winding: WINDING_OUTER });
+    water.coords = vec![(500, 3000), (1100, 3000), (1100, 3400), (500, 3400)];
+    body.layers.push(water);
+    body
 }
 
 fn mesh_for<'a>(mesh: &'a TileMesh, layers: &[Layer], id: &str) -> Option<&'a LayerMesh> {
