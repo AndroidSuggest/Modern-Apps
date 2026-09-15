@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <!-- App name: launcher label and widget owner title -->
     <string name="app_name">Photos</string>
@@ -5,7 +6,6 @@
     <string name="gif_badge">GIF</string>
     <!-- Glance widget description shown in widget picker. Full sentence describing rotating photo widget -->
     <string name="photo_widget_description">A rotating photo from your gallery - tap to shuffle</string>
-
     <!-- Permission prompt button to grant READ_MEDIA_IMAGES/VIDEO. Verb phrase -->
     <string name="grant_image_video_permissions">Grant Image/Video Permissions</string>
     <!-- Button to request storage permission. Shown on Android versions below 13. Verb phrase -->
@@ -16,7 +16,6 @@
     <string name="this_app_needs_permission_to_manage_medi">This app needs permission to manage media files to function properly. Please grant \'Allow media management\' permission in Settings.</string>
     <!-- Button to open system Settings from permission blocker screen. Verb phrase -->
     <string name="open_settings">Open Settings</string>
-
     <!-- Navigation label: Gallery tab. Noun -->
     <string name="label_gallery">Gallery</string>
     <!-- Navigation label: Map tab. Noun -->
@@ -29,7 +28,6 @@
     <string name="label_trash">Trash</string>
     <!-- Navigation label: Secure Folder tab. Noun phrase -->
     <string name="label_secure_folder">Secure Folder</string>
-
     <!-- Empty state centered text when Secure Folder has no photos -->
     <string name="secure_folder_is_empty">Secure Folder is empty</string>
     <!-- Empty state centered text when Trash has no photos -->
@@ -43,7 +41,6 @@
         <item quantity="one"><xliff:g id="count" example="12">%1$d</xliff:g> photo</item>
         <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> photos</item>
     </plurals>
-
     <!-- Generic selection count badge in TopAppBar of Gallery, SecureFolder, Trash. %1$d = number selected -->
     <string name="items_selected"><xliff:g id="count" example="5">%1$d</xliff:g> selected</string>
     <!-- Vault viewer error when the encrypted file cannot be decrypted to the cache. Sentence -->
@@ -60,10 +57,8 @@
     <string name="photos_indexed_for_visual_search"><xliff:g id="done" example="120">%1$d</xliff:g> / <xliff:g id="total" example="500">%2$d</xliff:g> photos indexed for visual search</string>
     <!-- Gallery progress: text search OCR index progress. %1$d = done, %2$d = total -->
     <string name="photos_indexed_for_text_search"><xliff:g id="done" example="120">%1$d</xliff:g> / <xliff:g id="total" example="500">%2$d</xliff:g> photos indexed for text search</string>
-
     <!-- ListItem shown when the bundled AI search model could not be loaded -->
     <string name="semantic_search_unavailable">AI photo search is unavailable on this install. Text and filename search still work.</string>
-
     <!-- Empty state: no faces found yet, scanning happens in background background explanation -->
     <string name="people_empty">No people found yet. Scanning happens in the background — check back after your photos have been indexed.</string>
     <!-- Subtitle while face grouping still running. Sentence with ellipsis -->
@@ -86,7 +81,6 @@
         <!-- Plural: multiple people in photo -->
         <item quantity="other"><xliff:g id="count" example="3">%1$d</xliff:g> people</item>
     </plurals>
-
     <!-- Metadata row: capture date label. %1$s = formatted date e.g. Jan 5 2024 -->
     <string name="taken_on">Taken on: <xliff:g id="date" example="Jan 5, 2024">%1$s</xliff:g></string>
     <!-- Metadata row: reverse geocoded location. %1$s = place name -->
@@ -96,7 +90,7 @@
     <!-- Metadata row: file size on disk. %1$s = formatted size e.g. 2.5 MB -->
     <string name="file_size">Size: <xliff:g id="size" example="2.5 MB">%1$s</xliff:g></string>
     <!-- Metadata overlay placeholder while reverse geocoding pending. Verb present participle -->
-    <string name="detecting">Detecting&#8230;</string>
+    <string name="detecting">Detecting…</string>
     <!-- Button to open 360 degree photo viewer. Verb phrase with degree symbol -->
     <string name="view_360">View 360°</string>
     <!-- Button to open panorama viewer. Verb phrase -->
@@ -117,7 +111,6 @@
     <string name="secure_folder_relock_label">Lock when leaving</string>
     <!-- Secure Folder settings row description explaining the re-lock toggle. Sentence -->
     <string name="secure_folder_relock_description">When on, the Secure Folder locks every time you leave it and asks for unlock on every open.</string>
-
     <!-- TopAppBar title for photo editor screen. Verb phrase -->
     <string name="title_edit_photo">Edit Photo</string>
     <!-- Menu item: save, overwrites original. Verb -->
@@ -134,7 +127,6 @@
     <string name="export_as_png">Export as PNG</string>
     <!-- Apply current transformation/adjustment baking it in. Verb -->
     <string name="apply">Apply</string>
-
     <!-- TopAppBar title for video editor screen. Verb phrase -->
     <string name="title_edit_video">Edit Video</string>
     <!-- Video editor tool: trim clip length. Verb -->
@@ -179,7 +171,6 @@
     <string name="video_export_failed">Video export failed.</string>
     <!-- "Edit with" chooser label for the external video edit intent -->
     <string name="video_edit_with_label">Edit video with My App</string>
-
     <!-- Slider label: opacity of brush stroke. Noun -->
     <string name="opacity">Opacity</string>
     <!-- Slider label: thickness of brush/line. Noun -->
@@ -190,7 +181,6 @@
     <string name="draw">Draw</string>
     <!-- Recent colors section header. Adjective -->
     <string name="recent">Recent</string>
-
     <!-- Label for aspect ratio lock dropdown. Noun phrase -->
     <string name="aspect_ratio">Aspect ratio</string>
     <!-- Tooltip: drag corners to distort free transform. Sentence instruction -->
@@ -205,7 +195,6 @@
     <string name="edge_softness">Edge softness</string>
     <!-- Combine mode for selections: boolean combination. Verb -->
     <string name="combine">Combine</string>
-
     <!-- Tool: fill flood with color. Noun/verb ambiguous, used as tool name noun -->
     <string name="tolerance">Tolerance</string>
     <!-- Dialog title: edit text content for text layer -->
@@ -214,20 +203,16 @@
     <string name="tap_the_image_to_pick_a_color">Tap the image to pick a color.</string>
     <!-- Tool: font selection for text layer. Noun -->
     <string name="font">Font</string>
-
     <!-- Slider label: brush size for healing. Noun phrase -->
     <string name="brush_size">Brush Size</string>
     <!-- Switch label: set clone source point for healing/clone tool -->
     <string name="set_source_point">Set Source Point</string>
-
     <!-- Toggle: show mask overlay. Verb phrase -->
     <string name="show_mask">Show Mask</string>
     <!-- Button: add new mask to active layer. Verb phrase -->
     <string name="add_mask">Add Mask</string>
-
     <!-- Explanatory text after inverting colors: how to undo via layer visibility toggle -->
     <string name="colors_inverted_toggle_the_layer_s_visib">Colors inverted. Toggle the layer\'s visibility or delete the Invert layer to undo.</string>
-
     <!-- Info hint for draw tools row: explains freehand, highlight, erase, tap for text, tap again to change color/size -->
     <string name="draw_freehand_highlight_erase_or_tap_to">Draw freehand, highlight, erase, or tap to add text. Tap a tool again to change its color and size.</string>
     <!-- Info hint for crop aspect ratio lock: explains Free vs fixed width:height shape -->
@@ -244,7 +229,6 @@
     <string name="blurs_the_selection_s_edge_so_edits_fade">Blurs the selection\'s edge so edits fade in gradually. 0 = a hard, crisp edge.</string>
     <!-- Info hint for healing tool: fills selected area from surrounding pixels to remove object, works best on simple backgrounds -->
     <string name="fills_the_selected_area_from_surrounding">Fills the selected area from surrounding pixels to remove an object. Works best on simple backgrounds.</string>
-
     <!-- Slider: strength/intensity of effect. Noun -->
     <string name="strength">Strength</string>
     <!-- Slider: size generic. Noun -->
@@ -301,7 +285,6 @@
     <string name="magenta">Magenta</string>
     <!-- Color label: yellow. Noun color -->
     <string name="yellow">Yellow</string>
-
     <!-- HSL range: reds. Noun color -->
     <string name="color_red">Red</string>
     <!-- HSL range: orange. Noun color -->
@@ -312,7 +295,6 @@
     <string name="color_blue">Blue</string>
     <!-- HSL range: purple. Noun color -->
     <string name="color_purple">Purple</string>
-
     <!-- Blend mode: normal (default). Adjective -->
     <string name="blend_normal">Normal</string>
     <!-- Blend mode: multiply darkens. Verb -->
@@ -343,7 +325,6 @@
     <string name="blend_saturation">Saturation</string>
     <!-- Blend mode: luminosity preserves brightness. Noun -->
     <string name="blend_luminosity">Luminosity</string>
-
     <!-- Category: Adjust light &amp; color. Verb -->
     <string name="tool_cat_adjust">Adjust</string>
     <!-- Category: Filters effects, blur, presets. Noun plural -->
@@ -376,7 +357,6 @@
     <string name="tool_cat_desc_paint">Fill, gradients, and shapes.</string>
     <!-- Category description: manage layers and masks -->
     <string name="tool_cat_desc_layers">Manage layers and masks.</string>
-
     <!-- Selection tool: Rectangle shape. Noun -->
     <string name="sel_tool_rectangle">Rectangle</string>
     <!-- Selection tool: Ellipse oval shape. Noun -->
@@ -387,7 +367,6 @@
     <string name="sel_tool_polygon">Polygon</string>
     <!-- Selection tool: magic wand color-based. Noun phrase -->
     <string name="sel_tool_wand">Magic Wand</string>
-
     <!-- Adjustment: brightness slider. Noun -->
     <string name="adj_brightness">Brightness</string>
     <!-- Adjustment: contrast slider. Noun -->
@@ -412,7 +391,6 @@
     <string name="adj_fade">Fade</string>
     <!-- Adjustment: tint hue shift. Noun -->
     <string name="adj_tint">Tint</string>
-
     <!-- Tool: light adjustments summary (brightness/contrast etc). Noun -->
     <string name="tool_light">Light</string>
     <!-- Tool: preset looks one-tap filter. Noun plural -->
@@ -469,7 +447,6 @@
     <string name="tool_line">Line</string>
     <!-- Tool: eyedropper pick color from image. Noun -->
     <string name="tool_eyedropper">Eyedropper</string>
-
     <!-- Wallpaper setting screen -->
     <!-- Title for wallpaper crop/preview screen. Verb phrase -->
     <string name="set_as_wallpaper">Set as wallpaper</string>
@@ -493,9 +470,8 @@
     <string name="wallpaper_set_failed">Failed to set wallpaper: <xliff:g id="error" example="IO error">%1$s</xliff:g></string>
     <!-- Error when full-res image cannot be decoded for wallpaper. Sentence -->
     <string name="wallpaper_load_failed">Failed to load image</string>
-
     <!-- Empty description when no mode active -->
-    <string name="editor_desc_none"></string>
+    <string name="editor_desc_none">Empty description when no mode active</string>
     <!-- Desc: fine-tune light and color with sliders -->
     <string name="editor_desc_adjust">Fine-tune light and color with sliders.</string>
     <!-- Desc: apply a one-tap preset look -->
