@@ -23,6 +23,10 @@
     <string name="notification_channel_departure_name"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> · Departures</string>
     <!-- Per-person departure channel description. %1$s = person name -->
     <string name="notification_channel_departure_desc">Notifications when <xliff:g id="person_name" example="Alice">%1$s</xliff:g> leaves a place</string>
+    <!-- Per-person no-show channel name. %1$s = person name, e.g. Alice -->
+    <string name="notification_channel_noshow_name"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> · No-show alerts</string>
+    <!-- Per-person no-show channel description. %1$s = person name -->
+    <string name="notification_channel_noshow_desc">Notifications when <xliff:g id="person_name" example="Alice">%1$s</xliff:g> doesn\'t arrive at an expected place</string>
     <!-- PersonDetailSheet: button opening system settings for this person's arrival notifications -->
     <string name="notification_settings_arrival">Arrival alerts</string>
     <!-- PersonDetailSheet: button opening system settings for this person's departure notifications -->
@@ -336,4 +340,28 @@
     <string name="permission_bluetooth_granted">Bluetooth allowed</string>
     <!-- Initial permission screen, step 3: why Bluetooth is needed. Kept to one sentence -->
     <string name="permission_bluetooth_explanation">Needed to find devices that are nearby.</string>
+
+    <!-- PersonDetailSheet: button opening the no-show watch dialog for this person. Verb phrase -->
+    <string name="noshow_watch_button">Watch for no-show</string>
+    <!-- NoShowAlertDialog: title. %1$s = person name, e.g. Alice. Sentence -->
+    <string name="noshow_title">Watch for <xliff:g id="person_name" example="Alice">%1$s</xliff:g> not arriving</string>
+    <!-- NoShowAlertDialog: label for the expected-place dropdown. Noun phrase -->
+    <string name="noshow_place_label">Expected place</string>
+    <!-- NoShowAlertDialog: dropdown option meaning any location update counts as arrival. Noun -->
+    <string name="noshow_place_any">Anywhere</string>
+    <!-- NoShowAlertDialog: placeholder on the date button before a date is picked. Verb phrase -->
+    <string name="noshow_pick_date">Pick date</string>
+    <!-- NoShowAlertDialog: placeholder on the time button before a time is picked. Verb phrase -->
+    <string name="noshow_pick_time">Pick time</string>
+    <!-- NoShowAlertDialog: label for the grace-period dropdown. Noun phrase -->
+    <string name="noshow_grace_label">Wait extra</string>
+    <!-- NoShowAlertDialog: grace-period dropdown option. %1$d = minutes, e.g. 30. Duration noun, pluralized -->
+    <plurals name="noshow_grace_minutes">
+        <item quantity="one"><xliff:g id="minutes" example="1">%1$d</xliff:g> minute</item>
+        <item quantity="other"><xliff:g id="minutes" example="30">%1$d</xliff:g> minutes</item>
+    </plurals>
+    <!-- NoShowAlertDialog: primary button saving the watch. Verb phrase -->
+    <string name="noshow_save">Watch</string>
+    <!-- NoShowAlertDialog: snackbar confirmation after the watch is saved. Sentence -->
+    <string name="noshow_scheduled">No-show watch set</string>
 </resources>

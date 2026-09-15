@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use tile_build::geom::*; use tile_build::mvt::DEFAULT_EXTENT;
 
     #[test]
     fn projection_anchors_are_right() {
@@ -364,3 +364,4 @@ mod tests {
         assert!(!a.intersects(&c) && !c.intersects(&a));
     }
 }
+

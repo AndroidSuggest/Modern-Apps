@@ -175,7 +175,7 @@ pub fn filter_ring(ring: &[SigPt], tol_sq: f64) -> Option<Vec<SigPt>> {
 /// The path's own two ends are [`ALWAYS`]: a line must keep its endpoints, and for
 /// a closed ring the two ends are the same place, so anchoring both is what keeps
 /// the ring closed.
-pub(crate) fn annotate_path(pts: &mut [SigPt]) {
+pub fn annotate_path(pts: &mut [SigPt]) {
     let Some(last) = pts.len().checked_sub(1) else { return };
     pts[0].sig = ALWAYS;
     pts[last].sig = ALWAYS;
@@ -226,7 +226,7 @@ fn mark(pts: &mut [SigPt], first: usize, last: usize) {
 /// (`a == b`), and past that the chords are arbitrary, so a vertex beyond an
 /// endpoint would otherwise be scored by a perpendicular that misses the segment
 /// entirely. This is geojson-vt's `getSqSegDist`.
-pub(crate) fn seg_dist_sq(p: SigPt, a: SigPt, b: SigPt) -> f64 {
+pub fn seg_dist_sq(p: SigPt, a: SigPt, b: SigPt) -> f64 {
     let (mut x, mut y) = (a.x, a.y);
     let (dx, dy) = (b.x - x, b.y - y);
     let len_sq = dx * dx + dy * dy;

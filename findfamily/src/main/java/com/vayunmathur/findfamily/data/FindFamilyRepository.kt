@@ -27,6 +27,7 @@ class FindFamilyRepository private constructor(context: Context) :
     private val waypointDao: WaypointDao get() = db.waypointDao()
     private val locationValueDao: LocationValueDao get() = db.locationValueDao()
     private val temporaryLinkDao: TemporaryLinkDao get() = db.temporaryLinkDao()
+    private val noShowAlertDao: NoShowAlertDao get() = db.noShowAlertDao()
 
     // ------------------------------------------------------------------
     // Read flows (cold)
@@ -35,6 +36,7 @@ class FindFamilyRepository private constructor(context: Context) :
     val users: Flow<List<User>> get() = userDao.getAllFlow()
     val waypoints: Flow<List<Waypoint>> get() = waypointDao.getAllFlow()
     val temporaryLinks: Flow<List<TemporaryLink>> get() = temporaryLinkDao.getAllFlow()
+    val noShowAlerts: Flow<List<NoShowAlert>> get() = noShowAlertDao.getAllFlow()
 
     /** Latest [LocationValue] per user id (the "present" position of everyone). */
     val latestLocationByUser: Flow<Map<Long, LocationValue>>
@@ -112,6 +114,19 @@ class FindFamilyRepository private constructor(context: Context) :
     suspend fun getAllTemporaryLinks(): List<TemporaryLink> = temporaryLinkDao.getAll()
     suspend fun upsertTemporaryLink(link: TemporaryLink): Long = temporaryLinkDao.upsert(link)
     suspend fun deleteTemporaryLink(link: TemporaryLink): Int = temporaryLinkDao.delete(link)
+
+    // ------------------------------------------------------------------
+    // NoShowAlert reads / writes
+    // ------------------------------------------------------------------
+
+    suspend fun getNoShowAlert(id: Long): NoShowAlert? = noShowAlertDao.get(id)
+    suspend fun getAllNoShowAlerts(): List<NoShowAlert> = noShowAlertDao.getAll()
+    suspend fun getDueNoShowAlerts(nowEpochSeconds: Long): List<NoShowAlert> =
+        noShowAlertDao.getDue(nowEpochSeconds)
+    suspend fun upsertNoShowAlert(alert: NoShowAlert): Long = noShowAlertDao.upsert(alert)
+    suspend fun deleteNoShowAlert(alert: NoShowAlert): Int = noShowAlertDao.delete(alert)
+    suspend fun markNoShowAlertFired(id: Long): Int = noShowAlertDao.markFired(id)
+    suspend fun rearmNoShowAlert(id: Long): Int = noShowAlertDao.rearm(id)
 
     companion object {
         @Volatile

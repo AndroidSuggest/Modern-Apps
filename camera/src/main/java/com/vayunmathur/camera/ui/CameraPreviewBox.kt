@@ -54,6 +54,12 @@ import com.vayunmathur.camera.util.setWarmth
 import com.vayunmathur.camera.util.setZoomRatio
 import com.vayunmathur.camera.util.toggleNightModeOverride
 
+/** Maps the CameraX selector facing int to the pure lens-facing model. */
+private fun currentLensFacing(selectorInt: Int): com.vayunmathur.camera.domain.LensFacing =
+    if (selectorInt == androidx.camera.core.CameraSelector.LENS_FACING_FRONT)
+        com.vayunmathur.camera.domain.LensFacing.FRONT
+    else com.vayunmathur.camera.domain.LensFacing.BACK
+
 /**
  * The letterboxed viewfinder plus its gesture handling, bokeh/color RenderEffects,
  * grid/level/night overlays, settings column and panorama overlay. Extracted verbatim
@@ -99,6 +105,7 @@ internal fun BoxWithConstraintsScope.CameraPreviewBox(
                     !it.isRecycled && it.width > 0 && it.height > 0
                 }
                 val hasBokeh = cameraMode == CameraMode.PORTRAIT && currentMask != null
+                android.util.Log.d("BokehDebug", "render mode=$cameraMode hasBokeh=$hasBokeh mask=${currentMask?.width}x${currentMask?.height}")
                 if (hasBokeh || hasColorAdj) {
                     Modifier.graphicsLayer {
                         var effect: RenderEffect? = null
@@ -234,6 +241,9 @@ internal fun BoxWithConstraintsScope.CameraPreviewBox(
 
     CameraSettingsColumn(
         activeSetting = state.activeSetting,
+        availableLenses = state.availableLenses.filter { it.facing == currentLensFacing(state.lensFacing) },
+        selectedLens = state.selectedLens,
+        onLensSelected = { viewModel.selectLens(it) },
         zoomRatio = state.zoomRatio,
         availableZoomLevels = state.availableZoomLevels,
         onZoomSelected = { viewModel.setZoomRatio(it) },

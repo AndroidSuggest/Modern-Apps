@@ -224,6 +224,22 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     internal val _lensFacing = MutableStateFlow(CameraSelector.LENS_FACING_BACK)
     val lensFacing = _lensFacing.asStateFlow()
 
+    internal val _availableLenses = MutableStateFlow<List<com.vayunmathur.camera.domain.PhysicalLens>>(emptyList())
+    val availableLenses = _availableLenses.asStateFlow()
+
+    internal val _selectedLens = MutableStateFlow<com.vayunmathur.camera.domain.PhysicalLens?>(null)
+    val selectedLens = _selectedLens.asStateFlow()
+
+    internal val _lensCapabilities =
+        MutableStateFlow<com.vayunmathur.camera.platform.LensCapabilities?>(null)
+    val lensCapabilities = _lensCapabilities.asStateFlow()
+
+    internal val _hasFlashUnit = MutableStateFlow(true)
+    val hasFlashUnit = _hasFlashUnit.asStateFlow()
+
+    internal val _exposureCompRange = MutableStateFlow<ClosedRange<Float>?>(null)
+    val exposureCompRange = _exposureCompRange.asStateFlow()
+
     internal val _flashMode = MutableStateFlow(FlashMode.OFF)
     val flashMode = _flashMode.asStateFlow()
 
@@ -660,6 +676,35 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
         if (_cameraMode.value == CameraMode.SLOW_MO) return
         _lensFacing.value = if (_lensFacing.value == CameraSelector.LENS_FACING_BACK)
             CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+        // Preserve the lens family across the flip: e.g. UW back -> front lens,
+        // tele back -> front lens (front has a single family, anchored at its default).
+        val facing = if (_lensFacing.value == CameraSelector.LENS_FACING_BACK)
+            com.vayunmathur.camera.domain.LensFacing.BACK
+        else com.vayunmathur.camera.domain.LensFacing.FRONT
+        _selectedLens.value =
+            com.vayunmathur.camera.domain.LensSelectionLogic.filterByFacing(
+                _availableLenses.value, facing
+            ).minByOrNull { it.fallbackPriority }
+        resetNightModeDetection()
+    }
+
+    /**
+     * Selects a physical lens within the current facing family. The session
+     * rebind effect is keyed on [selectedLens], so this triggers a rebind with
+     * the filtered selector plus a capability refresh. Unknown lenses are
+     * ignored so a stale UI entry can never crash a bind.
+     */
+    fun selectLens(lens: com.vayunmathur.camera.domain.PhysicalLens) {
+        if (lens.facing != (
+            if (_lensFacing.value == CameraSelector.LENS_FACING_BACK)
+                com.vayunmathur.camera.domain.LensFacing.BACK
+            else com.vayunmathur.camera.domain.LensFacing.FRONT
+            )
+        ) {
+            return
+        }
+        if (lens !in _availableLenses.value) return
+        _selectedLens.value = lens
         resetNightModeDetection()
     }
 

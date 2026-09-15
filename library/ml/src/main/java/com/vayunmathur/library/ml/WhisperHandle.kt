@@ -5,6 +5,8 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.res.AssetManager
 import android.util.Log
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
 
@@ -46,6 +48,13 @@ import java.nio.LongBuffer
  * operator outside the reduced build, or when the ids do not describe this model — and then
  * [transcribe] returns null.
  *
+ * When the Vulkan backend is usable and a graph is allowlisted, that graph runs on the
+ * Vulkan fast path and ORT is kept only as the fallback, per graph: a Vulkan failure (or
+ * short output) falls back to the ORT session when it exists, preserving the null-on-failure
+ * contract. The encoder needs no cache; the decoder threads a native KV cache (one
+ * `kvCreate` per transcription, mirroring the [Past]/emptyPast structure below) and the
+ * 51,865-wide argmax goes through the bridge so the host never scans the full row.
+ *
  * # Threading
  *
  * Not thread-safe, and more sharply than most handles here: a transcription threads the KV
@@ -55,13 +64,17 @@ import java.nio.LongBuffer
 class WhisperHandle private constructor(private val source: String) : AutoCloseable {
     private var encoder: OrtSession? = null
     private var decoder: OrtSession? = null
+    private var vulkanEnc: Long = 0L
+    private var vulkanDec: Long = 0L
     private var special: IntArray = IntArray(0)
     private var suppress: Set<Int> = emptySet()
     private var suppressAtBegin: Set<Int> = emptySet()
     private var assetDir: String = DIR
 
-    /** True if both graphs came up and the ids describe the model they were built from. */
-    val isAvailable: Boolean get() = encoder != null && decoder != null
+    /** True if both graphs came up — on Vulkan, on ORT, or one of each — and the ids describe them. */
+    val isAvailable: Boolean
+        get() = (encoder != null || vulkanEnc != 0L) &&
+            (decoder != null || vulkanDec != 0L)
 
     /**
      * Transcribe one 30-second log-mel window into token ids, or null on failure.
@@ -71,13 +84,19 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
      * timestamp ones.
      */
     fun transcribe(mel: FloatArray, languageToken: Int): IntArray? {
-        val enc = encoder ?: return null
-        val dec = decoder ?: return null
         if (mel.size != MELS * FRAMES) return null
         if (special.size != SPECIAL_IDS) return null
+        // Vulkan-first, per graph; any failure drops through to the ORT path.
+        try {
+            vulkanTranscribe(mel, languageToken)?.let { return it }
+        } catch (e: Throwable) {
+            Log.w(TAG, "whisper vulkan transcription failed, falling back to ORT", e)
+        }
+        val dec = decoder ?: return null
         return try {
             val env = OrtEnvironment.getEnvironment()
-            encode(enc, env, mel).useOrt { hidden ->
+            ortHiddenTensor(env, mel).useOrt { hidden ->
+                if (hidden == null) return null
                 val lang = if (languageToken < 0) {
                     detectLanguage(dec, env, hidden) ?: return null
                 } else {
@@ -94,8 +113,45 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
         }
     }
 
-    /** Free both networks. Idempotent. */
+    /**
+     * ORT hidden states for [mel]: the ORT encoder when it exists, otherwise the
+     * Vulkan encoder's floats wrapped back into a tensor so a mixed
+     * Vulkan-encode + ORT-decode turn still serves. Null when neither can encode.
+     */
+    private fun ortHiddenTensor(env: OrtEnvironment, mel: FloatArray): OnnxTensor? {
+        val enc = encoder
+        if (enc != null) {
+            return runCatching { encode(enc, env, mel) }.getOrNull()
+        }
+        val fast = runCatching { vulkanEncodeMel(mel) }.getOrNull() ?: return null
+        return runCatching {
+            OnnxTensor.createTensor(
+                env, FloatBuffer.wrap(fast.data),
+                longArrayOf(1, fast.seq.toLong(), fast.dim.toLong()),
+            )
+        }.getOrNull()
+    }
+
+    /** Free both networks (Vulkan and/or ORT). Idempotent. */
     override fun close() {
+        val encHandle = vulkanEnc
+        vulkanEnc = 0L
+        if (encHandle != 0L) {
+            try {
+                VulkanSessions.close(encHandle)
+            } catch (e: Throwable) {
+                Log.w(TAG, "whisper vulkan encoder close failed", e)
+            }
+        }
+        val decHandle = vulkanDec
+        vulkanDec = 0L
+        if (decHandle != 0L) {
+            try {
+                VulkanSessions.close(decHandle)
+            } catch (e: Throwable) {
+                Log.w(TAG, "whisper vulkan decoder close failed", e)
+            }
+        }
         encoder = null
         decoder = null
         OnnxSessions.close(sessionKey(ENCODER))
@@ -107,6 +163,242 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
     private fun sessionKey(name: String): String = "$sessionPrefix$assetDir/$name"
 
     override fun toString(): String = "whisper-base from $source"
+
+    // -- Vulkan fast path -----------------------------------------------------
+
+    /** Encoder output materialised on the host so either decoder can consume it. */
+    private class EncHidden(val data: FloatArray, val seq: Int, val dim: Int)
+
+    /**
+     * Best-effort Vulkan transcription; null when Vulkan cannot serve it so the caller
+     * falls back to ORT. Either, both, or neither graph may be on Vulkan — the hidden
+     * states cross the boundary as plain floats.
+     */
+    private fun vulkanTranscribe(mel: FloatArray, languageToken: Int): IntArray? {
+        val vDec = vulkanDec
+        // Without a Vulkan decoder the fast path cannot serve the turn: the ORT
+        // caller handles whole turns itself (including mixed Vulkan-encode graphs
+        // via [ortHiddenTensor]), so bail before spending an encode here.
+        if (vDec == 0L) return null
+        // Encode: Vulkan-first, ORT fallback.
+        var hidden: EncHidden? = null
+        if (vulkanEnc != 0L) {
+            hidden = runCatching { vulkanEncodeMel(mel) }.getOrNull()
+            if (hidden == null) Log.w(TAG, "whisper vulkan encode failed, trying ORT encode")
+        }
+        if (hidden == null) {
+            val enc = encoder ?: return null
+            hidden = runCatching {
+                val env = OrtEnvironment.getEnvironment()
+                encode(enc, env, mel).useOrt { tensor ->
+                    val shape = tensor.info.shape
+                    val flat = FloatArray(tensor.floatBuffer.remaining())
+                    tensor.floatBuffer.get(flat)
+                    EncHidden(flat, shape[1].toInt(), shape[2].toInt())
+                }
+            }.getOrNull() ?: return null
+        }
+        val encHidden = hidden
+        val promptLang = if (languageToken < 0) {
+            vulkanDetectLanguage(vDec, encHidden) ?: return null
+        } else {
+            languageToken
+        }
+        val prompt = intArrayOf(special[0], promptLang, special[2], special[3])
+        return vulkanGreedyDecode(vDec, encHidden, prompt)
+    }
+
+    /** One encoder run over Vulkan; null when the bridge returns nothing usable. */
+    private fun vulkanEncodeMel(mel: FloatArray): EncHidden? {
+        val handle = vulkanEnc
+        if (handle == 0L) return null
+        val names = arrayOf("input_features")
+        val dtypes = intArrayOf(DTYPE_F32)
+        val shapes = longArrayOf(1, MELS.toLong(), FRAMES.toLong())
+        val payload = packFloats(mel)
+        val outBytes = VulkanBridge.run(handle, names, dtypes, shapes, intArrayOf(0), payload)
+            ?: return null
+        val floats = leToFloats(outBytes)
+        if (floats.isEmpty()) {
+            Log.w(TAG, "whisper vulkan encoder returned no floats")
+            return null
+        }
+        // Prefer the bridge's output metadata; fall back to the known [1, 1500, 512].
+        val outShapes = runCatching { VulkanBridge.lastOutputShapes(handle) }.getOrNull()
+        var seq = ENC_SEQ
+        var dim = ENC_DIM
+        if (outShapes != null && outShapes.size == 3) {
+            seq = outShapes[1].toInt()
+            dim = outShapes[2].toInt()
+        }
+        if (seq <= 0 || dim <= 0 || floats.size != seq * dim) {
+            // Last resort: infer the sequence length from the payload itself.
+            if (floats.size % ENC_DIM == 0) {
+                seq = floats.size / ENC_DIM
+                dim = ENC_DIM
+            } else {
+                Log.w(TAG, "whisper vulkan encoder returned ${floats.size} floats, want ${ENC_SEQ * ENC_DIM}")
+                return null
+            }
+        }
+        return EncHidden(floats, seq, dim)
+    }
+
+    /** Language detection over Vulkan: one uncached step from `<|startoftranscript|>`. */
+    private fun vulkanDetectLanguage(decHandle: Long, hidden: EncHidden): Int? {
+        return try {
+            val kv = VulkanBridge.kvCreate(decHandle, DETECT_MAX_SEQ)
+            if (kv == 0L) return null
+            try {
+                val outBytes = VulkanBridge.runCached(
+                    decHandle, kv,
+                    arrayOf("input_ids", "encoder_hidden_states", "use_cache_branch"),
+                    intArrayOf(DTYPE_I64, DTYPE_F32, DTYPE_BOOL),
+                    longArrayOf(1, 1, 1, hidden.seq.toLong(), hidden.dim.toLong(), 1),
+                    intArrayOf(0, 2, 5),
+                    packDecodeStep(intArrayOf(special[0]), hidden.data, useCache = false),
+                ) ?: return null
+                val floats = leToFloats(outBytes)
+                if (floats.isEmpty()) return null
+                val vocab = floats.size // seqLen is 1 here.
+                val fallback = 50259
+                var best = fallback
+                var bestScore = -Float.MAX_VALUE
+                for (id in languages) {
+                    if (id < vocab && floats[id] > bestScore) {
+                        bestScore = floats[id]
+                        best = id
+                    }
+                }
+                best
+            } finally {
+                runCatching { VulkanBridge.kvClose(kv) }
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "whisper vulkan language detection failed, assuming en", e)
+            50259
+        }
+    }
+
+    /**
+     * Greedy decode over Vulkan, mirroring [greedyDecode]: the prompt goes out uncached
+     * (which makes the graph compute cross-attention K/V from the hidden states), then
+     * one-token cached steps thread the native KV cache. The large-vocabulary argmax
+     * runs on the bridge; the host parse is only the fallback.
+     */
+    private fun vulkanGreedyDecode(
+        decHandle: Long,
+        hidden: EncHidden,
+        prompt: IntArray,
+    ): IntArray? {
+        val limit = (special[4] - prompt.size).coerceAtMost(MAX_NEW_TOKENS)
+        if (limit <= 0) return IntArray(0)
+        val kv = try {
+            VulkanBridge.kvCreate(decHandle, prompt.size + limit)
+        } catch (e: Throwable) {
+            Log.w(TAG, "whisper vulkan kvCreate failed", e)
+            return null
+        }
+        if (kv == 0L) return null
+        val out = ArrayList<Int>()
+        try {
+            var next = -1
+            var step = 0
+            while (step < limit) {
+                val ids = if (step == 0) prompt else intArrayOf(next)
+                val payload = packDecodeStep(ids, hidden.data, useCache = step > 0)
+                val shapes = longArrayOf(
+                    1, ids.size.toLong(),
+                    1, hidden.seq.toLong(), hidden.dim.toLong(),
+                    1,
+                )
+                val outBytes = try {
+                    VulkanBridge.runCached(
+                        decHandle, kv,
+                        arrayOf("input_ids", "encoder_hidden_states", "use_cache_branch"),
+                        intArrayOf(DTYPE_I64, DTYPE_F32, DTYPE_BOOL),
+                        shapes, intArrayOf(0, 2, 5), payload,
+                    )
+                } catch (e: Throwable) {
+                    Log.w(TAG, "whisper vulkan decode step $step failed", e)
+                    return null
+                } ?: return null
+                next = vulkanArgmax(outBytes, ids.size, step == 0) ?: return null
+                step++
+                if (next == special[1]) break
+                out.add(next)
+            }
+            return out.toIntArray()
+        } finally {
+            runCatching { VulkanBridge.kvClose(kv) }
+        }
+    }
+
+    /**
+     * Argmax of the last logits row via the bridge, with the same suppression as the
+     * ORT path; falls back to a host scan of the payload.
+     */
+    private fun vulkanArgmax(payload: ByteArray, seqLen: Int, firstStep: Boolean): Int? {
+        val suppressMerged = if (firstStep) {
+            (suppress + suppressAtBegin).toIntArray()
+        } else {
+            suppress.toIntArray()
+        }
+        val floats = leToFloats(payload)
+        if (floats.isEmpty()) return null
+        val vocab = floats.size / seqLen
+        if (vocab <= 0 || floats.size % seqLen != 0) return null
+        try {
+            return VulkanBridge.argmaxLastRow(payload, seqLen, vocab, suppressMerged)
+        } catch (e: Throwable) {
+            Log.w(TAG, "whisper bridge argmax failed, scanning on host", e)
+        }
+        var best = 0
+        var bestScore = -Float.MAX_VALUE
+        val base = (seqLen - 1) * vocab
+        val skip = suppressMerged.toSet()
+        for (i in 0 until vocab) {
+            if (i in skip) continue
+            val score = floats[base + i]
+            if (score > bestScore) {
+                bestScore = score
+                best = i
+            }
+        }
+        return best
+    }
+
+    /**
+     * Best-effort Vulkan open for one graph; leaves the handle at 0 on any failure so
+     * ORT stays the fallback. The model bytes are read once and shared by the
+     * preflight check and the open.
+     */
+    private fun tryVulkan(key: String, readModel: () -> ByteArray, assign: (Long) -> Unit) {
+        try {
+            if (!VulkanSessions.isUsable()) return
+            if (key !in VulkanSessions.allowlist) return
+            val modelBytes = try {
+                readModel()
+            } catch (e: Throwable) {
+                Log.w(TAG, "cannot read $key for vulkan preflight", e)
+                return
+            }
+            val problem = VulkanSessions.preflight(key) { modelBytes }
+            if (problem != null) {
+                Log.w(TAG, "vulkan preflight skipped for $key: $problem")
+                return
+            }
+            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            if (handle != 0L) {
+                assign(handle)
+                Log.i(TAG, "vulkan session open for $key")
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "vulkan open failed for $key, using ORT", e)
+        }
+    }
+
+    // -- ORT path (unchanged) -------------------------------------------------
 
     private fun encode(enc: OrtSession, env: OrtEnvironment, mel: FloatArray): OnnxTensor {
         val shape = longArrayOf(1, MELS.toLong(), FRAMES.toLong())
@@ -279,6 +571,18 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
          */
         const val SPECIAL_IDS = 5
 
+        /** Encoder output geometry: 3000 mel frames through the /2 stem, width 512. */
+        private const val ENC_SEQ = 1500
+        private const val ENC_DIM = 512
+
+        /** Positions the detection probe may occupy: prompt length plus one. */
+        private const val DETECT_MAX_SEQ = 8
+
+        /** ONNX TensorProto elem types as carried in the Vulkan `dtypes` array. */
+        private const val DTYPE_F32 = 1
+        private const val DTYPE_I64 = 7
+        private const val DTYPE_BOOL = 9
+
         /**
          * The model from the APK's assets, which is the only place it lives.
          *
@@ -306,6 +610,12 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             instance.suppressAtBegin = suppressAtBegin.toSet()
             instance.encoder = OnnxSessions.openAssetManager(assets, "$path/$ENCODER")
             instance.decoder = OnnxSessions.openAssetManager(assets, "$path/$DECODER")
+            instance.tryVulkan(instance.sessionKey(ENCODER), { assets.open("$path/$ENCODER").use { it.readBytes() } }) {
+                instance.vulkanEnc = it
+            }
+            instance.tryVulkan(instance.sessionKey(DECODER), { assets.open("$path/$DECODER").use { it.readBytes() } }) {
+                instance.vulkanDec = it
+            }
             if (!instance.isAvailable) Log.e(TAG, "cannot open $path")
             return instance
         }
@@ -339,6 +649,14 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             instance.decoder = OnnxSessions.open(instance.sessionKey(DECODER)) {
                 java.io.File(directory, DECODER).readBytes()
             }
+            val encKey = "file:${java.io.File(directory, ENCODER).absolutePath}"
+            val decKey = "file:${java.io.File(directory, DECODER).absolutePath}"
+            instance.tryVulkan(encKey, { java.io.File(directory, ENCODER).readBytes() }) {
+                instance.vulkanEnc = it
+            }
+            instance.tryVulkan(decKey, { java.io.File(directory, DECODER).readBytes() }) {
+                instance.vulkanDec = it
+            }
             if (!instance.isAvailable) Log.e(TAG, "cannot open $directory")
             return instance
         }
@@ -358,6 +676,28 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
                     for (kv in listOf("key", "value")) add("past_key_values.$i.$kind.$kv")
                 }
             }
+        }
+
+        /** `input_ids` (i64) + `encoder_hidden_states` (f32) + `use_cache_branch` (bool), packed in order. */
+        private fun packDecodeStep(ids: IntArray, hidden: FloatArray, useCache: Boolean): ByteArray {
+            val buf = ByteBuffer.allocate(ids.size * 8 + hidden.size * 4 + 1)
+                .order(ByteOrder.LITTLE_ENDIAN)
+            for (id in ids) buf.putLong(id.toLong())
+            for (v in hidden) buf.putFloat(v)
+            buf.put(if (useCache) 1 else 0)
+            return buf.array()
+        }
+
+        private fun packFloats(values: FloatArray): ByteArray {
+            val buf = ByteBuffer.allocate(values.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+            for (v in values) buf.putFloat(v)
+            return buf.array()
+        }
+
+        private fun leToFloats(bytes: ByteArray): FloatArray {
+            val out = FloatArray(bytes.size / 4)
+            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(out)
+            return out
         }
     }
 }

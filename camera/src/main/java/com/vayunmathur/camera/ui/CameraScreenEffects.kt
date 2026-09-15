@@ -53,6 +53,7 @@ internal fun CameraScreenEffects(
     val context = LocalContext.current
     val cameraMode = state.cameraMode
     val lensFacing = state.lensFacing
+    val selectedLens = state.selectedLens
     val sessionKind = state.sessionKind
     val useNightPreview = state.useNightPreview
 
@@ -100,7 +101,7 @@ internal fun CameraScreenEffects(
     // Whether to offer the NIGHT extension. Reactive: the ViewModel recomputes it on lens/mode
     // change (off-main; support probe + weekly failure cache) AND flips it false immediately if a
     // night bind fails, so a broken extender (GrapheneOS/Pixel) stops engaging night after one try.
-    LaunchedEffect(lensFacing, cameraMode) {
+    LaunchedEffect(lensFacing, selectedLens, cameraMode) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             viewModel.refreshNightExtensionUsable(cameraMode)
         }
@@ -124,8 +125,9 @@ internal fun CameraScreenEffects(
 
     // Analyzer selection for the photo modes. Keyed on photoSessionActive so the analyzer is
     // re-applied to the freshly-bound ImageAnalysis after every (re)bind (mode switch / flip), and
-    // on lensFacing to match the DisposableEffect below, which detaches on a flip.
-    LaunchedEffect(cameraMode, state.photoSessionActive, lensFacing) {
+    // on lensFacing + selectedLens to match the DisposableEffect below, which detaches on a
+    // flip or lens switch.
+    LaunchedEffect(cameraMode, state.photoSessionActive, lensFacing, selectedLens) {
         when {
             cameraMode == CameraMode.SLOW_MO -> {
                 state.maskBitmap = null
@@ -176,21 +178,26 @@ internal fun CameraScreenEffects(
     // Mask callback comes from bokeh thread; post recycle+set to main to avoid racing with
     // the RenderEffect reading the previous Bitmap on the UI thread.
     val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
-    DisposableEffect(cameraMode, state.photoSessionActive, lensFacing) {
+    DisposableEffect(cameraMode, state.photoSessionActive, lensFacing, selectedLens) {
         val analyzer = if (cameraMode == CameraMode.PORTRAIT) {
             BokehAnalyzer(
                 context,
                 isFrontFacing = lensFacing == CameraSelector.LENS_FACING_FRONT
             ) { mask ->
+                android.util.Log.d("BokehDebug", "mask arrived ${mask.width}x${mask.height} recycled=${mask.isRecycled}")
                 if (mask.isRecycled) return@BokehAnalyzer
                 mainHandler.post {
                     // If mask was recycled while message queued, drop it
-                    if (mask.isRecycled) return@post
+                    if (mask.isRecycled) {
+                        android.util.Log.d("BokehDebug", "mask recycled before post ran")
+                        return@post
+                    }
                     val prev = state.maskBitmap
                     if (prev != null && prev !== mask && !prev.isRecycled) {
                         try { prev.recycle() } catch (_: Exception) {}
                     }
                     state.maskBitmap = mask
+                    android.util.Log.d("BokehDebug", "mask stored ${mask.width}x${mask.height}")
                 }
             }.also {
                 viewModel.setBokehAnalyzer(it)
@@ -220,8 +227,8 @@ internal fun CameraScreenEffects(
     // backgrounded and rebound on resume. Without this the ManualLifecycleOwner stays RESUMED,
     // the OS reclaims the camera while we're away, and the preview comes back frozen.
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(lensFacing, sessionKind, useNightPreview, lifecycleOwner) {
-        Log.d("NightPreview", "CameraScreen session LaunchedEffect START keys lensFacing=$lensFacing sessionKind=$sessionKind useNightPreview=$useNightPreview lifecycle=${lifecycleOwner.lifecycle.currentState} thread=${Thread.currentThread().name}")
+    LaunchedEffect(lensFacing, selectedLens, sessionKind, useNightPreview, lifecycleOwner) {
+        Log.d("NightPreview", "CameraScreen session LaunchedEffect START keys lensFacing=$lensFacing selectedLens=${selectedLens?.labelKey} sessionKind=$sessionKind useNightPreview=$useNightPreview lifecycle=${lifecycleOwner.lifecycle.currentState} thread=${Thread.currentThread().name}")
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             Log.d("NightPreview", "CameraScreen repeatOnLifecycle STARTED – calling teardownSession()")
             viewModel.teardownSession()

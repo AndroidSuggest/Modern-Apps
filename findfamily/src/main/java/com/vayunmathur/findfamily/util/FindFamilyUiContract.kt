@@ -5,6 +5,7 @@ import com.vayunmathur.findfamily.data.TemporaryLink
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.Waypoint
 import kotlin.time.Duration
+import kotlin.time.Instant
 
 /**
  * The UI contract between [FindFamilyViewModel] and the bottom-sheet screens on the map
@@ -81,6 +82,13 @@ interface PersonActions {
 
     /** Re-pick which device contact this connection is named after. */
     fun changeConnectedContact() {}
+
+    /**
+     * Watch [user] for a no-show: alert if they have not arrived at [waypointId]
+     * by [expectedAt] plus [graceMinutes]. Null [waypointId] means any fresh
+     * location update counts as arrival.
+     */
+    fun setNoShowAlert(user: User, waypointId: Long?, expectedAt: Instant, graceMinutes: Int) {}
 
     /** Opt in or out of acting as a finder for other people's powered-off devices. */
     fun setCrowdFinding(enabled: Boolean) {}

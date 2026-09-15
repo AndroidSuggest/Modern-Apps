@@ -154,13 +154,14 @@ interface TemporaryLinkDao {
     suspend fun delete(value: TemporaryLink): Int
 }
 
-@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class], version = 12, exportSchema = false)
+@Database(entities = [User::class, Waypoint::class, LocationValue::class, TemporaryLink::class, NoShowAlert::class], version = 13, exportSchema = false)
 @ColumnTypeConverters(DefaultConverters::class)
 abstract class FFDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun waypointDao(): WaypointDao
     abstract fun locationValueDao(): LocationValueDao
     abstract fun temporaryLinkDao(): TemporaryLinkDao
+    abstract fun noShowAlertDao(): NoShowAlertDao
 
     companion object : com.vayunmathur.library.util.DatabaseMigrations {
         override val migrations: List<androidx.room3.migration.Migration> = listOf(
@@ -269,6 +270,26 @@ abstract class FFDatabase : RoomDatabase() {
                 it.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_LocationValue_userid_reportedAt` " +
                         "ON `LocationValue` (`userid`, `reportedAt`)"
+                )
+            },
+            // No-show alerts: a new table watching for expected arrivals.
+            // Fresh table, so the CREATE must match what Room generates from
+            // NoShowAlert exactly (Instant as epoch-seconds INTEGER, Duration as
+            // millisecond INTEGER, booleans as 0/1 INTEGER).
+            androidx.room3.migration.Migration(12, 13) {
+                it.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `NoShowAlert` (" +
+                        "`watchedUserId` INTEGER NOT NULL, " +
+                        "`waypointId` INTEGER, " +
+                        "`expectedAt` INTEGER NOT NULL, " +
+                        "`grace` INTEGER NOT NULL, " +
+                        "`fired` INTEGER NOT NULL, " +
+                        "`oneShot` INTEGER NOT NULL, " +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL)"
+                )
+                it.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_NoShowAlert_watchedUserId` " +
+                        "ON `NoShowAlert` (`watchedUserId`)"
                 )
             }
         )

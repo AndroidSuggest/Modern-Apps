@@ -1,0 +1,38 @@
+[package]
+name = "ml_vulkan"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ml_vulkan"
+crate-type = ["cdylib"]
+doc = false
+
+[features]
+default = []
+vulkan = ["dep:onnx-vulkan"]
+
+[dependencies]
+jni.workspace = true
+log.workspace = true
+anyhow = "1.0.75"
+thiserror = "2"
+onnx-vulkan = { git = "https://github.com/automataIA/onnx-vulkan-rs", rev = "c3aa968", optional = true }
+
+[lints]
+workspace = true
+
+# Task 5 (android-vulkan-bringup, owner: vendor-dev): `[patch.crates-io]`
+# template for the Android patches described in VENDORING.md (loader path,
+# OnceLock multi-session, allocator tuning). Commented out until the vendored
+# trees land under `third_party/`: an active `path` override pointing at a
+# missing directory would break every build, and landing the trees is a
+# follow-up that needs an Android build to verify. When the trees land,
+# uncomment, mirror to the workspace root if cargo only honours the root
+# table, refresh the lockfile with `--locked`, and run `cargo deny check`.
+# Never a `git` URL here: `deny.toml` `[sources]` stays `allow-git = []`.
+# [patch.crates-io]
+# onnx-vulkan = { path = "../../../../../third_party/onnx-vulkan" }
+# vk-compute = { path = "../../../../../third_party/vk-compute" }
+# onnx-vulkan-core = { path = "../../../../../third_party/onnx-vulkan-core" }

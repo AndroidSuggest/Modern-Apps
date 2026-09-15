@@ -482,7 +482,3 @@
         }
         crate::par::clear_threads();
     }
-
-    /// The substitution the spatial sort relies on: because the key is total, an
-    /// unstable sort produces exactly what the old stable `sort_by_key(spatial)` did.
-    ///

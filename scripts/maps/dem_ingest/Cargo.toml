@@ -1,18 +1,17 @@
-# The DEM-ingest sub-tool: AWS Terrain Tiles (terrarium PNG) in, a per-map-tile
-# `u16` heightmap grid dataset out — the build half of WS-G's 3D terrain relief.
+# The DEM-ingest sub-tool: COP90 GeoTIFF tiles in, a per-map-tile `u16`
+# heightmap grid dataset out — the build half of WS-G's 3D terrain relief.
 #
 # DETACHED from both workspaces (the empty `[workspace]` table below), like every
 # other host tool under `scripts/maps`: it is built for the host with the host
 # toolchain, and being a member of either workspace would drag that workspace's
 # toolchain, profiles and lockfile into the other's build.
 #
-# NETWORK I/O LIVES IN build_all.sh, not here — the same division of labour every
-# tool under scripts/maps keeps: the shell curls the terrarium tiles into a local
-# directory and this crate does the bytes-to-bytes work (PNG decode, terrarium
-# height decode, downsample). So the only dependency is `miniz_oxide`, pure Rust,
-# for the zlib INFLATE a PNG's IDAT needs — the same crate `tilecodec` already
-# builds with. `tilecodec` comes along for its slippy/pmtiles tile id math and the
-# `Heightmap` grid layout this dataset mirrors on the wire.
+# NETWORK I/O LIVES IN build scripts, not here — the same division of labour every
+# tool under scripts/maps keeps: the shell syncs the COP90 tiles into
+# `inputs/cop90/` and this crate does the bytes-to-bytes work (GeoTIFF Float32
+# decode, height resample, downsample). So the only raster dependency is `tiff`,
+# pure Rust with no native GDAL. `tilecodec` comes along for its slippy/pmtiles
+# tile id math and the `Heightmap` grid layout this dataset mirrors on the wire.
 
 [package]
 name = "dem_ingest"
@@ -28,7 +27,7 @@ path = "src/main.rs"
 
 [dependencies]
 tilecodec = { path = "../../../library/tilecodec/src/main/rust" }
-miniz_oxide = "0.8"
+tiff = "0.9"
 
 [profile.release]
 opt-level = 3

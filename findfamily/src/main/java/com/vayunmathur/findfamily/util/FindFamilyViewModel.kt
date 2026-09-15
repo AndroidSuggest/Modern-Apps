@@ -21,10 +21,12 @@ import androidx.lifecycle.viewModelScope
 import com.vayunmathur.findfamily.data.Coord
 import com.vayunmathur.findfamily.data.FindFamilyRepository
 import com.vayunmathur.findfamily.data.LocationValue
+import com.vayunmathur.findfamily.data.NoShowAlert
 import com.vayunmathur.findfamily.data.RequestStatus
 import com.vayunmathur.findfamily.data.TemporaryLink
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.Waypoint
+import com.vayunmathur.findfamily.platform.NoShowCheckScheduler
 import com.vayunmathur.findfamily.R
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.DatabaseHelper
@@ -44,6 +46,7 @@ import com.vayunmathur.library.map.GeoPoint
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * ViewModel for the FindFamily app.
@@ -438,6 +441,29 @@ class FindFamilyViewModel(
     fun clearExpiredAutoTogglesIfAny() {
         viewModelScope.launch(Dispatchers.IO) {
             applyDueAutoToggles()
+        }
+    }
+
+    /**
+     * Set a no-show watch on [user]: persist a [NoShowAlert] row and schedule
+     * its one-shot check. Past-due input is still stored — the scheduler
+     * sweeps it immediately rather than rejecting it.
+     */
+    override fun setNoShowAlert(
+        user: User,
+        waypointId: Long?,
+        expectedAt: kotlin.time.Instant,
+        graceMinutes: Int,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val alert = NoShowAlert(
+                watchedUserId = user.id,
+                waypointId = waypointId,
+                expectedAt = expectedAt,
+                grace = graceMinutes.minutes,
+            )
+            val id = repository.upsertNoShowAlert(alert)
+            NoShowCheckScheduler.schedule(ctx, alert.copy(id = id))
         }
     }
 

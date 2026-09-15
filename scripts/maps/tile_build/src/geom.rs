@@ -435,4 +435,3 @@ fn push_segment(
 }
 
 include!("geom_part1.rs");
-include!("geom_part2.rs");

@@ -113,6 +113,50 @@ internal fun LocationTrackingService.notifyEntryExit(user: User, message: String
 }
 
 /**
+ * Post a no-show alert notification on the watched person's own per-person channel
+ * (issue #702), mirroring the #618 arrival/departure pattern, so its sound, vibration
+ * and DND behaviour can be tuned independently in system settings.
+ *
+ * The notify ID is stable per alert ("$alertId::NO_SHOW") so re-deliveries replace
+ * rather than stack. Tapping opens the app at the watched person / expected place.
+ */
+internal fun LocationTrackingService.notifyNoShow(
+    user: User,
+    message: String,
+    alertId: Long,
+    waypointId: Long?,
+) {
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    FindFamilyNotificationChannels.ensureNoShowChannel(this, user.id, user.name)
+    val channelId = FindFamilyNotificationChannels.noShowChannelId(user.id)
+    // Deep-link to the watched person / expected place: MainActivity routes
+    // Route.MainPage(selectedUserId, selectedWaypointId) from these extras.
+    val openIntent = Intent(this, MainActivity::class.java).apply {
+        putExtra(EXTRA_NOSHOW_USER_ID, user.id)
+        if (waypointId != null) putExtra(EXTRA_NOSHOW_WAYPOINT_ID, waypointId)
+        flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+    }
+    val contentIntent = PendingIntent.getActivity(
+        this, ("noshow-$alertId").hashCode(), openIntent,
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
+    val notification = NotificationCompat.Builder(this, channelId)
+        .setContentTitle(user.name)
+        .setContentText(message)
+        .setSmallIcon(R.drawable.ic_launcher_foreground)
+        .setAutoCancel(true)
+        .setContentIntent(contentIntent)
+        .build()
+    manager.notify("$alertId::NO_SHOW".hashCode(), notification)
+}
+
+/** Intent extras carrying the no-show deep-link target (watched person / expected place). */
+internal const val EXTRA_NOSHOW_USER_ID =
+    "com.vayunmathur.findfamily.EXTRA_NOSHOW_USER_ID"
+internal const val EXTRA_NOSHOW_WAYPOINT_ID =
+    "com.vayunmathur.findfamily.EXTRA_NOSHOW_WAYPOINT_ID"
+
+/**
  * Notification fired when an incoming UWB Find Nearby (UWB) request arrives
  * via the heartbeat. Tapping it opens MainActivity with a deep link to the
  * ranging screen for the requesting user.

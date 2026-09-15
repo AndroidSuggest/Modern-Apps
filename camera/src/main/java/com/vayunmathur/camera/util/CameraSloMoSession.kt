@@ -12,6 +12,11 @@ import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
 import androidx.camera.video.VideoCapture
+import com.vayunmathur.camera.domain.LensFacing
+import com.vayunmathur.camera.domain.LensSelectionLogic
+import com.vayunmathur.camera.platform.ensureLensesEnumerated
+import com.vayunmathur.camera.platform.lensSelector
+import com.vayunmathur.camera.platform.refreshCapabilities
 
 /**
  * Sets up a true high-speed (HFR) session for Slo-Mo.
@@ -35,9 +40,12 @@ suspend fun CameraViewModel.setupHighSpeedSession(): Boolean {
         if (_lensFacing.value != CameraSelector.LENS_FACING_BACK) {
             _lensFacing.value = CameraSelector.LENS_FACING_BACK
         }
-        val selector = CameraSelector.Builder()
-            .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-            .build()
+        ensureLensesEnumerated(provider)
+        // Slo-Mo binds the requested back lens when possible (HFR is often wide-only);
+        // each HFR range attempt below retries across the back family.
+        val requestedSloMoLens = _selectedLens.value?.takeIf { it.facing == LensFacing.BACK }
+        val sloMoFamily = LensSelectionLogic.filterByFacing(_availableLenses.value, LensFacing.BACK)
+        val selector = lensSelector(CameraSelector.LENS_FACING_BACK, requestedSloMoLens)
 
         val cameraInfo = provider.getCameraInfo(selector)
         val capabilities = Recorder.getHighSpeedVideoCapabilities(cameraInfo)
@@ -112,34 +120,48 @@ suspend fun CameraViewModel.setupHighSpeedSession(): Boolean {
         }
 
         var bound = false
+        var boundSloMoLensId: String? = null
         var lastError: Exception? = null
-        for (range in hfrRanges) {
-            try {
-                provider.unbindAll()
-                // Re-attach surface provider after unbindAll for preview to re-emit request
-                preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
+        // Try HFR ranges from highest fps downwards, each across the back lens ladder.
+        val lensOrdered = buildList {
+            if (requestedSloMoLens != null) add(requestedSloMoLens)
+            sloMoFamily.sortedBy { it.fallbackPriority }.forEach { if (it != requestedSloMoLens) add(it) }
+            if (requestedSloMoLens == null && sloMoFamily.isEmpty()) add(null)
+        }
+        outer@ for (range in hfrRanges) {
+            for (candidate in lensOrdered) {
+                try {
+                    provider.unbindAll()
+                    // Re-attach surface provider after unbindAll for preview to re-emit request
+                    preview.setSurfaceProvider { request -> _surfaceRequest.value = request }
 
-                val configBuilder = HighSpeedVideoSessionConfig.Builder(videoCapture)
-                    .setPreview(preview)
-                    .setSlowMotionEnabled(true)
-                    .setFrameRateRange(range)
-                    .setAutoRotationEnabled(true)
+                    val configBuilder = HighSpeedVideoSessionConfig.Builder(videoCapture)
+                        .setPreview(preview)
+                        .setSlowMotionEnabled(true)
+                        .setFrameRateRange(range)
+                        .setAutoRotationEnabled(true)
 
-                val owner = ManualLifecycleOwner()
-                owner.start()
-                sessionLifecycleOwner?.destroy()
-                sessionLifecycleOwner = owner
+                    val owner = ManualLifecycleOwner()
+                    owner.start()
+                    sessionLifecycleOwner?.destroy()
+                    sessionLifecycleOwner = owner
 
-                boundCamera = provider.bindToLifecycle(owner, selector, configBuilder.build())
-                sloMoFps = range.upper
-                Log.d("SloMo", "High-speed session bound at ${range.upper}fps (range=$range), quality=$orderedQualities")
-                bound = true
-                break
-            } catch (e: Exception) {
-                lastError = e
-                Log.w("SloMo", "Failed to bind HFR at $range, trying next", e)
-                sessionLifecycleOwner?.destroy()
-                sessionLifecycleOwner = null
+                    boundCamera = provider.bindToLifecycle(
+                        owner,
+                        lensSelector(CameraSelector.LENS_FACING_BACK, candidate),
+                        configBuilder.build()
+                    )
+                    sloMoFps = range.upper
+                    boundSloMoLensId = candidate?.logicalCameraId
+                    Log.d("SloMo", "High-speed session bound at ${range.upper}fps (range=$range) lens=${candidate?.labelKey}, quality=$orderedQualities")
+                    bound = true
+                    break@outer
+                } catch (e: Exception) {
+                    lastError = e
+                    Log.w("SloMo", "Failed to bind HFR at $range lens=${candidate?.labelKey}, trying next", e)
+                    sessionLifecycleOwner?.destroy()
+                    sessionLifecycleOwner = null
+                }
             }
         }
 
@@ -166,11 +188,9 @@ suspend fun CameraViewModel.setupHighSpeedSession(): Boolean {
             Log.w("SloMo", "Could not set anti-banding", e)
         }
 
-        boundCamera?.cameraInfo?.zoomState?.value?.let {
-            updateZoomLevels(it.minZoomRatio, it.maxZoomRatio)
-            restoreZoom(it.minZoomRatio, it.maxZoomRatio)
-            Log.d("NightPreview", "setupPhotoSession() after levels=${_availableZoomLevels.value} ratio=${_zoomRatio.value}")
-        }
+        val zoomAfter = boundCamera?.cameraInfo?.zoomState?.value
+        Log.d("NightPreview", "setupHighSpeedSession() after levels=${_availableZoomLevels.value} ratio=${_zoomRatio.value} min=${zoomAfter?.minZoomRatio} max=${zoomAfter?.maxZoomRatio}")
+        boundCamera?.let { refreshCapabilities(it, boundSloMoLensId) }
         _sloMoSupported.value = true
         _highSpeedActive.value = true
         true

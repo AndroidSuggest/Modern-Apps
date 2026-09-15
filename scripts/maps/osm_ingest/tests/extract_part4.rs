@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests_part4 {
-    use super::*;
+    use osm_ingest::extract::{parse_args, Args, Layer}; use std::path::PathBuf;
 
     #[test]
     fn args_need_a_layer_and_an_out() {
@@ -69,3 +69,4 @@ mod tests_part4 {
         assert!(parse_args(&bare).is_err());
     }
 }
+

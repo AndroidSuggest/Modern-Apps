@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::simplify::*;
-    use crate::geom::{Geometry, Pt, SigPt, Vertex, ALWAYS};
+    use tile_build::simplify::*;
+    use tile_build::geom::{Geometry, Pt, SigPt, Vertex, ALWAYS};
 
     /// Annotate a path and hand back the vertices a tolerance keeps, as plain pairs.
     fn thin(pts: &[Pt], tolerance: f64) -> Vec<Pt> {
@@ -101,8 +101,8 @@ mod tests {
     /// vertex for vertex after filtering, whatever else happens to either ring.
     #[test]
     fn a_vertex_shared_between_two_rings_is_kept_or_dropped_in_both() {
-        use crate::clip::clip_polygon;
-        use crate::geom::Rect;
+        use tile_build::clip::clip_polygon;
+        use tile_build::geom::Rect;
 
         let rect = Rect { min_x: 0.0, min_y: 0.0, max_x: 100.0, max_y: 100.0 };
         // An exterior and a hole that both hang out over the eastern boundary, so
@@ -152,8 +152,8 @@ mod tests {
     /// which is the only thing holding two clipped rings to the same boundary edge.
     #[test]
     fn boundary_vertices_survive_the_coarsest_tolerance() {
-        use crate::clip::clip_ring;
-        use crate::geom::Rect;
+        use tile_build::clip::clip_ring;
+        use tile_build::geom::Rect;
 
         let rect = Rect { min_x: 0.0, min_y: 0.0, max_x: 10.0, max_y: 10.0 };
         let mut ring = ring_of(&[(-5.0, -5.0), (15.0, -5.0), (15.0, 15.0), (-5.0, 15.0), (-5.0, -5.0)]);
@@ -343,3 +343,4 @@ mod tests {
         }
     }
 }
+

@@ -9,9 +9,9 @@ import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.core.Preview
 import androidx.camera.core.ImageCapture
 import androidx.camera.extensions.ExtensionSessionConfig
-import androidx.camera.core.CameraSelector
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.camera.platform.lensSelector
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -28,8 +28,8 @@ internal fun CameraViewModel.recordNightExtensionFailure() {
 
 /**
  * Re-evaluates whether night should be offered on the current lens/mode. Cheap checks first
- * (mode + the daily failure cache), then the isSessionConfigSupported() probe. Heavy — call off
- * the main thread.
+ * (mode + the daily failure cache), then the isSessionConfigSupported() probe against the
+ * selected lens' selector. Heavy — call off the main thread.
  */
 suspend fun CameraViewModel.refreshNightExtensionUsable(cameraMode: CameraMode) {
     _nightExtensionUsable.value = when {
@@ -192,9 +192,7 @@ suspend fun CameraViewModel.isNightExtensionAvailable(): Boolean {
             Log.w("NightPreview", "isNightExtensionAvailable() manager NULL after ${System.currentTimeMillis() - startMs}ms, returning false -> moon button may show but useNightPreview false, so no visible transition")
             return false
         }
-        val selector = CameraSelector.Builder()
-            .requireLensFacing(_lensFacing.value)
-            .build()
+        val selector = lensSelector(_lensFacing.value, _selectedLens.value)
         if (!mgr.isExtensionAvailable(selector, ExtensionMode.NIGHT)) {
             Log.d("NightPreview", "isNightExtensionAvailable() isExtensionAvailable(NIGHT)=false lens=${_lensFacing.value}")
             return false

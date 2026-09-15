@@ -14,6 +14,9 @@ import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
 import androidx.camera.video.VideoCapture
+import com.vayunmathur.camera.domain.LensFacing
+import com.vayunmathur.camera.platform.ensureLensesEnumerated
+import com.vayunmathur.camera.platform.lensSelector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -24,9 +27,11 @@ import kotlinx.coroutines.withContext
 internal suspend fun CameraViewModel.probeSloMoSupport(): Boolean {
     return try {
         val provider = ProcessCameraProvider.awaitInstance(app)
-        val selector = CameraSelector.Builder()
-            .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-            .build()
+        ensureLensesEnumerated(provider)
+        val selector = lensSelector(
+            CameraSelector.LENS_FACING_BACK,
+            _selectedLens.value?.takeIf { it.facing == LensFacing.BACK }
+        )
         val cameraInfo = provider.getCameraInfo(selector)
         val caps = Recorder.getHighSpeedVideoCapabilities(cameraInfo) ?: return false
         val quals = caps.getSupportedQualities(androidx.camera.core.DynamicRange.SDR)

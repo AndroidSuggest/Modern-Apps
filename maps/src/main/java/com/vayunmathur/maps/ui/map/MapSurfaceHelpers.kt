@@ -1,14 +1,11 @@
 package com.vayunmathur.maps.ui.map
 
-import android.app.Activity
-import android.content.Context
 import androidx.compose.ui.graphics.toArgb
 import com.vayunmathur.library.map.GeoBounds
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.map.MapMarker
 import com.vayunmathur.library.map.MarkerIcon
 import com.vayunmathur.library.map.TrafficColorTable
-import com.vayunmathur.maps.BuildConfig
 import com.vayunmathur.maps.data.Feature1
 import com.vayunmathur.maps.data.ParkingSpot
 import com.vayunmathur.maps.data.SavedPlace
@@ -21,7 +18,6 @@ import com.vayunmathur.maps.ui.toSelectedFamilyMember
 import com.vayunmathur.maps.ui.toSelectedSavedPlace
 import com.vayunmathur.maps.ui.toSelectedSearchResult
 import com.vayunmathur.maps.ui.theme.MapTokens
-import com.vayunmathur.maps.util.MapTileCache
 import com.vayunmathur.maps.util.OfflineRouter
 import com.vayunmathur.maps.util.OfflineRouterTraffic
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
@@ -29,35 +25,6 @@ import com.vayunmathur.maps.util.TransitStopsViewModel
 import com.vayunmathur.maps.util.PoiCategories
 import com.vayunmathur.maps.util.SearchResult
 import kotlin.math.floor
-
-/**
- * Intent extra carrying a dev-only archive URL/path for the map renderer.
- *
- * DEBUG builds only (see [resolveArchivePath]): lets device-verifier point the
- * smoke test at a locally served archive without touching the prod default.
- */
-const val EXTRA_ARCHIVE_PATH = "maps.intent.extra.ARCHIVE_PATH"
-
-/**
- * Which archive the renderer opens, in precedence order.
- *
- * 1. [EXTRA_ARCHIVE_PATH] off the host Activity's launch intent. DEBUG-only by
- *    construction, so no launch flag (or stale intent) can redirect a release build.
- * 2. The device's own copy, downloaded once on first launch or `adb push`ed over it —
- *    [MapTileCache.localArchive] cannot tell the two apart, which is what makes
- *    sideloading a freshly tiled archive a push rather than a rebuild.
- * 3. Null, which leaves the renderer streaming the published archive by range request.
- *    Only reachable if the download gate was somehow satisfied without the file, since
- *    `InitialDownloadChecker` will not let the app start without it.
- */
-internal fun resolveArchivePath(context: Context): String? {
-    val override = if (BuildConfig.DEBUG) {
-        (context as? Activity)?.intent?.getStringExtra(EXTRA_ARCHIVE_PATH)?.ifBlank { null }
-    } else {
-        null
-    }
-    return override ?: MapTileCache.localArchive(context)
-}
 
 /**
  * OSM station-ish POI type whose taps open the departure board. Station POIs carry no

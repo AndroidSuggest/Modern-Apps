@@ -26,6 +26,9 @@ import com.vayunmathur.camera.util.TimerDuration
 internal class CameraScreenState(
     val cameraMode: CameraMode,
     val lensFacing: Int,
+    val selectedLens: com.vayunmathur.camera.domain.PhysicalLens?,
+    val availableLenses: List<com.vayunmathur.camera.domain.PhysicalLens>,
+    val hasFlashUnit: Boolean,
     val flashMode: FlashMode,
     val torchEnabled: Boolean,
     val isRecording: Boolean,
@@ -109,6 +112,9 @@ internal class CameraScreenState(
 internal fun rememberCameraScreenState(viewModel: CameraViewModel): CameraScreenState {
     val cameraMode by viewModel.cameraMode.collectAsState()
     val lensFacing by viewModel.lensFacing.collectAsState()
+    val selectedLens by viewModel.selectedLens.collectAsState()
+    val availableLenses by viewModel.availableLenses.collectAsState()
+    val hasFlashUnit by viewModel.hasFlashUnit.collectAsState()
     val flashMode by viewModel.flashMode.collectAsState()
     val torchEnabled by viewModel.torchEnabled.collectAsState()
     val isRecording by viewModel.isRecording.collectAsState()
@@ -159,7 +165,7 @@ internal fun rememberCameraScreenState(viewModel: CameraViewModel): CameraScreen
     val panoPitch by viewModel.panoramaEngine.currentPitch.collectAsState()
 
     return remember(
-        cameraMode, lensFacing, flashMode, torchEnabled, isRecording, recordingDuration,
+        cameraMode, lensFacing, selectedLens, availableLenses, hasFlashUnit, flashMode, torchEnabled, isRecording, recordingDuration,
         timerCountdown, qrResult, aspectRatio, zoomRatio, mirrorFront, timerDuration,
         isCapturing, burstActive, burstCount, focusLocked, recordingPaused, micMuted,
         videoSnapshotSupported, lastCaptureUri, gridEnabled, levelEnabled, roll,
@@ -173,6 +179,9 @@ internal fun rememberCameraScreenState(viewModel: CameraViewModel): CameraScreen
         CameraScreenState(
             cameraMode = cameraMode,
             lensFacing = lensFacing,
+            selectedLens = selectedLens,
+            availableLenses = availableLenses,
+            hasFlashUnit = hasFlashUnit,
             flashMode = flashMode,
             torchEnabled = torchEnabled,
             isRecording = isRecording,

@@ -6,6 +6,8 @@ import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
@@ -27,6 +29,10 @@ import java.nio.FloatBuffer
  * the reduced build, and [segment] returns null, which callers treat as "no mask" rather
  * than as an error.
  *
+ * When the Vulkan backend is usable and this graph is allowlisted, inference runs on the
+ * Vulkan fast path with ORT kept as the fallback: a Vulkan failure falls back to the ORT
+ * session when it exists, preserving the null-on-failure contract.
+ *
  * Not thread-safe: [segment] and [close] must not overlap.
  *
  * @param context used only to read the asset; not retained.
@@ -38,6 +44,7 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
     private val lock = Any()
 
     @Volatile private var session: OrtSession? = null
+    @Volatile private var vulkanHandle: Long = 0L
     @Volatile private var loadTried = false
 
     /** Whether the network came up. False means portrait bokeh is off on this device. */
@@ -50,13 +57,20 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
      */
     fun segment(bitmap: Bitmap): SegmentationMask? {
         if (!ensure()) return null
-        val live = session ?: return null
         val (pixels, readable) = OnnxPreprocess.readablePixels(bitmap) ?: return null
         try {
             val input = OnnxPreprocess.stretchPlanar(
                 pixels, readable.width, readable.height,
                 SIZE, SIZE, OnnxPreprocess.RESCALE_ONLY,
             )
+            if (vulkanHandle != 0L) {
+                try {
+                    vulkanSegment(vulkanHandle, input)?.let { return it }
+                } catch (e: Throwable) {
+                    Log.w(TAG, "selfie vulkan inference failed, falling back to ORT", e)
+                }
+            }
+            val live = session ?: return null
             val env = OrtEnvironment.getEnvironment()
             OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())).useOrt { tensor ->
                 live.run(mapOf(INPUT to tensor)).useOrt { result ->
@@ -76,6 +90,15 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
 
     override fun close() {
         synchronized(lock) {
+            val handle = vulkanHandle
+            vulkanHandle = 0L
+            if (handle != 0L) {
+                try {
+                    VulkanSessions.close(handle)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "selfie vulkan close failed", e)
+                }
+            }
             session = null
             OnnxSessions.close(sessionKey())
         }
@@ -84,14 +107,69 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
     private fun sessionKey() = "asset:$asset"
 
     private fun ensure(): Boolean {
-        session?.let { return true }
+        if (session != null || vulkanHandle != 0L) return true
         synchronized(lock) {
-            session?.let { return true }
+            if (session != null || vulkanHandle != 0L) return true
             if (loadTried) return false
             loadTried = true
             session = OnnxSessions.openAsset(app, asset)
-            return session != null
+            tryVulkanLocked()
+            return session != null || vulkanHandle != 0L
         }
+    }
+
+    /**
+     * Best-effort Vulkan fast path; leaves [vulkanHandle] at 0 on any failure so ORT stays
+     * the fallback. Caller must hold [lock]. The model bytes are read once and shared by
+     * the preflight check and the open.
+     */
+    private fun tryVulkanLocked() {
+        try {
+            if (!VulkanSessions.isUsable()) return
+            val key = sessionKey()
+            if (key !in VulkanSessions.allowlist) return
+            val modelBytes = try {
+                app.assets.open(asset).use { it.readBytes() }
+            } catch (e: Throwable) {
+                Log.w(TAG, "cannot read $asset for vulkan preflight", e)
+                return
+            }
+            val problem = VulkanSessions.preflight(key) { modelBytes }
+            if (problem != null) {
+                Log.w(TAG, "vulkan preflight skipped for $asset: $problem")
+                return
+            }
+            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            if (handle != 0L) {
+                vulkanHandle = handle
+                Log.i(TAG, "vulkan session open for $key")
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "vulkan open failed for $asset, using ORT", e)
+            vulkanHandle = 0L
+        }
+    }
+
+    /**
+     * Vulkan fast path over the already-preprocessed NCHW input.
+     *
+     * Returns null when the bridge returns no bytes or too few floats, so the caller falls
+     * back to ORT. The graph has a single `alphas [1,1,256,256]` output, so the mask is the
+     * head of the payload.
+     */
+    private fun vulkanSegment(handle: Long, input: FloatArray): SegmentationMask? {
+        val names = arrayOf(INPUT)
+        val dtypes = intArrayOf(DTYPE_F32)
+        val shapes = longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())
+        val shapeOffsets = intArrayOf(0)
+        val outBytes = VulkanBridge.run(handle, names, dtypes, shapes, shapeOffsets, floatsToLe(input))
+            ?: return null
+        val floats = leToFloats(outBytes)
+        if (floats.size < SIZE * SIZE) {
+            Log.w(TAG, "vulkan selfie returned ${floats.size} floats, want ${SIZE * SIZE}")
+            return null
+        }
+        return SegmentationMask(SIZE, SIZE, floats.copyOfRange(0, SIZE * SIZE))
     }
 
     companion object {
@@ -100,5 +178,20 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
         private const val TAG = "SelfieSegmenter"
         private const val SIZE = 256
         private const val INPUT = "pixel_values"
+
+        /** ONNX TensorProto FLOAT, as carried in the Vulkan `dtypes` array. */
+        private const val DTYPE_F32 = 1
+
+        private fun floatsToLe(values: FloatArray): ByteArray {
+            val buf = ByteBuffer.allocate(values.size * 4).order(ByteOrder.LITTLE_ENDIAN)
+            for (v in values) buf.putFloat(v)
+            return buf.array()
+        }
+
+        private fun leToFloats(bytes: ByteArray): FloatArray {
+            val out = FloatArray(bytes.size / 4)
+            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(out)
+            return out
+        }
     }
 }

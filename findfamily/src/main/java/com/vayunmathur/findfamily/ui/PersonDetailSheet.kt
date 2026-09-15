@@ -17,8 +17,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.vayunmathur.findfamily.R
 import androidx.compose.runtime.Composable
+import com.vayunmathur.findfamily.ui.dialogs.NoShowAlertDialog
 import com.vayunmathur.findfamily.util.FindFamilyNotificationChannels
 import com.vayunmathur.findfamily.util.Networking
 import com.vayunmathur.findfamily.util.PersonActions
@@ -27,6 +32,7 @@ import com.vayunmathur.findfamily.util.PersonUiState
 @Composable
 fun PersonDetailSheet(state: PersonUiState, actions: PersonActions) {
     val user = state.user
+    var showNoShowDialog by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 4.dp)) {
         UserCard(user, state.location, true) {}
         Spacer(Modifier.height(8.dp))
@@ -90,6 +96,14 @@ fun PersonDetailSheet(state: PersonUiState, actions: PersonActions) {
                 }
             }
             Spacer(Modifier.height(4.dp))
+            // No-show watch (issue 702): expected arrival that never happens.
+            OutlinedButton(
+                { showNoShowDialog = true },
+                Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.noshow_watch_button))
+            }
+            Spacer(Modifier.height(4.dp))
         }
         OutlinedButton(
             { actions.changeConnectedContact() },
@@ -97,5 +111,13 @@ fun PersonDetailSheet(state: PersonUiState, actions: PersonActions) {
         ) {
             Text(stringResource(R.string.change_connected_contact))
         }
+    }
+    if (showNoShowDialog) {
+        NoShowAlertDialog(
+            user = user,
+            waypoints = state.waypoints,
+            actions = actions,
+            onDismiss = { showNoShowDialog = false },
+        )
     }
 }

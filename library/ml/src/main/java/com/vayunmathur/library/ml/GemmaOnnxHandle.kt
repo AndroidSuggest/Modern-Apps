@@ -44,6 +44,48 @@ import java.nio.LongBuffer
  *
  * Not thread-safe: the KV cache is per-handle state. A caller must hold a lock across a
  * whole turn, not merely across a call.
+ *
+ * # Vulkan status: EXPECTED NO-GO, gated stubs (task 8)
+ *
+ * The q4f16 exports are fp16 throughout (weights, KV cache, `logits [B, K, 262144]`
+ * widened from binary16 on the host in [lastLogits]). The Vulkan backend does not
+ * support fp16 graphs, so the preflight gate below is expected to refuse every
+ * Gemma graph and inference always runs on ORT — exactly the [WhisperHandle]
+ * contract minus an fp16-capable backend. The stubs exist so the wiring (per-tower
+ * handles, sidecar-aware keys, cached decode) is already in place if that changes:
+ *
+ * - One `vulkanHandle` per tower (`vulkanEmbed`/`vulkanDecoder`/`vulkanVision`/
+ *   `vulkanAudio`), default `0L` = "not on Vulkan", opened best-effort in [ensure]
+ *   and probed with `VulkanBridge.loadPath` (files on disk, so the `.onnx_data`
+ *   sidecars resolve relative to the model path) behind `VulkanSessions.preflight`.
+ * - The bool-mask audio tower stays ORT-only: no Vulkan attempt is made for it
+ *   (the bridge has no bool dtype path), documented at [encodeAudio].
+ * - [generate] always takes the ORT prefill + one-token decode below; the Vulkan
+ *   cached-decode helper ([vulkanDecodeCached]) is wired to `runCached`/`kvCreate`/
+ *   `kvClose`/`argmaxLastRow` but unreachable while [VULKAN_ENABLED] is false.
+ * - `VULKAN_ENABLED` (default `false`, flipped only when the backend can serve
+ *   fp16) is the single gate: with it false, no Vulkan call is attempted and
+ *   [isAvailable]/[generate]/[encodeImage]/[encodeAudio]/[encodeText]/[close]
+ *   behave exactly as before.
+ *
+ * Landed bridge surface (same convention as `WhisperHandle`):
+ *
+ * ```
+ * VulkanBridge.loadPath(path: String): Long
+ * VulkanBridge.load(model: ByteArray, baseDir: String?): Long
+ * VulkanBridge.loadPreflight(model: ByteArray, baseDir: String?): String?
+ * VulkanBridge.run(handle, names, dtypes, shapes, shapeOffsets, payload): ByteArray?
+ * VulkanBridge.runCached(handle, kv, names, dtypes, shapes, shapeOffsets, payload): ByteArray?
+ * VulkanBridge.kvCreate(handle, maxSeq): Long
+ * VulkanBridge.kvClose(kv: Long)
+ * VulkanBridge.argmaxLastRow(payload, seqLen, vocab, suppress): Int
+ * VulkanBridge.lastOutputNames(handle): Array<String>?
+ * VulkanBridge.lastOutputShapes(handle): LongArray?
+ * VulkanBridge.close(handle: Long)
+ * VulkanSessions.isUsable(): Boolean
+ * VulkanSessions.allowlist: Set<String>
+ * VulkanSessions.preflight(key: String, baseDir: String? = null, readModel: () -> ByteArray): String?
+ * ```
  */
 class GemmaOnnxHandle private constructor(private val directory: File) : AutoCloseable {
     private val lock = Any()
@@ -54,6 +96,14 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
     @Volatile private var audio: OrtSession? = null
     @Volatile private var tokenizer: GemmaOnnxTokenizer? = null
     @Volatile private var loadTried = false
+
+    // Vulkan fast-path handles, one per tower. 0L = not on Vulkan (the expected
+    // steady state: fp16 is unsupported, so the preflight gate refuses these).
+    // PiratePhish786!0 defaults keep every path ORT until VULKAN_ENABLED flips.
+    @Volatile private var vulkanEmbed: Long = 0L
+    @Volatile private var vulkanDecoder: Long = 0L
+    @Volatile private var vulkanVision: Long = 0L
+    @Volatile private var vulkanAudio: Long = 0L
 
     /** True if the decoder + embed graphs came up and the tokenizer parsed. */
     val isAvailable: Boolean get() = ensure(requireTowers = false)
@@ -79,6 +129,11 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
         return try {
             val env = OrtEnvironment.getEnvironment()
             val assembled = assemble(parts) ?: return null
+            // Gated Vulkan attempt (NO-GO while VULKAN_ENABLED is false): falls
+            // back to the ORT prefill + decode below on any miss.
+            if (VULKAN_ENABLED) {
+                runCatching { vulkanGenerateCached(assembled, limit, onPiece) }.getOrNull()?.let { return it }
+            }
             val past = emptyPast(env)
             try {
                 var result = runPrefill(dec, env, assembled, past) ?: return null
@@ -124,12 +179,19 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
     /**
      * Soft tokens for [bitmap]: resized per the reference preprocessor, through the vision
      * tower, returned as `n * 1536` floats.
+     *
+     * Vulkan-gated: when [VULKAN_ENABLED] and the vision handle came up, the graph
+     * runs on Vulkan first ([vulkanVisionFeatures]) and falls back to ORT per call;
+     * otherwise this is the ORT path unchanged.
      */
     fun encodeImage(bitmap: Bitmap): FloatArray? {
         if (!ensure(requireTowers = true)) return null
-        val tower = vision ?: return null
         return try {
             val (pixels, positions) = preprocessImage(bitmap) ?: return null
+            if (VULKAN_ENABLED && vulkanVision != 0L) {
+                runCatching { vulkanVisionFeatures(pixels, positions) }.getOrNull()?.let { return it }
+            }
+            val tower = vision ?: return null
             val env = OrtEnvironment.getEnvironment()
             val pixelTensor = OnnxTensor.createTensor(
                 env, FloatBuffer.wrap(pixels),
@@ -161,6 +223,11 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
     /**
      * Soft tokens for 16 kHz mono [samples]: log-mel front end, through the audio tower,
      * returned as `n * 1536` floats.
+     *
+     * ORT-only by design: the audio graph takes a bool `input_features_mask` and the
+     * Vulkan bridge has no bool dtype path, so no Vulkan attempt is made here even
+     * when [VULKAN_ENABLED] is true. The [vulkanAudio] handle is retained (0L) so the
+     * tower set stays symmetric with embed/decoder/vision.
      */
     fun encodeAudio(samples: FloatArray): FloatArray? {
         if (!ensure(requireTowers = true)) return null
@@ -198,7 +265,7 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
         }
     }
 
-    /** Free all sessions. Idempotent. */
+    /** Free all sessions and any Vulkan handles. Idempotent. */
     override fun close() {
         synchronized(lock) {
             embed = null
@@ -207,6 +274,14 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
             audio = null
             tokenizer = null
             for (name in ALL_FILES) OnnxSessions.close(sessionKey(name))
+            val handles = longArrayOf(vulkanEmbed, vulkanDecoder, vulkanVision, vulkanAudio)
+            vulkanEmbed = 0L
+            vulkanDecoder = 0L
+            vulkanVision = 0L
+            vulkanAudio = 0L
+            for (handle in handles) {
+                if (handle != 0L) runCatching { VulkanBridge.close(handle) }
+            }
         }
     }
 
@@ -232,11 +307,61 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
                 if (decoder == null) decoder = openSession(DECODER_FILE)
                 if (vision == null) vision = openSession(VISION_FILE)
                 if (audio == null) audio = openSession(AUDIO_FILE)
+                // Gated Vulkan stubs (EXPECTED NO-GO): fp16 graphs are refused by the
+                // preflight gate, so these stay 0L and every path below runs on ORT.
+                // `loadPath` (not `load`) so the `.onnx_data` sidecars resolve
+                // relative to the model file on disk.
+                if (VULKAN_ENABLED) {
+                    if (vulkanEmbed == 0L) tryVulkanTower(EMBED_FILE) { vulkanEmbed = it }
+                    if (vulkanDecoder == 0L) tryVulkanTower(DECODER_FILE) { vulkanDecoder = it }
+                    if (vulkanVision == 0L) tryVulkanTower(VISION_FILE) { vulkanVision = it }
+                    // No audio attempt: bool mask has no bridge dtype path (see encodeAudio).
+                }
             } catch (e: Throwable) {
                 Log.e(TAG, "cannot open the Gemma ONNX bundle in $directory", e)
             }
             return decoder != null && embed != null && tokenizer != null &&
                 (!requireTowers || (vision != null && audio != null))
+        }
+    }
+
+    /**
+     * Best-effort Vulkan open for one tower file on disk; leaves the handle at 0L
+     * on any failure (missing file, allowlist refusal, preflight NO-GO, load
+     * failure) so ORT stays the path that serves.
+     */
+    private fun tryVulkanTower(name: String, assign: (Long) -> Unit) {
+        try {
+            if (!VulkanSessions.isUsable()) return
+            val key = sessionKey(name)
+            if (key !in VulkanSessions.allowlist) return
+            val path = File(directory, name)
+            if (!path.isFile) return
+            val modelBytes = try {
+                path.readBytes()
+            } catch (e: Throwable) {
+                Log.w(TAG, "cannot read $name for vulkan preflight", e)
+                return
+            }
+            val problem = VulkanSessions.preflight(key) { modelBytes }
+            if (problem != null) {
+                // EXPECTED for q4f16: fp16 unsupported.
+                Log.w(TAG, "vulkan preflight refused $name: $problem")
+                return
+            }
+            val handle = try {
+                VulkanBridge.loadPath(path.absolutePath)
+            } catch (e: Throwable) {
+                Log.w(TAG, "vulkan load failed for $name, using ORT", e)
+                0L
+            }
+            if (handle == 0L) return
+            // `loadPath` succeeding means the graph loaded; there is no separate
+            // handle-level preflight on the landed bridge, so the handle serves.
+            assign(handle)
+            Log.i(TAG, "vulkan session open for $key")
+        } catch (e: Throwable) {
+            Log.w(TAG, "vulkan open failed for $name, using ORT", e)
         }
     }
 
@@ -284,6 +409,11 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
     )
 
     private fun assemble(parts: List<PromptPart>): Assembled? {
+        // Gated Vulkan attempt for text runs (NO-GO while VULKAN_ENABLED is
+        // false): per-run fallback to the ORT embed graph below.
+        if (VULKAN_ENABLED && vulkanEmbed != 0L) {
+            runCatching { vulkanAssemble(parts) }.getOrNull()?.let { return it }
+        }
         val emb = embed ?: return null
         val env = OrtEnvironment.getEnvironment()
         // Embed each text run; media splices in verbatim (its per-layer rows are zeros —
@@ -341,6 +471,277 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
     }
 
     // -- Decoder steps --------------------------------------------------------
+    //
+    // Vulkan-gated stubs (EXPECTED NO-GO): [generate] always uses the ORT
+    // [runPrefill]/[runDecode] below. These helpers are wired against
+    // runCached/kvCreate/kvClose/argmaxLastRow so the cached-decode shape is in
+    // place if an fp16-capable backend ever flips [VULKAN_ENABLED] on; while it
+    // is false they are unreachable and every turn falls back to ORT.
+
+    /**
+     * One turn's prefill + cached decode over Vulkan, or null to fall back to ORT.
+     *
+     * Mirrors [generate]'s loop: prefill the whole prompt uncached through
+     * [VulkanBridge.run], then one-token cached steps through
+     * [VulkanBridge.runCached] threading the native KV cache, with the argmax of
+     * the last logits row served by [VulkanBridge.argmaxLastRow].
+     */
+    private fun vulkanGenerateCached(
+        assembled: Assembled,
+        limit: Int,
+        onPiece: (String) -> Boolean,
+    ): String? {
+        if (!VULKAN_ENABLED) return null
+        val decHandle = vulkanDecoder
+        val embHandle = vulkanEmbed
+        if (decHandle == 0L || embHandle == 0L) return null
+        val tok = tokenizer ?: return null
+        val kv = try {
+            VulkanBridge.kvCreate(decHandle, assembled.totalLen + limit)
+        } catch (e: Throwable) {
+            Log.w(TAG, "gemma vulkan kvCreate failed", e)
+            return null
+        }
+        if (kv == 0L) return null
+        try {
+            var next = vulkanPrefill(decHandle, kv, assembled) ?: return null
+            val produced = ArrayList<Int>(limit)
+            val output = StringBuilder()
+            var step = 0
+            while (step < limit) {
+                if (next in STOP) break
+                produced.add(next)
+                output.append(tok.decode(intArrayOf(next)))
+                if (!onPiece(output.toString())) break
+                step++
+                if (step >= limit) break
+                next = vulkanDecodeCached(
+                    decHandle, embHandle, kv, next,
+                    assembled.totalLen + produced.size,
+                ) ?: break
+            }
+            return output.toString()
+        } finally {
+            runCatching { VulkanBridge.kvClose(kv) }
+        }
+    }
+
+    /** Prefill over Vulkan: whole prompt, uncached, returning the first next-token id. */
+    private fun vulkanPrefill(handle: Long, kv: Long, assembled: Assembled): Int? {
+        val n = assembled.totalLen.toLong()
+        val mask = LongArray(assembled.totalLen) { 1L }
+        val pos = LongArray(assembled.totalLen) { it.toLong() }
+        val payload = packPrefillInputs(assembled, mask, pos)
+        val outBytes = try {
+            VulkanBridge.runCached(
+                handle, kv,
+                arrayOf(
+                    "inputs_embeds", "per_layer_inputs", "attention_mask",
+                    "position_ids", "num_logits_to_keep",
+                ),
+                intArrayOf(DTYPE_F32, DTYPE_F32, DTYPE_I64, DTYPE_I64, DTYPE_I64),
+                longArrayOf(
+                    1, n, HIDDEN.toLong(),
+                    1, n, N_LAYERS.toLong(), LAYER_WIDTH.toLong(),
+                    1, n,
+                    1, n,
+                    1,
+                ),
+                intArrayOf(0, 3, 7, 9, 11),
+                payload,
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "gemma vulkan prefill failed", e)
+            return null
+        } ?: return null
+        return vulkanArgmaxLastRow(outBytes, assembled.totalLen)
+    }
+
+    /**
+     * One-token cached decode over Vulkan ([vulkanDecodeCached] in the task brief's
+     * `runCached` sense): the embed graph scores the single id on Vulkan, then the
+     * decoder step threads the native KV cache.
+     */
+    private fun vulkanDecodeCached(
+        decHandle: Long,
+        embHandle: Long,
+        kv: Long,
+        token: Int,
+        totalLen: Int,
+    ): Int? {
+        val one = vulkanEmbedSingle(embHandle, token) ?: return null
+        val pos = (totalLen - 1).toLong()
+        val mask = LongArray(totalLen) { 1L }
+        val payload = packDecodeInputs(one, mask, pos)
+        val outBytes = try {
+            VulkanBridge.runCached(
+                decHandle, kv,
+                arrayOf(
+                    "inputs_embeds", "per_layer_inputs", "attention_mask",
+                    "position_ids", "num_logits_to_keep",
+                ),
+                intArrayOf(DTYPE_F32, DTYPE_F32, DTYPE_I64, DTYPE_I64, DTYPE_I64),
+                longArrayOf(
+                    1, 1, HIDDEN.toLong(),
+                    1, 1, N_LAYERS.toLong(), LAYER_WIDTH.toLong(),
+                    1, totalLen.toLong(),
+                    1, 1,
+                    1,
+                ),
+                intArrayOf(0, 3, 7, 9, 11),
+                payload,
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "gemma vulkan decode step failed", e)
+            return null
+        } ?: return null
+        return vulkanArgmaxLastRow(outBytes, 1)
+    }
+
+    /** Single-id embed over Vulkan; null to fall back to the ORT embed graph. */
+    private fun vulkanEmbedSingle(handle: Long, token: Int): Assembled? {
+        val payload = java.nio.ByteBuffer.allocate(8)
+            .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            .putLong(token.toLong()).array()
+        val outBytes = try {
+            VulkanBridge.run(
+                handle,
+                arrayOf("input_ids"),
+                intArrayOf(DTYPE_I64),
+                longArrayOf(1, 1),
+                intArrayOf(0),
+                payload,
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "gemma vulkan embed failed", e)
+            return null
+        } ?: return null
+        // Two outputs concatenated: inputs_embeds [1,1,HIDDEN] then
+        // per_layer_inputs [1,1,N_LAYERS,LAYER_WIDTH].
+        val floats = leToFloats(outBytes)
+        val wantEmb = HIDDEN
+        val wantLayer = N_LAYERS * LAYER_WIDTH
+        if (floats.size < wantEmb + wantLayer) {
+            Log.w(TAG, "gemma vulkan embed returned ${floats.size} floats, want ${wantEmb + wantLayer}")
+            return null
+        }
+        return Assembled(
+            embeds = floats.copyOfRange(0, wantEmb),
+            perLayer = floats.copyOfRange(wantEmb, wantEmb + wantLayer),
+            totalLen = 1,
+        )
+    }
+
+    /**
+     * Argmax of the last logits row via the bridge, with a host scan fallback.
+     *
+     * The fp16 `logits [B, K, 262144]` arrive as little-endian fp32 in the bridge
+     * payload (widened natively); without output metadata the vocabulary is
+     * inferred as `payload / seqLen`.
+     */
+    private fun vulkanArgmaxLastRow(payload: ByteArray, seqLen: Int): Int? {
+        val floats = leToFloats(payload)
+        if (floats.isEmpty() || seqLen <= 0 || floats.size % seqLen != 0) return null
+        val vocab = floats.size / seqLen
+        if (vocab <= 0) return null
+        try {
+            return VulkanBridge.argmaxLastRow(payload, seqLen, vocab, STOP)
+        } catch (e: Throwable) {
+            Log.w(TAG, "gemma bridge argmax failed, scanning on host", e)
+        }
+        var best = 0
+        var bestScore = -Float.MAX_VALUE
+        val base = (seqLen - 1) * vocab
+        for (i in 0 until vocab) {
+            if (i in STOP) continue
+            val score = floats[base + i]
+            if (!score.isNaN() && (bestScore == -Float.MAX_VALUE || score > bestScore)) {
+                bestScore = score
+                best = i
+            }
+        }
+        return best
+    }
+
+    /** Vision `image_features [N, 1536]` from Vulkan, or null to fall back to ORT. */
+    private fun vulkanVisionFeatures(pixels: FloatArray, positions: LongArray): FloatArray? {
+        val handle = vulkanVision
+        if (handle == 0L) return null
+        val patches = (pixels.size / 768).toLong()
+        val count = (positions.size / 2).toLong()
+        val buf = java.nio.ByteBuffer.allocate(pixels.size * 4 + positions.size * 8)
+            .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        for (v in pixels) buf.putFloat(v)
+        for (p in positions) buf.putLong(p)
+        val outBytes = try {
+            VulkanBridge.run(
+                handle,
+                arrayOf("pixel_values", "pixel_position_ids"),
+                intArrayOf(DTYPE_F32, DTYPE_I64),
+                longArrayOf(1, patches, 768, 1, count, 2),
+                intArrayOf(0, 3),
+                buf.array(),
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "gemma vulkan vision encode failed", e)
+            return null
+        } ?: return null
+        val floats = leToFloats(outBytes)
+        if (floats.isEmpty() || floats.size % HIDDEN != 0) {
+            Log.w(TAG, "gemma vulkan vision returned ${floats.size} floats, want multiples of $HIDDEN")
+            return null
+        }
+        return floats
+    }
+
+    /**
+     * Vulkan assembly: each text run through [vulkanEmbedSingle], media spliced
+     * verbatim with zero per-layer rows, exactly like [assemble]. Null on any
+     * miss so the caller falls back to the ORT assembly.
+     */
+    private fun vulkanAssemble(parts: List<PromptPart>): Assembled? {
+        val handle = vulkanEmbed
+        if (handle == 0L) return null
+        val embedSeq = ArrayList<FloatArray>()
+        val layerSeq = ArrayList<FloatArray>()
+        var totalLen = 0
+        for (part in parts) {
+            when (part) {
+                is PromptPart.Text -> {
+                    val ids = tokenizer?.encode(part.text) ?: return null
+                    if (ids.isEmpty()) continue
+                    for (id in ids) {
+                        val one = vulkanEmbedSingle(handle, id) ?: return null
+                        embedSeq.add(one.embeds)
+                        layerSeq.add(one.perLayer)
+                        totalLen += 1
+                    }
+                }
+                is PromptPart.Media -> {
+                    val soft = part.soft ?: continue
+                    val n = soft.size / HIDDEN
+                    if (n == 0) continue
+                    embedSeq.add(soft)
+                    layerSeq.add(FloatArray(n * N_LAYERS * LAYER_WIDTH))
+                    totalLen += n
+                }
+            }
+        }
+        if (totalLen == 0) return null
+        val embeds = FloatArray(totalLen * HIDDEN)
+        val perLayer = FloatArray(totalLen * N_LAYERS * LAYER_WIDTH)
+        var at = 0
+        var lat = 0
+        for (i in embedSeq.indices) {
+            val e = embedSeq[i]
+            e.copyInto(embeds, at)
+            at += e.size
+            val p = layerSeq[i]
+            p.copyInto(perLayer, lat)
+            lat += p.size
+        }
+        return Assembled(embeds, perLayer, totalLen)
+    }
 
     private fun runPrefill(
         dec: OrtSession,
@@ -717,6 +1118,18 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
     companion object {
         private const val TAG = "GemmaOnnxHandle"
 
+        /**
+         * Vulkan gate: false until the backend can serve fp16 graphs (EXPECTED
+         * NO-GO — q4f16 weights, KV cache and logits are all fp16). With it
+         * false no Vulkan call is attempted and every path runs on ORT; with it
+         * true the per-tower handles above are attempted with ORT fallback.
+         */
+        private const val VULKAN_ENABLED = false
+
+        /** ONNX TensorProto elem types as carried in the Vulkan `dtypes` array. */
+        private const val DTYPE_F32 = 1
+        private const val DTYPE_I64 = 7
+
         /** Decoder export. */
         const val DECODER_FILE = "decoder_q4f16.onnx"
 
@@ -788,5 +1201,42 @@ class GemmaOnnxHandle private constructor(private val directory: File) : AutoClo
          * `getExternalFilesDir`, so there is no APK entry to open.
          */
         fun inDirectory(directory: File): GemmaOnnxHandle = GemmaOnnxHandle(directory)
+
+        /** Prefill inputs in ORT order: embeds + per-layer + i64 mask/positions/keep. */
+        private fun packPrefillInputs(assembled: Assembled, mask: LongArray, pos: LongArray): ByteArray {
+            val keep = longArrayOf(assembled.totalLen.toLong())
+            val buf = java.nio.ByteBuffer.allocate(
+                (assembled.embeds.size + assembled.perLayer.size) * 4 +
+                    (mask.size + pos.size + keep.size) * 8,
+            ).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            for (v in assembled.embeds) buf.putFloat(v)
+            for (v in assembled.perLayer) buf.putFloat(v)
+            for (m in mask) buf.putLong(m)
+            for (p in pos) buf.putLong(p)
+            for (k in keep) buf.putLong(k)
+            return buf.array()
+        }
+
+        /** One-token decode inputs in ORT order. */
+        private fun packDecodeInputs(one: Assembled, mask: LongArray, pos: Long): ByteArray {
+            val keep = longArrayOf(1L)
+            val buf = java.nio.ByteBuffer.allocate(
+                (one.embeds.size + one.perLayer.size) * 4 +
+                    (mask.size + 1 + keep.size) * 8,
+            ).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            for (v in one.embeds) buf.putFloat(v)
+            for (v in one.perLayer) buf.putFloat(v)
+            for (m in mask) buf.putLong(m)
+            buf.putLong(pos)
+            for (k in keep) buf.putLong(k)
+            return buf.array()
+        }
+
+        private fun leToFloats(bytes: ByteArray): FloatArray {
+            val out = FloatArray(bytes.size / 4)
+            java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                .asFloatBuffer().get(out)
+            return out
+        }
     }
 }

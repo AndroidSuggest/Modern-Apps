@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use tile_build::clip::*; use tile_build::geom::{Pt, Rect, Geometry};
 
     /// A 10x10 rect at the origin, so every expected coordinate is readable.
     fn r() -> Rect {
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn clipping_to_a_buffered_tile_rect_keeps_the_overspill() {
-        use crate::geom::{tile_rect, DEFAULT_BUFFER};
+        use tile_build::geom::{tile_rect, DEFAULT_BUFFER};
         // A line 3 units past tile 0's eastern edge, with a 5-unit buffer: the
         // overspill survives, which is what stops a seam at the tile join.
         let rect = tile_rect(0, 0, 4096, DEFAULT_BUFFER);
@@ -330,11 +330,11 @@ mod tests {
 
     /// Every vertex the clip interpolates is marked as one no threshold may drop,
     /// and every vertex that merely passes through keeps whatever it arrived with.
-    /// That is the contract [`crate::simplify::filter`] relies on to keep two rings
+    /// That is the contract [`tile_build::simplify::filter`] relies on to keep two rings
     /// sharing a boundary edge on the same vertices.
     #[test]
     fn a_crossing_is_marked_unremovable_and_a_pass_through_keeps_its_significance() {
-        use crate::geom::{SigPt, ALWAYS};
+        use tile_build::geom::{SigPt, ALWAYS};
 
         let at = |x: f64, y: f64, sig: f64| SigPt { x, y, sig };
         // In from the west, out to the east: both ends are crossings, the middle
@@ -359,7 +359,7 @@ mod tests {
     /// a ring: it keeps one and drops the other.
     #[test]
     fn a_re_closed_ring_closes_on_a_copy_of_its_first_vertex() {
-        use crate::geom::SigPt;
+        use tile_build::geom::SigPt;
 
         let at = |x: f64, y: f64, sig: f64| SigPt { x, y, sig };
         // Half in, half out, so the ring is genuinely rebuilt by the clip.
@@ -375,3 +375,5 @@ mod tests {
         assert_eq!(out.first(), out.last(), "closed, on the same vertex exactly");
     }
 }
+
+

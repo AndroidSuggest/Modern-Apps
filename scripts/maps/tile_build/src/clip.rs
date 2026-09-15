@@ -317,4 +317,3 @@ impl Edge {
     }
 }
 
-include!("clip_part1.rs");

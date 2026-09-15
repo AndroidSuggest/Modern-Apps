@@ -287,13 +287,12 @@ private fun TestSection(enabled: Boolean) {
             Button(
                 enabled = enabled,
                 onClick = {
-                    if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-                        status = "No recognizer selected yet (finish step 2)."
-                        return@Button
-                    }
                     result = ""
                     status = "Listening…"
-                    val sr = SpeechRecognizer.createSpeechRecognizer(context)
+                    val sr = SpeechRecognizer.createSpeechRecognizer(
+                        context,
+                        ComponentName(context, WhisperRecognitionService::class.java),
+                    )
                     sr.setRecognitionListener(object : RecognitionListener {
                         override fun onReadyForSpeech(params: Bundle?) {}
                         override fun onBeginningOfSpeech() {}

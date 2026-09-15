@@ -20,6 +20,9 @@ import com.vayunmathur.library.ui.IconSunny
 @Composable
 internal fun CameraSettingsColumn(
     activeSetting: CameraSetting?,
+    availableLenses: List<com.vayunmathur.camera.domain.PhysicalLens>,
+    selectedLens: com.vayunmathur.camera.domain.PhysicalLens?,
+    onLensSelected: (com.vayunmathur.camera.domain.PhysicalLens) -> Unit,
     zoomRatio: Float,
     availableZoomLevels: List<Pair<String, Float>>,
     onZoomSelected: (Float) -> Unit,
@@ -48,11 +51,18 @@ internal fun CameraSettingsColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         when (activeSetting) {
-            null -> ZoomBar(
-                currentZoom = zoomRatio,
-                zoomLevels = availableZoomLevels,
-                onZoomSelected = onZoomSelected
-            )
+            null -> {
+                LensBar(
+                    lenses = availableLenses,
+                    selected = selectedLens,
+                    onSelect = onLensSelected
+                )
+                ZoomBar(
+                    currentZoom = zoomRatio,
+                    zoomLevels = availableZoomLevels,
+                    onZoomSelected = onZoomSelected
+                )
+            }
             CameraSetting.BRIGHTNESS -> HorizontalSettingSlider(
                 value = exposureComp,
                 onValueChange = onExposureComp,

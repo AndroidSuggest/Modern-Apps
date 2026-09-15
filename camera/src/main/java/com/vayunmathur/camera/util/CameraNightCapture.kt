@@ -6,7 +6,6 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
-import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -16,6 +15,7 @@ import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.core.Preview
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
+import com.vayunmathur.camera.platform.lensSelector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -49,9 +49,7 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
         imageAnalysis = null
         _analysisStreamActive.value = false
 
-        val baseSelector = CameraSelector.Builder()
-            .requireLensFacing(_lensFacing.value)
-            .build()
+        val baseSelector = lensSelector(_lensFacing.value, _selectedLens.value)
         val nightSelector = mgr.getExtensionEnabledCameraSelector(baseSelector, ExtensionMode.NIGHT)
 
         val preview = Preview.Builder().build()

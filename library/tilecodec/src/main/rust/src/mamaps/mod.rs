@@ -48,6 +48,9 @@ pub mod index;
 pub mod read;
 
 #[cfg(feature = "write")]
+pub mod archive;
+
+#[cfg(feature = "write")]
 pub mod write;
 
 pub use body::Body;

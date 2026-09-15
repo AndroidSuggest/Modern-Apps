@@ -7,7 +7,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
 import com.vayunmathur.library.map.CameraState
@@ -78,10 +77,6 @@ fun MapSurface(
     modifier: Modifier = Modifier,
 ) {
     val coroutineScope = rememberCoroutineScope()
-    // The archive the renderer opens: the copy on this device if there is one, else null,
-    // which leaves the renderer streaming the published archive by range request.
-    val context = LocalContext.current
-    val archivePath = remember(context) { resolveArchivePath(context) }
 
     // The renderer has carried a transit layer all along; :maps simply never asked for it,
     // so flipping the layers switch drew nothing but Compose stops. Remembered because
@@ -164,7 +159,6 @@ fun MapSurface(
         cameraState = camera,
         modifier = modifier,
         darkBasemap = darkBasemap,
-        archivePath = archivePath,
         options = mapOptions,
         userPuck = userPuck,
         // The selected city/region's outline, dimmed outside. Derived from the sheet's own
@@ -336,6 +330,6 @@ fun MapSurface(
     }
 }
 
-// EXTRA_ARCHIVE_PATH, resolveArchivePath, STATION_POI_TYPE, TaggedFeature,
+// STATION_POI_TYPE, TaggedFeature,
 // traffic constants, prefetchTrafficSquares, buildTrafficColorTable, pinFeatures
 // and buildMarkers live in MapSurfaceHelpers.kt.

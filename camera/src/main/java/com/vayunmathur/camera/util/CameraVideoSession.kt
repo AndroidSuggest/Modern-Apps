@@ -14,6 +14,10 @@ import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
 import androidx.camera.video.VideoCapture
+import com.vayunmathur.camera.platform.currentLensFamily
+import com.vayunmathur.camera.platform.ensureLensesEnumerated
+import com.vayunmathur.camera.platform.lensSelector
+import com.vayunmathur.camera.platform.refreshCapabilities
 
 suspend fun CameraViewModel.setupVideoSession(): Boolean {
     return try {
@@ -21,9 +25,10 @@ suspend fun CameraViewModel.setupVideoSession(): Boolean {
         cameraProvider = provider
         provider.unbindAll()
 
-        val selector = CameraSelector.Builder()
-            .requireLensFacing(_lensFacing.value)
-            .build()
+        ensureLensesEnumerated(provider)
+        val videoLens = _selectedLens.value
+        val videoFamily = currentLensFamily()
+        val selector = lensSelector(_lensFacing.value, videoLens)
         val cameraInfo = provider.getCameraInfo(selector)
 
         val selectedCodec = _videoCodec.value
@@ -57,7 +62,14 @@ suspend fun CameraViewModel.setupVideoSession(): Boolean {
         owner.start()
         sessionLifecycleOwner = owner
 
-        fun bind(av1: Boolean, hevc: Boolean, opus: Boolean, hlg: Boolean, snapshot: Boolean): Camera {
+        fun bind(
+            lensSelector: CameraSelector,
+            av1: Boolean,
+            hevc: Boolean,
+            opus: Boolean,
+            hlg: Boolean,
+            snapshot: Boolean
+        ): Camera {
             val dynamicRange = if (hlg) androidx.camera.core.DynamicRange.HLG_10_BIT
                 else androidx.camera.core.DynamicRange.SDR
             val previewBuilder = Preview.Builder()
@@ -88,14 +100,15 @@ suspend fun CameraViewModel.setupVideoSession(): Boolean {
                     .setFlashMode(ImageCapture.FLASH_MODE_OFF)
                     .build()
                 imageCapture = still
-                bindSession(provider, owner, selector, preview, capture, still)
+                bindSession(provider, owner, lensSelector, preview, capture, still)
             } else {
                 imageCapture = null
-                bindSession(provider, owner, selector, preview, capture)
+                bindSession(provider, owner, lensSelector, preview, capture)
             }
         }
 
         // Bind ladder: prefer HDR + snapshot, then drop the snapshot use case, then drop HDR.
+        // Each rung is tried across the lens ladder (requested → wide → any same-facing).
         val attempts = buildList {
             add(hlgSupported to true)
             add(hlgSupported to false)
@@ -105,24 +118,33 @@ suspend fun CameraViewModel.setupVideoSession(): Boolean {
             }
         }
         var bound: Camera? = null
+        var videoBoundLensId: String? = null
         var lastError: Exception? = null
         for ((hlg, snapshot) in attempts) {
-            try {
-                provider.unbindAll()
-                bound = bind(useAv1, useHevc, useOpus, hlg, snapshot)
-                break
-            } catch (e: Exception) {
-                lastError = e
-                Log.w("VideoSession", "Video bind failed (hlg=$hlg, snapshot=$snapshot); trying next", e)
+            val lensOrdered = buildList {
+                if (videoLens != null) add(videoLens)
+                videoFamily.sortedBy { it.fallbackPriority }.forEach { if (it != videoLens) add(it) }
+                if (videoLens == null && videoFamily.isEmpty()) add(null)
             }
+            var rungBound = false
+            for (candidate in lensOrdered) {
+                try {
+                    provider.unbindAll()
+                    bound = bind(lensSelector(_lensFacing.value, candidate), useAv1, useHevc, useOpus, hlg, snapshot)
+                    videoBoundLensId = candidate?.logicalCameraId
+                    rungBound = true
+                    break
+                } catch (e: Exception) {
+                    lastError = e
+                    Log.w("VideoSession", "Video bind failed (hlg=$hlg, snapshot=$snapshot, lens=${candidate?.labelKey}); trying next", e)
+                }
+            }
+            if (rungBound) break
         }
         boundCamera = bound ?: throw (lastError ?: IllegalStateException("Video session bind failed"))
         _videoSnapshotSupported.value = imageCapture != null
 
-        boundCamera?.cameraInfo?.zoomState?.value?.let {
-            updateZoomLevels(it.minZoomRatio, it.maxZoomRatio)
-            restoreZoom(it.minZoomRatio, it.maxZoomRatio)
-        }
+        boundCamera?.let { refreshCapabilities(it, videoBoundLensId) }
         _videoSessionActive.value = true
         true
     } catch (e: Exception) {

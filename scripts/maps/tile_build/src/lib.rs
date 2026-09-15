@@ -45,7 +45,6 @@ pub mod par;
 pub mod progress;
 pub mod pyramid;
 pub mod simplify;
-pub mod simplify_extra;
 pub mod spill;
 pub mod subdivide;
 

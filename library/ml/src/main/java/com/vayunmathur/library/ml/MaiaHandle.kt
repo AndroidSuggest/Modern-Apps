@@ -5,6 +5,8 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.res.AssetManager
 import android.util.Log
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
@@ -47,6 +49,10 @@ import java.nio.FloatBuffer
  * operator outside the reduced build — and then [logits] returns null. The chess app gates
  * its "play against the AI" option on it rather than offering a mode that cannot move.
  *
+ * When the Vulkan backend is usable and this graph is allowlisted, inference runs on the
+ * Vulkan fast path and ORT is kept only as the fallback: a Vulkan failure (or short output)
+ * falls back to the ORT session when it exists, preserving the null-on-failure contract.
+ *
  * # Threading
  *
  * Not thread-safe. A caller must hold a lock across [logits] and [close].
@@ -54,9 +60,10 @@ import java.nio.FloatBuffer
 class MaiaHandle private constructor(private val source: String) : AutoCloseable {
     private var session: OrtSession? = null
     private var assetPath: String = GRAPH
+    private var vulkanHandle: Long = 0L
 
-    /** True if the graph came up and is the file this runtime was built against. */
-    val isAvailable: Boolean get() = session != null
+    /** True if the graph came up on Vulkan or ORT and is the file this runtime was built against. */
+    val isAvailable: Boolean get() = vulkanHandle != 0L || session != null
 
     /**
      * The [MOVES] move logits for a board, or null on failure.
@@ -75,28 +82,37 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
      * are always rank 7 to rank 8, because the board is mirrored for black.
      */
     fun logits(planes: FloatArray, selfElo: Int, oppoElo: Int): FloatArray? {
-        val live = session ?: return null
         if (planes.size != PLANE_COUNT * SQUARES) return null
-        return try {
-            // Square-major [64, 12] -> [64, 96] across 8 plies + zero clock column.
-            val tokens = FloatArray(SQUARES * TOKEN_WIDTH)
-            for (square in 0 until SQUARES) {
-                for (ply in 0 until HISTORY) {
-                    for (plane in 0 until PLANE_COUNT) {
-                        tokens[square * TOKEN_WIDTH + ply * PLANE_COUNT + plane] =
-                            planes[plane * SQUARES + square]
-                    }
+        // Square-major [64, 12] -> [64, 96] across 8 plies + zero clock column.
+        val tokens = FloatArray(SQUARES * TOKEN_WIDTH)
+        for (square in 0 until SQUARES) {
+            for (ply in 0 until HISTORY) {
+                for (plane in 0 until PLANE_COUNT) {
+                    tokens[square * TOKEN_WIDTH + ply * PLANE_COUNT + plane] =
+                        planes[plane * SQUARES + square]
                 }
             }
+        }
+        val self = selfElo.coerceIn(0, MAX_ELO).toFloat()
+        val oppo = oppoElo.coerceIn(0, MAX_ELO).toFloat()
+        if (vulkanHandle != 0L) {
+            try {
+                vulkanLogits(tokens, self, oppo)?.let { return it }
+            } catch (e: Throwable) {
+                Log.w(TAG, "maia vulkan inference failed, falling back to ORT", e)
+            }
+        }
+        val live = session ?: return null
+        return try {
             val env = OrtEnvironment.getEnvironment()
             val tokenTensor = OnnxTensor.createTensor(
                 env, FloatBuffer.wrap(tokens), longArrayOf(1, SQUARES.toLong(), TOKEN_WIDTH.toLong()),
             )
             val selfTensor = OnnxTensor.createTensor(
-                env, floatArrayOf(selfElo.coerceIn(0, MAX_ELO).toFloat()),
+                env, floatArrayOf(self),
             )
             val oppoTensor = OnnxTensor.createTensor(
-                env, floatArrayOf(oppoElo.coerceIn(0, MAX_ELO).toFloat()),
+                env, floatArrayOf(oppo),
             )
             tokenTensor.useOrt {
                 selfTensor.useOrt {
@@ -122,13 +138,135 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
         }
     }
 
-    /** Free the network. Idempotent. */
+    /** Free the Vulkan and/or ORT session. Idempotent. */
     override fun close() {
+        val handle = vulkanHandle
+        vulkanHandle = 0L
+        if (handle != 0L) {
+            try {
+                VulkanSessions.close(handle)
+            } catch (e: Throwable) {
+                Log.w(TAG, "maia vulkan close failed", e)
+            }
+        }
         session = null
         OnnxSessions.close("asset:$assetPath")
     }
 
     override fun toString(): String = "Maia3-5M from $source"
+
+    /**
+     * Best-effort Vulkan fast path; leaves [vulkanHandle] at 0 on any failure so ORT stays
+     * the fallback. The model bytes are read once and shared by the preflight check
+     * and the open.
+     */
+    private fun tryVulkan(assets: AssetManager, path: String) {
+        try {
+            if (!VulkanSessions.isUsable()) return
+            val key = "asset:$path"
+            val modelBytes = try {
+                assets.open(path).use { it.readBytes() }
+            } catch (e: Throwable) {
+                Log.w(TAG, "cannot read $path for vulkan preflight", e)
+                return
+            }
+            val problem = VulkanSessions.preflight(key, readModel = { modelBytes })
+            if (problem != null) {
+                Log.w(TAG, "vulkan preflight skipped for $path: $problem")
+                return
+            }
+            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            if (handle != 0L) {
+                vulkanHandle = handle
+                Log.i(TAG, "vulkan session open for $key")
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "vulkan open failed for $path, using ORT", e)
+            vulkanHandle = 0L
+        }
+    }
+
+    /**
+     * Vulkan fast path: the same inputs as the ORT call, packed flat little-endian.
+     *
+     * Returns null when the bridge returns no bytes or the `moves` output cannot be located,
+     * so the caller falls back to ORT. Throws on packing errors, which the caller also
+     * treats as fallback.
+     */
+    private fun vulkanLogits(tokens: FloatArray, selfElo: Float, oppoElo: Float): FloatArray? {
+        val handle = vulkanHandle
+        if (handle == 0L) return null
+        val names = arrayOf(IN_TOKENS, IN_SELF_ELO, IN_OPPO_ELO)
+        val dtypes = intArrayOf(DTYPE_F32, DTYPE_F32, DTYPE_F32)
+        val shapes = longArrayOf(
+            1, SQUARES.toLong(), TOKEN_WIDTH.toLong(),
+            1,
+            1,
+        )
+        val shapeOffsets = longArrayOf(0, 3, 4)
+        val payload = packMaiaInputs(tokens, selfElo, oppoElo)
+        val outBytes = VulkanBridge.run(handle, names, dtypes, shapes, shapeOffsets, payload)
+            ?: return null
+        val outNames = try {
+            VulkanBridge.lastOutputNames(handle)
+        } catch (e: Throwable) {
+            Log.w(TAG, "maia vulkan output names unavailable", e)
+            null
+        }
+        val outShapes = try {
+            VulkanBridge.lastOutputShapes(handle)
+        } catch (e: Throwable) {
+            Log.w(TAG, "maia vulkan output shapes unavailable", e)
+            null
+        }
+        return parseMovesOutput(outBytes, outNames, outShapes)
+    }
+
+    /**
+     * Locate `moves` in the flat little-endian output payload.
+     *
+     * The bridge concatenates every graph output in [names] order; the flat shape dims split
+     * evenly across names (this graph has the single `[1, 4352]` output), so each output's
+     * float window is its shape chunk. Without metadata the exact single-output size is
+     * required.
+     */
+    private fun parseMovesOutput(
+        outputs: ByteArray,
+        names: Array<String>?,
+        shapesFlat: LongArray?,
+    ): FloatArray? {
+        val floats = leToFloats(outputs)
+        if (names != null && names.isNotEmpty() && shapesFlat != null) {
+            if (shapesFlat.size % names.size == 0) {
+                val rank = shapesFlat.size / names.size
+                var offset = 0
+                for (i in names.indices) {
+                    var numel = 1L
+                    for (r in 0 until rank) numel *= shapesFlat[i * rank + r]
+                    val count = numel.toInt()
+                    if (names[i] == OUT_MOVES) {
+                        if (count != MOVES || offset + count > floats.size) {
+                            Log.w(TAG, "maia vulkan output $OUT_MOVES has $count floats, want $MOVES")
+                            return null
+                        }
+                        return floats.copyOfRange(offset, offset + count)
+                    }
+                    offset += count
+                }
+                Log.w(TAG, "maia vulkan output $OUT_MOVES not in ${names.toList()}")
+                return null
+            }
+            val perOutput = floats.size / names.size
+            val index = names.indexOf(OUT_MOVES)
+            if (index < 0 || perOutput != MOVES || (index + 1) * perOutput > floats.size) return null
+            return floats.copyOfRange(index * perOutput, (index + 1) * perOutput)
+        }
+        if (floats.size != MOVES) {
+            Log.w(TAG, "maia vulkan returned ${floats.size} floats, want $MOVES")
+            return null
+        }
+        return floats
+    }
 
     companion object {
         private const val TAG = "MaiaHandle"
@@ -152,6 +290,14 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
         /** The one graph. A wrong file fails at load. */
         const val GRAPH = "maia3-5m.onnx"
 
+        private const val IN_TOKENS = "tokens"
+        private const val IN_SELF_ELO = "self_elo"
+        private const val IN_OPPO_ELO = "oppo_elo"
+        private const val OUT_MOVES = "moves"
+
+        /** ONNX TensorProto elem type for float32, as carried in the Vulkan `dtypes` array. */
+        private const val DTYPE_F32 = 1
+
         /**
          * The model from the APK's assets, which is the only place it lives.
          *
@@ -162,8 +308,25 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
             val instance = MaiaHandle("the APK's $path")
             instance.assetPath = path
             instance.session = OnnxSessions.openAssetManager(assets, path)
-            if (instance.session == null) Log.e(TAG, "cannot open $path")
+            instance.tryVulkan(assets, path)
+            if (!instance.isAvailable) Log.e(TAG, "cannot open $path")
             return instance
+        }
+
+        /** `tokens` (f32) + `self_elo` (f32 scalar) + `oppo_elo` (f32 scalar), packed in order. */
+        private fun packMaiaInputs(tokens: FloatArray, selfElo: Float, oppoElo: Float): ByteArray {
+            val buf = ByteBuffer.allocate(tokens.size * 4 + 4 + 4)
+                .order(ByteOrder.LITTLE_ENDIAN)
+            for (v in tokens) buf.putFloat(v)
+            buf.putFloat(selfElo)
+            buf.putFloat(oppoElo)
+            return buf.array()
+        }
+
+        private fun leToFloats(bytes: ByteArray): FloatArray {
+            val out = FloatArray(bytes.size / 4)
+            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(out)
+            return out
         }
     }
 }

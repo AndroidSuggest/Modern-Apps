@@ -110,4 +110,18 @@
     <string name="brightness">Brightness</string>
     <string name="shadows">Shadows</string>
     <string name="warmth">Warmth</string>
+
+    <!-- LensBar: physical-lens picker above the zoom bar -->
+    <!-- LensBar: label for the ultra-wide (0.5x) physical lens. Short pill label -->
+    <string name="lens_ultrawide">UW</string>
+    <!-- LensBar: label for the default wide (1x) physical lens. Short pill label -->
+    <string name="lens_wide">1x</string>
+    <!-- LensBar: label for the telephoto physical lens. Short pill label -->
+    <string name="lens_tele">Tele</string>
+    <!-- LensBar: label for the monochrome physical lens. Short pill label -->
+    <string name="lens_mono">Mono</string>
+    <!-- LensBar: label for the front-facing lens. Short pill label -->
+    <string name="lens_front">Front</string>
+    <!-- LensBar: content description for the physical-lens picker row -->
+    <string name="lens_picker_description">Camera lens</string>
 </resources>
