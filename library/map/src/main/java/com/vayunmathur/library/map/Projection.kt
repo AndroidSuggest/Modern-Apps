@@ -48,8 +48,9 @@ data class PlacedLabel(
  * At [pitchDeg] `== 0` this is the plain orthographic inverse it always was. When tilted it
  * mirrors the native perspective in `camera::Camera` exactly — [screenLocationFromPosition]
  * projects through the same divide, [positionFromScreenLocation] intersects the eye ray with the
- * ground plane — so Compose overlays land where the renderer drew the basemap under them. Bearing
- * is not carried here: the Compose path renders north-up, so a projection for it does too.
+ * ground plane — so Compose overlays land where the renderer drew the basemap under them.
+ * [bearingDeg] rotates the map clockwise-from-north exactly as the native `Camera::rotation`
+ * 2x2 does, so the Compose overlays agree with the rotated basemap; `0.0` is north-up.
  *
  * [labelQuery] answers [queryRenderedLabels]: null until a rendered surface
  * registers one (see `VulkanMapSurface`), so a projection without a live
@@ -61,6 +62,7 @@ class Projection internal constructor(
     private val widthDp: Float,
     private val heightDp: Float,
     private val pitchDeg: Double = 0.0,
+    private val bearingDeg: Double = 0.0,
     private val labelQuery: ((DpRect, Set<String>) -> List<PlacedLabel>)? = null,
     private val markerPick: ((Float, Float) -> Long)? = null,
 ) {
@@ -77,8 +79,23 @@ class Projection internal constructor(
     fun screenLocationFromPosition(position: GeoPoint): DpOffset {
         val c = Mercator.project(center.longitude, center.latitude, zoom)
         val p = Mercator.project(position.longitude, position.latitude, zoom)
-        val sx = p.x - c.x
-        val sy = p.y - c.y
+        val dx = p.x - c.x
+        val dy = p.y - c.y
+        // Bearing rotation first (mirroring `Camera::rotation`): a world offset becomes a
+        // screen offset via sx = cos*dx + sin*dy, sy = -sin*dx + cos*dy. At zero bearing
+        // this is the identity, so the north-up path is unchanged.
+        val sx: Double
+        val sy: Double
+        if (bearingDeg == 0.0) {
+            sx = dx
+            sy = dy
+        } else {
+            val radians = Math.toRadians(bearingDeg)
+            val cos = cos(radians)
+            val sin = sin(radians)
+            sx = cos * dx + sin * dy
+            sy = -sin * dx + cos * dy
+        }
         if (pitchDeg == 0.0) {
             return DpOffset((sx + halfW).toFloat().dp, (sy + halfH).toFloat().dp)
         }
@@ -124,12 +141,20 @@ class Projection internal constructor(
             val w = d - psin * sy
             sx = ndcX * w / fx
         }
-        return Mercator.unproject(c.x + sx, c.y + sy, zoom)
+        // Inverse bearing rotation (mirroring `Camera::screen_to_world`): the screen offset back
+        // to a world offset via x = cos*sx - sin*sy, y = sin*sx + cos*sy.
+        if (bearingDeg == 0.0) {
+            return Mercator.unproject(c.x + sx, c.y + sy, zoom)
+        }
+        val radians = Math.toRadians(bearingDeg)
+        val cos = cos(radians)
+        val sin = sin(radians)
+        return Mercator.unproject(c.x + cos * sx - sin * sy, c.y + sin * sx + cos * sy, zoom)
     }
 
     /** The lon/lat bounds of the currently visible viewport. */
     fun queryVisibleBoundingBox(): GeoBounds {
-        if (pitchDeg == 0.0) {
+        if (pitchDeg == 0.0 && bearingDeg == 0.0) {
             val topLeft = positionFromScreenLocation(DpOffset(0.dp, 0.dp))
             val bottomRight = positionFromScreenLocation(DpOffset(widthDp.dp, heightDp.dp))
             return GeoBounds(
@@ -139,9 +164,10 @@ class Projection internal constructor(
                 north = topLeft.latitude,
             )
         }
-        // Tilted: the visible ground is a trapezoid, so take the AABB of all four screen corners'
-        // ground points. The top edge recedes toward the horizon, so this box is larger than the
-        // untilted one — correctly, since that ground really is on screen.
+        // Tilted and/or rotated: the visible ground is a trapezoid or a rotated rectangle, so
+        // take the AABB of all four screen corners' ground points. The box grows up to sqrt(2)
+        // at 45 degrees — correctly, since that ground really is on screen (mirroring the
+        // native `viewport_bounds` support function).
         val corners = listOf(
             positionFromScreenLocation(DpOffset(0.dp, 0.dp)),
             positionFromScreenLocation(DpOffset(widthDp.dp, 0.dp)),

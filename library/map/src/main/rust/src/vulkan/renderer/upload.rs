@@ -1,6 +1,6 @@
 use super::{
-    BuildingBuffers, CarriagewayBuffers, FRAMES_IN_FLIGHT, LayerBuffers, RegionBuffers,
-    Renderer, ResidentTile, TerrainBuffers, TrafficBuffers,
+    BuildingBuffers, CarriagewayBuffers, LayerBuffers, RegionBuffers, Renderer, ResidentTile,
+    TerrainBuffers, TrafficBuffers, FRAMES_IN_FLIGHT,
 };
 use crate::tile::geometry::TileMesh;
 use crate::tile::select;
@@ -11,7 +11,6 @@ use ash::vk;
 use std::collections::HashSet;
 
 impl Renderer {
-
     /// Upload a tile's geometry, replacing anything already resident for it.
     ///
     /// Same-format meshes share one vertex + one index buffer per pool (see
@@ -72,10 +71,22 @@ impl Renderer {
         // SAFETY: uploading fresh GPU buffers for a tile whose previous buffers (if any)
         // are retired below, after every buffer below has landed.
         let flat = unsafe {
-            upload_packed(instance, physical, device, fill::FLOATS_PER_VERTEX, &flat_meshes)?
+            upload_packed(
+                instance,
+                physical,
+                device,
+                fill::FLOATS_PER_VERTEX,
+                &flat_meshes,
+            )?
         };
         let lines = unsafe {
-            upload_packed(instance, physical, device, stroke::FLOATS_PER_VERTEX, &line_meshes)?
+            upload_packed(
+                instance,
+                physical,
+                device,
+                stroke::FLOATS_PER_VERTEX,
+                &line_meshes,
+            )?
         };
         let ribbons = unsafe {
             upload_packed(
@@ -97,13 +108,21 @@ impl Renderer {
             // the nth entry of the flat pool's first-index list, and likewise for lines.
             let first_index = match layer_mesh.kind {
                 LayerKind::Fill => {
-                    let Some(at) = flat_layer_iter.next() else { continue };
-                    let Some((_, _, first)) = flat.as_ref() else { continue };
+                    let Some(at) = flat_layer_iter.next() else {
+                        continue;
+                    };
+                    let Some((_, _, first)) = flat.as_ref() else {
+                        continue;
+                    };
                     first[*at]
                 }
                 LayerKind::Line => {
-                    let Some(at) = line_layer_iter.next() else { continue };
-                    let Some((_, _, first)) = lines.as_ref() else { continue };
+                    let Some(at) = line_layer_iter.next() else {
+                        continue;
+                    };
+                    let Some((_, _, first)) = lines.as_ref() else {
+                        continue;
+                    };
                     first[*at]
                 }
                 LayerKind::Symbol => continue,
@@ -118,11 +137,15 @@ impl Renderer {
             });
         }
         let flat_first: Vec<u32> = flat.as_ref().map(|(_, _, f)| f.clone()).unwrap_or_default();
-        let line_first: Vec<u32> =
-            lines.as_ref().map(|(_, _, f)| f.clone()).unwrap_or_default();
+        let line_first: Vec<u32> = lines
+            .as_ref()
+            .map(|(_, _, f)| f.clone())
+            .unwrap_or_default();
         let mut regions = Vec::with_capacity(mesh.regions.len());
         for (n, region) in mesh.regions.iter().enumerate() {
-            let Some(&first_index) = flat_first.get(flat_region_at[n]) else { continue };
+            let Some(&first_index) = flat_first.get(flat_region_at[n]) else {
+                continue;
+            };
             regions.push(RegionBuffers {
                 id: region.id,
                 first_index,
@@ -137,22 +160,28 @@ impl Renderer {
             if segment.indices.is_empty() {
                 continue;
             }
-            let Some(&first_index) = line_first.get(line_traffic_at[n]) else { continue };
+            let Some(&first_index) = line_first.get(line_traffic_at[n]) else {
+                continue;
+            };
             traffic.push(TrafficBuffers {
                 id: segment.id,
                 first_index,
                 index_count: segment.indices.len() as u32,
             });
         }
-        let ribbon_first: Vec<u32> =
-            ribbons.as_ref().map(|(_, _, f)| f.clone()).unwrap_or_default();
+        let ribbon_first: Vec<u32> = ribbons
+            .as_ref()
+            .map(|(_, _, f)| f.clone())
+            .unwrap_or_default();
         let mut carriageways = Vec::with_capacity(mesh.carriageways.len());
         let mut ri = 0usize;
         for road in &mesh.carriageways {
             if road.indices.is_empty() {
                 continue;
             }
-            let Some(&first_index) = ribbon_first.get(ri) else { continue };
+            let Some(&first_index) = ribbon_first.get(ri) else {
+                continue;
+            };
             ri += 1;
             carriageways.push(CarriagewayBuffers {
                 layer_index: road.layer_index,
@@ -240,6 +269,7 @@ impl Renderer {
             yellow_centre: mesh.yellow_centre,
             labels: mesh.labels.clone(),
             arrows: mesh.arrows.clone(),
+            heightmap: mesh.heightmap.clone(),
             z: mesh.z,
             x: mesh.x,
             y: mesh.y,

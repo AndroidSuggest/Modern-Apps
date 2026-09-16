@@ -1,16 +1,16 @@
 //! One frame from a camera snapshot.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
+use super::handle::{handle_mut, TileResult, RESIDENT_TILE_CAP, UPLOADS_PER_FRAME};
+use super::log::{log, log_info};
 use crate::camera::Camera;
 use crate::style;
 use crate::tile::select;
 use crate::tile::source::retry_delay_ms;
-use crate::timing::{Step, nanos_since};
+use crate::timing::{nanos_since, Step};
 use jni::objects::JClass;
 use jni::sys::{jboolean, jfloat, jlong};
 use jni::JNIEnv;
-use super::handle::{RESIDENT_TILE_CAP, TileResult, UPLOADS_PER_FRAME, handle_mut};
-use super::log::{log, log_info};
 /// Draw one frame from a camera snapshot. Returns false if the frame was skipped.
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
@@ -28,7 +28,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     density: jfloat,
     frame_time_nanos: jlong,
 ) -> jboolean {
-    let Some(map) = handle_mut(handle) else { return 0 };
+    let Some(map) = handle_mut(handle) else {
+        return 0;
+    };
     // Per-step timing for the `%60` rollup: `Instant` deltas only, never the camera clock
     // (which wraps hourly). The render thread is the only writer.
     let jni_start = std::time::Instant::now();
@@ -59,7 +61,8 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
         density,
         bearing_deg: bearing as f64,
         pitch_deg: (pitch as f64).clamp(0.0, crate::camera::PITCH_MAX_DEG),
-        time_seconds: ((frame_time_nanos.rem_euclid(crate::camera::CLOCK_WRAP_NANOS)) as f64 / 1_000_000_000.0) as f32,
+        time_seconds: ((frame_time_nanos.rem_euclid(crate::camera::CLOCK_WRAP_NANOS)) as f64
+            / 1_000_000_000.0) as f32,
     };
     // Task-17 pick needs the frame's density for Dp→device-px; remember it.
     map.density = density;
@@ -70,7 +73,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     let drain_start = std::time::Instant::now();
     let mut uploads = 0usize;
     while uploads < UPLOADS_PER_FRAME {
-        let Ok((key, result)) = map.finished.try_recv() else { break };
+        let Ok((key, result)) = map.finished.try_recv() else {
+            break;
+        };
         map.in_flight.remove(&key);
         match result {
             TileResult::Ready(mesh) => {
@@ -97,7 +102,8 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
             TileResult::Failed => {
                 let attempts = map.retry.get(&key).map_or(0, |(n, _)| *n).saturating_add(1);
                 let wait = std::time::Duration::from_millis(retry_delay_ms(attempts));
-                map.retry.insert(key, (attempts, std::time::Instant::now() + wait));
+                map.retry
+                    .insert(key, (attempts, std::time::Instant::now() + wait));
             }
         }
     }
@@ -115,7 +121,10 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     //
     // The drain sample lands here rather than right after the loop: it covers the channel
     // receives and the uploads, not the select below.
-    map.renderer.step_times.borrow_mut().record(Step::UploadDrain, nanos_since(drain_start));
+    map.renderer
+        .step_times
+        .borrow_mut()
+        .record(Step::UploadDrain, nanos_since(drain_start));
     let select_start = std::time::Instant::now();
     let (min_zoom, max_zoom) = map.zoom_range.get();
     // A tile is "had" only if it was tessellated at the current toggle generation, so a
@@ -124,8 +133,10 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // arrives.
     let (_, _, generation) = map.toggles.get();
     let visible = select::visible(&camera, min_zoom, max_zoom);
-    let keep: Vec<u64> =
-        select::resident_set(&camera, min_zoom, max_zoom).iter().map(|t| t.key()).collect();
+    let keep: Vec<u64> = select::resident_set(&camera, min_zoom, max_zoom)
+        .iter()
+        .map(|t| t.key())
+        .collect();
     let now = std::time::Instant::now();
     for tile in &visible {
         let key = tile.key();
@@ -150,10 +161,14 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // `retry` is empty in the ordinary case (so the closure never runs), and a viewport is a
     // couple of dozen tiles. Building a set here would allocate every frame to save nothing.
     if !map.retry.is_empty() {
-        map.retry.retain(|key, _| visible.iter().any(|t| t.key() == *key));
+        map.retry
+            .retain(|key, _| visible.iter().any(|t| t.key() == *key));
     }
     map.renderer.retain(&keep, &visible, RESIDENT_TILE_CAP);
-    map.renderer.step_times.borrow_mut().record(Step::Select, nanos_since(select_start));
+    map.renderer
+        .step_times
+        .borrow_mut()
+        .record(Step::Select, nanos_since(select_start));
 
     // Once a second, state what the renderer actually has. Every bug in this file so far has
     // been invisible from the outside: a viewport nobody measured, a zoom level the archive
@@ -207,7 +222,10 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     );
     // The JNI-entry sample closes here: it covers drain + select + render, which is the whole
     // native half of the frame the host asked for.
-    map.renderer.step_times.borrow_mut().record(Step::JniEntry, nanos_since(jni_start));
+    map.renderer
+        .step_times
+        .borrow_mut()
+        .record(Step::JniEntry, nanos_since(jni_start));
     match outcome {
         Ok(drawn) => jboolean::from(drawn),
         Err(e) => {
@@ -229,7 +247,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_lastFrameStepT
     handle: jlong,
 ) -> jni::sys::jlongArray {
     let empty = env.new_long_array(0).expect("step-times empty array");
-    let Some(map) = handle_mut(handle) else { return empty.into_raw() };
+    let Some(map) = handle_mut(handle) else {
+        return empty.into_raw();
+    };
     let last = map.renderer.step_times.borrow();
     let nanos = last.last_nanos();
     let out = match env.new_long_array(nanos.len() as i32) {

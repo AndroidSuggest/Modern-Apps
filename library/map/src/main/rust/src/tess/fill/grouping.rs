@@ -1,4 +1,4 @@
-use super::geom::{box_area, bounds, boxes_overlap, point_within_ring, ring_area2, rings_overlap};
+use super::geom::{bounds, box_area, boxes_overlap, point_within_ring, ring_area2, rings_overlap};
 
 /// Regroup rings into polygons earcut can actually express — see the module docs for why.
 ///
@@ -25,8 +25,10 @@ pub(crate) fn polygons(rings: &[&[(i32, i32)]]) -> Vec<Vec<usize>> {
             {
                 continue;
             }
-            let votes =
-                rings[j].iter().filter(|&&(x, y)| point_within_ring(x, y, rings[i])).count();
+            let votes = rings[j]
+                .iter()
+                .filter(|&&(x, y)| point_within_ring(x, y, rings[i]))
+                .count();
             if votes * 2 > rings[j].len() {
                 enclosing[j].push((i, votes));
             }
@@ -81,9 +83,9 @@ pub(crate) fn polygons(rings: &[&[(i32, i32)]]) -> Vec<Vec<usize>> {
             // A hole that crosses out and back between two consecutive vertices is missed
             // entirely and simply tolerated.
             let straddles = votes != rings[j].len();
-            let overlaps = group[1..].iter().any(|&k| {
-                boxes_overlap(boxes[j], boxes[k]) && rings_overlap(rings[j], rings[k])
-            });
+            let overlaps = group[1..]
+                .iter()
+                .any(|&k| boxes_overlap(boxes[j], boxes[k]) && rings_overlap(rings[j], rings[k]));
             if !straddles && !overlaps {
                 group.push(j);
             }

@@ -49,7 +49,14 @@ mod tests {
     const UUID: [u8; 16] = [7; 16];
 
     /// A header, followed by `payload` bytes standing in for the driver's own data.
-    fn blob(length: u32, version: u32, vendor: u32, device: u32, uuid: [u8; 16], payload: usize) -> Vec<u8> {
+    fn blob(
+        length: u32,
+        version: u32,
+        vendor: u32,
+        device: u32,
+        uuid: [u8; 16],
+        payload: usize,
+    ) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&length.to_le_bytes());
         bytes.extend_from_slice(&version.to_le_bytes());
@@ -62,15 +69,26 @@ mod tests {
 
     #[test]
     fn a_blob_written_by_this_device_is_usable() {
-        assert!(usable(&blob(32, 1, VENDOR, DEVICE, UUID, 128), VENDOR, DEVICE, &UUID));
+        assert!(usable(
+            &blob(32, 1, VENDOR, DEVICE, UUID, 128),
+            VENDOR,
+            DEVICE,
+            &UUID
+        ));
     }
 
     #[test]
     fn a_blob_from_other_hardware_is_rejected() {
         let vendor = blob(32, 1, 0x10DE, DEVICE, UUID, 128);
-        assert!(!usable(&vendor, VENDOR, DEVICE, &UUID), "a different vendor must not be trusted");
+        assert!(
+            !usable(&vendor, VENDOR, DEVICE, &UUID),
+            "a different vendor must not be trusted"
+        );
         let device = blob(32, 1, VENDOR, 0x0000_0002, UUID, 128);
-        assert!(!usable(&device, VENDOR, DEVICE, &UUID), "a different device must not be trusted");
+        assert!(
+            !usable(&device, VENDOR, DEVICE, &UUID),
+            "a different device must not be trusted"
+        );
     }
 
     /// The case a vendor/device check alone misses: same phone, driver updated under it.
@@ -84,10 +102,16 @@ mod tests {
     fn a_truncated_blob_is_rejected() {
         let full = blob(32, 1, VENDOR, DEVICE, UUID, 128);
         let short = &full[..HEADER_BYTES - 1];
-        assert!(!usable(short, VENDOR, DEVICE, &UUID), "shorter than a header");
+        assert!(
+            !usable(short, VENDOR, DEVICE, &UUID),
+            "shorter than a header"
+        );
         // A header claiming a length the file does not contain: a part-written blob.
         let overrun = blob(4096, 1, VENDOR, DEVICE, UUID, 128);
-        assert!(!usable(&overrun, VENDOR, DEVICE, &UUID), "header longer than the blob");
+        assert!(
+            !usable(&overrun, VENDOR, DEVICE, &UUID),
+            "header longer than the blob"
+        );
     }
 
     #[test]

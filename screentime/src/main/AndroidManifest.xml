@@ -27,21 +27,21 @@
          controls does; the role grant supplies the privilege. -->
     <uses-permission android:name="android.permission.MANAGE_APP_OPS_MODES"
         tools:ignore="ProtectedPermissions" />
-    <!-- Bedtime and focus schedules arm exact alarms for window edges. -->
+    <!-- The wind-down schedule arms exact alarms for window edges. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- Re-arms schedules and observers after a restart. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- The dashboard and pickers list launchable apps. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
-    <!-- Timer/focus/bedtime notices. A normal runtime permission. -->
+    <!-- Timer/friction notices. A normal runtime permission. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Bedtime and focus couple to Do Not Disturb. Normal permission; the user grants the
-         policy access once in Settings, after which schedules toggle it directly. -->
+    <!-- Wind-down couples to Do Not Disturb. Normal permission; the user grants the
+         policy access once in Settings, after which the schedule toggles it directly. -->
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <!-- Not requested, deliberately: no INTERNET. Usage stays on the device - the dashboard,
-         timers, focus and bedtime are all local, and there is no account to sync to. -->
+         timers, pauses and bedtime are all local, and there is no account to sync to. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"
         tools:node="remove" />
 
@@ -56,7 +56,7 @@
         <!--
           The dashboard. Reached from Settings only - no launcher icon. The intent-filter
           below registers the activity as a Settings row (ia.homepage + summary), so
-          Settings > Digital Wellbeing and search land on the dashboard alongside Focus and
+          Settings > Digital Wellbeing and search land on the dashboard alongside
           Wind Down. Stock Wellbeing spreads its rows across homepage/apps/gestures/bedtime
           with summary URIs; ours registers the same homepage rows against our own activities.
         -->
@@ -83,24 +83,6 @@
           bedtime categories with summary URIs; ours registers the same rows against our own
           activities so Settings > Digital Wellbeing (and search) lands here.
         -->
-        <activity
-            android:name=".ui.FocusActivity"
-            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
-            android:exported="true"
-            android:label="@string/focus_title"
-            android:theme="@style/Theme.General">
-            <intent-filter>
-                <action android:name="com.vayunmathur.screentime.action.FOCUS_MODE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-            <meta-data
-                android:name="com.android.settings.category"
-                android:value="com.android.settings.category.ia.homepage" />
-            <meta-data
-                android:name="com.android.settings.summary"
-                android:resource="@string/focus_summary" />
-        </activity>
-
         <activity
             android:name=".ui.WindDownActivity"
             android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
@@ -144,34 +126,12 @@
             android:launchMode="singleInstance"
             android:theme="@style/Theme.General" />
 
-        <!-- Focus mode Quick Settings tile, mirroring stock's FocusModeTileService. -->
-        <service
-            android:name=".service.FocusTileService"
-            android:exported="false"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/focus_title"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
-        </service>
-
-        <!-- Keeps focus enforcement alive while paused apps are held. -->
-        <service
-            android:name=".service.FocusService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Holds focus-mode app pauses while the schedule or manual session runs." />
-        </service>
-
         <!-- Fired by UsageStatsService when an app spends its timer budget. -->
         <receiver
             android:name=".receiver.TimerReachedReceiver"
             android:exported="false" />
 
-        <!-- Focus and wind-down window edges. Re-armed each time one fires. -->
+        <!-- Wind-down window edges. Re-armed each time one fires. -->
         <receiver
             android:name=".receiver.ScheduleReceiver"
             android:exported="false" />

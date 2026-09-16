@@ -7,7 +7,7 @@ import android.content.pm.PackageManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.screentime.data.AppTimer
-import com.vayunmathur.screentime.data.FocusProfile
+import com.vayunmathur.screentime.data.PausedApps
 import com.vayunmathur.screentime.data.ScreenTimeRules
 import com.vayunmathur.screentime.data.WindDownSchedule
 import java.time.LocalDate
@@ -44,8 +44,7 @@ data class ScreenTimeUiState(
     /** Daily average (week) or hourly average (day) shown beside the total. */
     val averageMillis: Long = 0,
     val apps: List<TimedApp> = emptyList(),
-    val focus: FocusProfile = FocusProfile(),
-    val focusRunning: Boolean = false,
+    val paused: PausedApps = PausedApps(),
     val windDown: WindDownSchedule = WindDownSchedule(),
     /** True while the launchable-app list is still being read; never derived from its content. */
     val loading: Boolean = true,
@@ -68,8 +67,7 @@ data class AppDetailsUiState(
     val totalMillis: Long = 0,
     val averageMillis: Long = 0,
     val timerMinutes: Int? = null,
-    val pausedInFocus: Boolean = false,
-    val focusRunning: Boolean = false,
+    val appPaused: Boolean = false,
     val hasUsageAccess: Boolean = false,
 )
 
@@ -80,7 +78,6 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
     private val installed = MutableStateFlow<List<Pair<String, String>>>(emptyList())
     private val installedLoaded = MutableStateFlow(false)
     private val hasUsageAccess = MutableStateFlow(false)
-    private val focusRunning = MutableStateFlow(false)
     private val period = MutableStateFlow(UsagePeriod.Week)
     private val anchorDate = MutableStateFlow(LocalDate.now())
     private val rangeHistory = MutableStateFlow(UsageHistoryData())
@@ -90,28 +87,26 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
 
     val state: StateFlow<ScreenTimeUiState> = combine(
         rules.allTimers,
-        rules.focusProfile,
+        rules.pausedApps,
         rules.windDownSchedule,
         installed,
         installedLoaded,
         hasUsageAccess,
-        focusRunning,
         period,
         anchorDate,
         rangeHistory,
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val timerList = flows[0] as List<AppTimer>
-        val focus = flows[1] as FocusProfile
+        val paused = flows[1] as PausedApps
         val windDown = flows[2] as WindDownSchedule
         @Suppress("UNCHECKED_CAST")
         val apps = flows[3] as List<Pair<String, String>>
         val appsLoaded = flows[4] as Boolean
         val access = flows[5] as Boolean
-        val running = flows[6] as Boolean
-        val periodValue = flows[7] as UsagePeriod
-        val anchor = flows[8] as LocalDate
-        val hist = flows[9] as UsageHistoryData
+        val periodValue = flows[6] as UsagePeriod
+        val anchor = flows[7] as LocalDate
+        val hist = flows[8] as UsageHistoryData
         val byPackage = timerList.associateBy { it.packageName }
         // Keep timed apps even at 0 ms; keep used-but-untimed apps even under a minute.
         val timed = apps.mapNotNull { (pkg, label) ->
@@ -126,8 +121,7 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
             totalMillis = hist.totalMillis,
             averageMillis = hist.averageMillis,
             apps = timed,
-            focus = focus,
-            focusRunning = running,
+            paused = paused,
             windDown = windDown,
             loading = !appsLoaded,
             hasUsageAccess = access,
@@ -139,8 +133,7 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
         detailPackage,
         detailHistory,
         rules.allTimers,
-        rules.focusProfile,
-        focusRunning,
+        rules.pausedApps,
         installed,
         period,
         anchorDate,
@@ -150,13 +143,12 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
         val hist = flows[1] as UsageHistoryData
         @Suppress("UNCHECKED_CAST")
         val timerList = flows[2] as List<AppTimer>
-        val focus = flows[3] as FocusProfile
-        val running = flows[4] as Boolean
+        val paused = flows[3] as PausedApps
         @Suppress("UNCHECKED_CAST")
-        val apps = flows[5] as List<Pair<String, String>>
-        val periodValue = flows[6] as UsagePeriod
-        val anchor = flows[7] as LocalDate
-        val access = flows[8] as Boolean
+        val apps = flows[4] as List<Pair<String, String>>
+        val periodValue = flows[5] as UsagePeriod
+        val anchor = flows[6] as LocalDate
+        val access = flows[7] as Boolean
         AppDetailsUiState(
             packageName = pkg,
             label = apps.firstOrNull { it.first == pkg }?.second,
@@ -166,8 +158,7 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
             totalMillis = hist.totalMillis,
             averageMillis = hist.averageMillis,
             timerMinutes = timerList.firstOrNull { it.packageName == pkg }?.dailyLimitMinutes,
-            pausedInFocus = pkg != null && pkg in focus.pausedPackages,
-            focusRunning = running,
+            appPaused = pkg != null && pkg in paused.pausedPackages,
             hasUsageAccess = access,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), AppDetailsUiState())
@@ -180,7 +171,7 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
         refresh()
     }
 
-    /** Re-reads permission state, usage history and focus; called on resume and after mutations. */
+    /** Re-reads permission state and usage history; called on resume and after mutations. */
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
             // Permission state first: the history below is empty exactly when this is DENIED,
@@ -189,11 +180,18 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
                 UsageAccess.ensure(getApplication()) == UsageAccess.Status.GRANTED
             val periodValue = period.value
             val anchor = anchorDate.value
-            rangeHistory.value = history.aggregate(periodValue, anchor)
-            detailPackage.value?.let { pkg ->
-                detailHistory.value = history.forPackage(periodValue, anchor, pkg)
+            val fresh = history.aggregate(periodValue, anchor)
+            // Drop stale results: a slow query for a previous day must never overwrite
+            // the chart for the day now on screen (yesterday's bars under today's label).
+            if (period.value == periodValue && anchorDate.value == anchor) {
+                rangeHistory.value = fresh
             }
-            focusRunning.value = Coordinator(getApplication()).isFocusActive()
+            detailPackage.value?.let { pkg ->
+                val detailFresh = history.forPackage(periodValue, anchor, pkg)
+                if (period.value == periodValue && anchorDate.value == anchor) {
+                    detailHistory.value = detailFresh
+                }
+            }
         }
     }
 
@@ -232,39 +230,12 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setFocusActive(active: Boolean) {
+    fun setAppPaused(packageName: String, paused: Boolean) {
         viewModelScope.launch {
-            Coordinator(getApplication()).setFocusActive(active)
-            refresh()
-        }
-    }
-
-    fun setFocusPaused(packageName: String, paused: Boolean) {
-        viewModelScope.launch {
-            val current = rules.focusNow()
+            val current = rules.pausedNow()
             val next = current.pausedPackages.toMutableSet()
             if (paused) next.add(packageName) else next.remove(packageName)
-            rules.setFocus(current.copy(pausedPackages = next.toList()))
-            reconcile()
-        }
-    }
-
-    fun setFocusSchedule(
-        enabled: Boolean? = null,
-        startMinute: Int? = null,
-        endMinute: Int? = null,
-        daysMask: Int? = null,
-    ) {
-        viewModelScope.launch {
-            val current = rules.focusNow()
-            rules.setFocus(
-                current.copy(
-                    scheduleEnabled = enabled ?: current.scheduleEnabled,
-                    startMinute = startMinute ?: current.startMinute,
-                    endMinute = endMinute ?: current.endMinute,
-                    daysMask = daysMask ?: current.daysMask,
-                ),
-            )
+            rules.setPaused(current.copy(pausedPackages = next.toList()))
             reconcile()
         }
     }

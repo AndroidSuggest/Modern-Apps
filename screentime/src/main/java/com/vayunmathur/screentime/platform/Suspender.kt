@@ -21,7 +21,7 @@ private const val TAG = "ScreenTimeSuspender"
  *
  * A suspended app's icon greys out and launches cancel: the platform shows the standard
  * paused treatment with a button into our `ACTION_SHOW_SUSPENDED_APP_DETAILS` activity
- * (see `AppDetailsActivity`), which is where the timer/focus reason lives. Unsuspending is
+ * (see `AppDetailsActivity`), which is where the timer/pause reason lives. Unsuspending is
  * unconditional: reconcile recomputes the full paused set every time, so a stale suspend
  * cannot survive a rule change, a reboot, or a timer deletion.
  */

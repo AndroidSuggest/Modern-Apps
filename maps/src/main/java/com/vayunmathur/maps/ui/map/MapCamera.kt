@@ -26,9 +26,9 @@ private const val FOLLOW_ZOOM = 17.0
 /**
  * Follow the puck while navigating.
  *
- * North-up always: library:map's camera is target + zoom only, so there is no heading-up tilt
- * or course-over-ground bearing to drive (GAP: same renderer gap as above). The follow still
- * tracks the snapped position and zoom, which is the part that keeps the puck on screen.
+ * Heading-up when the chrome is not north-up: drives `bearing = course` alongside the
+ * position/zoom follow so the map rotates with travel direction; north-up when it is
+ * (or when no course is known), leaving the bearing at whatever the twist gesture set.
  */
 @Composable
 fun NavigationCameraFollow(
@@ -37,7 +37,7 @@ fun NavigationCameraFollow(
     navProgress: NavigationProgress?,
     isNavigating: Boolean,
 ) {
-    LaunchedEffect(navProgress, chrome.autoFollow, isNavigating) {
+    LaunchedEffect(navProgress, chrome.autoFollow, chrome.northUp, isNavigating) {
         if (!isNavigating) return@LaunchedEffect
         val progress = navProgress ?: return@LaunchedEffect
         if (!chrome.autoFollow) return@LaunchedEffect
@@ -46,6 +46,7 @@ fun NavigationCameraFollow(
             camera.position.copy(
                 target = progress.snappedPosition,
                 zoom = FOLLOW_ZOOM,
+                bearing = if (!chrome.northUp) progress.courseOverGround.toDouble() else camera.position.bearing,
             ),
             FOLLOW_ANIMATION_MS,
         )

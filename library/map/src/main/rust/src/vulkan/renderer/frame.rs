@@ -1,9 +1,9 @@
-use super::{FRAMES_IN_FLIGHT, Overlay, Renderer, UserPuck};
+use super::{Overlay, Renderer, UserPuck, FRAMES_IN_FLIGHT};
 use crate::camera::Camera;
 use crate::marker::Marker;
 use crate::style::{Layer, Palette};
 use crate::tile::select;
-use crate::timing::{Step, nanos_since};
+use crate::timing::{nanos_since, Step};
 use ash::vk;
 
 impl Renderer {
@@ -13,7 +13,8 @@ impl Renderer {
     /// the frame loop runs at 60, so the puck is set out of band and read by whichever
     /// frame happens next, rather than being an argument on [`render`](Self::render).
     pub fn set_user_puck(&mut self, puck: Option<UserPuck>) {
-        self.overlays.retain(|overlay| !matches!(overlay, Overlay::Puck(_)));
+        self.overlays
+            .retain(|overlay| !matches!(overlay, Overlay::Puck(_)));
         if let Some(puck) = puck {
             self.overlays.push(Overlay::Puck(puck));
         }
@@ -32,7 +33,8 @@ impl Renderer {
     ///
     /// [`set_traffic_speeds`]: Self::set_traffic_speeds
     pub fn set_markers(&mut self, markers: Vec<Marker>) {
-        self.overlays.retain(|overlay| !matches!(overlay, Overlay::Markers(_)));
+        self.overlays
+            .retain(|overlay| !matches!(overlay, Overlay::Markers(_)));
         if !markers.is_empty() {
             self.overlays.push(Overlay::Markers(markers));
         }
@@ -54,7 +56,8 @@ impl Renderer {
     /// is tessellated or uploaded here. Between the 1 Hz recomputes the sprites hold their last
     /// pushed position; the native side folds schedule + realtime delay into each recompute.
     pub fn set_vehicles(&mut self, vehicles: Vec<Marker>) {
-        self.overlays.retain(|overlay| !matches!(overlay, Overlay::Vehicles(_)));
+        self.overlays
+            .retain(|overlay| !matches!(overlay, Overlay::Vehicles(_)));
         if !vehicles.is_empty() {
             self.overlays.push(Overlay::Vehicles(vehicles));
         }
@@ -146,7 +149,9 @@ impl Renderer {
     /// old mesh keeps drawing until the new one lands, so a toggle change never blanks
     /// the map, and nothing is evicted or refetched.
     pub fn has_tile(&self, key: u64, generation: u32) -> bool {
-        self.tiles.get(&key).is_some_and(|tile| tile.generation == generation)
+        self.tiles
+            .get(&key)
+            .is_some_and(|tile| tile.generation == generation)
     }
 
     /// Whether another frame would do something this one did not — the renderer's half of
@@ -191,9 +196,9 @@ impl Renderer {
             // the first frame is owed regardless.
             return true;
         };
-        self.tiles.values().any(|tile| {
-            select::fade_in_progress(now, tile.uploaded_at, select::LOD_FADE_SECONDS)
-        })
+        self.tiles
+            .values()
+            .any(|tile| select::fade_in_progress(now, tile.uploaded_at, select::LOD_FADE_SECONDS))
     }
 
     /// Draw one frame.
@@ -239,8 +244,12 @@ impl Renderer {
         unsafe { self.scratch[self.frame_index].reset() };
         let retire_nanos = nanos_since(retire_start);
         let fence_sample = fence_nanos;
-        self.step_times.borrow_mut().record(Step::FenceWait, fence_sample);
-        self.step_times.borrow_mut().record(Step::CollectRetired, retire_nanos);
+        self.step_times
+            .borrow_mut()
+            .record(Step::FenceWait, fence_sample);
+        self.step_times
+            .borrow_mut()
+            .record(Step::CollectRetired, retire_nanos);
 
         let frame = &self.frames[self.frame_index];
         let acquire_start = std::time::Instant::now();
@@ -252,7 +261,9 @@ impl Renderer {
                 vk::Fence::null(),
             )
         };
-        self.step_times.borrow_mut().record(Step::Acquire, nanos_since(acquire_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::Acquire, nanos_since(acquire_start));
         let image_index = match acquired {
             Ok((index, _suboptimal)) => index,
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
@@ -282,8 +293,18 @@ impl Renderer {
                 .reset_fences(std::slice::from_ref(&in_flight))
                 .map_err(|e| format!("reset_fences {e:?}"))?;
             let record_start = std::time::Instant::now();
-            let record_outcome = self.record(command_buffer, image_index as usize, camera, layers, palette, clear, filter);
-            self.step_times.borrow_mut().record(Step::RecordTotal, nanos_since(record_start));
+            let record_outcome = self.record(
+                command_buffer,
+                image_index as usize,
+                camera,
+                layers,
+                palette,
+                clear,
+                filter,
+            );
+            self.step_times
+                .borrow_mut()
+                .record(Step::RecordTotal, nanos_since(record_start));
             record_outcome?;
 
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -299,7 +320,9 @@ impl Renderer {
             device
                 .queue_submit(queue, std::slice::from_ref(&submit), in_flight)
                 .map_err(|e| format!("queue_submit {e:?}"))?;
-            self.step_times.borrow_mut().record(Step::Submit, nanos_since(submit_start));
+            self.step_times
+                .borrow_mut()
+                .record(Step::Submit, nanos_since(submit_start));
 
             let swapchains = [swapchain];
             let indices = [image_index];
@@ -309,7 +332,9 @@ impl Renderer {
                 .image_indices(&indices);
             let present_start = std::time::Instant::now();
             let present_outcome = loader.queue_present(queue, &present);
-            self.step_times.borrow_mut().record(Step::Present, nanos_since(present_start));
+            self.step_times
+                .borrow_mut()
+                .record(Step::Present, nanos_since(present_start));
             match present_outcome {
                 Ok(false) => {}
                 // `VK_SUBOPTIMAL_KHR` is a success code, not an error: the swapchain still

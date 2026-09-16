@@ -19,7 +19,10 @@ android {
         // them with `AssetManager.open` and hands the bytes to ORT. Uncompressed entries avoid
         // an inflate into a heap buffer — and cost nothing on download size, since int8 and
         // fp16 weights barely deflate.
-        noCompress += "onnx"
+        noCompress += "tflite"
+        // The ExecuTorch Vulkan candidates are staged the same way: ExecutorchSessions
+        // copies them out of the APK before Module.load, so they must not be deflated either.
+        noCompress += "pte"
     }
 }
 
@@ -60,4 +63,6 @@ dependencies {
     implementation(project(":library:widgets"))
     implementation(project(":library:biometric"))
     implementation(project(":library:ocr"))
+    // Split-tower TinyCLIP ET pair download config (PhotosEtModels).
+    implementation(project(":library:downloadservice"))
 }

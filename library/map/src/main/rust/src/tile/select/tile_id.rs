@@ -42,6 +42,10 @@ impl TileId {
         if self.z < levels {
             return None;
         }
-        Some(TileId { z: self.z - levels, x: self.x >> levels, y: self.y >> levels })
+        Some(TileId {
+            z: self.z - levels,
+            x: self.x >> levels,
+            y: self.y >> levels,
+        })
     }
 }

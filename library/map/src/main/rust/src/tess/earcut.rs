@@ -50,7 +50,9 @@ struct Ring {
 
 impl Ring {
     fn new(capacity: usize) -> Ring {
-        Ring { nodes: Vec::with_capacity(capacity) }
+        Ring {
+            nodes: Vec::with_capacity(capacity),
+        }
     }
 
     fn insert(&mut self, i: usize, x: i32, y: i32, last: usize) -> usize {
@@ -132,7 +134,11 @@ impl Ring {
 /// three per triangle.
 pub fn triangulate(coords: &[i32], hole_starts: &[usize]) -> Vec<u32> {
     let mut out = Vec::new();
-    let outer_end = if hole_starts.is_empty() { coords.len() } else { hole_starts[0] * 2 };
+    let outer_end = if hole_starts.is_empty() {
+        coords.len()
+    } else {
+        hole_starts[0] * 2
+    };
     let mut ring = Ring::new(coords.len() / 2 + hole_starts.len() * 2);
 
     let mut outer = match linked_list(&mut ring, coords, 0, outer_end, true) {
@@ -173,7 +179,11 @@ pub fn triangulate(coords: &[i32], hole_starts: &[usize]) -> Vec<u32> {
             i += 2;
         }
         let span = (max_x - min_x).max(max_y - min_y);
-        inv_size = if span != 0 { 32767.0 / span as f64 } else { 0.0 };
+        inv_size = if span != 0 {
+            32767.0 / span as f64
+        } else {
+            0.0
+        };
     }
 
     earcut_linked(&mut ring, outer, &mut out, min_x, min_y, inv_size, 0);

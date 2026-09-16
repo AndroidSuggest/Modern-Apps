@@ -21,16 +21,19 @@
 use crate::style::Anchor;
 use crate::tile::glyph::{GlyphAtlas, Weight, UP_EM};
 
-/// Floats per vertex: `x, y, u, v, ax, ay` — the quad position and atlas UV, plus the label's
-/// **ground anchor** in tile-local 0..1.
+/// Floats per vertex: `x, y, u, v, ax, ay, ah` — the quad position and atlas UV, plus the label's
+/// **ground anchor** in tile-local 0..1 and its tile-normalised ground height.
 ///
 /// The anchor rides on every vertex so the billboard vertex shader (`symbol_billboard.vert`) can,
 /// under tilt, project the anchor through the perspective matrix and hang the glyph off it at a
-/// constant screen offset — keeping point labels upright and pinned to the ground. At pitch 0 the
-/// anchor is ignored and the position is drawn as-is, so the flat map is byte-identical. A curved
+/// constant screen offset — keeping point labels upright and pinned to the ground. The trailing
+/// `ah` is the DEM-sampled ground height under the anchor (0.0 with no heightmap), scaled by the
+/// pushed Dp span exactly as the flat drape paths scale theirs, so labels sit on the relief
+/// instead of sinking into hillsides. At pitch 0 the anchor is ignored and the position is drawn
+/// as-is, so the flat map is byte-identical. A curved
 /// (line) label writes each glyph's own position as its anchor, which collapses the billboard to a
 /// plain on-ground projection — curved labels stay map-aligned, as they must.
-pub const FLOATS_PER_VERTEX: usize = 6;
+pub const FLOATS_PER_VERTEX: usize = 7;
 
 /// One codepoint after shaping: pen position plus atlas lookup.
 ///
@@ -95,8 +98,14 @@ pub fn shape(
     let mut pen_x = 0.0f32;
     let mut previous: Option<char> = None;
     for ch in text.chars() {
-        let ch = if uppercase { ch.to_ascii_uppercase() } else { ch };
-        let Some(metrics) = atlas.metrics(weight, ch) else { continue };
+        let ch = if uppercase {
+            ch.to_ascii_uppercase()
+        } else {
+            ch
+        };
+        let Some(metrics) = atlas.metrics(weight, ch) else {
+            continue;
+        };
         if let Some(prev) = previous {
             pen_x += atlas.kern(weight, prev, ch);
         }
@@ -155,14 +164,19 @@ pub fn shape_wrapped(
     let mut lines = Vec::with_capacity(breaks.len() + 1);
     let mut start = 0usize;
     for end in breaks.iter().copied().chain(std::iter::once(glyphs.len())) {
-        let Some(run) = glyphs.get(start..end) else { continue };
+        let Some(run) = glyphs.get(start..end) else {
+            continue;
+        };
         start = end;
         // Trimmed like MapLibre's `TaggedString.trim()`: the space a line broke at would
         // otherwise widen the line it left behind and indent the one it starts.
         let trimmed: Vec<&ShapedGlyph> = {
             let lead = run.iter().position(|g| !is_whitespace(g.ch));
             let Some(lead) = lead else { continue };
-            let tail = run.iter().rposition(|g| !is_whitespace(g.ch)).unwrap_or(lead);
+            let tail = run
+                .iter()
+                .rposition(|g| !is_whitespace(g.ch))
+                .unwrap_or(lead);
             run.get(lead..=tail).unwrap_or_default().iter().collect()
         };
         // Pen positions restart per line, so `emit` can place each line independently.
@@ -173,7 +187,10 @@ pub fn shape_wrapped(
             pen_x += g.advance;
         }
         if !out.is_empty() {
-            lines.push(ShapedLine { glyphs: out, advance: pen_x });
+            lines.push(ShapedLine {
+                glyphs: out,
+                advance: pen_x,
+            });
         }
     }
     if lines.is_empty() {
@@ -231,7 +248,11 @@ fn badness(line_width: f32, target: f32, penalty: f32, last: bool) -> f32 {
     if last {
         // A final line shorter than average reads as a normal ragged edge; a long one
         // reads as a wrapping failure, so it is punished four times as hard.
-        return if line_width < target { raggedness / 2.0 } else { raggedness * 2.0 };
+        return if line_width < target {
+            raggedness / 2.0
+        } else {
+            raggedness * 2.0
+        };
     }
     // `abs(p) * p` keeps a negative penalty (the forced newline) negative after squaring.
     raggedness + penalty.abs() * penalty
@@ -267,7 +288,12 @@ fn evaluate(
             best = cost;
         }
     }
-    Candidate { index, x, prior: best_prior, badness: best }
+    Candidate {
+        index,
+        x,
+        prior: best_prior,
+        badness: best,
+    }
 }
 
 /// The glyph indices each line after the first starts at.
@@ -288,7 +314,9 @@ fn line_breaks(glyphs: &[ShapedGlyph], max_width: f32) -> Vec<usize> {
         if !is_whitespace(g.ch) {
             x += g.advance;
         }
-        let Some(next) = glyphs.get(i + 1) else { continue };
+        let Some(next) = glyphs.get(i + 1) else {
+            continue;
+        };
         if is_breakable(g.ch) {
             let penalty = break_penalty(g.ch, next.ch);
             let candidate = evaluate(i + 1, x, target, &candidates, penalty, false);
@@ -300,7 +328,9 @@ fn line_breaks(glyphs: &[ShapedGlyph], max_width: f32) -> Vec<usize> {
     let mut out = Vec::new();
     let mut cursor = end.prior;
     while let Some(at) = cursor {
-        let Some(candidate) = candidates.get(at) else { break };
+        let Some(candidate) = candidates.get(at) else {
+            break;
+        };
         out.push(candidate.index);
         cursor = candidate.prior;
     }
@@ -331,6 +361,10 @@ fn line_breaks(glyphs: &[ShapedGlyph], max_width: f32) -> Vec<usize> {
 /// and must stay that way, or the ink scales independently of its advance.
 ///
 /// Indices are relative to the first vertex already in `vertices`.
+///
+/// `ground` samples the tile-normalised ground height under a tile-local point (0.0 with no
+/// heightmap): the point label's anchor is sampled once and every corner carries it, so the
+/// billboard hangs the whole quad off the terrain height there.
 #[allow(clippy::too_many_arguments)]
 pub fn emit(
     atlas: &GlyphAtlas,
@@ -341,6 +375,7 @@ pub fn emit(
     offset_em: (f32, f32),
     text_px: f32,
     tile_span_px: f32,
+    ground: &dyn Fn(f32, f32) -> f32,
     vertices: &mut Vec<f32>,
     indices: &mut Vec<u32>,
 ) {
@@ -359,7 +394,12 @@ pub fn emit(
     let block_shift = (lines.len().saturating_sub(1)) as f32 * 0.5 * LINE_HEIGHT_EM * em;
     let first_baseline =
         point.1 + 0.5 * CAP_HEIGHT_EM * UP_EM as f32 * px_per_font_unit - block_shift;
-    let widest = lines.iter().fold(0.0f32, |wide, line| wide.max(line.advance));
+    let widest = lines
+        .iter()
+        .fold(0.0f32, |wide, line| wide.max(line.advance));
+    // The ground height under the anchor, sampled once: every corner of every line hangs off
+    // the same terrain height. 0.0 with no heightmap, so covered output is unchanged.
+    let anchor_h = ground(point.0, point.1);
 
     for (index, line) in lines.iter().enumerate() {
         let origin_x = match anchor {
@@ -377,17 +417,19 @@ pub fn emit(
         };
         let baseline_y = first_baseline + index as f32 * LINE_HEIGHT_EM * em;
         for g in &line.glyphs {
-            let Some(uv) = atlas.uv(weight, g.ch) else { continue };
+            let Some(uv) = atlas.uv(weight, g.ch) else {
+                continue;
+            };
             let x0 = origin_x + (g.pen_x + g.bearing_x) * px_per_font_unit;
             let x1 = x0 + g.w * px_per_font_unit;
             // `top` is y-up above the baseline; tile space is y-down.
             let y0 = baseline_y - g.top * px_per_font_unit;
             let y1 = y0 + g.h * px_per_font_unit;
             let base = (vertices.len() / FLOATS_PER_VERTEX) as u32;
-            vertices.extend_from_slice(&[x0, y0, uv.u0, uv.v0, point.0, point.1]);
-            vertices.extend_from_slice(&[x1, y0, uv.u1, uv.v0, point.0, point.1]);
-            vertices.extend_from_slice(&[x1, y1, uv.u1, uv.v1, point.0, point.1]);
-            vertices.extend_from_slice(&[x0, y1, uv.u0, uv.v1, point.0, point.1]);
+            vertices.extend_from_slice(&[x0, y0, uv.u0, uv.v0, point.0, point.1, anchor_h]);
+            vertices.extend_from_slice(&[x1, y0, uv.u1, uv.v0, point.0, point.1, anchor_h]);
+            vertices.extend_from_slice(&[x1, y1, uv.u1, uv.v1, point.0, point.1, anchor_h]);
+            vertices.extend_from_slice(&[x0, y1, uv.u0, uv.v1, point.0, point.1, anchor_h]);
             indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
         }
     }
@@ -421,7 +463,12 @@ pub fn upright(vertices: &mut [f32], pivot: (f32, f32), rotation: (f32, f32)) {
 /// 4-float `x, y, u, v` quad (it stays on the on-ground sprite pipeline, not the billboard one),
 /// so it rotates through here with `stride == 4`. Only the leading `x, y` of each vertex moves;
 /// any trailing fields (uv, anchor) are copied through untouched.
-pub fn upright_stride(vertices: &mut [f32], pivot: (f32, f32), rotation: (f32, f32), stride: usize) {
+pub fn upright_stride(
+    vertices: &mut [f32],
+    pivot: (f32, f32),
+    rotation: (f32, f32),
+    stride: usize,
+) {
     let (cos, sin) = rotation;
     if sin == 0.0 && cos == 1.0 {
         return;
@@ -437,6 +484,6 @@ pub fn upright_stride(vertices: &mut [f32], pivot: (f32, f32), rotation: (f32, f
 include!("text_part1.rs");
 #[cfg(test)]
 mod tests {
-include!("text_part2.rs");
-include!("text_part3.rs");
+    include!("text_part2.rs");
+    include!("text_part3.rs");
 }

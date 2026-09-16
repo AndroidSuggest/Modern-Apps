@@ -199,6 +199,7 @@ pub fn emit_curved(
     centreline: &[(f32, f32)],
     text_px: f32,
     tile_span_px: f32,
+    ground: &dyn Fn(f32, f32) -> f32,
     vertices: &mut Vec<f32>,
     indices: &mut Vec<u32>,
 ) {
@@ -231,11 +232,14 @@ pub fn emit_curved(
         let base = (vertices.len() / FLOATS_PER_VERTEX) as u32;
         // A curved label is map-aligned: each glyph vertex is its own anchor, so the billboard
         // shader collapses to a plain on-ground projection (offset zero) and the run foreshortens
-        // with the ground under tilt instead of standing up.
-        vertices.extend_from_slice(&[x0, y0, uv.u0, uv.v0, x0, y0]);
-        vertices.extend_from_slice(&[x1, y1, uv.u1, uv.v0, x1, y1]);
-        vertices.extend_from_slice(&[x2, y2, uv.u1, uv.v1, x2, y2]);
-        vertices.extend_from_slice(&[x3, y3, uv.u0, uv.v1, x3, y3]);
+        // with the ground under tilt instead of standing up. The anchor height is sampled at the
+        // pen per glyph — the four corners sit within pixels of it — so street names ride the
+        // same relief their road drapes onto rather than sinking into hillsides.
+        let pen_h = ground(cg.pen.0, cg.pen.1);
+        vertices.extend_from_slice(&[x0, y0, uv.u0, uv.v0, x0, y0, pen_h]);
+        vertices.extend_from_slice(&[x1, y1, uv.u1, uv.v0, x1, y1, pen_h]);
+        vertices.extend_from_slice(&[x2, y2, uv.u1, uv.v1, x2, y2, pen_h]);
+        vertices.extend_from_slice(&[x3, y3, uv.u0, uv.v1, x3, y3, pen_h]);
         indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 }

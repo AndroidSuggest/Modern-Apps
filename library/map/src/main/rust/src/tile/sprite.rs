@@ -126,7 +126,9 @@ impl SpriteAtlas {
         // sheet were ever repacked to an odd height the dark offset would land half a row
         // out and every icon would sample a seam.
         if height == 0 || height % 2 != 0 {
-            return Err(format!("the sprite sheet is {height} rows, which is not two halves"));
+            return Err(format!(
+                "the sprite sheet is {height} rows, which is not two halves"
+            ));
         }
         let light_height = height / 2;
         let index: Json = serde_json::from_str(SHEET_JSON)
@@ -149,7 +151,10 @@ impl SpriteAtlas {
             // wrap — a wrong icon rather than a missing one, which is harder to notice.
             // Bounded by the **light half**: the index addresses that one, and an entry
             // straying past it would already be reading dark pixels in light mode.
-            if w <= 0.0 || h <= 0.0 || x < 0.0 || y < 0.0
+            if w <= 0.0
+                || h <= 0.0
+                || x < 0.0
+                || y < 0.0
                 || x + w > width as f32
                 || y + h > light_height as f32
             {
@@ -160,7 +165,10 @@ impl SpriteAtlas {
             }
             // Absent rather than an error: `pixelRatio` is optional in the sprite format
             // and defaults to 1, and every entry in the staged sheet declares 2 anyway.
-            let ratio = entry.get("pixelRatio").and_then(Json::as_f64).unwrap_or(1.0) as f32;
+            let ratio = entry
+                .get("pixelRatio")
+                .and_then(Json::as_f64)
+                .unwrap_or(1.0) as f32;
             let ratio = if ratio > 0.0 { ratio } else { 1.0 };
             let _ = sprites.insert(
                 name.clone(),
@@ -231,11 +239,18 @@ fn decode_rgba8(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
     // the former.
     let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::EXPAND);
-    let mut reader = decoder.read_info().map_err(|e| format!("sprite PNG header: {e}"))?;
+    let mut reader = decoder
+        .read_info()
+        .map_err(|e| format!("sprite PNG header: {e}"))?;
     let mut buffer = vec![0u8; reader.output_buffer_size().unwrap_or(0)];
-    let info = reader.next_frame(&mut buffer).map_err(|e| format!("sprite PNG data: {e}"))?;
+    let info = reader
+        .next_frame(&mut buffer)
+        .map_err(|e| format!("sprite PNG data: {e}"))?;
     if info.bit_depth != png::BitDepth::Eight {
-        return Err(format!("the sprite sheet is {:?}, not 8-bit", info.bit_depth));
+        return Err(format!(
+            "the sprite sheet is {:?}, not 8-bit",
+            info.bit_depth
+        ));
     }
     let (width, height) = (info.width, info.height);
     let texels = (width as usize) * (height as usize);
@@ -286,12 +301,46 @@ mod tests {
     /// this tree adds. Every one must resolve to a sprite or be a stated exception, or a
     /// POI draws with the wrong icon (a neighbouring rect) or none at all.
     const POI_KINDS: &[&str] = &[
-        "beach", "forest", "marina", "park", "peak", "zoo", "garden", "bench", "aerodrome",
-        "station", "bus_stop", "ferry_terminal", "stadium", "university", "library", "school",
-        "animal", "toilets", "drinking_water", "post_office", "building", "townhall",
-        "restaurant", "fast_food", "cafe", "bar", "supermarket", "convenience", "books",
-        "beauty", "electronics", "clothes", "attraction", "museum", "theatre", "artwork",
-        "fuel", "hotel", "atm", "bank",
+        "beach",
+        "forest",
+        "marina",
+        "park",
+        "peak",
+        "zoo",
+        "garden",
+        "bench",
+        "aerodrome",
+        "station",
+        "bus_stop",
+        "ferry_terminal",
+        "stadium",
+        "university",
+        "library",
+        "school",
+        "animal",
+        "toilets",
+        "drinking_water",
+        "post_office",
+        "building",
+        "townhall",
+        "restaurant",
+        "fast_food",
+        "cafe",
+        "bar",
+        "supermarket",
+        "convenience",
+        "books",
+        "beauty",
+        "electronics",
+        "clothes",
+        "attraction",
+        "museum",
+        "theatre",
+        "artwork",
+        "fuel",
+        "hotel",
+        "atm",
+        "bank",
     ];
 
     #[test]
@@ -300,9 +349,17 @@ mod tests {
         let atlas = SpriteAtlas::build().expect("the staged sheet should decode");
         // Upstream's 512x228 plus a 38px row for the four local icons, doubled: the light
         // half over the dark one.
-        assert_eq!((atlas.width, atlas.height), (512, 532), "the 2x sheet's declared size");
+        assert_eq!(
+            (atlas.width, atlas.height),
+            (512, 532),
+            "the 2x sheet's declared size"
+        );
         assert_eq!(atlas.pixels.len(), 512 * 532 * 4, "RGBA8, tightly packed");
-        assert_eq!(atlas.len(), 61, "upstream's 53 entries plus fuel, hotel, bank, atm and the four vehicle mode sprites");
+        assert_eq!(
+            atlas.len(),
+            61,
+            "upstream's 53 entries plus fuel, hotel, bank, atm and the four vehicle mode sprites"
+        );
         assert_eq!(atlas.dark_v_offset(), 0.5, "two equal halves");
     }
 
@@ -314,10 +371,22 @@ mod tests {
         let dv = atlas.dark_v_offset();
         assert!(dv > 0.0, "the staged sheet should have a dark half");
         for &kind in POI_KINDS {
-            let name = if kind == "station" { "train_station" } else { kind };
-            let Some(sprite) = atlas.get(name) else { continue };
-            assert!(sprite.uv.v1 <= dv, "`{name}`'s light rect strays into the dark half");
-            assert!(sprite.uv.v1 + dv <= 1.0, "`{name}`'s dark rect runs off the sheet");
+            let name = if kind == "station" {
+                "train_station"
+            } else {
+                kind
+            };
+            let Some(sprite) = atlas.get(name) else {
+                continue;
+            };
+            assert!(
+                sprite.uv.v1 <= dv,
+                "`{name}`'s light rect strays into the dark half"
+            );
+            assert!(
+                sprite.uv.v1 + dv <= 1.0,
+                "`{name}`'s dark rect runs off the sheet"
+            );
         }
     }
 
@@ -331,7 +400,10 @@ mod tests {
         let light = &atlas.pixels[..half * row];
         let dark = &atlas.pixels[half * row..];
         assert_eq!(light.len(), dark.len());
-        assert_ne!(light, dark, "the dark half is byte-identical to the light one");
+        assert_ne!(
+            light, dark,
+            "the dark half is byte-identical to the light one"
+        );
     }
 
     /// `atm` and `bank` are two names for one image, so a change that repacks the sheet
@@ -355,13 +427,23 @@ mod tests {
             // The reference `icon-image` is `match(kind, "station", "train_station", kind)`,
             // so `station` is the one renamed lookup. `townhall` genuinely has no sprite,
             // and MapLibre draws it label-only.
-            let name = if kind == "station" { "train_station" } else { kind };
+            let name = if kind == "station" {
+                "train_station"
+            } else {
+                kind
+            };
             let found = atlas.get(name).is_some();
             if kind == "townhall" {
-                assert!(!found, "townhall gained a sprite; the label-only path can go");
+                assert!(
+                    !found,
+                    "townhall gained a sprite; the label-only path can go"
+                );
                 continue;
             }
-            assert!(found, "`{kind}` resolves to `{name}`, which the sheet does not carry");
+            assert!(
+                found,
+                "`{kind}` resolves to `{name}`, which the sheet does not carry"
+            );
         }
     }
 
@@ -371,11 +453,20 @@ mod tests {
     fn every_uv_rect_lies_inside_the_sheet_and_is_not_degenerate() {
         let atlas = atlas();
         for &kind in POI_KINDS {
-            let name = if kind == "station" { "train_station" } else { kind };
-            let Some(sprite) = atlas.get(name) else { continue };
+            let name = if kind == "station" {
+                "train_station"
+            } else {
+                kind
+            };
+            let Some(sprite) = atlas.get(name) else {
+                continue;
+            };
             let uv = sprite.uv;
             assert!(uv.u0 < uv.u1 && uv.v0 < uv.v1, "{name} has an empty rect");
-            assert!(uv.u0 >= 0.0 && uv.v0 >= 0.0, "{name} starts outside the sheet");
+            assert!(
+                uv.u0 >= 0.0 && uv.v0 >= 0.0,
+                "{name} starts outside the sheet"
+            );
             assert!(uv.u1 <= 1.0 && uv.v1 <= 1.0, "{name} runs past the sheet");
         }
     }

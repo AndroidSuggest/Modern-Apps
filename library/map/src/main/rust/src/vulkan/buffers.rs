@@ -49,15 +49,17 @@ impl Buffer {
             .map_err(|e| format!("create_buffer {e:?}"))?;
 
         let requirements = device.get_buffer_memory_requirements(buffer);
-        let memory_type =
-            match host_visible_memory_type(instance, physical_device, requirements.memory_type_bits)
-            {
-                Some(t) => t,
-                None => {
-                    device.destroy_buffer(buffer, None);
-                    return Err("no host-visible memory type for a vertex buffer".into());
-                }
-            };
+        let memory_type = match host_visible_memory_type(
+            instance,
+            physical_device,
+            requirements.memory_type_bits,
+        ) {
+            Some(t) => t,
+            None => {
+                device.destroy_buffer(buffer, None);
+                return Err("no host-visible memory type for a vertex buffer".into());
+            }
+        };
 
         let allocate = vk::MemoryAllocateInfo::default()
             .allocation_size(requirements.size)
@@ -92,7 +94,11 @@ impl Buffer {
             }
         }
 
-        Ok(Buffer { buffer, memory, size })
+        Ok(Buffer {
+            buffer,
+            memory,
+            size,
+        })
     }
 
     /// # Safety
@@ -112,7 +118,9 @@ fn find_memory_type(
 ) -> Option<u32> {
     (0..properties.memory_type_count).find(|&i| {
         allowed & (1 << i) != 0
-            && properties.memory_types[i as usize].property_flags.contains(flags)
+            && properties.memory_types[i as usize]
+                .property_flags
+                .contains(flags)
     })
 }
 
@@ -312,7 +320,13 @@ impl ScratchBlock {
                 return None;
             }
         };
-        Some(ScratchBlock { buffer, memory, mapped, capacity, used: 0 })
+        Some(ScratchBlock {
+            buffer,
+            memory,
+            mapped,
+            capacity,
+            used: 0,
+        })
     }
 }
 

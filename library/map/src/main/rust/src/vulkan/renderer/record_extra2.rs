@@ -1,15 +1,15 @@
 use super::{
-    ARROW_COLOR, ARROW_DP, BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, Overlay, PUCK_COLOR, PUCK_CONE_DP,
-    PUCK_CONE_HALF_STROKE_DP, PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, Renderer,
-    RouteBuffers, SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, VEHICLE_RING_DP, VEHICLE_RING_QUAD_DP,
-    anchors_for, argb_to_rgba, scale_alpha,
+    anchors_for, argb_to_rgba, scale_alpha, Overlay, Renderer, RouteBuffers, UserPuck, ARROW_COLOR,
+    ARROW_DP, BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, PUCK_COLOR, PUCK_CONE_DP,
+    PUCK_CONE_HALF_STROKE_DP, PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, SCRIM_COLOR,
+    TRAFFIC_WIDTH_DP, VEHICLE_RING_DP, VEHICLE_RING_QUAD_DP,
 };
 use crate::camera::Camera;
 use crate::marker::{Marker, MARKER_SIZE_DP};
 use crate::style::paint::Stroke;
 use crate::style::{Layer, LayerKind, Palette};
 use crate::tile::select;
-use crate::vulkan::pipeline::{MORPH_NONE, NO_MARKINGS, Push};
+use crate::vulkan::pipeline::{Push, MORPH_NONE, NO_MARKINGS};
 use ash::vk;
 use std::collections::{HashMap, HashSet};
 use tilecodec::mamaps::dict::LAYER_JUNCTION;
@@ -60,7 +60,9 @@ impl Renderer {
             for segment in &tile.traffic {
                 // The dynamic half of the pass: a segment the host has no reading for is not
                 // drawn, so the table's size — not the archive's — bounds the draw calls.
-                let Some(&argb) = self.traffic_colors.get(&segment.id) else { continue };
+                let Some(&argb) = self.traffic_colors.get(&segment.id) else {
+                    continue;
+                };
                 if !bound {
                     device.cmd_bind_pipeline(
                         command_buffer,
@@ -76,7 +78,8 @@ impl Renderer {
                     // touches the clock, so this reads no animation at all.
                     line: [half_width_px, 0.0, 0.0, 0.0],
                     misc: [tile_span_px, edge_aa, 0.0, camera.time_seconds],
-                    morph: [1.0, 0.0, 0.0, 0.0],
+                    // Draped traffic segments scale by the same span as the flat loop.
+                    morph: [1.0, 0.0, camera.tile_span_dp(tile.z) as f32, 0.0],
                 };
                 device.cmd_push_constants(
                     command_buffer,
@@ -86,13 +89,15 @@ impl Renderer {
                     push.as_bytes(),
                 );
                 device.cmd_bind_vertex_buffers(command_buffer, 0, &[pool_v], &[0]);
-                device.cmd_bind_index_buffer(
+                device.cmd_bind_index_buffer(command_buffer, pool_i, 0, vk::IndexType::UINT32);
+                device.cmd_draw_indexed(
                     command_buffer,
-                    pool_i,
+                    segment.index_count,
+                    1,
+                    segment.first_index,
                     0,
-                    vk::IndexType::UINT32,
+                    0,
                 );
-                device.cmd_draw_indexed(command_buffer, segment.index_count, 1, segment.first_index, 0, 0);
                 *submitted += 1;
             }
         }
@@ -111,7 +116,9 @@ impl Renderer {
         camera: &Camera,
         submitted: &mut usize,
     ) {
-        let Some(selected) = self.selected_region else { return };
+        let Some(selected) = self.selected_region else {
+            return;
+        };
         let device = &self.context.device;
 
         let mut any = false;
@@ -145,19 +152,16 @@ impl Renderer {
                     0,
                     push.as_bytes(),
                 );
-                device.cmd_bind_vertex_buffers(
+                device.cmd_bind_vertex_buffers(command_buffer, 0, &[pool_v], &[0]);
+                device.cmd_bind_index_buffer(command_buffer, pool_i, 0, vk::IndexType::UINT32);
+                device.cmd_draw_indexed(
                     command_buffer,
+                    region.index_count,
+                    1,
+                    region.first_index,
                     0,
-                    &[pool_v],
-                    &[0],
-                );
-                device.cmd_bind_index_buffer(
-                    command_buffer,
-                    pool_i,
                     0,
-                    vk::IndexType::UINT32,
                 );
-                device.cmd_draw_indexed(command_buffer, region.index_count, 1, region.first_index, 0, 0);
                 *submitted += 1;
             }
         }
@@ -272,13 +276,19 @@ impl Renderer {
         // carry a scrolling marching-ants, which was removed as unwanted motion. It carried no
         // meaning — `RouteOverlay` has no per-segment dashed flag, so walking, transit and
         // driving legs were all dashed alike and the mode is conveyed by colour.
-        let casing = route
-            .placement
-            .casing_half(camera.density)
-            .map(|half| (route.placement.style.casing_color, half, route.index_count, 0u32));
+        let casing = route.placement.casing_half(camera.density).map(|half| {
+            (
+                route.placement.style.casing_color,
+                half,
+                route.index_count,
+                0u32,
+            )
+        });
         let fill_half = route.placement.fill_half(camera.density);
-        let fills =
-            route.segments.iter().map(|s| (s.color, fill_half, s.index_count, s.index_offset));
+        let fills = route
+            .segments
+            .iter()
+            .map(|s| (s.color, fill_half, s.index_count, s.index_offset));
         for (color, half_width_px, index_count, first_index) in casing.into_iter().chain(fills) {
             let push = Push {
                 tile_to_clip: matrix,

@@ -158,3 +158,58 @@
         assert_eq!(blue.len(), 1, "one blue line, not two: {lines:?}");
     }
 
+    #[test]
+    fn stop_lines_name_only_serving_routes_and_keep_buses() {
+        // The shaped tram plus a crosstown line through the same stops and a
+        // bus serving the middle stop: tapping that stop draws all three
+        // (buses included), tapping far away draws nothing.
+        let mut pack = shaped_route_pack();
+        pack.routes.push(Route {
+            name: "Crosstown",
+            color: 0x00FF00,
+            route_type: 1,
+            feed: 0,
+            pattern: vec![0, 1, 2],
+            trips: vec![Trip {
+                start: 28_800,
+                stoptimes: vec![(28_800, 28_800), (29_100, 29_160), (29_400, 29_400)],
+                service: 0,
+                headsign: "East",
+            }],
+            shape: None,
+        });
+        pack.routes.push(Route {
+            name: "38",
+            color: 0xFF8800,
+            route_type: 3,
+            feed: 0,
+            pattern: vec![1, 2],
+            trips: vec![Trip {
+                start: 28_800,
+                stoptimes: vec![(28_800, 28_800), (29_400, 29_400)],
+                service: 0,
+                headsign: "Downtown",
+            }],
+            shape: None,
+        });
+        let idx = pack.index();
+        // Beta (37.710) sits on all three patterns (shared platforms). Assert
+        // on the route-name set, not the span count: corridor fanning may cut
+        // one route into several spans.
+        let lines = routes_for_stop(&idx, 37.710, -122.400);
+        let names: std::collections::HashSet<&str> =
+            lines.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(
+            names,
+            std::collections::HashSet::from(["N", "Crosstown", "38"]),
+            "every route serving Beta draws: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.name == "38"),
+            "the selected-stop case keeps buses: {lines:?}"
+        );
+        // Far from every stop: nothing to draw.
+        let far = routes_for_stop(&idx, 40.0, -75.0);
+        assert!(far.is_empty(), "no stop near: nothing to draw");
+    }
+

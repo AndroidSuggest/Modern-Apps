@@ -42,8 +42,9 @@ pub(super) unsafe fn build(
     // the swapchain.
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
     let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-    let viewport_state =
-        vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
+    let viewport_state = vk::PipelineViewportStateCreateInfo::default()
+        .viewport_count(1)
+        .scissor_count(1);
 
     // No culling: tessellated tile geometry arrives in whatever winding the clipper left
     // it in, and a culled road is an invisible road.

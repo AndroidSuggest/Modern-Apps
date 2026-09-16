@@ -20,8 +20,6 @@ import com.vayunmathur.maps.data.google.PoiSection
 data class PlacePanelState(
     val poi: GooglePoiInfo? = null,
     val poiSection: PoiSection = PoiSection.DETAILS,
-    val home: SavedPlace? = null,
-    val work: SavedPlace? = null,
     val saved: List<SavedPlace> = emptyList(),
     val userPosition: com.vayunmathur.library.map.GeoPoint? = null,
 ) {
@@ -32,14 +30,6 @@ data class PlacePanelState(
     /** The starred entry matching [feature], for removal. Null when not saved. */
     fun savedMatch(feature: SpecificFeature.RoutableFeature): SavedPlace? =
         saved.firstOrNull { it.matches(feature) }
-
-    /** True when [feature] is the Home slot. */
-    fun isHome(feature: SpecificFeature.RoutableFeature): Boolean =
-        home?.matches(feature) == true
-
-    /** True when [feature] is the Work slot. */
-    fun isWork(feature: SpecificFeature.RoutableFeature): Boolean =
-        work?.matches(feature) == true
 }
 
 /**
@@ -51,10 +41,6 @@ interface PlacePanelActions {
     fun setPoiSection(section: PoiSection) {}
     fun addSaved() {}
     fun removeSaved(place: SavedPlace) {}
-    fun setHome() {}
-    fun clearHome() {}
-    fun setWork() {}
-    fun clearWork() {}
     fun openNearestStop(lat: Double, lon: Double) {}
 
     companion object {
@@ -76,15 +62,11 @@ fun rememberPlacePanelState(
 ): PlacePanelState {
     val poi by viewModel.currentPoiInfo.collectAsState()
     val poiSection by viewModel.poiSection.collectAsState()
-    val home by savedPlacesViewModel.home.collectAsState()
-    val work by savedPlacesViewModel.work.collectAsState()
     val saved by savedPlacesViewModel.saved.collectAsState()
     val userPosition by viewModel.userPosition.collectAsState()
     return PlacePanelState(
         poi = poi,
         poiSection = poiSection,
-        home = home,
-        work = work,
         saved = saved,
         userPosition = userPosition,
     )

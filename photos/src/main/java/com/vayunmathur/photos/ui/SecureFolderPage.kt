@@ -54,7 +54,6 @@ import com.vayunmathur.library.room.SqlCipherDbCodec
 import java.io.File
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.photos.LocalColumnCount
-import com.vayunmathur.photos.NavigationBar
 import com.vayunmathur.photos.R
 import com.vayunmathur.photos.Route
 import com.vayunmathur.photos.data.VaultPhoto
@@ -91,6 +90,7 @@ fun SecureFolderPage(
         } else {
             stringResource(R.string.label_secure_folder)
         },
+        onNavigateBack = if (isSelectionMode) null else ({ backStack.pop() }),
         onClose = closeSelection,
         actions = {
             if (isSelectionMode) {
@@ -111,7 +111,6 @@ fun SecureFolderPage(
                 )
             }
         },
-        bottomBar = { if (!isSelectionMode) NavigationBar(Route.SecureFolder, backStack) },
         scrollBehavior = appBarScrollBehavior(),
     ) { paddingValues ->
         if (photos.isEmpty()) {

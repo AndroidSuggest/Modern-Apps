@@ -23,11 +23,9 @@ import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDelete
-import com.vayunmathur.library.ui.IconHome
 import com.vayunmathur.library.ui.IconList
 import com.vayunmathur.library.ui.IconMoreVert
 import com.vayunmathur.library.ui.IconStar
-import com.vayunmathur.library.ui.IconWork
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.SettingsRow
 import com.vayunmathur.library.ui.SettingsSection
@@ -42,17 +40,14 @@ import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.util.SavedPlacesViewModel
 
 /**
- * Saved-places screen (P6): view / edit / remove the user's saved places. Home
- * and Work quick-access slots, the flat starred list (rename, add-to-list,
- * remove), and named lists (create, delete, remove members). Built from the
- * shared `library/ui` settings components (no raw Scaffold); all edits go through
- * [SavedPlacesViewModel].
+ * Saved-places screen (P6): view / edit / remove the user's saved places. The
+ * flat starred list (rename, add-to-list, remove), and named lists (create,
+ * delete, remove members). Built from the shared `library/ui` settings
+ * components (no raw Scaffold); all edits go through [SavedPlacesViewModel].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedPlacesPage(backStack: NavBackStack<Route>, viewModel: SavedPlacesViewModel) {
-    val home by viewModel.home.collectAsState()
-    val work by viewModel.work.collectAsState()
     val saved by viewModel.saved.collectAsState()
     val lists by viewModel.lists.collectAsState()
 
@@ -71,36 +66,6 @@ fun SavedPlacesPage(backStack: NavBackStack<Route>, viewModel: SavedPlacesViewMo
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            // --- Quick access: Home / Work ---
-            SettingsSection(title = stringResource(R.string.saved_quick_access)) {
-                if (home == null && work == null) {
-                    SettingsRow(
-                        title = stringResource(R.string.saved_quick_access_empty),
-                        enabled = false,
-                    )
-                }
-                home?.let { place ->
-                    SettingsRow(
-                        title = place.name,
-                        supportingText = stringResource(R.string.saved_place_home),
-                        leadingContent = { IconHome() },
-                        trailingContent = {
-                            IconButton(onClick = { viewModel.clearHome() }) { IconClose() }
-                        },
-                    )
-                }
-                work?.let { place ->
-                    SettingsRow(
-                        title = place.name,
-                        supportingText = stringResource(R.string.saved_place_work),
-                        leadingContent = { IconWork() },
-                        trailingContent = {
-                            IconButton(onClick = { viewModel.clearWork() }) { IconClose() }
-                        },
-                    )
-                }
-            }
-
             // --- Flat saved list ---
             SettingsSection(title = stringResource(R.string.saved_list_header)) {
                 if (saved.isEmpty()) {

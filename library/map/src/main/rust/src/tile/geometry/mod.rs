@@ -7,8 +7,8 @@
 //! Reads a `.mamaps` body rather than an MVT tile, and that is most of why the format exists: a
 //! feature's `kind` is a `u16` tested against a sorted slice instead of a property-map lookup
 //! yielding a `String`, and a part's points are a slice of an already-decoded arena instead of a
-//! geometry-command walk. Nothing downstream of here changed — fills are still 2 floats a vertex,
-//! strokes 7, and the shaders never saw any of it.
+//! geometry-command walk. Nothing downstream of here changed - fills are 3 floats a vertex,
+//! strokes 8, ribbons 7, and the shaders read the trailing draped z.
 
 mod arrows;
 mod build;
@@ -23,6 +23,8 @@ mod traffic;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_drape;
+#[cfg(test)]
 mod tests_extra;
 #[cfg(test)]
 mod tests_extra2;
@@ -36,3 +38,4 @@ pub use mesh::{
     BuildingMesh, CarriagewayMesh, LayerMesh, RegionMesh, ShapedLabel, TerrainMesh, TileMesh,
     TrafficMesh, ROAD_LANE_MIN_ZOOM, TRAFFIC_MIN_ZOOM,
 };
+pub(crate) use terrain::{sample_ground_metres, tile_ground_width_m};

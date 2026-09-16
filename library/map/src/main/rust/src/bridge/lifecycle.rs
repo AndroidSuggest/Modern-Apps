@@ -1,6 +1,9 @@
 //! Surface lifecycle: create, resize, destroy, online flag, frame scheduling.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
+use super::handle::{handle_mut, MapHandle, OnlineFlag, TileResult, ZoomRange, WORKER_COUNT};
+use super::log::log;
+use super::workers::spawn_worker;
 use crate::style::{self, LayerToggles, Palette, SharedToggles};
 use crate::tile::select::TileId;
 use crate::tile::source::BASEMAP_ARCHIVE_URL;
@@ -12,9 +15,6 @@ use jni::JNIEnv;
 use std::collections::{HashMap, HashSet};
 use std::os::raw::c_void;
 use std::sync::{Arc, Mutex};
-use super::handle::{handle_mut, MapHandle, OnlineFlag, TileResult, ZoomRange, WORKER_COUNT};
-use super::log::log;
-use super::workers::spawn_worker;
 /// Create the renderer for `surface`. Returns 0 on failure, having logged why.
 ///
 /// # Safety
@@ -54,7 +54,11 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
         match env.get_string(&local_path) {
             Ok(s) => {
                 let s: String = s.into();
-                if s.is_empty() { None } else { Some(s) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
             }
             Err(_) => None,
         }
@@ -167,7 +171,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_nextFrameDelay
     _class: JClass<'l>,
     handle: jlong,
 ) -> jlong {
-    let Some(map) = handle_mut(handle) else { return -1 };
+    let Some(map) = handle_mut(handle) else {
+        return -1;
+    };
     if !map.in_flight.is_empty() || map.renderer.needs_frame() {
         return 0;
     }
@@ -192,7 +198,8 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_resize<'l>(
     height: jint,
 ) {
     if let Some(map) = handle_mut(handle) {
-        map.renderer.resize(width.max(0) as u32, height.max(0) as u32);
+        map.renderer
+            .resize(width.max(0) as u32, height.max(0) as u32);
     }
 }
 

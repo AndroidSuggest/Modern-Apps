@@ -23,14 +23,17 @@ impl MsaaTarget {
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
-            .extent(vk::Extent3D { width: extent.width, height: extent.height, depth: 1 })
+            .extent(vk::Extent3D {
+                width: extent.width,
+                height: extent.height,
+                depth: 1,
+            })
             .mip_levels(1)
             .array_layers(1)
             .samples(samples)
             .tiling(vk::ImageTiling::OPTIMAL)
             .usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT
-                    | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
             )
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
@@ -40,19 +43,21 @@ impl MsaaTarget {
             .map_err(|e| format!("create MSAA image {e:?}"))?;
 
         let requirements = context.device.get_image_memory_requirements(image);
-        let properties =
-            context.instance.get_physical_device_memory_properties(context.physical_device);
+        let properties = context
+            .instance
+            .get_physical_device_memory_properties(context.physical_device);
         let find = |flags: vk::MemoryPropertyFlags| -> Option<u32> {
             (0..properties.memory_type_count).find(|&i| {
                 requirements.memory_type_bits & (1 << i) != 0
-                    && properties.memory_types[i as usize].property_flags.contains(flags)
+                    && properties.memory_types[i as usize]
+                        .property_flags
+                        .contains(flags)
             })
         };
-        let type_index = find(
-            vk::MemoryPropertyFlags::DEVICE_LOCAL | vk::MemoryPropertyFlags::LAZILY_ALLOCATED,
-        )
-        .or_else(|| find(vk::MemoryPropertyFlags::DEVICE_LOCAL))
-        .ok_or("no device-local memory type for the MSAA target")?;
+        let type_index =
+            find(vk::MemoryPropertyFlags::DEVICE_LOCAL | vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
+                .or_else(|| find(vk::MemoryPropertyFlags::DEVICE_LOCAL))
+                .ok_or("no device-local memory type for the MSAA target")?;
 
         let allocate = vk::MemoryAllocateInfo::default()
             .allocation_size(requirements.size)
@@ -89,6 +94,10 @@ impl MsaaTarget {
                 return Err(format!("create MSAA image view {e:?}"));
             }
         };
-        Ok(MsaaTarget { image, memory, view })
+        Ok(MsaaTarget {
+            image,
+            memory,
+            view,
+        })
     }
 }

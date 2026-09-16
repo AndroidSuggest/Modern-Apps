@@ -49,8 +49,6 @@ class MetadataPreviews {
                     health = sampleHealthConnect(),
                 ),
                 ownerName = "Sam Rivera",
-                showEdit = true,
-                onEdit = {},
             )
         }
     }
@@ -69,6 +67,21 @@ class MetadataPreviews {
                 ),
                 actions = EmergencyActions.Noop,
                 onPickContact = {},
+                onPickOwner = {},
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-address", device = PHONE, showSystemUi = true)
+    @Composable
+    fun Preview4OwnerAddress() {
+        DynamicTheme(darkTheme = true) {
+            OwnerAddressDialog(
+                name = "Sam Rivera",
+                addresses = listOf("1 Main St, Springfield", "9 Lake Ave, Shelbyville"),
+                onConfirm = {},
+                onDismiss = {},
             )
         }
     }

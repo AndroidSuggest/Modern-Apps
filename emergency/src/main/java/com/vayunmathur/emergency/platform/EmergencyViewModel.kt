@@ -23,6 +23,8 @@ class EmergencyViewModel(app: Application) : AndroidViewModel(app), EmergencyAct
     private val hasContactsAccess = MutableStateFlow(false)
     private val addFailed = MutableStateFlow(false)
     private val health = MutableStateFlow(HealthConnectMedicalState())
+    private val ownerCandidates = MutableStateFlow<OwnerPickCandidates?>(null)
+    private val ownerPickFailed = MutableStateFlow(false)
 
     val state: StateFlow<EmergencyUiState> = combine(
         repository.info,
@@ -30,6 +32,8 @@ class EmergencyViewModel(app: Application) : AndroidViewModel(app), EmergencyAct
         hasContactsAccess,
         addFailed,
         health,
+        ownerCandidates,
+        ownerPickFailed,
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val info = flows[0] as com.vayunmathur.emergency.data.EmergencyInfo
@@ -39,6 +43,8 @@ class EmergencyViewModel(app: Application) : AndroidViewModel(app), EmergencyAct
             hasContactsAccess = flows[2] as Boolean,
             addFailed = flows[3] as Boolean,
             health = flows[4] as HealthConnectMedicalState,
+            ownerCandidates = flows[5] as OwnerPickCandidates?,
+            ownerPickFailed = flows[6] as Boolean,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), EmergencyUiState())
 
@@ -72,19 +78,49 @@ class EmergencyViewModel(app: Application) : AndroidViewModel(app), EmergencyAct
                 granted = true,
                 allergies = healthConnect.readAllergies(),
                 medications = healthConnect.readCurrentMedications(),
+                conditions = healthConnect.readConditions(),
             )
         }
     }
 
-    override fun saveInfo(
-        name: String,
-        address: String,
-        bloodType: String,
-        organDonor: String,
-    ) {
+    override fun saveMedicalInfo(bloodType: String, organDonor: String) {
         viewModelScope.launch {
-            repository.saveInfo(name, address, bloodType, organDonor)
+            repository.saveMedicalInfo(bloodType, organDonor)
         }
+    }
+
+    override fun pickOwner(contactUri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val identity = OwnerIdentityReader(getApplication()).read(contactUri)
+            if (identity == null || identity.name.isBlank()) {
+                ownerPickFailed.value = true
+                return@launch
+            }
+            when {
+                identity.addresses.isEmpty() ->
+                    repository.saveOwnerIdentity(identity.name, "")
+                identity.addresses.size == 1 ->
+                    repository.saveOwnerIdentity(identity.name, identity.addresses[0])
+                else -> ownerCandidates.value =
+                    OwnerPickCandidates(identity.name, identity.addresses)
+            }
+        }
+    }
+
+    override fun confirmOwnerAddress(address: String) {
+        val candidates = ownerCandidates.value ?: return
+        ownerCandidates.value = null
+        viewModelScope.launch {
+            repository.saveOwnerIdentity(candidates.name, address)
+        }
+    }
+
+    override fun dismissOwnerPick() {
+        ownerCandidates.value = null
+    }
+
+    override fun clearOwnerPickFailed() {
+        ownerPickFailed.value = false
     }
 
     override fun addContact(phoneUri: Uri) {

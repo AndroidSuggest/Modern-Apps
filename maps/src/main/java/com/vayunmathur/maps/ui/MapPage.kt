@@ -44,7 +44,6 @@ import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.map.rememberCameraState
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.ParkingSpot
-import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.data.transit.TransitStop
 import com.vayunmathur.maps.ipc.FamilyMember
@@ -134,13 +133,9 @@ fun MapPage(
     val userBearing by viewModel.userBearing.collectAsState()
     val userHeadingAccuracy by viewModel.userHeadingAccuracy.collectAsState()
 
-    val savedHome by savedPlacesViewModel.home.collectAsState()
-    val savedWork by savedPlacesViewModel.work.collectAsState()
     val savedList by savedPlacesViewModel.saved.collectAsState()
-    // Home, Work and the starred list drawn as one pin set, deduped.
-    val savedPins = remember(savedHome, savedWork, savedList) {
-        (listOfNotNull(savedHome, savedWork) + savedList).distinct()
-    }
+    // The starred list drawn as one pin set, deduped.
+    val savedPins = remember(savedList) { savedList.distinct() }
 
     val parkingSpot by parkingViewModel.active.collectAsState()
     val searchResults by searchViewModel.results.collectAsState()
@@ -198,7 +193,10 @@ fun MapPage(
     val searchHost = rememberMapSearchHost(searchViewModel, camera)
     val searchRequest = searchHost.searchRequest
     val searchState = SearchUiState(
-        searchQuery, searchResults, searchRecents, savedHome, savedWork, searching,
+        query = searchQuery,
+        results = searchResults,
+        recents = searchRecents,
+        searching = searching,
     )
     val browsing = selectedFeature == null && inactiveNavigation == null && !isNavigating
     // The bar is chrome, not a sheet, so it is composed away rather than animated out. Its

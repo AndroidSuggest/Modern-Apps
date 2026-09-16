@@ -49,8 +49,10 @@ pub fn fade_in_progress(now: f32, uploaded_at: f32, duration: f32) -> bool {
 /// fetched area never fades up from the background.
 pub fn has_resident_ancestor(key: u64, resident: &std::collections::HashSet<u64>) -> bool {
     let tile = TileId::from_key(key);
-    (1..=ANCESTOR_DEPTH)
-        .any(|levels| tile.ancestor(levels).is_some_and(|a| resident.contains(&a.key())))
+    (1..=ANCESTOR_DEPTH).any(|levels| {
+        tile.ancestor(levels)
+            .is_some_and(|a| resident.contains(&a.key()))
+    })
 }
 
 /// The per-tile LOD cross-fade opacity the renderer writes into `Push.morph.x` for tile `key`.

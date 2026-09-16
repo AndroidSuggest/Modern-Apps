@@ -1,15 +1,15 @@
-use super::{
-    ARROW_COLOR, ARROW_DP, BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, Overlay, PUCK_COLOR, PUCK_CONE_DP,
-    PUCK_CONE_HALF_STROKE_DP, PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, Renderer,
-    SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, anchors_for, argb_to_rgba, scale_alpha,
-};
 use super::fog::{apply_fog, fog_factor};
+use super::{
+    anchors_for, argb_to_rgba, scale_alpha, Overlay, Renderer, UserPuck, ARROW_COLOR, ARROW_DP,
+    BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, PUCK_COLOR, PUCK_CONE_DP, PUCK_CONE_HALF_STROKE_DP,
+    PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, SCRIM_COLOR, TRAFFIC_WIDTH_DP,
+};
 use crate::camera::Camera;
 use crate::marker::{Marker, MARKER_SIZE_DP};
 use crate::style::paint::Stroke;
 use crate::style::{Layer, LayerKind, Palette};
 use crate::tile::select;
-use crate::vulkan::pipeline::{MORPH_NONE, NO_MARKINGS, Push};
+use crate::vulkan::pipeline::{Push, MORPH_NONE, NO_MARKINGS};
 use ash::vk;
 use std::collections::{HashMap, HashSet};
 use tilecodec::mamaps::dict::LAYER_JUNCTION;
@@ -40,7 +40,7 @@ impl Renderer {
         layers: &[Layer],
         palette: Palette,
         ordered: &[u64],
-        clear: u32,
+        fog: u32,
         submitted: &mut usize,
     ) {
         let device = &self.context.device;
@@ -48,7 +48,9 @@ impl Renderer {
         let edge_aa = f32::from(self.swapchain.samples == vk::SampleCountFlags::TYPE_1);
         let mut bound = false;
         for key in ordered {
-            let Some(tile) = self.tiles.get(key) else { continue };
+            let Some(tile) = self.tiles.get(key) else {
+                continue;
+            };
             if tile.carriageways.is_empty() {
                 continue;
             }
@@ -61,7 +63,9 @@ impl Renderer {
             let tile_span_px = camera.tile_span_px(tile.z);
             let yellow = f32::from(tile.yellow_centre);
             for road in &tile.carriageways {
-                let Some(layer) = layers.get(road.layer_index) else { continue };
+                let Some(layer) = layers.get(road.layer_index) else {
+                    continue;
+                };
                 if !layer.draws_at(floor) {
                     continue;
                 }
@@ -87,7 +91,7 @@ impl Renderer {
                 // flat layers so carriageways haze with the ground under tilt.
                 let asphalt = apply_fog(
                     scale_alpha(layer.color(palette), layer.opacity_at(camera.zoom)),
-                    clear,
+                    fog,
                     fog_factor(camera, tile.z, tile.x, tile.y),
                 );
                 // A lane connector carries no paint. An intersection is not marked out into
@@ -113,8 +117,9 @@ impl Renderer {
                     misc: [tile_span_px, edge_aa, yellow, camera.time_seconds],
                     // The markings are static, so unlike the traffic draw there is no phase to
                     // animate and nothing to fade: `MORPH_NONE` is what the ribbon contract asks
-                    // for.
-                    morph: MORPH_NONE,
+                    // for. `morph.z` is the tile's world-px span (Dp) — the draped-`z` scale,
+                    // mirroring the flat layer loop.
+                    morph: [MORPH_NONE[0], 0.0, camera.tile_span_dp(tile.z) as f32, 0.0],
                 };
                 device.cmd_push_constants(
                     command_buffer,
@@ -124,13 +129,15 @@ impl Renderer {
                     push.as_bytes(),
                 );
                 device.cmd_bind_vertex_buffers(command_buffer, 0, &[pool_v], &[0]);
-                device.cmd_bind_index_buffer(
+                device.cmd_bind_index_buffer(command_buffer, pool_i, 0, vk::IndexType::UINT32);
+                device.cmd_draw_indexed(
                     command_buffer,
-                    pool_i,
+                    road.index_count,
+                    1,
+                    road.first_index,
                     0,
-                    vk::IndexType::UINT32,
+                    0,
                 );
-                device.cmd_draw_indexed(command_buffer, road.index_count, 1, road.first_index, 0, 0);
                 *submitted += 1;
             }
         }
@@ -154,7 +161,9 @@ impl Renderer {
         // over the lanes its own markings drew. Resolved through
         // [`crate::style::road_carriageway_layer`], which is careful to pick the *road* layer and
         // not the first layer that happens to carry a spread — see its doc comment.
-        let Some(carriageway) = crate::style::road_carriageway_layer(layers) else { return };
+        let Some(carriageway) = crate::style::road_carriageway_layer(layers) else {
+            return;
+        };
         let floor = camera.zoom.floor().clamp(0.0, 22.0) as u8;
         if !carriageway.draws_at(floor) {
             return;
@@ -178,9 +187,9 @@ impl Renderer {
                 continue;
             }
             let scale = ARROW_DP * density / span; // tile-local 0..1 units per unit-arrow coord
-            // What turns the arrows' ground setback into this tile's units. A property of the tile
-            // and not of the camera, so the arrows stay the same distance behind the junction at
-            // every zoom — see `arrow::tile_local_per_metre`.
+                                                   // What turns the arrows' ground setback into this tile's units. A property of the tile
+                                                   // and not of the camera, so the arrows stay the same distance behind the junction at
+                                                   // every zoom — see `arrow::tile_local_per_metre`.
             let per_metre = crate::tile::arrow::tile_local_per_metre(tile.z, tile.y);
             let mut verts: Vec<f32> = Vec::with_capacity(tile.arrows.len() * verts_per_arrow);
             for a in &tile.arrows {
@@ -257,7 +266,11 @@ impl Renderer {
         ) else {
             return;
         };
-        device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipelines.fill);
+        device.cmd_bind_pipeline(
+            command_buffer,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipelines.fill,
+        );
         device.cmd_push_constants(
             command_buffer,
             self.pipelines.layout,
@@ -282,7 +295,7 @@ impl Renderer {
     /// opacity for this zoom — the same colour the flat earth fill would have used — pushed once and
     /// shared by every tile. `line.x` carries the tile's world-px span, the scale that turns the
     /// mesh's tile-normalised heights into the world-px height the WS0 matrix's `z` input expects.
-    /// Distance-fogged per tile toward the background like the flat layers (buildings keep their
+    /// Distance-fogged per tile toward the earth land colour like the flat layers (buildings keep their
     /// per-vertex colours and are deliberately not fogged — no shader change for a z14+-only
     /// layer whose tiles sit inside the near ramp anyway).
     pub(super) unsafe fn record_terrain(
@@ -291,11 +304,12 @@ impl Renderer {
         camera: &Camera,
         layers: &[Layer],
         palette: Palette,
-        clear: u32,
+        fog: u32,
         submitted: &mut usize,
     ) {
-        let Some(earth) =
-            layers.iter().find(|l| l.source_layer_id == tilecodec::mamaps::dict::LAYER_EARTH)
+        let Some(earth) = layers
+            .iter()
+            .find(|l| l.source_layer_id == tilecodec::mamaps::dict::LAYER_EARTH)
         else {
             return;
         };
@@ -304,11 +318,13 @@ impl Renderer {
             return;
         }
         let unfogged = argb_to_rgba(scale_alpha(earth.color(palette), opacity));
-        let fog_rgb = argb_to_rgba(clear);
+        let fog_rgb = argb_to_rgba(fog);
         let device = &self.context.device;
         let mut bound = false;
         for tile in self.tiles.values() {
-            let Some(terrain) = &tile.terrain else { continue };
+            let Some(terrain) = &tile.terrain else {
+                continue;
+            };
             if !bound {
                 device.cmd_bind_pipeline(
                     command_buffer,
@@ -332,7 +348,8 @@ impl Renderer {
             // normalised, so no bearing rotation enters — the matrix already owns that.
             let span = camera.tile_span_dp(tile.z);
             let (eye_u, eye_v, eye_h) = if span > 0.0 {
-                let centre = crate::camera::project(camera.center_lon, camera.center_lat, camera.zoom);
+                let centre =
+                    crate::camera::project(camera.center_lon, camera.center_lat, camera.zoom);
                 (
                     ((centre.x - f64::from(tile.x) * span) / span) as f32,
                     ((centre.y - f64::from(tile.y) * span) / span) as f32,
@@ -412,7 +429,9 @@ impl Renderer {
         let device = &self.context.device;
         let mut bound = false;
         for tile in self.tiles.values() {
-            let Some(buildings) = &tile.buildings else { continue };
+            let Some(buildings) = &tile.buildings else {
+                continue;
+            };
             if !bound {
                 device.cmd_bind_pipeline(
                     command_buffer,

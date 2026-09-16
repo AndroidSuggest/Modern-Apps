@@ -14,6 +14,7 @@ import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.library.map.RouteOverlay
 import com.vayunmathur.library.map.RouteSegment
 import com.vayunmathur.library.map.RouteStyle
+import com.vayunmathur.maps.data.transit.TransitStop
 import com.vayunmathur.maps.ui.theme.MapTokens
 import com.vayunmathur.maps.util.OfflineRouter
 import com.vayunmathur.maps.util.visibleBoundsOrWorld
@@ -201,29 +202,32 @@ internal fun railRefreshDecision(
 }
 
 /**
- * The pack-driven rail-lines network for the viewport, as a [RouteOverlay
- * ], or null when the transit layer is off, zoomed too far out, or the pack
- * carries no shapes for the area.
+ * The pack-driven transit lines for the selected stop, as a [RouteOverlay
+ * ], or null when the transit layer is off, no stop is selected, or the pack
+ * carries no shapes for its routes.
  *
- * Fetched from the on-device timetable pack (GTFS-shape polylines per route),
- * not the tile layer that needs an archive rebuild. Drawn in the separate
- * rail slot under the navigation route, in each line's agency colour with the
- * route fallback where the pack carries none. Re-fetched on settle when the
- * viewport outgrows the covered bbox; the native side caps the enumeration.
+ * Fetched from the on-device timetable pack (GTFS-shape polylines per route
+ * serving the stop), not the tile layer that needs an archive rebuild. Drawn
+ * in the separate rail slot under the navigation route, in each line's agency
+ * colour with the route fallback where the pack carries none. Buses included:
+ * at one stop a handful of bus polylines is context, not noise. Keyed by the
+ * selected stop, so switching stops refetches while panning reuses the fetch.
  */
 @OptIn(FlowPreview::class)
 @Composable
 fun rememberRailLines(
     camera: CameraState,
     transitEnabled: Boolean,
+    selectedStop: TransitStop?,
     tokens: MapTokens,
 ): RouteOverlay? {
     val context = LocalContext.current
     var overlay by remember { mutableStateOf<RouteOverlay?>(null) }
-    // Last fetch footprint: reused while the camera stays inside it. The
-    // fetched spans (with corridor slots) are kept separately from the
-    // built overlay so a zoom-band change re-fans cached geometry without
-    // re-querying the pack.
+    // Last fetch footprint: keyed by the selected stop, reused while the
+    // camera stays inside it. The fetched spans (with corridor slots) are
+    // kept separately from the built overlay so a zoom-band change re-fans
+    // cached geometry without re-querying the pack.
+    var fetchedStop by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var fetchedCentre by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var fetchedZoom by remember { mutableStateOf(Double.NaN) }
     var fetchedSpans by remember {
@@ -231,9 +235,10 @@ fun rememberRailLines(
     }
     var fannedZoom by remember { mutableStateOf(Double.NaN) }
 
-    LaunchedEffect(transitEnabled) {
-        if (!transitEnabled) {
+    LaunchedEffect(transitEnabled, selectedStop?.lat, selectedStop?.lon) {
+        if (!transitEnabled || selectedStop == null) {
             overlay = null
+            fetchedStop = null
             fetchedCentre = null
             fetchedZoom = Double.NaN
             fetchedSpans = emptyList()
@@ -266,8 +271,18 @@ fun rememberRailLines(
         fannedZoom = zoom
     }
 
-    LaunchedEffect(camera, transitEnabled) {
-        if (!transitEnabled) return@LaunchedEffect
+    LaunchedEffect(camera, transitEnabled, selectedStop?.lat, selectedStop?.lon) {
+        val stop = selectedStop
+        if (!transitEnabled || stop == null) return@LaunchedEffect
+        val stopKey = stop.lat to stop.lon
+        // A new stop invalidates the old fetch even if the camera never moved.
+        if (stopKey != fetchedStop && fetchedStop != null) {
+            overlay = null
+            fetchedCentre = null
+            fetchedZoom = Double.NaN
+            fetchedSpans = emptyList()
+            fannedZoom = Double.NaN
+        }
         snapshotFlow { camera.position }
             .debounce(RAIL_FETCH_DEBOUNCE_MS)
             .collectLatest {
@@ -291,20 +306,19 @@ fun rememberRailLines(
                     RailRefresh.REUSE -> return@collectLatest
                     RailRefresh.REFETCH -> Unit
                 }
-                // Pad the query past the viewport so small pans stay covered.
-                val padLat = (bounds.north - bounds.south) * 0.25 + 0.05
-                val padLon = (bounds.east - bounds.west) * 0.25 + 0.05
+                // Keyed by the selected stop, not the viewport: the native side
+                // resolves its routes through nearest_stop, consistent with the
+                // departure board for the same stop.
                 val lines = try {
-                    OfflineRouter.railLines(
+                    OfflineRouter.stopLines(
                         context,
-                        minLat = bounds.south - padLat,
-                        minLon = bounds.west - padLon,
-                        maxLat = bounds.north + padLat,
-                        maxLon = bounds.east + padLon,
+                        lat = stop.lat,
+                        lon = stop.lon,
                     )
                 } catch (_: Exception) {
                     emptyList()
                 }
+                fetchedStop = stopKey
                 fetchedCentre = centre
                 fetchedZoom = zoom
                 fetchedSpans = lines

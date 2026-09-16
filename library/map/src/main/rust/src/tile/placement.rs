@@ -92,7 +92,9 @@ pub fn place(candidates: &[Candidate]) -> Vec<Placed> {
             .then_with(|| {
                 let (aw, ah) = (a.rect.2 - a.rect.0, a.rect.3 - a.rect.1);
                 let (bw, bh) = (b.rect.2 - b.rect.0, b.rect.3 - b.rect.1);
-                (bw * bh).partial_cmp(&(aw * ah)).unwrap_or(std::cmp::Ordering::Equal)
+                (bw * bh)
+                    .partial_cmp(&(aw * ah))
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .then_with(|| a.id.cmp(&b.id))
     });
@@ -223,7 +225,10 @@ pub fn project_to_screen(
     if !(w > 0.0) {
         return None;
     }
-    Some(((cx / w * 0.5 + 0.5) * extent_wh.0 as f32, (cy / w * 0.5 + 0.5) * extent_wh.1 as f32))
+    Some((
+        (cx / w * 0.5 + 0.5) * extent_wh.0 as f32,
+        (cy / w * 0.5 + 0.5) * extent_wh.1 as f32,
+    ))
 }
 
 /// The screen box a label would occupy if drawn at `anchor`.
@@ -269,7 +274,12 @@ pub fn anchored_rect(
         y0 = y0.min(sy - icon_h * 0.5);
         y1 = y1.max(sy + icon_h * 0.5);
     }
-    Some((x0 - inputs.pad_px, y0 - inputs.pad_px, x1 + inputs.pad_px, y1 + inputs.pad_px))
+    Some((
+        x0 - inputs.pad_px,
+        y0 - inputs.pad_px,
+        x1 + inputs.pad_px,
+        y1 + inputs.pad_px,
+    ))
 }
 
 // --- oriented / segmented collision (curved labels) -------------------------
@@ -373,14 +383,21 @@ pub fn place_segmented(candidates: &[SegmentedCandidate]) -> Vec<Placed> {
         a.rank
             .cmp(&b.rank)
             .then_with(|| b.pop.cmp(&a.pop))
-            .then_with(|| b.area().partial_cmp(&a.area()).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| {
+                b.area()
+                    .partial_cmp(&a.area())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .then_with(|| a.id.cmp(&b.id))
     });
     let mut accepted: Vec<Obb> = Vec::new();
     let mut out = Vec::new();
     for c in ordered {
         let free = |boxes: &[Obb], accepted: &[Obb]| {
-            c.rank == 0 || !boxes.iter().any(|b| accepted.iter().any(|a| obb_overlap(a, b)))
+            c.rank == 0
+                || !boxes
+                    .iter()
+                    .any(|b| accepted.iter().any(|a| obb_overlap(a, b)))
         };
         let taken = if free(&c.boxes, &accepted) {
             (&c.boxes, false)

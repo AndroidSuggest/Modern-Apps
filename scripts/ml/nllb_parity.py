@@ -21,9 +21,20 @@ What it checks, and what each check would catch:
 Needs torch + transformers (CPU is fine, ~3 min). Run after `fetch_nllb600.py`:
 
     python scripts/ml/nllb_parity.py --hf DIR --maml build/nllb600/nllb600.maml
+
+Split-export fixtures (for `analysis/et-nllb/export_split.py`'s quant ladder):
+the encoder/decoder wrappers trace `model.model.encoder` /
+`model.model.decoder + lm_head`, so the fp32 torch reference they gate
+against must be pinned. Record once, check on every export:
+
+    python scripts/ml/nllb_parity.py --hf DIR --record-split-ref analysis/et-nllb/split_ref
+    python scripts/ml/nllb_parity.py --hf DIR --check-split-ref analysis/et-nllb/split_ref
+
+Gate: encoder-hidden + decoder-logits cosine >= 0.999 vs the recorded refs.
 """
 
 import argparse
+import json
 import math
 import os
 import struct
@@ -31,6 +42,16 @@ import sys
 import unicodedata
 
 import numpy as np
+
+SPLIT_REF_META = "meta.json"
+# Per-pair files: hidden_{i}.npy (encoder hidden) + logits_{i}.npy (decoder logits).
+# The two gate pairs the export ladder checks: eng->fra + eng->deu.
+SPLIT_REF_PAIRS = [
+    ("Hello, how are you?", "eng_Latn", "fra_Latn"),
+    ("The cat sat on the mat.", "eng_Latn", "deu_Latn"),
+]
+SPLIT_REF_GATE = 0.999
+DECODER_START = 2  # </s>; fed-prefix start, step 0 forces the tgt token (never emitted)
 
 
 def read_maml(path):
@@ -73,10 +94,76 @@ def read_maml(path):
     return paired
 
 
+def split_reference_tensors(model, tok):
+    """fp32 torch refs the export wrappers must match: encoder hidden + first
+    real-step decoder logits for each gate pair. The decoder wrapper is the
+    no-cache whole-prefix form, so step 1 feeds [DECODER_START, forced tgt]."""
+    import torch
+
+    refs = []
+    with torch.no_grad():
+        for text, src, tgt in SPLIT_REF_PAIRS:
+            tok.src_lang = src
+            tok.tgt_lang = tgt
+            inputs = tok(text, return_tensors="pt")
+            hidden = model.model.encoder(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+            ).last_hidden_state.numpy()
+            prefix = torch.tensor(
+                [[DECODER_START, tok.convert_tokens_to_ids(tgt)]], dtype=torch.long)
+            logits = model.lm_head(model.model.decoder(
+                input_ids=prefix,
+                encoder_hidden_states=torch.from_numpy(hidden),
+                encoder_attention_mask=inputs["attention_mask"],
+                use_cache=False,
+            ).last_hidden_state).numpy()
+            refs.append({"text": text, "src": src, "tgt": tgt,
+                         "hidden": hidden, "logits": logits})
+    return refs
+
+
+def record_split_ref(model, tok, out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    refs = split_reference_tensors(model, tok)
+    for i, ref in enumerate(refs):
+        np.save(os.path.join(out_dir, f"hidden_{i}.npy"), ref["hidden"])
+        np.save(os.path.join(out_dir, f"logits_{i}.npy"), ref["logits"])
+    meta = {"pairs": [{"text": r["text"], "src": r["src"], "tgt": r["tgt"],
+                       "hidden_shape": list(r["hidden"].shape),
+                       "logits_shape": list(r["logits"].shape)} for r in refs],
+            "gate": SPLIT_REF_GATE,
+            "decode": "no-cache whole-prefix, step 1 feeds [DECODER_START, forced tgt]"}
+    json.dump(meta, open(os.path.join(out_dir, "meta.json"), "w"), indent=1)
+    print(f"recorded split refs for {len(refs)} pairs -> {out_dir}")
+    return 0
+
+
+def check_split_ref(model, tok, ref_dir):
+    meta = json.load(open(os.path.join(ref_dir, "meta.json")))
+    refs = split_reference_tensors(model, tok)
+    ok = True
+    for i, (ref, want) in enumerate(zip(refs, meta["pairs"])):
+        for name, arr in (("hidden", ref["hidden"]), ("logits", ref["logits"])):
+            disk = np.load(os.path.join(ref_dir, f"{name}_{i}.npy"))
+            cos = float(np.dot(arr.ravel(), disk.ravel())
+                        / (np.linalg.norm(arr.ravel()) * np.linalg.norm(disk.ravel())))
+            passed = cos >= SPLIT_REF_GATE and list(arr.shape) == want[f"{name}_shape"]
+            ok &= passed
+            print(f"  pair{i} {name}: cos = {cos:.6f} "
+                  f"{'PASS' if passed else 'FAIL'} (gate {SPLIT_REF_GATE})")
+    print("SPLIT REF " + ("OK" if ok else "MISMATCH"))
+    return 0 if ok else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--hf", required=True, help="snapshot dir with pytorch_model.bin etc.")
-    parser.add_argument("--maml", required=True)
+    parser.add_argument("--maml", required=False, default=None)
+    parser.add_argument("--record-split-ref", default=None,
+                        help="record fp32 split-export refs into DIR and exit")
+    parser.add_argument("--check-split-ref", default=None,
+                        help="check fp32 split-export refs in DIR and exit")
     args = parser.parse_args()
 
     import torch
@@ -86,6 +173,13 @@ def main():
     model = M2M100ForConditionalGeneration.from_pretrained(args.hf, torch_dtype=torch.float32)
     model.eval()
     tok = NllbTokenizer.from_pretrained(args.hf, src_lang="eng_Latn", tgt_lang="fra_Latn")
+
+    if args.record_split_ref:
+        return record_split_ref(model, tok, args.record_split_ref)
+    if args.check_split_ref:
+        return check_split_ref(model, tok, args.check_split_ref)
+    if not args.maml:
+        raise SystemExit("--maml is required unless --record-split-ref/--check-split-ref is given")
 
     pairs = [
         ("Hello, how are you?", "fra_Latn"),

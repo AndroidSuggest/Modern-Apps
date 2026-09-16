@@ -11,7 +11,11 @@ fn rank_for_layer_orders_country_before_subplace() {
     assert!(rank_for_layer("places-country") < rank_for_layer("places-region"));
     assert!(rank_for_layer("places-region") < rank_for_layer("places-locality"));
     assert!(rank_for_layer("places-locality") < rank_for_layer("places-subplace"));
-    assert_eq!(rank_for_layer("something-else"), u8::MAX, "unknown ids sink");
+    assert_eq!(
+        rank_for_layer("something-else"),
+        u8::MAX,
+        "unknown ids sink"
+    );
 }
 
 /// Line labels rank below every point label but above the unknown sink, and major roads
@@ -22,7 +26,10 @@ fn line_labels_rank_below_points_roads_above_rivers() {
     assert!(rank_for_layer("roads-label-major") > rank_for_layer("poi-food"));
     assert!(rank_for_layer("roads-label-major") < rank_for_layer("roads-label-minor"));
     assert!(rank_for_layer("roads-label-minor") < rank_for_layer("waterway-label"));
-    assert!(rank_for_layer("waterway-label") < u8::MAX, "line labels must not sink");
+    assert!(
+        rank_for_layer("waterway-label") < u8::MAX,
+        "line labels must not sink"
+    );
 }
 
 /// Every POI layer sits at one rank, below every place label.
@@ -34,17 +41,32 @@ fn line_labels_rank_below_points_roads_above_rivers() {
 #[test]
 fn every_poi_layer_shares_one_rank_below_the_places() {
     let poi = [
-        "poi-outdoor", "poi-transport", "poi-civic", "poi-shop", "poi-food", "poi-culture",
+        "poi-outdoor",
+        "poi-transport",
+        "poi-civic",
+        "poi-shop",
+        "poi-food",
+        "poi-culture",
     ];
     for id in poi {
         assert_eq!(rank_for_layer(id), 4, "{id}");
-        assert!(rank_for_layer(id) > rank_for_layer("places-subplace"), "{id}");
-        assert!(rank_for_layer(id) < u8::MAX, "{id} fell through to the sink rank");
+        assert!(
+            rank_for_layer(id) > rank_for_layer("places-subplace"),
+            "{id}"
+        );
+        assert!(
+            rank_for_layer(id) < u8::MAX,
+            "{id} fell through to the sink rank"
+        );
     }
     // And the style really does call them that — a renamed layer would silently sink.
     for layer in crate::style::layers() {
         if layer.toggle == Some(crate::style::Toggle::Poi) {
-            assert!(poi.contains(&layer.id.as_str()), "`{}` is not ranked", layer.id);
+            assert!(
+                poi.contains(&layer.id.as_str()),
+                "`{}` is not ranked",
+                layer.id
+            );
         }
     }
 }
@@ -57,20 +79,36 @@ fn a_kind_resolves_to_its_own_sprite_except_the_one_the_reference_renames() {
     let park = sprite_for(id("park")).expect("park has a sprite");
     assert_eq!(
         park.uv.u0.to_bits(),
-        crate::tile::sprite::atlas().get("park").expect("park").uv.u0.to_bits(),
+        crate::tile::sprite::atlas()
+            .get("park")
+            .expect("park")
+            .uv
+            .u0
+            .to_bits(),
     );
     // `station` is the rename; it must NOT resolve to a sprite called `station`.
     let station = sprite_for(id("station")).expect("station resolves to train_station");
     assert_eq!(
         station.uv.u0.to_bits(),
-        crate::tile::sprite::atlas().get("train_station").expect("train_station").uv.u0.to_bits(),
+        crate::tile::sprite::atlas()
+            .get("train_station")
+            .expect("train_station")
+            .uv
+            .u0
+            .to_bits(),
     );
-    assert!(crate::tile::sprite::atlas().get("station").is_none(), "or this proves nothing");
+    assert!(
+        crate::tile::sprite::atlas().get("station").is_none(),
+        "or this proves nothing"
+    );
     // The one POI kind with no picture: label-only, as MapLibre draws it.
     assert!(sprite_for(id("townhall")).is_none());
     // A kind that is not a POI at all, and the `dict::NONE` id.
     assert!(sprite_for(id("highway")).is_none());
-    assert!(sprite_for(0).is_none(), "the no-kind id must not index the table");
+    assert!(
+        sprite_for(0).is_none(),
+        "the no-kind id must not index the table"
+    );
 }
 
 #[test]
@@ -171,7 +209,9 @@ fn a_label_carries_its_own_kind_and_id_not_its_layers() {
         ids: vec![(tilecodec::mamaps::dict::LAYER_POI, vec![987_654_321])],
         turn_lanes: Vec::new(),
         buildings: Vec::new(),
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None,
+        carriageways: Vec::new(),
+        convention: None,
     };
     // A layer whose whitelist lists `restaurant` first, exactly as `poi-food` does.
     let layer = food_layer();
@@ -184,7 +224,10 @@ fn a_label_carries_its_own_kind_and_id_not_its_layers() {
     assert!(fonts_staged(), "this test needs the staged Noto Sans");
     let label =
         shape_label(&layer, &body, feature, "Blue Bottle", 4096, 3, 0).expect("a shaped poi");
-    assert_eq!(label.kind, cafe, "the feature's kind, not the layer's first");
+    assert_eq!(
+        label.kind, cafe,
+        "the feature's kind, not the layer's first"
+    );
     assert_ne!(label.kind, layer.kind_ids[0], "or this proves nothing");
     assert_eq!(label.feature_id, 987_654_321);
 }
@@ -197,7 +240,10 @@ fn food_layer() -> Layer {
         source_layer_id: tilecodec::mamaps::dict::LAYER_POI,
         kind: crate::style::LayerKind::Symbol,
         kinds: kinds.iter().map(|k| (*k).to_string()).collect(),
-        kind_ids: kinds.iter().map(|k| crate::style::kind_id_for_test(k)).collect(),
+        kind_ids: kinds
+            .iter()
+            .map(|k| crate::style::kind_id_for_test(k))
+            .collect(),
         require_flags: 0,
         forbid_flags: 0,
         detail_ids: Vec::new(),
@@ -251,7 +297,11 @@ fn camera(pitch_deg: f64) -> Camera {
 
 /// The pitch-0 tile matrix's linear 2x2 `[m0, m1, m4, m5]`, as the renderer passes it.
 fn ortho2x2(cam: &Camera, z: u8, x: u32, y: u32) -> [f32; 4] {
-    let flat = Camera { pitch_deg: 0.0, ..*cam }.tile_to_clip(z, x, y);
+    let flat = Camera {
+        pitch_deg: 0.0,
+        ..*cam
+    }
+    .tile_to_clip(z, x, y);
     [flat[0], flat[1], flat[4], flat[5]]
 }
 
@@ -264,10 +314,18 @@ fn billboard_off_is_the_plain_projection_byte_for_byte() {
     let m = cam.tile_to_clip(z, x, y);
     let o = ortho2x2(&cam, z, x, y);
     let pos = (0.62f32, 0.48f32);
-    let got = billboard_clip(&m, o, pos, (0.5, 0.5), false);
-    let want =
-        [m[0] * pos.0 + m[4] * pos.1 + m[12], m[1] * pos.0 + m[5] * pos.1 + m[13], m[14], m[15]];
-    assert_eq!(got.map(f32::to_bits), want.map(f32::to_bits), "billboard-off moved a vertex");
+    let got = billboard_clip(&m, o, pos, (0.5, 0.5), 0.0, 1.0, false);
+    let want = [
+        m[0] * pos.0 + m[4] * pos.1 + m[12],
+        m[1] * pos.0 + m[5] * pos.1 + m[13],
+        m[14],
+        m[15],
+    ];
+    assert_eq!(
+        got.map(f32::to_bits),
+        want.map(f32::to_bits),
+        "billboard-off moved a vertex"
+    );
 }
 
 #[test]
@@ -279,10 +337,12 @@ fn a_pitched_anchor_projects_to_the_same_ground_clip_as_unbillboarded() {
     let m = cam.tile_to_clip(z, x, y);
     let o = ortho2x2(&cam, z, x, y);
     let anchor = (0.4f32, 0.55f32);
-    let billed = billboard_clip(&m, o, anchor, anchor, true);
-    let plain = billboard_clip(&m, o, anchor, anchor, false);
+    let billed = billboard_clip(&m, o, anchor, anchor, 0.0, 1.0, true);
+    let plain = billboard_clip(&m, o, anchor, anchor, 0.0, 1.0, false);
     for (a, b) in billed.iter().zip(plain.iter()) {
-        assert!((a - b).abs() < 1e-6, "anchor drifted off the ground: {a} vs {b}");
+        assert!(
+            (a - b).abs() < 1e-6,
+            "anchor drifted off the ground: {a} vs {b}"
+        );
     }
 }
-

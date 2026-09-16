@@ -1,15 +1,15 @@
 use super::{
-    ARROW_COLOR, ARROW_DP, BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, Overlay, PUCK_COLOR, PUCK_CONE_DP,
-    PUCK_CONE_HALF_STROKE_DP, PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, Renderer,
-    SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, VEHICLE_RING_DP, VEHICLE_RING_QUAD_DP, anchors_for,
-    argb_to_rgba, scale_alpha,
+    anchors_for, argb_to_rgba, scale_alpha, Overlay, Renderer, UserPuck, ARROW_COLOR, ARROW_DP,
+    BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, PUCK_COLOR, PUCK_CONE_DP, PUCK_CONE_HALF_STROKE_DP,
+    PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, SCRIM_COLOR, TRAFFIC_WIDTH_DP,
+    VEHICLE_RING_DP, VEHICLE_RING_QUAD_DP,
 };
 use crate::camera::Camera;
 use crate::marker::{Marker, MARKER_SIZE_DP};
 use crate::style::paint::Stroke;
 use crate::style::{Layer, LayerKind, Palette};
 use crate::tile::select;
-use crate::vulkan::pipeline::{MORPH_NONE, NO_MARKINGS, Push};
+use crate::vulkan::pipeline::{Push, MORPH_NONE, NO_MARKINGS};
 use ash::vk;
 use std::collections::{HashMap, HashSet};
 use tilecodec::mamaps::dict::LAYER_JUNCTION;
@@ -37,16 +37,23 @@ impl Renderer {
         markers: &[Marker],
         submitted: &mut usize,
     ) {
-        let Some(sprite_set) = self.sprite_set else { return };
+        let Some(sprite_set) = self.sprite_set else {
+            return;
+        };
         let atlas = crate::tile::sprite::atlas();
         // The sheet is the light half over the dark one; dark mode adds this to every `v`, exactly
         // as `emit_icon` does, so a palette switch stays a per-frame emit rather than a re-upload.
-        let dv = if palette.variant == crate::style::Variant::Dark { atlas.dark_v_offset() } else { 0.0 };
+        let dv = if palette.variant == crate::style::Variant::Dark {
+            atlas.dark_v_offset()
+        } else {
+            0.0
+        };
 
         let mut vertices: Vec<f32> = Vec::with_capacity(markers.len() * 4 * 4);
         let mut indices: Vec<u32> = Vec::with_capacity(markers.len() * 6);
         for marker in markers {
-            let Some(sprite) = crate::marker::icon_sprite_name(marker.icon).and_then(|n| atlas.get(n))
+            let Some(sprite) =
+                crate::marker::icon_sprite_name(marker.icon).and_then(|n| atlas.get(n))
             else {
                 continue;
             };
@@ -159,7 +166,12 @@ impl Renderer {
                 // Dot only: rim 0 hides the white ring, cone sizes 0 and
                 // misc.y 0 hide the bearing cone.
                 line: [0.0, VEHICLE_RING_DP * density, 0.0, 0.0],
-                misc: [0.0, 0.0, VEHICLE_RING_QUAD_DP * density, camera.time_seconds],
+                misc: [
+                    0.0,
+                    0.0,
+                    VEHICLE_RING_QUAD_DP * density,
+                    camera.time_seconds,
+                ],
                 morph: MORPH_NONE,
             };
             device.cmd_push_constants(
@@ -194,7 +206,9 @@ impl Renderer {
         bound: &mut Option<LayerKind>,
     ) {
         use crate::tile::{placement, symbol};
-        let Some(glyph_set) = self.glyph_set else { return };
+        let Some(glyph_set) = self.glyph_set else {
+            return;
+        };
         // THE density fix (task 1): the size ramp is authored in Dp but the
         // tile span and the shader are device px — without ×density every
         // label renders at 1/density size (≈2px tall cap-height at 17px Dp on
@@ -206,11 +220,24 @@ impl Renderer {
         if !layer.text_visible_at(camera.zoom) {
             return;
         }
-        let Some(tile) = self.tiles.get(&key) else { return };
+        let Some(tile) = self.tiles.get(&key) else {
+            return;
+        };
         // The tile's coordinates, copied out so the `self.tiles` borrow below is held only by
         // `tile.labels` and ends at the batch loop — the `&mut self` uploads come after it.
         let (tz, tx, ty) = (tile.z, tile.x, tile.y);
         let tile_span_px = camera.tile_span_px(tz);
+        // The tile-normalised ground height sampler for label anchors: the same DEM the flat
+        // drape reads, so a label hangs off exactly the relief its road drapes onto. 0.0 with
+        // no heightmap, so covered output is unchanged. Normalised against this tile's own
+        // ground width — the shader scales it back with the pushed Dp span.
+        let ground_width = crate::tile::geometry::tile_ground_width_m(tz, ty);
+        let heightmap = &tile.heightmap;
+        let ground = |u: f32, v: f32| -> f32 {
+            crate::tile::geometry::sample_ground_metres(heightmap, u, v).map_or(0.0, |m| {
+                (m as f64 / ground_width.max(f64::MIN_POSITIVE)) as f32
+            })
+        };
         // Copy out what the draw needs before any `&mut self` call below: `tile`
         // borrows `self`, and buffer upload takes `&self.context` while retiring
         // takes `&mut self`.
@@ -226,7 +253,11 @@ impl Renderer {
         // matrix the icon push *and* the text push below both read, so the pictogram cannot slide
         // off its name under tilt. Reverting either value in one copy compiles clean and passes —
         // which is exactly the silent failure this sharing exists to make unrepresentable.
-        let flat_clip = Camera { pitch_deg: 0.0, ..*camera }.tile_to_clip(tz, tx, ty);
+        let flat_clip = Camera {
+            pitch_deg: 0.0,
+            ..*camera
+        }
+        .tile_to_clip(tz, tx, ty);
         let (billboard_flag, ortho2x2) = symbol::icon_push_billboard(&flat_clip, camera.pitch_deg);
         let (primary, alternate) = anchors_for(layer);
         // Labels counter-rotate about their anchor so they stay upright under a
@@ -254,14 +285,23 @@ impl Renderer {
         // `String`, every shaped line, every curved centreline — once per symbol layer per
         // resident tile per frame, purely to release the `self.tiles` borrow before the uploads
         // further down. Nothing in this loop needs `&mut self`, so the borrow simply ends here.
-        for (label_idx, label) in
-            tile.labels.iter().enumerate().filter(|(_, l)| l.layer_index == layer_index)
+        for (label_idx, label) in tile
+            .labels
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.layer_index == layer_index)
         {
             let id = placement::candidate_id(tz, tx, ty, layer_index, label_idx);
-            let Some(&(flipped, _)) = accepted.get(&id) else { continue };
+            let Some(&(flipped, _)) = accepted.get(&id) else {
+                continue;
+            };
             // Draw at whichever anchor the placer actually accepted, or the label lands
             // on the side its box was rejected for.
-            let anchor = if flipped { alternate.unwrap_or(primary) } else { primary };
+            let anchor = if flipped {
+                alternate.unwrap_or(primary)
+            } else {
+                primary
+            };
             let text_px = layer.text_size_for(camera.zoom, label.pop) * camera.density;
             if text_px <= 0.0 {
                 continue;
@@ -274,6 +314,7 @@ impl Renderer {
                     camera.density,
                     tile_span_px,
                     rotation,
+                    &ground,
                     &mut icon_vertices,
                     &mut icon_indices,
                 );
@@ -292,6 +333,7 @@ impl Renderer {
                 text_px,
                 tile_span_px,
                 rotation,
+                &ground,
                 &mut batch.1,
                 &mut batch.2,
             );
@@ -301,7 +343,10 @@ impl Renderer {
             return;
         }
         let halo = argb_to_rgba(layer.halo_color(palette));
-        let color = argb_to_rgba(scale_alpha(layer.color(palette), layer.opacity_at(camera.zoom)));
+        let color = argb_to_rgba(scale_alpha(
+            layer.color(palette),
+            layer.opacity_at(camera.zoom),
+        ));
         let sdf_per_em = crate::tile::glyph::atlas().sdf_per_em;
 
         // Icons first, so the label's halo paints over the icon's edge rather than under
@@ -315,7 +360,10 @@ impl Renderer {
                 // `sprite.frag` reads none of `line`; `w` is the billboard flag the shared vertex
                 // shader reads, so an icon stands up under tilt on the same terms as its label.
                 line: [0.0, 0.0, 0.0, billboard_flag],
-                misc: [tile_span_px, 0.0, 0.0, 0.0],
+                // `misc.x` is the tile's world-px span (Dp): the anchor-height scale the
+                // billboard shader multiplies by. (Was the device-px span; the vertex
+                // shader documented it unused and nothing reads it.)
+                misc: [camera.tile_span_dp(tz) as f32, 0.0, 0.0, 0.0],
                 // The pitch-0 linear 2x2, as for the text below — the same matrix, so the icon and
                 // the name beside it resolve their screen offsets identically.
                 morph: [ortho2x2[0], ortho2x2[1], ortho2x2[2], ortho2x2[3]],
@@ -342,8 +390,15 @@ impl Renderer {
             let push = Push {
                 tile_to_clip: tile_clip,
                 color,
-                line: [*text_px, layer.halo_width * camera.density, sdf_per_em, billboard_flag],
-                misc: [tile_span_px, halo[0], halo[1], halo[2]],
+                line: [
+                    *text_px,
+                    layer.halo_width * camera.density,
+                    sdf_per_em,
+                    billboard_flag,
+                ],
+                // `misc.x` is the tile's world-px span (Dp): the anchor-height scale.
+                // `yzw` stay the halo rgb the fragment shader reads.
+                misc: [camera.tile_span_dp(tz) as f32, halo[0], halo[1], halo[2]],
                 // Repurposed for the symbol billboard pipeline: the pitch-0 tile matrix's linear
                 // 2x2, so the shader can add a screen-constant glyph offset under tilt. The symbol
                 // fragment shader does not read `morph`, so this collides with nothing.

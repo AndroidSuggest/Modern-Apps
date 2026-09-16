@@ -18,7 +18,11 @@ pub(crate) fn ring_centroid(ring: &[(f32, f32)]) -> (f32, f32) {
 pub(crate) fn face_normal(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> [f32; 3] {
     let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    let n = [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ];
     let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
     if len <= f32::EPSILON {
         return [0.0, 0.0, 1.0];
@@ -57,7 +61,15 @@ pub(crate) fn push_tri(
 ) {
     let base = (out_v.len() / FLOATS_PER_VERTEX) as u32;
     for pt in [a, b, c] {
-        out_v.extend_from_slice(&[pt[0], pt[1], pt[2], normal[0], normal[1], normal[2], f32::from_bits(rgba)]);
+        out_v.extend_from_slice(&[
+            pt[0],
+            pt[1],
+            pt[2],
+            normal[0],
+            normal[1],
+            normal[2],
+            f32::from_bits(rgba),
+        ]);
     }
     out_i.extend_from_slice(&[base, base + 1, base + 2]);
 }

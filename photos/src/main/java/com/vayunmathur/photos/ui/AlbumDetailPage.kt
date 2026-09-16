@@ -30,6 +30,7 @@ fun AlbumDetailPage(
     val albums by galleryViewModel.albums.collectAsState()
     val album by remember { derivedStateOf { albums.firstOrNull { it.name == albumName } } }
     val allSelected by galleryViewModel.selectedIds.collectAsState()
+    val isRefreshing by galleryViewModel.isRefreshing.collectAsState()
 
     // Only selection within this album's photos counts here, so a selection left
     // over from the gallery grid doesn't leak into the album's action bar.
@@ -90,5 +91,7 @@ fun AlbumDetailPage(
             pendingPop = true
             launchMove(album?.photos.orEmpty(), null)
         },
+        isRefreshing = isRefreshing,
+        onRefresh = { galleryViewModel.runSync() },
     )
 }

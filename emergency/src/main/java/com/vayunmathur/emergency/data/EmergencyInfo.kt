@@ -36,7 +36,7 @@ data class EmergencyContact(
     val photo: Bitmap? = null,
 )
 
-/** Preference keys. Order matches the fields shown in the view/edit screens. */
+/** Preference keys. Order matches the fields shown in the view screen. */
 object EmergencyKeys {
     const val NAME = "name"
     const val ADDRESS = "address"
@@ -44,8 +44,7 @@ object EmergencyKeys {
     const val ORGAN_DONOR = "organ_donor"
     const val CONTACTS = "emergency_contacts"
 
-    val EDIT_ORDER = listOf(ADDRESS, BLOOD_TYPE, ORGAN_DONOR)
-    val VIEW_ORDER = EDIT_ORDER
+    val VIEW_ORDER = listOf(ADDRESS, BLOOD_TYPE, ORGAN_DONOR)
 }
 
 /** `|` separator from `EmergencyContactsPreference`; quoted for split. */

@@ -40,8 +40,8 @@
 //! It needs no new attribute either, because the normal is already not a unit vector:
 //! [`joins::join_normal`] lengthens it by the miter factor, and the vertex shader multiplies by
 //! it without ever assuming a length. So a taper is that same normal scaled a second
-//! time, and the vertex stays six floats, the push constant stays a push constant, and
-//! `road_surface.vert` is untouched.
+//! time, and the vertex stays seven floats, the push constant stays a push constant, and
+//! `road_surface.vert` reads z from the new trailing float.
 //!
 //! Both sides of a transition scale toward a width derived from the *node* rather than
 //! from either section (see [`crate::tile::taper`]), so they cannot arrive at it
@@ -72,8 +72,13 @@ mod tests;
 use self::joins::{dedupe, join_normal, segment_length};
 use self::taper::taper_widths;
 
-/// Floats per vertex: `x, y, nx, ny, t, distance`.
-pub const FLOATS_PER_VERTEX: usize = 6;
+/// Floats per vertex: `x, y, nx, ny, t, distance, z`.
+///
+/// `z` is the draped ground height in the same tile-local unit as `x`/`y` — `0.0`
+/// straight out of the tessellator, filled in by the drape pass at build time where
+/// the tile carries a heightmap. Trailing so every existing field index is unchanged.
+/// The tilted clip matrix reads it; at pitch 0 it is ignored for x/y.
+pub const FLOATS_PER_VERTEX: usize = 7;
 
 /// How much narrower the carriageway is at each end of a part than along its middle.
 ///
@@ -94,7 +99,11 @@ pub struct Taper {
 impl Taper {
     /// A part that abuts nothing of a different width — the whole of the junction
     /// connector path, and the overwhelming majority of roads.
-    pub const NONE: Taper = Taper { start: 1.0, end: 1.0, run: 0.0 };
+    pub const NONE: Taper = Taper {
+        start: 1.0,
+        end: 1.0,
+        run: 0.0,
+    };
 
     /// Clamped on the way in, so a ratio outside `(0, 1]` — which would invert the road
     /// or collapse it to nothing — cannot reach the tessellator to be checked for later.
@@ -107,7 +116,11 @@ impl Taper {
         if start >= 1.0 && end >= 1.0 {
             return Taper::NONE;
         }
-        Taper { start, end, run: if run > 0.0 { run } else { 0.0 } }
+        Taper {
+            start,
+            end,
+            run: if run > 0.0 { run } else { 0.0 },
+        }
     }
 
     /// Whether this taper would change any vertex. A `run` of zero cannot ramp.
@@ -181,8 +194,8 @@ pub fn ribbon_tapered(
         let py = points[i * 2 + 1] as f32 * scale;
         // Tile y grows downward, so the perpendicular `(-dy, dx)` points to the right
         // of travel — the `-1` vertex is the left kerb, as a driver would name it.
-        vertices.extend_from_slice(&[px, py, nx * width, ny * width, -1.0, distance]);
-        vertices.extend_from_slice(&[px, py, nx * width, ny * width, 1.0, distance]);
+        vertices.extend_from_slice(&[px, py, nx * width, ny * width, -1.0, distance, 0.0]);
+        vertices.extend_from_slice(&[px, py, nx * width, ny * width, 1.0, distance, 0.0]);
     }
 
     // Two triangles per segment, wound as the stroke path winds them so face culling

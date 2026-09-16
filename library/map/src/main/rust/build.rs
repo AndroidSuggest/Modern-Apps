@@ -23,8 +23,8 @@ use std::process::Command;
 
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
-    let shader_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
-        .join("shaders");
+    let shader_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR")).join("shaders");
 
     let glslc = find_glslc();
     println!("cargo:rerun-if-changed=build.rs");
@@ -143,7 +143,12 @@ fn find_glslc() -> PathBuf {
         }
     }
 
-    if Command::new(executable).arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+    if Command::new(executable)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
         return PathBuf::from(executable);
     }
 
@@ -183,7 +188,9 @@ fn sdk_dir_from_local_properties() -> Option<PathBuf> {
                 let line = line.trim();
                 if let Some(value) = line.strip_prefix("sdk.dir=") {
                     // Gradle properties escape the Windows separator.
-                    return Some(PathBuf::from(value.replace("\\\\", "\\").replace("\\:", ":")));
+                    return Some(PathBuf::from(
+                        value.replace("\\\\", "\\").replace("\\:", ":"),
+                    ));
                 }
             }
             return None;

@@ -1,6 +1,6 @@
-use tilecodec::proto::Result;
 #[cfg(target_os = "android")]
 use tilecodec::proto::err;
+use tilecodec::proto::Result;
 
 /// What a range fetch returned.
 pub struct RangeResponse {
@@ -29,10 +29,17 @@ impl RangeFetcher for JniRangeFetcher {
                 // status 0 means the request never completed — a transport error the
                 // bridge reports in-band rather than as an Err.
                 if response.status == 0 {
-                    let detail = response.error().unwrap_or_else(|| "transport failure".into());
-                    return err(format!("range request for {range} of {url} failed: {detail}"));
+                    let detail = response
+                        .error()
+                        .unwrap_or_else(|| "transport failure".into());
+                    return err(format!(
+                        "range request for {range} of {url} failed: {detail}"
+                    ));
                 }
-                Ok(RangeResponse { status: response.status, body: response.body })
+                Ok(RangeResponse {
+                    status: response.status,
+                    body: response.body,
+                })
             }
             Err(e) => err(format!("range request for {range} of {url} failed: {e:?}")),
         }

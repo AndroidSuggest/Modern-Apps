@@ -138,7 +138,10 @@ mod tests {
             icon::VEHICLE_FERRY,
         ] {
             let name = icon_sprite_name(id).unwrap_or_else(|| panic!("icon {id} has no name"));
-            assert!(atlas.get(name).is_some(), "icon {id} -> `{name}` is not in the sheet");
+            assert!(
+                atlas.get(name).is_some(),
+                "icon {id} -> `{name}` is not in the sheet"
+            );
         }
     }
 

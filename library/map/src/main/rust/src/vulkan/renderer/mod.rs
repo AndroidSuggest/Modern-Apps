@@ -13,11 +13,11 @@ mod fog;
 mod frame;
 mod mod_extra;
 mod placement;
+mod rebuild;
 mod record;
 mod record_extra;
 mod record_extra2;
 mod record_extra3;
-mod rebuild;
 mod upload;
 mod upload_extra;
 
@@ -88,6 +88,9 @@ struct ResidentTile {
     /// Shaped symbol candidates (CPU-side): the renderer emits quads per frame
     /// at the frame's text size. Shaped once on the worker thread.
     labels: Vec<geometry::ShapedLabel>,
+    /// The tile's heightmap (CPU-side): per-frame label emission samples ground height
+    /// under anchors from it. Cloned at upload like `labels`; `None` with no DEM.
+    heightmap: Option<tilecodec::mamaps::body::Heightmap>,
     /// Per-lane turn arrows (CPU-side): placed once on the worker thread from the archive's
     /// turn-lane table. The renderer builds their triangles per frame — rotated, scaled to a screen
     /// size and offset into their lane — because all three follow the camera, exactly as the
@@ -339,8 +342,11 @@ struct Quad {
 }
 
 /// The four corners of the unit square, in the −1..1 the puck shaders read as a local
-/// coordinate.
-const QUAD_VERTICES: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0];
+/// coordinate. Three floats per corner to match the shared fill stride (the puck vertex
+/// shader reads only the first two; the z is 0.0 and ignored).
+const QUAD_VERTICES: [f32; 12] = [
+    -1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0,
+];
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 
 /// The puck's blue, from the `drawUserIcon` in `maps` this replaces.

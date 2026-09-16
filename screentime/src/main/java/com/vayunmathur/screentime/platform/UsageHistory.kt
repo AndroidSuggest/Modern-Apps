@@ -5,6 +5,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.util.Log
 import androidx.core.content.getSystemService
+import com.vayunmathur.screentime.domain.HourBuckets
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.TextStyle
@@ -107,7 +108,7 @@ class UsageHistory(private val context: Context) {
         if (end > dayStart) {
             for ((pkg, from, to) in foregroundIntervals(usage, dayStart, end)) {
                 if (forPackage != null && pkg != forPackage) continue
-                addToHourBuckets(hours, dayStart, from, to)
+                HourBuckets.addInterval(hours, dayStart, dayEnd, from, to)
             }
         }
         val bars = (0 until 24).map { UsageBar(hourLabel(it), hours[it]) }
@@ -139,6 +140,7 @@ class UsageHistory(private val context: Context) {
     }
 
     /** Reconstructs (package, startMs, endMs) foreground intervals from the event stream. */
+    @Suppress("DEPRECATION") // MOVE_TO_* still fires on some builds; handled alongside ACTIVITY_*.
     private fun foregroundIntervals(
         usage: UsageStatsManager,
         start: Long,
@@ -154,29 +156,35 @@ class UsageHistory(private val context: Context) {
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             val pkg = event.packageName ?: continue
+            val stamp = event.timeStamp
+            // queryEvents may return events outside the requested window on some builds.
+            // A foreground that began before [start] means the app was already in front at
+            // midnight, so open it there (e.g. overnight sessions count from midnight, not
+            // from yesterday); anything else out of window is dropped so another day's
+            // usage can never land in this day's buckets.
+            if (stamp > end) continue
+            val atEdge = stamp < start
             when (event.eventType) {
-                UsageEvents.Event.ACTIVITY_RESUMED ->
-                    open.putIfAbsent(pkg, event.timeStamp)
-                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED ->
-                    open.remove(pkg)?.let { from -> intervals.add(Triple(pkg, from, event.timeStamp)) }
+                UsageEvents.Event.MOVE_TO_FOREGROUND, UsageEvents.Event.ACTIVITY_RESUMED -> {
+                    if (atEdge) open.putIfAbsent(pkg, start) else open.putIfAbsent(pkg, stamp)
+                }
+                UsageEvents.Event.MOVE_TO_BACKGROUND,
+                UsageEvents.Event.ACTIVITY_PAUSED,
+                UsageEvents.Event.ACTIVITY_STOPPED,
+                -> {
+                    if (atEdge) {
+                        open.remove(pkg)
+                    } else {
+                        open.remove(pkg)?.let { from ->
+                            if (stamp > from) intervals.add(Triple(pkg, from, stamp))
+                        }
+                    }
+                }
             }
         }
         // Anything still foreground at the window edge is closed there.
         open.forEach { (pkg, from) -> intervals.add(Triple(pkg, from, end)) }
         return intervals
-    }
-
-    /** Splits [from, to] into per-hour contributions relative to [dayStart]. */
-    private fun addToHourBuckets(hours: LongArray, dayStart: Long, from: Long, to: Long) {
-        var cursor = from.coerceAtLeast(dayStart)
-        val stop = to.coerceAtMost(dayStart + 24L * 3_600_000L)
-        while (cursor < stop) {
-            val hourIndex = ((cursor - dayStart) / 3_600_000L).toInt().coerceIn(0, 23)
-            val hourEnd = dayStart + (hourIndex + 1) * 3_600_000L
-            val slice = min(stop, hourEnd) - cursor
-            hours[hourIndex] += slice
-            cursor += slice
-        }
     }
 
     private fun hourLabel(hour: Int): String = when {

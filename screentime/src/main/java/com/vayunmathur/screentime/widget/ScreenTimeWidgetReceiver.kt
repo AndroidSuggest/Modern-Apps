@@ -26,7 +26,7 @@ class ScreenTimeGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
 /**
  * Pushes fresh totals into the widget.
  *
- * Called from the coordinator after reconcile so the widget tracks timers, focus and
+ * Called from the coordinator after reconcile so the widget tracks timers, pauses and
  * wind-down without polling UsageStats on its own schedule.
  */
 object WidgetRefresh {

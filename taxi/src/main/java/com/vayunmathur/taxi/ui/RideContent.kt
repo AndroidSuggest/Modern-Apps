@@ -16,6 +16,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.GestureOptions
+import com.vayunmathur.library.map.MapOptions
 import com.vayunmathur.library.map.RouteOverlay
 import com.vayunmathur.library.map.VectorMap
 import com.vayunmathur.library.ui.IconLocationOn
@@ -110,7 +112,7 @@ internal fun RideNarrowContent(
                 .height(220.dp)
                 .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)),
         ) {
-            VectorMap(cameraState = data.camera, route = data.routeOverlay, modifier = Modifier.fillMaxSize())
+            VectorMap(cameraState = data.camera, route = data.routeOverlay, modifier = Modifier.fillMaxSize(), options = MapOptions(gestureOptions = GestureOptions.TiltLocked))
             // Overlay pins for pickup and destination, positioned from the live camera
             // projection so they track pan/zoom (same pattern as fooddelivery's map).
             val projection = data.camera.projection

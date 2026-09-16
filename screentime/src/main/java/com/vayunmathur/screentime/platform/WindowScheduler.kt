@@ -5,7 +5,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.util.Log
 import androidx.core.content.getSystemService
-import com.vayunmathur.screentime.data.FocusProfile
 import com.vayunmathur.screentime.data.WindDownSchedule
 import com.vayunmathur.screentime.receiver.ScheduleReceiver
 import java.time.LocalDateTime
@@ -14,11 +13,10 @@ import java.time.ZoneId
 private const val TAG = "ScreenTimeScheduler"
 
 /**
- * Arms the next focus and wind-down boundary.
+ * Arms the next wind-down boundary.
  *
- * One alarm per schedule type, each for its next transition in either direction, re-armed
- * every time any of them fires (all receivers funnel through the coordinator, which calls
- * back here). Separate request codes keep the alarms from clobbering each other.
+ * One alarm for its next transition in either direction, re-armed every time it fires (all
+ * receivers funnel through the coordinator, which calls back here).
  *
  * Same minute-scan predicate-sharing as parental controls' `BedtimeScheduler`: the boundary
  * search evaluates the exact `contains` predicate the enforcer uses, so the two cannot
@@ -29,8 +27,7 @@ class WindowScheduler(private val context: Context) {
 
     private val alarms = context.getSystemService<AlarmManager>()
 
-    fun armAll(focus: FocusProfile, windDown: WindDownSchedule) {
-        armWindow(focus.scheduleEnabled, focus::activeAt, REQUEST_FOCUS)
+    fun armAll(windDown: WindDownSchedule) {
         armWindow(windDown.enabled, windDown::activeAt, REQUEST_WINDDOWN)
     }
 
@@ -77,27 +74,10 @@ class WindowScheduler(private val context: Context) {
     )
 
     private companion object {
-        const val REQUEST_FOCUS = 11
         const val REQUEST_WINDDOWN = 12
         const val MINUTES_IN_WEEK = 7 * 24 * 60
     }
 }
-
-/** Whether the focus schedule is active at [at], in the device's current timezone. */
-fun FocusProfile.activeAt(at: LocalDateTime): Boolean {
-    if (!scheduleEnabled) return false
-    val minute = at.hour * 60 + at.minute
-    val day = at.dayOfWeek.value - 1
-    val set = (daysMask shr day) and 1 == 1
-    if (!set) return false
-    return if (startMinute <= endMinute) {
-        minute >= startMinute && minute < endMinute
-    } else {
-        (minute >= startMinute) || (minute < endMinute && isDaySet((day + 6) % 7))
-    }
-}
-
-private fun FocusProfile.isDaySet(dayIndex: Int): Boolean = (daysMask shr dayIndex) and 1 == 1
 
 /** Whether wind-down is active at [at], in the device's current timezone. */
 fun WindDownSchedule.activeAt(at: LocalDateTime): Boolean {

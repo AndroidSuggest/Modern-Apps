@@ -1,26 +1,24 @@
 package com.vayunmathur.library.ml
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
-import java.nio.FloatBuffer
 import kotlin.math.max
 import kotlin.math.min
+import org.pytorch.executorch.EValue
+import org.pytorch.executorch.Module
+import org.pytorch.executorch.Tensor
 
 /**
  * Face detection and face embedding, for `:photos`'s people clustering.
  *
  * **SCRFD 500M** finds faces and their five keypoints; **MobileFaceNet** (`w600k_mbf`,
- * ArcFace-trained) turns an aligned crop into a 512-d embedding. Both run on the reduced
- * ONNX Runtime build — see `photos/src/main/assets/README.md` for provenance and the
- * InsightFace licence.
+ * ArcFace-trained) turns an aligned crop into a 512-d embedding. Both run on ExecuTorch
+ * over the pure-Vulkan runtime — see `photos/src/main/assets/README.md` for provenance
+ * and the InsightFace licence.
  *
- * These replace `com.vayunmathur.ncnn.FaceDetector` and `FaceEmbedder` (and the Vulkan
- * `MlNative` path between them). Same two models, re-sourced from a licensed ONNX export.
- * The embeddings are **not** bit-identical to ncnn's, so `FaceRecognizer.EMBEDDER_VERSION`
+ * These replace `com.vayunmathur.ncnn.FaceDetector` and `FaceEmbedder`. The embeddings are
+ * **not** bit-identical to ncnn's, so `FaceRecognizer.EMBEDDER_VERSION`
  * has to be bumped alongside this — the stored index would otherwise mix two incompatible
  * embedding spaces and cluster nonsense.
  *
@@ -29,25 +27,13 @@ import kotlin.math.min
  * The export declares nine outputs: three score maps, three box maps, three keypoint maps
  * at strides 8, 16 and 32. Each is flattened from a `[H, W, anchors]` transpose
  * (`perm [2,3,0,1]`), so the layout is **cell-major**: element `(row, col, anchor)` sits
- * at `flat[(row * w + col) * 2 + anchor]`. This differs from the MAML path, which read
- * the convolution outputs before the transpose and decoded anchor-major — ported
- * accordingly. The box math (centre at `col * stride` with no half-cell offset, `+1` on
- * extents, five keypoints as stride-scaled offsets) and the greedy stable NMS
- * (score ≥ 0.5 keep, IoU strictly above 0.45 suppresses) mirror `post::nms`.
+ * at `flat[(row * w + col) * 2 + anchor]`. The box math (centre at `col * stride` with no
+ * half-cell offset, `+1` on extents, five keypoints as stride-scaled offsets) and the
+ * greedy stable NMS (score ≥ 0.5 keep, IoU strictly above 0.45 suppresses) are unchanged.
  *
  * The input is letterboxed into a 640×640 square (`OnnxPreprocess.SquareFit`, scale
  * `640 / long side`, truncated, centred, border raw-zero through the SCRFD
  * normalisation), and boxes are mapped back onto the source bitmap as `0..1` fractions.
- *
- * # Vulkan-first inference
- *
- * When [VulkanSessions] reports the driver usable and this graph is allowlisted, inference
- * runs on the Vulkan fast path through the self-describing [VulkanWire] payload; ORT is kept
- * as the fallback. Preprocess (`OnnxPreprocess`) and post (SCRFD cell-major decode, greedy
- * NMS, source mapping, L2 left to caller) stay in Kotlin and are shared by both paths. Each
- * instance holds one `vulkanHandle` alongside its ORT session; inference tries Vulkan first
- * and falls back to ORT per call, so a mid-run Vulkan failure still returns results when ORT
- * is available.
  */
 
 /** One detected face. Every coordinate is a fraction of the source bitmap, `0..1`. */
@@ -73,28 +59,33 @@ data class DetectedFaceBox(
 )
 
 /**
- * SCRFD 500M face detection.
+ * SCRFD 500M face detection, ExecuTorch Vulkan-only, fail-closed.
  *
- * Not thread-safe: [detect] and [close] must not overlap. See the note in
- * [NativeSegmenter] about why the lock lives with the caller's threading rather than here.
+ * Not thread-safe: [detect] and [close] must not overlap.
  *
- * Vulkan-first with ORT fallback: [ensure] opens a Vulkan handle when the driver/graph
- * supports it and always opens the ORT session as well, so either path can serve.
+ * The only path is the Vulkan fp16 `.pte` (`scrfd500_vulkan_fp16.pte`,
+ * ~1.3 MB) on ExecuTorch: `forward` takes the `letterboxPlanar` buffer directly as
+ * NCHW `[1,3,640,640]` f32 and returns the nine score/box/keypoint maps positionally.
+ * When the `.pte` is absent, the Vulkan delegate is not linked, or the run fails,
+ * [detect] returns an empty list — there is no LiteRT fallback.
  *
- * @param context used only to read the asset; not retained.
- * @param assetName the `.onnx` in the app's assets.
+ * @param context used to read assets and to stage the `.pte`; the application context is
+ * retained for the lazy ExecuTorch open.
+ * @param etAssetName the `.pte` in the app's assets.
  */
-class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCloseable {
+class FaceDetector(
+    context: Context,
+    etAssetName: String = ET_ASSET,
+) : AutoCloseable {
     private val app = context.applicationContext
-    private val asset = assetName
+    private val etAsset = etAssetName
     private val lock = Any()
 
-    @Volatile private var session: OrtSession? = null
-    @Volatile private var vulkanHandle: Long = 0L
-    @Volatile private var loadTried = false
+    @Volatile private var etModule: Module? = null
+    @Volatile private var etTried = false
 
     /** Whether the detector came up. False means people clustering is off. */
-    val isAvailable: Boolean get() = ensure()
+    val isAvailable: Boolean get() = ensureEt() != null
 
     /**
      * Every face in [bitmap], or an empty list if there are none or the detector is
@@ -103,54 +94,54 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
      * [bitmap] may be any size: it is letterboxed and normalised here.
      */
     fun detect(bitmap: Bitmap): List<DetectedFaceBox> {
-        if (!ensure()) return emptyList()
-        val (pixels, readable) = OnnxPreprocess.readablePixels(bitmap) ?: return emptyList()
+        val mod = ensureEt() ?: return emptyList()
+        return detectEt(bitmap, mod) ?: emptyList()
+    }
+
+    /**
+     * One ExecuTorch `forward` invocation over [bitmap], or null on failure.
+     *
+     * The export returns the nine maps positionally (score_8/16/32, bbox_8/16/32,
+     * kps_8/16/32 — see `analysis/et-face/ET_FACE_DROPIN.md` §2), so this uses
+     * `ExecutorchSessions.run` + `toTensor()` per output rather than `runFloat`
+     * (which only returns the first).
+     */
+    private fun detectEt(bitmap: Bitmap, mod: Module): List<DetectedFaceBox>? {
+        val (pixels, readable) = OnnxPreprocess.readablePixels(bitmap) ?: return null
         try {
             val fit = OnnxPreprocess.SquareFit.of(readable.width, readable.height, LONG_SIDE)
-            val input = OnnxPreprocess.letterboxPlanar(
+            val planar = OnnxPreprocess.letterboxPlanar(
                 pixels, readable.width, readable.height, LONG_SIDE, fit, OnnxPreprocess.SCRFD,
             )
-            // Vulkan-first: same preprocessed input, same Kotlin decode/NMS.
-            val handle = vulkanHandle
-            if (handle != 0L) {
-                runCatching { vulkanOutputs(handle, input) }.getOrNull()?.let { outs ->
-                    runCatching {
-                        val faces = ArrayList<Face>()
-                        for (level in STRIDES.indices) {
-                            decode(
-                                outs.scores[level], outs.boxes[level], outs.keypoints[level],
-                                STRIDES[level], LONG_SIDE / STRIDES[level], faces,
-                            )
-                        }
-                        suppress(faces)
-                        return faces.map { toSource(it, fit, readable.width, readable.height) }
-                    }.getOrNull()?.let { return it }
-                    // Fall through to ORT on post failure: tensor shape mismatch, not "no faces".
-                }
+            // No swizzle: ET takes NCHW, which planar already is.
+            val outputs = synchronized(lock) {
+                ExecutorchSessions.run(
+                    mod,
+                    listOf(EValue.from(Tensor.fromBlob(planar, longArrayOf(1, 3, LONG_SIDE.toLong(), LONG_SIDE.toLong())))),
+                )
+            } ?: return null
+            if (outputs.size < NUM_OUTPUTS) {
+                Log.e(TAG, "scrfd ET produced ${outputs.size} outputs, want $NUM_OUTPUTS")
+                return null
             }
-            val live = session ?: return emptyList()
-            val env = OrtEnvironment.getEnvironment()
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, LONG_SIDE.toLong(), LONG_SIDE.toLong())).useOrt { tensor ->
-                live.run(mapOf(INPUT to tensor)).useOrt { result ->
-                    fun floats(name: String): FloatArray {
-                        val out = FloatArray(sessionOutputSize(live, name))
-                        ((result.get(name).get()) as OnnxTensor).floatBuffer.get(out)
-                        return out
-                    }
-                    val faces = ArrayList<Face>()
-                    for (level in STRIDES.indices) {
-                        decode(
-                            floats(SCORES[level]), floats(BOXES[level]), floats(KEYPOINTS[level]),
-                            STRIDES[level], LONG_SIDE / STRIDES[level], faces,
-                        )
-                    }
-                    suppress(faces)
-                    return faces.map { toSource(it, fit, readable.width, readable.height) }
-                }
+            fun floats(index: Int, want: Int): FloatArray? {
+                // HALF-tolerant: fp16 Vulkan lowers may come back binary16.
+                return outputs[index].floatsAllowingHalf("scrfd ET output $index", want)
             }
+            val cells = STRIDES.map { LONG_SIDE / it }
+            val wants = cells.mapIndexed { level, c -> c * c * ANCHORS }
+            val faces = ArrayList<Face>()
+            for (level in STRIDES.indices) {
+                val scores = floats(level, wants[level]) ?: return null
+                val boxes = floats(level + 3, wants[level] * 4) ?: return null
+                val kps = floats(level + 6, wants[level] * KEYPOINT_COUNT * 2) ?: return null
+                decode(scores, boxes, kps, STRIDES[level], cells[level], faces)
+            }
+            suppress(faces)
+            return faces.map { toSource(it, fit, readable.width, readable.height) }
         } catch (e: Throwable) {
-            Log.e(TAG, "scrfd inference failed", e)
-            return emptyList()
+            Log.e(TAG, "scrfd ET inference failed", e)
+            return null
         } finally {
             if (readable !== bitmap) readable.recycle()
         }
@@ -158,65 +149,30 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
 
     override fun close() {
         synchronized(lock) {
-            session = null
-            OnnxSessions.close(sessionKey())
-            val handle = vulkanHandle
-            vulkanHandle = 0L
-            if (handle != 0L) {
-                runCatching { VulkanSessions.close(handle) }
-            }
+            etModule = null
+            ExecutorchSessions.close(etSessionKey())
         }
     }
 
-    private fun sessionKey() = "asset:$asset"
+    private fun etSessionKey() = "asset:$etAsset"
 
     /**
-     * Best-effort Vulkan open for this asset's graph; leaves [vulkanHandle] at 0
-     * on any failure so ORT stays the fallback. The model bytes are read once
-     * and shared by the preflight check and the open. Caller must hold [lock].
+     * The ExecuTorch module, loaded once. Null when the `.pte` is absent, the Vulkan
+     * delegate is not linked, or the load failed — fail closed, never a throw.
      */
-    private fun tryVulkanLocked() {
-        try {
-            if (!VulkanSessions.isUsable()) return
-            val key = sessionKey()
-            if (key !in VulkanSessions.allowlist) return
-            val modelBytes = try {
-                app.assets.open(asset).use { it.readBytes() }
-            } catch (e: Throwable) {
-                Log.w(TAG, "cannot read $asset for vulkan preflight", e)
-                return
-            }
-            val problem = VulkanSessions.preflight(key) { modelBytes }
-            if (problem != null) {
-                Log.w(TAG, "vulkan preflight skipped for $asset: $problem")
-                return
-            }
-            val handle = VulkanSessions.open(key) { modelBytes }
-            if (handle != 0L) {
-                vulkanHandle = handle
-                Log.i(TAG, "vulkan session open for $key")
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "vulkan open failed for $asset, using ORT", e)
-            vulkanHandle = 0L
-        }
-    }
-
-    private fun ensure(): Boolean {
-        session?.let { return true }
-        if (vulkanHandle != 0L) return true
+    private fun ensureEt(): Module? {
+        if (etModule != null) return etModule
         synchronized(lock) {
-            session?.let { return true }
-            if (vulkanHandle != 0L) return true
-            if (loadTried) return vulkanHandle != 0L || session != null
-            loadTried = true
-            // Vulkan-first: open a handle when the driver/graph supports it.
-            tryVulkanLocked()
-            // ORT fallback is always attempted so either path can serve.
-            runCatching {
-                session = OnnxSessions.openAsset(app, asset)
+            if (etModule != null) return etModule
+            if (etTried) return null
+            etTried = true
+            val backends = ExecutorchSessions.registeredBackends()
+            if (backends?.any { it.contains("Vulkan", ignoreCase = true) } != true) {
+                Log.i(TAG, "Vulkan backend absent, skipping $etAsset")
+                return null
             }
-            return vulkanHandle != 0L || session != null
+            etModule = ExecutorchSessions.openAsset(app, etAsset)
+            return etModule
         }
     }
 
@@ -225,37 +181,6 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
         val bounds: FloatArray,
         val keypoints: Array<FloatArray>,
     )
-
-    private data class VulkanFaceOutputs(
-        val scores: List<FloatArray>,
-        val boxes: List<FloatArray>,
-        val keypoints: List<FloatArray>,
-    )
-
-    /**
-     * Run the SCRFD graph on Vulkan and return its 9 outputs in model output order:
-     * score/box/keypoint per stride level (8, 16, 32). Returns null on any failure or a
-     * wrong output count so the caller falls back to ORT.
-     */
-    private fun vulkanOutputs(handle: Long, input: FloatArray): VulkanFaceOutputs? {
-        val inputs = listOf(
-            VulkanWire.floats(longArrayOf(1, 3, LONG_SIDE.toLong(), LONG_SIDE.toLong()), input),
-        )
-        val outputs = VulkanSessions.run(handle, inputs) ?: return null
-        if (outputs.size != STRIDES.size * 3) return null
-        val out = outputs.map { it.asFloats() }
-        return VulkanFaceOutputs(
-            scores = listOf(out[0], out[3], out[6]),
-            boxes = listOf(out[1], out[4], out[7]),
-            keypoints = listOf(out[2], out[5], out[8]),
-        )
-    }
-
-    private fun sessionOutputSize(session: OrtSession, name: String): Int {
-        val info = session.outputInfo[name]?.info as? ai.onnxruntime.TensorInfo
-            ?: error("no output $name")
-        return info.shape.map { if (it < 0) 1 else it.toInt() }.reduce(Int::times)
-    }
 
     /** Decode one stride's maps into proposals. Cell-major: `(row, col, anchor)`. */
     private fun decode(
@@ -341,85 +266,94 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
     }
 
     companion object {
-        /** What `:photos` ships. */
-        const val DEFAULT_ASSET: String = "scrfd_500m.onnx"
+        /** The ExecuTorch graph (Vulkan fp16, same 500M weights). */
+        const val ET_ASSET: String = "scrfd500_vulkan_fp16.pte"
         private const val TAG = "FaceDetector"
         private const val LONG_SIDE = 640
-        private const val INPUT = "input.1"
         private const val ANCHORS = 2
         private const val KEYPOINT_COUNT = 5
         private const val SCORE_THRESHOLD = 0.5f
         private const val IOU_THRESHOLD = 0.45f
+        /** Three score maps + three box maps + three keypoint maps. */
+        private const val NUM_OUTPUTS = 9
         private val STRIDES = intArrayOf(8, 16, 32)
-        private val SCORES = arrayOf("443", "468", "493")
-        private val BOXES = arrayOf("446", "471", "496")
-        private val KEYPOINTS = arrayOf("449", "474", "499")
     }
 }
 
 /**
- * MobileFaceNet face embedding.
+ * MobileFaceNet face embedding, ExecuTorch Vulkan-only, fail-closed.
  *
  * Takes an aligned 112×112 crop and returns 512 floats. The result is **not**
- * L2-normalised — `FaceRecognizer` does that, as it did with ncnn.
+ * L2-normalised — `FaceRecognizer` does that, as it did before.
+ *
+ * The only path is the Vulkan fp16 `.pte` (`mbf512_vulkan_fp16.pte`,
+ * ~6.9 MB, same buffalo_s `w600k_mbf` weights) on ExecuTorch: the 112² NCHW crop
+ * goes straight into `forward` and returns the single `[1,512]` embedding.
+ * When the `.pte` is absent, the Vulkan delegate is not linked, or the run fails,
+ * [embed] returns null — there is no LiteRT fallback.
  *
  * Not thread-safe: [embed] and [close] must not overlap.
  *
- * Vulkan-first with ORT fallback; preprocess stays in Kotlin.
- *
- * @param context used only to read the asset; not retained.
- * @param assetName the `.onnx` in the app's assets.
+ * @param context used to read assets and to stage the `.pte`; the application context is
+ * retained for the lazy ExecuTorch open.
+ * @param etAssetName the `.pte` in the app's assets.
  */
-class FaceEmbedder(context: Context, assetName: String = DEFAULT_ASSET) : AutoCloseable {
+class FaceEmbedder(
+    context: Context,
+    etAssetName: String = ET_ASSET,
+) : AutoCloseable {
     private val app = context.applicationContext
-    private val asset = assetName
+    private val etAsset = etAssetName
     private val lock = Any()
 
-    @Volatile private var session: OrtSession? = null
-    @Volatile private var vulkanHandle: Long = 0L
-    @Volatile private var loadTried = false
+    @Volatile private var etModule: Module? = null
+    @Volatile private var etTried = false
 
     /** Whether the embedder came up. */
-    val isAvailable: Boolean get() = ensure()
+    val isAvailable: Boolean get() = ensureEt() != null
 
     /**
-     * The 512-d embedding of an aligned [bitmap], or null on failure.
+     * The 512-d embedding of an aligned [bitmap], or null when unavailable or on failure.
      *
      * [bitmap] should already be the canonical 112×112 crop; anything else is stretched
      * here, which for a face crop is not what the caller wanted.
      */
     fun embed(bitmap: Bitmap): FloatArray? {
-        if (!ensure()) return null
+        val mod = ensureEt() ?: return null
+        return embedEt(bitmap, mod)
+    }
+
+    /**
+     * One ExecuTorch `forward` invocation over [bitmap], or null on failure.
+     *
+     * Single `[1,512]` output read HALF-tolerantly: the Vulkan fp16 export may
+     * come back binary16, and `runFloat` fails closed on non-FLOAT — so this uses
+     * `run` + `floatsAllowingHalf` like the detector path. Returns null (never
+     * throws).
+     */
+    private fun embedEt(bitmap: Bitmap, mod: Module): FloatArray? {
         val (pixels, readable) = OnnxPreprocess.readablePixels(bitmap) ?: return null
         try {
-            val input = OnnxPreprocess.stretchPlanar(
+            val planar = OnnxPreprocess.stretchPlanar(
                 pixels, readable.width, readable.height,
                 SIZE, SIZE, OnnxPreprocess.FACE_EMBED,
             )
-            // Vulkan-first: same stretched input, raw 512-d vector out.
-            val handle = vulkanHandle
-            if (handle != 0L) {
-                runCatching { vulkanEmbedding(handle, input) }.getOrNull()?.let { vec ->
-                    if (vec.size == EMBEDDING_LENGTH) return vec
-                    // Wrong-sized vector: fall through to ORT rather than returning junk.
-                }
+            // No swizzle: ET takes NCHW, which planar already is.
+            val outputs = synchronized(lock) {
+                ExecutorchSessions.run(
+                    mod,
+                    listOf(EValue.from(Tensor.fromBlob(planar, longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())))),
+                )
+            } ?: return null
+            val vec = outputs.firstOrNull()?.floatsAllowingHalf("mobilefacenet ET", EMBEDDING_LENGTH)
+                ?: return null
+            if (vec.size != EMBEDDING_LENGTH) {
+                Log.e(TAG, "mobilefacenet ET produced ${vec.size} floats, want $EMBEDDING_LENGTH")
+                return null
             }
-            val live = session ?: return null
-            val env = OrtEnvironment.getEnvironment()
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())).useOrt { tensor ->
-                live.run(mapOf(INPUT to tensor)).useOrt { result ->
-                    val out = result[0] as OnnxTensor
-                    val vec = FloatArray(EMBEDDING_LENGTH)
-                    out.floatBuffer.get(vec)
-                    if (vec.size != EMBEDDING_LENGTH) {
-                        Log.e(TAG, "a ${vec.size}-value embedding, expected $EMBEDDING_LENGTH")
-                        return null
-                    }
-                    return vec
-                }
-            }
+            return vec
         } catch (e: Throwable) {
-            Log.e(TAG, "mobilefacenet inference failed", e)
+            Log.e(TAG, "mobilefacenet ET inference failed", e)
             return null
         } finally {
             if (readable !== bitmap) readable.recycle()
@@ -428,84 +362,39 @@ class FaceEmbedder(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
 
     override fun close() {
         synchronized(lock) {
-            session = null
-            OnnxSessions.close(sessionKey())
-            val handle = vulkanHandle
-            vulkanHandle = 0L
-            if (handle != 0L) {
-                runCatching { VulkanSessions.close(handle) }
-            }
+            etModule = null
+            ExecutorchSessions.close(etSessionKey())
         }
     }
 
-    private fun sessionKey() = "asset:$asset"
+    private fun etSessionKey() = "asset:$etAsset"
 
-    /** Best-effort Vulkan open for this asset's graph; leaves [vulkanHandle] at 0 on failure. */
-    private fun tryVulkanLocked() {
-        try {
-            if (!VulkanSessions.isUsable()) return
-            val key = sessionKey()
-            if (key !in VulkanSessions.allowlist) return
-            val modelBytes = try {
-                app.assets.open(asset).use { it.readBytes() }
-            } catch (e: Throwable) {
-                Log.w(TAG, "cannot read $asset for vulkan preflight", e)
-                return
-            }
-            val problem = VulkanSessions.preflight(key) { modelBytes }
-            if (problem != null) {
-                Log.w(TAG, "vulkan preflight skipped for $asset: $problem")
-                return
-            }
-            val handle = VulkanSessions.open(key) { modelBytes }
-            if (handle != 0L) {
-                vulkanHandle = handle
-                Log.i(TAG, "vulkan session open for $key")
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "vulkan open failed for $asset, using ORT", e)
-            vulkanHandle = 0L
-        }
-    }
-
-    private fun ensure(): Boolean {
-        session?.let { return true }
-        if (vulkanHandle != 0L) return true
+    /**
+     * The ExecuTorch module, loaded once. Null when the `.pte` is absent, the Vulkan
+     * delegate is not linked, or the load failed — fail closed, never a throw.
+     */
+    private fun ensureEt(): Module? {
+        if (etModule != null) return etModule
         synchronized(lock) {
-            session?.let { return true }
-            if (vulkanHandle != 0L) return true
-            if (loadTried) return vulkanHandle != 0L || session != null
-            loadTried = true
-            tryVulkanLocked()
-            runCatching {
-                session = OnnxSessions.openAsset(app, asset)
+            if (etModule != null) return etModule
+            if (etTried) return null
+            etTried = true
+            val backends = ExecutorchSessions.registeredBackends()
+            if (backends?.any { it.contains("Vulkan", ignoreCase = true) } != true) {
+                Log.i(TAG, "Vulkan backend absent, skipping $etAsset")
+                return null
             }
-            return vulkanHandle != 0L || session != null
+            etModule = ExecutorchSessions.openAsset(app, etAsset)
+            return etModule
         }
-    }
-
-    /** Run the embedding graph on Vulkan; the single 512-d output is selected by element count. */
-    private fun vulkanEmbedding(handle: Long, input: FloatArray): FloatArray? {
-        val inputs = listOf(
-            VulkanWire.floats(longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong()), input),
-        )
-        val outputs = VulkanSessions.run(handle, inputs) ?: return null
-        val vec = outputs.firstOrNull {
-            it.dtype == VulkanWire.DTYPE_F32 && it.bytes.size / 4 == EMBEDDING_LENGTH
-        }?.asFloats() ?: run {
-            Log.e(TAG, "vulkan produced no $EMBEDDING_LENGTH-value embedding")
-            return null
-        }
-        return vec
     }
 
     companion object {
-        /** What `:photos` ships. */
-        const val DEFAULT_ASSET: String = "w600k_mbf.onnx"
+        /** The ExecuTorch graph (Vulkan fp16, same 512-d weights). */
+        const val ET_ASSET: String = "mbf512_vulkan_fp16.pte"
         /** Length of the embedding MobileFaceNet produces. */
         const val EMBEDDING_LENGTH = 512
         private const val TAG = "FaceEmbedder"
         private const val SIZE = 112
-        private const val INPUT = "input.1"
     }
 }

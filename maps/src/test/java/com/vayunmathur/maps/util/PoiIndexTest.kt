@@ -427,10 +427,45 @@ class PoiIndexTest {
             "+1-555-MALL",
             PoiIndex.attributesNear(37.7749, -122.4194, "Mall")?.phone,
         )
-        assertNull(
-            PoiIndex.attributesNear(37.7749, -122.4194, "Nowhere"),
-            "a name that is not there must not fall back to the nearest thing",
+        // The tile and the sidecar disagree on the name entirely: no exact or
+        // normalised match, so the nearest POI within 25 m that carries
+        // attributes wins instead of an empty sheet. Here that is the Mall
+        // itself, which sits exactly on the query point.
+        assertEquals(
+            "+1-555-MALL",
+            PoiIndex.attributesNear(37.7749, -122.4194, "Nowhere")?.phone,
         )
+    }
+
+    @Test
+    fun `attributesNear matches names ignoring case and punctuation`() {
+        val recs = load(
+            listOf(
+                Poi(377_749_000, -1_224_194_000, 1, "McDonald's"),
+            ),
+            attrs = emptyMap(),
+        )
+        load(recs, attrs = mapOf(0 to "+1-555-BIGMAC"))
+
+        assertEquals(
+            "+1-555-BIGMAC",
+            PoiIndex.attributesNear(37.7749, -122.4194, "McDonalds")?.phone,
+        )
+        assertEquals(
+            "+1-555-BIGMAC",
+            PoiIndex.attributesNear(37.7749, -122.4194, "MCDONALD'S")?.phone,
+        )
+    }
+
+    @Test
+    fun `attributesNear returns null when nothing nearby carries attributes`() {
+        load(
+            listOf(
+                Poi(377_749_000, -1_224_194_000, 1, "Mall"),
+            ),
+            attrs = emptyMap(),
+        )
+        assertNull(PoiIndex.attributesNear(37.7749, -122.4194, "Nowhere"))
     }
 
     @Test

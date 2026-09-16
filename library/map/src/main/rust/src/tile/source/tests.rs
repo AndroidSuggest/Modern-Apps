@@ -1,11 +1,11 @@
 use super::*;
 use crate::tile::cache::RangeCache;
-use tilecodec::proto::{err, Result};
-use tilecodec::stream::RangeReader;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use tilecodec::proto::{err, Result};
+use tilecodec::stream::RangeReader;
 
 /// The first failure waits, rather than re-requesting on the very next frame. Without this
 /// a failing tile is asked for sixty times a second and the on-demand frame loop can never
@@ -13,7 +13,10 @@ use std::sync::Arc;
 #[test]
 fn the_first_failure_backs_off_rather_than_retrying_at_once() {
     assert_eq!(retry_delay_ms(1), RETRY_BASE_MS);
-    assert!(RETRY_BASE_MS > 16, "a delay under one frame would not be a backoff at all");
+    assert!(
+        RETRY_BASE_MS > 16,
+        "a delay under one frame would not be a backoff at all"
+    );
 }
 
 /// Consecutive failures double, so an unreachable archive settles to a poll.
@@ -29,9 +32,16 @@ fn consecutive_failures_double_the_wait() {
 #[test]
 fn the_backoff_saturates_at_the_ceiling() {
     assert_eq!(retry_delay_ms(1000), RETRY_MAX_MS);
-    assert_eq!(retry_delay_ms(u32::MAX), RETRY_MAX_MS, "no overflow on a huge attempt count");
+    assert_eq!(
+        retry_delay_ms(u32::MAX),
+        RETRY_MAX_MS,
+        "no overflow on a huge attempt count"
+    );
     for attempts in 1..200u32 {
-        assert!(retry_delay_ms(attempts) <= RETRY_MAX_MS, "{attempts} exceeded the ceiling");
+        assert!(
+            retry_delay_ms(attempts) <= RETRY_MAX_MS,
+            "{attempts} exceeded the ceiling"
+        );
     }
 }
 
@@ -51,8 +61,7 @@ struct Fixture {
 
 impl Fixture {
     fn new(name: &str) -> Fixture {
-        let dir = std::env::temp_dir()
-            .join(format!("rangesource-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("rangesource-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
         Fixture { dir }
@@ -75,7 +84,12 @@ struct Fake {
 
 impl Fake {
     fn ok(body: Vec<u8>) -> Fake {
-        Fake { status: 206, body, fail: false, ranges: RefCell::new(Vec::new()) }
+        Fake {
+            status: 206,
+            body,
+            fail: false,
+            ranges: RefCell::new(Vec::new()),
+        }
     }
 }
 
@@ -85,7 +99,10 @@ impl RangeFetcher for Fake {
         if self.fail {
             return err("no route to host");
         }
-        Ok(RangeResponse { status: self.status, body: self.body.clone() })
+        Ok(RangeResponse {
+            status: self.status,
+            body: self.body.clone(),
+        })
     }
 }
 
@@ -126,7 +143,11 @@ fn a_fresh_entry_is_served_without_touching_the_network() {
     let r = reader(&f.dir, clock, Fake::ok(vec![9u8; 16]));
     // The first read of a session always revalidates — it is the archive header, and a stale
     // one would validate the very cache it is meant to invalidate.
-    assert_eq!(r.read(0, 16).unwrap(), vec![9u8; 16], "the header is refetched");
+    assert_eq!(
+        r.read(0, 16).unwrap(),
+        vec![9u8; 16],
+        "the header is refetched"
+    );
     assert_eq!(r.fetcher.ranges.borrow().len(), 1);
     // Everything after it is served from the cache.
     assert_eq!(r.read(0, 16).unwrap(), vec![9u8; 16], "the cached bytes");
@@ -171,7 +192,10 @@ fn the_first_read_still_uses_the_cache_when_offline() {
     let r = reader(&f.dir, clock, Fake::ok(vec![4u8; 16]));
     r.set_online(false);
     assert_eq!(r.read(0, 16).unwrap(), vec![3u8; 16], "the cached header");
-    assert!(r.fetcher.ranges.borrow().is_empty(), "and no request attempted");
+    assert!(
+        r.fetcher.ranges.borrow().is_empty(),
+        "and no request attempted"
+    );
 }
 
 #[test]
@@ -182,7 +206,10 @@ fn a_stale_entry_is_refetched_when_online() {
         let r = reader(&f.dir, clock.clone(), Fake::ok(vec![1u8; 4]));
         r.read(0, 4).unwrap();
     }
-    clock.fetch_add(crate::tile::cache::REFRESH_INTERVAL_MS + 1, Ordering::SeqCst);
+    clock.fetch_add(
+        crate::tile::cache::REFRESH_INTERVAL_MS + 1,
+        Ordering::SeqCst,
+    );
     let r = reader(&f.dir, clock, Fake::ok(vec![2u8; 4]));
     assert_eq!(r.read(0, 4).unwrap(), vec![2u8; 4], "the refreshed bytes");
     assert_eq!(r.fetcher.ranges.borrow().len(), 1);
@@ -197,11 +224,17 @@ fn a_stale_entry_is_served_offline_rather_than_failing() {
         let r = reader(&f.dir, clock.clone(), Fake::ok(vec![1u8; 4]));
         r.read(0, 4).unwrap();
     }
-    clock.fetch_add(crate::tile::cache::REFRESH_INTERVAL_MS * 10, Ordering::SeqCst);
+    clock.fetch_add(
+        crate::tile::cache::REFRESH_INTERVAL_MS * 10,
+        Ordering::SeqCst,
+    );
     let r = reader(&f.dir, clock, Fake::ok(vec![2u8; 4]));
     r.set_online(false);
     assert_eq!(r.read(0, 4).unwrap(), vec![1u8; 4], "the stale bytes");
-    assert!(r.fetcher.ranges.borrow().is_empty(), "offline must not attempt a request");
+    assert!(
+        r.fetcher.ranges.borrow().is_empty(),
+        "offline must not attempt a request"
+    );
 }
 
 /// A failed refetch is an error: the reader never serves a stale entry for a
@@ -214,17 +247,33 @@ fn a_failed_fetch_is_an_error_not_a_stale_fallback() {
         let r = reader(&f.dir, clock.clone(), Fake::ok(vec![1u8; 4]));
         r.read(0, 4).unwrap();
     }
-    clock.fetch_add(crate::tile::cache::REFRESH_INTERVAL_MS + 1, Ordering::SeqCst);
-    let failing = Fake { status: 206, body: Vec::new(), fail: true, ranges: RefCell::new(Vec::new()) };
+    clock.fetch_add(
+        crate::tile::cache::REFRESH_INTERVAL_MS + 1,
+        Ordering::SeqCst,
+    );
+    let failing = Fake {
+        status: 206,
+        body: Vec::new(),
+        fail: true,
+        ranges: RefCell::new(Vec::new()),
+    };
     let r = reader(&f.dir, clock, failing);
-    assert!(r.read(0, 4).is_err(), "a failed refetch must not serve the stale entry");
+    assert!(
+        r.read(0, 4).is_err(),
+        "a failed refetch must not serve the stale entry"
+    );
 }
 
 #[test]
 fn a_failed_fetch_with_nothing_cached_propagates() {
     let f = Fixture::new("nofallback");
     let clock = Arc::new(AtomicU64::new(1_000_000));
-    let failing = Fake { status: 206, body: Vec::new(), fail: true, ranges: RefCell::new(Vec::new()) };
+    let failing = Fake {
+        status: 206,
+        body: Vec::new(),
+        fail: true,
+        ranges: RefCell::new(Vec::new()),
+    };
     let r = reader(&f.dir, clock, failing);
     assert!(r.read(0, 4).is_err());
 }
@@ -238,10 +287,21 @@ fn a_server_error_is_an_error_not_a_cache_fallback() {
         let r = reader(&f.dir, clock.clone(), Fake::ok(vec![1u8; 4]));
         r.read(0, 4).unwrap();
     }
-    clock.fetch_add(crate::tile::cache::REFRESH_INTERVAL_MS + 1, Ordering::SeqCst);
-    let erroring = Fake { status: 503, body: vec![9u8; 4], fail: false, ranges: RefCell::new(Vec::new()) };
+    clock.fetch_add(
+        crate::tile::cache::REFRESH_INTERVAL_MS + 1,
+        Ordering::SeqCst,
+    );
+    let erroring = Fake {
+        status: 503,
+        body: vec![9u8; 4],
+        fail: false,
+        ranges: RefCell::new(Vec::new()),
+    };
     let r = reader(&f.dir, clock, erroring);
-    assert!(r.read(0, 4).is_err(), "a 503 must not serve the stale entry");
+    assert!(
+        r.read(0, 4).is_err(),
+        "a 503 must not serve the stale entry"
+    );
     // With nothing cached for a different range, it is an error.
     assert!(r.read(64, 4).is_err());
 }
@@ -252,9 +312,18 @@ fn a_whole_file_200_reply_to_a_range_request_is_never_cached() {
     // range is what produced the "Prefix string too short" pmtiles header errors.
     let f = Fixture::new("wholefile");
     let clock = Arc::new(AtomicU64::new(1_000_000));
-    let whole = Fake { status: 200, body: vec![3u8; 4096], fail: false, ranges: RefCell::new(Vec::new()) };
+    let whole = Fake {
+        status: 200,
+        body: vec![3u8; 4096],
+        fail: false,
+        ranges: RefCell::new(Vec::new()),
+    };
     let r = reader(&f.dir, clock, whole);
-    assert_eq!(r.read(0, 16).unwrap().len(), 4096, "returned to the caller, which rejects it");
+    assert_eq!(
+        r.read(0, 16).unwrap().len(),
+        4096,
+        "returned to the caller, which rejects it"
+    );
     let cached = std::fs::read_dir(&f.dir)
         .unwrap()
         .flatten()
@@ -320,8 +389,15 @@ fn an_origin_marker_names_the_layout_the_url_and_the_build() {
     let url = "https://example.invalid/basemap.mamaps";
     assert!(basemap_origin(url, 1).starts_with(&format!("{CACHE_FORMAT}|{url}|")));
     assert_eq!(basemap_origin(url, 1), basemap_origin(url, 1), "stable");
-    assert_ne!(basemap_origin(url, 1), basemap_origin(url, 2), "a republish");
+    assert_ne!(
+        basemap_origin(url, 1),
+        basemap_origin(url, 2),
+        "a republish"
+    );
     // A different archive at a different URL is a different origin even at the same id, which is
     // what keeps a debug build pointed at a local file from poisoning the real cache.
-    assert_ne!(basemap_origin(url, 1), basemap_origin("https://other.invalid/x", 1));
+    assert_ne!(
+        basemap_origin(url, 1),
+        basemap_origin("https://other.invalid/x", 1)
+    );
 }

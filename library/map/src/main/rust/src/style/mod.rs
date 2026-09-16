@@ -56,17 +56,19 @@ mod layer;
 mod palette;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_part2;
 
 pub use self::filter::{KindFilter, SharedToggles};
 pub use self::kinds::{Anchor, LayerKind, LayerToggles, Toggle, Variant};
-pub use self::layer::{Layer, kind_id};
-pub use self::palette::{
-    LANE_RENDERING, MUTED_BLEND, Palette, background, layers, road_carriageway_layer,
-};
 #[cfg(test)]
 pub use self::layer::kind_id_for_test;
+pub use self::layer::{kind_id, Layer};
 #[cfg(test)]
 pub use self::palette::layers_with_lane_rendering;
+pub use self::palette::{
+    background, layers, road_carriageway_layer, Palette, LANE_RENDERING, MUTED_BLEND,
+};
 // Private: restores the original `fn detail_id`'s scope (visible to `style` and its
 // children, e.g. `paint` via `super::detail_id`) without widening it crate-wide.
 use self::layer::detail_id;

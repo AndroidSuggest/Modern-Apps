@@ -1,6 +1,6 @@
 use super::{
-    AcceptSet, Overlay, PlacedHit, PlacementKey, QUAD_INDICES, Renderer, anchors_for, box_inputs,
-    contains, kind_name, tile_local,
+    anchors_for, box_inputs, contains, kind_name, tile_local, AcceptSet, Overlay, PlacedHit,
+    PlacementKey, Renderer, QUAD_INDICES,
 };
 use crate::camera::Camera;
 use crate::marker::Marker;
@@ -54,13 +54,16 @@ impl Renderer {
     /// `None` when no resident tile covers the point, which is the honest answer — the mask would
     /// otherwise punch out whichever larger region happened to be loaded.
     pub fn region_at(&self, lon: f64, lat: f64, levels: RangeInclusive<u16>) -> Option<u64> {
-        self.smallest_containing(lon, lat, &levels).or_else(|| self.smallest_containing(lon, lat, &(0..=u16::MAX)))
+        self.smallest_containing(lon, lat, &levels)
+            .or_else(|| self.smallest_containing(lon, lat, &(0..=u16::MAX)))
     }
 
     fn smallest_containing(&self, lon: f64, lat: f64, levels: &RangeInclusive<u16>) -> Option<u64> {
         let mut best: Option<(f32, u16, u64)> = None;
         for tile in self.tiles.values() {
-            let Some((u, v)) = tile_local(lon, lat, tile.z, tile.x, tile.y) else { continue };
+            let Some((u, v)) = tile_local(lon, lat, tile.z, tile.x, tile.y) else {
+                continue;
+            };
             for region in &tile.regions {
                 if !levels.contains(&region.level) {
                     continue;
@@ -109,7 +112,14 @@ impl Renderer {
             tiles: ordered
                 .iter()
                 .map(|key| {
-                    (*key, self.tiles.get(key).map(|t| t.uploaded_at).unwrap_or(0.0).to_bits())
+                    (
+                        *key,
+                        self.tiles
+                            .get(key)
+                            .map(|t| t.uploaded_at)
+                            .unwrap_or(0.0)
+                            .to_bits(),
+                    )
                 })
                 .collect(),
             layers: layers.len(),
@@ -145,7 +155,9 @@ impl Renderer {
             }
             let (primary, alternate) = anchors_for(layer);
             for key in ordered {
-                let Some(tile) = self.tiles.get(key) else { continue };
+                let Some(tile) = self.tiles.get(key) else {
+                    continue;
+                };
                 // A tile deeper than the camera's own level is a stand-in kept so a zoom-out does
                 // not blank the map (`select::DESCENDANT_DEPTH`). It contributes its geometry, but
                 // not its labels: a POI's zoom floor is enforced only by which pyramid level
@@ -180,12 +192,18 @@ impl Renderer {
                     // point label as one axis-aligned box (plus its variable-anchor alternate). Both
                     // go into one `place_segmented` pass so they collide with each other.
                     let (boxes, alternate_boxes) = if let Some(centreline) = &label.centreline {
-                        let Some(line) = label.lines.first() else { continue };
-                        let ppfu =
-                            inputs.text_px / crate::tile::glyph::UP_EM as f32 / tile_span_px;
+                        let Some(line) = label.lines.first() else {
+                            continue;
+                        };
+                        let ppfu = inputs.text_px / crate::tile::glyph::UP_EM as f32 / tile_span_px;
                         let placed = crate::tess::text::layout_along_line(line, centreline, ppfu);
-                        let boxes =
-                            placement::curved_boxes(&placed, tile_clip, wh, inputs.text_px, inputs.pad_px);
+                        let boxes = placement::curved_boxes(
+                            &placed,
+                            tile_clip,
+                            wh,
+                            inputs.text_px,
+                            inputs.pad_px,
+                        );
                         if boxes.is_empty() {
                             continue; // does not fit its line this frame: nothing to place.
                         }
@@ -197,13 +215,9 @@ impl Renderer {
                         // overlapping boxes the placer thins by rank. A label whose anchor
                         // is on or behind the eye has no screen position and is skipped —
                         // it cannot be a candidate, so drawing it is unrepresentable here.
-                        let Some(primary_rect) = placement::anchored_rect(
-                            label.anchor,
-                            tile_clip,
-                            wh,
-                            &inputs,
-                            primary,
-                        ) else {
+                        let Some(primary_rect) =
+                            placement::anchored_rect(label.anchor, tile_clip, wh, &inputs, primary)
+                        else {
                             continue;
                         };
                         let primary_box = placement::Obb::from_rect(primary_rect);
@@ -266,7 +280,9 @@ impl Renderer {
     /// and a pick that could not run — all of which the host treats as "fall through to the next
     /// probe", exactly as an empty [`pick_labels`](Self::pick_labels) result is treated.
     pub fn pick_at(&mut self, x: u32, y: u32) -> u64 {
-        let Some(camera) = self.last_camera else { return 0 };
+        let Some(camera) = self.last_camera else {
+            return 0;
+        };
         // The markers this frame would draw, in draw order, so the topmost pin wins the pixel.
         let markers: Vec<Marker> = self
             .overlays
@@ -329,15 +345,14 @@ impl Renderer {
             let tile_wx = tile.x as f64 * span_dp;
             let tile_wy = tile.y as f64 * span_dp;
             for (label_idx, label) in tile.labels.iter().enumerate() {
-                let id = placement::candidate_id(
-                    tile.z,
-                    tile.x,
-                    tile.y,
-                    label.layer_index,
-                    label_idx,
-                );
-                let Some(&(flipped, order)) = accepted.get(&id) else { continue };
-                let Some(layer) = layers.get(label.layer_index) else { continue };
+                let id =
+                    placement::candidate_id(tile.z, tile.x, tile.y, label.layer_index, label_idx);
+                let Some(&(flipped, order)) = accepted.get(&id) else {
+                    continue;
+                };
+                let Some(layer) = layers.get(label.layer_index) else {
+                    continue;
+                };
                 // Device px, as in `place_symbols` — this rebuilds the same boxes for
                 // the pick path, so it has to agree with them, including which anchor
                 // the placer settled on.
@@ -346,7 +361,11 @@ impl Renderer {
                     continue;
                 }
                 let (primary, alternate) = anchors_for(layer);
-                let anchor = if flipped { alternate.unwrap_or(primary) } else { primary };
+                let anchor = if flipped {
+                    alternate.unwrap_or(primary)
+                } else {
+                    primary
+                };
                 let tile_clip = camera.tile_to_clip(tile.z, tile.x, tile.y);
                 // Same pitch-aware projection as the pre-pass, so pick boxes match drawn
                 // boxes under tilt; an unprojectable anchor has no box and no hit.

@@ -1,12 +1,12 @@
 //! Optional layers: POI, transit, traffic.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
+use super::handle::handle_mut;
+use super::log::{log, log_info};
 use crate::style::{self, LayerToggles};
 use jni::objects::{JClass, JIntArray, JLongArray, JString};
 use jni::sys::{jboolean, jlong};
 use jni::JNIEnv;
-use super::handle::handle_mut;
-use super::log::{log, log_info};
 /// Turn the optional layers on or off, and narrow POI to a set of kinds.
 ///
 /// Not free, unlike [`setPalette`](Java_com_vayunmathur_library_map_MapNative_setPalette):
@@ -48,8 +48,11 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setLayers<'l>(
     if let Some(map) = handle_mut(handle) {
         // Traffic is carried through its own setter, so preserve whatever it was set to.
         let traffic = map.toggles.get().0.traffic;
-        let wanted =
-            LayerToggles { poi: poi != 0, transit: transit != 0, traffic };
+        let wanted = LayerToggles {
+            poi: poi != 0,
+            transit: transit != 0,
+            traffic,
+        };
         if map.toggles.set(wanted, filter) {
             log_info(&format!(
                 "layers changed: poi={} transit={} kinds=[{names}]",
@@ -86,7 +89,10 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setTrafficEnab
         // Re-use the current POI/transit/kinds snapshot and flip only traffic, so this
         // shares the one generation counter with setLayers rather than racing a second.
         let (current, kinds, _) = map.toggles.get();
-        let wanted = LayerToggles { traffic: on, ..current };
+        let wanted = LayerToggles {
+            traffic: on,
+            ..current
+        };
         if map.toggles.set(wanted, kinds) {
             log_info(&format!("traffic layer {}", if on { "on" } else { "off" }));
         }
@@ -115,7 +121,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setTrafficSpee
     ids: JLongArray<'l>,
     colors: JIntArray<'l>,
 ) {
-    let Some(map) = handle_mut(handle) else { return };
+    let Some(map) = handle_mut(handle) else {
+        return;
+    };
     let id_len = env.get_array_length(&ids).unwrap_or(0).max(0) as usize;
     let color_len = env.get_array_length(&colors).unwrap_or(0).max(0) as usize;
     let n = id_len.min(color_len);
@@ -127,7 +135,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setTrafficSpee
     let mut id_buf = vec![0i64; n];
     let mut color_buf = vec![0i32; n];
     if env.get_long_array_region(&ids, 0, &mut id_buf).is_err()
-        || env.get_int_array_region(&colors, 0, &mut color_buf).is_err()
+        || env
+            .get_int_array_region(&colors, 0, &mut color_buf)
+            .is_err()
     {
         log("the traffic arrays could not be read; leaving the colours unchanged");
         return;

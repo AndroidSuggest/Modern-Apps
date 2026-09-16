@@ -507,6 +507,16 @@ if ($VariantLc -eq 'release' -and $allExpanded) {
     $gradleArgsStr += ' -Pandroid.r8.maxWorkers=8'
 }
 
+# --- Big-build heap: gradle.properties defaults to a small daemon heap sized for
+# scoped work. A full-repo build ("all", ~100 modules, concurrent D8 dex merge)
+# OOMs on it, so escalate here — and only here ($allExpanded). -D spawns a
+# separate big daemon; the small one stays alive for normal builds.
+if ($allExpanded) {
+    $gradleArgs += @('-Dorg.gradle.jvmargs=-Xmx46144m -Xms4512m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC -Dfile.encoding=UTF-8')
+    $gradleArgs += @('--max-workers=32')
+    $gradleArgsStr += ' -Dorg.gradle.jvmargs=<46g-big-build-heap> --max-workers=32'
+}
+
 # --- versionCodeOverride: MAOS refuses to update a system package to the same
 # versionCode, so an APK built from the same version.txt as the on-device OS image
 # can never be installed over it. Query the device once; if any requested package

@@ -199,12 +199,16 @@ impl Layer {
         if feature.flags & self.forbid_flags != 0 {
             return false;
         }
-        if !self.detail_ids.is_empty() && self.detail_ids.binary_search(&feature.kind_detail).is_err()
+        if !self.detail_ids.is_empty()
+            && self.detail_ids.binary_search(&feature.kind_detail).is_err()
         {
             return false;
         }
         if !self.forbid_details.is_empty()
-            && self.forbid_details.binary_search(&feature.kind_detail).is_ok()
+            && self
+                .forbid_details
+                .binary_search(&feature.kind_detail)
+                .is_ok()
         {
             return false;
         }
@@ -254,7 +258,11 @@ impl Layer {
     /// it is, the layer falls back to its data floor and appears as early as the archive allows;
     /// when it is not, [`browse_min_zoom`](Self::browse_min_zoom) applies.
     pub fn draws_at_focused(&self, zoom: u8, focused: bool) -> bool {
-        let floor = if focused { self.min_zoom } else { self.browse_min_zoom.max(self.min_zoom) };
+        let floor = if focused {
+            self.min_zoom
+        } else {
+            self.browse_min_zoom.max(self.min_zoom)
+        };
         zoom >= floor && zoom <= self.max_zoom
     }
 
@@ -284,7 +292,10 @@ impl Layer {
     /// The cheap per-layer gate before the per-label sizing: a layer whose *widest* arm
     /// has ramped to zero cannot draw anything, whatever ranks the tile holds.
     pub fn text_visible_at(&self, zoom: f64) -> bool {
-        let large = self.text_size_large.as_ref().map_or(0.0, |ramp| ramp.at(zoom));
+        let large = self
+            .text_size_large
+            .as_ref()
+            .map_or(0.0, |ramp| ramp.at(zoom));
         self.text_size.at(zoom).max(large) > 0.0
     }
 
@@ -311,7 +322,10 @@ impl Layer {
 
     /// The stroke this layer draws at `zoom`, in Dp.
     pub fn stroke(&self, zoom: f64) -> Stroke {
-        Stroke { width_dp: self.width.at(zoom), gap_width_dp: self.gap_width.at(zoom) }
+        Stroke {
+            width_dp: self.width.at(zoom),
+            gap_width_dp: self.gap_width.at(zoom),
+        }
     }
 
     /// How far sideways a transit feature's mesh shifts at `zoom`, in device pixels.
@@ -391,7 +405,10 @@ impl Layer {
 
 /// A `kind` name's interned id, or `None` when the schema has no counterpart.
 pub fn kind_id(name: &str) -> Option<u16> {
-    dict::KINDS.iter().position(|k| *k == name).map(|i| i as u16 + 1)
+    dict::KINDS
+        .iter()
+        .position(|k| *k == name)
+        .map(|i| i as u16 + 1)
 }
 
 /// Test-only access to [`kind_id`]: symbol tests build layers by hand.
@@ -405,5 +422,8 @@ pub fn kind_id_for_test(name: &str) -> u16 {
 /// Details share the archive-wide [`dict::DETAILS`] table, so `service` here is the same id
 /// the tiler wrote on the feature.
 pub(super) fn detail_id(name: &str) -> Option<u16> {
-    dict::DETAILS.iter().position(|k| *k == name).map(|i| i as u16 + 1)
+    dict::DETAILS
+        .iter()
+        .position(|k| *k == name)
+        .map(|i| i as u16 + 1)
 }

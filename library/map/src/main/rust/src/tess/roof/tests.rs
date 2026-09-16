@@ -1,5 +1,7 @@
 use super::*;
-use tilecodec::mamaps::body::{ROOF_FLAT, ROOF_GABLED, ROOF_ORIENT_ALONG, ROOF_PYRAMIDAL, ROOF_SKILLION};
+use tilecodec::mamaps::body::{
+    ROOF_FLAT, ROOF_GABLED, ROOF_ORIENT_ALONG, ROOF_PYRAMIDAL, ROOF_SKILLION,
+};
 
 /// A closed unit square footprint over an extent of 100, so tile-local coordinates are the
 /// integer coordinate / 100.
@@ -10,10 +12,27 @@ fn unit_square() -> Vec<Vec<(i32, i32)>> {
 /// Read back one vertex as `(position, normal, packed-rgba-bits)`.
 fn vertex(v: &[f32], i: usize) -> ([f32; 3], [f32; 3], u32) {
     let at = i * FLOATS_PER_VERTEX;
-    ([v[at], v[at + 1], v[at + 2]], [v[at + 3], v[at + 4], v[at + 5]], v[at + 6].to_bits())
+    (
+        [v[at], v[at + 1], v[at + 2]],
+        [v[at + 3], v[at + 4], v[at + 5]],
+        v[at + 6].to_bits(),
+    )
 }
 
 fn extrude_square(shape: u8, base: f32, wall_top: f32, apex: f32) -> (Vec<f32>, Vec<u32>) {
+    extrude_skirted(shape, base, wall_top, apex, 0.0)
+}
+
+/// The skirted variant: `skirt` hangs the wall bottoms below `base + ground` (see
+/// `walls::emit_walls`). The shared helper defaults to 0.0, so every existing test keeps
+/// the un-skirted mesh bit-for-bit and only the new skirt test opts in.
+fn extrude_skirted(
+    shape: u8,
+    base: f32,
+    wall_top: f32,
+    apex: f32,
+    skirt: f32,
+) -> (Vec<f32>, Vec<u32>) {
     let mut v = Vec::new();
     let mut i = Vec::new();
     extrude(
@@ -28,6 +47,7 @@ fn extrude_square(shape: u8, base: f32, wall_top: f32, apex: f32) -> (Vec<f32>, 
         ROOF_ORIENT_ALONG,
         0xFF_00_80_C0,
         0xFF_C0_40_20,
+        skirt,
         &flat_ground,
         &mut v,
         &mut i,
@@ -62,7 +82,10 @@ fn a_box_with_height_emits_walls_and_a_roof() {
     // A gabled box: four walls plus a roof cap, so there is geometry both at the base and at
     // the apex, and the index buffer is whole triangles.
     let (v, i) = extrude_square(ROOF_GABLED, 0.0, 0.2, 0.35);
-    assert!(!i.is_empty(), "a building with height must produce triangles");
+    assert!(
+        !i.is_empty(),
+        "a building with height must produce triangles"
+    );
     assert_eq!(i.len() % 3, 0, "indices come in threes");
     assert_eq!(v.len() % FLOATS_PER_VERTEX, 0, "vertices are whole");
 
@@ -89,7 +112,10 @@ fn every_vertex_carries_the_right_colour() {
     assert!(count > 0);
     for k in 0..count {
         let (_, _, argb) = vertex(&v, k);
-        assert!(argb == wall || argb == roof, "vertex {k} colour {argb:#010x} is neither wall nor roof");
+        assert!(
+            argb == wall || argb == roof,
+            "vertex {k} colour {argb:#010x} is neither wall nor roof"
+        );
     }
 }
 
@@ -100,7 +126,11 @@ fn an_unknown_roof_shape_falls_back_to_flat() {
     // packed colour is a float NaN pattern that would never equal itself.
     let (unknown, ui) = extrude_square(200, 0.0, 0.3, 0.3);
     let (flat, fi) = extrude_square(ROOF_FLAT, 0.0, 0.3, 0.3);
-    assert_eq!(bits(&unknown), bits(&flat), "an unknown shape must render as flat");
+    assert_eq!(
+        bits(&unknown),
+        bits(&flat),
+        "an unknown shape must render as flat"
+    );
     assert_eq!(ui, fi);
 }
 
@@ -115,11 +145,20 @@ fn a_flat_roof_caps_level_at_the_apex() {
         let (p, n, _) = vertex(&v, k);
         if n[2] > 0.9 {
             roof_vertices += 1;
-            assert!((p[2] - 0.25).abs() < 1e-6, "a flat roof vertex must sit at the apex");
-            assert!(n[0].abs() < 1e-6 && n[1].abs() < 1e-6, "a flat roof normal is straight up");
+            assert!(
+                (p[2] - 0.25).abs() < 1e-6,
+                "a flat roof vertex must sit at the apex"
+            );
+            assert!(
+                n[0].abs() < 1e-6 && n[1].abs() < 1e-6,
+                "a flat roof normal is straight up"
+            );
         }
     }
-    assert!(roof_vertices >= 3, "the flat cap must tessellate to at least one triangle");
+    assert!(
+        roof_vertices >= 3,
+        "the flat cap must tessellate to at least one triangle"
+    );
 }
 
 #[test]
@@ -133,15 +172,29 @@ fn the_footprint_survives_overhead_projection() {
     let mut peak_xy = (0.0, 0.0);
     for k in 0..count {
         let (p, _, _) = vertex(&v, k);
-        assert!((-1e-4..=1.0 + 1e-4).contains(&p[0]), "x {} leaves the footprint", p[0]);
-        assert!((-1e-4..=1.0 + 1e-4).contains(&p[1]), "y {} leaves the footprint", p[1]);
+        assert!(
+            (-1e-4..=1.0 + 1e-4).contains(&p[0]),
+            "x {} leaves the footprint",
+            p[0]
+        );
+        assert!(
+            (-1e-4..=1.0 + 1e-4).contains(&p[1]),
+            "y {} leaves the footprint",
+            p[1]
+        );
         if p[2] > peak {
             peak = p[2];
             peak_xy = (p[0], p[1]);
         }
     }
-    assert!((peak - 0.6).abs() < 1e-4, "the apex reaches the full height");
-    assert!((peak_xy.0 - 0.5).abs() < 0.05 && (peak_xy.1 - 0.5).abs() < 0.05, "the apex is over the centre");
+    assert!(
+        (peak - 0.6).abs() < 1e-4,
+        "the apex reaches the full height"
+    );
+    assert!(
+        (peak_xy.0 - 0.5).abs() < 0.05 && (peak_xy.1 - 0.5).abs() < 0.05,
+        "the apex is over the centre"
+    );
 }
 
 #[test]
@@ -169,15 +222,37 @@ fn a_skillion_roof_slopes_from_one_edge_to_the_other() {
             high = high.max(p[2]);
         }
     }
-    assert!((low - 0.2).abs() < 1e-4, "the low edge stays at the eaves, got {low}");
-    assert!((high - 0.5).abs() < 1e-4, "the high edge reaches the apex, got {high}");
+    assert!(
+        (low - 0.2).abs() < 1e-4,
+        "the low edge stays at the eaves, got {low}"
+    );
+    assert!(
+        (high - 0.5).abs() < 1e-4,
+        "the high edge reaches the apex, got {high}"
+    );
 }
 
 #[test]
 fn empty_rings_emit_nothing() {
     let mut v = Vec::new();
     let mut i = Vec::new();
-    extrude(&[], 100, false, 0.0, 0.2, 0.4, ROOF_FLAT, 0.0, ROOF_ORIENT_ALONG, 0xFFFFFFFF, 0xFFFFFFFF, &flat_ground, &mut v, &mut i);
+    extrude(
+        &[],
+        100,
+        false,
+        0.0,
+        0.2,
+        0.4,
+        ROOF_FLAT,
+        0.0,
+        ROOF_ORIENT_ALONG,
+        0xFFFFFFFF,
+        0xFFFFFFFF,
+        0.0,
+        &flat_ground,
+        &mut v,
+        &mut i,
+    );
     assert!(v.is_empty() && i.is_empty());
 }
 
@@ -202,6 +277,7 @@ fn a_tilted_ground_drapes_walls_and_roof_without_changing_height() {
         ROOF_ORIENT_ALONG,
         0xFFFFFFFF,
         0xFFFFFFFF,
+        0.0,
         &slope,
         &mut v,
         &mut i,
@@ -220,7 +296,10 @@ fn a_tilted_ground_drapes_walls_and_roof_without_changing_height() {
             wall_hi = wall_hi.max(p[2]);
         }
     }
-    assert!((cap_hi - cap_lo - 0.1).abs() < 1e-5, "the cap follows the slope, got {cap_lo}..{cap_hi}");
+    assert!(
+        (cap_hi - cap_lo - 0.1).abs() < 1e-5,
+        "the cap follows the slope, got {cap_lo}..{cap_hi}"
+    );
     assert!(
         (wall_hi - wall_lo - 0.3).abs() < 1e-5,
         "the wall spans its 0.2 height plus the 0.1 slope, got {wall_lo}..{wall_hi}",
@@ -250,8 +329,54 @@ fn a_zero_ground_leaves_every_structural_height_exact() {
                 z = p[2],
             );
         }
-        assert!(saw_base, "shape {shape}: no vertex sits at the exact base height");
-        assert!(saw_eaves, "shape {shape}: no vertex sits at the exact eaves height");
-        assert!(saw_ridge, "shape {shape}: no vertex sits at the exact ridge height");
+        assert!(
+            saw_base,
+            "shape {shape}: no vertex sits at the exact base height"
+        );
+        assert!(
+            saw_eaves,
+            "shape {shape}: no vertex sits at the exact eaves height"
+        );
+        assert!(
+            saw_ridge,
+            "shape {shape}: no vertex sits at the exact ridge height"
+        );
     }
+}
+
+/// A nonzero skirt drops every wall-bottom vertex by exactly that depth while the wall tops
+/// — and the whole roof — stay put: the walls bury the terrain fold without stretching.
+#[test]
+fn a_skirt_drops_wall_bottoms_but_leaves_tops_and_roof() {
+    let skirt = 0.05;
+    let (v, _) = extrude_skirted(ROOF_FLAT, 0.05, 0.2, 0.35, skirt);
+    let count = v.len() / FLOATS_PER_VERTEX;
+    assert!(count > 0);
+    let mut saw_skirt_base = false;
+    let mut saw_eaves = false;
+    let mut saw_ridge = false;
+    for k in 0..count {
+        let (p, n, _) = vertex(&v, k);
+        if n[2] > 0.9 {
+            // Roof cap: untouched by the skirt, still inside the structural band.
+            assert!(
+                p[2] >= 0.2 && p[2] <= 0.35,
+                "roof vertex z {z} escapes the 0.2..0.35 eaves-to-ridge band",
+                z = p[2],
+            );
+            saw_ridge |= p[2].to_bits() == 0.35f32.to_bits();
+        } else {
+            // Wall: the top edge still meets the eaves exactly, the bottom hangs below base.
+            saw_eaves |= p[2].to_bits() == 0.2f32.to_bits();
+            saw_skirt_base |= p[2].to_bits() == (0.05f32 - skirt).to_bits();
+            assert!(
+                p[2] >= 0.05 - skirt && p[2] <= 0.2,
+                "wall vertex z {z} escapes the skirted 0.0..0.2 band",
+                z = p[2],
+            );
+        }
+    }
+    assert!(saw_skirt_base, "no wall vertex hangs at base - skirt");
+    assert!(saw_eaves, "no wall vertex sits at the exact eaves height");
+    assert!(saw_ridge, "no roof vertex sits at the exact ridge height");
 }

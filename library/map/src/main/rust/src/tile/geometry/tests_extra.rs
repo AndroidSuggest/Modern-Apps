@@ -49,7 +49,10 @@ fn carriageway_body(roads: &[(u8, bool)]) -> Body {
 /// assert against.
 fn carriageway_only() -> &'static [Layer] {
     let all = style::layers_with_lane_rendering();
-    let at = all.iter().position(|l| l.carriageway).expect("the carriageway layer");
+    let at = all
+        .iter()
+        .position(|l| l.carriageway)
+        .expect("the carriageway layer");
     all.get(at..=at).expect("a one-layer slice")
 }
 
@@ -60,17 +63,32 @@ fn carriageway_only() -> &'static [Layer] {
 #[test]
 fn a_tile_with_no_carriageway_table_still_draws_a_correct_carriageway() {
     let body = carriageway_body(&[(4, false), (3, true)]);
-    assert!(body.carriageways.is_empty(), "the fixture is a v7 archive with no table");
+    assert!(
+        body.carriageways.is_empty(),
+        "the fixture is a v7 archive with no table"
+    );
     assert!(body.convention.is_none());
 
     let mesh = build(&body, carriageway_only(), 16, 0, 0, false);
     assert_eq!(
-        mesh.carriageways.iter().map(|c| (c.lanes, c.oneway)).collect::<Vec<_>>(),
+        mesh.carriageways
+            .iter()
+            .map(|c| (c.lanes, c.oneway))
+            .collect::<Vec<_>>(),
         vec![(4, false), (3, true)],
     );
-    assert_eq!(mesh.carriageways[0].split, 0.0, "an even count splits down the middle");
-    assert!(!mesh.yellow_centre, "no convention means white, which is most of the world");
-    assert!(mesh.meshes.is_empty(), "a carriageway is not a stroked layer mesh");
+    assert_eq!(
+        mesh.carriageways[0].split, 0.0,
+        "an even count splits down the middle"
+    );
+    assert!(
+        !mesh.yellow_centre,
+        "no convention means white, which is most of the world"
+    );
+    assert!(
+        mesh.meshes.is_empty(),
+        "a carriageway is not a stroked layer mesh"
+    );
 }
 
 /// **The degenerate case the flat 0.0 default hid.** `road_surface.frag` picks the boundary
@@ -88,10 +106,16 @@ fn an_unknown_split_always_lands_on_a_lane_boundary() {
     for left_hand in [false, true] {
         for lanes in 1..=12u8 {
             let mut body = carriageway_body(&[(lanes, false)]);
-            body.convention = Some(MarkingConvention { left_hand, yellow_centre: false });
+            body.convention = Some(MarkingConvention {
+                left_hand,
+                yellow_centre: false,
+            });
             let mesh = build(&body, carriageway_only(), 16, 0, 0, false);
             let split = mesh.carriageways[0].split;
-            assert!((-1.0..=1.0).contains(&split), "{lanes} lanes gave t {split}");
+            assert!(
+                (-1.0..=1.0).contains(&split),
+                "{lanes} lanes gave t {split}"
+            );
             // Exactly the shader's test, against the nearest boundary it would round to.
             let boundary = (((split + 1.0) / 2.0) * lanes as f32).round();
             let boundary_t = boundary / lanes as f32 * 2.0 - 1.0;
@@ -113,7 +137,10 @@ fn an_odd_lane_count_gives_the_extra_lane_to_the_forward_direction() {
     let third = 1.0f32 / 3.0;
     for (left_hand, expected) in [(false, -third), (true, third)] {
         let mut body = carriageway_body(&[(3, false)]);
-        body.convention = Some(MarkingConvention { left_hand, yellow_centre: false });
+        body.convention = Some(MarkingConvention {
+            left_hand,
+            yellow_centre: false,
+        });
         let mesh = build(&body, carriageway_only(), 16, 0, 0, false);
         assert!(
             (mesh.carriageways[0].split - expected).abs() < 1e-6,
@@ -123,11 +150,14 @@ fn an_odd_lane_count_gives_the_extra_lane_to_the_forward_direction() {
     }
     // And the same three lanes tagged explicitly agree with the guess, so the fallback is not
     // a second answer that real data will contradict.
-    let tagged = split_for(3, tilecodec::mamaps::body::Carriageway {
-        forward: 2,
-        backward: 1,
-        solid_dividers: 0,
-    });
+    let tagged = split_for(
+        3,
+        tilecodec::mamaps::body::Carriageway {
+            forward: 2,
+            backward: 1,
+            solid_dividers: 0,
+        },
+    );
     assert!((tagged - -third).abs() < 1e-6, "tagged 2/1 gave {tagged}");
 }
 
@@ -145,9 +175,7 @@ fn split_for(lanes: u8, shape: tilecodec::mamaps::body::Carriageway) -> f32 {
 /// The shape the defect actually has: `coalesce`'s merge key includes the lane count, so a road
 /// whose count changes mid-block arrives as two features that share an endpoint exactly.
 fn abutting_body(sections: &[(u8, i16)]) -> Body {
-    use tilecodec::mamaps::body::{
-        Feature, Layer as BodyLayer, Part, NAME_NONE, WINDING_OUTER,
-    };
+    use tilecodec::mamaps::body::{Feature, Layer as BodyLayer, Part, NAME_NONE, WINDING_OUTER};
     use tilecodec::mamaps::dict;
     let mut body = Body::new(4096);
     let mut source = BodyLayer::new(dict::LAYER_ROADS);
@@ -159,7 +187,9 @@ fn abutting_body(sections: &[(u8, i16)]) -> Body {
             point_count: 2,
             winding: WINDING_OUTER,
         });
-        source.coords.extend_from_slice(&[(x, 2000), (x + length, 2000)]);
+        source
+            .coords
+            .extend_from_slice(&[(x, 2000), (x + length, 2000)]);
         x += length;
         source.features.push(Feature {
             kind: crate::style::kind_id_for_test("major_road"),
@@ -224,10 +254,17 @@ fn a_lane_count_change_tapers_instead_of_stepping() {
         (wide_at_node - narrow_at_node).abs() < 1e-4,
         "the kerbs must meet: {wide_at_node} lanes against {narrow_at_node}",
     );
-    assert!((narrow_at_node - 2.0).abs() < 1e-4, "and on the narrow road's width");
+    assert!(
+        (narrow_at_node - 2.0).abs() < 1e-4,
+        "and on the narrow road's width"
+    );
     // The far end is untouched, so the taper is local to the change rather than shrinking the
     // whole road.
-    assert!((lanes_across(wide, 0.0) - 4.0).abs() < 1e-4, "{}", lanes_across(wide, 0.0));
+    assert!(
+        (lanes_across(wide, 0.0) - 4.0).abs() < 1e-4,
+        "{}",
+        lanes_across(wide, 0.0)
+    );
 }
 
 /// The counterpart, so the test above cannot pass by tapering everything: a road that does not
@@ -245,9 +282,15 @@ fn a_road_of_constant_width_is_not_tapered_at_all() {
     // Every normal is still the plain unit or miter length the untapered path emits.
     let floats = ribbon::FLOATS_PER_VERTEX;
     for vertex in 0..road.vertices.len() / floats {
-        let (nx, ny) = (road.vertices[vertex * floats + 2], road.vertices[vertex * floats + 3]);
+        let (nx, ny) = (
+            road.vertices[vertex * floats + 2],
+            road.vertices[vertex * floats + 3],
+        );
         let length = (nx * nx + ny * ny).sqrt();
-        assert!((length - 1.0).abs() < 1e-5, "vertex {vertex} normal is {length}");
+        assert!(
+            (length - 1.0).abs() < 1e-5,
+            "vertex {vertex} normal is {length}"
+        );
     }
 }
 
@@ -270,9 +313,19 @@ fn a_lane_count_change_does_not_taper_the_connectors() {
 /// count would push a zero width and draw nothing at all where a road plainly is.
 #[test]
 fn an_untagged_road_falls_back_to_one_lane_each_way() {
-    let mesh = build(&carriageway_body(&[(0, false), (0, true)]), carriageway_only(), 16, 0, 0, false);
+    let mesh = build(
+        &carriageway_body(&[(0, false), (0, true)]),
+        carriageway_only(),
+        16,
+        0,
+        0,
+        false,
+    );
     assert_eq!(
-        mesh.carriageways.iter().map(|c| (c.lanes, c.oneway)).collect::<Vec<_>>(),
+        mesh.carriageways
+            .iter()
+            .map(|c| (c.lanes, c.oneway))
+            .collect::<Vec<_>>(),
         vec![(2, false), (1, true)],
     );
 }
@@ -285,17 +338,30 @@ fn carriageways_split_into_one_mesh_per_distinct_road_shape() {
     let body = carriageway_body(&[(4, false), (6, false), (4, false), (4, true)]);
     let mesh = build(&body, carriageway_only(), 16, 0, 0, false);
     assert_eq!(
-        mesh.carriageways.iter().map(|c| (c.lanes, c.oneway)).collect::<Vec<_>>(),
+        mesh.carriageways
+            .iter()
+            .map(|c| (c.lanes, c.oneway))
+            .collect::<Vec<_>>(),
         vec![(4, false), (6, false), (4, true)],
         "one mesh per distinct shape, in first-seen feature order",
     );
     // The two four-lane two-ways really did share a mesh rather than each getting one.
-    assert_eq!(mesh.carriageways[0].indices.len(), mesh.carriageways[1].indices.len() * 2);
+    assert_eq!(
+        mesh.carriageways[0].indices.len(),
+        mesh.carriageways[1].indices.len() * 2
+    );
     for c in &mesh.carriageways {
-        assert_eq!(c.vertices.len() % ribbon::FLOATS_PER_VERTEX, 0, "vertices are whole");
+        assert_eq!(
+            c.vertices.len() % ribbon::FLOATS_PER_VERTEX,
+            0,
+            "vertices are whole"
+        );
         assert_eq!(c.indices.len() % 3, 0, "indices come in threes");
         let vertex_count = (c.vertices.len() / ribbon::FLOATS_PER_VERTEX) as u32;
-        assert!(c.indices.iter().all(|&i| i < vertex_count), "an index is out of range");
+        assert!(
+            c.indices.iter().all(|&i| i < vertex_count),
+            "an index is out of range"
+        );
         assert!(c.vertices.iter().all(|f| f.is_finite()));
     }
 }
@@ -309,24 +375,40 @@ fn the_centre_line_follows_the_split_and_the_driving_side() {
     use tilecodec::mamaps::body::{Carriageway, MarkingConvention};
     use tilecodec::mamaps::dict;
     // Three forward lanes, one backward.
-    let shape = Carriageway { forward: 3, backward: 1, solid_dividers: 0 };
+    let shape = Carriageway {
+        forward: 3,
+        backward: 1,
+        solid_dividers: 0,
+    };
 
     let mut right = carriageway_body(&[(4, false)]);
     right.carriageways = vec![(dict::LAYER_ROADS, vec![shape])];
-    right.convention = Some(MarkingConvention { left_hand: false, yellow_centre: true });
+    right.convention = Some(MarkingConvention {
+        left_hand: false,
+        yellow_centre: true,
+    });
     let mesh = build(&right, carriageway_only(), 16, 0, 0, false);
     assert_eq!(
         mesh.carriageways[0].split, -0.5,
         "right-hand traffic keeps the forward lanes on the +1 side, so the one backward \
          lane takes the quarter of the road nearest the -1 kerb",
     );
-    assert!(mesh.yellow_centre, "the Americas paint the line between directions yellow");
+    assert!(
+        mesh.yellow_centre,
+        "the Americas paint the line between directions yellow"
+    );
 
     let mut left = carriageway_body(&[(4, false)]);
     left.carriageways = vec![(dict::LAYER_ROADS, vec![shape])];
-    left.convention = Some(MarkingConvention { left_hand: true, yellow_centre: false });
+    left.convention = Some(MarkingConvention {
+        left_hand: true,
+        yellow_centre: false,
+    });
     let mesh = build(&left, carriageway_only(), 16, 0, 0, false);
-    assert_eq!(mesh.carriageways[0].split, 0.5, "left-hand traffic mirrors it");
+    assert_eq!(
+        mesh.carriageways[0].split, 0.5,
+        "left-hand traffic mirrors it"
+    );
     assert!(!mesh.yellow_centre);
 }
 
@@ -337,7 +419,10 @@ fn a_road_with_an_empty_carriageway_row_falls_back_like_an_absent_one() {
     use tilecodec::mamaps::body::Carriageway;
     assert_eq!(split_for(4, Carriageway::default()), 0.0);
     let odd = split_for(3, Carriageway::default());
-    assert!((odd - -(1.0f32 / 3.0)).abs() < 1e-6, "three lanes gave {odd}");
+    assert!(
+        (odd - -(1.0f32 / 3.0)).abs() < 1e-6,
+        "three lanes gave {odd}"
+    );
 }
 
 /// The dense lane detail is gated to high zoom, over the same ancestor window every other
@@ -346,13 +431,22 @@ fn a_road_with_an_empty_carriageway_row_falls_back_like_an_absent_one() {
 fn the_carriageway_is_not_built_below_its_zoom_window() {
     let body = carriageway_body(&[(4, false)]);
     assert!(
-        build(&body, carriageway_only(), 11, 0, 0, false).carriageways.is_empty(),
+        build(&body, carriageway_only(), 11, 0, 0, false)
+            .carriageways
+            .is_empty(),
         "z11 stands in no deeper than z15, which is below the carriageway floor",
     );
     assert!(
-        !build(&body, carriageway_only(), ROAD_LANE_MIN_ZOOM - ANCESTOR_DEPTH, 0, 0, false)
-            .carriageways
-            .is_empty(),
+        !build(
+            &body,
+            carriageway_only(),
+            ROAD_LANE_MIN_ZOOM - ANCESTOR_DEPTH,
+            0,
+            0,
+            false
+        )
+        .carriageways
+        .is_empty(),
         "the deepest archive tile must build what it stands in for at z16",
     );
 }
@@ -375,7 +469,10 @@ fn a_roads_split_can_never_reach_the_no_markings_sentinel() {
         for lanes in 1..=12u8 {
             // The unknown-split path, which is what every archive takes today.
             let mut body = carriageway_body(&[(lanes, false), (lanes, true)]);
-            body.convention = Some(MarkingConvention { left_hand, yellow_centre: false });
+            body.convention = Some(MarkingConvention {
+                left_hand,
+                yellow_centre: false,
+            });
             for mesh in build(&body, carriageway_only(), 16, 0, 0, false).carriageways {
                 worst = worst.max(mesh.split.abs());
             }
@@ -411,8 +508,14 @@ fn turn_arrows_come_from_the_turn_table_at_high_zoom() {
     let mut body = Body::new(4096);
     let mut source = BodyLayer::new(dict::LAYER_ROADS);
     // A straight eastbound road spanning the tile, ending at the east edge.
-    source.parts.push(Part { coord_start: 0, point_count: 2, winding: WINDING_OUTER });
-    source.coords.extend_from_slice(&[(100, 2000), (3000, 2000)]);
+    source.parts.push(Part {
+        coord_start: 0,
+        point_count: 2,
+        winding: WINDING_OUTER,
+    });
+    source
+        .coords
+        .extend_from_slice(&[(100, 2000), (3000, 2000)]);
     source.features.push(Feature {
         kind: crate::style::kind_id_for_test("major_road"),
         kind_detail: 0,
@@ -430,15 +533,23 @@ fn turn_arrows_come_from_the_turn_table_at_high_zoom() {
     body.layers.push(source);
     body.turn_lanes = vec![(
         dict::LAYER_ROADS,
-        vec![LaneTurns { forward: vec![LANE_LEFT, LANE_THROUGH], backward: vec![] }],
+        vec![LaneTurns {
+            forward: vec![LANE_LEFT, LANE_THROUGH],
+            backward: vec![],
+        }],
     )];
 
     // Below the gate: no arrows built.
-    assert!(build(&body, &style::layers(), 11, 0, 0, false).arrows.is_empty());
+    assert!(build(&body, &style::layers(), 11, 0, 0, false)
+        .arrows
+        .is_empty());
 
     let mesh = build(&body, &style::layers(), 16, 0, 0, false);
     assert_eq!(mesh.arrows.len(), 2, "one arrow per marked forward lane");
-    assert!(mesh.arrows.iter().all(|a| a.angle.abs() < 1e-4), "eastbound heading is ~0");
+    assert!(
+        mesh.arrows.iter().all(|a| a.angle.abs() < 1e-4),
+        "eastbound heading is ~0"
+    );
     assert_eq!(mesh.arrows[0].arrow, crate::tile::arrow::TurnArrow::Left);
     assert_eq!(mesh.arrows[1].arrow, crate::tile::arrow::TurnArrow::Through);
     assert!(mesh.arrows.iter().all(|a| a.count == 2));

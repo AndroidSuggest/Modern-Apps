@@ -18,35 +18,20 @@ data class AppTimer(
 )
 
 /**
- * Which apps focus mode pauses, and when it runs.
+ * Which apps the user has paused by hand, per app.
  *
- * One profile (singleton row): the paused set plus an optional daily schedule. Manual toggle
- * and schedule share the same paused set, exactly like stock focus mode.
+ * One row (singleton): just the paused set. Pausing is unconditional and per-app - there is
+ * no global focus session, and nothing here touches Do Not Disturb.
  */
 @Entity
-data class FocusProfile(
+data class PausedApps(
     @PrimaryKey val id: Int = SINGLETON_ID,
-    /** Packages paused while a focus session runs. */
+    /** Packages currently paused by the user. */
     val pausedPackages: List<String> = emptyList(),
-    /** Whether the daily schedule arms focus automatically. */
-    val scheduleEnabled: Boolean = false,
-    /** Minutes past local midnight at which scheduled focus starts. */
-    val startMinute: Int = DEFAULT_START_MINUTE,
-    /** Minutes past local midnight at which scheduled focus ends. */
-    val endMinute: Int = DEFAULT_END_MINUTE,
-    /** Bitmask of days the schedule applies to, bit 0 = Monday. */
-    val daysMask: Int = ALL_DAYS,
 ) {
     companion object {
-        /** There is one profile. The table exists so Room can store it, not to hold many. */
+        /** There is one row. The table exists so Room can store it, not to hold many. */
         const val SINGLETON_ID = 0
-        const val ALL_DAYS = 0b111_1111
-
-        /** 09:00. */
-        const val DEFAULT_START_MINUTE = 9 * 60
-
-        /** 17:00. */
-        const val DEFAULT_END_MINUTE = 17 * 60
     }
 }
 

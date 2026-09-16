@@ -1,5 +1,5 @@
 //! Camera projection implementation, moved wholesale out of `camera.rs`.
-use crate::camera::{Camera, Perspective, WorldPx, TILE_SIZE, project, unproject};
+use crate::camera::{project, unproject, Camera, Perspective, WorldPx, TILE_SIZE};
 
 impl Camera {
     /// `(cos, sin)` of the bearing: the 2x2 that turns a world-px offset from the camera
@@ -51,8 +51,14 @@ impl Camera {
         let extent_x = cos.abs() * half_w + sin.abs() * half_h;
         let extent_y = sin.abs() * half_w + cos.abs() * half_h;
         (
-            WorldPx { x: center.x - extent_x, y: center.y - extent_y },
-            WorldPx { x: center.x + extent_x, y: center.y + extent_y },
+            WorldPx {
+                x: center.x - extent_x,
+                y: center.y - extent_y,
+            },
+            WorldPx {
+                x: center.x + extent_x,
+                y: center.y + extent_y,
+            },
         )
     }
 
@@ -80,7 +86,13 @@ impl Camera {
     /// easy to miss on a symmetric city and obvious on a coastline.
     pub fn tile_to_clip(&self, z: u8, x: u32, y: u32) -> [f32; 16] {
         let span = self.tile_span_dp(z);
-        self.world_quad_to_clip(WorldPx { x: x as f64 * span, y: y as f64 * span }, span)
+        self.world_quad_to_clip(
+            WorldPx {
+                x: x as f64 * span,
+                y: y as f64 * span,
+            },
+            span,
+        )
     }
 
     /// Column-major 4x4 taking a local 0..1 square to Vulkan clip space, where the
@@ -117,10 +129,22 @@ impl Camera {
             let ky = 2.0 / self.height_dp as f64;
 
             return [
-                (kx * cos * span) as f32, (ky * -sin * span) as f32, 0.0, 0.0, //
-                (kx * sin * span) as f32, (ky * cos * span) as f32, 0.0, 0.0, //
-                0.0, 0.0, 1.0, 0.0, //
-                (kx * (cos * dx + sin * dy)) as f32, (ky * (-sin * dx + cos * dy)) as f32, 0.0, 1.0,
+                (kx * cos * span) as f32,
+                (ky * -sin * span) as f32,
+                0.0,
+                0.0, //
+                (kx * sin * span) as f32,
+                (ky * cos * span) as f32,
+                0.0,
+                0.0, //
+                0.0,
+                0.0,
+                1.0,
+                0.0, //
+                (kx * (cos * dx + sin * dy)) as f32,
+                (ky * (-sin * dx + cos * dy)) as f32,
+                0.0,
+                1.0,
             ];
         }
         // Tilted: the same bearing-rotated screen offset as above, but kept as world px (Dp)
@@ -164,10 +188,22 @@ impl Camera {
             let ky = 2.0 / self.height_dp as f64;
 
             return [
-                (kx * cos * radius_dp) as f32, (ky * -sin * radius_dp) as f32, 0.0, 0.0, //
-                (kx * sin * radius_dp) as f32, (ky * cos * radius_dp) as f32, 0.0, 0.0, //
-                0.0, 0.0, 1.0, 0.0, //
-                (kx * (cos * dx + sin * dy)) as f32, (ky * (-sin * dx + cos * dy)) as f32, 0.0, 1.0,
+                (kx * cos * radius_dp) as f32,
+                (ky * -sin * radius_dp) as f32,
+                0.0,
+                0.0, //
+                (kx * sin * radius_dp) as f32,
+                (ky * cos * radius_dp) as f32,
+                0.0,
+                0.0, //
+                0.0,
+                0.0,
+                1.0,
+                0.0, //
+                (kx * (cos * dx + sin * dy)) as f32,
+                (ky * (-sin * dx + cos * dy)) as f32,
+                0.0,
+                1.0,
             ];
         }
         // Tilted: project the anchor's ground point through the same perspective, then hang a
@@ -186,10 +222,22 @@ impl Camera {
         let rx = radius_dp / (self.width_dp as f64 / 2.0) * aw;
         let ry = radius_dp / (self.height_dp as f64 / 2.0) * aw;
         [
-            (cos * rx) as f32, (-sin * ry) as f32, 0.0, 0.0, //
-            (sin * rx) as f32, (cos * ry) as f32, 0.0, 0.0, //
-            0.0, 0.0, 0.0, 0.0, //
-            ax as f32, ay as f32, az as f32, aw as f32,
+            (cos * rx) as f32,
+            (-sin * ry) as f32,
+            0.0,
+            0.0, //
+            (sin * rx) as f32,
+            (cos * ry) as f32,
+            0.0,
+            0.0, //
+            0.0,
+            0.0,
+            0.0,
+            0.0, //
+            ax as f32,
+            ay as f32,
+            az as f32,
+            aw as f32,
         ]
     }
 
@@ -202,7 +250,13 @@ impl Camera {
         let d = 1.5 * self.height_dp as f64;
         let n = 0.1 * d;
         let f = 10.0 * d;
-        Perspective { fx: d / half_w, fy: d / half_h, d, depth_a: f / (f - n), depth_b: f * n / (f - n) }
+        Perspective {
+            fx: d / half_w,
+            fy: d / half_h,
+            d,
+            depth_a: f / (f - n),
+            depth_b: f * n / (f - n),
+        }
     }
 
     /// Build the perspective clip matrix from the screen-flat plane coefficients.
@@ -229,15 +283,33 @@ impl Camera {
     /// with a DEM sample; keep the forward and inverse in step.
     fn perspective_plane(&self, a: [f64; 3], b: [f64; 3]) -> [f32; 16] {
         let (sin, cos) = self.pitch_deg.to_radians().sin_cos();
-        let Perspective { fx, fy, d, depth_a, depth_b } = self.perspective();
+        let Perspective {
+            fx,
+            fy,
+            d,
+            depth_a,
+            depth_b,
+        } = self.perspective();
         let [au, av, a0] = a;
         let [bu, bv, b0] = b;
         // Column-major: the u, v, height and constant columns of (Xclip, Yclip, Zclip, Wclip).
         [
-            (fx * au) as f32, (fy * cos * bu) as f32, (depth_a * (-sin * bu)) as f32, (-sin * bu) as f32, //
-            (fx * av) as f32, (fy * cos * bv) as f32, (depth_a * (-sin * bv)) as f32, (-sin * bv) as f32, //
-            0.0, (fy * -sin) as f32, (depth_a * -cos) as f32, (-cos) as f32, //
-            (fx * a0) as f32, (fy * cos * b0) as f32, (depth_a * (d - sin * b0) - depth_b) as f32, (d - sin * b0) as f32,
+            (fx * au) as f32,
+            (fy * cos * bu) as f32,
+            (depth_a * (-sin * bu)) as f32,
+            (-sin * bu) as f32, //
+            (fx * av) as f32,
+            (fy * cos * bv) as f32,
+            (depth_a * (-sin * bv)) as f32,
+            (-sin * bv) as f32, //
+            0.0,
+            (fy * -sin) as f32,
+            (depth_a * -cos) as f32,
+            (-cos) as f32, //
+            (fx * a0) as f32,
+            (fy * cos * b0) as f32,
+            (depth_a * (d - sin * b0) - depth_b) as f32,
+            (d - sin * b0) as f32,
         ]
     }
 
@@ -274,7 +346,10 @@ impl Camera {
             sx = ndc_x * w / p.fx;
         }
         // Inverse bearing rotation: screen-flat offset back to a world-px offset from centre.
-        Some(WorldPx { x: center.x + cos * sx - sin * sy, y: center.y + sin * sx + cos * sy })
+        Some(WorldPx {
+            x: center.x + cos * sx - sin * sy,
+            y: center.y + sin * sx + cos * sy,
+        })
     }
 
     /// The ground world-px under a screen point, intersecting the eye ray with the **displaced
@@ -329,7 +404,10 @@ impl Camera {
         let world_at = |t: f64| {
             let sx = eye.0 + t * dir.0;
             let sy = eye.1 + t * dir.1;
-            WorldPx { x: center.x + cos * sx - sin * sy, y: center.y + sin * sx + cos * sy }
+            WorldPx {
+                x: center.x + cos * sx - sin * sy,
+                y: center.y + sin * sx + cos * sy,
+            }
         };
         let ray_height = |t: f64| eye.2 + t * dir.2;
         // Positive while the ray is above the terrain, non-positive once it has crossed below.
@@ -387,12 +465,16 @@ impl Camera {
         if w <= 0.0 {
             return None;
         }
-        Some((half_w + (p.fx * sx / w) * half_w, half_h + (p.fy * pcos * sy / w) * half_h))
+        Some((
+            half_w + (p.fx * sx / w) * half_w,
+            half_h + (p.fy * pcos * sy / w) * half_h,
+        ))
     }
 
     /// Lon/lat under a screen point (Dp from the viewport top-left), tilt-aware. See
     /// [`screen_to_world`](Self::screen_to_world).
     pub fn screen_to_lonlat(&self, screen_x_dp: f64, screen_y_dp: f64) -> Option<(f64, f64)> {
-        self.screen_to_world(screen_x_dp, screen_y_dp).map(|w| unproject(w.x, w.y, self.zoom))
+        self.screen_to_world(screen_x_dp, screen_y_dp)
+            .map(|w| unproject(w.x, w.y, self.zoom))
     }
 }

@@ -1,16 +1,16 @@
+use super::fog::{apply_fog, fog_color, fog_factor};
 use super::{
-    ARROW_COLOR, ARROW_DP, BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, Overlay, PUCK_COLOR, PUCK_CONE_DP,
-    PUCK_CONE_HALF_STROKE_DP, PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, Renderer,
-    SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, anchors_for, argb_to_rgba, scale_alpha,
+    anchors_for, argb_to_rgba, scale_alpha, Overlay, Renderer, UserPuck, ARROW_COLOR, ARROW_DP,
+    BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, PUCK_COLOR, PUCK_CONE_DP, PUCK_CONE_HALF_STROKE_DP,
+    PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, SCRIM_COLOR, TRAFFIC_WIDTH_DP,
 };
-use super::fog::{apply_fog, fog_factor};
 use crate::camera::Camera;
 use crate::marker::{Marker, MARKER_SIZE_DP};
 use crate::style::paint::Stroke;
 use crate::style::{Layer, LayerKind, Palette};
 use crate::tile::select;
-use crate::timing::{Step, nanos_since};
-use crate::vulkan::pipeline::{MORPH_NONE, NO_MARKINGS, Push};
+use crate::timing::{nanos_since, Step};
+use crate::vulkan::pipeline::{Push, MORPH_NONE, NO_MARKINGS};
 use ash::vk;
 use std::collections::HashMap;
 use tilecodec::mamaps::dict::LAYER_JUNCTION;
@@ -44,7 +44,17 @@ impl Renderer {
         let framebuffer = self.swapchain.framebuffers[image_index];
         let extent = self.swapchain.extent;
         unsafe {
-            self.record_inner(command_buffer, render_pass, framebuffer, extent, camera, layers, palette, clear, filter)
+            self.record_inner(
+                command_buffer,
+                render_pass,
+                framebuffer,
+                extent,
+                camera,
+                layers,
+                palette,
+                clear,
+                filter,
+            )
         }
     }
 
@@ -81,16 +91,16 @@ impl Renderer {
     /// ride the symbol path inside step 1. Each adds its own pass/branch; keep this list current
     /// and serialise merges so the passes do not collide.
     ///
-    /// # Flat layers over terrain: the drape-vs-offset choice (WS-G)
+    /// # Flat layers over terrain: draped, not offset (WS-G)
     ///
-    /// The flat 2D layers (roads, water, landuse) **stay at z = 0** and draw depth-off, painting
-    /// over the terrain in draw order rather than draping onto it. WS0's `Push` z semantics already
-    /// say the vertex z is 0 for every flat 2D layer, and those layers pass `Depth::Off`, so terrain
-    /// writes depth for the 3D layers (buildings occlude against it) while the flat layers paint on
-    /// top with no z-fighting and need no polygon depth offset. Draping — sampling the same
-    /// heightmap for each flat layer's z — would lift roads and water onto the relief but change
-    /// every flat layer's vertex format and re-tessellation, so it is deliberately not done here;
-    /// under the 60° pitch cap and ~30 m DEM the painted-over approximation reads correctly.
+    /// The flat 2D layers (roads, water, landuse) carry a draped z sampled from the same
+    /// heightmap as the terrain at build time (plus a sub-metre lift) and draw depth-off,
+    /// painting over the terrain in draw order. The vertex z is tile-normalised; each draw
+    /// pushes the tile's world-px span in `morph.z` (mirroring the buildings/terrain
+    /// `line.x`), which the shader multiplies back to the world-px height the perspective
+    /// matrix expects — that scale is what puts roads on the slopes instead of through them.
+    /// Terrain writes depth for the 3D layers (buildings occlude against it) while the flat
+    /// layers paint on top with no z-fighting and need no polygon depth offset.
     #[allow(clippy::too_many_arguments)]
     unsafe fn record_inner(
         &mut self,
@@ -121,17 +131,28 @@ impl Renderer {
         // and ignores its entry, and a trailing extra entry is allowed. Depth clears to the far
         // plane (1.0) for the 3D layers; stencil clears to zero, which the scrim reads as
         // "outside the region".
-        let depth_stencil_clear =
-            vk::ClearValue { depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 } };
+        let depth_stencil_clear = vk::ClearValue {
+            depth_stencil: vk::ClearDepthStencilValue {
+                depth: 1.0,
+                stencil: 0,
+            },
+        };
         let clear_values = [
-            vk::ClearValue { color: vk::ClearColorValue { float32: argb_to_rgba(clear) } },
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: argb_to_rgba(clear),
+                },
+            },
             depth_stencil_clear,
             depth_stencil_clear,
         ];
         let pass = vk::RenderPassBeginInfo::default()
             .render_pass(render_pass)
             .framebuffer(framebuffer)
-            .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent,
+            })
             .clear_values(&clear_values);
         device.cmd_begin_render_pass(command_buffer, &pass, vk::SubpassContents::INLINE);
 
@@ -141,7 +162,10 @@ impl Renderer {
             .min_depth(0.0)
             .max_depth(1.0);
         device.cmd_set_viewport(command_buffer, 0, std::slice::from_ref(&viewport));
-        let scissor = vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent };
+        let scissor = vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent,
+        };
         device.cmd_set_scissor(command_buffer, 0, std::slice::from_ref(&scissor));
 
         let mut bound: Option<LayerKind> = None;
@@ -201,7 +225,18 @@ impl Renderer {
         // SAFETY: the three pointers name disjoint fields; `tiles` (shared through `self`
         // below) overlaps none of them. They are only used for the draw loop's duration.
         let (draws, ordered, tile_alpha): (
-            &mut Vec<(u8, u32, u32, LayerKind, vk::Buffer, vk::Buffer, u32, u32, Option<u32>, (u8, u8, u8))>,
+            &mut Vec<(
+                u8,
+                u32,
+                u32,
+                LayerKind,
+                vk::Buffer,
+                vk::Buffer,
+                u32,
+                u32,
+                Option<u32>,
+                (u8, u8, u8),
+            )>,
             &Vec<u64>,
             &HashMap<u64, f32>,
         ) = unsafe { (&mut *draws, &*ordered, &*tile_alpha) };
@@ -213,7 +248,9 @@ impl Renderer {
         // Without this every shaped label draws and z10 is an unreadable pile.
         let place_start = std::time::Instant::now();
         let accepted = self.place_symbols(camera, layers, &ordered, extent, filter);
-        self.step_times.borrow_mut().record(Step::PlaceSymbols, nanos_since(place_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::PlaceSymbols, nanos_since(place_start));
         // Task-17 pick snapshot: the accepted labels with their screen boxes,
         // names, kinds and anchor geo — refreshed only when the accept-set is new, so a
         // reused placement (see PLACE_REUSE_MS) does not re-clone every name/kind String
@@ -230,9 +267,13 @@ impl Renderer {
         // the ground the flat layers below sit over. A tile with no heightmap draws nothing here and
         // keeps its flat `earth` fill in the loop; at pitch 0 the grid collapses to the flat
         // footprint, so the overhead map is unchanged.
+        // Fog toward the `earth` land colour, not the water-blue `clear`.
+        let fog = fog_color(layers, palette, camera.zoom);
         let step_start = std::time::Instant::now();
-        self.record_terrain(command_buffer, camera, layers, palette, clear, &mut submitted);
-        self.step_times.borrow_mut().record(Step::RecordTerrain, nanos_since(step_start));
+        self.record_terrain(command_buffer, camera, layers, palette, fog, &mut submitted);
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordTerrain, nanos_since(step_start));
 
         // Symbol layers are collected here and drawn after the buildings pass rather than inside
         // the loop. Buildings have no depth interaction with symbols (the symbol pipelines are
@@ -242,7 +283,11 @@ impl Renderer {
         // Reused across frames on the renderer like the draw buffers above.
         let deferred_symbols = {
             self.scratch_deferred_symbols.clear();
-            let Self { scratch_deferred_symbols: deferred, tiles: _, .. } = self;
+            let Self {
+                scratch_deferred_symbols: deferred,
+                tiles: _,
+                ..
+            } = self;
             deferred as *mut _
         };
         // SAFETY: same disjoint-field split as the draw buffers above.
@@ -351,8 +396,8 @@ impl Renderer {
                 // (owned by WS-B's `line.frag`) ignores `morph.x`, so road casings stay crisp
                 // while the fill fades — the fade reads as the flat basemap ramping in.
                 let tile_fade = tile_alpha.get(key).copied().unwrap_or(1.0);
-                for &(tz, tx, ty, kind, vbuf, ibuf, first_index, count, color_override, lane)
-                    in draws.iter()
+                for &(tz, tx, ty, kind, vbuf, ibuf, first_index, count, color_override, lane) in
+                    draws.iter()
                 {
                     if bound != Some(kind) {
                         let pipeline = match kind {
@@ -386,10 +431,10 @@ impl Renderer {
                     // whatever the dark basemap thinks red should be. The opacity ramp still
                     // applies, because that is per-frame paint rather than palette.
                     let base = color_override.unwrap_or_else(|| layer.color(palette));
-                    // Distance fog: haze the draw toward the background with its tile's
+                    // Distance fog: haze the draw toward the land colour with its tile's
                     // distance, so tilted far tiles dissolve instead of ending at a hard
                     // ground edge. Zero at pitch 0 — the flat map is unchanged.
-                    let base = apply_fog(base, clear, fog_factor(camera, tz, tx, ty));
+                    let base = apply_fog(base, fog, fog_factor(camera, tz, tx, ty));
                     // How far this mesh's whole band shifts sideways, in device pixels. The
                     // feature carries its colour's ordinal and its corridor's colour count,
                     // not an offset: how many lanes the corridor actually draws is a step
@@ -408,8 +453,14 @@ impl Renderer {
                         tile_to_clip: camera.tile_to_clip(tz, tx, ty),
                         color: argb_to_rgba(scale_alpha(base, opacity)),
                         line: [half_width_px, half_gap_px, layer.dash.0, layer.dash.1],
-                        misc: [camera.tile_span_px(tz), edge_aa, lateral_px, camera.time_seconds],
-                        morph: [tile_fade, 0.0, 0.0, 0.0],
+                        misc: [
+                            camera.tile_span_px(tz),
+                            edge_aa,
+                            lateral_px,
+                            camera.time_seconds,
+                        ],
+                        // `morph.z` is the tile's world-px span (Dp): the draped-`z` scale.
+                        morph: [tile_fade, 0.0, camera.tile_span_dp(tz) as f32, 0.0],
                     };
                     let layout = self.pipelines.layout;
                     device.cmd_push_constants(
@@ -447,17 +498,31 @@ impl Renderer {
         // Road carriageways: over the flat layer loop, because the surface and its markings
         // replace the road fills at this zoom, and under the buildings and deferred symbols
         // below, because a carriageway is flat basemap like every other road layer.
-        self.step_times.borrow_mut().record(Step::RecordFlat, nanos_since(flat_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordFlat, nanos_since(flat_start));
         let step_start = std::time::Instant::now();
-        self.record_carriageways(command_buffer, camera, layers, palette, &ordered, clear, &mut submitted);
-        self.step_times.borrow_mut().record(Step::RecordCarriageways, nanos_since(step_start));
+        self.record_carriageways(
+            command_buffer,
+            camera,
+            layers,
+            palette,
+            &ordered,
+            fog,
+            &mut submitted,
+        );
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordCarriageways, nanos_since(step_start));
         // 3D buildings: after the flat basemap so they paint over it, depth-tested so they occlude
         // one another. Gated to z14+; at pitch 0 the building matrix collapses height to the
         // footprint, so the flat overhead map is unchanged. Before the deferred symbols, so POI
         // icons and labels are not buried behind a tower.
         let step_start = std::time::Instant::now();
         self.record_buildings(command_buffer, camera, layers, palette, &mut submitted);
-        self.step_times.borrow_mut().record(Step::RecordBuildings, nanos_since(step_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordBuildings, nanos_since(step_start));
         let step_start = std::time::Instant::now();
         for &(key, index) in deferred_symbols.iter() {
             self.record_symbol(
@@ -472,28 +537,42 @@ impl Renderer {
                 &mut bound,
             );
         }
-        self.step_times.borrow_mut().record(Step::RecordSymbols, nanos_since(step_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordSymbols, nanos_since(step_start));
         let step_start = std::time::Instant::now();
         self.record_traffic(command_buffer, camera, &mut submitted);
-        self.step_times.borrow_mut().record(Step::RecordTraffic, nanos_since(step_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordTraffic, nanos_since(step_start));
         let step_start = std::time::Instant::now();
         self.record_arrows(command_buffer, camera, layers, &mut submitted);
-        self.step_times.borrow_mut().record(Step::RecordArrows, nanos_since(step_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordArrows, nanos_since(step_start));
         let step_start = std::time::Instant::now();
         self.record_region_mask(command_buffer, camera, &mut submitted);
-        self.step_times.borrow_mut().record(Step::RecordRegion, nanos_since(step_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordRegion, nanos_since(step_start));
         let rail_start = std::time::Instant::now();
         self.record_rail_lines(command_buffer, camera, &mut submitted);
-        self.step_times.borrow_mut().record(Step::RecordRail, nanos_since(rail_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordRail, nanos_since(rail_start));
         // No route slot: it shares `record_route_buffers` with the rail lines, so its cost
         // rides on `RecordRail` rather than a slot that reads zero on route-less frames.
         self.record_route(command_buffer, camera, &mut submitted);
         let step_start = std::time::Instant::now();
         self.record_overlays(command_buffer, camera, palette, &mut submitted);
-        self.step_times.borrow_mut().record(Step::RecordOverlays, nanos_since(step_start));
+        self.step_times
+            .borrow_mut()
+            .record(Step::RecordOverlays, nanos_since(step_start));
 
         self.submitted_draws.set(submitted);
         device.cmd_end_render_pass(command_buffer);
-        device.end_command_buffer(command_buffer).map_err(|e| format!("end_command_buffer {e:?}"))
+        device
+            .end_command_buffer(command_buffer)
+            .map_err(|e| format!("end_command_buffer {e:?}"))
     }
 }

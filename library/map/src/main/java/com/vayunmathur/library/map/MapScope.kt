@@ -84,7 +84,11 @@ class MapScope internal constructor(private val cameraState: CameraState) {
                 }
                 val offscreen = x + width < 0 || y + height < 0 ||
                     x > viewportWidth || y > viewportHeight
-                if (offscreen) return@layout
+                // Under a bearing the markers rotate about the viewport centre while this cull
+                // box does not, so a marker near an edge could be culled while still visible.
+                // The projection is already bearing-aware, so only the cull needs widening:
+                // skip it (or expand by the rotated support extents) when rotated.
+                if (offscreen && cameraState.position.bearing == 0.0) return@layout
                 placeables.forEach { it.place(x, y) }
             }
         }

@@ -12,7 +12,7 @@
 // extra geometry at all.
 //
 // It is a separate pipeline rather than a wider shared vertex format because
-// `TrafficMesh` and the route overlay both ride the 7-float line format and the line
+// `TrafficMesh` and the route overlay both ride the 8-float line format and the line
 // pipeline; widening that to serve the roads layer would make every one of them pay
 // for four bytes they never read. `tile/geometry.rs` already states this tradeoff.
 //
@@ -27,7 +27,7 @@
 //   offset = normal * (t * halfWidth)
 //
 // `t` doubles as the extrusion multiplier and as the fragment stage's marking
-// coordinate, which is what keeps the vertex to six floats.
+// coordinate, which is what keeps the vertex to seven floats.
 //
 // # Do not normalise `inNormal`
 //
@@ -45,6 +45,7 @@ layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inNormal;
 layout(location = 2) in float inT;
 layout(location = 3) in float inDistance;
+layout(location = 4) in float inZ;
 layout(location = 0) out float outT;
 layout(location = 1) out float outDistancePx;
 layout(push_constant) uniform Push {
@@ -57,6 +58,8 @@ layout(push_constant) uniform Push {
     // x: tile span in px, y: 1 when this pass owns edge antialiasing,
     // z: 1 when the centre line is yellow, w: the per-frame clock in seconds.
     vec4 misc;
+    // MORPH_NONE on this path; z: the tile's world-px span (Dp), the
+    // tile-norm-height -> world-px scale for the draped `inZ` below.
     vec4 morph;
 } push;
 
@@ -75,7 +78,14 @@ void main() {
     // the tile's pixel size converts one to the other. The normal's own length is a
     // deliberate miter/taper factor and is meant to survive this — see the header.
     vec2 offsetTile = inNormal * (inT * halfWidthPx / tilePx);
-    gl_Position = push.tileToClip * vec4(inPosition + offsetTile, 0.0, 1.0);
+    float worldHeight = inZ * push.morph.z;
+    // Same ortho/tilted split as `line.vert`: 0.0 at pitch 0 (byte-identical flat map),
+    // world-px height under tilt so the carriageway drapes onto the relief.
+    if (abs(push.tileToClip[2][3]) < 1e-6) {
+        gl_Position = push.tileToClip * vec4(inPosition + offsetTile, 0.0, 1.0);
+    } else {
+        gl_Position = push.tileToClip * vec4(inPosition + offsetTile, worldHeight, 1.0);
+    }
     outT = inT;
     // Distance along the carriageway in pixels, for the divider dash phase. Scaled here
     // rather than in the tessellator for the same reason the width is: the attribute is

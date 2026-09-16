@@ -7,10 +7,13 @@
       com.vayunmathur.emergency because a Gradle-built app cannot be platform-signed.
 
       Component contract mirrored 1:1 (see C:\Users\Vayun\.llms\plans\maos_emergency_app.plan.md):
-      view/edit/medical activities answering the same platform actions, the Settings
-      suggestion alias, the ia.emergency injection alias, the search indexables provider,
-      the FileProvider for avatar photos, and the gesture provider speaking the
-      settingslib EmergencyNumberUtils call() protocol against our own authorities.
+      view/edit activities answering the same platform actions (EDIT_EMERGENCY_INFO plus
+      the legacy EDIT_MEDICAL_INFO filter on the same editor), the Settings
+      suggestion alias, the ia.emergency injection alias, the SystemUI SOS entry alias
+      (LAUNCH_EMERGENCY, MANAGE_SENSOR_PRIVACY-guarded like stock), the search
+      indexables provider, the FileProvider for avatar photos, and the gesture provider
+      speaking the settingslib EmergencyNumberUtils call() protocol against our own
+      authorities.
 
       Privileged-only declarations (MANAGE_USERS, WRITE_SECURE_SETTINGS, CALL_PRIVILEGED,
       READ_PRIVILEGED_PHONE_STATE) follow the parentalcontrols/screentime precedent: declared
@@ -61,6 +64,7 @@
     -->
     <uses-permission android:name="android.permission.health.READ_MEDICAL_DATA_ALLERGIES_INTOLERANCES" />
     <uses-permission android:name="android.permission.health.READ_MEDICAL_DATA_MEDICATIONS" />
+    <uses-permission android:name="android.permission.health.READ_MEDICAL_DATA_CONDITIONS" />
 
     <!-- Not requested, deliberately: no INTERNET. Medical info, contacts and the SOS
          countdown are all local; the call itself goes through the telephony stack. -->
@@ -100,7 +104,10 @@
 
         <!--
           Edit entry: contacts + medical info. Answers android.settings.EDIT_EMERGENCY_INFO
-          like GrapheneOS's EditInfoActivity.
+          like GrapheneOS's EditInfoActivity, and also android.emergency.EDIT_MEDICAL_INFO
+          like its EditMedicalInfoActivity: stock splits those across two activities, but
+          our editor already covers both, so both filters land here and the legacy action
+          keeps resolving.
         -->
         <activity
             android:name=".ui.EditInfoActivity"
@@ -112,6 +119,10 @@
             android:theme="@style/Theme.General">
             <intent-filter>
                 <action android:name="android.settings.EDIT_EMERGENCY_INFO" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.emergency.EDIT_MEDICAL_INFO" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
@@ -179,19 +190,45 @@
         </activity-alias>
 
         <!--
-          The SOS countdown screen, reached from the power-button gesture via SystemUI.
-          Not exported: only the platform gesture path (or our own notification action)
-          starts it explicitly. Ignores back press; finishing without cancel hands the
-          countdown to the foreground service.
+          The SOS countdown screen, reached from the power-button gesture via SystemUI
+          (see the SosEntryPoint alias below). Not exported: only the platform gesture
+          path (or our own notification action) starts it explicitly. turnScreenOn wakes
+          the device when the gesture fires with the screen off; noHistory keeps back
+          from returning to the countdown; finishing without cancel hands the countdown
+          to the foreground service. All three mirror stock's EmergencyActionActivity.
         -->
         <activity
             android:name=".ui.SosActivity"
             android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:directBootAware="true"
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleInstance"
+            android:noHistory="true"
             android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:theme="@style/Theme.General" />
+
+        <!--
+          SystemUI entry point for the power-button SOS gesture. Mirrors stock's
+          EmergencyAction alias: exported, MANAGE_SENSOR_PRIVACY-guarded, answering
+          com.android.systemui.action.LAUNCH_EMERGENCY. SystemUI resolves this action
+          with MATCH_SYSTEM_ONLY and prefers config_preferredEmergencySosPackage, which
+          MAOS leaves empty, so the first (only) match wins - no SystemUI patch needed.
+          The target stays non-exported exactly like stock's EmergencyActionActivity.
+        -->
+        <activity-alias
+            android:name=".ui.SosEntryPoint"
+            android:directBootAware="true"
+            android:exported="true"
+            android:label="@string/sos_title"
+            android:permission="android.permission.MANAGE_SENSOR_PRIVACY"
+            android:targetActivity=".ui.SosActivity">
+            <intent-filter>
+                <action android:name="com.android.systemui.action.LAUNCH_EMERGENCY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
 
         <!--
           SOS countdown service: notification + exact alarm + vibration + warning sound.
@@ -202,6 +239,7 @@
         -->
         <service
             android:name=".service.SosCountdownService"
+            android:directBootAware="true"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
@@ -251,10 +289,16 @@
           Gesture state for Settings: number override, gesture/sound toggles, UI-showing
           heartbeat. Mirrors GrapheneOS's EmergencyGestureContentProvider call() protocol;
           CALL_PRIVILEGED guards it the same way. Query/insert/update/delete throw.
+          Both authorities serve the same class/state: ours for the MAOS build (whose
+          SettingsLib is rewired to it) and the stock com.android.emergency.gesture for
+          unpatched Settings, whose ContentResolver.call() throws IllegalArgumentException
+          on an unknown authority and crashes Settings on resume. Safe while stock
+          EmergencyInfo is absent (MAOS removes it); a co-installed stock app would
+          conflict at install time instead of silently shadowing.
         -->
         <provider
             android:name=".platform.GestureProvider"
-            android:authorities="com.vayunmathur.emergency.gesture"
+            android:authorities="com.vayunmathur.emergency.gesture;com.android.emergency.gesture"
             android:exported="true"
             android:permission="android.permission.CALL_PRIVILEGED" />
 

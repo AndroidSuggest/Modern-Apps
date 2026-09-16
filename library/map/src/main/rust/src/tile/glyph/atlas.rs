@@ -1,6 +1,5 @@
 use super::metrics::{
-    ATLAS_PX, MEDIUM_TTF, REGULAR_TTF, SDF_SPREAD_PX, UP_EM, GlyphMetrics, UvRect,
-    Weight, charset,
+    charset, GlyphMetrics, UvRect, Weight, ATLAS_PX, MEDIUM_TTF, REGULAR_TTF, SDF_SPREAD_PX, UP_EM,
 };
 use super::placement::{ink_uv, place_in_cell};
 use super::sdf::{blit_cell, sdf_from_coverage};
@@ -65,7 +64,12 @@ impl GlyphAtlas {
                     w: 0.0,
                     h: 0.0,
                     cell,
-                    uv: UvRect { u0: 0.0, v0: 0.0, u1: 0.0, v1: 0.0 },
+                    uv: UvRect {
+                        u0: 0.0,
+                        v0: 0.0,
+                        u1: 0.0,
+                        v1: 0.0,
+                    },
                 };
                 // 4x raster of the outline at 48px, then downsample-by-distance to
                 // the SDF cell: coverage at 4x is a 2-bit alpha proxy.
@@ -113,7 +117,11 @@ impl GlyphAtlas {
                 );
             }
         }
-        GlyphAtlas { pixels, sdf_per_em, metrics }
+        GlyphAtlas {
+            pixels,
+            sdf_per_em,
+            metrics,
+        }
     }
 
     pub fn metrics(&self, weight: Weight, ch: char) -> Option<GlyphMetrics> {

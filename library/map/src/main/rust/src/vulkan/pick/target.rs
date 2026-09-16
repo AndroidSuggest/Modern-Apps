@@ -26,7 +26,11 @@ impl PickTarget {
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(PICK_FORMAT)
-            .extent(vk::Extent3D { width: extent.width, height: extent.height, depth: 1 })
+            .extent(vk::Extent3D {
+                width: extent.width,
+                height: extent.height,
+                depth: 1,
+            })
             .mip_levels(1)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -39,8 +43,9 @@ impl PickTarget {
             .map_err(|e| format!("pick create_image {e:?}"))?;
 
         let requirements = device.get_image_memory_requirements(image);
-        let properties =
-            context.instance.get_physical_device_memory_properties(context.physical_device);
+        let properties = context
+            .instance
+            .get_physical_device_memory_properties(context.physical_device);
         let type_index = (0..properties.memory_type_count)
             .find(|&i| {
                 requirements.memory_type_bits & (1 << i) != 0
@@ -101,7 +106,13 @@ impl PickTarget {
             }
         };
 
-        Ok(PickTarget { image, memory, view, framebuffer, extent })
+        Ok(PickTarget {
+            image,
+            memory,
+            view,
+            framebuffer,
+            extent,
+        })
     }
 
     pub(super) unsafe fn destroy(self, device: &ash::Device) {

@@ -1,17 +1,23 @@
 package com.vayunmathur.emergency.ui
 
-import android.content.Intent
 import android.os.Bundle
 import android.os.UserManager
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.emergency.R
@@ -20,20 +26,22 @@ import com.vayunmathur.emergency.data.EmergencyInfo
 import com.vayunmathur.emergency.data.EmergencyKeys
 import com.vayunmathur.emergency.platform.EmergencyUiState
 import com.vayunmathur.emergency.platform.EmergencyViewModel
+import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.LazyListScaffold
-import com.vayunmathur.library.ui.SettingsRow
-import com.vayunmathur.library.ui.SettingsSection
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.verticalShape
 
 /**
  * Read-only emergency info, reachable over the lock screen.
  *
  * Answers `android.telephony.action.EMERGENCY_ASSISTANCE` like GrapheneOS's
  * ViewInfoActivity: the owner's medical details and emergency contacts for a first
- * responder, with an edit entry hidden until setup is complete (same gate as the
- * original's options-menu check on `USER_SETUP_COMPLETE`).
+ * responder. Editing lives only in Settings (the ia.emergency injection) - there is
+ * deliberately no edit entry here and no top bar: a responder reads this under stress,
+ * so the content starts at the top and every datum is a large centered segment in a
+ * labelled group. Groups use [verticalShape] so each reads as one block.
  */
 class ViewInfoActivity : ComponentActivity() {
 
@@ -48,8 +56,6 @@ class ViewInfoActivity : ComponentActivity() {
                 ViewInfoScreen(
                     state = state,
                     ownerName = ownerName(),
-                    showEdit = isSetupComplete(),
-                    onEdit = { startActivity(Intent(this, EditInfoActivity::class.java)) },
                 )
             }
         }
@@ -63,11 +69,6 @@ class ViewInfoActivity : ComponentActivity() {
     private fun ownerName(): String =
         runCatching { getSystemService(UserManager::class.java)?.userName.orEmpty() }
             .getOrDefault("")
-
-    private fun isSetupComplete(): Boolean =
-        runCatching {
-            Settings.Secure.getInt(contentResolver, "user_setup_complete", 0) == 1
-        }.getOrDefault(true)
 }
 
 /** The read-only info + contacts view. Stateless; the activity wires the ViewModel. */
@@ -75,128 +76,149 @@ class ViewInfoActivity : ComponentActivity() {
 fun ViewInfoScreen(
     state: EmergencyUiState,
     ownerName: String,
-    showEdit: Boolean,
-    onEdit: () -> Unit,
 ) {
+    // Resolved up front: the LazyListScope content below is not itself @Composable,
+    // so stringResource() calls must happen here or inside item {} blocks.
+    val ownerLabel = stringResource(R.string.group_owner)
+    val contactLabel = stringResource(R.string.group_emergency_contact)
+    val allergiesLabel = stringResource(R.string.section_allergies)
+    val conditionsLabel = stringResource(R.string.section_conditions)
+    val medicationsLabel = stringResource(R.string.section_current_medications)
+    val ownerRows = ownerRows(state.info, ownerName)
     LazyListScaffold(
-        title = stringResource(R.string.app_name),
-        horizontalPadding = 0.dp,
+        // No title and no actions: the scaffold draws no bar, so the content starts
+        // at the top. scrollBehavior is still required for the nested-scroll wiring.
         scrollBehavior = appBarScrollBehavior(),
     ) {
-        if (ownerName.isNotBlank()) {
+        if (state.loading) {
             item {
-                SettingsSection {
-                    SettingsRow(title = ownerName)
-                }
+                Segment(value = stringResource(R.string.contacts_loading), index = 0, count = 1)
             }
-        }
-
-        item {
-            SettingsSection(title = stringResource(R.string.tab_title_info)) {
-                if (state.loading) {
-                    SettingsRow(title = stringResource(R.string.contacts_loading))
+        } else if (ownerRows.isEmpty() && state.info.contacts.isEmpty() &&
+            state.health.allergies.isEmpty() && state.health.conditions.isEmpty() &&
+            state.health.medications.isEmpty()
+        ) {
+            item {
+                Segment(value = stringResource(R.string.no_info), index = 0, count = 1)
+            }
+        } else {
+            if (ownerRows.isNotEmpty()) {
+                group(ownerLabel, ownerRows)
+            }
+            for ((contactIndex, contact) in state.info.contacts.withIndex()) {
+                val name = contact.displayName.ifBlank { contact.phoneNumber }
+                val detail = if (contact.phoneType.isBlank()) {
+                    contact.phoneNumber
                 } else {
-                    val rows = infoRows(state.info)
-                    if (rows.isEmpty()) {
-                        SettingsRow(title = stringResource(R.string.no_info))
-                    } else {
-                        // Value front and centre (title), label small underneath (supporting).
-                        for ((label, value) in rows) {
-                            SettingsRow(title = value, supportingText = label)
-                        }
-                    }
+                    "${contact.phoneType} · ${contact.phoneNumber}"
                 }
-            }
-        }
-
-        item {
-            SettingsSection(title = stringResource(R.string.tab_title_contacts)) {
-                if (!state.loading && state.info.contacts.isEmpty()) {
-                    SettingsRow(title = stringResource(R.string.no_info))
+                val title = if (state.info.contacts.size == 1) {
+                    contactLabel
+                } else {
+                    "$contactLabel ${contactIndex + 1}"
                 }
+                group(title, listOf(name to null, detail to null))
             }
-        }
-
-        for (contact in state.info.contacts) {
-            item(key = contact.phoneUri.toString()) {
-                val context = LocalContext.current
-                SettingsRow(
-                    title = contact.displayName.ifBlank { contact.phoneNumber },
-                    supportingText = contactSubtitle(contact.phoneType, contact.phoneNumber),
-                    onClick = {
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, contact.phoneUri))
-                        }
-                    },
-                )
-            }
-        }
-
-        if (state.health.allergies.isNotEmpty()) {
-            item {
-                SettingsSection(title = stringResource(R.string.section_allergies)) {
-                    for (allergy in state.health.allergies) {
+            if (state.health.allergies.isNotEmpty()) {
+                group(
+                    allergiesLabel,
+                    state.health.allergies.map { allergy ->
                         val severity = when (allergy.criticality) {
                             AllergyCriticality.High -> stringResource(R.string.allergy_high)
                             AllergyCriticality.Low -> stringResource(R.string.allergy_low)
                             AllergyCriticality.Unknown -> null
                         }
-                        SettingsRow(
-                            title = allergy.displayName,
-                            supportingText = allergy.reaction,
-                            trailingContent = severity?.let { { Text(it) } },
-                        )
-                    }
-                    SettingsRow(title = stringResource(R.string.from_health_connect))
-                }
+                        allergy.displayName to listOfNotNull(allergy.reaction, severity)
+                            .joinToString(" · ").ifBlank { null }
+                    },
+                )
             }
-        }
-
-        if (state.health.medications.isNotEmpty()) {
-            item {
-                SettingsSection(title = stringResource(R.string.section_current_medications)) {
-                    for (medication in state.health.medications) {
-                        SettingsRow(title = medication.displayName)
-                    }
-                    SettingsRow(title = stringResource(R.string.from_health_connect))
-                }
+            if (state.health.conditions.isNotEmpty()) {
+                group(
+                    conditionsLabel,
+                    state.health.conditions.map { it.displayName to null },
+                )
             }
-        }
-
-        if (showEdit && !state.loading) {
-            item {
-                SettingsSection {
-                    SettingsRow(
-                        title = stringResource(R.string.edit_info),
-                        onClick = onEdit,
-                    )
-                }
+            if (state.health.medications.isNotEmpty()) {
+                group(
+                    medicationsLabel,
+                    state.health.medications.map { it.displayName to null },
+                )
             }
         }
     }
 }
 
-/** Non-empty identity rows in view order, each as a label to its display value. */
+/**
+ * One labelled group of segments: a small heading plus each value as a joined block.
+ * Each entry is a value with an optional detail line underneath.
+ */
+private fun LazyListScope.group(title: String, rows: List<Pair<String, String?>>) {
+    item(key = "header-$title") {
+        Text(
+            text = title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(top = 16.dp, bottom = 4.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.titleMedium,
+        )
+    }
+    rows.forEachIndexed { index, (value, detail) ->
+        item(key = "$title-$index-$value") {
+            Segment(value = value, detail = detail, index = index, count = rows.size)
+        }
+    }
+}
+
+/**
+ * One datum as a full-width segment of its group: the value large and centered, an
+ * optional detail smaller beneath it. Outer corners rounded, inner joins square, so
+ * the group reads as one block.
+ */
 @Composable
-private fun infoRows(info: EmergencyInfo): List<Pair<String, String>> {
-    val labels = mapOf(
-        EmergencyKeys.NAME to stringResource(R.string.field_name),
-        EmergencyKeys.ADDRESS to stringResource(R.string.field_address),
-        EmergencyKeys.BLOOD_TYPE to stringResource(R.string.field_blood_type),
-        EmergencyKeys.ORGAN_DONOR to stringResource(R.string.field_organ_donor),
-    )
-    val values = mapOf(
-        EmergencyKeys.NAME to info.name,
-        EmergencyKeys.ADDRESS to info.address,
-        EmergencyKeys.BLOOD_TYPE to info.bloodType,
-        EmergencyKeys.ORGAN_DONOR to info.organDonor,
-    )
-    // Name first, then the rest in view order.
-    return (listOf(EmergencyKeys.NAME) + EmergencyKeys.VIEW_ORDER).mapNotNull { key ->
-        val value = values[key].orEmpty()
-        if (value.isBlank()) null else (labels[key].orEmpty() to value)
+private fun Segment(value: String, detail: String? = null, index: Int, count: Int) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 1.dp),
+        shape = verticalShape(index, count),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = value,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            if (detail != null) {
+                Text(
+                    text = detail,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+        }
     }
 }
 
-private fun contactSubtitle(type: String, number: String): String =
-    if (type.isBlank()) number else "$type · $number"
+/**
+ * Owner group rows: lock-screen owner name first, then stored name/address when set.
+ * Blood type / organ donor stay out: those live on the medical side, not the identity.
+ */
+@Composable
+private fun ownerRows(info: EmergencyInfo, ownerName: String): List<Pair<String, String?>> {
+    val rows = mutableListOf<Pair<String, String?>>()
+    if (ownerName.isNotBlank()) rows += ownerName to null
+    val nameLabel = stringResource(R.string.field_name)
+    if (info.name.isNotBlank() && info.name != ownerName) rows += info.name to nameLabel
+    val addressLabel = stringResource(R.string.field_address)
+    if (info.address.isNotBlank()) rows += info.address to addressLabel
+    return rows
+}

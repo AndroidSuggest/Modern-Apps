@@ -1,85 +1,75 @@
 package com.vayunmathur.library.ml
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
-import java.nio.FloatBuffer
+import org.pytorch.executorch.EValue
+import org.pytorch.executorch.Module
+import org.pytorch.executorch.Tensor
 
 /**
  * Person-versus-background segmentation, for `:camera`'s portrait bokeh.
  *
- * **MediaPipe Selfie Segmentation** (Apache-2.0) at 256×256, run on the reduced ONNX Runtime
- * build. See `camera/src/main/assets/README.md` for provenance.
+ * **MediaPipe Selfie Segmentation** (Apache-2.0) at 256×256, ExecuTorch-only on the
+ * Vulkan fp16 `.pte` (`selfie_segmentation_vulkan_fp16.pte`, ~275 KB). See
+ * `camera/src/main/assets/README.md` for provenance.
  *
- * Replaces the Vulkan `NativeSegmenter` path (`MlNative::createSelfie`): the graph is the
- * upstream export (`pixel_values [1,3,256,256]` in, `alphas [1,1,256,256]` out), so the
- * resize (`OnnxPreprocess.stretchPlanar`, straight scale) and `RESCALE_ONLY` normalisation
- * now happen here in Kotlin rather than natively.
+ * `forward` takes the planar CHW buffer straight from `OnnxPreprocess.stretchPlanar`
+ * as `[1,3,256,256]` NCHW float and returns the single-channel `[1,1,256,256]`
+ * probability mask. No CHW→NHWC interleave and no LiteRT fallback: when the `.pte`
+ * is absent, the Vulkan delegate is not linked, or the run fails, [segment] returns
+ * null (fail closed — "no mask", never an error) and portrait bokeh stays off.
  *
- * Replaces `com.vayunmathur.ncnn.PortraitSegmenter` and its `erdnet` model, which shipped
- * with no upstream URL, license or conversion recipe. This is a different model rather
- * than a port of that one, so its masks differ.
- *
- * CPU-backed: if [isAvailable] is false the model is missing or has an operator outside
- * the reduced build, and [segment] returns null, which callers treat as "no mask" rather
- * than as an error.
- *
- * When the Vulkan backend is usable and this graph is allowlisted, inference runs on the
- * Vulkan fast path with ORT kept as the fallback: a Vulkan failure falls back to the ORT
- * session when it exists, preserving the null-on-failure contract.
+ * Resize (`OnnxPreprocess.stretchPlanar`, straight scale) and `RESCALE_ONLY`
+ * normalisation happen here in Kotlin.
  *
  * Not thread-safe: [segment] and [close] must not overlap.
  *
- * @param context used only to read the asset; not retained.
- * @param assetName the `.onnx` in the app's assets.
+ * @param context used to read assets and to stage the `.pte`; the application context is
+ * retained for the lazy ExecuTorch open.
+ * @param etAssetName the `.pte` in the app's assets.
  */
-class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : AutoCloseable {
+class SelfieSegmenter(
+    context: Context,
+    etAssetName: String = ET_ASSET,
+) : AutoCloseable {
     private val app = context.applicationContext
-    private val asset = assetName
+    private val etAsset = etAssetName
     private val lock = Any()
 
-    @Volatile private var session: OrtSession? = null
-    @Volatile private var vulkanHandle: Long = 0L
-    @Volatile private var loadTried = false
+    @Volatile private var etModule: Module? = null
+    @Volatile private var etTried = false
 
     /** Whether the network came up. False means portrait bokeh is off on this device. */
-    val isAvailable: Boolean get() = ensure()
+    val isAvailable: Boolean get() = ensureEt() != null
 
     /**
      * Run the network over [bitmap] and return a 256×256 mask, or null on failure.
      *
      * [bitmap] may be any size and any config: it is resized and normalised here.
+     * Null (missing `.pte`, no Vulkan delegate, failed run) means "no mask" — no
+     * fallback is attempted.
      */
     fun segment(bitmap: Bitmap): SegmentationMask? {
-        if (!ensure()) return null
+        val mod = ensureEt() ?: return null
         val (pixels, readable) = OnnxPreprocess.readablePixels(bitmap) ?: return null
         try {
-            val input = OnnxPreprocess.stretchPlanar(
+            val planar = OnnxPreprocess.stretchPlanar(
                 pixels, readable.width, readable.height,
                 SIZE, SIZE, OnnxPreprocess.RESCALE_ONLY,
             )
-            if (vulkanHandle != 0L) {
-                try {
-                    vulkanSegment(vulkanHandle, input)?.let { return it }
-                } catch (e: Throwable) {
-                    Log.w(TAG, "selfie vulkan inference failed, falling back to ORT", e)
-                }
-            }
-            val live = session ?: return null
-            val env = OrtEnvironment.getEnvironment()
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())).useOrt { tensor ->
-                live.run(mapOf(INPUT to tensor)).useOrt { result ->
-                    val out = result[0] as OnnxTensor
-                    val flat = FloatArray(SIZE * SIZE)
-                    out.floatBuffer.get(flat)
-                    return SegmentationMask(SIZE, SIZE, flat)
-                }
-            }
+            // No interleave: ET wants NCHW, which planar already is.
+            val input = EValue.from(
+                Tensor.fromBlob(planar, longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())),
+            )
+            val outs = synchronized(lock) {
+                ExecutorchSessions.run(mod, listOf(input))
+            } ?: return null
+            // HALF-tolerant: the Vulkan fp16 graph may return binary16 (see EtTensors).
+            val out = outs.firstOrNull()?.floatsAllowingHalf(TAG, SIZE * SIZE) ?: return null
+            return SegmentationMask(SIZE, SIZE, out.copyOfRange(0, SIZE * SIZE))
         } catch (e: Throwable) {
-            Log.e(TAG, "selfie inference failed", e)
+            Log.e(TAG, "selfie ET inference failed", e)
             return null
         } finally {
             if (readable !== bitmap) readable.recycle()
@@ -88,92 +78,38 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
 
     override fun close() {
         synchronized(lock) {
-            val handle = vulkanHandle
-            vulkanHandle = 0L
-            if (handle != 0L) {
-                try {
-                    VulkanSessions.close(handle)
-                } catch (e: Throwable) {
-                    Log.w(TAG, "selfie vulkan close failed", e)
-                }
-            }
-            session = null
-            OnnxSessions.close(sessionKey())
+            etModule = null
+            ExecutorchSessions.close(etSessionKey())
         }
     }
 
-    private fun sessionKey() = "asset:$asset"
+    private fun etSessionKey() = "asset:$etAsset"
 
-    private fun ensure(): Boolean {
-        if (session != null || vulkanHandle != 0L) return true
+    /**
+     * The ExecuTorch module, loaded once. Null when the `.pte` is absent, the Vulkan
+     * delegate is not linked (`library/ml/libs/executorch-vulkan-1.4.0.aar`,
+     * XNNPACK=OFF), or the load failed — all of which mean "unavailable", never a throw.
+     */
+    private fun ensureEt(): Module? {
+        if (etModule != null) return etModule
         synchronized(lock) {
-            if (session != null || vulkanHandle != 0L) return true
-            if (loadTried) return false
-            loadTried = true
-            session = OnnxSessions.openAsset(app, asset)
-            tryVulkanLocked()
-            return session != null || vulkanHandle != 0L
-        }
-    }
-
-    /**
-     * Best-effort Vulkan fast path; leaves [vulkanHandle] at 0 on any failure so ORT stays
-     * the fallback. Caller must hold [lock]. The model bytes are read once and shared by
-     * the preflight check and the open.
-     */
-    private fun tryVulkanLocked() {
-        try {
-            if (!VulkanSessions.isUsable()) return
-            val key = sessionKey()
-            if (key !in VulkanSessions.allowlist) return
-            val modelBytes = try {
-                app.assets.open(asset).use { it.readBytes() }
-            } catch (e: Throwable) {
-                Log.w(TAG, "cannot read $asset for vulkan preflight", e)
-                return
+            if (etModule != null) return etModule
+            if (etTried) return null
+            etTried = true
+            val backends = ExecutorchSessions.registeredBackends()
+            if (backends?.any { it.contains("Vulkan", ignoreCase = true) } != true) {
+                Log.i(TAG, "Vulkan backend absent, skipping $etAsset")
+                return null
             }
-            val problem = VulkanSessions.preflight(key) { modelBytes }
-            if (problem != null) {
-                Log.w(TAG, "vulkan preflight skipped for $asset: $problem")
-                return
-            }
-            val handle = VulkanSessions.open(key) { modelBytes }
-            if (handle != 0L) {
-                vulkanHandle = handle
-                Log.i(TAG, "vulkan session open for $key")
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "vulkan open failed for $asset, using ORT", e)
-            vulkanHandle = 0L
+            etModule = ExecutorchSessions.openAsset(app, etAsset)
+            return etModule
         }
-    }
-
-    /**
-     * Vulkan fast path over the already-preprocessed NCHW input.
-     *
-     * Returns null when the bridge fails or produces too few floats, so the caller falls
-     * back to ORT. The graph has a single `alphas [1,1,256,256]` output, so the mask is the
-     * first f32 output at least [SIZE]×[SIZE] wide.
-     */
-    private fun vulkanSegment(handle: Long, input: FloatArray): SegmentationMask? {
-        val inputs = listOf(
-            VulkanWire.floats(longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong()), input),
-        )
-        val outputs = VulkanSessions.run(handle, inputs) ?: return null
-        val out = outputs.firstOrNull {
-            it.dtype == VulkanWire.DTYPE_F32 && it.bytes.size / 4 >= SIZE * SIZE
-        } ?: run {
-            Log.w(TAG, "vulkan selfie produced no ${SIZE * SIZE}-wide output")
-            return null
-        }
-        return SegmentationMask(SIZE, SIZE, out.asFloats().copyOfRange(0, SIZE * SIZE))
     }
 
     companion object {
-        /** What `:camera` ships. */
-        const val DEFAULT_ASSET: String = "selfie_segmentation.onnx"
+        /** The ExecuTorch graph (Vulkan fp16). */
+        const val ET_ASSET: String = "selfie_segmentation_vulkan_fp16.pte"
         private const val TAG = "SelfieSegmenter"
         private const val SIZE = 256
-        private const val INPUT = "pixel_values"
     }
 }

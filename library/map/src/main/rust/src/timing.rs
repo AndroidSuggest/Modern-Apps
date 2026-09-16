@@ -141,7 +141,11 @@ pub(crate) struct StepTimes {
 impl StepTimes {
     /// Empty: every step reads 0 until its first frame.
     pub(crate) fn new() -> Self {
-        StepTimes { last: [0; Step::COUNT], sum: [0; Step::COUNT], max: [0; Step::COUNT] }
+        StepTimes {
+            last: [0; Step::COUNT],
+            sum: [0; Step::COUNT],
+            max: [0; Step::COUNT],
+        }
     }
 
     /// Time one step's sample: the index is the step's position in [`Step::ALL`].
@@ -205,7 +209,10 @@ mod tests {
         assert_eq!(t.last_nanos()[Step::Select as usize], 300);
         // Avg over a 2-frame window is 200 ns; max is the worst sample.
         let line = t.report(2);
-        assert!(line.contains("sel 0.0/0.0"), "200ns rounds to 0.0ms, got {line}");
+        assert!(
+            line.contains("sel 0.0/0.0"),
+            "200ns rounds to 0.0ms, got {line}"
+        );
         // A millisecond-scale sample to check the decimals are real.
         t.record(Step::Present, 2_500_000);
         let line = t.report(1);
@@ -218,7 +225,10 @@ mod tests {
         t.record(Step::Submit, 1_000_000);
         let _ = t.report(1);
         let line = t.report(1);
-        assert!(line.contains("sub 0.0/0.0"), "the window must reset after a report, got {line}");
+        assert!(
+            line.contains("sub 0.0/0.0"),
+            "the window must reset after a report, got {line}"
+        );
         // But the last-frame array survives for the JNI getter.
         assert_eq!(t.last_nanos()[Step::Submit as usize], 1_000_000);
     }
@@ -228,14 +238,23 @@ mod tests {
         let mut names: Vec<&str> = Step::ALL.iter().map(|s| s.short_name()).collect();
         names.sort_unstable();
         names.dedup();
-        assert_eq!(names.len(), Step::COUNT, "short names must be unambiguous in logcat");
+        assert_eq!(
+            names.len(),
+            Step::COUNT,
+            "short names must be unambiguous in logcat"
+        );
     }
 
     #[test]
     fn step_discriminants_match_all_order() {
         // `record` indexes by `as usize`: the enum order and ALL order must agree.
         for (at, step) in Step::ALL.iter().enumerate() {
-            assert_eq!(*step as usize, at, "Step::{:?} sits at the wrong index", step.short_name());
+            assert_eq!(
+                *step as usize,
+                at,
+                "Step::{:?} sits at the wrong index",
+                step.short_name()
+            );
         }
     }
 }

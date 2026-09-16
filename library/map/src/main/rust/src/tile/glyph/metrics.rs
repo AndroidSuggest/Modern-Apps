@@ -18,11 +18,9 @@ pub const SDF_SPREAD_PX: u32 = 8;
 
 /// Noto Sans Regular, embedded (task 54 staged the TTF; the APK asset is not a file
 /// the renderer can open, so the bytes ship in the `.so` — 267 KB).
-pub(super) const REGULAR_TTF: &[u8] =
-    include_bytes!("../../../assets/fonts/NotoSans-Regular.ttf");
+pub(super) const REGULAR_TTF: &[u8] = include_bytes!("../../../assets/fonts/NotoSans-Regular.ttf");
 /// Noto Sans Medium, embedded likewise.
-pub(super) const MEDIUM_TTF: &[u8] =
-    include_bytes!("../../../assets/fonts/NotoSans-Medium.ttf");
+pub(super) const MEDIUM_TTF: &[u8] = include_bytes!("../../../assets/fonts/NotoSans-Medium.ttf");
 
 /// Which bundled weight a label uses. The authored style uses Regular everywhere
 /// except country labels and big cities (Medium).

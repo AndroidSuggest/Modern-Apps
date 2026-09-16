@@ -1,18 +1,23 @@
 package com.vayunmathur.library.map
 
 /**
- * Which pan/zoom/rotate gestures are enabled. Tilt (two-finger vertical drag) is always on
- * where the detector runs; rotation needs no separate detector, so it is one flag here.
+ * Which pan/zoom/rotate/tilt gestures are enabled. Tilt is the two-finger vertical drag;
+ * rotation needs no separate detector, so it is one flag here.
  */
 data class GestureOptions(
     val isScrollEnabled: Boolean = true,
     val isZoomEnabled: Boolean = true,
     val isRotateEnabled: Boolean = true,
+    val isTiltEnabled: Boolean = true,
 ) {
     companion object {
         /** Pan + zoom, rotation locked north-up (the old default behaviour). */
         val RotationLocked =
             GestureOptions(isScrollEnabled = true, isZoomEnabled = true, isRotateEnabled = false)
+
+        /** Pan + zoom only: no twist-rotate, no two-finger tilt. What every app but `maps` uses. */
+        val TiltLocked =
+            GestureOptions(isScrollEnabled = true, isZoomEnabled = true, isRotateEnabled = false, isTiltEnabled = false)
 
         /** All gestures disabled (static map). */
         val AllDisabled = GestureOptions(isScrollEnabled = false, isZoomEnabled = false)
@@ -44,4 +49,23 @@ data class MapOptions(
      * [LayerOptions] for why, and for what turning one on costs.
      */
     val layerOptions: LayerOptions = LayerOptions(),
+    /**
+     * Where tiles come from. [TileSource.Server] (default) streams range requests for
+     * `planet.mamaps` over HTTP with a disk range cache; [TileSource.LocalFile] reads a
+     * pushed `.mamaps` archive from the app's external files dir and does no networking.
+     * Today only `maps` pushes an archive, so every other app stays on the default.
+     */
+    val tileSource: TileSource = TileSource.Server,
 )
+
+/**
+ * Where the renderer reads its tiles from.
+ */
+enum class TileSource {
+    /** Stream `planet.mamaps` range requests over HTTP, cached on disk. */
+    Server,
+    /** Read a pushed `.mamaps` archive from external files; no networking. Falls back to
+     * [Server] when no archive file is present, so a missing push degrades to streaming
+     * rather than a blank map. */
+    LocalFile,
+}

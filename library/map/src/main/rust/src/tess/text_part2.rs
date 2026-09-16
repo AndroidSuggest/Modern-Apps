@@ -34,6 +34,7 @@
             (0.0, 0.0),
             text_px,
             tile_span_px,
+            &|_, _| 0.0,
             vertices,
             indices,
         );
@@ -284,7 +285,9 @@
             for (text_px, tile_span_px) in [(12.0f32, 256.0f32), (64.0, 512.0), (17.5, 1024.0)] {
                 let (shaped, total) = shape(&atlas, weight, text, upper);
                 let px_per_font_unit = text_px / UP_EM as f32 / tile_span_px;
-                // The pre-generalisation expressions, verbatim.
+                // The pre-generalisation expressions, verbatim, plus the trailing anchor
+                // height (0.0: `emit_centred` samples flat ground, so the first six
+                // floats must still match the old layout bit-for-bit).
                 let origin_x = 0.5 - total * 0.5 * px_per_font_unit;
                 let baseline_y = 0.5 + 0.5 * CAP_HEIGHT_EM * UP_EM as f32 * px_per_font_unit;
                 let mut expected: Vec<f32> = Vec::new();
@@ -294,10 +297,10 @@
                     let x1 = x0 + g.w * px_per_font_unit;
                     let y0 = baseline_y - g.top * px_per_font_unit;
                     let y1 = y0 + g.h * px_per_font_unit;
-                    expected.extend_from_slice(&[x0, y0, uv.u0, uv.v0, 0.5, 0.5]);
-                    expected.extend_from_slice(&[x1, y0, uv.u1, uv.v0, 0.5, 0.5]);
-                    expected.extend_from_slice(&[x1, y1, uv.u1, uv.v1, 0.5, 0.5]);
-                    expected.extend_from_slice(&[x0, y1, uv.u0, uv.v1, 0.5, 0.5]);
+                    expected.extend_from_slice(&[x0, y0, uv.u0, uv.v0, 0.5, 0.5, 0.0]);
+                    expected.extend_from_slice(&[x1, y0, uv.u1, uv.v0, 0.5, 0.5, 0.0]);
+                    expected.extend_from_slice(&[x1, y1, uv.u1, uv.v1, 0.5, 0.5, 0.0]);
+                    expected.extend_from_slice(&[x0, y1, uv.u0, uv.v1, 0.5, 0.5, 0.0]);
                 }
 
                 let (mut v, mut idx) = (Vec::new(), Vec::new());

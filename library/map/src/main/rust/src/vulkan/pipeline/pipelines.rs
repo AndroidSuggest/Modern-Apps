@@ -1,13 +1,14 @@
-use ash::vk;
 use crate::tess::{fill, stroke};
 use crate::tile::symbol;
+use ash::vk;
 
 use super::assemble::build;
+use super::attributes::{fill_attributes, line_attributes, ribbon_attributes};
 use super::push::PUSH_CONSTANT_BYTES;
 use super::shaders::{
-    BUILDING_FRAG, BUILDING_VERT, FILL_FRAG, FILL_VERT, LINE_FRAG, LINE_VERT, PUCK_FRAG,
-    PUCK_VERT, RIBBON_FRAG, RIBBON_VERT, SPRITE_FRAG, SYMBOL_BILLBOARD_VERT, SYMBOL_FRAG,
-    SYMBOL_VERT, TERRAIN_FRAG, TERRAIN_VERT, shader_module,
+    shader_module, BUILDING_FRAG, BUILDING_VERT, FILL_FRAG, FILL_VERT, LINE_FRAG, LINE_VERT,
+    PUCK_FRAG, PUCK_VERT, RIBBON_FRAG, RIBBON_VERT, SPRITE_FRAG, SYMBOL_BILLBOARD_VERT,
+    SYMBOL_FRAG, SYMBOL_VERT, TERRAIN_FRAG, TERRAIN_VERT,
 };
 use super::state::{Depth, Stencil};
 
@@ -60,12 +61,30 @@ impl Pipelines {
         let terrain_vert = shader_module(device, TERRAIN_VERT)?;
         let terrain_frag = shader_module(device, TERRAIN_FRAG)?;
 
-        let fill_attributes = [vk::VertexInputAttributeDescription::default()
-            .location(0)
-            .binding(0)
-            .format(vk::Format::R32G32_SFLOAT)
-            .offset(0)];
-        let line_attributes = [
+        let fill_attributes = fill_attributes();
+        let line_attributes = line_attributes();
+        let ribbon_attributes = ribbon_attributes();
+        // Sprite (app markers): position (already clip-space) + uv (atlas), 4 floats. Markers
+        // resolve their corners on the CPU and draw through an identity matrix, so there is no
+        // tile-local anchor to project and this format must not grow. POI icons no longer use it —
+        // they moved to the billboard format below so they face the camera under tilt.
+        let symbol_attributes = [
+            vk::VertexInputAttributeDescription::default()
+                .location(0)
+                .binding(0)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(0),
+            vk::VertexInputAttributeDescription::default()
+                .location(1)
+                .binding(0)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(8),
+        ];
+        // Symbol text and POI icons (billboarded): position (tile-local) + uv (atlas) + ground
+        // anchor (tile-local) + the anchor's tile-normalised ground height, 7 floats. The anchor lets `symbol_billboard.vert` keep point labels
+        // and their icons upright and pinned to the ground under tilt; at pitch 0 it is ignored and
+        // output is unchanged. One format for both is what keeps an icon on top of its label.
+        let symbol_billboard_attributes = [
             vk::VertexInputAttributeDescription::default()
                 .location(0)
                 .binding(0)
@@ -86,69 +105,6 @@ impl Pipelines {
                 .binding(0)
                 .format(vk::Format::R32_SFLOAT)
                 .offset(24),
-        ];
-        // Ribbon (road carriageways): position (2 floats), join normal (2 floats), the normalised
-        // across-road coordinate `t`, and tile-local distance-along. 24-byte stride. `t` is both the
-        // vertex shader's extrusion multiplier and the fragment shader's marking coordinate, which
-        // is what keeps this to six floats rather than seven.
-        let ribbon_attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .location(0)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .location(1)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(8),
-            vk::VertexInputAttributeDescription::default()
-                .location(2)
-                .binding(0)
-                .format(vk::Format::R32_SFLOAT)
-                .offset(16),
-            vk::VertexInputAttributeDescription::default()
-                .location(3)
-                .binding(0)
-                .format(vk::Format::R32_SFLOAT)
-                .offset(20),
-        ];
-        // Sprite (app markers): position (already clip-space) + uv (atlas), 4 floats. Markers
-        // resolve their corners on the CPU and draw through an identity matrix, so there is no
-        // tile-local anchor to project and this format must not grow. POI icons no longer use it —
-        // they moved to the billboard format below so they face the camera under tilt.
-        let symbol_attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .location(0)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .location(1)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(8),
-        ];
-        // Symbol text and POI icons (billboarded): position (tile-local) + uv (atlas) + ground
-        // anchor (tile-local), 6 floats. The anchor lets `symbol_billboard.vert` keep point labels
-        // and their icons upright and pinned to the ground under tilt; at pitch 0 it is ignored and
-        // output is unchanged. One format for both is what keeps an icon on top of its label.
-        let symbol_billboard_attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .location(0)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .location(1)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(8),
-            vk::VertexInputAttributeDescription::default()
-                .location(2)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(16),
         ];
         // Building (WS-A): position+height (3 floats), face normal (3 floats), then the per-vertex
         // ARGB colour as one `R8G8B8A8_UNORM` word the shader reads as a 0..1 vec4. 28-byte stride.
@@ -353,8 +309,8 @@ impl Pipelines {
             cache,
         );
 
-        // The overlay quad is position-only in -1..1, so it shares the fill vertex
-        // format and its 8-byte stride.
+        // The overlay quad is position + draped height in -1..1, so it shares the fill vertex
+        // format and its 12-byte stride.
         let puck = build(
             device,
             layout,
@@ -417,8 +373,9 @@ impl Pipelines {
         device.destroy_shader_module(terrain_vert, None);
         device.destroy_shader_module(terrain_frag, None);
 
-        match (fill, line, ribbon, depth, building, terrain, symbol, icon, sprite, puck, mask, scrim)
-        {
+        match (
+            fill, line, ribbon, depth, building, terrain, symbol, icon, sprite, puck, mask, scrim,
+        ) {
             (
                 Ok(fill),
                 Ok(line),

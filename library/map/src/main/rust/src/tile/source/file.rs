@@ -28,8 +28,8 @@ impl FileRangeReader {
     /// opened.
     pub fn open(path: impl Into<PathBuf>) -> Result<FileRangeReader> {
         let path = path.into();
-        let file = File::open(&path)
-            .map_err(|e| Error(format!("cannot open {}: {e}", path.display())))?;
+        let file =
+            File::open(&path).map_err(|e| Error(format!("cannot open {}: {e}", path.display())))?;
         Ok(FileRangeReader { file, path })
     }
 
@@ -48,16 +48,21 @@ impl RangeReader for FileRangeReader {
         let mut buf = vec![0u8; length as usize];
         let mut filled = 0usize;
         while filled < buf.len() {
-            let Some(dst) = buf.get_mut(filled..) else { break };
+            let Some(dst) = buf.get_mut(filled..) else {
+                break;
+            };
             let Some(at) = offset.checked_add(filled as u64) else {
-                return err(format!("read offset overflow reading {}", self.path.display()));
+                return err(format!(
+                    "read offset overflow reading {}",
+                    self.path.display()
+                ));
             };
             #[cfg(windows)]
             let read = std::os::windows::fs::FileExt::seek_read(&self.file, dst, at);
             #[cfg(unix)]
             let read = std::os::unix::fs::FileExt::read_at(&self.file, dst, at);
-            let n = read
-                .map_err(|e| Error(format!("reading {} at {at}: {e}", self.path.display())))?;
+            let n =
+                read.map_err(|e| Error(format!("reading {} at {at}: {e}", self.path.display())))?;
             // A range past the end of the file comes back short rather than failing, as
             // the trait's contract requires and as an HTTP server would answer it.
             if n == 0 {
@@ -75,8 +80,8 @@ mod tests {
     use super::*;
 
     fn temp_file(name: &str, bytes: &[u8]) -> PathBuf {
-        let path = std::env::temp_dir()
-            .join(format!("filerangereader-{name}-{}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("filerangereader-{name}-{}", std::process::id()));
         std::fs::write(&path, bytes).expect("write temp file");
         path
     }

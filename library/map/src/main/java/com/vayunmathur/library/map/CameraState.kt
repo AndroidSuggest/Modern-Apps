@@ -24,11 +24,12 @@ import kotlin.math.log2
  * the whole Compose path are unchanged until something tilts or rotates the camera: a north-up,
  * level camera composes exactly the axis-aligned matrices it always did.
  *
- * [bearing] is a rotation, which composes into the clip matrices as a plain 2x2 and is still
- * honoured only on the [SurfaceMapRenderer.camera] path, because the Compose overlays are laid
- * out north-up. [pitch] is the perspective tilt; unlike bearing it *is* honoured on the Compose
- * path, because [Projection] is now pitch-aware (ray/plane), so `MapMarker`s and pins follow the
- * tilt instead of floating off the ground.
+ * [bearing] is a rotation, which composes into the clip matrices as a plain 2x2 and is
+ * honoured on both the [SurfaceMapRenderer.camera] and the Compose paths: [Projection]
+ * carries it, so `MapMarker`s and pins rotate with the basemap. [pitch] is the perspective
+ * tilt; like bearing it *is* honoured on the Compose path, because [Projection] is now
+ * pitch-aware (ray/plane), so `MapMarker`s and pins follow the tilt instead of floating
+ * off the ground.
  */
 data class CameraPosition(
     val target: GeoPoint = GeoPoint(0.0, 0.0),
@@ -39,11 +40,9 @@ data class CameraPosition(
      * Zero is north-up and is what every phone screen uses. Android Auto's heading-up
      * navigation is the one caller that sets it, through [SurfaceMapRenderer.camera].
      *
-     * **Setting it on a [CameraState] does nothing.** The Compose path forces it to zero
-     * before the frame, because [Projection]'s bearing is north-up and everything positioned
-     * through it — every `MapMarker`, pin and cluster — would stay put while the basemap turned
-     * underneath. Ignoring it is a visible no-op; honouring it would be a silent wrong
-     * render that nothing reports.
+     * Honoured on both paths: the Compose path carries it through [Projection] (which
+     * rotates overlays with the basemap) and the renderer path passes it to the native
+     * frame, so setting it rotates the whole map — basemap, markers, pins and clusters.
      */
     val bearing: Double = 0.0,
     /**
@@ -112,7 +111,7 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
      */
     val projection: Projection? by derivedStateOf {
         viewportDp?.let { vp ->
-            Projection(position.target, position.zoom, vp.width, vp.height, position.pitch, labelQueryProvider, markerPickProvider)
+            Projection(position.target, position.zoom, vp.width, vp.height, position.pitch, position.bearing, labelQueryProvider, markerPickProvider)
         }
     }
 
@@ -212,13 +211,17 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
         var zoom = position.zoom
 
         // Pan: dragging content one way shifts the world the same way, so the
-        // center moves opposite to the pan.
+        // center moves opposite to the pan. The gesture arrives in screen space but the
+        // Mercator math below is in world space, so inverse-rotate it by the bearing first
+        // (mirroring `Projection.positionFromScreenLocation`'s inverse step). At zero
+        // bearing the rotation is the identity and this is unchanged.
+        val panWorld = unrotatePan(panDp, position.bearing)
         val cWorld = Mercator.project(position.target.longitude, position.target.latitude, zoom)
         var cx = cWorld.x
         var cy = cWorld.y
         if (scrollEnabled) {
-            cx -= panDp.x
-            cy -= panDp.y
+            cx -= panWorld.x
+            cy -= panWorld.y
         }
         var center = Mercator.unproject(cx, cy, zoom)
 
@@ -290,12 +293,31 @@ private fun anchoredZoom(
     anchorDp: Offset,
     vp: Size,
 ): CameraPosition {
-    val dx = anchorDp.x - vp.width / 2.0
-    val dy = anchorDp.y - vp.height / 2.0
+    // The anchor is a screen point; its offset from the viewport centre is what the
+    // Mercator math consumes, so inverse-rotate that offset by the bearing first (same
+    // step as the pan in `onGesture`). At zero bearing this is the identity.
+    val rawDx = anchorDp.x - vp.width / 2.0
+    val rawDy = anchorDp.y - vp.height / 2.0
+    val anchorWorld = unrotatePan(Offset(rawDx.toFloat(), rawDy.toFloat()), from.bearing)
+    val dx = anchorWorld.x.toDouble()
+    val dy = anchorWorld.y.toDouble()
     val cw = Mercator.project(from.target.longitude, from.target.latitude, from.zoom)
     val geo = Mercator.unproject(cw.x + dx, cw.y + dy, from.zoom)
     val gw = Mercator.project(geo.longitude, geo.latitude, newZoom)
     return from.copy(target = Mercator.unproject(gw.x - dx, gw.y - dy, newZoom), zoom = newZoom)
+}
+
+/**
+ * A screen-space delta back into world space: the inverse of [Projection]'s bearing rotation
+ * (`x = cos*sx - sin*sy, y = sin*sx + cos*sy`). Short-circuited at zero so the north-up path
+ * is bit-identical.
+ */
+private fun unrotatePan(pan: Offset, bearingDeg: Double): Offset {
+    if (bearingDeg == 0.0) return pan
+    val radians = Math.toRadians(bearingDeg)
+    val cos = kotlin.math.cos(radians)
+    val sin = kotlin.math.sin(radians)
+    return Offset((cos * pan.x - sin * pan.y).toFloat(), (sin * pan.x + cos * pan.y).toFloat())
 }
 
 private fun lerp(start: Double, end: Double, t: Double): Double = start + (end - start) * t

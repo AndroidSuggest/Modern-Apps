@@ -202,10 +202,11 @@ class WeatherViewModel(
         viewModelScope.launch {
             val app = getApplication<Application>()
             val defaultName = app.getString(R.string.current_location)
+            val resolved = reverseGeocodeName(app, latitude, longitude)
             repository.replaceCurrentDeviceLocation(
                 SavedLocation(
-                    name = name.ifBlank { defaultName },
-                    country = "",
+                    name = resolved?.first ?: name.ifBlank { defaultName },
+                    country = resolved?.second.orEmpty(),
                     latitude = latitude,
                     longitude = longitude,
                     displayOrder = -1,
@@ -222,8 +223,15 @@ class WeatherViewModel(
         val distance = FloatArray(1)
         android.location.Location.distanceBetween(location.latitude, location.longitude, fix.latitude, fix.longitude, distance)
         if (distance[0] < MIN_LOCATION_MOVE_METERS) return location
+        val resolved = reverseGeocodeName(context, fix.latitude, fix.longitude)
+        if (resolved != null) repository.updateName(location.id, resolved.first, resolved.second)
         repository.updateCoordinates(location.id, fix.latitude, fix.longitude)
-        return location.copy(latitude = fix.latitude, longitude = fix.longitude)
+        return location.copy(
+            name = resolved?.first ?: location.name,
+            country = resolved?.second ?: location.country,
+            latitude = fix.latitude,
+            longitude = fix.longitude,
+        )
     }
 
     companion object {

@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.GestureOptions
+import com.vayunmathur.library.map.MapOptions
 import com.vayunmathur.library.map.RouteOverlay
 import com.vayunmathur.library.map.VectorMap
 import com.vayunmathur.library.ui.Card
@@ -54,7 +56,7 @@ internal fun RideMapPane(
     modifier: Modifier = Modifier,
 ) {
     Box(modifier) {
-        VectorMap(cameraState = camera, route = routeOverlay, modifier = Modifier.fillMaxSize())
+        VectorMap(cameraState = camera, route = routeOverlay, modifier = Modifier.fillMaxSize(), options = MapOptions(gestureOptions = GestureOptions.TiltLocked))
         val projection = camera.projection
         if (projection != null) {
             pickup?.let {

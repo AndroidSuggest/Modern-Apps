@@ -1,6 +1,6 @@
 use tilecodec::mamaps::body::{
-    LANE_LEFT, LANE_MERGE_TO_LEFT, LANE_MERGE_TO_RIGHT, LANE_REVERSE, LANE_RIGHT,
-    LANE_SHARP_LEFT, LANE_SHARP_RIGHT, LANE_SLIGHT_LEFT, LANE_SLIGHT_RIGHT, LANE_THROUGH,
+    LANE_LEFT, LANE_MERGE_TO_LEFT, LANE_MERGE_TO_RIGHT, LANE_REVERSE, LANE_RIGHT, LANE_SHARP_LEFT,
+    LANE_SHARP_RIGHT, LANE_SLIGHT_LEFT, LANE_SLIGHT_RIGHT, LANE_THROUGH,
 };
 
 /// The arrow a single lane draws, chosen from its `turn:lanes` indication set.
@@ -46,5 +46,7 @@ pub fn arrow_for(mask: u16) -> Option<TurnArrow> {
         (LANE_MERGE_TO_RIGHT, TurnArrow::MergeRight),
         (LANE_REVERSE, TurnArrow::Reverse),
     ];
-    RANK.iter().find(|(bit, _)| mask & bit != 0).map(|(_, arrow)| *arrow)
+    RANK.iter()
+        .find(|(bit, _)| mask & bit != 0)
+        .map(|(_, arrow)| *arrow)
 }

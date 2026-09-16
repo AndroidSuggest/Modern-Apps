@@ -8,27 +8,16 @@ import org.json.JSONObject
 /**
  * Speech-to-text entry point for [com.vayunmathur.speech.service.WhisperRecognitionService].
  *
- * A thin seam over [WhisperHandle], which runs **whisper-base** on `:library:ml`'s Vulkan compute
- * runtime. It replaced `WhisperOnnxEngine` and with it the last third-party inference runtime in the
- * tree: the two int8 ONNX exports (76.9 MB) became one 70.6 MiB `.maml`, and the reduced
- * onnxruntime AAR's 10,466,856 bytes of arm64 `.so` left the APK with them.
- *
- * The port is also **four times closer** to the fp32 checkpoint than the exports were — mean absolute
- * error 0.029 against 0.110 over the encoder's output — because it quantises per output channel where
- * onnxruntime's dynamic quantiser did it per tensor. See
- * `library/ml/src/main/rust/src/nets/whisper.rs`.
- *
- * # What stayed in Kotlin
- *
- * [WhisperFeatures] (the mel front end) and [WhisperTokenizer] (byte-level decode), both unchanged.
- * The mel is pinned against HuggingFace by `WhisperFeaturesTest` and a wrong one produces confident
- * nonsense rather than an error, so it was not worth reimplementing. The **decode loop** did move:
- * it is `post::whisper` now, host-tested against a scripted stub.
+ * A thin seam over [WhisperHandle], which runs **whisper-base** ExecuTorch-first with a
+ * LiteRT fallback: raw 16 kHz PCM goes straight at the Vulkan `.pte` when it is present
+ * (no log-mel — the export eats waveform), and otherwise falls back to the [WhisperFeatures]
+ * mel front end plus the int8 `.tflite` rung. [WhisperTokenizer] (byte-level decode) serves
+ * both paths, unchanged.
  *
  * # The ids come out of the asset
  *
  * [GenerationConfig] reads `generation_config.json`, as the ONNX engine did, and hands the ids to
- * native. Nothing here hardcodes them — `<|notimestamps|>` especially, because dropping it turns the
+ * either backend. Nothing here hardcodes them — `<|notimestamps|>` especially, because dropping it turns the
  * transcript into timestamped text rather than failing.
  *
  * Not thread-safe: a transcription re-records the network once per token. Call [transcribe] from a
@@ -113,24 +102,15 @@ class WhisperEngine(context: Context) {
             Log.e(TAG, "cannot read $VOCAB", t)
             return false
         }
-        // Downloads first (77 MB stays out of the APK); bundled assets as fallback.
-        val handle = if (WhisperModel.isDownloaded(app)) {
-            WhisperHandle.inDirectory(
-                WhisperModel.modelDir(app),
-                cfg.special,
-                cfg.langToId.values.toIntArray(),
-                cfg.suppress,
-                cfg.suppressAtBegin,
-            )
-        } else {
-            WhisperHandle.inAssets(
-                app.assets,
-                cfg.special,
-                cfg.langToId.values.toIntArray(),
-                cfg.suppress,
-                cfg.suppressAtBegin,
-            )
-        }
+        // Download-only (77 MB stays out of the APK); MainActivity gates on the
+        // download checker, so by the time this runs the file is present.
+        val handle = WhisperHandle.inDirectory(
+            WhisperModel.modelDir(app),
+            cfg.special,
+            cfg.langToId.values.toIntArray(),
+            cfg.suppress,
+            cfg.suppressAtBegin,
+        )
         if (!handle.isAvailable) {
             Log.e(TAG, "cannot bring up $handle")
             handle.close()
@@ -147,14 +127,20 @@ class WhisperEngine(context: Context) {
     /**
      * Transcribe [pcm16k] (16 kHz mono). [language] is ISO-639-1 or null/"auto" for automatic
      * detection. Returns the text, or null if the model isn't ready or inference failed.
+     *
+     * ExecuTorch-first: raw PCM goes at the Vulkan `.pte` (no mel front end), and only a
+     * null from that path pays for [WhisperFeatures.logMel] plus the `.tflite` rung.
      */
     fun transcribe(pcm16k: ShortArray, language: String?): String? {
         if (!ensure()) return null
         val cfg = config ?: return null
         val tok = tokenizer ?: return null
         return try {
+            val token = languageToken(cfg, language)
+            val etIds = synchronized(lock) { whisper?.transcribePcm(pcm16k, token) }
+            if (etIds != null) return tok.decode(etIds.toList())
             val mel = WhisperFeatures.logMel(pcm16k)
-            val ids = synchronized(lock) { whisper?.transcribe(mel, languageToken(cfg, language)) }
+            val ids = synchronized(lock) { whisper?.transcribe(mel, token) }
                 ?: return null
             tok.decode(ids.toList())
         } catch (t: Throwable) {

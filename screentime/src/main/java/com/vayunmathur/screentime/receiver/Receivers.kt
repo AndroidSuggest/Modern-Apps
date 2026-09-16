@@ -54,7 +54,7 @@ class TimerReachedReceiver : BroadcastReceiver() {
     }
 }
 
-/** Fired at each focus / wind-down boundary. Re-arms the next one through [Coordinator]. */
+/** Fired at each wind-down boundary. Re-arms the next one through [Coordinator]. */
 class ScheduleReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {

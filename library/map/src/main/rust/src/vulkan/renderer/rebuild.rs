@@ -110,10 +110,16 @@ impl Drop for Renderer {
             self.scratch.clear();
             for frame in &self.frames {
                 self.context.device.destroy_fence(frame.in_flight, None);
-                self.context.device.destroy_semaphore(frame.image_available, None);
-                self.context.device.destroy_semaphore(frame.render_finished, None);
+                self.context
+                    .device
+                    .destroy_semaphore(frame.image_available, None);
+                self.context
+                    .device
+                    .destroy_semaphore(frame.render_finished, None);
             }
-            self.context.device.destroy_command_pool(self.command_pool, None);
+            self.context
+                .device
+                .destroy_command_pool(self.command_pool, None);
             if let Some(image) = &self.glyph_atlas {
                 image.destroy(&self.context.device);
             }

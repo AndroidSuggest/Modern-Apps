@@ -1,4 +1,4 @@
-use super::metrics::{ATLAS_COLS, ATLAS_PX, CELL_PX, SDF_SPREAD_PX, UvRect};
+use super::metrics::{UvRect, ATLAS_COLS, ATLAS_PX, CELL_PX, SDF_SPREAD_PX};
 
 /// Where a glyph's bitmap sits inside its atlas cell.
 ///
@@ -29,7 +29,13 @@ pub(super) fn place_in_cell(w: u32, h: u32) -> Placement {
     let scale = (avail / w.max(h).max(1) as f32).min(1.0);
     let dw = ((w as f32 * scale).round() as u32).clamp(1, avail as u32);
     let dh = ((h as f32 * scale).round() as u32).clamp(1, avail as u32);
-    Placement { scale, ox: (CELL_PX - dw) / 2, oy: (CELL_PX - dh) / 2, dw, dh }
+    Placement {
+        scale,
+        ox: (CELL_PX - dw) / 2,
+        oy: (CELL_PX - dh) / 2,
+        dw,
+        dh,
+    }
 }
 
 /// The atlas rect covering a glyph's ink plus its spread margin.

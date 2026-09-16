@@ -35,6 +35,8 @@ import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.map.CameraPosition
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.GestureOptions
+import com.vayunmathur.library.map.MapOptions
 import com.vayunmathur.library.map.VectorMap
 import com.vayunmathur.library.map.rememberCameraState
 import com.vayunmathur.library.ui.AppScaffold
@@ -224,7 +226,7 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
     }
 
     Box(modifier) {
-        VectorMap(cameraState = camera) {
+        VectorMap(cameraState = camera, options = MapOptions(gestureOptions = GestureOptions.TiltLocked)) {
             // Distinct glyph per pin: menu = restaurant, arrow = courier, home = you.
             restaurant?.let {
                 MapMarker(it) { PinChrome(MaterialTheme.colorScheme.tertiary) { IconRestaurant() } }

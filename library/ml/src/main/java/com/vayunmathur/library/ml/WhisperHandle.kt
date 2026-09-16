@@ -1,78 +1,87 @@
 package com.vayunmathur.library.ml
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
-import android.content.res.AssetManager
 import android.util.Log
-import java.nio.FloatBuffer
-import java.nio.LongBuffer
+import java.io.File
+import com.google.ai.edge.litert.CompiledModel
+import org.pytorch.executorch.EValue
+import org.pytorch.executorch.Module
+import org.pytorch.executorch.Tensor
 
 /**
- * On-device speech recognition in ~99 languages: whisper-base on the reduced ONNX Runtime
- * build.
+ * On-device speech recognition in ~99 languages: whisper-base, ExecuTorch-first with a LiteRT
+ * fallback.
  *
- * A two-convolution stem that turns `[80, 3000]` log-mel frames into 1500 positions, 6 encoder
- * layers, and 6 decoder layers with self and cross attention; `d_model` 512, 8 heads of 64, and a
- * 51,865-entry vocabulary tied between the input embedding and the logits projection. 72.6 million
- * parameters.
+ * The preferred path is the Vulkan int8 `.pte` (`whisper_base_vulkan_int8.pte`, ~196 MB, with
+ * `whisper_base_vulkan_fp16.pte` as fallback) on ExecuTorch, resolved opportunistically from
+ * the download directory — no mirror pins exist yet, so it is never a gated download. Unlike
+ * the LiteRT rung it eats **raw waveform**: `encode` takes `[480000]` float32 samples straight
+ * to the decoder's full cross-attention KV cache (`[1,1500,6144]` = 512 x 6 layers x K+V),
+ * and `decode` is single-token incremental (`token [1,1]` int64 + `position [1]` int64 +
+ * cache → `[1,1,51865]` logits). No log-mel, no 128-prefix, no causal mask. See
+ * `analysis/et-whisper/PARITY.md` for the interface notes.
  *
- * # Two bundled assets
+ * The fallback is the ladder ship rung (`base_30s_i8.tflite`, vendor int8) on LiteRT, which
+ * exposes two signatures: `encode` (`args_0 [1,80,3000]` mel → `output_0 [1,1500,512]`
+ * hidden) and `decode` (`args_0` hidden + `args_1 [1,128]` int32 token prefix +
+ * `args_2 [1,1,128,128]` causal mask → `output_0 [1,128,51865]` logits). No KV cache:
+ * each step feeds the whole produced prefix padded to 128.
  *
- * `whisper-base/encoder_model_int8.onnx` and `whisper-base/decoder_model_merged_int8.onnx`
- * ship inside the APK, so this has an [inAssets] and no download. The decoder is the merged
- * export: it takes all 24 `past_key_values.*` inputs on every call (zero-length with
- * `use_cache_branch = false` on the first step, which makes it compute cross-attention K/V
- * from `encoder_hidden_states`) and returns `present.*` for the next step.
+ * [transcribe] tries ExecuTorch first and falls back to LiteRT when the `.pte` is absent,
+ * the Vulkan delegate is not linked, or the run fails — so the recogniser keeps working on
+ * devices the custom Vulkan AAR does not cover yet. The `.tflite` stays regardless, until
+ * the on-device transcript-level parity gate passes (exact token-id match on fixed
+ * fixtures; encoder-hidden cosine is NOT a valid gate — the representations differ).
  *
- * An asset must be stored **uncompressed**: `noCompress += "onnx"` in
- * `speech/build.gradle.kts`.
+ * 72.6 million parameters.
+ *
+ * # One downloaded file (plus an opportunistic second)
+ *
+ * `whisper/base_30s_i8.tflite` downloads on first use (see `WhisperModel` in `:speech`),
+ * so this has an [inDirectory] and no asset path. The ET candidate lives next to it when
+ * present; it is never required.
+ *
+ * An asset must be stored **uncompressed** if ever bundled: `noCompress += "tflite"`.
  *
  * # The special ids come from the asset, not from here
  *
- * [inAssets] takes them as arguments rather than hardcoding them, because they live in the model's
- * own `generation_config.json` and a second copy would be a second thing to get wrong. The
- * `<|notimestamps|>` id in particular is part of the decoder prompt, and dropping it turns the
- * output into timestamped text rather than failing.
+ * [inDirectory] takes them as arguments rather than hardcoding them, because they live in
+ * the model's own `generation_config.json` and a second copy would be a second thing to
+ * get wrong. The `<|notimestamps|>` id in particular is part of the decoder prompt, and
+ * dropping it turns the output into timestamped text rather than failing. Both backends
+ * share the same five scalars, suppress lists and 224-token cap.
  *
  * # Latency
  *
- * The encoder is ~43.7 GMAC per 30-second window regardless of how much speech is in it, and every
- * decode step runs the full decoder. This is not a real-time recogniser; call it from a worker.
+ * The encoder is ~43.7 GMAC per 30-second window regardless of how much speech is in it.
+ * The ET path replaces each full-prefix LiteRT decode step with one single-position pass,
+ * so it is strictly cheaper per token once loaded. Either way this is not a real-time
+ * recogniser; call it from a worker.
  *
  * # Availability
  *
- * Construction never throws. [isAvailable] is false when an asset is absent or has an
- * operator outside the reduced build, or when the ids do not describe this model — and then
- * [transcribe] returns null.
- *
- * When the Vulkan backend is usable and a graph is allowlisted, that graph runs on the
- * Vulkan fast path and ORT is kept only as the fallback, per graph: a Vulkan failure (or
- * short output) falls back to the ORT session when it exists, preserving the null-on-failure
- * contract. The encoder needs no cache; the decoder threads a native KV cache (one
- * `kvCreate` per transcription, mirroring the [Past]/emptyPast structure below) and the
- * 51,865-wide argmax goes through the bridge so the host never scans the full row.
+ * Construction never throws. [isAvailable] is false when neither backend came up — the
+ * files are absent, have an operator the runtime cannot execute, or the ids do not
+ * describe this model — and then [transcribe] and [transcribePcm] return null.
  *
  * # Threading
  *
- * Not thread-safe, and more sharply than most handles here: a transcription threads the KV
- * cache through one decode step per token, so two concurrent calls would interleave cache
- * states. A caller must hold a lock across [transcribe] and [close].
+ * Not thread-safe: a transcription runs one decode step per token, so two concurrent
+ * calls would interleave states. A caller must hold a lock across [transcribe],
+ * [transcribePcm] and [close].
  */
 class WhisperHandle private constructor(private val source: String) : AutoCloseable {
-    private var encoder: OrtSession? = null
-    private var decoder: OrtSession? = null
-    private var vulkanEnc: Long = 0L
-    private var vulkanDec: Long = 0L
+    private var session: CompiledModel? = null
+    private var etModule: Module? = null
     private var special: IntArray = IntArray(0)
     private var suppress: Set<Int> = emptySet()
     private var suppressAtBegin: Set<Int> = emptySet()
-    private var assetDir: String = DIR
+    private var languages: IntArray = IntArray(0)
+    private var modelFile: String = ""
+    private var etModelFile: String = ""
+    private val lock = Any()
 
-    /** True if both graphs came up — on Vulkan, on ORT, or one of each — and the ids describe them. */
-    val isAvailable: Boolean
-        get() = (encoder != null || vulkanEnc != 0L) &&
-            (decoder != null || vulkanDec != 0L)
+    /** True if either backend came up. */
+    val isAvailable: Boolean get() = session != null || etModule != null
 
     /**
      * Transcribe one 30-second log-mel window into token ids, or null on failure.
@@ -84,27 +93,18 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
     fun transcribe(mel: FloatArray, languageToken: Int): IntArray? {
         if (mel.size != MELS * FRAMES) return null
         if (special.size != SPECIAL_IDS) return null
-        // Vulkan-first, per graph; any failure drops through to the ORT path.
-        try {
-            vulkanTranscribe(mel, languageToken)?.let { return it }
-        } catch (e: Throwable) {
-            Log.w(TAG, "whisper vulkan transcription failed, falling back to ORT", e)
-        }
-        val dec = decoder ?: return null
+        val live = session ?: return null
         return try {
-            val env = OrtEnvironment.getEnvironment()
-            ortHiddenTensor(env, mel).useOrt { hidden ->
-                if (hidden == null) return null
-                val lang = if (languageToken < 0) {
-                    detectLanguage(dec, env, hidden) ?: return null
-                } else {
-                    languageToken
-                }
-                val prompt = intArrayOf(
-                    special[0], lang, special[2], special[3],
-                )
-                greedyDecode(dec, env, hidden, prompt).toIntArray()
+            val hidden = synchronized(lock) {
+                LiteRtSessions.runSignature(live, mapOf("args_0" to mel), listOf("output_0"), ENCODE)
+            }?.get("output_0") as? FloatArray ?: return null
+            val lang = if (languageToken < 0) {
+                detectLanguage(live, hidden) ?: return null
+            } else {
+                languageToken
             }
+            val prompt = intArrayOf(special[0], lang, special[2], special[3])
+            synchronized(lock) { greedyDecode(live, hidden, prompt) }?.toIntArray()
         } catch (e: Throwable) {
             Log.e(TAG, "whisper transcription failed", e)
             null
@@ -112,465 +112,244 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
     }
 
     /**
-     * ORT hidden states for [mel]: the ORT encoder when it exists, otherwise the
-     * Vulkan encoder's floats wrapped back into a tensor so a mixed
-     * Vulkan-encode + ORT-decode turn still serves. Null when neither can encode.
+     * Transcribe one 30-second window of **raw PCM** into token ids, or null on failure.
+     *
+     * [pcm16k] is 16 kHz mono, padded with silence or truncated to [SAMPLES_30S] exactly
+     * like the mel front end does. This is the ExecuTorch-first entry point: the Vulkan
+     * export eats raw waveform, so no log-mel is computed. Null when the ET module is
+     * down (or a run fails) so the caller can fall back to [transcribe] on the `.tflite`.
+     * [languageToken] is a `<|xx|>` id, or negative to let the model detect the language.
+     * The ids are raw — the caller's tokenizer skips the special and timestamp ones.
      */
-    private fun ortHiddenTensor(env: OrtEnvironment, mel: FloatArray): OnnxTensor? {
-        val enc = encoder
-        if (enc != null) {
-            return runCatching { encode(enc, env, mel) }.getOrNull()
+    fun transcribePcm(pcm16k: ShortArray, languageToken: Int): IntArray? {
+        if (special.size != SPECIAL_IDS) return null
+        val live = etModule ?: return null
+        return try {
+            val pcm = FloatArray(SAMPLES_30S)
+            val count = pcm16k.size.coerceAtMost(SAMPLES_30S)
+            for (i in 0 until count) pcm[i] = pcm16k[i] / 32768f
+            val hidden = synchronized(lock) { etEncode(live, pcm) } ?: return null
+            val lang = if (languageToken < 0) {
+                etDetectLanguage(live, hidden) ?: return null
+            } else {
+                languageToken
+            }
+            val prompt = intArrayOf(special[0], lang, special[2], special[3])
+            synchronized(lock) { etGreedyDecode(live, hidden, prompt) }?.toIntArray()
+        } catch (e: Throwable) {
+            Log.e(TAG, "whisper ET transcription failed, falling back to LiteRT", e)
+            null
         }
-        val fast = runCatching { vulkanEncodeMel(mel) }.getOrNull() ?: return null
-        return runCatching {
-            OnnxTensor.createTensor(
-                env, FloatBuffer.wrap(fast.data),
-                longArrayOf(1, fast.seq.toLong(), fast.dim.toLong()),
-            )
-        }.getOrNull()
     }
 
-    /** Free both networks (Vulkan and/or ORT). Idempotent. */
+    /** Free both backends. Idempotent. */
     override fun close() {
-        val encHandle = vulkanEnc
-        vulkanEnc = 0L
-        if (encHandle != 0L) {
-            try {
-                VulkanSessions.close(encHandle)
-            } catch (e: Throwable) {
-                Log.w(TAG, "whisper vulkan encoder close failed", e)
-            }
+        synchronized(lock) {
+            session = null
+            LiteRtSessions.close(sessionKey())
+            etModule = null
+            if (etModelFile.isNotEmpty()) ExecutorchSessions.close("file:$etModelFile")
         }
-        val decHandle = vulkanDec
-        vulkanDec = 0L
-        if (decHandle != 0L) {
-            try {
-                VulkanSessions.close(decHandle)
-            } catch (e: Throwable) {
-                Log.w(TAG, "whisper vulkan decoder close failed", e)
-            }
-        }
-        encoder = null
-        decoder = null
-        OnnxSessions.close(sessionKey(ENCODER))
-        OnnxSessions.close(sessionKey(DECODER))
     }
 
-    private var sessionPrefix: String = ""
-
-    private fun sessionKey(name: String): String = "$sessionPrefix$assetDir/$name"
+    private fun sessionKey(): String = "file:$modelFile"
 
     override fun toString(): String = "whisper-base from $source"
 
-    // -- Vulkan fast path -----------------------------------------------------
-
-    /** Encoder output materialised on the host so either decoder can consume it. */
-    private class EncHidden(val data: FloatArray, val seq: Int, val dim: Int)
-
-    /**
-     * Best-effort Vulkan transcription; null when Vulkan cannot serve it so the caller
-     * falls back to ORT. Either, both, or neither graph may be on Vulkan — the hidden
-     * states cross the boundary as plain floats.
-     */
-    private fun vulkanTranscribe(mel: FloatArray, languageToken: Int): IntArray? {
-        val vDec = vulkanDec
-        // Without a Vulkan decoder the fast path cannot serve the turn: the ORT
-        // caller handles whole turns itself (including mixed Vulkan-encode graphs
-        // via [ortHiddenTensor]), so bail before spending an encode here.
-        if (vDec == 0L) return null
-        // Encode: Vulkan-first, ORT fallback.
-        var hidden: EncHidden? = null
-        if (vulkanEnc != 0L) {
-            hidden = runCatching { vulkanEncodeMel(mel) }.getOrNull()
-            if (hidden == null) Log.w(TAG, "whisper vulkan encode failed, trying ORT encode")
-        }
-        if (hidden == null) {
-            val enc = encoder ?: return null
-            hidden = runCatching {
-                val env = OrtEnvironment.getEnvironment()
-                encode(enc, env, mel).useOrt { tensor ->
-                    val shape = tensor.info.shape
-                    val flat = FloatArray(tensor.floatBuffer.remaining())
-                    tensor.floatBuffer.get(flat)
-                    EncHidden(flat, shape[1].toInt(), shape[2].toInt())
-                }
-            }.getOrNull() ?: return null
-        }
-        val encHidden = hidden
-        val promptLang = if (languageToken < 0) {
-            vulkanDetectLanguage(vDec, encHidden) ?: return null
-        } else {
-            languageToken
-        }
-        val prompt = intArrayOf(special[0], promptLang, special[2], special[3])
-        return vulkanGreedyDecode(vDec, encHidden, prompt)
-    }
-
-    /** One encoder run over Vulkan; null when the bridge returns nothing usable. */
-    private fun vulkanEncodeMel(mel: FloatArray): EncHidden? {
-        val handle = vulkanEnc
-        if (handle == 0L) return null
-        val outputs = VulkanSessions.run(
-            handle,
-            listOf(VulkanWire.floats(longArrayOf(1, MELS.toLong(), FRAMES.toLong()), mel)),
-        ) ?: return null
-        val hiddenT = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: run {
-            Log.w(TAG, "whisper vulkan encoder returned no f32 output")
-            return null
-        }
-        val floats = hiddenT.asFloats()
-        if (floats.isEmpty()) {
-            Log.w(TAG, "whisper vulkan encoder returned no floats")
-            return null
-        }
-        // Prefer the output tensor's shape; fall back to the known [1, 1500, 512].
-        var seq = ENC_SEQ
-        var dim = ENC_DIM
-        if (hiddenT.shape.size == 3) {
-            seq = hiddenT.shape[1].toInt()
-            dim = hiddenT.shape[2].toInt()
-        }
-        if (seq <= 0 || dim <= 0 || floats.size != seq * dim) {
-            // Last resort: infer the sequence length from the payload itself.
-            if (floats.size % ENC_DIM == 0) {
-                seq = floats.size / ENC_DIM
-                dim = ENC_DIM
-            } else {
-                Log.w(TAG, "whisper vulkan encoder returned ${floats.size} floats, want ${ENC_SEQ * ENC_DIM}")
-                return null
-            }
-        }
-        return EncHidden(floats, seq, dim)
-    }
-
-    /** Language detection over Vulkan: one uncached step from `<|startoftranscript|>`. */
-    private fun vulkanDetectLanguage(decHandle: Long, hidden: EncHidden): Int? {
+    /** Language detection: one decode step from `<|startoftranscript|>`, argmax over [languages]. */
+    private fun detectLanguage(live: CompiledModel, hidden: FloatArray): Int? {
         return try {
-            val kv = VulkanBridge.kvCreate(decHandle, DETECT_MAX_SEQ)
-            if (kv == 0L) return null
-            try {
-                val inputs = listOf(
-                    VulkanWire.longs(longArrayOf(1, 1), longArrayOf(special[0].toLong())),
-                    VulkanWire.floats(
-                        longArrayOf(1, hidden.seq.toLong(), hidden.dim.toLong()), hidden.data,
-                    ),
-                    boolTensor(false),
-                )
-                val outBytes = VulkanBridge.runCached(decHandle, kv, VulkanWire.encode(inputs))
-                    ?: return null
-                val logits = VulkanWire.decode(outBytes)
-                    ?.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
-                val floats = logits.asFloats()
-                if (floats.isEmpty()) return null
-                val vocab = floats.size // seqLen is 1 here.
-                val fallback = 50259
-                var best = fallback
-                var bestScore = -Float.MAX_VALUE
-                for (id in languages) {
-                    if (id < vocab && floats[id] > bestScore) {
-                        bestScore = floats[id]
-                        best = id
-                    }
-                }
-                best
-            } finally {
-                runCatching { VulkanBridge.kvClose(kv) }
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "whisper vulkan language detection failed, assuming en", e)
-            50259
-        }
-    }
-
-    /**
-     * Greedy decode over Vulkan, mirroring [greedyDecode]: the prompt goes out uncached
-     * (which makes the graph compute cross-attention K/V from the hidden states), then
-     * one-token cached steps thread the native KV cache. The large-vocabulary argmax
-     * runs on the bridge; the host parse is only the fallback.
-     */
-    private fun vulkanGreedyDecode(
-        decHandle: Long,
-        hidden: EncHidden,
-        prompt: IntArray,
-    ): IntArray? {
-        val limit = (special[4] - prompt.size).coerceAtMost(MAX_NEW_TOKENS)
-        if (limit <= 0) return IntArray(0)
-        val kv = try {
-            VulkanBridge.kvCreate(decHandle, prompt.size + limit)
-        } catch (e: Throwable) {
-            Log.w(TAG, "whisper vulkan kvCreate failed", e)
-            return null
-        }
-        if (kv == 0L) return null
-        val out = ArrayList<Int>()
-        try {
-            var next = -1
-            var step = 0
-            while (step < limit) {
-                val ids = if (step == 0) prompt else intArrayOf(next)
-                val longIds = LongArray(ids.size) { ids[it].toLong() }
-                val inputs = listOf(
-                    VulkanWire.longs(longArrayOf(1, ids.size.toLong()), longIds),
-                    VulkanWire.floats(
-                        longArrayOf(1, hidden.seq.toLong(), hidden.dim.toLong()), hidden.data,
-                    ),
-                    boolTensor(step > 0),
-                )
-                val outBytes = try {
-                    VulkanBridge.runCached(decHandle, kv, VulkanWire.encode(inputs))
-                } catch (e: Throwable) {
-                    Log.w(TAG, "whisper vulkan decode step $step failed", e)
-                    return null
-                } ?: return null
-                next = vulkanArgmax(outBytes, ids.size, step == 0) ?: return null
-                step++
-                if (next == special[1]) break
-                out.add(next)
-            }
-            return out.toIntArray()
-        } finally {
-            runCatching { VulkanBridge.kvClose(kv) }
-        }
-    }
-
-    /**
-     * Argmax of the last logits row via the bridge, with the same suppression as the
-     * ORT path; falls back to a host scan of the payload.
-     */
-    private fun vulkanArgmax(payload: ByteArray, seqLen: Int, firstStep: Boolean): Int? {
-        val suppressMerged = if (firstStep) {
-            (suppress + suppressAtBegin).toIntArray()
-        } else {
-            suppress.toIntArray()
-        }
-        val logits = VulkanWire.decode(payload)
-            ?.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
-        val floats = logits.asFloats()
-        if (floats.isEmpty()) return null
-        if (seqLen <= 0 || floats.size % seqLen != 0) return null
-        val vocab = floats.size / seqLen
-        if (vocab <= 0) return null
-        // No suppression: the bridge argmax over the last row is exact.
-        if (suppressMerged.isEmpty()) {
-            val idx = try {
-                VulkanBridge.argmaxLastRow(logits.bytes, vocab)
-            } catch (e: Throwable) {
-                Log.w(TAG, "whisper bridge argmax failed, scanning on host", e)
-                -1
-            }
-            if (idx >= 0) return idx
-        }
-        var best = 0
-        var bestScore = -Float.MAX_VALUE
-        val base = (seqLen - 1) * vocab
-        val skip = suppressMerged.toSet()
-        for (i in 0 until vocab) {
-            if (i in skip) continue
-            val score = floats[base + i]
-            if (score > bestScore) {
-                bestScore = score
-                best = i
-            }
-        }
-        return best
-    }
-
-    /**
-     * Best-effort Vulkan open for one graph; leaves the handle at 0 on any failure so
-     * ORT stays the fallback. The model bytes are read once and shared by the
-     * preflight check and the open.
-     */
-    private fun tryVulkan(key: String, readModel: () -> ByteArray, assign: (Long) -> Unit) {
-        try {
-            if (!VulkanSessions.isUsable()) return
-            if (key !in VulkanSessions.allowlist) return
-            val modelBytes = try {
-                readModel()
-            } catch (e: Throwable) {
-                Log.w(TAG, "cannot read $key for vulkan preflight", e)
-                return
-            }
-            val problem = VulkanSessions.preflight(key) { modelBytes }
-            if (problem != null) {
-                Log.w(TAG, "vulkan preflight skipped for $key: $problem")
-                return
-            }
-            val handle = VulkanSessions.open(key) { modelBytes }
-            if (handle != 0L) {
-                assign(handle)
-                Log.i(TAG, "vulkan session open for $key")
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "vulkan open failed for $key, using ORT", e)
-        }
-    }
-
-    /**
-     * Best-effort Vulkan open from a file on disk; leaves the handle at 0 on any failure so
-     * ORT stays the fallback. [VulkanSessions.openPath] resolves any sidecar weights.
-     */
-    private fun tryVulkanPath(key: String, path: String, assign: (Long) -> Unit) {
-        try {
-            if (!VulkanSessions.isUsable()) return
-            if (key !in VulkanSessions.allowlist) return
-            val handle = VulkanSessions.openPath(key, path)
-            if (handle != 0L) {
-                assign(handle)
-                Log.i(TAG, "vulkan session open for $key")
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "vulkan open failed for $key, using ORT", e)
-        }
-    }
-
-    // -- ORT path (unchanged) -------------------------------------------------
-
-    private fun encode(enc: OrtSession, env: OrtEnvironment, mel: FloatArray): OnnxTensor {
-        val shape = longArrayOf(1, MELS.toLong(), FRAMES.toLong())
-        OnnxTensor.createTensor(env, FloatBuffer.wrap(mel), shape).useOrt { input ->
-            enc.run(mapOf("input_features" to input)).useOrt { result ->
-                val out = result.get(0) as OnnxTensor
-                val buf = FloatArray(out.info.shape.fold(1L) { a, b -> a * b }.toInt())
-                out.floatBuffer.get(buf)
-                return OnnxTensor.createTensor(env, FloatBuffer.wrap(buf), out.info.shape)
-            }
-        }
-    }
-
-    private fun detectLanguage(dec: OrtSession, env: OrtEnvironment, hidden: OnnxTensor): Int? {
-        return try {
-            emptyPast(env).use { past ->
-                val ids = OnnxTensor.createTensor(
-                    env, LongBuffer.wrap(longArrayOf(special[0].toLong())), longArrayOf(1, 1),
-                )
-                ids.useOrt {
-                    dec.run(feeds(hidden, past, it, useCache = false)).useOrt { result ->
-                        val logits = result.get(0) as OnnxTensor
-                        val vocab = logits.info.shape.last().toInt()
-                        val row = FloatArray(vocab)
-                        logits.floatBuffer.position(0)
-                        logits.floatBuffer.get(row)
-                        val fallback = 50259
-                        var best = fallback
-                        var bestScore = -Float.MAX_VALUE
-                        for (id in languages) {
-                            if (id < vocab && row[id] > bestScore) {
-                                bestScore = row[id]
-                                best = id
-                            }
-                        }
-                        best
-                    }
+            val logits = decodeStep(live, hidden, intArrayOf(special[0])) ?: return null
+            val vocab = logits.size
+            val fallback = 50259
+            var best = fallback
+            var bestScore = -Float.MAX_VALUE
+            for (id in languages) {
+                if (id < vocab && logits[id] > bestScore) {
+                    bestScore = logits[id]
+                    best = id
                 }
             }
+            best
         } catch (e: Throwable) {
             Log.w(TAG, "language detection failed, assuming en", e)
             50259
         }
     }
 
+    /**
+     * Greedy decode: each step feeds the whole produced prefix (padded to [PREFIX_LEN]
+     * with a matching causal mask) and takes the argmax of the last real row.
+     */
     private fun greedyDecode(
-        dec: OrtSession,
-        env: OrtEnvironment,
-        hidden: OnnxTensor,
+        live: CompiledModel,
+        hidden: FloatArray,
         prompt: IntArray,
     ): List<Int> {
         val out = ArrayList<Int>()
         val limit = (special[4] - prompt.size).coerceAtMost(MAX_NEW_TOKENS)
-        var past = emptyPast(env)
+        val fed = ArrayList<Int>()
+        fed.addAll(prompt.toList())
         var step = 0
-        var next = -1
-        try {
-            while (step < limit) {
-                val ids = if (step == 0) prompt else intArrayOf(next)
-                val longIds = LongArray(ids.size) { ids[it].toLong() }
-                val idTensor = OnnxTensor.createTensor(
-                    env, LongBuffer.wrap(longIds), longArrayOf(1, ids.size.toLong()),
-                )
-                val result = idTensor.useOrt { dec.run(feeds(hidden, past, it, useCache = step > 0)) }
-                past.close()
-                next = argmax(
-                    result.get(0) as OnnxTensor,
-                    suppress = suppress,
-                    alsoSuppress = if (step == 0) suppressAtBegin else emptySet(),
-                )
-                past = Past(env, result)
-                step++
-                if (next == special[1]) break
-                out.add(next)
-            }
-        } finally {
-            past.close()
+        while (step < limit) {
+            val logits = decodeStep(live, hidden, fed.toIntArray()) ?: break
+            val suppressMerged = if (step == 0) suppress + suppressAtBegin else suppress
+            val next = argmax(logits, suppressMerged)
+            fed.add(next)
+            step++
+            if (next == special[1]) break
+            // Skip the prompt tail: only tokens after the 4 prompt ids are output.
+            if (fed.size > prompt.size) out.add(next)
         }
         return out
     }
 
-    private fun argmax(logits: OnnxTensor, suppress: Set<Int>, alsoSuppress: Set<Int>): Int {
-        val shape = logits.info.shape
-        val seqLen = shape[1].toInt()
-        val vocab = shape[2].toInt()
-        val row = FloatArray(vocab)
-        val buf = logits.floatBuffer
-        buf.position((seqLen - 1) * vocab)
-        buf.get(row)
+    /**
+     * One decode step over the prefix [fed]: pad to [PREFIX_LEN], build the causal mask
+     * (row r attends to columns < fed.size), run, and return the last real row's logits.
+     */
+    private fun decodeStep(live: CompiledModel, hidden: FloatArray, fed: IntArray): FloatArray? {
+        if (fed.size > PREFIX_LEN) return null
+        val ids = IntArray(PREFIX_LEN)
+        fed.copyInto(ids)
+        val mask = FloatArray(PREFIX_LEN * PREFIX_LEN)
+        for (r in 0 until PREFIX_LEN) {
+            for (c in 0 until fed.size.coerceAtMost(r + 1)) {
+                mask[r * PREFIX_LEN + c] = 1f
+            }
+        }
+        val out = LiteRtSessions.runSignature(
+            live,
+            mapOf(
+                "args_0" to hidden,
+                "args_1" to ids,
+                "args_2" to mask,
+            ),
+            listOf("output_0"),
+            DECODE,
+        ) ?: return null
+        val flat = out["output_0"] as? FloatArray ?: return null
+        val vocab = flat.size / PREFIX_LEN
+        if (vocab <= 0) return null
+        return flat.copyOfRange((fed.size - 1) * vocab, fed.size * vocab)
+    }
+
+    // -- ExecuTorch path (Vulkan export: raw waveform in, incremental decode) -------
+
+    /**
+     * One ET `encode` method call: `[480000]` waveform → `[1,1500,6144]` KV-cache hidden.
+     *
+     * Float-only, so the scaffold's `runFloat` covers it directly. The export config pins
+     * the input shape at `[480000]` (flat, not `[1,480000]`).
+     */
+    private fun etEncode(live: Module, pcm: FloatArray): FloatArray? {
+        val hidden = ExecutorchSessions.runFloat(live, pcm, longArrayOf(SAMPLES_30S.toLong()), ET_ENCODE)
+            ?: return null
+        if (hidden.size != ET_ENC_SEQ * ET_ENC_KV) {
+            Log.e(TAG, "unexpected ET encode width ${hidden.size}, want ${ET_ENC_SEQ * ET_ENC_KV}")
+            return null
+        }
+        return hidden
+    }
+
+    /** ET language detection: one decode step feeding `<|startoftranscript|>` at position 0. */
+    private fun etDetectLanguage(live: Module, hidden: FloatArray): Int? {
+        return try {
+            val logits = etDecodeStep(live, hidden, special[0], 0) ?: return null
+            val fallback = 50259
+            var best = fallback
+            var bestScore = -Float.MAX_VALUE
+            for (id in languages) {
+                if (id < logits.size && logits[id] > bestScore) {
+                    bestScore = logits[id]
+                    best = id
+                }
+            }
+            best
+        } catch (e: Throwable) {
+            Log.w(TAG, "ET language detection failed, assuming en", e)
+            50259
+        }
+    }
+
+    /**
+     * ET incremental greedy decode: feed the 4 prompt ids at positions 0..3, then sample
+     * each new token from the previous position's logits and feed it at the next position.
+     * The KV cache rides inside [hidden], re-passed per step per the export's interface.
+     */
+    private fun etGreedyDecode(live: Module, hidden: FloatArray, prompt: IntArray): List<Int> {
+        val out = ArrayList<Int>()
+        val limit = (special[4] - prompt.size).coerceAtMost(ET_MAX_NEW_TOKENS)
+        // Prime with the prompt: step i feeds prompt[i] at position i.
+        var logits: FloatArray? = null
+        for (i in prompt.indices) {
+            logits = etDecodeStep(live, hidden, prompt[i], i) ?: return out
+        }
+        var position = prompt.size
+        var step = 0
+        while (step < limit) {
+            val row = logits ?: break
+            val suppressMerged = if (step == 0) suppress + suppressAtBegin else suppress
+            val next = argmax(row, suppressMerged)
+            step++
+            if (next == special[1]) break
+            out.add(next)
+            logits = etDecodeStep(live, hidden, next, position) ?: break
+            position++
+        }
+        return out
+    }
+
+    /**
+     * One ET `decode` method call: token [tokenId] at [position] with the KV-cache
+     * [hidden]; returns the single row of logits (`[1,1,51865]`).
+     *
+     * Mixed int64 + float inputs, so this goes through `run` with one `EValue` per input
+     * — `runFloat` is float-only. Token ids cross as int64 (`Tensor.fromBlob(LongArray,
+     * LongArray)` is the int64 tensor; do not narrow to int). Logits read HALF-tolerant
+     * via [floatsAllowingHalf] (Vulkan fp16 ladders lower outputs to half).
+     */
+    private fun etDecodeStep(
+        live: Module,
+        hidden: FloatArray,
+        tokenId: Int,
+        position: Int,
+    ): FloatArray? {
+        val outs = ExecutorchSessions.run(
+            live,
+            listOf(
+                EValue.from(
+                    Tensor.fromBlob(longArrayOf(tokenId.toLong()), longArrayOf(1, 1)),
+                ),
+                EValue.from(
+                    Tensor.fromBlob(longArrayOf(position.toLong()), longArrayOf(1)),
+                ),
+                EValue.from(
+                    Tensor.fromBlob(hidden, longArrayOf(1, ET_ENC_SEQ.toLong(), ET_ENC_KV.toLong())),
+                ),
+            ),
+            ET_DECODE,
+        ) ?: return null
+        val first = outs.firstOrNull() ?: return null
+        val row = first.floatsAllowingHalf(TAG, ET_VOCAB) ?: return null
+        if (row.size != ET_VOCAB) {
+            Log.e(TAG, "unexpected ET decode width ${row.size}, want $ET_VOCAB")
+            return null
+        }
+        return row
+    }
+
+    private fun argmax(row: FloatArray, skip: Set<Int>): Int {
         var best = 0
         var bestScore = -Float.MAX_VALUE
-        for (i in 0 until vocab) {
-            if (i in suppress || i in alsoSuppress) continue
+        for (i in row.indices) {
+            if (i in skip) continue
             if (row[i] > bestScore) {
                 bestScore = row[i]
                 best = i
             }
         }
         return best
-    }
-
-    private fun feeds(
-        hidden: OnnxTensor,
-        past: Past,
-        ids: OnnxTensor,
-        useCache: Boolean,
-    ): Map<String, OnnxTensor> {
-        val map = LinkedHashMap<String, OnnxTensor>(20)
-        map["input_ids"] = ids
-        map["encoder_hidden_states"] = hidden
-        for ((name, tensor) in past.tensors()) map[name] = tensor
-        map["use_cache_branch"] = if (useCache) past.cacheTrue else past.cacheFalse
-        return map
-    }
-
-    private var languages: IntArray = IntArray(0)
-
-    private fun emptyPast(env: OrtEnvironment): Past = Past(env, null)
-
-    private inner class Past(private val env: OrtEnvironment, private val result: OrtSession.Result?) {
-        val cacheFalse: OnnxTensor = OnnxTensor.createTensor(env, booleanArrayOf(false))
-        val cacheTrue: OnnxTensor = OnnxTensor.createTensor(env, booleanArrayOf(true))
-        private val empties = ArrayList<OnnxTensor>()
-
-        fun tensors(): List<Pair<String, OnnxTensor>> = PAST_NAMES.map { name ->
-            val tensor = if (result == null) {
-                OnnxTensor.createTensor(env, FloatBuffer.allocate(0), EMPTY_SHAPE)
-                    .also { empties.add(it) }
-            } else {
-                result.get(name.replace("past_key_values", "present")).get() as OnnxTensor
-            }
-            name to tensor
-        }
-
-        fun close() {
-            empties.forEach { runCatching { it.close() } }
-            empties.clear()
-            runCatching { cacheFalse.close() }
-            runCatching { cacheTrue.close() }
-            runCatching { result?.close() }
-        }
-
-        inline fun <T> use(block: (Past) -> T): T = try {
-            block(this)
-        } finally {
-            close()
-        }
     }
 
     companion object {
@@ -582,15 +361,50 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
         /** Mel frames in one 30-second window at a 160-sample hop. */
         const val FRAMES = 3000
 
-        /** Asset directory. */
-        const val DIR = "whisper-base"
+        /** 30 s at 16 kHz mono — what the ET export's `encode` eats as raw waveform. */
+        const val SAMPLES_30S = 480_000
 
-        /** The two graphs. A wrong file fails at load. */
-        const val ENCODER = "encoder_model_int8.onnx"
-        const val DECODER = "decoder_model_merged_int8.onnx"
+        /** The one graph (ladder ship rung). */
+        const val MODEL = "base_30s_i8.tflite"
 
         /**
-         * The five values [inAssets] wants in `special`, in order:
+         * The ExecuTorch candidate (lead: smallest Vulkan export holding the parity gate),
+         * resolved opportunistically from the download directory — never a gated download
+         * until mirror pins land. Prefers the Vulkan-100% rungs (0 XNNPACK ops) over the
+         * staged partial-delegation files; see PARITY.md §6.
+         */
+        const val ET_MODEL = "whisper_base_vulkan_int8_100pte.pte"
+
+        /** ET fallback when int8 diverges: the fp16 Vulkan export (100% rung first). */
+        const val ET_MODEL_FALLBACK = "whisper_base_vulkan_fp16.pte"
+
+        /** ET second fallback: the staged partial-delegation files, if those are what is on disk. */
+        const val ET_MODEL_LEGACY = "whisper_base_vulkan_int8.pte"
+
+        private const val ENCODE = "encode"
+        private const val DECODE = "decode"
+        private const val ET_ENCODE = "encode"
+        private const val ET_DECODE = "decode"
+
+        /** Fixed decode prefix length of the TFLite export. */
+        private const val PREFIX_LEN = 128
+
+        /**
+         * Encoder output geometry of the Vulkan export: 1500 frames, width 6144 =
+         * 512 (d_model) x 6 (encoder layers) x 2 (K and V) — the decoder's full
+         * cross-attention KV cache, NOT the TFLite rung's [1500, 512].
+         */
+        private const val ET_ENC_SEQ = 1500
+        private const val ET_ENC_KV = 6144
+
+        /** Output vocabulary width of the ET decode logits. */
+        private const val ET_VOCAB = 51865
+
+        /** One 30 s window cannot say more than this on the ET path either. */
+        private const val ET_MAX_NEW_TOKENS = 224
+
+        /**
+         * The five values [inDirectory] wants in `special`, in order:
          * `decoder_start_token_id`, `eos_token_id`, `transcribe`, `no_timestamps_token_id`,
          * `max_length`.
          */
@@ -600,60 +414,16 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
         private const val ENC_SEQ = 1500
         private const val ENC_DIM = 512
 
-        /** Positions the detection probe may occupy: prompt length plus one. */
-        private const val DETECT_MAX_SEQ = 8
-
-        /** ONNX TensorProto BOOL, for the decoder's `use_cache_branch` flag. */
-        private const val DTYPE_BOOL = 9
-
-        /** A single-element bool tensor for `use_cache_branch` (no [VulkanWire] helper). */
-        private fun boolTensor(value: Boolean): VulkanTensor =
-            VulkanTensor(DTYPE_BOOL, longArrayOf(1), byteArrayOf(if (value) 1 else 0))
-
-        /**
-         * The model from the APK's assets, which is the only place it lives.
-         *
-         * `special`, `languages`, `suppress` and `suppressAtBegin` all come from the bundled
-         * `generation_config.json`; see the class docs for why they are arguments.
-         */
-        fun inAssets(
-            assets: AssetManager,
-            special: IntArray,
-            languages: IntArray,
-            suppress: IntArray,
-            suppressAtBegin: IntArray,
-            path: String = DIR,
-        ): WhisperHandle {
-            val instance = WhisperHandle("the APK's $path")
-            if (special.size != SPECIAL_IDS) {
-                Log.e(TAG, "${special.size} special ids, not $SPECIAL_IDS")
-                return instance
-            }
-            instance.assetDir = path
-            instance.sessionPrefix = "asset:"
-            instance.special = special.copyOf()
-            instance.languages = languages.copyOf()
-            instance.suppress = suppress.toSet()
-            instance.suppressAtBegin = suppressAtBegin.toSet()
-            instance.encoder = OnnxSessions.openAssetManager(assets, "$path/$ENCODER")
-            instance.decoder = OnnxSessions.openAssetManager(assets, "$path/$DECODER")
-            instance.tryVulkan(instance.sessionKey(ENCODER), { assets.open("$path/$ENCODER").use { it.readBytes() } }) {
-                instance.vulkanEnc = it
-            }
-            instance.tryVulkan(instance.sessionKey(DECODER), { assets.open("$path/$DECODER").use { it.readBytes() } }) {
-                instance.vulkanDec = it
-            }
-            if (!instance.isAvailable) Log.e(TAG, "cannot open $path")
-            return instance
-        }
-
         /**
          * The model in a folder on disk, as a downloaded one is.
          *
-         * Same arguments as [inAssets]; sessions open from files instead of APK assets.
+         * Same arguments as the old `inAssets`; sessions open from files instead of APK assets.
+         * The ET candidate opens opportunistically from the same directory (int8 first, then
+         * fp16) when the Vulkan delegate is linked — a missing `.pte` just means the
+         * `.tflite` serves every turn.
          */
         fun inDirectory(
-            directory: java.io.File,
+            directory: File,
             special: IntArray,
             languages: IntArray,
             suppress: IntArray,
@@ -664,46 +434,42 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
                 Log.e(TAG, "${special.size} special ids, not $SPECIAL_IDS")
                 return instance
             }
-            instance.assetDir = ""
-            instance.sessionPrefix = "file:${directory.absolutePath}/"
             instance.special = special.copyOf()
             instance.languages = languages.copyOf()
             instance.suppress = suppress.toSet()
             instance.suppressAtBegin = suppressAtBegin.toSet()
-            instance.encoder = OnnxSessions.open(instance.sessionKey(ENCODER)) {
-                java.io.File(directory, ENCODER).readBytes()
-            }
-            instance.decoder = OnnxSessions.open(instance.sessionKey(DECODER)) {
-                java.io.File(directory, DECODER).readBytes()
-            }
-            val encFile = java.io.File(directory, ENCODER)
-            val decFile = java.io.File(directory, DECODER)
-            instance.tryVulkanPath("file:${encFile.absolutePath}", encFile.absolutePath) {
-                instance.vulkanEnc = it
-            }
-            instance.tryVulkanPath("file:${decFile.absolutePath}", decFile.absolutePath) {
-                instance.vulkanDec = it
+            val file = File(directory, MODEL)
+            instance.modelFile = file.absolutePath
+            instance.session = LiteRtSessions.openFile(file.absolutePath)
+            val etFile = listOf(ET_MODEL, ET_MODEL_FALLBACK, ET_MODEL_LEGACY)
+                .map { File(directory, it) }
+                .firstOrNull { it.isFile }
+            if (etFile != null) {
+                instance.etModelFile = etFile.absolutePath
+                instance.etModule = openEt(etFile.absolutePath)
             }
             if (!instance.isAvailable) Log.e(TAG, "cannot open $directory")
             return instance
         }
 
-        /** One 30 s window cannot say more than this; guards against a runaway loop. */
-        private const val MAX_NEW_TOKENS = 224
-
-        private const val N_LAYERS = 6
-        private const val N_HEADS = 8L
-        private const val HEAD_DIM = 64L
-
-        private val EMPTY_SHAPE = longArrayOf(1, N_HEADS, 0, HEAD_DIM)
-
-        private val PAST_NAMES: List<String> = buildList {
-            for (i in 0 until N_LAYERS) {
-                for (kind in listOf("decoder", "encoder")) {
-                    for (kv in listOf("key", "value")) add("past_key_values.$i.$kind.$kv")
-                }
+        /**
+         * The ET module for an absolute `.pte` path, or null when it cannot serve here.
+         *
+         * Skipped unless the Vulkan delegate is linked into the runtime (the stock
+         * `executorch-android` AAR ships XNNPACK only), so this degrades to LiteRT
+         * behaviour on devices without the custom Vulkan AAR rather than loading a
+         * module that can never run.
+         */
+        private fun openEt(path: String): Module? {
+            val backends = ExecutorchSessions.registeredBackends()
+            if (backends?.any { it.contains("Vulkan", ignoreCase = true) } != true) {
+                Log.i(TAG, "Vulkan backend absent, skipping ET whisper at $path")
+                return null
             }
+            return ExecutorchSessions.openPath(path)
         }
 
+        /** One 30 s window cannot say more than this; guards against a runaway loop. */
+        private const val MAX_NEW_TOKENS = 224
     }
 }

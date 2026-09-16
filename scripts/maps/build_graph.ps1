@@ -53,9 +53,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Fixed inputs -- no file-location options.
-# TESTING: California extract. Revert to planet by swapping the next line back:
-# $Pbf = Join-Path $PSScriptRoot "inputs/planet.osm.pbf"
-$Pbf          = Join-Path $PSScriptRoot "inputs/california-latest.osm.pbf"
+$Pbf          = Join-Path $PSScriptRoot "inputs/planet.osm.pbf"
 $Out          = Join-Path $PSScriptRoot "inputs/world.mamaps"
 $Coastline    = Join-Path $PSScriptRoot "inputs/coastline.shp"
 $WorldTransit = Join-Path $PSScriptRoot "inputs/world.transit"

@@ -52,7 +52,8 @@ impl<F: RangeFetcher> CachingRangeReader<F> {
     }
 
     pub fn set_online(&self, online: bool) {
-        self.online.store(online, std::sync::atomic::Ordering::Relaxed);
+        self.online
+            .store(online, std::sync::atomic::Ordering::Relaxed);
     }
 
     fn is_online(&self) -> bool {
@@ -81,7 +82,9 @@ impl<F: RangeFetcher> RangeReader for CachingRangeReader<F> {
         // coastline drawn from offsets that had moved.
         //
         // One small request per app start, and only when online.
-        let first = !self.prefix_checked.swap(true, std::sync::atomic::Ordering::Relaxed);
+        let first = !self
+            .prefix_checked
+            .swap(true, std::sync::atomic::Ordering::Relaxed);
         let revalidate = first && self.is_online();
 
         let cached = self.cache.read(&key);

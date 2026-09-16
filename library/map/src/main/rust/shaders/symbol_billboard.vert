@@ -2,21 +2,25 @@
 
 // Billboard symbol vertex: point-label glyph quads and POI icon quads that stay upright and
 // pinned to their ground anchor under camera tilt. Both are tessellated per frame (positions
-// arrive tile-local and final), and each vertex also carries the label's ground anchor so this
-// shader can, when tilted, project the anchor with perspective and hang the corner off it at a
-// constant screen offset. Text and icons share this shader on purpose: they hang off the same
-// anchor in the same pass, so two implementations of it could drift apart and separate the
-// pictogram from its name.
+// arrive tile-local and final), and each vertex also carries the label's ground anchor plus its
+// tile-normalised ground height, so this shader can, when tilted, project the anchor with
+// perspective at the terrain height and hang the corner off it at a constant screen offset.
+// Text and icons share this shader on purpose: they hang off the same anchor in the same pass,
+// so two implementations of it could drift apart and separate the pictogram from its name.
+//
+// `misc.x` carries the tile's world-px span (Dp) for this frame; multiplying the anchor height
+// recovers the world-px height the perspective matrix expects — the same scale the flat drape
+// paths push in `morph.z`.
 //
 // At pitch 0 the renderer clears the billboard flag (push.line.w) and this reduces to the plain
-// `tileToClip * position` the flat map has always used — byte-identical output. A curved (line)
+// `tileToClip * position` the flat map has always used - byte-identical output. A curved (line)
 // label writes each glyph vertex as its own anchor (offset zero), so even with the flag set it
-// projects straight onto the ground and stays map-aligned — which is correct: a road name belongs
-// along the road, and is the one label that should lie flat.
-
+// projects straight onto the ground at the glyph's own terrain height and stays map-aligned -
+// which is correct: a road name belongs along the road, and is the one label that should lie flat.
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inUv;
 layout(location = 2) in vec2 inAnchor;
+layout(location = 3) in float inAnchorH;
 layout(location = 0) out vec2 outUv;
 layout(push_constant) uniform Push {
     mat4 tileToClip;
@@ -24,7 +28,8 @@ layout(push_constant) uniform Push {
     // x: text size in px per em (halo SDF), y: halo width px, z: atlas sdf-per-em,
     // w: billboard flag (>0.5 = tilt billboard; 0 = flat, drawn straight through tileToClip).
     vec4 line;
-    // x: tile span in px (unused here), yzw: halo color rgb.
+    // x: the tile's world-px span (Dp) for this frame, the anchor-height -> world-px scale;
+    // yzw: halo color rgb.
     vec4 misc;
     // The pitch-0 tile matrix's linear 2x2 (column-major m0,m1,m4,m5), so the screen-constant
     // offset can be reconstructed while the anchor goes through the perspective matrix.
@@ -33,7 +38,7 @@ layout(push_constant) uniform Push {
 void main() {
     outUv = inUv;
     if (push.line.w > 0.5) {
-        vec4 a = push.tileToClip * vec4(inAnchor, 0.0, 1.0);
+        vec4 a = push.tileToClip * vec4(inAnchor, inAnchorH * push.misc.x, 1.0);
         vec2 off = inPosition - inAnchor;
         // Column-major 2x2 * off: the same screen offset the ortho matrix would give this corner,
         // scaled by the anchor's clip-w so the perspective divide leaves it screen-constant.

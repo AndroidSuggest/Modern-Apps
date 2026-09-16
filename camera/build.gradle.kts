@@ -15,10 +15,11 @@ android {
         applicationId = "com.vayunmathur.camera"
     }
     androidResources {
-        // selfie_segmentation.onnx is read straight out of the APK by SelfieSegmenter, so
-        // leave it uncompressed: quantised weights barely deflate, and a compressed asset
-        // would have to be inflated into a heap buffer before ORT could open it.
-        noCompress += "onnx"
+        // The ExecuTorch Vulkan model is staged the same way: ExecutorchSessions
+        // copies it out of the APK before Module.load, so it must not be deflated.
+        // Quantised weights barely deflate, and a compressed asset would have to
+        // be inflated into a heap buffer first.
+        noCompress += "pte"
     }
 }
 

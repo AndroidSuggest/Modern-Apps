@@ -48,21 +48,32 @@ class EmergencyRepository private constructor(private val app: Context) {
         mutable.value = resolved
     }
 
-    suspend fun saveInfo(
-        name: String,
-        address: String,
-        bloodType: String,
-        organDonor: String,
-    ) = withContext(Dispatchers.IO) {
+    /**
+     * Snapshots the picked owner identity. Writes only the identity keys so a
+     * medical keystroke-save elsewhere can never clobber a just-picked name.
+     */
+    suspend fun saveOwnerIdentity(name: String, address: String) = withContext(Dispatchers.IO) {
         prefs.edit {
             putString(EmergencyKeys.NAME, name)
             putString(EmergencyKeys.ADDRESS, address)
-            putString(EmergencyKeys.BLOOD_TYPE, bloodType)
-            putString(EmergencyKeys.ORGAN_DONOR, organDonor)
         }
         load()
         updateSuggestionState()
     }
+
+    /**
+     * Persists the manually-entered medical fields. Writes only those keys so it
+     * can never clobber the picked owner identity.
+     */
+    suspend fun saveMedicalInfo(bloodType: String, organDonor: String) =
+        withContext(Dispatchers.IO) {
+            prefs.edit {
+                putString(EmergencyKeys.BLOOD_TYPE, bloodType)
+                putString(EmergencyKeys.ORGAN_DONOR, organDonor)
+            }
+            load()
+            updateSuggestionState()
+        }
 
     /** Adds a contact URI after validating it still resolves; returns false when rejected. */
     suspend fun addContact(phoneUri: Uri): Boolean = withContext(Dispatchers.IO) {

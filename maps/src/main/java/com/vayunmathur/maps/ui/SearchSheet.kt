@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -22,7 +21,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.vayunmathur.library.ui.AssistChip
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.HorizontalDivider
@@ -30,8 +28,6 @@ import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconHistory
-import com.vayunmathur.library.ui.IconHome
-import com.vayunmathur.library.ui.IconWork
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.LoadingState
 import com.vayunmathur.library.ui.MaterialTheme
@@ -79,27 +75,6 @@ fun SearchSheet(
             modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
             contentPadding = PaddingValues(horizontal = Spacing.lg),
         )
-        // Home/Work quick access. Tapping a set slot selects it and closes search; an unset slot
-        // is a no-op, same as it was on the page.
-        Row(
-            modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.xs),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        ) {
-            AssistChip(
-                onClick = { state.savedHome?.let { actions.selectSavedPlace(it) } },
-                label = {
-                    Text(stringResource(if (state.savedHome != null) R.string.saved_place_home else R.string.set_home))
-                },
-                leadingIcon = { IconHome(Modifier.size(18.dp)) },
-            )
-            AssistChip(
-                onClick = { state.savedWork?.let { actions.selectSavedPlace(it) } },
-                label = {
-                    Text(stringResource(if (state.savedWork != null) R.string.saved_place_work else R.string.set_work))
-                },
-                leadingIcon = { IconWork(Modifier.size(18.dp)) },
-            )
-        }
         when (state.phase) {
             SearchPhase.Searching -> LoadingState(Modifier.height(StatusBlockHeight))
             SearchPhase.Empty -> EmptyState(

@@ -24,14 +24,20 @@ pub fn shape_label(
         return None;
     }
     let atlas = crate::tile::glyph::atlas();
-    let weight = if layer.medium { Weight::Medium } else { Weight::Regular };
+    let weight = if layer.medium {
+        Weight::Medium
+    } else {
+        Weight::Regular
+    };
     // `text_max_width` is zero on every place layer, which is the single-line path and
     // therefore byte-identical to what `shape` alone used to produce.
     let lines = text::shape_wrapped(atlas, weight, name, layer.uppercase, layer.text_max_width);
     if lines.is_empty() {
         return None;
     }
-    let total_advance = lines.iter().fold(0.0f32, |wide, line| wide.max(line.advance));
+    let total_advance = lines
+        .iter()
+        .fold(0.0f32, |wide, line| wide.max(line.advance));
     let anchor = tile_point(tile, feature, extent)?;
     Some(ShapedLabel {
         layer_index,
@@ -46,7 +52,11 @@ pub fn shape_label(
         // Only the POI layers ask for an icon, and a kind the sheet has no picture for
         // (`townhall`) simply draws label-only — which is what MapLibre does with a
         // missing `icon-image`.
-        sprite: if layer.icon { sprite_for(feature.kind) } else { None },
+        sprite: if layer.icon {
+            sprite_for(feature.kind)
+        } else {
+            None
+        },
         // Places carry the tiler's 0–3 population rank as a NUMERIC detail
         // (see schema/places.rs); anything else is unranked.
         pop: if feature.flags & tilecodec::mamaps::body::FLAG_DETAIL_NUMERIC != 0 {
@@ -95,13 +105,19 @@ pub fn shape_line_label(
         return None;
     }
     let atlas = crate::tile::glyph::atlas();
-    let weight = if layer.medium { Weight::Medium } else { Weight::Regular };
+    let weight = if layer.medium {
+        Weight::Medium
+    } else {
+        Weight::Regular
+    };
     // A curved label is a single run — never wrapped — so `text_max_width` is ignored here.
     let lines = text::shape_wrapped(atlas, weight, name, layer.uppercase, 0.0);
     if lines.is_empty() {
         return None;
     }
-    let total_advance = lines.iter().fold(0.0f32, |wide, line| wide.max(line.advance));
+    let total_advance = lines
+        .iter()
+        .fold(0.0f32, |wide, line| wide.max(line.advance));
     let anchor = polyline_midpoint(&centreline);
     Some(ShapedLabel {
         layer_index,
@@ -141,7 +157,10 @@ fn polyline_midpoint(pts: &[(f32, f32)]) -> (f32, f32) {
         }
         if acc + seg >= half {
             let t = (half - acc) / seg;
-            return (w[0].0 + (w[1].0 - w[0].0) * t, w[0].1 + (w[1].1 - w[0].1) * t);
+            return (
+                w[0].0 + (w[1].0 - w[0].0) * t,
+                w[0].1 + (w[1].1 - w[0].1) * t,
+            );
         }
         acc += seg;
     }
@@ -162,8 +181,9 @@ pub(crate) fn rank_for_layer(id: &str) -> u8 {
         // merely because its colour was authored later in the file. Without this they fall
         // through to `u8::MAX` and lose every collision to every place label — which at
         // z17, where places are sparse, would look almost right and be wrong.
-        "poi-outdoor" | "poi-transport" | "poi-civic" | "poi-shop" | "poi-food"
-        | "poi-culture" => 4,
+        "poi-outdoor" | "poi-transport" | "poi-civic" | "poi-shop" | "poi-food" | "poi-culture" => {
+            4
+        }
         // Line labels below the point labels: a road or river name yields to a place or POI at a
         // collision, matching MapLibre's default `symbol-z-order`. Major roads above minor above
         // rivers, so a highway name wins over a side street and both over the waterway they cross.
@@ -185,7 +205,11 @@ pub(crate) fn sprite_for(kind: u16) -> Option<Sprite> {
     use tilecodec::mamaps::dict;
     // `kind` is a 1-based id into the interned table; 0 is `dict::NONE`.
     let name = dict::KINDS.get(usize::from(kind).checked_sub(1)?)?;
-    let name = if *name == "station" { "train_station" } else { *name };
+    let name = if *name == "station" {
+        "train_station"
+    } else {
+        *name
+    };
     crate::tile::sprite::atlas().get(name)
 }
 

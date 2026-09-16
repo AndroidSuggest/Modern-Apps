@@ -185,7 +185,7 @@ internal fun MapPageScope.MapContentBox(
                     // Browse controls, plus the layers and settings buttons, which stay out while
                     // a place is selected and ride above the sheet — see [MapFabStack].
                     // The compass reads the live camera bearing: the twist gesture rotates the
-                    // basemap on the overlay-free path, and tapping it animates back to north.
+                    // whole Compose map with it, and tapping it animates back to north.
                     MapFabStack(
                         camera = camera,
                         bearing = camera.position.bearing,
@@ -249,10 +249,8 @@ internal fun MapPageScope.MapContentBox(
                         onDismissArrival = { stopNavigation(context) },
                         postedLimit = chrome.postedLimit,
                         northUp = chrome.northUp,
-                        // GAP (deferred, camera is target+zoom only): heading-up follow
-                        // is unsupported — the map is always north-up. The toggle slot is
-                        // kept so the nav chrome survives; it records the preference for
-                        // when the renderer can rotate.
+                        // Heading-up follow: cleared to north-up the follow drives bearing =
+                        // course; set, the twist-gesture bearing is left alone.
                         onToggleNorthUp = { chrome.northUp = !chrome.northUp },
                         destinationName = navSession.destinationName,
                         darkBasemap = darkMap,

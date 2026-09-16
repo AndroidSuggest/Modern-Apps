@@ -1,10 +1,10 @@
 //! Tap picking: labels and markers.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
+use super::handle::handle_mut;
 use jni::objects::{JClass, JObject};
 use jni::sys::{jfloat, jlong};
 use jni::JNIEnv;
-use super::handle::handle_mut;
 /// Task-17 pick: placed labels intersecting the query box (Dp from the
 /// viewport top-left). Returns `\u{1}`-joined `layerId/name/kind/lon/lat/featureId`
 /// strings in placement order (topmost first); empty when nothing hits. Dp→device-px via the
@@ -24,8 +24,12 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_pickLabels<'l>
     x1_dp: jfloat,
     y1_dp: jfloat,
 ) -> jni::objects::JObjectArray<'l> {
-    let empty = env.new_object_array(0, "java/lang/String", JObject::null()).expect("pickLabels empty array");
-    let Some(map) = handle_mut(handle) else { return empty };
+    let empty = env
+        .new_object_array(0, "java/lang/String", JObject::null())
+        .expect("pickLabels empty array");
+    let Some(map) = handle_mut(handle) else {
+        return empty;
+    };
     let density = map.density;
     let hits = map.renderer.pick_labels((
         x0_dp as f32 * density,
@@ -34,16 +38,15 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_pickLabels<'l>
         y1_dp as f32 * density,
     ));
     let layers = &map.layers;
-    let out = match env.new_object_array(
-        hits.len() as i32,
-        "java/lang/String",
-        JObject::null(),
-    ) {
+    let out = match env.new_object_array(hits.len() as i32, "java/lang/String", JObject::null()) {
         Ok(a) => a,
         Err(_) => return empty,
     };
     for (i, h) in hits.iter().enumerate() {
-        let layer_id = layers.get(h.layer_index).map(|l| l.id.as_str()).unwrap_or("");
+        let layer_id = layers
+            .get(h.layer_index)
+            .map(|l| l.id.as_str())
+            .unwrap_or("");
         let s = format!(
             "{}\u{1}{}\u{1}{}\u{1}{}\u{1}{}\u{1}{}",
             layer_id, h.name, h.kind, h.lon, h.lat, h.feature_id,
@@ -71,7 +74,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_pickAt<'l>(
     x_dp: jfloat,
     y_dp: jfloat,
 ) -> jlong {
-    let Some(map) = handle_mut(handle) else { return 0 };
+    let Some(map) = handle_mut(handle) else {
+        return 0;
+    };
     let density = map.density;
     // Negative Dp is off the top-left of the viewport; clamp to zero before scaling so the cast to
     // an unsigned device coordinate cannot wrap. The native side clamps the far edges to the extent.

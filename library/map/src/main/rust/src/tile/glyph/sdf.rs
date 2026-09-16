@@ -9,18 +9,23 @@ use super::placement::Placement;
 ///
 /// `placement` is where the caller has decided the bitmap sits in the cell, so the
 /// same rect `ink_uv` addresses is the rect sampled here.
-pub(super) fn sdf_from_coverage(
-    coverage: &[u8],
-    w: u32,
-    h: u32,
-    placement: Placement,
-) -> Vec<u8> {
+pub(super) fn sdf_from_coverage(coverage: &[u8], w: u32, h: u32, placement: Placement) -> Vec<u8> {
     let inside = |x: i32, y: i32| -> bool {
-        x >= 0 && y >= 0 && (x as u32) < w && (y as u32) < h && coverage[(y as u32 * w + x as u32) as usize] >= 128
+        x >= 0
+            && y >= 0
+            && (x as u32) < w
+            && (y as u32) < h
+            && coverage[(y as u32 * w + x as u32) as usize] >= 128
     };
     let spread = SDF_SPREAD_PX as f32;
     let mut out = vec![0u8; (CELL_PX * CELL_PX) as usize];
-    let Placement { scale, ox, oy, dw, dh } = placement;
+    let Placement {
+        scale,
+        ox,
+        oy,
+        dw,
+        dh,
+    } = placement;
     let sample = |cx: u32, cy: u32| -> bool {
         if cx < ox || cy < oy || cx >= ox + dw || cy >= oy + dh {
             return false;

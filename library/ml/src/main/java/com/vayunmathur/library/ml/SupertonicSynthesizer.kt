@@ -1,13 +1,9 @@
 package com.vayunmathur.library.ml
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.content.res.AssetManager
 import android.util.Log
 import java.io.File
 import java.nio.FloatBuffer
-import java.nio.LongBuffer
 import java.text.Normalizer
 import kotlin.math.ceil
 import kotlin.math.exp
@@ -15,23 +11,47 @@ import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.sqrt
 import kotlin.random.Random
+import com.google.ai.edge.litert.CompiledModel
+import org.pytorch.executorch.EValue
+import org.pytorch.executorch.Module
+import org.pytorch.executorch.Tensor
 
 /**
- * On-device text-to-speech: Supertonic 3 on the reduced ONNX Runtime build.
+ * On-device text-to-speech: Supertonic 3, ExecuTorch-first with a LiteRT fallback.
  *
- * One bundle covers 31 languages and 10 voices. All four networks are the upstream ONNX
- * exports (`Supertone/supertonic-3`), driven directly:
+ * One bundle covers 31 languages and 10 voices. All four networks are the ladder ship
+ * rungs (`Reza2kn/supertonic-3-litert`, plus the converted flow-matching estimator),
+ * driven directly:
  *
- * - **Duration predictor** (`duration_predictor.onnx`): `text_ids [1, W]` + `style_dp
- *   [1, 8, 16]` + mask → one number, the utterance's length in seconds, which fixes every
- *   later shape.
- * - **Text encoder** (`text_encoder.onnx`): `text_ids` + `style_ttl [1, 50, 256]` + mask →
- *   `text_emb [1, 256, chars]` conditioning.
- * - **Flow-matching sampler** (`vector_estimator.onnx`): the expensive one. 16 steps, each a
- *   single call with `current_step`/`total_step` — the export bakes classifier-free guidance
- *   internally (batch-2 branches), so unlike the old Vulkan path there is no host-side
- *   guidance combination, only the Euler advance `latent += denoised / 16`.
- * - **ConvNeXt vocoder** (`vocoder.onnx`): latent `[1, 144, F]` → 44,100 Hz samples.
+ * - **Duration predictor** (`duration_w4.tflite`, cos 1.0): `text_ids [1,320]` int64 +
+ *   `style_dp [1,8,16]` + `text_mask [1,1,320]` → one number, the utterance's length
+ *   in seconds, which fixes every later shape.
+ * - **Text encoder** (`textenc_w8.tflite`, cos 0.9947): `text_ids` + `style_ttl
+ *   [1,50,256]` + mask → `text_emb [1,256,320]` conditioning.
+ * - **Flow-matching sampler** (`estimator_w8.tflite`, cos 0.9969): the expensive one.
+ *   16 steps; the export bakes classifier-free guidance internally (batch-2 branches),
+ *   so there is no host-side guidance combination, only the Euler advance
+ *   `latent += denoised / 16`. Note the TFLite layout is **transposed** vs the ONNX
+ *   export: `noisy_latent [1,320,144]` in, `denoised_latent [1,144,320]` out — the
+ *   handle transposes at the boundary and keeps `[144,F]` everywhere else.
+ * - **ConvNeXt vocoder** (`vocoder_w8.tflite`, cos 0.9963): latent `[1,144,320]` →
+ *   983,040 samples at 44,100 Hz (~22 s max).
+ *
+ * # ExecuTorch structure, LiteRT default
+ *
+ * Each network has an ExecuTorch twin that the per-net `run*` wrappers try first and
+ * silently skip when unavailable. The twins staged so far are the XNNPACK fp32 set
+ * (`st-<net>-xnnpack-fp32.pte`, same fixed 320 shapes, ONNX `[1,channels,length]`
+ * layouts — no host transpose on the ET path); per the lead Vulkan-only directive that
+ * set is history-only and the ship ladder for this structure will be the Vulkan
+ * re-pass (task 23), at which point [ET_GRAPHS] flips to the new names. The fallback
+ * default is deliberate either way: until `.pte`s resolve from the download directory,
+ * every utterance runs the ladder above, exactly as before. Pocket-TTS was evaluated
+ * as the alternate ET fallback and rejected — a 667 MB English-only bundle against a
+ * 31-language ship contract (see `analysis/et-supertonic/POCKET_TTS_EVAL.md`).
+ *
+ * The exports pin **320** as the text/latent length: utterances longer than 320 codepoint
+ * tokens are refused (empty array), matching the fixed-shape contract.
  *
  * # There is no phonemiser
  *
@@ -40,15 +60,14 @@ import kotlin.random.Random
  * does expect decomposed text, which [synthesize] does itself through
  * `java.text.Normalizer`: precomposed accents are unmapped while combining marks are
  * first-class tokens, so skipping it would quietly drop characters. Emoji and the listed
- * symbols are dropped, `@`/`e.g.`/`i.e.` expanded, and spacing collapsed — mirroring
- * `post::supertonic::normalise`.
+ * symbols are dropped, `@`/`e.g.`/`i.e.` expanded, and spacing collapsed.
  *
  * # Two places the bundle can live
  *
  * [inAssets] reads it out of the APK and [inDirectory] out of a folder on disk. The four
- * networks total ~395 MB, so both go through the shared [OnnxSessions] cache rather than
- * being copied per handle. An asset must be stored **uncompressed** (`noCompress += "onnx"`),
- * since int8/fp32 weights barely deflate.
+ * networks total ~110 MB, so both go through the shared [LiteRtSessions] cache rather
+ * than being copied per handle. An asset must be stored **uncompressed**
+ * (`noCompress += "tflite"`), since quantized weights barely deflate.
  *
  * # Voices
  *
@@ -57,27 +76,12 @@ import kotlin.random.Random
  *
  * # Availability
  *
- * Construction never throws. [isAvailable] is false when a file is absent, the indexer is
- * the wrong size, or a session will not open — and then [synthesize] returns an empty array.
+ * Construction never throws. [isAvailable] is false when neither backend came up — no
+ * LiteRT bundle and not all four ET nets — and then [synthesize] returns an empty array.
  *
  * # Threading
  *
  * Not thread-safe. A caller must hold a lock across [synthesize], [voice] and [close].
- *
- * # Vulkan-first inference
- *
- * Each of the four graphs gets its own `vulkanHandle` next to its ORT session,
- * opened best-effort in [ensure]. Every graph call tries Vulkan first via
- * [VulkanSessions.run] and falls back to ORT per call, so mixed states (duration
- * on Vulkan, vocoder on ORT and vice versa) all serve. The 16-step Euler loop in
- * [synthesize] calls [runSampler] per step, so a mid-synthesis Vulkan failure
- * falls back step-by-step without losing audio.
- *
- * Inputs cross the boundary through the self-describing [VulkanWire] payload in
- * each graph's declared input order (`text_ids` as i64, the rest f32); a shape or
- * dtype rejection falls back to ORT. The vocoder's ConvNeXt stack is the most
- * likely Vulkan fallback (convs); the attempt is still made and validated by
- * output shape before use.
  */
 class SupertonicSynthesizer private constructor(
     private val bundle: Bundle,
@@ -86,23 +90,19 @@ class SupertonicSynthesizer private constructor(
     private val lock = Any()
 
     @Volatile private var sessions: Sessions? = null
+    @Volatile private var etModules: EtModules? = null
     @Volatile private var indexer: IntArray? = null
     @Volatile private var styleTtl: FloatArray? = null
     @Volatile private var styleDp: FloatArray? = null
     @Volatile private var loadTried = false
+    @Volatile private var etTried = false
+    @Volatile private var etKeys: List<String> = emptyList()
     @Volatile private var voiceName: String = voice
-
-    // Vulkan fast-path handles, one per graph in GRAPHS order. 0L = not on Vulkan.
-    // Each graph call tries its handle first and falls back to ORT per call.
-    @Volatile private var vulkanDuration: Long = 0L
-    @Volatile private var vulkanText: Long = 0L
-    @Volatile private var vulkanSampler: Long = 0L
-    @Volatile private var vulkanVocoder: Long = 0L
 
     /** Supertonic's output rate, fixed by the vocoder rather than by the voice. */
     val sampleRate: Int = SAMPLE_RATE
 
-    /** True if all four networks came up, the codepoint table is the right size and a voice read. */
+    /** True if the LiteRT bundle or all four ET nets came up, the codepoint table parsed and a voice read. */
     val isAvailable: Boolean get() = ensure()
 
     /**
@@ -134,28 +134,39 @@ class SupertonicSynthesizer private constructor(
      * present; getting it wrong is silent, so this has no default.
      *
      * Returns an empty array when there is nothing in the model's vocabulary, when the engine is
-     * unavailable, or when the pass failed — all three are "no audio" to a caller.
+     * unavailable, when the text exceeds [MAX_TOKENS] codepoint tokens, or when the pass
+     * failed — all are "no audio" to a caller.
      *
-     * Long text should be split into sentences first. Nothing refuses a paragraph, but every
-     * shape here scales with the utterance and the sampler runs 16 passes over all of it.
+     * Long text should be split into sentences first. Nothing refuses a paragraph below the
+     * token cap, but every shape here scales with the utterance and the sampler runs 16
+     * passes over all of it.
      *
      * Two calls with the same text differ, as flow matching starts from a sampled latent.
      */
     fun synthesize(text: String, language: String): FloatArray {
         if (text.isBlank()) return FloatArray(0)
         if (!ensure()) return FloatArray(0)
-        val live = sessions ?: return FloatArray(0)
+        val live = sessions
+        val et = etModules
+        if (live == null && et == null) return FloatArray(0)
         val table = indexer ?: return FloatArray(0)
         val ttl = styleTtl ?: return FloatArray(0)
         val dp = styleDp ?: return FloatArray(0)
         return try {
             val ids = toIds(table, normalise(text), language) ?: return FloatArray(0)
-            val env = OrtEnvironment.getEnvironment()
+            if (ids.size > MAX_TOKENS) {
+                Log.w(TAG, "utterance of ${ids.size} tokens exceeds $MAX_TOKENS")
+                return FloatArray(0)
+            }
             // Duration: seconds -> latent frames.
-            val logSeconds = runDuration(live.duration, env, ids, dp)
+            val logSeconds = runDuration(live?.duration, et, ids, dp)
             val frames = max(1, ceil(exp(logSeconds) / SPEED * SAMPLE_RATE / SAMPLES_PER_FRAME).toInt())
+            if (frames > MAX_TOKENS) {
+                Log.w(TAG, "utterance of $frames frames exceeds $MAX_TOKENS")
+                return FloatArray(0)
+            }
             // Text conditioning.
-            val textEmb = runText(live.text, env, ids, ttl) ?: return FloatArray(0)
+            val textEmb = runText(live?.text, et, ids, ttl) ?: return FloatArray(0)
             // Flow-matching sampler: 16 Euler steps from a sampled latent.
             // Speech is meant to vary between calls, so the seed comes from the clock and the
             // normals are Box-Muller over the default PRNG — nothing here is a secret.
@@ -163,145 +174,161 @@ class SupertonicSynthesizer private constructor(
             var latent = FloatArray(LATENT_CHANNELS * frames) { gaussian(rng) }
             for (step in 0 until STEPS) {
                 val denoised = runSampler(
-                    live.sampler, env, latent, frames, textEmb, ids.size, ttl, step,
+                    live?.sampler, et, latent, frames, textEmb, ids.size, ttl, step,
                 ) ?: return FloatArray(0)
                 val scale = 1f / STEPS
                 for (i in latent.indices) latent[i] += denoised[i] * scale
             }
             // Vocoder.
-            runVocoder(live.vocoder, env, latent, frames) ?: FloatArray(0)
+            runVocoder(live?.vocoder, et, latent, frames) ?: FloatArray(0)
         } catch (e: Throwable) {
             Log.e(TAG, "supertonic synthesis failed", e)
             FloatArray(0)
         }
     }
 
-    /** Free all four sessions and any Vulkan handles. Idempotent. */
+    /** Free all four sessions on both backends. Idempotent. */
     override fun close() {
         synchronized(lock) {
             sessions = null
-            for (name in GRAPHS) OnnxSessions.close(sessionKey(bundle, name))
-            closeVulkanLocked()
+            for (name in GRAPHS) LiteRtSessions.close(sessionKey(bundle, name))
+            etModules = null
+            for (key in etKeys) ExecutorchSessions.close(key)
+            etKeys = emptyList()
         }
     }
 
     private fun ensure(): Boolean {
-        if (sessions != null && indexer != null && styleTtl != null) return true
+        if (isReady()) return true
         synchronized(lock) {
-            if (sessions != null && indexer != null && styleTtl != null) return true
-            if (loadTried) return sessions != null && indexer != null && styleTtl != null
-            loadTried = true
-            try {
-                indexer = readIndexer(bundle)
-                val opened = Sessions(
-                    duration = openSession(bundle, GRAPHS[0]),
-                    text = openSession(bundle, GRAPHS[1]),
-                    sampler = openSession(bundle, GRAPHS[2]),
-                    vocoder = openSession(bundle, GRAPHS[3]),
-                )
-                // Vulkan-first, per graph: best-effort handles next to the ORT sessions.
-                // Each graph serves when either path came up, so mixed states
-                // (duration on Vulkan, vocoder on ORT and vice versa) all work.
-                tryVulkanGraph(GRAPHS[0]) { vulkanDuration = it }
-                tryVulkanGraph(GRAPHS[1]) { vulkanText = it }
-                tryVulkanGraph(GRAPHS[2]) { vulkanSampler = it }
-                tryVulkanGraph(GRAPHS[3]) { vulkanVocoder = it }
-                val durationReady = opened.duration != null || vulkanDuration != 0L
-                val textReady = opened.text != null || vulkanText != 0L
-                val samplerReady = opened.sampler != null || vulkanSampler != 0L
-                val vocoderReady = opened.vocoder != null || vulkanVocoder != 0L
-                if (!durationReady || !textReady || !samplerReady || !vocoderReady) {
-                    opened.close(bundle)
-                    closeVulkanLocked()
-                    return false
-                }
-                val (ttl, dp) = readVoice(bundle, voiceName)
-                styleTtl = ttl
-                styleDp = dp
-                sessions = opened
-                return true
-            } catch (e: Throwable) {
-                Log.e(TAG, "cannot open the Supertonic bundle in $bundle", e)
-                return false
-            }
-        }
-    }
-
-    /** Best-effort Vulkan open for one graph; leaves the handle at 0 on any failure. */
-    private fun tryVulkanGraph(name: String, assign: (Long) -> Unit) {
-        try {
-            if (!VulkanSessions.isUsable()) return
-            val key = sessionKey(bundle, name)
-            if (key !in VulkanSessions.allowlist) return
-            // Disk bundles open by path (resolves any sidecar weights); the APK bundle
-            // has no filesystem path, so it preflights and opens from bytes.
-            val path = bundle.modelPath(name)
-            val handle = if (path != null) {
-                VulkanSessions.openPath(key, path)
-            } else {
-                val modelBytes = try {
-                    bundle.read(name)
+            if (isReady()) return true
+            if (!loadTried) {
+                loadTried = true
+                try {
+                    indexer = readIndexer(bundle)
+                    val opened = Sessions(
+                        duration = openSession(bundle, GRAPHS[0]),
+                        text = openSession(bundle, GRAPHS[1]),
+                        sampler = openSession(bundle, GRAPHS[2]),
+                        vocoder = openSession(bundle, GRAPHS[3]),
+                    )
+                    if (!opened.isReady) {
+                        opened.close(bundle)
+                    } else {
+                        sessions = opened
+                    }
                 } catch (e: Throwable) {
-                    Log.w(TAG, "cannot read $name for vulkan preflight", e)
-                    return
+                    Log.e(TAG, "cannot open the Supertonic bundle in $bundle", e)
                 }
-                val problem = VulkanSessions.preflight(key) { modelBytes }
-                if (problem != null) {
-                    Log.w(TAG, "vulkan preflight skipped for $name: $problem")
-                    return
+            }
+            if (!etTried) {
+                etTried = true
+                ensureEt()
+            }
+            // Voices are tensors, not models: one read serves both backends, and it must
+            // happen even when only the ET nets came up.
+            if (styleTtl == null && (sessions != null || etModules != null)) {
+                try {
+                    val (ttl, dp) = readVoice(bundle, voiceName)
+                    styleTtl = ttl
+                    styleDp = dp
+                } catch (e: Throwable) {
+                    Log.e(TAG, "cannot read the voice $voiceName in $bundle", e)
                 }
-                VulkanSessions.open(key) { modelBytes }
             }
-            if (handle != 0L) {
-                assign(handle)
-                Log.i(TAG, "vulkan session open for $key")
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "vulkan open failed for $name, using ORT", e)
+            return isReady()
         }
     }
 
-    private fun closeVulkanLocked() {
-        val handles = longArrayOf(vulkanDuration, vulkanText, vulkanSampler, vulkanVocoder)
-        vulkanDuration = 0L
-        vulkanText = 0L
-        vulkanSampler = 0L
-        vulkanVocoder = 0L
-        for (handle in handles) {
-            if (handle != 0L) runCatching { VulkanSessions.close(handle) }
+    private fun isReady(): Boolean =
+        (sessions != null || etModules != null) &&
+            indexer != null && styleTtl != null
+
+    /**
+     * The ExecuTorch twins, loaded once. Null when a `.pte` is missing (the normal case
+     * until the Vulkan ladder lands under task 23), Vulkan is not linked, or a load
+     * failed — all of which mean "stay on LiteRT", never a throw. Must be called with
+     * [lock] held.
+     */
+    private fun ensureEt() {
+        if (etModules != null) return
+        val files = ET_GRAPHS.map { bundle.etFile(it) }
+        if (files.any { it == null }) return
+        val backends = ExecutorchSessions.registeredBackends()
+        if (backends?.any { it.contains("Vulkan", ignoreCase = true) } != true) {
+            Log.i(TAG, "Vulkan backend absent, skipping Supertonic ET nets")
+            return
+        }
+        try {
+            val paths = files.map { it!!.absolutePath }
+            val modules = paths.map { ExecutorchSessions.openPath(it) }
+            if (modules.any { it == null }) {
+                paths.forEach { ExecutorchSessions.close("file:$it") }
+                return
+            }
+            etModules = EtModules(
+                duration = modules[0]!!,
+                text = modules[1]!!,
+                sampler = modules[2]!!,
+                vocoder = modules[3]!!,
+            )
+            etKeys = paths.map { "file:$it" }
+            Log.i(TAG, "Supertonic ET nets open, preferring ExecuTorch")
+        } catch (e: Throwable) {
+            Log.w(TAG, "cannot open the Supertonic ET nets, staying on LiteRT", e)
         }
     }
 
     // -- Sessions -------------------------------------------------------------
 
     private class Sessions(
-        val duration: OrtSession?,
-        val text: OrtSession?,
-        val sampler: OrtSession?,
-        val vocoder: OrtSession?,
+        val duration: CompiledModel?,
+        val text: CompiledModel?,
+        val sampler: CompiledModel?,
+        val vocoder: CompiledModel?,
     ) {
         val isReady: Boolean get() =
             duration != null && text != null && sampler != null && vocoder != null
 
         fun close(bundle: Bundle) {
-            for (name in GRAPHS) OnnxSessions.close(sessionKey(bundle, name))
+            for (name in GRAPHS) LiteRtSessions.close(sessionKey(bundle, name))
         }
     }
+
+    /**
+     * The four ExecuTorch twins, all-or-nothing: [etModules] only exists when every net
+     * opened, so the per-net wrappers branch on it without a second check. Keys are kept
+     * for [close] because the files may move after opening.
+     */
+    private class EtModules(
+        val duration: Module,
+        val text: Module,
+        val sampler: Module,
+        val vocoder: Module,
+    )
 
     // -- Bundle ---------------------------------------------------------------
 
     /**
      * Where a bundle's files are, abstracted over the APK and the filesystem.
      *
-     * Sessions are opened through the shared [OnnxSessions] cache, so unlike the old
-     * descriptor-passing shape this only needs byte reads.
+     * Sessions are opened through the shared [LiteRtSessions] cache, so unlike the old
+     * descriptor-passing shape this only needs byte reads for small files; models open
+     * from assets or files directly.
      */
     internal interface Bundle {
-        /** All of [name], for models and small files alike. */
+        /** All of [name], for small files (indexer, voices). */
         fun read(name: String): ByteArray
 
-        /** Filesystem path for model [name] when it lives on disk (for openPath), else null. */
-        fun modelPath(name: String): String?
+        /** Open the model [name] through the session cache. */
+        fun openModel(name: String, key: String): CompiledModel?
+
+        /**
+         * The `.pte` twin [name] as a file for [ExecutorchSessions.openPath], or null
+         * when this bundle cannot serve one (APK assets carry no 400 MB of `.pte`s, and
+         * staging them needs a `Context` this handle does not keep).
+         */
+        fun etFile(name: String): File?
 
         /** Stable key prefix for this bundle's cached sessions. */
         fun key(): String
@@ -314,11 +341,19 @@ class SupertonicSynthesizer private constructor(
             return assets.open(full).use { it.readBytes() }
         }
 
-        override fun modelPath(name: String): String? = null
+        override fun openModel(name: String, key: String): CompiledModel? =
+            LiteRtSessions.openAssetManager(assets, assetPath(name))
+
+        override fun etFile(name: String): File? = null
 
         override fun key(): String = "asset:$path/"
 
         override fun toString(): String = "the APK's $path/"
+
+        private fun assetPath(name: String): String {
+            val full = if (name.startsWith("style_")) "$path/voices/$name" else "$path/$name"
+            return full
+        }
     }
 
     private class Directory(
@@ -337,10 +372,16 @@ class SupertonicSynthesizer private constructor(
             return file.readBytes()
         }
 
-        override fun modelPath(name: String): String? {
+        override fun openModel(name: String, key: String): CompiledModel? {
             if (name.startsWith("style_")) return null
             val file = File(directory, name)
-            return if (file.isFile) file.absolutePath else null
+            return if (file.isFile) LiteRtSessions.openFile(file.absolutePath) else null
+        }
+
+        override fun etFile(name: String): File? {
+            if (name !in ET_GRAPHS) return null
+            val file = File(directory, name)
+            return if (file.isFile) file else null
         }
 
         override fun key(): String = "file:${directory.absolutePath}/"
@@ -351,92 +392,118 @@ class SupertonicSynthesizer private constructor(
     // -- Model runs -----------------------------------------------------------
 
     private fun runDuration(
-        session: OrtSession?,
-        env: OrtEnvironment,
+        session: CompiledModel?,
+        et: EtModules?,
         ids: IntArray,
         styleDp: FloatArray,
     ): Float {
-        // Vulkan-first; int64 ids packed as i64 in the payload.
-        if (vulkanDuration != 0L) {
-            runCatching { vulkanRunDuration(ids, styleDp) }.getOrNull()?.let { return it }
+        et?.duration?.let { mod ->
+            etRunDuration(mod, ids, styleDp)?.let { return it }
         }
         requireNotNull(session) { "the duration predictor is not open" }
         // The export holds its sentence token internally; the raw ids go in as-is.
-        val idTensor = OnnxTensor.createTensor(
-            env, LongBuffer.wrap(ids.map { it.toLong() }.toLongArray()),
-            longArrayOf(1, ids.size.toLong()),
-        )
-        val styleTensor = OnnxTensor.createTensor(
-            env, java.nio.FloatBuffer.wrap(styleDp), longArrayOf(1, 8, 16),
-        )
-        val maskTensor = OnnxTensor.createTensor(
-            env, java.nio.FloatBuffer.wrap(FloatArray(ids.size) { 1f }),
-            longArrayOf(1, 1, ids.size.toLong()),
-        )
-        idTensor.useOrt {
-            styleTensor.useOrt {
-                maskTensor.useOrt {
-                    val inputs = mapOf(
-                        "text_ids" to idTensor,
-                        "style_dp" to styleTensor,
-                        "text_mask" to maskTensor,
-                    )
-                    session.run(inputs).useOrt { result ->
-                        val out = result.get("duration").get() as OnnxTensor
-                        val value = FloatArray(1)
-                        out.floatBuffer.get(value)
-                        return value[0]
-                    }
-                }
-            }
-        }
+        val longIds = LongArray(ids.size) { ids[it].toLong() }
+        val mask = FloatArray(ids.size) { 1f }
+        // Fixed-shape export pads to MAX_TOKENS.
+        val paddedIds = LongArray(MAX_TOKENS)
+        longIds.copyInto(paddedIds)
+        val paddedMask = FloatArray(MAX_TOKENS)
+        mask.copyInto(paddedMask)
+        val outs = synchronized(lock) {
+            LiteRtSessions.run(
+                session,
+                listOf(paddedIds, styleDp, paddedMask),
+                listOf("f32"),
+            )
+        } ?: error("duration run failed")
+        return (outs[0] as FloatArray)[0]
+    }
+
+    /**
+     * The ET duration twin: ids int64 `[1,320]`, style f32 `[1,8,16]`, mask f32
+     * `[1,1,320]` → one log-seconds scalar. Null (never throws) so the caller keeps
+     * the LiteRT fallback.
+     */
+    private fun etRunDuration(mod: Module, ids: IntArray, styleDp: FloatArray): Float? {
+        val paddedIds = LongArray(MAX_TOKENS) { if (it < ids.size) ids[it].toLong() else 0L }
+        val paddedMask = FloatArray(MAX_TOKENS) { if (it < ids.size) 1f else 0f }
+        val out = synchronized(lock) {
+            etFloatOut(
+                mod,
+                listOf(
+                    EValue.from(Tensor.fromBlob(paddedIds, longArrayOf(1, MAX_TOKENS.toLong()))),
+                    EValue.from(Tensor.fromBlob(styleDp, longArrayOf(1, 8, 16))),
+                    EValue.from(Tensor.fromBlob(paddedMask, longArrayOf(1, 1, MAX_TOKENS.toLong()))),
+                ),
+            )
+        } ?: return null
+        if (out.isEmpty()) return null
+        return out[0]
     }
 
     private fun runText(
-        session: OrtSession?,
-        env: OrtEnvironment,
+        session: CompiledModel?,
+        et: EtModules?,
         ids: IntArray,
         styleTtl: FloatArray,
     ): FloatArray? {
-        // Vulkan-first; null (not throw) on a Vulkan miss so the ORT path below serves.
-        if (vulkanText != 0L) {
-            runCatching { vulkanRunText(ids, styleTtl) }.getOrNull()?.let { return it }
+        // The ET twin keeps the ONNX [1,256,320] layout, so the same channel slice
+        // below applies — no transpose either way on this net.
+        et?.text?.let { mod ->
+            etRunText(mod, ids, styleTtl)?.let { return it }
         }
         requireNotNull(session) { "the text encoder is not open" }
-        val idTensor = OnnxTensor.createTensor(
-            env, LongBuffer.wrap(ids.map { it.toLong() }.toLongArray()),
-            longArrayOf(1, ids.size.toLong()),
-        )
-        val styleTensor = OnnxTensor.createTensor(
-            env, java.nio.FloatBuffer.wrap(styleTtl), longArrayOf(1, 50, 256),
-        )
-        val maskTensor = OnnxTensor.createTensor(
-            env, java.nio.FloatBuffer.wrap(FloatArray(ids.size) { 1f }),
-            longArrayOf(1, 1, ids.size.toLong()),
-        )
-        idTensor.useOrt {
-            styleTensor.useOrt {
-                maskTensor.useOrt {
-                    val inputs = mapOf(
-                        "text_ids" to idTensor,
-                        "style_ttl" to styleTensor,
-                        "text_mask" to maskTensor,
-                    )
-                    session.run(inputs).useOrt { result ->
-                        val out = result.get("text_emb").get() as OnnxTensor
-                        val shape = out.info.shape
-                        val flat = FloatArray((shape[1] * shape[2]).toInt())
-                        out.floatBuffer.get(flat)
-                        return flat
-                    }
-                }
-            }
+        val longIds = LongArray(ids.size) { ids[it].toLong() }
+        val mask = FloatArray(ids.size) { 1f }
+        val paddedIds = LongArray(MAX_TOKENS)
+        longIds.copyInto(paddedIds)
+        val paddedMask = FloatArray(MAX_TOKENS)
+        mask.copyInto(paddedMask)
+        val outs = synchronized(lock) {
+            LiteRtSessions.run(
+                session,
+                listOf(paddedIds, styleTtl, paddedMask),
+                listOf("f32"),
+            )
+        } ?: return null
+        val flat = outs[0] as? FloatArray ?: return null
+        return sliceChannels(flat, ids.size)
+    }
+
+    /** The ET text-encoder twin: ids `[1,320]` int64 + style `[1,50,256]` + mask `[1,1,320]` → `[1,256,320]`. */
+    private fun etRunText(mod: Module, ids: IntArray, styleTtl: FloatArray): FloatArray? {
+        val paddedIds = LongArray(MAX_TOKENS) { if (it < ids.size) ids[it].toLong() else 0L }
+        val paddedMask = FloatArray(MAX_TOKENS) { if (it < ids.size) 1f else 0f }
+        val flat = synchronized(lock) {
+            etFloatOut(
+                mod,
+                listOf(
+                    EValue.from(Tensor.fromBlob(paddedIds, longArrayOf(1, MAX_TOKENS.toLong()))),
+                    EValue.from(Tensor.fromBlob(styleTtl, longArrayOf(1, 50, 256))),
+                    EValue.from(Tensor.fromBlob(paddedMask, longArrayOf(1, 1, MAX_TOKENS.toLong()))),
+                ),
+            )
+        } ?: return null
+        if (flat.size < 256 * MAX_TOKENS) {
+            Log.w(TAG, "supertonic ET text encoder produced ${flat.size} floats")
+            return null
         }
+        // Slice the [256, 320] conditioning down to the real char count.
+        return sliceChannels(flat, ids.size)
+    }
+
+    /** Slice a channel-major `[256,320]` conditioning down to [chars] columns. */
+    private fun sliceChannels(flat: FloatArray, chars: Int): FloatArray {
+        val out = FloatArray(256 * chars)
+        for (c in 0 until 256) {
+            flat.copyInto(out, c * chars, c * MAX_TOKENS, c * MAX_TOKENS + chars)
+        }
+        return out
     }
 
     private fun runSampler(
-        session: OrtSession?,
-        env: OrtEnvironment,
+        session: CompiledModel?,
+        et: EtModules?,
         latent: FloatArray,
         frames: Int,
         textEmb: FloatArray,
@@ -444,218 +511,192 @@ class SupertonicSynthesizer private constructor(
         styleTtl: FloatArray,
         step: Int,
     ): FloatArray? {
-        // Vulkan-first per Euler step: a mid-synthesis failure falls back to ORT
-        // for this step only; the loop keeps its latent and continues.
-        if (vulkanSampler != 0L) {
-            runCatching {
-                vulkanRunSampler(latent, frames, textEmb, chars, styleTtl, step)
-            }.getOrNull()?.let { return it }
+        // The ET twin keeps the ONNX [1,channels,length] layout: no host transpose, and
+        // the output slices to [144,F] the same way.
+        et?.sampler?.let { mod ->
+            etRunSampler(mod, latent, frames, textEmb, chars, styleTtl, step)?.let { return it }
         }
         requireNotNull(session) { "the sampler is not open" }
-        val latentTensor = OnnxTensor.createTensor(
-            env, FloatBuffer.wrap(latent), longArrayOf(1, LATENT_CHANNELS.toLong(), frames.toLong()),
-        )
-        val textTensor = OnnxTensor.createTensor(
-            env, FloatBuffer.wrap(textEmb), longArrayOf(1, 256, chars.toLong()),
-        )
-        val styleTensor = OnnxTensor.createTensor(
-            env, java.nio.FloatBuffer.wrap(styleTtl), longArrayOf(1, 50, 256),
-        )
-        val latentMask = OnnxTensor.createTensor(
-            env, java.nio.FloatBuffer.wrap(FloatArray(frames) { 1f }),
-            longArrayOf(1, 1, frames.toLong()),
-        )
-        val textMask = OnnxTensor.createTensor(
-            env, java.nio.FloatBuffer.wrap(FloatArray(chars) { 1f }),
-            longArrayOf(1, 1, chars.toLong()),
-        )
-        val currentTensor = OnnxTensor.createTensor(env, floatArrayOf(step.toFloat()))
-        val totalTensor = OnnxTensor.createTensor(env, floatArrayOf(STEPS.toFloat()))
-        latentTensor.useOrt {
-            textTensor.useOrt {
-                styleTensor.useOrt {
-                    latentMask.useOrt {
-                        textMask.useOrt {
-                            currentTensor.useOrt {
-                                totalTensor.useOrt {
-                                    val inputs = mapOf(
-                                        "noisy_latent" to latentTensor,
-                                        "text_emb" to textTensor,
-                                        "style_ttl" to styleTensor,
-                                        "latent_mask" to latentMask,
-                                        "text_mask" to textMask,
-                                        "current_step" to currentTensor,
-                                        "total_step" to totalTensor,
-                                    )
-                                    session.run(inputs).useOrt { result ->
-                                        val out = result.get("denoised_latent").get() as OnnxTensor
-                                        val flat = FloatArray(latent.size)
-                                        out.floatBuffer.get(flat)
-                                        return flat
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        // Pad latent [144,F] -> [144,320], then transpose to the TFLite [320,144].
+        val padded = FloatArray(LATENT_CHANNELS * MAX_TOKENS)
+        for (c in 0 until LATENT_CHANNELS) {
+            latent.copyInto(padded, c * MAX_TOKENS, c * frames, c * frames + frames)
+        }
+        val noisy = FloatArray(LATENT_CHANNELS * MAX_TOKENS)
+        for (r in 0 until MAX_TOKENS) {
+            for (c in 0 until LATENT_CHANNELS) {
+                noisy[r * LATENT_CHANNELS + c] = padded[c * MAX_TOKENS + r]
             }
         }
-    }
-
-    private fun runVocoder(
-        session: OrtSession?,
-        env: OrtEnvironment,
-        latent: FloatArray,
-        frames: Int,
-    ): FloatArray? {
-        // Vulkan attempt first — the ConvNeXt stack is the most likely fallback
-        // (convs), so the result is validated by shape before use.
-        if (vulkanVocoder != 0L) {
-            runCatching { vulkanRunVocoder(latent, frames) }.getOrNull()?.let { return it }
+        // Pad text_emb [256,C] -> [256,320], then transpose to [320,256].
+        val paddedText = FloatArray(256 * MAX_TOKENS)
+        for (c in 0 until 256) {
+            textEmb.copyInto(paddedText, c * MAX_TOKENS, c * chars, c * chars + chars)
         }
-        requireNotNull(session) { "the vocoder is not open" }
-        val latentTensor = OnnxTensor.createTensor(
-            env, FloatBuffer.wrap(latent), longArrayOf(1, LATENT_CHANNELS.toLong(), frames.toLong()),
-        )
-        latentTensor.useOrt {
-            session.run(mapOf("latent" to latentTensor)).useOrt { result ->
-                val out = result.get("wav_tts").get() as OnnxTensor
-                val shape = out.info.shape
-                val flat = FloatArray(shape.fold(1L) { a, b -> a * b }.toInt())
-                out.floatBuffer.get(flat)
-                return flat
+        val textT = FloatArray(256 * MAX_TOKENS)
+        for (r in 0 until MAX_TOKENS) {
+            for (c in 0 until 256) {
+                textT[r * 256 + c] = paddedText[c * MAX_TOKENS + r]
             }
         }
-    }
-
-    // -- Vulkan graph runs --------------------------------------------------
-
-    /**
-     * Duration scalar from Vulkan, or null to fall back to ORT.
-     *
-     * Single `duration [1]` output; the head float of the payload is the value.
-     */
-    private fun vulkanRunDuration(ids: IntArray, dp: FloatArray): Float? {
-        val handle = vulkanDuration
-        if (handle == 0L) return null
-        val words = ids.size.toLong()
-        val longIds = LongArray(ids.size) { ids[it].toLong() }
-        val mask = FloatArray(ids.size) { 1f }
-        val inputs = listOf(
-            VulkanWire.longs(longArrayOf(1, words), longIds),
-            VulkanWire.floats(longArrayOf(1, 8, 16), dp),
-            VulkanWire.floats(longArrayOf(1, 1, words), mask),
-        )
-        val outputs = VulkanSessions.run(handle, inputs) ?: return null
-        val out = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: run {
-            Log.w(TAG, "vulkan duration returned no floats")
-            return null
-        }
-        val floats = out.asFloats()
-        if (floats.isEmpty()) {
-            Log.w(TAG, "vulkan duration returned no floats")
-            return null
-        }
-        return floats[0]
+        // Masks: latent real frames, text real chars; style/steps scalar-ish.
+        val latentMask = FloatArray(MAX_TOKENS * 1)
+        for (i in 0 until frames) latentMask[i] = 1f
+        val textMask = FloatArray(MAX_TOKENS * 1)
+        for (i in 0 until chars) textMask[i] = 1f
+        val outs = synchronized(lock) {
+            LiteRtSessions.runSignature(
+                session,
+                mapOf(
+                    "noisy_latent" to noisy,
+                    "text_emb" to textT,
+                    "style_ttl" to styleTtl,
+                    "latent_mask" to latentMask,
+                    "text_mask" to textMask,
+                    "current_step" to floatArrayOf(step.toFloat()),
+                    "total_step" to floatArrayOf(STEPS.toFloat()),
+                ),
+                listOf("denoised_latent"),
+            )
+        } ?: return null
+        // Denoised comes back [144,320] (transposed); slice to [144,F] and un-transpose.
+        val flat = outs["denoised_latent"] as? FloatArray ?: return null
+        return sliceFrames(flat, frames)
     }
 
     /**
-     * Text conditioning (`text_emb [1, 256, chars]`) from Vulkan, or null to ORT.
-     *
-     * The known `[1, 256, chars]` geometry splits the output; the output tensor's
-     * own shape wins when it is rank 3.
+     * One ET Euler step: noisy `[1,144,320]` + text `[1,256,320]` + style `[1,50,256]` +
+     * latent/text masks `[1,1,320]` + step scalars → denoised `[1,144,320]`, sliced to
+     * `[144,F]`. The 16-step loop stays host-side in [synthesize].
      */
-    private fun vulkanRunText(ids: IntArray, ttl: FloatArray): FloatArray? {
-        val handle = vulkanText
-        if (handle == 0L) return null
-        val words = ids.size.toLong()
-        val longIds = LongArray(ids.size) { ids[it].toLong() }
-        val mask = FloatArray(ids.size) { 1f }
-        val inputs = listOf(
-            VulkanWire.longs(longArrayOf(1, words), longIds),
-            VulkanWire.floats(longArrayOf(1, 50, 256), ttl),
-            VulkanWire.floats(longArrayOf(1, 1, words), mask),
-        )
-        val outputs = VulkanSessions.run(handle, inputs) ?: return null
-        val out = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
-        val floats = out.asFloats()
-        val want = 256 * ids.size
-        if (out.shape.size >= 3) {
-            val numel = out.shape[0] * out.shape[1] * out.shape[2]
-            if (numel in 1..floats.size) return floats.copyOfRange(0, numel.toInt())
-            Log.w(TAG, "vulkan text_emb shape ${out.shape.toList()} disagrees with ${floats.size} floats")
-            return null
-        }
-        if (floats.size < want) {
-            Log.w(TAG, "vulkan text returned ${floats.size} floats, want $want")
-            return null
-        }
-        return floats.copyOfRange(0, want)
-    }
-
-    /**
-     * One Euler step's `denoised_latent [1, 144, frames]` from Vulkan, or null to ORT.
-     *
-     * Seven inputs in ORT order; the two scalar steps ride as single floats.
-     */
-    private fun vulkanRunSampler(
+    private fun etRunSampler(
+        mod: Module,
         latent: FloatArray,
         frames: Int,
         textEmb: FloatArray,
         chars: Int,
-        ttl: FloatArray,
+        styleTtl: FloatArray,
         step: Int,
     ): FloatArray? {
-        val handle = vulkanSampler
-        if (handle == 0L) return null
-        val framesL = frames.toLong()
-        val charsL = chars.toLong()
-        val latentMask = FloatArray(frames) { 1f }
-        val textMask = FloatArray(chars) { 1f }
-        val inputs = listOf(
-            VulkanWire.floats(longArrayOf(1, LATENT_CHANNELS.toLong(), framesL), latent),
-            VulkanWire.floats(longArrayOf(1, 256, charsL), textEmb),
-            VulkanWire.floats(longArrayOf(1, 50, 256), ttl),
-            VulkanWire.floats(longArrayOf(1, 1, framesL), latentMask),
-            VulkanWire.floats(longArrayOf(1, 1, charsL), textMask),
-            VulkanWire.floats(longArrayOf(1), floatArrayOf(step.toFloat())),
-            VulkanWire.floats(longArrayOf(1), floatArrayOf(STEPS.toFloat())),
-        )
-        val outputs = VulkanSessions.run(handle, inputs) ?: return null
-        val out = outputs.firstOrNull {
-            it.dtype == VulkanWire.DTYPE_F32 && it.bytes.size / 4 == latent.size
-        } ?: run {
-            Log.w(TAG, "vulkan sampler produced no ${latent.size}-wide output")
+        // Pad latent [144,F] -> [144,320]; no transpose on the ET path.
+        val padded = FloatArray(LATENT_CHANNELS * MAX_TOKENS)
+        for (c in 0 until LATENT_CHANNELS) {
+            latent.copyInto(padded, c * MAX_TOKENS, c * frames, c * frames + frames)
+        }
+        // Pad text_emb [256,C] -> [256,320]; no transpose on the ET path.
+        val paddedText = FloatArray(256 * MAX_TOKENS)
+        for (c in 0 until 256) {
+            textEmb.copyInto(paddedText, c * MAX_TOKENS, c * chars, c * chars + chars)
+        }
+        val latentMask = FloatArray(MAX_TOKENS) { if (it < frames) 1f else 0f }
+        val textMask = FloatArray(MAX_TOKENS) { if (it < chars) 1f else 0f }
+        val flat = synchronized(lock) {
+            etFloatOut(
+                mod,
+                listOf(
+                    EValue.from(
+                        Tensor.fromBlob(padded, longArrayOf(1, LATENT_CHANNELS.toLong(), MAX_TOKENS.toLong())),
+                    ),
+                    EValue.from(
+                        Tensor.fromBlob(paddedText, longArrayOf(1, 256, MAX_TOKENS.toLong())),
+                    ),
+                    EValue.from(Tensor.fromBlob(styleTtl, longArrayOf(1, 50, 256))),
+                    EValue.from(Tensor.fromBlob(latentMask, longArrayOf(1, 1, MAX_TOKENS.toLong()))),
+                    EValue.from(Tensor.fromBlob(textMask, longArrayOf(1, 1, MAX_TOKENS.toLong()))),
+                    EValue.from(Tensor.fromBlob(floatArrayOf(step.toFloat()), longArrayOf(1))),
+                    EValue.from(Tensor.fromBlob(floatArrayOf(STEPS.toFloat()), longArrayOf(1))),
+                ),
+            )
+        } ?: return null
+        if (flat.size < LATENT_CHANNELS * MAX_TOKENS) {
+            Log.w(TAG, "supertonic ET sampler produced ${flat.size} floats")
             return null
         }
-        return out.asFloats()
+        return sliceFrames(flat, frames)
+    }
+
+    /** Slice a channel-major `[144,320]` latent down to [frames] columns. */
+    private fun sliceFrames(flat: FloatArray, frames: Int): FloatArray {
+        val out = FloatArray(LATENT_CHANNELS * frames)
+        for (c in 0 until LATENT_CHANNELS) {
+            for (r in 0 until frames) {
+                out[c * frames + r] = flat[c * MAX_TOKENS + r]
+            }
+        }
+        return out
+    }
+
+    private fun runVocoder(
+        session: CompiledModel?,
+        et: EtModules?,
+        latent: FloatArray,
+        frames: Int,
+    ): FloatArray? {
+        et?.vocoder?.let { mod ->
+            etRunVocoder(mod, latent, frames)?.let { return it }
+        }
+        requireNotNull(session) { "the vocoder is not open" }
+        // Pad [144,F] -> [144,320].
+        val padded = FloatArray(LATENT_CHANNELS * MAX_TOKENS)
+        for (c in 0 until LATENT_CHANNELS) {
+            latent.copyInto(padded, c * MAX_TOKENS, c * frames, c * frames + frames)
+        }
+        val outs = synchronized(lock) {
+            LiteRtSessions.run(
+                session,
+                listOf(padded),
+                listOf("f32"),
+            )
+        } ?: return null
+        val flat = outs[0] as? FloatArray ?: return null
+        return flat.copyOf(frames * SAMPLES_PER_FRAME)
+    }
+
+    /** The ET vocoder twin: latent `[1,144,320]` → `[1,983040]` waveform, sliced to `frames * 3072`. */
+    private fun etRunVocoder(mod: Module, latent: FloatArray, frames: Int): FloatArray? {
+        // Pad [144,F] -> [144,320], same as the LiteRT path.
+        val padded = FloatArray(LATENT_CHANNELS * MAX_TOKENS)
+        for (c in 0 until LATENT_CHANNELS) {
+            latent.copyInto(padded, c * MAX_TOKENS, c * frames, c * frames + frames)
+        }
+        val flat = synchronized(lock) {
+            etFloatOut(
+                mod,
+                listOf(
+                    EValue.from(
+                        Tensor.fromBlob(padded, longArrayOf(1, LATENT_CHANNELS.toLong(), MAX_TOKENS.toLong())),
+                    ),
+                ),
+            )
+        } ?: return null
+        if (flat.size < frames * SAMPLES_PER_FRAME) {
+            Log.w(TAG, "supertonic ET vocoder produced ${flat.size} floats")
+            return null
+        }
+        return flat.copyOf(frames * SAMPLES_PER_FRAME)
     }
 
     /**
-     * Waveform from Vulkan, or null to fall back to ORT.
+     * One multi-input ET `forward` invocation, first float output out.
      *
-     * The ConvNeXt stack is the most likely Vulkan fallback (convs); anything
-     * short of a full `frames * SAMPLES_PER_FRAME` payload falls back rather
-     * than returning truncated audio.
+     * `ExecutorchSessions.runFloat` only covers the single-input case; every Supertonic net
+     * takes several tensors (and int64 ids), so this wraps one [Tensor] per input in an
+     * [EValue] and goes through [ExecutorchSessions.run] directly. Reads HALF-tolerant via
+     * [floatsAllowingHalf] (Vulkan fp16 ladders lower outputs to half). Null (never throws)
+     * so the caller can fall back to the `.tflite` rung.
      */
-    private fun vulkanRunVocoder(latent: FloatArray, frames: Int): FloatArray? {
-        val handle = vulkanVocoder
-        if (handle == 0L) return null
-        val inputs = listOf(
-            VulkanWire.floats(longArrayOf(1, LATENT_CHANNELS.toLong(), frames.toLong()), latent),
-        )
-        val outputs = VulkanSessions.run(handle, inputs) ?: return null
-        val out = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
-        val floats = out.asFloats()
-        val want = frames * SAMPLES_PER_FRAME
-        if (floats.size < want) {
-            Log.w(TAG, "vulkan vocoder returned ${floats.size} floats, want $want")
-            return null
+    private fun etFloatOut(mod: Module, inputs: List<EValue>): FloatArray? {
+        return try {
+            val outputs = ExecutorchSessions.run(mod, inputs) ?: return null
+            val first = outputs.firstOrNull() ?: return null
+            first.floatsAllowingHalf(TAG, 1)
+        } catch (e: Throwable) {
+            Log.w(TAG, "supertonic ET run failed, falling back to LiteRT", e)
+            null
         }
-        return floats.copyOfRange(0, want)
     }
 
-    // -- Front end ------------------------------------------------------------
+    // -- Front end (unchanged: codepoints, voices, sampling) --------------------
 
     private fun normalise(text: String): String {
         var out = StringBuilder(text.length)
@@ -739,6 +780,9 @@ class SupertonicSynthesizer private constructor(
         /** Codepoints in the indexer table. */
         const val INDEXER_ENTRIES = 65_536
 
+        /** Fixed text/latent length the TFLite exports pin. */
+        const val MAX_TOKENS = 320
+
         /** The voice used when a caller does not name one. */
         const val DEFAULT_VOICE = "F1"
 
@@ -746,15 +790,27 @@ class SupertonicSynthesizer private constructor(
         const val ASSET_PATH = "supertonic"
 
         /**
-         * The four exports, in pipeline order.
-         *
-         * The bundle holds `.onnx` directly — no conversion step, unlike the old `.maml` graphs.
+         * The four exports, in pipeline order (ladder ship rungs).
          */
         val GRAPHS = listOf(
-            "duration_predictor.onnx",
-            "text_encoder.onnx",
-            "vector_estimator.onnx",
-            "vocoder.onnx",
+            "duration_w4.tflite",
+            "textenc_w8.tflite",
+            "estimator_w8.tflite",
+            "vocoder_w8.tflite",
+        )
+
+        /**
+         * The four ExecuTorch twins, in pipeline order — the task-23 Vulkan fp16
+         * ship ladder (`export_vulkan.py`; ~195 MB total vs ~110 MB ship `.tflite`).
+         * Waveform gate PASS both rungs (cos 0.999997); int8 names are
+         * `st-<net>-vulkan-int8.pte` if fp16 diverges on-device. Resolution is
+         * presence-based, so absent files simply keep the LiteRT ladder serving.
+         */
+        val ET_GRAPHS = listOf(
+            "st-duration-vulkan-fp16.pte",
+            "st-textenc-vulkan-fp16.pte",
+            "st-estimator-vulkan-fp16.pte",
+            "st-vocoder-vulkan-fp16.pte",
         )
 
         const val INDEXER = "unicode_indexer.json"
@@ -782,8 +838,8 @@ class SupertonicSynthesizer private constructor(
 
         private fun sessionKey(bundle: Bundle, name: String): String = bundle.key() + name
 
-        private fun openSession(bundle: Bundle, name: String): OrtSession? =
-            OnnxSessions.open(sessionKey(bundle, name)) { bundle.read(name) }
+        private fun openSession(bundle: Bundle, name: String): CompiledModel? =
+            bundle.openModel(name, sessionKey(bundle, name))
 
         private fun readIndexer(bundle: Bundle): IntArray {
             val json = org.json.JSONArray(bundle.read(INDEXER).decodeToString())

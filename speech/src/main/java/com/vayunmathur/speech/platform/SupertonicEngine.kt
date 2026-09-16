@@ -38,6 +38,9 @@ class SupertonicEngine(private val context: Context) {
      *
      * Slow the first time: ~105 MB of weights are streamed out of the APK into GPU memory, and four
      * command buffers are recorded. That is why `onCreate` warms it off the main thread.
+     *
+     * ExecuTorch twins are picked up opportunistically from the download directory when
+     * present (see [SupertonicModel.ET_FILES]); the `.tflite` ladder stays the default.
      */
     fun preload(): Boolean = synchronized(lock) { ensure() != null }
 
@@ -239,10 +242,10 @@ object SupertonicBundle {
      * advertised. Checks the download directory first, then APK assets.
      */
     private val REQUIRED = listOf(
-        "duration_predictor.onnx",
-        "text_encoder.onnx",
-        "vector_estimator.onnx",
-        "vocoder.onnx",
+        "duration_w4.tflite",
+        "textenc_w8.tflite",
+        "estimator_w8.tflite",
+        "vocoder_w8.tflite",
         "unicode_indexer.json",
     )
 }

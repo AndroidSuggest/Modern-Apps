@@ -100,7 +100,7 @@ fun WeatherMapPage(
             style = MapStyle.Muted,
             options = MapOptions(
                 // Lock rotation/tilt so the north-up image quad stays aligned.
-                gestureOptions = GestureOptions.RotationLocked,
+                gestureOptions = GestureOptions.TiltLocked,
                 // Ornaments off. Attribution is not an ornament any more — the overlay that
                 // drew it was removed, and nothing renders it in its place, so this app
                 // ships without the ODbL credit the OpenStreetMap data requires. Weather's

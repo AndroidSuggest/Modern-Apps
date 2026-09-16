@@ -69,8 +69,11 @@ class MainActivity : ComponentActivity() {
         val ds = DataStoreUtils.getInstance(this)
         setContent {
             DynamicTheme {
-                // Both model bundles download on first launch: Supertonic's plans (~395 MB)
-                // and Whisper's exports (~77 MB) stay out of the APK to keep it small.
+                // Both model bundles download on first launch: Supertonic's plans (~110 MB)
+                // and Whisper's export (~77 MB) stay out of the APK to keep it small.
+                // The ExecuTorch twins (WhisperModel.ET_MODELS, SupertonicModel.ET_FILES)
+                // are deliberately NOT gated here: no mirror pins exist yet, and they
+                // resolve opportunistically at inference time with the ladders as fallback.
                 InitialModelDownloadChecker(ds, SupertonicModel.FILES + WhisperModel.FILES) {
                     SetupScreen()
                 }

@@ -1,9 +1,7 @@
 package com.vayunmathur.screentime.platform
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
-import androidx.core.content.edit
 import com.vayunmathur.screentime.data.ScreenTimeRules
 import com.vayunmathur.screentime.widget.WidgetRefresh
 import java.time.LocalDate
@@ -15,12 +13,12 @@ private const val TAG = "ScreenTimeCoordinator"
  * Decides what Screen Time's state should be, and makes it so.
  *
  * Mirrors parental controls' `Enforcer.reconcile`: everything that can change an outcome -
- * the timer observer, a schedule boundary, a rule edit, focus toggle, boot - funnels through
+ * the timer observer, a schedule boundary, a rule edit, boot - funnels through
  * [reconcile], recomputing the whole picture so the paths cannot disagree.
  *
  * Self-managed throughout: nothing here asks for a PIN, and every restriction is dismissible
- * by the user who set it. The paused set is the union of spent timers and the active focus
- * session; wind-down never pauses, it only quiets (grayscale + DND).
+ * by the user who set it. The paused set is the union of spent timers and the user's own
+ * paused apps; wind-down never pauses, it only quiets (grayscale + DND).
  */
 class Coordinator(private val context: Context) {
 
@@ -37,34 +35,22 @@ class Coordinator(private val context: Context) {
         reconcile()
     }
 
-    /** Manual focus toggle from the UI or the QS tile. */
-    suspend fun setFocusActive(active: Boolean) {
-        prefs().edit { putBoolean(KEY_FOCUS_MANUAL, active) }
-        reconcile()
-    }
-
-    suspend fun isFocusActive(): Boolean = focusActiveNow()
-
     suspend fun reconcile() {
         UsageAccess.ensure(context)
         val now = LocalDateTime.now()
-        val focus = rules.focusNow()
+        val manualPaused = rules.pausedNow().pausedPackages.toSet()
         val windDownSchedule = rules.windDownNow()
         val allTimers = rules.allTimersNow()
         spent.pruneToToday()
 
-        // Focus runs when toggled on manually or its schedule is open.
-        val focusRunning = focusActiveNow() || focus.activeAt(now)
-        val focusPaused = if (focusRunning) focus.pausedPackages.toSet() else emptySet()
-
-        // Spent timers pause regardless of focus. Un-spend nothing here: a spent timer stays
-        // spent until midnight (the observer fired once and will not fire again).
+        // Spent timers pause regardless of manual pauses. Un-spend nothing here: a spent
+        // timer stays spent until midnight (the observer fired once and will not fire again).
         val timerPaused = allTimers
             .filter { spent.hasSpent(it.packageName) }
             .map { it.packageName }
             .toSet()
 
-        suspender.sync(focusPaused + timerPaused)
+        suspender.sync(manualPaused + timerPaused)
 
         // Re-arm observers for unspent timers only; spent ones stay paused without an observer.
         timers.sync(allTimers.filter { !spent.hasSpent(it.packageName) })
@@ -75,22 +61,11 @@ class Coordinator(private val context: Context) {
         if (winding) windDown.enter(windDownSchedule.grayscale, windDownSchedule.doNotDisturb)
         else windDown.exit(windDownSchedule.grayscale, windDownSchedule.doNotDisturb)
 
-        scheduler.armAll(focus, windDownSchedule)
+        scheduler.armAll(windDownSchedule)
 
         // The widget tracks whatever reconcile just decided. Fire-and-forget: a missing host
         // must never break enforcement, and WidgetRefresh already swallows host absence.
         WidgetRefresh.refresh(context)
-    }
-
-    private suspend fun focusActiveNow(): Boolean =
-        prefs().getBoolean(KEY_FOCUS_MANUAL, false)
-
-    private fun prefs(): SharedPreferences =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
-    private companion object {
-        const val PREFS = "screentime_state"
-        const val KEY_FOCUS_MANUAL = "focus_manual"
     }
 }
 

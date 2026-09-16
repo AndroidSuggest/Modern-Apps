@@ -3,11 +3,6 @@
     <!-- App name. Shown in the launcher and app info. -->
     <string name="app_name">Screen Time</string>
 
-    <!-- Focus mode: title, also the label of its Settings row. Noun phrase. -->
-    <string name="focus_title">Focus mode</string>
-    <!-- One-line summary under the Focus mode row in Settings. -->
-    <string name="focus_summary">Pause distracting apps on demand or on a schedule</string>
-
     <!-- Wind-down: title, also the label of its Settings row. Noun phrase. -->
     <string name="winddown_title">Wind Down</string>
     <!-- One-line summary under the Bedtime row in Settings. -->
@@ -19,12 +14,12 @@
     <string name="details_title">Time spent</string>
     <!-- Details: timer row. Noun. -->
     <string name="details_timer">Timer</string>
-    <!-- Details: focus-membership row. Verb phrase. -->
-    <string name="details_pause_in_focus">Pause in focus mode</string>
-    <!-- Details: explanation under the focus row. -->
-    <string name="details_pause_in_focus_hint">This app pauses while a focus session runs.</string>
-    <!-- Details: shown when focus is currently running. -->
-    <string name="details_focus_running">Focus is on now.</string>
+    <!-- Details: pause section heading. Noun. -->
+    <string name="details_pause_title">Pause</string>
+    <!-- Details: pause row. Verb phrase. -->
+    <string name="details_pause_app">Pause this app</string>
+    <!-- Details: explanation under the pause row. -->
+    <string name="details_pause_app_hint">Pausing blocks the app right away. Turn it back on here to unpause.</string>
     <!-- Details: shown when no package was supplied. -->
     <string name="details_no_app">Pick an app from the dashboard to see its details.</string>
 
@@ -80,35 +75,8 @@
     <!-- Dashboard: shown for an app with no timer set, and as the option that removes one. -->
     <string name="timer_none">No timer</string>
 
-    <!-- Focus mode: title of the running notice. Noun phrase. -->
-    <string name="focus_running_title">Focus mode is on</string>
-    <!-- Focus mode: text of the running notice. -->
-    <string name="focus_running_text">Distracting apps are paused. Tap to manage.</string>
-    <!-- Focus mode: action that ends the session from the notice. Verb. -->
-    <string name="focus_stop">End focus</string>
-    <!-- Notifications: channel for the focus session. Noun phrase. -->
-    <string name="focus_channel_name">Focus session</string>
-    <!-- Notifications: channel description. -->
-    <string name="focus_channel_description">Shows while focus mode is pausing apps.</string>
-    <!-- Friction: button naming us as the pauser. -->
-    <string name="timer_paused_by">Paused by Screen Time</string>
-
-    <!-- Focus mode: the manual on/off row. Noun phrase. -->
-    <string name="focus_now">Focus mode</string>
-    <!-- Focus mode: explanation under the manual row. -->
-    <string name="focus_now_hint">Pause the apps below until you turn focus off.</string>
-    <!-- Focus mode: heading above schedule rows. Noun. -->
-    <string name="focus_schedule">Schedule</string>
-    <!-- Focus mode: the schedule on/off row. Verb phrase. -->
-    <string name="focus_schedule_enable">Turn on automatically</string>
-    <!-- Focus mode: schedule start row. Noun phrase. -->
-    <string name="focus_start">Starts at</string>
-    <!-- Focus mode: schedule end row. Noun phrase. -->
-    <string name="focus_end">Ends at</string>
-    <!-- Focus mode: single-letter day labels, Monday first, comma separated. -->
-    <string name="focus_day_initials">M,T,W,T,F,S,S</string>
-    <!-- Focus mode: heading above the paused-app list. Noun phrase. -->
-    <string name="focus_apps">Paused apps</string>
+    <!-- Wind-down: single-letter day labels, Monday first, comma separated. -->
+    <string name="day_initials">M,T,W,T,F,S,S</string>
 
     <!-- Wind-down: the main on/off switch. Verb phrase. -->
     <string name="winddown_enable">Use wind-down</string>

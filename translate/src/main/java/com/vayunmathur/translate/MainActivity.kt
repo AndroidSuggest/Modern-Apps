@@ -25,6 +25,11 @@ class MainActivity : ComponentActivity() {
         val ds = DataStoreUtils.getInstance(this)
         setContent {
             DynamicTheme {
+                // The ExecuTorch NLLB split (`NllbHandle.ET_ENCODER_FILE`/`ET_DECODER_FILE`)
+                // is deliberately NOT gated here: no mirror pins exist yet, and gating
+                // first launch on unmirrored files would brick it. When the `.pte` pair
+                // lands next to the ship rungs, the handle picks it up on its own; the
+                // gated download list stays the ladder ship rungs (mirrors `:speech`).
                 InitialModelDownloadChecker(ds, NllbModel.FILES) {
                     Navigation(viewModel, initialText)
                 }

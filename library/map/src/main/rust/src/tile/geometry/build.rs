@@ -5,7 +5,7 @@ use super::convert::{flatten, widen};
 use super::mesh::{BuildingMesh, CarriagewayMesh, LayerMesh, TileMesh};
 use super::regions::region_meshes;
 use super::split::split_t;
-use super::terrain::{terrain_mesh, tile_ground_width_m};
+use super::terrain::{drape_vertices, terrain_mesh, tile_ground_width_m};
 use super::traffic::traffic_meshes;
 use crate::style::{KindFilter, Layer, LayerKind, LayerToggles};
 use crate::tess::{fill, ribbon, stroke};
@@ -13,7 +13,7 @@ use crate::tile::select::ANCESTOR_DEPTH;
 use crate::tile::symbol;
 use crate::tile::taper;
 use tilecodec::mamaps::body::{Body, GEOM_LINE, GEOM_POINT, GEOM_POLYGON};
-use tilecodec::mamaps::dict::{LAYER_BUILDINGS, LAYER_EARTH, LAYER_JUNCTION};
+use tilecodec::mamaps::dict::{LAYER_BUILDINGS, LAYER_JUNCTION};
 
 /// Tessellate every layer of `tile` that could be drawn while this tile is on screen.
 ///
@@ -98,10 +98,14 @@ pub fn build_toggled(
     // otherwise this is a walk over every road feature in the tile for a result nothing reads.
     // An empty scan tapers nothing, so getting this condition wrong costs a step, not a blank map.
     // Written as the layer loop's own zoom test rather than a helper, so the two cannot drift.
-    let carriageway_here =
-        layers.iter().any(|l| l.carriageway && l.min_zoom <= deepest && l.max_zoom >= z);
-    let transitions =
-        if carriageway_here { taper::Nodes::scan(tile) } else { taper::Nodes::default() };
+    let carriageway_here = layers
+        .iter()
+        .any(|l| l.carriageway && l.min_zoom <= deepest && l.max_zoom >= z);
+    let transitions = if carriageway_here {
+        taper::Nodes::scan(tile)
+    } else {
+        taper::Nodes::default()
+    };
     let taper_run = taper::taper_run(ground_width_m);
     let extent = tile.extent as u32;
 
@@ -115,7 +119,9 @@ pub fn build_toggled(
         if layer.min_zoom > deepest || layer.max_zoom < z {
             continue;
         }
-        let Some(source) = tile.layer(layer.source_layer_id) else { continue };
+        let Some(source) = tile.layer(layer.source_layer_id) else {
+            continue;
+        };
 
         let mut vertices: Vec<f32> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
@@ -149,8 +155,10 @@ pub fn build_toggled(
                     // A feature's parts are exactly one exterior and its holes, which is what the
                     // tessellator takes: the encoder splits a multipolygon into one feature per
                     // ring group rather than making every consumer regroup them.
-                    let rings: Vec<Vec<(i32, i32)>> =
-                        parts.iter().map(|part| widen(source.points(part))).collect();
+                    let rings: Vec<Vec<(i32, i32)>> = parts
+                        .iter()
+                        .map(|part| widen(source.points(part)))
+                        .collect();
                     if layer.source_layer_id == LAYER_BUILDINGS {
                         // Buildings extrude into 3D instead of drawing a flat footprint: the
                         // side-table attrs (height, roof shape, colours) plus this tile's ground
@@ -167,14 +175,18 @@ pub fn build_toggled(
                             &mut building_vertices,
                             &mut building_indices,
                         );
-                    } else if layer.source_layer_id == LAYER_EARTH && tile.heightmap.is_some() {
-                        // The ground of a tile that carries a heightmap is drawn by the terrain
-                        // pass (built once below), not as a flat fill — otherwise the flat fill,
-                        // drawn depth-off in the layer loop, would paint over the relief. A tile
-                        // with no heightmap falls through and keeps its flat `earth` fill.
-                        continue;
                     } else {
-                        fill::tessellate(&rings, extent, rings_validated, &mut vertices, &mut indices);
+                        // The flat `earth` fill is always kept, even on a relief tile: the
+                        // terrain grid draws first depth-tested and this fill paints over its
+                        // cracks via depth-off layer order, so gaps show earth colour rather
+                        // than the water-blue clear colour.
+                        fill::tessellate(
+                            &rings,
+                            extent,
+                            rings_validated,
+                            &mut vertices,
+                            &mut indices,
+                        );
                     }
                 }
                 LayerKind::Line => {
@@ -224,7 +236,9 @@ pub fn build_toggled(
                                 carriageways.len() - 1
                             }
                         };
-                        let Some(mesh) = carriageways.get_mut(at) else { continue };
+                        let Some(mesh) = carriageways.get_mut(at) else {
+                            continue;
+                        };
                         for part in parts {
                             let flat = flatten(source.points(part));
                             // Where this section abuts one of a different lane count, ramp to
@@ -263,7 +277,9 @@ pub fn build_toggled(
                                 coloured.len() - 1
                             }
                         };
-                        let Some((_, v, i)) = coloured.get_mut(at) else { continue };
+                        let Some((_, v, i)) = coloured.get_mut(at) else {
+                            continue;
+                        };
                         for part in parts {
                             let flat = flatten(source.points(part));
                             stroke::stroke(&flat, extent, gapped, v, i);
@@ -281,7 +297,9 @@ pub fn build_toggled(
                     // shapes a curved label laid along its centreline. Both shape here,
                     // zoom-independently — the renderer emits quads per frame at the frame's
                     // text size, straight from the anchor or along the polyline.
-                    let Some(name) = tile.name(feature.name_idx) else { continue };
+                    let Some(name) = tile.name(feature.name_idx) else {
+                        continue;
+                    };
                     if name.is_empty() {
                         continue;
                     }
@@ -328,6 +346,29 @@ pub fn build_toggled(
             }
         }
 
+        // Drape the layer's flat geometry onto the relief where the tile carries a
+        // heightmap; without one the tessellators' z=0 stands and output is unchanged.
+        // Done once per mesh, not per feature, so accumulated vertices are walked once.
+        // The kind says which vertex format (and trailing z slot) this mesh carries.
+        if tile.heightmap.is_some() {
+            let (fpv, z) = match layer.kind {
+                LayerKind::Fill => (fill::FLOATS_PER_VERTEX, 2),
+                LayerKind::Line => (stroke::FLOATS_PER_VERTEX, 7),
+                LayerKind::Symbol => (0, 0),
+            };
+            if fpv > 0 {
+                drape_vertices(&mut vertices, fpv, z, &tile.heightmap, ground_width_m);
+                for (_, v, _) in coloured.iter_mut() {
+                    drape_vertices(
+                        v,
+                        stroke::FLOATS_PER_VERTEX,
+                        7,
+                        &tile.heightmap,
+                        ground_width_m,
+                    );
+                }
+            }
+        }
         if !indices.is_empty() {
             meshes.push(LayerMesh {
                 layer_index: index,
@@ -357,20 +398,37 @@ pub fn build_toggled(
 
     // A road whose every part was degenerate would otherwise cost an empty draw.
     carriageways.retain(|m| !m.indices.is_empty());
+    // Drape the carriageway surfaces onto the relief where the tile carries a heightmap;
+    // without one the tessellator's z=0 stands and output is unchanged.
+    if tile.heightmap.is_some() {
+        for m in carriageways.iter_mut() {
+            drape_vertices(
+                &mut m.vertices,
+                crate::tess::ribbon::FLOATS_PER_VERTEX,
+                6,
+                &tile.heightmap,
+                ground_width_m,
+            );
+        }
+    }
 
     TileMesh {
         z,
         x,
         y,
         meshes,
-        buildings: BuildingMesh { vertices: building_vertices, indices: building_indices },
+        buildings: BuildingMesh {
+            vertices: building_vertices,
+            indices: building_indices,
+        },
         terrain: terrain_mesh(tile, ground_width_m),
         labels,
-        regions: region_meshes(tile, extent, rings_validated),
-        traffic: traffic_meshes(tile, extent, z, toggles),
+        regions: region_meshes(tile, extent, rings_validated, ground_width_m),
+        traffic: traffic_meshes(tile, extent, z, toggles, ground_width_m),
         carriageways,
         yellow_centre: tile.convention.is_some_and(|c| c.yellow_centre),
         arrows: arrow_meshes(tile, z, left_hand),
         generation,
+        heightmap: tile.heightmap.clone(),
     }
 }

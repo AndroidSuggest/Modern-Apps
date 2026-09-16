@@ -15,6 +15,7 @@ import com.vayunmathur.library.map.LayerOptions
 import com.vayunmathur.library.map.MapOptions
 import com.vayunmathur.library.map.RegionLevel
 import com.vayunmathur.library.map.RegionMask
+import com.vayunmathur.library.map.TileSource
 import com.vayunmathur.library.map.UserPuck
 import com.vayunmathur.library.map.VectorMap
 import com.vayunmathur.library.ui.FreeHeightSheetState
@@ -22,10 +23,12 @@ import com.vayunmathur.maps.data.ParkingSpot
 import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.data.osmPlace
+import com.vayunmathur.maps.data.transit.TransitStop
 import com.vayunmathur.maps.ipc.FamilyMember
 import com.vayunmathur.maps.ui.map.MapFeaturePicker.Companion.NATIVE_LABEL_LAYER_IDS
 import com.vayunmathur.maps.ui.map.MapFeaturePicker.Companion.toFeature1
 import com.vayunmathur.maps.ui.theme.mapTokens
+import com.vayunmathur.maps.util.DeparturesState
 import com.vayunmathur.maps.util.MapsSearchViewModel
 import com.vayunmathur.maps.util.NavigationProgress
 import com.vayunmathur.maps.util.OfflineRouter
@@ -73,6 +76,7 @@ fun MapSurface(
     satelliteEnabled: Boolean,
     safetyEnabled: Boolean,
     transitEnabled: Boolean,
+    selectedTransitStop: TransitStop?,
     darkBasemap: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -93,6 +97,9 @@ fun MapSurface(
                 // ride in separately via [trafficColors] below.
                 traffic = trafficEnabled,
             ),
+            // maps is the one app that pushes a `.mamaps` archive to external files, so it
+            // reads tiles from the file; every other app streams from the server (the default).
+            tileSource = TileSource.LocalFile,
         )
     }
 
@@ -143,15 +150,27 @@ fun MapSurface(
         buildMarkers(searchResults, savedPlaces, parkingSpot, familyMembers)
     }
 
-    // Simulated in-service transit vehicles for the visible bbox, recomputed at ~1 Hz and drawn by
-    // the renderer as billboarded sprites on their own overlay, apart from the pins above. Gated on
-    // the transit toggle and the lifecycle, and empty below its zoom gate, so it costs nothing when
-    // transit is off, the map is hidden, or the viewport is too wide to enumerate cheaply.
-    val vehicles = rememberTransitVehicles(camera, transitEnabled)
+    // The pack trip ids behind the selected stop's departures board: the join key into
+    // `activeVehicles` (each offline departure's `tripVehicleId` is bit-identical to the matching
+    // `Vehicle.id`), so only the selected station's own serving trips draw as sprites. Loading/Idle
+    // (or online-only entries with no trip id) yields the empty set — strict-hide, per spec.
+    val departuresState by transitViewModel.departures.collectAsState()
+    val servingTripIds = remember(departuresState) {
+        (departuresState as? DeparturesState.Loaded)?.departures.orEmpty()
+            .mapNotNull { it.tripVehicleId }.toSet()
+    }
 
-    // Pack-driven rail network for the viewport, drawn in the separate rail
-    // slot under the navigation route.
-    val railLines = rememberRailLines(camera, transitEnabled, tokens)
+    // Simulated in-service transit vehicles serving the selected stop, recomputed at ~1 Hz and drawn
+    // by the renderer as billboarded sprites on their own overlay, apart from the pins above. Gated
+    // on the transit toggle, the selected stop, and the lifecycle, and empty below its zoom gate, so
+    // it costs nothing when transit is off, no station is selected, the map is hidden, or the
+    // viewport is too wide to enumerate cheaply.
+    val vehicles = rememberTransitVehicles(camera, transitEnabled, selectedTransitStop, servingTripIds)
+
+    // Pack-driven lines for the selected stop, drawn in the separate rail
+    // slot under the navigation route. Null (nothing drawn) until a stop is
+    // selected — always-on lines are visual noise.
+    val railLines = rememberRailLines(camera, transitEnabled, selectedTransitStop, tokens)
 
     TrafficPrefetchEffect(camera, trafficEnabled)
 

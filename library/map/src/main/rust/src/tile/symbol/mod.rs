@@ -36,12 +36,12 @@ pub use self::shape::{shape_label, shape_line_label};
 #[cfg(test)]
 use self::shape::{rank_for_layer, sprite_for};
 
-/// Floats per vertex for a **text** label quad: `x, y, u, v, ax, ay` — see
+/// Floats per vertex for a **text** label quad: `x, y, u, v, ax, ay, ah` — see
 /// [`crate::tess::text::FLOATS_PER_VERTEX`]. The text draws through the billboard symbol pipeline, which
 /// reads the per-vertex ground anchor to stay upright under tilt.
 pub const FLOATS_PER_VERTEX: usize = crate::tess::text::FLOATS_PER_VERTEX;
 
-/// Floats per vertex for a POI **icon** quad: `x, y, u, v, ax, ay` — the same layout the text
+/// Floats per vertex for a POI **icon** quad: `x, y, u, v, ax, ay, ah` — the same layout the text
 /// beside it uses, because an icon billboards the same way its label does.
 ///
 /// An icon carries the ground anchor on every corner and draws through the billboard pipeline, so

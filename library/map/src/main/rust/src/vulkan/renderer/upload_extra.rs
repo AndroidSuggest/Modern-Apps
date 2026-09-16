@@ -1,4 +1,7 @@
-use super::{FRAMES_IN_FLIGHT, Frame, QUAD_INDICES, QUAD_VERTICES, Quad, Renderer, RouteBuffers, TransientBuffers};
+use super::{
+    Frame, Quad, Renderer, RouteBuffers, TransientBuffers, FRAMES_IN_FLIGHT, QUAD_INDICES,
+    QUAD_VERTICES,
+};
 use crate::overlay::RouteMesh;
 use crate::vulkan::buffers::{Buffer, ScratchRing};
 use crate::vulkan::cache::ShaderCache;
@@ -93,8 +96,7 @@ impl Renderer {
         for &command_buffer in &command_buffers {
             // Created signalled, so the first frame does not wait on a fence nothing has
             // submitted to.
-            let fence_info =
-                vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
+            let fence_info = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
             let semaphore_info = vk::SemaphoreCreateInfo::default();
             frames.push(Frame {
                 command_buffer,
@@ -162,7 +164,9 @@ impl Renderer {
             retiring: Vec::new(),
             pipeline_cache,
             transients: Vec::new(),
-            scratch: (0..FRAMES_IN_FLIGHT).map(|_| ScratchRing::default()).collect(),
+            scratch: (0..FRAMES_IN_FLIGHT)
+                .map(|_| ScratchRing::default())
+                .collect(),
             window,
             width,
             height,

@@ -4,7 +4,7 @@ import com.vayunmathur.library.map.GeoPoint
 import kotlinx.serialization.Serializable
 
 /**
- * A place the user pinned to a quick-access slot (Home or Work). Only the name
+ * A place the user starred from the place sheet. Only the name
  * and coordinates are kept — that's all we need to recenter the map or start a
  * route to it.
  */

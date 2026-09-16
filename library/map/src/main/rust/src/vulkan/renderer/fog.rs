@@ -1,16 +1,17 @@
-//! Distance fog for tilted views: haze far tiles into the background.
+//! Distance fog for tilted views: haze far tiles into the land.
 //!
 //! Split out of `mod.rs` (which owns the colour helpers this builds on) to keep every
 //! renderer file under the 500-line lint. Pure functions over the camera + tile id —
 //! no GPU state, trivially testable off-device.
 
 use crate::camera::Camera;
+use crate::style::{Layer, Palette};
 
 /// The tilt distances (in viewport heights from the camera centre) the distance fog ramps over.
 ///
 /// At pitch 0 every drawn tile is within ~1 viewport-height, so nothing ever fogs. Tilted at
 /// 65° the far trapezoid reaches the 6-viewport coverage cap in `select::coverage`; the ramp
-/// ends there, so the farthest drawn tiles arrive already background-coloured and the ground
+/// ends there, so the farthest drawn tiles arrive already land-coloured and the ground
 /// dissolves into haze instead of ending at a hard edge. Starts past the mid-field so the
 /// readable map never hazes — only the far strip does.
 const FOG_NEAR_VIEWPORTS: f64 = 2.5;
@@ -35,22 +36,46 @@ pub(crate) fn fog_factor(camera: &Camera, z: u8, x: u32, y: u32) -> f32 {
         .clamp(0.0, 1.0) as f32
 }
 
-/// Mix an ARGB colour toward the background by `f`: 0 is unchanged, 1 is the background.
+/// Mix an ARGB colour toward the fog colour by `f`: 0 is unchanged, 1 is the fog colour.
 ///
 /// Applied in packed space like `scale_alpha`, consistent with the renderer's existing
 /// non-colour-managed math. Folds into the pushed colour, so fills *and* lines fog together
 /// (unlike `morph.x`, which the line path ignores) — roads haze with the land instead of
 /// staying crisp over it. Alpha mixes too: full fog is opaque haze, which is what makes the
-/// far edge read as sky rather than as translucent ground.
-pub(crate) fn apply_fog(argb: u32, background: u32, f: f32) -> u32 {
+/// far edge read as haze rather than as translucent ground.
+pub(crate) fn apply_fog(argb: u32, fog: u32, f: f32) -> u32 {
     if f <= 0.0 {
         return argb;
     }
-    let m = |a: u32, b: u32| (a as f32 + (b as f32 - a as f32) * f).round().clamp(0.0, 255.0) as u32;
-    (m(argb >> 24, background >> 24) << 24)
-        | (m((argb >> 16) & 0xFF, (background >> 16) & 0xFF) << 16)
-        | (m((argb >> 8) & 0xFF, (background >> 8) & 0xFF) << 8)
-        | m(argb & 0xFF, background & 0xFF)
+    let m = |a: u32, b: u32| {
+        (a as f32 + (b as f32 - a as f32) * f)
+            .round()
+            .clamp(0.0, 255.0) as u32
+    };
+    (m(argb >> 24, fog >> 24) << 24)
+        | (m((argb >> 16) & 0xFF, (fog >> 16) & 0xFF) << 16)
+        | (m((argb >> 8) & 0xFF, (fog >> 8) & 0xFF) << 8)
+        | m(argb & 0xFF, fog & 0xFF)
+}
+
+/// The colour distance fog mixes toward: the `earth` land colour, not the water-blue clear.
+///
+/// The clear colour is the sea by design (`style::background` is water: an unloaded map reads
+/// as ocean with land appearing on top of it). Fogging toward it pulled distant tilted land
+/// into ocean-blue, dissolving the far ground into sea. The far ground under tilt is land, so
+/// the haze it dissolves into is the land's own colour — `earth.color(palette)` at the frame
+/// zoom, opacity-scaled the way the terrain pass paints it, so the farthest drawn tiles arrive
+/// already land-coloured.
+///
+/// Falls back to the background when the style names no `earth` layer, which keeps the old
+/// behaviour rather than inventing a colour. That never happens with the bundled style; the
+/// fallback is for a future style that drops the layer.
+pub(crate) fn fog_color(layers: &[Layer], palette: Palette, zoom: f64) -> u32 {
+    layers
+        .iter()
+        .find(|l| l.source_layer_id == tilecodec::mamaps::dict::LAYER_EARTH)
+        .map(|earth| super::scale_alpha(earth.color(palette), earth.opacity_at(zoom)))
+        .unwrap_or_else(|| crate::style::background(palette.variant))
 }
 
 #[cfg(test)]
@@ -104,10 +129,33 @@ mod tests {
     }
 
     #[test]
-    fn fog_mixes_toward_the_background() {
+    fn fog_mixes_toward_the_fog_colour() {
         assert_eq!(apply_fog(0xFF00_0000, 0xFFFF_FFFF, 0.0), 0xFF00_0000);
         assert_eq!(apply_fog(0xFF00_0000, 0xFFFF_FFFF, 1.0), 0xFFFF_FFFF);
         // Halfway red-to-white is half-grey, opaque throughout.
         assert_eq!(apply_fog(0xFFFF_0000, 0xFFFF_FFFF, 0.5), 0xFFFF_8080);
+    }
+
+    #[test]
+    fn fog_aims_at_the_land_not_the_water() {
+        use crate::style::Variant;
+        let layers = crate::style::layers();
+        let land = fog_color(layers, Palette::new(false, false), 14.0);
+        assert_eq!(land, 0xFFE2DFDA, "light earth is the authored #e2dfda");
+        assert_eq!(
+            fog_color(layers, Palette::new(true, false), 14.0),
+            0xFF24262C,
+            "dark earth is the authored #24262c"
+        );
+        // The water-blue clear the fog used to aim at: full fog must no longer land on it.
+        let water = crate::style::background(Variant::Light);
+        assert_eq!(
+            water, 0xFF80DEEA,
+            "the clear is still the authored water-blue"
+        );
+        assert_ne!(land, water, "fog must not aim at the water-blue clear");
+        // Full fog of a water draw is the land colour: a far tile hazes into the shore
+        // haze rather than dissolving the land into sea.
+        assert_eq!(apply_fog(water, land, 1.0), land);
     }
 }

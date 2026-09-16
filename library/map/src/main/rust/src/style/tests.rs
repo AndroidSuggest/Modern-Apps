@@ -5,8 +5,14 @@ use tilecodec::mamaps::dict;
 /// because the user tapped "Coffee" would be a blank map, not a filtered one.
 #[test]
 fn a_kind_filter_narrows_poi_layers_only() {
-    let poi = layers().iter().find(|l| l.id == "poi-food").expect("poi-food");
-    let road = layers().iter().find(|l| l.toggle.is_none()).expect("a basemap layer");
+    let poi = layers()
+        .iter()
+        .find(|l| l.id == "poi-food")
+        .expect("poi-food");
+    let road = layers()
+        .iter()
+        .find(|l| l.toggle.is_none())
+        .expect("a basemap layer");
     let cafe = kind_id("cafe").expect("cafe");
     let bar = kind_id("bar").expect("bar");
 
@@ -17,8 +23,14 @@ fn a_kind_filter_narrows_poi_layers_only() {
 
     let coffee = KindFilter::new(vec![cafe]);
     assert!(coffee.admits(poi, cafe));
-    assert!(!coffee.admits(poi, bar), "a POI kind outside the filter is dropped");
-    assert!(coffee.admits(road, bar), "a basemap layer is never narrowed");
+    assert!(
+        !coffee.admits(poi, bar),
+        "a POI kind outside the filter is dropped"
+    );
+    assert!(
+        coffee.admits(road, bar),
+        "a basemap layer is never narrowed"
+    );
 }
 
 /// Equality is by value. The host rebuilds the chip list on every recomposition, so a
@@ -31,7 +43,11 @@ fn setting_the_same_filter_twice_does_not_bump_the_generation() {
     let shared = SharedToggles::new(LayerToggles::default());
     let (_, _, first) = shared.get();
 
-    let on = LayerToggles { poi: true, transit: false, traffic: false };
+    let on = LayerToggles {
+        poi: true,
+        transit: false,
+        traffic: false,
+    };
     assert!(shared.set(on, KindFilter::new(vec![cafe, bar])));
     let (toggles, kinds, second) = shared.get();
     assert!(toggles.poi);
@@ -44,7 +60,10 @@ fn setting_the_same_filter_twice_does_not_bump_the_generation() {
     assert_eq!(third, second, "an identical set must not bump");
     assert_eq!(again, kinds);
 
-    assert!(shared.set(on, KindFilter::all()), "clearing the chips is a change");
+    assert!(
+        shared.set(on, KindFilter::all()),
+        "clearing the chips is a change"
+    );
     assert_ne!(shared.get().2, third);
 }
 
@@ -57,7 +76,10 @@ fn luminance(argb: u32) -> f32 {
 }
 
 fn find(id: &str) -> &'static Layer {
-    layers().iter().find(|l| l.id == id).unwrap_or_else(|| panic!("{id}"))
+    layers()
+        .iter()
+        .find(|l| l.id == id)
+        .unwrap_or_else(|| panic!("{id}"))
 }
 
 #[test]
@@ -66,13 +88,23 @@ fn landcover_is_a_low_zoom_tint_and_stops_before_street_level() {
     // which a transcribed table with no ramp to read did — lays a blanket over the map that
     // follows vegetation polygons rather than coastlines or borders, so it lines up with
     // nothing.
-    let landcovers: Vec<&Layer> =
-        layers().iter().filter(|l| l.source_layer == "landcover").collect();
-    assert!(!landcovers.is_empty(), "landcover must still be drawn at low zoom");
+    let landcovers: Vec<&Layer> = layers()
+        .iter()
+        .filter(|l| l.source_layer == "landcover")
+        .collect();
+    assert!(
+        !landcovers.is_empty(),
+        "landcover must still be drawn at low zoom"
+    );
     for l in &landcovers {
         assert!(l.opacity_at(4.0) > 0.0, "{} should tint low zooms", l.id);
         assert_eq!(l.opacity_at(7.0), 0.0, "{} is at zero opacity by z7", l.id);
-        assert_eq!(l.opacity_at(14.0), 0.0, "{} must not reach street level", l.id);
+        assert_eq!(
+            l.opacity_at(14.0),
+            0.0,
+            "{} must not reach street level",
+            l.id
+        );
     }
 }
 
@@ -82,8 +114,10 @@ fn landcover_is_a_low_zoom_tint_and_stops_before_street_level() {
 /// straight cuts slashed across the shape.
 #[test]
 fn the_landuse_park_family_is_gated_off_at_world_zoom() {
-    let parks: Vec<&Layer> =
-        layers().iter().filter(|l| l.id.starts_with("landuse_park")).collect();
+    let parks: Vec<&Layer> = layers()
+        .iter()
+        .filter(|l| l.id.starts_with("landuse_park"))
+        .collect();
     assert_eq!(parks.len(), 4, "one layer per authored colour");
     for l in &parks {
         assert_eq!(l.opacity_at(6.0), 0.0, "{} is at zero opacity at z6", l.id);
@@ -141,15 +175,30 @@ fn turn_arrows_are_gated_by_the_road_lane_layer() {
     // against the shipped set would only re-state that the switch is off.
     let all = layers_with_lane_rendering();
     let gate = road_carriageway_layer(all).expect("the road carriageway layer");
-    assert_eq!(gate.id, "roads-carriageway", "not `transit-rail`, which has a spread");
+    assert_eq!(
+        gate.id, "roads-carriageway",
+        "not `transit-rail`, which has a spread"
+    );
 
-    let rail = all.iter().find(|l| l.id == "transit-rail").expect("transit-rail");
-    assert!(rail.lane_fan(), "the rail corridor fan is what made the naive predicate wrong");
+    let rail = all
+        .iter()
+        .find(|l| l.id == "transit-rail")
+        .expect("transit-rail");
+    assert!(
+        rail.lane_fan(),
+        "the rail corridor fan is what made the naive predicate wrong"
+    );
     assert!(!rail.carriageway, "and a corridor fan is not a carriageway");
-    assert!(rail.min_zoom < gate.min_zoom, "and it is the earlier of the two");
+    assert!(
+        rail.min_zoom < gate.min_zoom,
+        "and it is the earlier of the two"
+    );
 
     assert!(!gate.draws_at(12), "no turn arrows at z12");
-    assert!(!gate.draws_at(gate.min_zoom - 1), "nor one level below the lane floor");
+    assert!(
+        !gate.draws_at(gate.min_zoom - 1),
+        "nor one level below the lane floor"
+    );
     assert!(gate.draws_at(16), "turn arrows from z16");
 }
 
@@ -170,12 +219,21 @@ fn the_arrow_gate_does_not_depend_on_the_declaration_order() {
         .filter(|l| l.carriageway && l.source_layer_id == dict::LAYER_ROADS)
         .map(|l| l.id.as_str())
         .collect();
-    assert_eq!(matches, vec!["roads-carriageway"], "the gate predicate must name one layer");
+    assert_eq!(
+        matches,
+        vec!["roads-carriageway"],
+        "the gate predicate must name one layer"
+    );
 
     // The layer that would answer instead, and the two halves of why it does not.
-    let connector =
-        all.iter().find(|l| l.id == "junction-connector").expect("junction-connector");
-    assert!(connector.carriageway, "a connector draws as a road surface as well");
+    let connector = all
+        .iter()
+        .find(|l| l.id == "junction-connector")
+        .expect("junction-connector");
+    assert!(
+        connector.carriageway,
+        "a connector draws as a road surface as well"
+    );
     assert_ne!(
         connector.source_layer_id,
         dict::LAYER_ROADS,
@@ -193,21 +251,36 @@ fn the_arrow_gate_does_not_depend_on_the_declaration_order() {
 /// band over every road it names.
 #[test]
 fn the_lane_rendering_switch_removes_the_carriageways_and_nothing_else() {
-    let shipped: Vec<&str> =
-        layers().iter().filter(|l| l.carriageway).map(|l| l.id.as_str()).collect();
+    let shipped: Vec<&str> = layers()
+        .iter()
+        .filter(|l| l.carriageway)
+        .map(|l| l.id.as_str())
+        .collect();
     if LANE_RENDERING {
         assert_eq!(shipped, vec!["roads-carriageway", "junction-connector"]);
-        assert!(road_carriageway_layer(layers()).is_some(), "and the turn arrows are gated on");
+        assert!(
+            road_carriageway_layer(layers()).is_some(),
+            "and the turn arrows are gated on"
+        );
     } else {
-        assert!(shipped.is_empty(), "no surface layer, so no asphalt, markings or taper");
-        assert!(road_carriageway_layer(layers()).is_none(), "which is the turn-arrow gate");
+        assert!(
+            shipped.is_empty(),
+            "no surface layer, so no asphalt, markings or taper"
+        );
+        assert!(
+            road_carriageway_layer(layers()).is_none(),
+            "which is the turn-arrow gate"
+        );
     }
 
     // Either way the plain road lines are untouched, and they draw to the top of the range.
     for id in ["roads-major", "roads-highway", "roads-minor", "roads-link"] {
         let road = find(id);
         assert!(!road.carriageway, "{id} is a stroke and stays one");
-        assert!(road.draws_at(16) && road.draws_at(22), "{id} covers the carriageway's window");
+        assert!(
+            road.draws_at(16) && road.draws_at(22),
+            "{id} covers the carriageway's window"
+        );
     }
 
     // And the switch removes exactly the two, leaving every other layer in its place.
@@ -216,8 +289,11 @@ fn the_lane_rendering_switch_removes_the_carriageways_and_nothing_else() {
         .filter(|l| !layers().iter().any(|kept| kept.id == l.id))
         .map(|l| l.id.as_str())
         .collect();
-    let expected: Vec<&str> =
-        if LANE_RENDERING { Vec::new() } else { vec!["roads-carriageway", "junction-connector"] };
+    let expected: Vec<&str> = if LANE_RENDERING {
+        Vec::new()
+    } else {
+        vec!["roads-carriageway", "junction-connector"]
+    };
     assert_eq!(dropped, expected);
 }
 
@@ -225,12 +301,22 @@ fn the_lane_rendering_switch_removes_the_carriageways_and_nothing_else() {
 /// a colour with another sits in the same layer rather than adding a draw.
 #[test]
 fn a_data_driven_fill_is_one_layer_per_colour() {
-    let park: Vec<&Layer> =
-        layers().iter().filter(|l| l.id.starts_with("landuse_park")).collect();
+    let park: Vec<&Layer> = layers()
+        .iter()
+        .filter(|l| l.id.starts_with("landuse_park"))
+        .collect();
     let of = |kind: &str| park.iter().find(|l| l.matches(Some(kind))).map(|l| l.light);
-    assert_eq!(of("national_park"), of("cemetery"), "one arm, one colour, one layer");
+    assert_eq!(
+        of("national_park"),
+        of("cemetery"),
+        "one arm, one colour, one layer"
+    );
     assert_ne!(of("national_park"), of("military"));
-    assert_eq!(of("pier"), None, "a kind the authored filter excludes is not drawn here");
+    assert_eq!(
+        of("pier"),
+        None,
+        "a kind the authored filter excludes is not drawn here"
+    );
 }
 
 #[test]
@@ -248,7 +334,11 @@ fn every_landcover_kind_has_its_own_colour_in_both_palettes() {
             }
             seen.push((colour, &l.id));
         }
-        assert_eq!(seen.len(), 7, "every authored `match` arm needs a layer here");
+        assert_eq!(
+            seen.len(),
+            7,
+            "every authored `match` arm needs a layer here"
+        );
     }
 }
 
@@ -276,7 +366,10 @@ fn the_unfiltered_landcover_layer_is_drawn_first_so_specific_kinds_win() {
         .enumerate()
         .filter(|(_, l)| l.source_layer == "landcover")
         .collect();
-    let fallback = indices.iter().find(|(_, l)| l.kinds.is_empty()).expect("a fallback arm");
+    let fallback = indices
+        .iter()
+        .find(|(_, l)| l.kinds.is_empty())
+        .expect("a fallback arm");
     for (index, l) in &indices {
         if l.kinds.is_empty() {
             continue;
@@ -301,7 +394,10 @@ fn draw_order_is_the_order_in_the_file() {
         );
     }
     assert!(index("earth") < index("water"), "water draws over earth");
-    assert!(index("water") < index("roads-major"), "roads draw over water");
+    assert!(
+        index("water") < index("roads-major"),
+        "roads draw over water"
+    );
     // The authored style puts `landuse_park` through `landuse_runway` *before* `water` and
     // only `landuse_pedestrian` and `landuse_pier` after it. Flattening landuse to one side
     // of water puts parks on top of rivers or rivers on top of parks.
@@ -309,142 +405,6 @@ fn draw_order_is_the_order_in_the_file() {
     assert!(index("landuse_runway") < index("water"));
     assert!(index("water") < index("landuse_pedestrian"));
     assert!(index("landuse_pier") < index("buildings"));
-}
-
-#[test]
-fn the_kind_filter_is_a_whitelist_and_empty_means_everything() {
-    let highway = find("roads-highway");
-    assert!(highway.matches(Some("highway")));
-    assert!(!highway.matches(Some("major_road")));
-    assert!(!highway.matches(None), "a feature with no kind is not a highway");
-
-    let earth = find("earth");
-    assert!(earth.matches(None), "an unfiltered layer draws a feature with no kind");
-    assert!(earth.matches(Some("island")), "and every kind the schema can emit");
-    assert!(earth.matches(Some("ocean")));
-    // A name the schema has no id for cannot be on a feature at all, so nothing draws it.
-    // Interning the whitelist is what turns that from a silent miss into an impossibility.
-    assert!(!earth.matches(Some("not_a_kind")));
-}
-
-/// The interned whitelist and the authored names must agree, or the render path filters on
-/// something other than what the style says.
-#[test]
-fn the_interned_whitelist_is_the_authored_one() {
-    for l in layers() {
-        assert_eq!(
-            l.kind_ids.len(),
-            l.kinds.len(),
-            "`{}` lost a kind when its whitelist was interned",
-            l.id,
-        );
-        for name in &l.kinds {
-            assert!(l.matches(Some(name)), "`{}` should draw `{name}`", l.id);
-        }
-        assert!(l.kind_ids.windows(2).all(|p| p[0] < p[1]), "`{}` is not sorted", l.id);
-    }
-    // And every layer reads a source the archive actually carries.
-    let roads = find("roads-highway");
-    assert_eq!(roads.source_layer_id, dict::LAYER_ROADS);
-    assert_eq!(find("earth").source_layer_id, dict::LAYER_EARTH);
-}
-
-#[test]
-fn zoom_ranges_gate_the_expensive_layers() {
-    // Buildings are the densest layer in the schema, so they stay off until they are
-    // worth drawing.
-    assert!(!find("buildings").draws_at(13));
-    assert!(find("buildings").draws_at(14));
-    assert!(find("earth").draws_at(0));
-    assert!(find("earth").draws_at(22));
-}
-
-#[test]
-fn the_degenerate_dash_is_present_so_the_shader_path_is_exercised() {
-    // `boundaries_country`'s authored `[2, 0]`: a zero gap has to render solid. See
-    // line.frag.
-    assert_eq!(find("boundaries").dash, (2.0, 0.0));
-}
-
-#[test]
-fn every_layer_id_is_unique() {
-    let mut ids: Vec<&str> = layers().iter().map(|l| l.id.as_str()).collect();
-    ids.sort_unstable();
-    let count = ids.len();
-    ids.dedup();
-    assert_eq!(count, ids.len(), "layer ids are used as identities");
-}
-
-/// The lane arithmetic, at density 1 so a Dp is a pixel: `lanes` lanes of the constant
-/// 6 Dp spacing, centred on the track, so an even count straddles it and an odd one sits
-/// one line on it. The count comes from the style's zoom step, not from the feature.
-#[test]
-fn a_corridor_fans_out_centred_on_the_track_it_shares() {
-    let rail = find("transit-rail");
-    let of = |zoom: f64, ordinal: u8, count: u8| rail.lane_offset_px(zoom, 1.0, ordinal, count, 255);
-    assert_eq!([of(9.0, 0, 2), of(9.0, 1, 2)], [-3.0, 3.0], "two lanes straddle it");
-    assert_eq!([of(11.0, 0, 3), of(11.0, 1, 3), of(11.0, 2, 3)], [-6.0, 0.0, 6.0]);
-    assert_eq!(
-        [of(13.0, 0, 4), of(13.0, 1, 4), of(13.0, 2, 4), of(13.0, 3, 4)],
-        [-9.0, -3.0, 3.0, 9.0],
-    );
-    // Past the zoom's lane count the ordinals squash, so a busy corridor shares lanes
-    // rather than fanning off the street — from the middle, so the outermost line on each
-    // side keeps a lane of its own.
-    assert_eq!(of(9.0, 1, 4), of(9.0, 0, 4), "ordinals 0 and 1 of 4 share lane 0 of 2");
-    assert_eq!(of(9.0, 3, 4), of(9.0, 2, 4), "and 2 and 3 share lane 1");
-    assert!(of(9.0, 2, 4) > of(9.0, 1, 4), "without the two halves swapping");
-    // A corridor of one has nothing to fan, and neither does a single-lane zoom.
-    assert_eq!(of(13.0, 0, 1), 0.0);
-    assert_eq!(of(8.0, 1, 4), 0.0);
-}
-
-/// Two groups of three merging, at a zoom that can draw four lanes: the outermost line on
-/// each side keeps a lane to itself and the four in the middle pair up, rather than the
-/// crowding landing on the two edges where it is most visible.
-#[test]
-fn a_corridor_past_its_lane_budget_doubles_up_in_the_middle() {
-    let rail = find("transit-rail");
-    let of = |ordinal: u8| rail.lane_offset_px(13.0, 1.0, ordinal, 6, 255);
-    assert_eq!(
-        [of(0), of(1), of(2), of(3), of(4), of(5)],
-        [-9.0, -3.0, -3.0, 3.0, 3.0, 9.0],
-        "one, two, two, one across the four lanes z13 draws",
-    );
-}
-
-/// The property the whole lane-order pass rests on: within a corridor the offset never
-/// decreases as the ordinal rises, at any zoom and any colour count. Two lines can come
-/// to share a lane, but they can never cross.
-#[test]
-fn squashing_a_corridor_onto_fewer_lanes_never_reorders_it() {
-    let rail = find("transit-rail");
-    for count in 1u8..=12 {
-        for step in 0..=40 {
-            let zoom = 4.0 + f64::from(step) * 0.5;
-            let offsets: Vec<f32> = (0..count)
-                .map(|ordinal| rail.lane_offset_px(zoom, 1.0, ordinal, count, 255))
-                .collect();
-            assert!(
-                offsets.windows(2).all(|w| w[0] <= w[1]),
-                "count {count} at zoom {zoom}: {offsets:?}",
-            );
-            // And the fan always reaches its full width: the first and last ordinals take
-            // the outermost lanes, which is what makes the squashing land in the middle.
-            let (first, last) = (offsets[0], offsets[offsets.len() - 1]);
-            assert_eq!(first, -last, "count {count} at zoom {zoom}: {offsets:?}");
-        }
-    }
-}
-
-/// The taper is a fraction of whatever the offset turns out to be, which is why it has to
-/// travel separately from the lane index.
-#[test]
-fn a_taper_scales_the_offset_it_eases_into() {
-    let rail = find("transit-rail");
-    assert_eq!(rail.lane_offset_px(9.0, 1.0, 1, 2, 255), 3.0);
-    assert_eq!(rail.lane_offset_px(9.0, 1.0, 1, 2, 128), 3.0 * (128.0 / 255.0));
-    assert_eq!(rail.lane_offset_px(9.0, 1.0, 1, 2, 0), 0.0);
 }
 
 include!("tests_part1.rs");

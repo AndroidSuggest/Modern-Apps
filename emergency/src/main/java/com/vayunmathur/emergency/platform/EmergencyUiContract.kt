@@ -4,6 +4,7 @@ import android.net.Uri
 import com.vayunmathur.emergency.data.EmergencyContact
 import com.vayunmathur.emergency.data.EmergencyInfo
 import com.vayunmathur.emergency.data.ImportedAllergy
+import com.vayunmathur.emergency.data.ImportedCondition
 import com.vayunmathur.emergency.data.ImportedMedication
 
 /**
@@ -26,6 +27,7 @@ data class HealthConnectMedicalState(
     val granted: Boolean = false,
     val allergies: List<ImportedAllergy> = emptyList(),
     val medications: List<ImportedMedication> = emptyList(),
+    val conditions: List<ImportedCondition> = emptyList(),
 )
 
 /** Everything the view/edit screens draw. */
@@ -39,16 +41,40 @@ data class EmergencyUiState(
     val addFailed: Boolean = false,
     /** Allergies and current medications from Health Connect, when available and granted. */
     val health: HealthConnectMedicalState = HealthConnectMedicalState(),
+    /** Pending owner pick with several addresses; null except while choosing. */
+    val ownerCandidates: OwnerPickCandidates? = null,
+    /** Last owner-pick failure, for a one-shot message; false when none. */
+    val ownerPickFailed: Boolean = false,
+)
+
+/**
+ * A picked owner whose contact has several postal addresses: the name is fixed
+ * and the user must choose which address to snapshot.
+ */
+data class OwnerPickCandidates(
+    val name: String,
+    val addresses: List<String>,
 )
 
 interface EmergencyActions {
-    /** Persists the manually-entered identity fields (allergies/medications come from HC). */
-    fun saveInfo(
-        name: String,
-        address: String,
-        bloodType: String,
-        organDonor: String,
-    ) {}
+    /** Persists the manually-entered medical fields (identity comes from a pick). */
+    fun saveMedicalInfo(bloodType: String, organDonor: String) {}
+
+    /**
+     * Snapshots the picked owner contact's identity; opens the address chooser
+     * when several addresses are available, saves directly otherwise. Sets
+     * [EmergencyUiState.ownerPickFailed] when the contact cannot be read.
+     */
+    fun pickOwner(contactUri: Uri) {}
+
+    /** Saves the picked name with the chosen address and closes the chooser. */
+    fun confirmOwnerAddress(address: String) {}
+
+    /** Closes the address chooser without saving. */
+    fun dismissOwnerPick() {}
+
+    /** Clears the one-shot owner-pick failure flag after it has been shown. */
+    fun clearOwnerPickFailed() {}
 
     /** Adds the picked contact URI; sets [EmergencyUiState.addFailed] when rejected. */
     fun addContact(phoneUri: Uri) {}
@@ -113,5 +139,9 @@ fun sampleHealthConnect(): HealthConnectMedicalState = HealthConnectMedicalState
     medications = listOf(
         ImportedMedication("Salbutamol 100mcg inhaler"),
         ImportedMedication("Lisinopril 10mg"),
+    ),
+    conditions = listOf(
+        ImportedCondition("Asthma"),
+        ImportedCondition("Hypertension"),
     ),
 )

@@ -34,15 +34,15 @@ interface AppTimerDao {
 }
 
 @Dao
-interface FocusProfileDao {
-    @Query("SELECT * FROM FocusProfile WHERE id = :id")
-    fun profileFlow(id: Int = FocusProfile.SINGLETON_ID): Flow<FocusProfile?>
+interface PausedAppsDao {
+    @Query("SELECT * FROM PausedApps WHERE id = :id")
+    fun pausedFlow(id: Int = PausedApps.SINGLETON_ID): Flow<PausedApps?>
 
-    @Query("SELECT * FROM FocusProfile WHERE id = :id")
-    suspend fun profile(id: Int = FocusProfile.SINGLETON_ID): FocusProfile?
+    @Query("SELECT * FROM PausedApps WHERE id = :id")
+    suspend fun paused(id: Int = PausedApps.SINGLETON_ID): PausedApps?
 
     @Upsert
-    suspend fun upsert(profile: FocusProfile)
+    suspend fun upsert(paused: PausedApps)
 }
 
 @Dao
@@ -59,28 +59,33 @@ interface WindDownDao {
 
 @ColumnTypeConverters(DefaultConverters::class)
 @Database(
-    entities = [AppTimer::class, FocusProfile::class, WindDownSchedule::class],
-    version = 1,
+    entities = [AppTimer::class, PausedApps::class, WindDownSchedule::class],
+    version = 2,
     exportSchema = false,
 )
 abstract class ScreenTimeDatabase : RoomDatabase() {
     abstract fun appTimerDao(): AppTimerDao
-    abstract fun focusProfileDao(): FocusProfileDao
+    abstract fun pausedAppsDao(): PausedAppsDao
     abstract fun windDownDao(): WindDownDao
 }
 
 /**
  * The single owner of [ScreenTimeDatabase], shared by the UI, the schedule receiver, the
- * usage observers and the focus service.
+ * usage observers and the dashboard.
  *
  * Mirrors parental controls' `SupervisionRules`: enforcement runs with no Activity alive, so
  * this is a process-wide singleton rather than a ViewModel dependency.
  */
 class ScreenTimeRules private constructor(context: Context) :
-    RoomRepository<ScreenTimeDatabase>(context, ScreenTimeDatabase::class, DB_NAME) {
+    RoomRepository<ScreenTimeDatabase>(
+        context,
+        ScreenTimeDatabase::class,
+        DB_NAME,
+        migrations = listOf(MIGRATION_1_2),
+    ) {
 
     private val timers get() = db.appTimerDao()
-    private val focus get() = db.focusProfileDao()
+    private val paused get() = db.pausedAppsDao()
     private val windDown get() = db.windDownDao()
 
     val allTimers: Flow<List<AppTimer>> = timers.allFlow()
@@ -93,13 +98,13 @@ class ScreenTimeRules private constructor(context: Context) :
 
     suspend fun delete(timer: AppTimer) = timers.delete(timer)
 
-    /** The focus profile, defaulted rather than nullable. */
-    val focusProfile: Flow<FocusProfile> =
-        focus.profileFlow().map { it ?: FocusProfile() }
+    /** The user-paused set, defaulted rather than nullable. */
+    val pausedApps: Flow<PausedApps> =
+        paused.pausedFlow().map { it ?: PausedApps() }
 
-    suspend fun focusNow(): FocusProfile = focus.profile() ?: FocusProfile()
+    suspend fun pausedNow(): PausedApps = paused.paused() ?: PausedApps()
 
-    suspend fun setFocus(profile: FocusProfile) = focus.upsert(profile)
+    suspend fun setPaused(paused: PausedApps) = this.paused.upsert(paused)
 
     /** The wind-down schedule, defaulted rather than nullable. */
     val windDownSchedule: Flow<WindDownSchedule> =

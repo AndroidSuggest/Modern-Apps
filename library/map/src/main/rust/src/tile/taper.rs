@@ -113,7 +113,9 @@ impl Nodes {
     /// construction and is placed with a setback from the arms, so it neither needs a
     /// taper nor should contribute a width to one.
     pub fn scan(tile: &Body) -> Nodes {
-        let Some(source) = tile.layer(LAYER_ROADS) else { return Nodes::default() };
+        let Some(source) = tile.layer(LAYER_ROADS) else {
+            return Nodes::default();
+        };
         let mut ends: Vec<End> = Vec::new();
         for feature in &source.features {
             if feature.geom_type != GEOM_LINE {
@@ -124,7 +126,9 @@ impl Nodes {
                 ends.extend(part_ends(source.points(part), lanes));
             }
         }
-        Nodes { lanes: transitions(&ends) }
+        Nodes {
+            lanes: transitions(&ends),
+        }
     }
 
     /// The taper for one part of a `lanes`-wide section, given a ramp length from
@@ -168,8 +172,16 @@ fn part_ends(points: &[(i16, i16)], lanes: u8) -> Vec<End> {
     let before_last = (0..n - 1).rev().map(at).find(|&p| p != last);
     match (after_first, before_last) {
         (Some(second), Some(penultimate)) => vec![
-            End { point: first, away: direction(second, first), lanes },
-            End { point: last, away: direction(penultimate, last), lanes },
+            End {
+                point: first,
+                away: direction(second, first),
+                lanes,
+            },
+            End {
+                point: last,
+                away: direction(penultimate, last),
+                lanes,
+            },
         ],
         _ => Vec::new(),
     }
@@ -246,8 +258,16 @@ mod tests {
     fn the_lane_fallback_matches_the_width_the_carriageway_is_drawn_at() {
         // Pinned against `tile/geometry.rs`'s carriageway branch. If these two ever
         // disagree the taper ramps to a width the renderer does not draw.
-        assert_eq!(carriageway_lanes(0, false), 2, "untagged two-way is one lane each way");
-        assert_eq!(carriageway_lanes(0, true), 1, "untagged one-way is one lane");
+        assert_eq!(
+            carriageway_lanes(0, false),
+            2,
+            "untagged two-way is one lane each way"
+        );
+        assert_eq!(
+            carriageway_lanes(0, true),
+            1,
+            "untagged one-way is one lane"
+        );
         assert_eq!(carriageway_lanes(4, false), 4, "a tagged count wins");
         assert_eq!(carriageway_lanes(1, true), 1);
         assert_eq!(carriageway_lanes(255, false), 255);
@@ -255,10 +275,7 @@ mod tests {
 
     #[test]
     fn two_sections_of_differing_width_transition_at_the_point_they_share() {
-        let found = scanned(&[
-            section((0, 0), (100, 0), 4),
-            section((100, 0), (200, 0), 2),
-        ]);
+        let found = scanned(&[section((0, 0), (100, 0), 4), section((100, 0), (200, 0), 2)]);
         assert_eq!(found.get(&(100, 0)), Some(&2), "the narrower of the two");
         assert_eq!(found.len(), 1, "and nothing at the far ends: {found:?}");
     }
@@ -267,20 +284,31 @@ mod tests {
     fn both_sections_derive_the_same_width_whichever_side_asks() {
         // The property that makes a step unrepresentable rather than merely corrected,
         // asserted the way the defect is seen: as two kerbs that do or do not meet.
-        let nodes = Nodes { lanes: scanned(&[
-            section((0, 0), (1000, 0), 4),
-            section((1000, 0), (2000, 0), 2),
-        ]) };
+        let nodes = Nodes {
+            lanes: scanned(&[
+                section((0, 0), (1000, 0), 4),
+                section((1000, 0), (2000, 0), 2),
+            ]),
+        };
         let run = 0.2;
         let wide = kerbs(&[0, 0, 1000, 0], nodes.taper(&[0, 0, 1000, 0], 4, run), 4);
-        let narrow =
-            kerbs(&[1000, 0, 2000, 0], nodes.taper(&[1000, 0, 2000, 0], 2, run), 2);
+        let narrow = kerbs(
+            &[1000, 0, 2000, 0],
+            nodes.taper(&[1000, 0, 2000, 0], 2, run),
+            2,
+        );
 
         // Where they meet: the wide section's last pair against the narrow one's first.
         let (wide_left, wide_right) = wide[wide.len() - 1];
         let (narrow_left, narrow_right) = narrow[0];
-        assert!((wide_left - narrow_left).abs() < 1e-6, "{wide_left} vs {narrow_left}");
-        assert!((wide_right - narrow_right).abs() < 1e-6, "{wide_right} vs {narrow_right}");
+        assert!(
+            (wide_left - narrow_left).abs() < 1e-6,
+            "{wide_left} vs {narrow_left}"
+        );
+        assert!(
+            (wide_right - narrow_right).abs() < 1e-6,
+            "{wide_right} vs {narrow_right}"
+        );
         // And it is the narrow road's width they agree on, not some average: two lanes
         // of the half-lane-each-side offset the renderer pushes.
         assert!((wide_right - wide_left - 2.0 * LANE).abs() < 1e-6);
@@ -333,10 +361,7 @@ mod tests {
     fn equal_lane_counts_are_not_a_transition() {
         // A road cut in two by something that is not a lane change — a bridge, a surface
         // change — must not pinch where the pieces meet.
-        let found = scanned(&[
-            section((0, 0), (100, 0), 3),
-            section((100, 0), (200, 0), 3),
-        ]);
+        let found = scanned(&[section((0, 0), (100, 0), 3), section((100, 0), (200, 0), 3)]);
         assert!(found.is_empty(), "{found:?}");
     }
 
@@ -350,7 +375,10 @@ mod tests {
             section((100, 0), (200, 0), 4),
             section((100, 100), (100, 0), 2),
         ]);
-        assert!(found.is_empty(), "the side street is not the through pair: {found:?}");
+        assert!(
+            found.is_empty(),
+            "the side street is not the through pair: {found:?}"
+        );
     }
 
     #[test]
@@ -363,7 +391,11 @@ mod tests {
             section((100, 0), (200, 0), 4),
             section((100, 100), (100, 0), 1),
         ]);
-        assert_eq!(found.get(&(100, 0)), Some(&4), "min of the through pair, not of all three");
+        assert_eq!(
+            found.get(&(100, 0)),
+            Some(&4),
+            "min of the through pair, not of all three"
+        );
     }
 
     #[test]
@@ -385,12 +417,18 @@ mod tests {
             section((0, 0), (1000, 0), 4),
             section((1000, 0), (1990, 140), 2),
         ]);
-        assert_eq!(found.get(&(1000, 0)), Some(&2), "about 8 degrees of bend: {found:?}");
+        assert_eq!(
+            found.get(&(1000, 0)),
+            Some(&2),
+            "about 8 degrees of bend: {found:?}"
+        );
     }
 
     #[test]
     fn a_part_that_touches_nothing_gets_no_taper() {
-        let nodes = Nodes { lanes: scanned(&[section((0, 0), (100, 0), 4)]) };
+        let nodes = Nodes {
+            lanes: scanned(&[section((0, 0), (100, 0), 4)]),
+        };
         assert_eq!(nodes.taper(&[0, 0, 100, 0], 4, 0.2), Taper::NONE);
     }
 
@@ -398,21 +436,26 @@ mod tests {
     fn a_road_clipped_at_the_tile_border_keeps_the_width_it_has() {
         // Only one section is in this tile, so its far end pairs with nothing. It must
         // draw exactly as it does today rather than tapering into the seam.
-        let nodes = Nodes { lanes: scanned(&[
-            section((0, 0), (100, 0), 4),
-            section((100, 0), (200, 0), 2),
-        ]) };
+        let nodes = Nodes {
+            lanes: scanned(&[section((0, 0), (100, 0), 4), section((100, 0), (200, 0), 2)]),
+        };
         let clipped = nodes.taper(&[200, 0, 400, 0], 2, 0.2);
         assert_eq!(clipped, Taper::NONE, "neither end of it is a transition");
     }
 
     #[test]
     fn the_wider_section_tapers_and_the_narrower_one_does_not() {
-        let nodes = Nodes { lanes: scanned(&[
-            section((0, 0), (1000, 0), 4),
-            section((1000, 0), (2000, 0), 2),
-        ]) };
-        assert_ne!(nodes.taper(&[0, 0, 1000, 0], 4, 0.2), Taper::NONE, "the wide one ramps");
+        let nodes = Nodes {
+            lanes: scanned(&[
+                section((0, 0), (1000, 0), 4),
+                section((1000, 0), (2000, 0), 2),
+            ]),
+        };
+        assert_ne!(
+            nodes.taper(&[0, 0, 1000, 0], 4, 0.2),
+            Taper::NONE,
+            "the wide one ramps"
+        );
         assert_eq!(
             nodes.taper(&[1000, 0, 2000, 0], 2, 0.2),
             Taper::NONE,
@@ -422,14 +465,19 @@ mod tests {
 
     #[test]
     fn a_section_narrower_at_both_ends_tapers_at_both() {
-        let nodes = Nodes { lanes: scanned(&[
-            section((0, 0), (100, 0), 2),
-            section((100, 0), (200, 0), 6),
-            section((200, 0), (300, 0), 3),
-        ]) };
+        let nodes = Nodes {
+            lanes: scanned(&[
+                section((0, 0), (100, 0), 2),
+                section((100, 0), (200, 0), 6),
+                section((200, 0), (300, 0), 3),
+            ]),
+        };
         let middle = nodes.taper(&[100, 0, 200, 0], 6, 0.2);
         let (start, end) = end_lanes(middle, 6);
-        assert!((start - 2.0).abs() < 1e-5, "two lanes at the start: {start}");
+        assert!(
+            (start - 2.0).abs() < 1e-5,
+            "two lanes at the start: {start}"
+        );
         assert!((end - 3.0).abs() < 1e-5, "three at the end: {end}");
     }
 
@@ -442,7 +490,11 @@ mod tests {
         let fine = taper_run(475.0);
         assert!((fine / coarse - 4.0).abs() < 1e-3, "{fine} vs {coarse}");
         assert!((coarse - (TAPER_M / 1900.0) as f32).abs() < 1e-9);
-        assert_eq!(taper_run(0.0), 0.0, "a tile with no ground width cannot ramp");
+        assert_eq!(
+            taper_run(0.0),
+            0.0,
+            "a tile with no ground width cannot ramp"
+        );
         assert_eq!(taper_run(-1.0), 0.0);
     }
 
@@ -450,8 +502,15 @@ mod tests {
     fn a_degenerate_part_contributes_no_ends() {
         assert!(part_ends(&[], 4).is_empty());
         assert!(part_ends(&[(5, 5)], 4).is_empty());
-        assert!(part_ends(&[(5, 5), (5, 5)], 4).is_empty(), "coincident points have no direction");
-        assert_eq!(part_ends(&[(5, 5), (5, 5), (9, 5)], 4).len(), 2, "a repeat is stepped over");
+        assert!(
+            part_ends(&[(5, 5), (5, 5)], 4).is_empty(),
+            "coincident points have no direction"
+        );
+        assert_eq!(
+            part_ends(&[(5, 5), (5, 5), (9, 5)], 4).len(),
+            2,
+            "a repeat is stepped over"
+        );
     }
 
     #[test]
@@ -460,7 +519,13 @@ mod tests {
         // the scan has to step over them too or a real transition is missed.
         let ends = part_ends(&[(0, 0), (0, 0), (100, 0)], 4);
         assert_eq!(ends.len(), 2);
-        assert!((ends[0].away.0 + 1.0).abs() < 1e-6, "leaving the start heading west");
-        assert!((ends[1].away.0 - 1.0).abs() < 1e-6, "leaving the end heading east");
+        assert!(
+            (ends[0].away.0 + 1.0).abs() < 1e-6,
+            "leaving the start heading west"
+        );
+        assert!(
+            (ends[1].away.0 - 1.0).abs() < 1e-6,
+            "leaving the end heading east"
+        );
     }
 }

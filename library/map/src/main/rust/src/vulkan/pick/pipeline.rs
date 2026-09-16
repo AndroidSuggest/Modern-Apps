@@ -50,8 +50,9 @@ pub(super) unsafe fn build_pipeline(
 
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
     let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-    let viewport_state =
-        vk::PipelineViewportStateCreateInfo::default().viewport_count(1).scissor_count(1);
+    let viewport_state = vk::PipelineViewportStateCreateInfo::default()
+        .viewport_count(1)
+        .scissor_count(1);
 
     let rasterization = vk::PipelineRasterizationStateCreateInfo::default()
         .polygon_mode(vk::PolygonMode::FILL)
@@ -93,7 +94,9 @@ pub(super) unsafe fn build_pipeline(
     let result = device.create_graphics_pipelines(cache, std::slice::from_ref(&info), None);
     device.destroy_shader_module(vert, None);
     device.destroy_shader_module(frag, None);
-    result.map(|pipelines| pipelines[0]).map_err(|(_, e)| format!("pick create_graphics_pipelines {e:?}"))
+    result
+        .map(|pipelines| pipelines[0])
+        .map_err(|(_, e)| format!("pick create_graphics_pipelines {e:?}"))
 }
 
 unsafe fn shader_module(device: &ash::Device, spirv: &[u8]) -> Result<vk::ShaderModule, String> {
@@ -105,5 +108,7 @@ unsafe fn shader_module(device: &ash::Device, spirv: &[u8]) -> Result<vk::Shader
         words.push(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
     }
     let info = vk::ShaderModuleCreateInfo::default().code(&words);
-    device.create_shader_module(&info, None).map_err(|e| format!("pick create_shader_module {e:?}"))
+    device
+        .create_shader_module(&info, None)
+        .map_err(|e| format!("pick create_shader_module {e:?}"))
 }

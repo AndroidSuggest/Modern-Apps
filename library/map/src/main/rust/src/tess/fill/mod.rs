@@ -43,8 +43,13 @@ mod tests;
 use self::geom::open_length;
 use self::grouping::polygons;
 
-/// Floats per vertex: `x, y`.
-pub const FLOATS_PER_VERTEX: usize = 2;
+/// Floats per vertex: `x, y, z`.
+///
+/// `z` is the draped ground height in the same tile-local unit as `x`/`y` (metres
+/// over the tile's ground width, plus a sub-metre lift) — `0.0` straight out of the
+/// tessellator, filled in by the drape pass at build time where the tile carries a
+/// heightmap. The tilted clip matrix reads it; at pitch 0 it is ignored for x/y.
+pub const FLOATS_PER_VERTEX: usize = 3;
 
 /// Coordinates below this many make a ring that encloses nothing.
 const MIN_RING_COORDS: usize = 6;
@@ -136,7 +141,9 @@ pub fn tessellate(
             }
         }
         triangles.extend(
-            earcut::triangulate(&coords, &hole_starts).iter().map(|&t| global[t as usize]),
+            earcut::triangulate(&coords, &hole_starts)
+                .iter()
+                .map(|&t| global[t as usize]),
         );
     }
     if triangles.is_empty() {
@@ -149,6 +156,7 @@ pub fn tessellate(
         for &(x, y) in open[r].iter() {
             vertices.push(x as f32 * scale);
             vertices.push(y as f32 * scale);
+            vertices.push(0.0);
         }
     }
     indices.extend(triangles.iter().map(|&t| base + t));

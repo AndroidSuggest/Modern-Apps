@@ -24,10 +24,8 @@ import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.LoadingIndicator
 import com.vayunmathur.library.ui.IconAlbum
 import com.vayunmathur.library.ui.IconGroup
-import com.vayunmathur.library.ui.IconLock
 import com.vayunmathur.library.ui.IconMap
 import com.vayunmathur.library.ui.IconPhotoLibrary
-import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Text
@@ -346,7 +344,7 @@ fun Navigation(
         }
 
         entry<Route.Albums>(metadata = SiblingPage()) {
-            AlbumsPage(backStack, galleryViewModel)
+            AlbumsPage(backStack, galleryViewModel, secureFolderViewModel)
         }
 
         entry<Route.AlbumDetail> {
@@ -361,11 +359,14 @@ fun Navigation(
             WallpaperPage(backStack, it.id, it.uri)
         }
 
-        entry<Route.Trash>(metadata = SiblingPage()) {
+        // Built-in collections, opened from the Albums grid's default tiles
+        // (Trash, Secure Folder). Detail pages: they push over Albums and show
+        // a back arrow instead of the bottom bar.
+        entry<Route.Trash> {
             TrashPage(backStack, galleryViewModel)
         }
 
-        entry<Route.SecureFolder>(metadata = SiblingPage()) {
+        entry<Route.SecureFolder> {
             SecureFolderEntry(backStack, secureFolderViewModel, vaultPhotoDao != null, vaultPassword)
         }
 
@@ -414,8 +415,6 @@ private enum class MainRoute(val route: Route, @StringRes val titleRes: Int, val
     Map(Route.Map, R.string.label_map, { IconMap() }),
     People(Route.People, R.string.label_people, { IconGroup() }),
     Albums(Route.Albums, R.string.label_albums, { IconAlbum() }),
-    Trash(Route.Trash, R.string.label_trash, { IconDelete() }),
-    SecureFolder(Route.SecureFolder, R.string.label_secure_folder, { IconLock() })
 }
 
 @Composable

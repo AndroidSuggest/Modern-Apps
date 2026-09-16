@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.maps.data.Feature1
 import com.vayunmathur.maps.data.SpecificFeature
+import com.vayunmathur.maps.data.osmPlace
 import com.vayunmathur.maps.data.google.GooglePoiDataSource
 import com.vayunmathur.maps.data.google.GooglePoiInfo
 import com.vayunmathur.maps.data.google.WebReviewsFetcher
@@ -13,6 +14,7 @@ import com.vayunmathur.maps.data.google.PoiSection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.map.GeoPoint
 
@@ -106,10 +108,39 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
         locationManager.stop()
     }
 
+    /**
+     * The single choke point every selection flows through. Most selection paths construct a bare
+     * `GenericPlace(name, null, null, null, pos)` and bypass the `poi_attrs.bin` sidecar lookup,
+     * so an unenriched place is re-enriched here: the sheet opens instantly with the title, then
+     * the OSM fields (hours, phone, website, address) fill in when the lookup lands.
+     *
+     * The identity check keeps a slow lookup from overwriting a newer selection, and the enriched
+     * write goes through [setDirect] rather than [set] so it cannot recurse. Restaurants already
+     * carry their OSM fields from their own construction path and are left alone.
+     */
     fun set(feature: SpecificFeature?) {
+        setDirect(feature)
+        val place = feature as? SpecificFeature.GenericPlace ?: return
+        if (!needsEnrichment(place)) return
+        viewModelScope.launch {
+            val enriched = runCatching { osmPlace(place.name, place.position, place.poiType) }.getOrNull()
+                ?: return@launch
+            if (hasAnyOsmField(enriched) && _selectedFeature.value === feature) {
+                setDirect(enriched)
+            }
+        }
+    }
+
+    private fun setDirect(feature: SpecificFeature?) {
         _selectedFeature.value = feature
         _poiSection.value = PoiSection.DETAILS
     }
+
+    private fun needsEnrichment(place: SpecificFeature.GenericPlace): Boolean =
+        place.phone == null && place.website == null && place.openingHours == null && place.address == null
+
+    private fun hasAnyOsmField(place: SpecificFeature.GenericPlace): Boolean =
+        place.phone != null || place.website != null || place.openingHours != null || place.address != null
 
     /**
      * Select [feature] AND ask the map to fly to it and open the place bottom pane
@@ -119,8 +150,7 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
      * triggers [currentPoiInfo] enrichment so the pane fills with details.
      */
     fun selectAndFocus(feature: SpecificFeature, zoom: Double? = null) {
-        _selectedFeature.value = feature
-        _poiSection.value = PoiSection.DETAILS
+        set(feature)
         val pos = (feature as? SpecificFeature.RoutableFeature)?.position
         _pendingFocus.value = pos?.let { PlaceFocus(it, zoom) }
     }

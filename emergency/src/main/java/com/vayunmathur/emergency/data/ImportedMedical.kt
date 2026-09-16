@@ -18,5 +18,10 @@ data class ImportedMedication(
     val displayName: String,
 )
 
+/** A single active condition read from Health Connect. Read-only, like [ImportedAllergy]. */
+data class ImportedCondition(
+    val displayName: String,
+)
+
 /** How dangerous a reaction is, mirroring FHIR `AllergyIntolerance.criticality`. */
 enum class AllergyCriticality { High, Low, Unknown }

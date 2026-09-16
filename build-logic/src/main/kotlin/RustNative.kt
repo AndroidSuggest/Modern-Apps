@@ -203,6 +203,11 @@ fun Project.rustNativeLib(
             environment("AR", "$ndkBin/llvm-ar$exeExt")
             environment("SYSROOT", ndkSysroot)
             environment(linkerVar, clang)
+            // Android 15 requires 16 KB page alignment on arm64 (Play blocks
+            // 4 KB .so files). Target-scoped so host build-script links on
+            // MSVC are unaffected. See analysis/plan-16kb-page-size.md.
+            val rustflagsVar = "CARGO_TARGET_${triple.uppercase().replace('-', '_')}_RUSTFLAGS"
+            environment(rustflagsVar, "-C link-arg=-Wl,-z,max-page-size=16384")
             // Force the system clang for host-side C on Unix; on Windows let cc locate MinGW gcc.
             if (!isWindows) environment("HOST_CC", "/usr/bin/clang")
             // Pre-generated bindings (armv8-only): weather's om-file-format-sys no longer uses bindgen

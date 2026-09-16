@@ -8,35 +8,36 @@ import com.vayunmathur.library.util.DataStoreUtils
 import java.io.File
 
 /**
- * Runtime-download config for the Supertonic 3 ONNX bundle.
+ * Runtime-download config for the Supertonic 3 LiteRT bundle.
  *
- * Four upstream exports (`Supertone/supertonic-3`) plus the codepoint table and ten voice
- * styles, mirrored under `data.vayunmathur.com/models/supertonic/`. At ~395 MB this cannot
+ * Three quantized exports (ladder_v2 ship rungs: duration w4, textenc w8,
+ * vocoder w8) plus the codepoint table and ten voice styles, mirrored under
+ * `data.vayunmathur.com/tflite/supertonic/`. At ~45 MB this cannot
  * ship in the APK, so `:speech` downloads it on first use and `SupertonicEngine` prefers
  * the download directory, falling back to APK assets (which carry nothing in a fresh
  * install but keep side-loaded bundles working).
  */
 object SupertonicModel {
-    private const val BASE = "https://data.vayunmathur.com/models/supertonic/"
+    private const val BASE = "https://data.vayunmathur.com/tflite/supertonic/"
     const val DIR = "supertonic"
 
-    /** The four plans, SHA-256 pinned at upload time. */
+    /** The three plans + estimator, SHA-256 pinned at upload time. */
     val FILES: List<ModelDownloadItem> = listOf(
         item(
-            "duration_predictor.onnx",
-            "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db",
+            "duration_w4.tflite",
+            "305ca2b63b722fa8e3188face10f970511ebdf773aceee939d24c5980d889111",
         ),
         item(
-            "text_encoder.onnx",
-            "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff",
+            "textenc_w8.tflite",
+            "ac4b3d83df4f6b5d39bf5b1c0c2314e46e242ca0f2f592e406c0ef0e27a63aa6",
         ),
         item(
-            "vector_estimator.onnx",
-            "883ac868ea0275ef0e991524dc64f16b3c0376efd7c320af6b53f5b780d7c61c",
+            "estimator_w8.tflite",
+            "03e4040d132170e8105b4695d52e4f4e7d1afcf1f490116887d1f582bf9359c9",
         ),
         item(
-            "vocoder.onnx",
-            "085de76dd8e8d5836d6ca66826601f615939218f90e519f70ee8a36ed2a4c4ba",
+            "vocoder_w8.tflite",
+            "385d87cea1e4832ccd7af50e213bf70351c43f6db16dd86aadf63c9c45c37b45",
         ),
         item(
             "unicode_indexer.json",
@@ -46,6 +47,16 @@ object SupertonicModel {
 
     /** Voice styles ship in the APK (each ~290 KB); the four plans download. */
     val VOICES: List<ModelDownloadItem> = emptyList()
+
+    /**
+     * The ExecuTorch twins ([SupertonicSynthesizer.ET_GRAPHS]).
+     *
+     * Opportunistic, deliberately NOT in [FILES]: no mirror pins exist yet, and gating
+     * first launch on unmirrored files would brick it. When a `.pte` with one of these
+     * names lands next to the `.tflite` plans, the synthesizer picks it up on its own;
+     * the gated download list stays the ship ladder.
+     */
+    val ET_FILES: List<String> = SupertonicSynthesizer.ET_GRAPHS
 
     private fun item(name: String, sha256: String?) =
         ModelDownloadItem("$BASE$name", "$DIR/$name", "Supertonic $name", sha256)

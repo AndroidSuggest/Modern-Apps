@@ -72,6 +72,75 @@ fn fallback_color(route_type: u32) -> u32 {
     }
 }
 
+/// One route's drawable geometry before corridor fanning: its full-shape e7
+/// polyline with the colour and lane slot the fan needs.
+struct Serving {
+    route_idx: u32,
+    name: String,
+    color: u32,
+    route_type: u32,
+    feed: String,
+    points: Vec<(i32, i32)>,
+}
+
+/// Shape-first e7 polyline for one route: the fitted GTFS shape over the
+/// route's full stop span, or stop-to-stop when the ingester fitted none —
+/// the same fallback the ride legs use.
+fn route_shape_e7(idx: &TransitIndex, r: u32, route: &RouteRec) -> Vec<(i32, i32)> {
+    let first = route.first_route_stop;
+    let last = first + route.n_stops - 1;
+    match idx.route_shape_off(r) {
+        Some(off) => {
+            let fv = idx.route_stop_shape(first);
+            let tv = idx.route_stop_shape(last);
+            if fv == NONE || tv == NONE || tv < fv {
+                stop_to_stop_e7(idx, route)
+            } else {
+                idx.shape_slice(off, fv, tv)
+                    .into_iter()
+                    .map(|(lat, lon)| {
+                        ((lat * 1e7).round() as i32, (lon * 1e7).round() as i32)
+                    })
+                    .collect()
+            }
+        }
+        None => stop_to_stop_e7(idx, route),
+    }
+}
+
+/// One route's serving entry, or `None` when it has nothing drawable: fewer
+/// than two stops, a bus (unless `include_buses`), or no geometry at all.
+fn collect_serving(idx: &TransitIndex, r: u32, include_buses: bool) -> Option<Serving> {
+    let route = idx.route(r);
+    if route.n_stops < 2 {
+        return None;
+    }
+    if !include_buses && !is_rail_line(route.route_type) {
+        return None;
+    }
+    let e7 = route_shape_e7(idx, r, &route);
+    if e7.len() < 2 {
+        return None;
+    }
+    let color =
+        if route.color == 0 { fallback_color(route.route_type) } else { route.color };
+    Some(Serving {
+        route_idx: r,
+        name: idx.read_str(route.name_off),
+        color,
+        route_type: route.route_type,
+        feed: idx.feed_name_of(route.feed_idx),
+        points: e7,
+    })
+}
+
+/// Deterministic fan order (colour, name): a rebuild fans identically.
+fn sort_serving(serving: &mut [Serving]) {
+    serving.sort_by(|a, b| {
+        a.color.cmp(&b.color).then(a.name.cmp(&b.name)).then(a.route_idx.cmp(&b.route_idx))
+    });
+}
+
 /// Every rail line serving the bbox, cut into corridor spans with lanes.
 ///
 /// Shape-first: the route's fitted GTFS polyline (`route_shape_off` +
@@ -95,16 +164,8 @@ pub fn rail_lines(
     let near_bbox = |lat: f64, lon: f64| {
         lat >= min_lat - m && lat <= max_lat + m && lon >= min_lon - m && lon <= max_lon + m
     };
-    // Collect serving routes with e7 shapes, deterministic order (colour,
-    // name) so a rebuild fans identically.
-    struct Serving {
-        route_idx: u32,
-        name: String,
-        color: u32,
-        route_type: u32,
-        feed: String,
-        points: Vec<(i32, i32)>,
-    }
+    // Collect serving routes, deterministic order (colour, name) so a
+    // rebuild fans identically.
     let mut serving: Vec<Serving> = Vec::new();
     for r in 0..idx.route_count {
         let route = idx.route(r);
@@ -122,46 +183,21 @@ pub fn rail_lines(
         if !serves_bbox {
             continue;
         }
-        let first = route.first_route_stop;
-        let last = first + route.n_stops - 1;
-        let e7: Vec<(i32, i32)> = match idx.route_shape_off(r) {
-            Some(off) => {
-                let fv = idx.route_stop_shape(first);
-                let tv = idx.route_stop_shape(last);
-                if fv == NONE || tv == NONE || tv < fv {
-                    stop_to_stop_e7(idx, &route)
-                } else {
-                    idx.shape_slice(off, fv, tv)
-                        .into_iter()
-                        .map(|(lat, lon)| {
-                            (lat * 1e7, lon * 1e7)
-                        })
-                        .map(|(lat, lon)| (lat.round() as i32, lon.round() as i32))
-                        .collect()
-                }
-            }
-            None => stop_to_stop_e7(idx, &route),
-        };
-        if e7.len() < 2 {
-            continue;
+        if let Some(s) = collect_serving(idx, r, false) {
+            serving.push(s);
         }
-        let color =
-            if route.color == 0 { fallback_color(route.route_type) } else { route.color };
-        serving.push(Serving {
-            route_idx: r,
-            name: idx.read_str(route.name_off),
-            color,
-            route_type: route.route_type,
-            feed: idx.feed_name_of(route.feed_idx),
-            points: e7,
-        });
     }
-    serving.sort_by(|a, b| {
-        a.color.cmp(&b.color).then(a.name.cmp(&b.name)).then(a.route_idx.cmp(&b.route_idx))
-    });
+    sort_serving(&mut serving);
 
     // Dedup: whole lines only. A line 95% drawn in its colour adds nothing;
     // past four services over one metre the track is fully said.
+    fan_corridors(&mut serving)
+}
+
+/// Whole-line dedup plus corridor fanning over one serving set: 95%-redrawn
+/// duplicates drop, no track carries more than four services, and survivors
+/// cut into lane spans. Shared by the bbox query and the selected-stop query.
+fn fan_corridors(serving: &mut [Serving]) -> Vec<RailLine> {
     let mut kept: Vec<usize> = Vec::with_capacity(serving.len());
     let mut by_color: std::collections::HashMap<u32, crate::corridor_spans::Covered> =
         std::collections::HashMap::new();
@@ -260,6 +296,48 @@ pub fn rail_lines(
         }
     }
     out
+}
+
+/// Every line serving the stop nearest `(lat, lon)`, for the selected-stop
+/// overlay: the board's view of "here" (`nearest_stop` within the same 400 m
+/// gate the board uses) plus co-located platforms within 150 m, resolved to
+/// routes through `stop_routes_range` and drawn with their full GTFS shapes
+/// (`route_shape_off` + `shape_slice`, stop-to-stop fallback).
+///
+/// Unlike the bbox query this keeps buses: at one stop a handful of bus
+/// polylines is context, not noise, and the P2 requirement is that tapping a
+/// bus stop draws its buses. Dedup, corridor fanning and colours are the same
+/// `fan_corridors` tail the bbox path uses.
+pub fn routes_for_stop(idx: &TransitIndex, lat: f64, lon: f64) -> Vec<RailLine> {
+    const NEAREST_MAX_M: f64 = 400.0;
+    const STATION_RADIUS_M: f64 = 150.0;
+    if idx.stop_count == 0 {
+        return Vec::new();
+    }
+    let (nearest, _) = match idx.nearest_stop(lat, lon, NEAREST_MAX_M) {
+        Some(v) => v,
+        None => return Vec::new(),
+    };
+    let (blat, blon) = idx.stop_ll(nearest);
+    let mut seen = std::collections::HashSet::new();
+    let mut serving: Vec<Serving> = Vec::new();
+    for (s, _) in idx.stops_in_radius(blat, blon, STATION_RADIUS_M) {
+        let (rs, re) = idx.stop_routes_range(s);
+        for i in rs..re {
+            let r = idx.stop_route(i);
+            if !seen.insert(r) {
+                continue;
+            }
+            if r >= idx.route_count {
+                continue;
+            }
+            if let Some(entry) = collect_serving(idx, r, true) {
+                serving.push(entry);
+            }
+        }
+    }
+    sort_serving(&mut serving);
+    fan_corridors(&mut serving)
 }
 
 /// Coarse mode bucket for the crowd ceiling: distinct rail modes each get

@@ -45,13 +45,22 @@ pub(crate) mod tests {
     #[test]
     fn project_and_unproject_round_trip() {
         for zoom in [0.0, 5.0, 11.0, 14.0, 18.0] {
-            for &(lon, lat) in
-                &[(0.0, 0.0), (-122.4194, 37.7749), (151.2093, -33.8688), (2.3522, 48.8566)]
-            {
+            for &(lon, lat) in &[
+                (0.0, 0.0),
+                (-122.4194, 37.7749),
+                (151.2093, -33.8688),
+                (2.3522, 48.8566),
+            ] {
                 let p = project(lon, lat, zoom);
                 let (back_lon, back_lat) = unproject(p.x, p.y, zoom);
-                assert!((back_lon - lon).abs() < 1e-9, "lon at z{zoom}: {back_lon} vs {lon}");
-                assert!((back_lat - lat).abs() < 1e-9, "lat at z{zoom}: {back_lat} vs {lat}");
+                assert!(
+                    (back_lon - lon).abs() < 1e-9,
+                    "lon at z{zoom}: {back_lon} vs {lon}"
+                );
+                assert!(
+                    (back_lat - lat).abs() < 1e-9,
+                    "lat at z{zoom}: {back_lat} vs {lat}"
+                );
             }
         }
     }
@@ -67,7 +76,11 @@ pub(crate) mod tests {
     fn the_tile_containing_the_camera_covers_the_viewport_centre() {
         // At z1 centred on null island, the four tiles meet exactly at the centre of a
         // 1024 Dp viewport, so tile 0/0's bottom-right corner lands at clip (0, 0).
-        let camera = Camera { width_dp: 1024.0, height_dp: 1024.0, ..camera(1.0) };
+        let camera = Camera {
+            width_dp: 1024.0,
+            height_dp: 1024.0,
+            ..camera(1.0)
+        };
         let m = camera.tile_to_clip(1, 0, 0);
         let (x, y) = transform(&m, 1.0, 1.0);
         assert!(x.abs() < 1e-5, "x {x}");
@@ -102,8 +115,14 @@ pub(crate) mod tests {
         assert!((0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v));
         let m = camera.tile_to_clip(10, tx, ty);
         let (cx, cy) = transform(&m, u as f32, v as f32);
-        assert!(cx.abs() < 1e-4, "SF anchor clip x {cx} (tile {tx},{ty} local {u:.4},{v:.4})");
-        assert!(cy.abs() < 1e-4, "SF anchor clip y {cy} (tile {tx},{ty} local {u:.4},{v:.4})");
+        assert!(
+            cx.abs() < 1e-4,
+            "SF anchor clip x {cx} (tile {tx},{ty} local {u:.4},{v:.4})"
+        );
+        assert!(
+            cy.abs() < 1e-4,
+            "SF anchor clip y {cy} (tile {tx},{ty} local {u:.4},{v:.4})"
+        );
     }
 
     #[test]
@@ -114,14 +133,21 @@ pub(crate) mod tests {
         let m = camera.tile_to_clip(1, 0, 0);
         let (_, top) = transform(&m, 0.0, 0.0);
         let (_, bottom) = transform(&m, 0.0, 1.0);
-        assert!(top < bottom, "top {top} must be above bottom {bottom} in clip space");
+        assert!(
+            top < bottom,
+            "top {top} must be above bottom {bottom} in clip space"
+        );
     }
 
     #[test]
     fn a_full_screen_tile_fills_clip_space() {
         // At z0 with a 512 Dp viewport the single tile is exactly the screen, so its
         // corners are the corners of clip space.
-        let camera = Camera { width_dp: 512.0, height_dp: 512.0, ..camera(0.0) };
+        let camera = Camera {
+            width_dp: 512.0,
+            height_dp: 512.0,
+            ..camera(0.0)
+        };
         let m = camera.tile_to_clip(0, 0, 0);
         let (x0, y0) = transform(&m, 0.0, 0.0);
         let (x1, y1) = transform(&m, 1.0, 1.0);
@@ -134,12 +160,19 @@ pub(crate) mod tests {
     #[test]
     fn adjacent_tiles_share_an_edge_with_no_gap() {
         // A seam here is a visible hairline between every pair of tiles.
-        let camera = Camera { center_lon: -122.4194, center_lat: 37.7749, ..camera(12.0) };
+        let camera = Camera {
+            center_lon: -122.4194,
+            center_lat: 37.7749,
+            ..camera(12.0)
+        };
         let left = camera.tile_to_clip(12, 654, 1583);
         let right = camera.tile_to_clip(12, 655, 1583);
         let (left_edge, _) = transform(&left, 1.0, 0.0);
         let (right_edge, _) = transform(&right, 0.0, 0.0);
-        assert!((left_edge - right_edge).abs() < 1e-5, "{left_edge} vs {right_edge}");
+        assert!(
+            (left_edge - right_edge).abs() < 1e-5,
+            "{left_edge} vs {right_edge}"
+        );
     }
 
     #[test]
@@ -154,8 +187,14 @@ pub(crate) mod tests {
     fn density_only_affects_the_pixel_span() {
         // tile_span_dp is a logical measurement and must not move with density;
         // tile_span_px is the only thing that scales, because it feeds a pixel width.
-        let one = Camera { density: 1.0, ..camera(14.0) };
-        let three = Camera { density: 3.0, ..camera(14.0) };
+        let one = Camera {
+            density: 1.0,
+            ..camera(14.0)
+        };
+        let three = Camera {
+            density: 3.0,
+            ..camera(14.0)
+        };
         assert_eq!(one.tile_span_dp(14), three.tile_span_dp(14));
         assert!((three.tile_span_px(14) / one.tile_span_px(14) - 3.0).abs() < 1e-5);
     }
@@ -169,7 +208,11 @@ pub(crate) mod tests {
         for lat in [90.0, -90.0, 89.9, -89.9] {
             let p = project(0.0, lat, 4.0);
             assert!(p.y.is_finite(), "y at lat {lat} is {}", p.y);
-            assert!(p.y >= -1.0 && p.y <= size + 1.0, "y at lat {lat} is {}, off the map", p.y);
+            assert!(
+                p.y >= -1.0 && p.y <= size + 1.0,
+                "y at lat {lat} is {}, off the map",
+                p.y
+            );
         }
     }
 
@@ -177,7 +220,11 @@ pub(crate) mod tests {
     fn a_screen_quad_on_the_camera_centre_lands_on_the_clip_origin() {
         // The puck's whole point is being glued to a ground position, and the camera
         // centre is the one position whose clip coordinate is known without arithmetic.
-        let camera = Camera { center_lon: -122.4194, center_lat: 37.7749, ..camera(14.0) };
+        let camera = Camera {
+            center_lon: -122.4194,
+            center_lat: 37.7749,
+            ..camera(14.0)
+        };
         let m = camera.screen_quad_to_clip(-122.4194, 37.7749, 28.0);
         let (x, y) = transform(&m, 0.0, 0.0);
         assert!(x.abs() < 1e-5, "x {x}");
@@ -188,8 +235,16 @@ pub(crate) mod tests {
     fn a_screen_quad_keeps_its_dp_size_across_zooms_and_grows_with_the_viewport() {
         // A tile quad doubles on screen every zoom; this one must not, or the puck would
         // swell into a blue disc the size of a city block at z18.
-        let close = Camera { center_lon: 0.0, center_lat: 0.0, ..camera(18.0) };
-        let far = Camera { center_lon: 0.0, center_lat: 0.0, ..camera(4.0) };
+        let close = Camera {
+            center_lon: 0.0,
+            center_lat: 0.0,
+            ..camera(18.0)
+        };
+        let far = Camera {
+            center_lon: 0.0,
+            center_lat: 0.0,
+            ..camera(4.0)
+        };
         let (near_x, _) = transform(&close.screen_quad_to_clip(0.0, 0.0, 28.0), 1.0, 0.0);
         let (wide_x, _) = transform(&far.screen_quad_to_clip(0.0, 0.0, 28.0), 1.0, 0.0);
         assert!((near_x - wide_x).abs() < 1e-6, "{near_x} vs {wide_x}");
@@ -201,20 +256,36 @@ pub(crate) mod tests {
     fn a_screen_quad_is_the_same_size_at_every_density() {
         // The radius is Dp, like `tile_span_dp`. Density enters only where a Dp becomes a
         // device pixel, which for the puck is the shader's radii — not this matrix.
-        let one = Camera { density: 1.0, ..camera(14.0) };
-        let three = Camera { density: 3.0, ..camera(14.0) };
-        assert_eq!(one.screen_quad_to_clip(0.0, 0.0, 28.0), three.screen_quad_to_clip(0.0, 0.0, 28.0));
+        let one = Camera {
+            density: 1.0,
+            ..camera(14.0)
+        };
+        let three = Camera {
+            density: 3.0,
+            ..camera(14.0)
+        };
+        assert_eq!(
+            one.screen_quad_to_clip(0.0, 0.0, 28.0),
+            three.screen_quad_to_clip(0.0, 0.0, 28.0)
+        );
     }
 
     #[test]
     fn a_screen_quad_far_off_screen_falls_outside_the_clip_cube() {
         // A fix taken in another country must not smear a puck across the edge of the
         // viewport: the whole quad has to clip out.
-        let camera = Camera { center_lon: -122.4194, center_lat: 37.7749, ..camera(14.0) };
+        let camera = Camera {
+            center_lon: -122.4194,
+            center_lat: 37.7749,
+            ..camera(14.0)
+        };
         let m = camera.screen_quad_to_clip(2.3522, 48.8566, 28.0);
         let (left, _) = transform(&m, -1.0, 0.0);
         let (right, _) = transform(&m, 1.0, 0.0);
-        assert!(left > 1.0 && right > 1.0, "Paris at {left}..{right} should be off to the right");
+        assert!(
+            left > 1.0 && right > 1.0,
+            "Paris at {left}..{right} should be off to the right"
+        );
     }
 
     // --- bearing ------------------------------------------------------------
@@ -224,7 +295,11 @@ pub(crate) mod tests {
         // The whole Compose/phone path runs at bearing zero, so this is the regression
         // guard for it: the rotated derivation must reduce term for term, not merely to
         // within a tolerance.
-        let north_up = Camera { center_lon: -122.4194, center_lat: 37.7749, ..camera(12.0) };
+        let north_up = Camera {
+            center_lon: -122.4194,
+            center_lat: 37.7749,
+            ..camera(12.0)
+        };
         let m = north_up.tile_to_clip(12, 654, 1583);
         assert_eq!(m[1], 0.0, "no shear into y");
         assert_eq!(m[4], 0.0, "no shear into x");
@@ -238,23 +313,42 @@ pub(crate) mod tests {
         // The sign of the rotation, which is the one thing easy to get backwards: facing
         // east means east is up and north is to the left. A mirrored rotation sends the
         // car around every corner the wrong way.
-        let heading_east = Camera { bearing_deg: 90.0, ..camera(10.0) };
+        let heading_east = Camera {
+            bearing_deg: 90.0,
+            ..camera(10.0)
+        };
         let centre = project(0.0, 0.0, 10.0);
         let span = heading_east.tile_span_dp(10);
         // A point one tile-span due east of the camera centre, addressed through the
         // shared quad matrix so this pins the same arithmetic every draw uses.
-        let m = heading_east
-            .world_quad_to_clip(WorldPx { x: centre.x + span, y: centre.y }, span);
+        let m = heading_east.world_quad_to_clip(
+            WorldPx {
+                x: centre.x + span,
+                y: centre.y,
+            },
+            span,
+        );
         let (x, y) = transform(&m, 0.0, 0.0);
-        assert!(x.abs() < 1e-5, "east must sit on the vertical centreline, not at x {x}");
+        assert!(
+            x.abs() < 1e-5,
+            "east must sit on the vertical centreline, not at x {x}"
+        );
         assert!(y < -1e-3, "east must be above the centre, not at y {y}");
 
         // And due north lands to the left.
-        let north = heading_east
-            .world_quad_to_clip(WorldPx { x: centre.x, y: centre.y - span }, span);
+        let north = heading_east.world_quad_to_clip(
+            WorldPx {
+                x: centre.x,
+                y: centre.y - span,
+            },
+            span,
+        );
         let (nx, ny) = transform(&north, 0.0, 0.0);
         assert!(nx < -1e-3, "north must be left of centre, not at x {nx}");
-        assert!(ny.abs() < 1e-5, "north must sit on the horizontal centreline, not at y {ny}");
+        assert!(
+            ny.abs() < 1e-5,
+            "north must sit on the horizontal centreline, not at y {ny}"
+        );
     }
 
     #[test]
@@ -274,5 +368,4 @@ pub(crate) mod tests {
             assert!(y.abs() < 1e-5, "bearing {bearing}: y {y}");
         }
     }
-
 }

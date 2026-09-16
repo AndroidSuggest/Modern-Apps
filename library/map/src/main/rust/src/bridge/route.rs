@@ -1,12 +1,12 @@
 //! The navigation route overlay.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
+use super::handle::handle_mut;
+use super::log::log;
 use crate::overlay::{RouteSegment, RouteStyle};
 use jni::objects::{JClass, JFloatArray, JIntArray};
 use jni::sys::{jfloat, jint, jlong};
 use jni::JNIEnv;
-use super::handle::handle_mut;
-use super::log::log;
 /// Draw a navigation route line over the basemap and under the puck.
 ///
 /// `points` is a flat `[lon0, lat0, lon1, lat1, …]` array holding every coloured run's
@@ -47,7 +47,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setRoute<'l>(
     casing_dp: jfloat,
     casing_color: jint,
 ) {
-    let Some(map) = handle_mut(handle) else { return };
+    let Some(map) = handle_mut(handle) else {
+        return;
+    };
     let point_floats = match env.get_array_length(&points) {
         Ok(length) => length.max(0) as usize,
         // Reading failed, so we know nothing about the intended route. Leaving the current
@@ -69,8 +71,12 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setRoute<'l>(
     let mut lengths = vec![0i32; segment_count];
     let mut colors = vec![0i32; segment_count];
     if segment_count > 0
-        && (env.get_int_array_region(&segment_lengths, 0, &mut lengths).is_err()
-            || env.get_int_array_region(&segment_colors, 0, &mut colors).is_err())
+        && (env
+            .get_int_array_region(&segment_lengths, 0, &mut lengths)
+            .is_err()
+            || env
+                .get_int_array_region(&segment_colors, 0, &mut colors)
+                .is_err())
     {
         log("the route segment arrays could not be read; leaving the route unchanged");
         return;
@@ -84,15 +90,24 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setRoute<'l>(
     for (len, color) in lengths.into_iter().zip(colors) {
         let count = len.max(0) as usize;
         let end = (cursor + count * 2).min(flat.len());
-        let run: Vec<(f64, f64)> =
-            flat[cursor..end].chunks_exact(2).map(|pair| (pair[0] as f64, pair[1] as f64)).collect();
+        let run: Vec<(f64, f64)> = flat[cursor..end]
+            .chunks_exact(2)
+            .map(|pair| (pair[0] as f64, pair[1] as f64))
+            .collect();
         cursor = end;
         // ARGB arrives as a signed `int` because that is what a Kotlin colour is; the bit
         // pattern is what matters and the cast keeps it.
-        segments.push(RouteSegment { points: run, color: color as u32 });
+        segments.push(RouteSegment {
+            points: run,
+            color: color as u32,
+        });
     }
 
-    let style = RouteStyle { width_dp, casing_dp, casing_color: casing_color as u32 };
+    let style = RouteStyle {
+        width_dp,
+        casing_dp,
+        casing_color: casing_color as u32,
+    };
     let mesh = crate::overlay::tessellate(&segments, style);
     if let Err(e) = map.renderer.set_route(mesh.as_ref()) {
         log(&format!("uploading the route failed: {e}"));
@@ -134,7 +149,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setRailLines<'
     casing_dp: jfloat,
     casing_color: jint,
 ) {
-    let Some(map) = handle_mut(handle) else { return };
+    let Some(map) = handle_mut(handle) else {
+        return;
+    };
     let point_floats = match env.get_array_length(&points) {
         Ok(length) => length.max(0) as usize,
         Err(_) => {
@@ -153,8 +170,12 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setRailLines<'
     let mut lengths = vec![0i32; segment_count];
     let mut colors = vec![0i32; segment_count];
     if segment_count > 0
-        && (env.get_int_array_region(&segment_lengths, 0, &mut lengths).is_err()
-            || env.get_int_array_region(&segment_colors, 0, &mut colors).is_err())
+        && (env
+            .get_int_array_region(&segment_lengths, 0, &mut lengths)
+            .is_err()
+            || env
+                .get_int_array_region(&segment_colors, 0, &mut colors)
+                .is_err())
     {
         log("the rail segment arrays could not be read; leaving the network unchanged");
         return;
@@ -164,13 +185,22 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setRailLines<'
     for (len, color) in lengths.into_iter().zip(colors) {
         let count = len.max(0) as usize;
         let end = (cursor + count * 2).min(flat.len());
-        let run: Vec<(f64, f64)> =
-            flat[cursor..end].chunks_exact(2).map(|pair| (pair[0] as f64, pair[1] as f64)).collect();
+        let run: Vec<(f64, f64)> = flat[cursor..end]
+            .chunks_exact(2)
+            .map(|pair| (pair[0] as f64, pair[1] as f64))
+            .collect();
         cursor = end;
-        segments.push(RouteSegment { points: run, color: color as u32 });
+        segments.push(RouteSegment {
+            points: run,
+            color: color as u32,
+        });
     }
 
-    let style = RouteStyle { width_dp, casing_dp, casing_color: casing_color as u32 };
+    let style = RouteStyle {
+        width_dp,
+        casing_dp,
+        casing_color: casing_color as u32,
+    };
     let mesh = crate::overlay::tessellate(&segments, style);
     if let Err(e) = map.renderer.set_rail_lines(mesh.as_ref()) {
         log(&format!("uploading the rail network failed: {e}"));

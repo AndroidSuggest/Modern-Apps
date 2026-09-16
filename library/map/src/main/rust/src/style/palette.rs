@@ -20,7 +20,10 @@ pub struct Palette {
 
 impl Palette {
     pub fn new(dark: bool, muted: bool) -> Palette {
-        Palette { variant: Variant::from_dark(dark), muted }
+        Palette {
+            variant: Variant::from_dark(dark),
+            muted,
+        }
     }
 }
 
@@ -114,5 +117,7 @@ pub fn layers_with_lane_rendering() -> &'static [Layer] {
 /// what keeps the answer out of the hands of the declaration order in `basemap.flat.json`: exactly
 /// one layer matches, so a reordered style or a third carriageway layer cannot re-point the gate.
 pub fn road_carriageway_layer(layers: &[Layer]) -> Option<&Layer> {
-    layers.iter().find(|l| l.carriageway && l.source_layer_id == dict::LAYER_ROADS)
+    layers
+        .iter()
+        .find(|l| l.carriageway && l.source_layer_id == dict::LAYER_ROADS)
 }

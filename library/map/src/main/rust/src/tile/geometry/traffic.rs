@@ -1,6 +1,7 @@
 //! Live-traffic component segments for one tile, one mesh per id.
 use super::convert::flatten;
-use super::mesh::{TRAFFIC_MIN_ZOOM, TrafficMesh};
+use super::mesh::{TrafficMesh, TRAFFIC_MIN_ZOOM};
+use super::terrain::drape_vertices;
 use crate::style::LayerToggles;
 use crate::tess::stroke;
 use crate::tile::select::ANCESTOR_DEPTH;
@@ -22,7 +23,13 @@ use tilecodec::mamaps::dict::LAYER_TRAFFIC;
 /// A feature with no id (`None`, meaning the layer carries no id table, or [`ID_NONE`]) is
 /// skipped: without a stable id nothing could ever colour it, so drawing it would only ever
 /// paint the neutral no-data look over a road that is already drawn by the basemap.
-pub(crate) fn traffic_meshes(tile: &Body, extent: u32, z: u8, toggles: LayerToggles) -> Vec<TrafficMesh> {
+pub(crate) fn traffic_meshes(
+    tile: &Body,
+    extent: u32,
+    z: u8,
+    toggles: LayerToggles,
+    ground_width_m: f64,
+) -> Vec<TrafficMesh> {
     if !toggles.traffic {
         return Vec::new();
     }
@@ -32,13 +39,17 @@ pub(crate) fn traffic_meshes(tile: &Body, extent: u32, z: u8, toggles: LayerTogg
     if z.saturating_add(ANCESTOR_DEPTH) < TRAFFIC_MIN_ZOOM {
         return Vec::new();
     }
-    let Some(source) = tile.layer(LAYER_TRAFFIC) else { return Vec::new() };
+    let Some(source) = tile.layer(LAYER_TRAFFIC) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for (feature_index, feature) in source.features.iter().enumerate() {
         if feature.geom_type != GEOM_LINE {
             continue;
         }
-        let Some(id) = tile.feature_id(LAYER_TRAFFIC, feature_index) else { continue };
+        let Some(id) = tile.feature_id(LAYER_TRAFFIC, feature_index) else {
+            continue;
+        };
         if id == tilecodec::mamaps::body::ID_NONE {
             continue;
         }
@@ -52,7 +63,23 @@ pub(crate) fn traffic_meshes(tile: &Body, extent: u32, z: u8, toggles: LayerTogg
         if indices.is_empty() {
             continue;
         }
-        out.push(TrafficMesh { id, vertices, indices });
+        // Drape the segment onto the relief where the tile carries a heightmap, so the
+        // traffic overlay follows the same ground its road does; without one the
+        // tessellator's z=0 stands and output is unchanged.
+        if tile.heightmap.is_some() {
+            drape_vertices(
+                &mut vertices,
+                stroke::FLOATS_PER_VERTEX,
+                7,
+                &tile.heightmap,
+                ground_width_m,
+            );
+        }
+        out.push(TrafficMesh {
+            id,
+            vertices,
+            indices,
+        });
     }
     out
 }

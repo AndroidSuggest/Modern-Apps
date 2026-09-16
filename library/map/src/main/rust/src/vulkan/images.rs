@@ -44,8 +44,8 @@ impl AtlasSet {
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-        let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
-            .bindings(std::slice::from_ref(&binding));
+        let layout_info =
+            vk::DescriptorSetLayoutCreateInfo::default().bindings(std::slice::from_ref(&binding));
         let layout = device
             .create_descriptor_set_layout(&layout_info, None)
             .map_err(|e| format!("create_descriptor_set_layout {e:?}"))?;
@@ -57,8 +57,9 @@ impl AtlasSet {
         let pool_info = vk::DescriptorPoolCreateInfo::default()
             .pool_sizes(std::slice::from_ref(&pool_size))
             .max_sets(2);
-        let pool =
-            device.create_descriptor_pool(&pool_info, None).map_err(|e| {
+        let pool = device
+            .create_descriptor_pool(&pool_info, None)
+            .map_err(|e| {
                 device.destroy_descriptor_set_layout(layout, None);
                 format!("create_descriptor_pool {e:?}")
             })?;
@@ -161,7 +162,11 @@ impl SampledImage {
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(upload_format)
-            .extent(vk::Extent3D { width, height, depth: 1 })
+            .extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            })
             .mip_levels(1)
             .array_layers(1)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -169,8 +174,9 @@ impl SampledImage {
             .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
-        let image =
-            device.create_image(&image_info, None).map_err(|e| format!("create_image {e:?}"))?;
+        let image = device
+            .create_image(&image_info, None)
+            .map_err(|e| format!("create_image {e:?}"))?;
         let requirements = device.get_image_memory_requirements(image);
         let properties = instance.get_physical_device_memory_properties(physical_device);
         let memory_type = (0..properties.memory_type_count)
@@ -219,7 +225,9 @@ impl SampledImage {
             .ok_or("no copy command buffer")?;
         let begin = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        device.begin_command_buffer(copy, &begin).map_err(|e| format!("begin copy {e:?}"))?;
+        device
+            .begin_command_buffer(copy, &begin)
+            .map_err(|e| format!("begin copy {e:?}"))?;
         let barrier_to_dst = vk::ImageMemoryBarrier::default()
             .old_layout(vk::ImageLayout::UNDEFINED)
             .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
@@ -251,7 +259,11 @@ impl SampledImage {
                 base_array_layer: 0,
                 layer_count: 1,
             })
-            .image_extent(vk::Extent3D { width, height, depth: 1 });
+            .image_extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            });
         device.cmd_copy_buffer_to_image(
             copy,
             staging.buffer,
@@ -283,12 +295,16 @@ impl SampledImage {
             &[],
             std::slice::from_ref(&barrier_to_read),
         );
-        device.end_command_buffer(copy).map_err(|e| format!("end copy {e:?}"))?;
+        device
+            .end_command_buffer(copy)
+            .map_err(|e| format!("end copy {e:?}"))?;
         let submit = vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&copy));
         device
             .queue_submit(queue, std::slice::from_ref(&submit), vk::Fence::null())
             .map_err(|e| format!("queue_submit atlas copy {e:?}"))?;
-        device.queue_wait_idle(queue).map_err(|e| format!("queue_wait_idle {e:?}"))?;
+        device
+            .queue_wait_idle(queue)
+            .map_err(|e| format!("queue_wait_idle {e:?}"))?;
         device.free_command_buffers(command_pool, &[copy]);
         staging.destroy(device);
         // View + sampler (both in the uploaded format).
@@ -321,7 +337,14 @@ impl SampledImage {
             device.destroy_image(image, None);
             format!("create_sampler {e:?}")
         })?;
-        Ok(SampledImage { image, memory, view, sampler, width, height })
+        Ok(SampledImage {
+            image,
+            memory,
+            view,
+            sampler,
+            width,
+            height,
+        })
     }
 
     /// # Safety

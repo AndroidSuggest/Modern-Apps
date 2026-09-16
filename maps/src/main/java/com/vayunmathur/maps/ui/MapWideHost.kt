@@ -86,22 +86,6 @@ internal fun MapPageScope.MapWideHost(
             override fun removeSaved(place: SavedPlace) {
                 savedPlacesViewModel.removeSaved(place)
             }
-            override fun setHome() {
-                (selectedFeature as? SpecificFeature.RoutableFeature)?.let {
-                    savedPlacesViewModel.setHome(it)
-                }
-            }
-            override fun clearHome() {
-                savedPlacesViewModel.clearHome()
-            }
-            override fun setWork() {
-                (selectedFeature as? SpecificFeature.RoutableFeature)?.let {
-                    savedPlacesViewModel.setWork(it)
-                }
-            }
-            override fun clearWork() {
-                savedPlacesViewModel.clearWork()
-            }
             override fun openNearestStop(lat: Double, lon: Double) {
                 transitViewModel.openNearestStop(lat, lon)
             }

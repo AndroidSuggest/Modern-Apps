@@ -1,5 +1,6 @@
 package com.vayunmathur.photos.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,17 +8,21 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.ui.res.pluralStringResource
-import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.IconDelete
+import com.vayunmathur.library.ui.IconLock
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -37,10 +42,15 @@ import com.vayunmathur.photos.Route
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.util.Album
 import com.vayunmathur.photos.util.AlbumsUiState
+import com.vayunmathur.photos.util.DefaultAlbum
+import com.vayunmathur.photos.util.DefaultAlbumKind
 
 /**
  * The albums grid, with no dependency on the ViewModel so it can be rendered from a
  * `@Preview` — see `src/screenshotTest`, which is where the store listing images come from.
+ *
+ * Built-in collections (Trash, Secure Folder) render first as icon tiles with no
+ * cover photo; they open the same pages the bottom nav used to hold.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,18 +69,38 @@ fun AlbumsScreen(
         bottomBar = { NavigationBar(Route.Albums, backStack) },
         scrollBehavior = appBarScrollBehavior(),
     ) { padding ->
-        if (state.albums.isEmpty()) {
-            EmptyState(
-                title = stringResource(R.string.albums_empty),
-                modifier = Modifier.fillMaxSize().padding(padding),
-            )
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize().padding(padding).padding(8.dp),
-            ) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(8.dp),
+        ) {
+            // Stable key = kind so Compose reuses tiles across re-emissions
+            // instead of recreating them during syncs.
+            items(state.defaultAlbums, key = { it.kind }) { album ->
+                DefaultAlbumTile(
+                    album = album,
+                    onClick = {
+                        backStack.add(
+                            when (album.kind) {
+                                DefaultAlbumKind.TRASH -> Route.Trash
+                                DefaultAlbumKind.SECURE_FOLDER -> Route.SecureFolder
+                            }
+                        )
+                    },
+                )
+            }
+            if (state.albums.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        text = stringResource(R.string.albums_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp, horizontal = 16.dp),
+                    )
+                }
+            } else {
                 // Stable key = album name so Compose reuses tiles across re-emissions
                 // instead of recreating (and re-loading) them during syncs.
                 items(state.albums, key = { it.name }) { album ->
@@ -100,6 +130,60 @@ fun AlbumsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * A built-in collection tile: the collection's icon on a tonal surface
+ * instead of a cover photo, with the same name/count caption as an album.
+ */
+@Composable
+private fun DefaultAlbumTile(
+    album: DefaultAlbum,
+    onClick: () -> Unit,
+) {
+    val title = when (album.kind) {
+        DefaultAlbumKind.TRASH -> stringResource(R.string.label_trash)
+        DefaultAlbumKind.SECURE_FOLDER -> stringResource(R.string.label_secure_folder)
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                .invisibleClickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (album.kind) {
+                DefaultAlbumKind.TRASH -> IconDelete(
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                DefaultAlbumKind.SECURE_FOLDER -> IconLock(
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        // A null count hides the line (the locked vault stays private).
+        album.count?.let { count ->
+            Text(
+                text = pluralStringResource(R.plurals.album_photo_count, count, count),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

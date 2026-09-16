@@ -31,8 +31,11 @@ mechanically, and how to run those checks yourself.
 
 Point `local.properties` at your SDK. Apps build **arm64-only** by default.
 
-**Gradle memory.** `gradle.properties` sets `-Xmx46g`, sized for building every module at once
-on a large workstation. Do not lower it in the repo — override it for your machine in
+**Gradle memory.** `gradle.properties` defaults to a small daemon heap (`-Xmx8g`,
+`-Xms512m`, 2 workers) sized for scoped `:module:` builds — the thing agents and
+day-to-day dev actually run. `./install all` auto-escalates to the big heap for
+the full ~100-module build, so don't raise the default. If your machine needs
+different values, override them for your machine in
 `~/.gradle/gradle.properties` (which takes precedence), the way CI does:
 
 ```properties

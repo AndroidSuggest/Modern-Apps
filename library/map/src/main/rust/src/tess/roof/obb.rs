@@ -19,8 +19,11 @@ impl OrientedBox {
         let (rs, rc) = roof_dir_rad.sin_cos();
         let ridge = (rc, rs);
         let perp = (-rs, rc);
-        let (along, cross) =
-            if orientation == ROOF_ORIENT_ACROSS { (perp, ridge) } else { (ridge, perp) };
+        let (along, cross) = if orientation == ROOF_ORIENT_ACROSS {
+            (perp, ridge)
+        } else {
+            (ridge, perp)
+        };
         let mut cross_min = f32::MAX;
         let mut cross_max = f32::MIN;
         let mut along_min = f32::MAX;
@@ -36,13 +39,23 @@ impl OrientedBox {
         // A zero span would divide by zero; a hair of span keeps a needle-thin footprint finite.
         let cross_span = (cross_max - cross_min).max(f32::EPSILON);
         let along_span = (along_max - along_min).max(f32::EPSILON);
-        OrientedBox { cross, along, cross_min, cross_span, along_min, along_span }
+        OrientedBox {
+            cross,
+            along,
+            cross_min,
+            cross_span,
+            along_min,
+            along_span,
+        }
     }
 
     /// The tile-local footprint point at oriented-box coordinates `(cu, av)`, each in `0..=1`.
     pub(crate) fn point(&self, cu: f32, av: f32) -> (f32, f32) {
         let c = self.cross_min + cu * self.cross_span;
         let al = self.along_min + av * self.along_span;
-        (self.cross.0 * c + self.along.0 * al, self.cross.1 * c + self.along.1 * al)
+        (
+            self.cross.0 * c + self.along.0 * al,
+            self.cross.1 * c + self.along.1 * al,
+        )
     }
 }

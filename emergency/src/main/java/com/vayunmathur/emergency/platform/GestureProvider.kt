@@ -47,6 +47,14 @@ class GestureProvider : ContentProvider() {
                 prefs().edit()
                     .putString(EXTRA_CALL_NUMBER, extras?.getString(EXTRA_CALL_NUMBER))
                     .apply()
+                // Stock notifies observers of the gesture authority URI here; Settings
+                // registers a content observer on it, so without this the override row
+                // never refreshes after a set. Both authorities served in the manifest,
+                // so both get the notification.
+                runCatching {
+                    requireContext().contentResolver.notifyChange(STOCK_GESTURE_URI, null)
+                    requireContext().contentResolver.notifyChange(GESTURE_URI, null)
+                }
             }
             METHOD_SET_GESTURE -> {
                 if (!writeSecure(SecureKeys.GESTURE_ENABLED, extras, EXTRA_VALUE)) {
@@ -172,6 +180,18 @@ class GestureProvider : ContentProvider() {
 
     companion object {
         private const val OVERRIDE_PREFS = "local_emergency_number_override_shared_pref"
+
+        /** Our gesture authority, for the notifyChange stock sends on override sets. */
+        private val GESTURE_URI: Uri = Uri.Builder()
+            .scheme("content")
+            .authority("com.vayunmathur.emergency.gesture")
+            .build()
+
+        /** Stock gesture authority served by the same provider (see manifest). */
+        private val STOCK_GESTURE_URI: Uri = Uri.Builder()
+            .scheme("content")
+            .authority("com.android.emergency.gesture")
+            .build()
 
         /**
          * `Settings.Secure` gesture keys as literals: they are `@hide`/system-API in the

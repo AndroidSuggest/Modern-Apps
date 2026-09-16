@@ -1,11 +1,11 @@
 //! The user-location puck.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
+use super::handle::handle_mut;
 use crate::vulkan::renderer::UserPuck;
 use jni::objects::JClass;
 use jni::sys::{jboolean, jfloat, jlong};
 use jni::JNIEnv;
-use super::handle::handle_mut;
 /// Show the user-location puck at `lon`/`lat`, drawn inside the renderer's own frame.
 ///
 /// Free in the same sense as

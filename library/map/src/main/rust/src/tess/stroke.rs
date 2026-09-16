@@ -34,8 +34,13 @@
 //! drawn over it. Both bands come out of one call, distinguished only by their
 //! `offset_mul`, so a casing costs one draw rather than two.
 
-/// Floats per vertex: `x, y, nx, ny, offset_mul, width_mul, distance`.
-pub const FLOATS_PER_VERTEX: usize = 7;
+/// Floats per vertex: `x, y, nx, ny, offset_mul, width_mul, distance, z`.
+///
+/// `z` is the draped ground height in the same tile-local unit as `x`/`y` — `0.0`
+/// straight out of the tessellator, filled in by the drape pass at build time where
+/// the tile carries a heightmap. Trailing so every existing field index is unchanged.
+/// The tilted clip matrix reads it; at pitch 0 it is ignored for x/y.
+pub const FLOATS_PER_VERTEX: usize = 8;
 
 /// How many half-widths a miter may extend before it degrades to a bevel. 2.0 is the
 /// SVG/Canvas default and the value MapLibre uses.
@@ -84,7 +89,11 @@ fn band(
     indices: &mut Vec<u32>,
 ) {
     let inner_width_mul = if offset_mul == 0.0 { -1.0 } else { 0.0 };
-    let outer_width_mul = if offset_mul == 0.0 { 1.0 } else { 2.0 * offset_mul };
+    let outer_width_mul = if offset_mul == 0.0 {
+        1.0
+    } else {
+        2.0 * offset_mul
+    };
 
     let base = (vertices.len() / FLOATS_PER_VERTEX) as u32;
     let mut distance = 0.0f32;
@@ -95,8 +104,16 @@ fn band(
 
         // Segment directions either side of this vertex; absent at the ends, where a
         // butt cap means the normal is just the one segment's.
-        let before = if i > 0 { Some(direction(points, i - 1, i)) } else { None };
-        let after = if i < n - 1 { Some(direction(points, i, i + 1)) } else { None };
+        let before = if i > 0 {
+            Some(direction(points, i - 1, i))
+        } else {
+            None
+        };
+        let after = if i < n - 1 {
+            Some(direction(points, i, i + 1))
+        } else {
+            None
+        };
 
         let (nx, ny) = match (before, after) {
             (None, Some(a)) => (-a.1, a.0),
@@ -117,8 +134,16 @@ fn band(
                     mx /= len;
                     my /= len;
                     let cos_half = mx * n1x + my * n1y;
-                    let miter = if cos_half > 1e-3 { 1.0 / cos_half } else { MITER_LIMIT };
-                    let clamped = if miter > MITER_LIMIT { MITER_LIMIT } else { miter };
+                    let miter = if cos_half > 1e-3 {
+                        1.0 / cos_half
+                    } else {
+                        MITER_LIMIT
+                    };
+                    let clamped = if miter > MITER_LIMIT {
+                        MITER_LIMIT
+                    } else {
+                        miter
+                    };
                     (mx * clamped, my * clamped)
                 }
             }
@@ -131,8 +156,8 @@ fn band(
 
         let px = x as f32 * scale;
         let py = y as f32 * scale;
-        vertices.extend_from_slice(&[px, py, nx, ny, offset_mul, inner_width_mul, distance]);
-        vertices.extend_from_slice(&[px, py, nx, ny, offset_mul, outer_width_mul, distance]);
+        vertices.extend_from_slice(&[px, py, nx, ny, offset_mul, inner_width_mul, distance, 0.0]);
+        vertices.extend_from_slice(&[px, py, nx, ny, offset_mul, outer_width_mul, distance, 0.0]);
     }
 
     // Two triangles per segment, wound consistently so face culling could be switched
@@ -213,7 +238,11 @@ mod tests {
         // Extent 100, so tile coordinates and 0..1 positions differ by a round 100.
         stroke(&[0, 0, 100, 0], 100, false, &mut v, &mut idx);
 
-        assert_eq!(v.len() / FLOATS_PER_VERTEX, 4, "two points, two vertices each");
+        assert_eq!(
+            v.len() / FLOATS_PER_VERTEX,
+            4,
+            "two points, two vertices each"
+        );
         assert_eq!(idx.len(), 6, "two triangles");
         // A segment heading +x has normal (0, 1): perpendicular, left-hand.
         for i in 0..4 {
@@ -268,8 +297,14 @@ mod tests {
         let mut idx = Vec::new();
         stroke(&[0, 0, 100, 0], 100, true, &mut v, &mut idx);
         assert_eq!(idx.len(), 12, "six indices per band");
-        assert!(idx[..6].iter().all(|&i| i < 4), "first band stays in its own vertices");
-        assert!(idx[6..].iter().all(|&i| i >= 4), "second band must not reach into the first");
+        assert!(
+            idx[..6].iter().all(|&i| i < 4),
+            "first band stays in its own vertices"
+        );
+        assert!(
+            idx[6..].iter().all(|&i| i >= 4),
+            "second band must not reach into the first"
+        );
     }
 
     #[test]
@@ -278,10 +313,24 @@ mod tests {
         // one is (-1,0); their bisector is (-1,1)/sqrt(2) and the miter length is
         // 1/cos(45°) = sqrt(2), so the normal comes out exactly (-1, 1).
         let mut v = Vec::new();
-        stroke(&[0, 0, 100, 0, 100, 100], 100, false, &mut v, &mut Vec::new());
+        stroke(
+            &[0, 0, 100, 0, 100, 100],
+            100,
+            false,
+            &mut v,
+            &mut Vec::new(),
+        );
         assert_eq!(v.len() / FLOATS_PER_VERTEX, 6);
-        assert!((normal_x(&v, 2) - -1.0).abs() < 1e-5, "join nx {}", normal_x(&v, 2));
-        assert!((normal_y(&v, 2) - 1.0).abs() < 1e-5, "join ny {}", normal_y(&v, 2));
+        assert!(
+            (normal_x(&v, 2) - -1.0).abs() < 1e-5,
+            "join nx {}",
+            normal_x(&v, 2)
+        );
+        assert!(
+            (normal_y(&v, 2) - 1.0).abs() < 1e-5,
+            "join ny {}",
+            normal_y(&v, 2)
+        );
         assert!((normal_len(&v, 2) - 2f32.sqrt()).abs() < 1e-5);
         // The ends keep their own segment normal: a butt cap adds no geometry.
         assert!((normal_len(&v, 0) - 1.0).abs() < 1e-5);
@@ -291,8 +340,18 @@ mod tests {
     #[test]
     fn a_hairpin_miter_is_clamped_rather_than_throwing_a_spike() {
         let mut v = Vec::new();
-        stroke(&[0, 0, 1000, 0, 0, 10], 4096, false, &mut v, &mut Vec::new());
-        assert!((normal_len(&v, 2) - MITER_LIMIT).abs() < 1e-4, "got {}", normal_len(&v, 2));
+        stroke(
+            &[0, 0, 1000, 0, 0, 10],
+            4096,
+            false,
+            &mut v,
+            &mut Vec::new(),
+        );
+        assert!(
+            (normal_len(&v, 2) - MITER_LIMIT).abs() < 1e-4,
+            "got {}",
+            normal_len(&v, 2)
+        );
     }
 
     #[test]
@@ -309,8 +368,18 @@ mod tests {
     #[test]
     fn repeated_vertices_are_dropped() {
         let mut v = Vec::new();
-        stroke(&[0, 0, 0, 0, 0, 0, 50, 0], 100, false, &mut v, &mut Vec::new());
-        assert_eq!(v.len() / FLOATS_PER_VERTEX, 4, "three coincident points became one");
+        stroke(
+            &[0, 0, 0, 0, 0, 0, 50, 0],
+            100,
+            false,
+            &mut v,
+            &mut Vec::new(),
+        );
+        assert_eq!(
+            v.len() / FLOATS_PER_VERTEX,
+            4,
+            "three coincident points became one"
+        );
     }
 
     #[test]
@@ -327,9 +396,18 @@ mod tests {
     #[test]
     fn distance_accumulates_along_the_line_for_the_dash_pattern() {
         let mut v = Vec::new();
-        stroke(&[0, 0, 300, 0, 300, 400], 100, false, &mut v, &mut Vec::new());
+        stroke(
+            &[0, 0, 300, 0, 300, 400],
+            100,
+            false,
+            &mut v,
+            &mut Vec::new(),
+        );
         assert!((distance(&v, 0) - 0.0).abs() < 1e-6);
-        assert!((distance(&v, 2) - 3.0).abs() < 1e-6, "300 tile units at extent 100");
+        assert!(
+            (distance(&v, 2) - 3.0).abs() < 1e-6,
+            "300 tile units at extent 100"
+        );
         assert!((distance(&v, 4) - 7.0).abs() < 1e-6, "plus 400 more");
     }
 }

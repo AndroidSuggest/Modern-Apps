@@ -1,0 +1,36 @@
+{
+  // Token-burn guard: keep repo-wide search out of generated / vendored / binary noise.
+  // See .llms/repo-map.md "Never scan". Scoped single-file reads still work —
+  // this only affects unscoped search.
+  "search.exclude": {
+    "**/build": true,
+    "**/target": true,
+    "**/.gradle": true,
+    "**/.kotlin": true,
+    "**/.cxx": true,
+    "**/.externalNativeBuild": true,
+    "**/metadata_data/photos": true,
+    "**/schemas": true,
+    "**/third_party": true,
+    "**/firmware": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/tmp": true,
+    "**/*.onnx": true,
+    "**/*.log": true,
+    "**/*.bin": true,
+    "**/*.pmtiles": true,
+    "**/personal": true,
+    "**/analysis": true
+  },
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/target/**": true,
+    "**/.gradle/**": true,
+    "**/.kotlin/**": true,
+    "**/metadata_data/photos/**": true,
+    "**/third_party/**": true,
+    "**/firmware/**": true,
+    "**/node_modules/**": true
+  }
+}

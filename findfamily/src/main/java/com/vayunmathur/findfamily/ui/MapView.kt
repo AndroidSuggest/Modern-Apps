@@ -49,6 +49,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.GestureOptions
+import com.vayunmathur.library.map.MapOptions
 import com.vayunmathur.library.map.VectorMap
 import kotlin.io.encoding.Base64
 import kotlin.math.abs
@@ -100,6 +102,7 @@ fun MapView(
             VectorMap(
                 cameraState = camera,
                 zoomRange = 0f..20f,
+                options = MapOptions(gestureOptions = GestureOptions.TiltLocked),
                 onMapClick = { onMapClick() },
             ) {
                 if (initialized) {

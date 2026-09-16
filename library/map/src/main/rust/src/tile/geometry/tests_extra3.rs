@@ -4,7 +4,9 @@ use super::terrain::tile_ground_width_m;
 use crate::style;
 use crate::style::{KindFilter, Layer, LayerToggles};
 use crate::tess::{roof, terrain};
-use tilecodec::mamaps::body::{Body, Feature, GEOM_LINE, GEOM_POLYGON, Layer as BodyLayer, NAME_NONE, Part, WINDING_OUTER};
+use tilecodec::mamaps::body::{
+    Body, Feature, Layer as BodyLayer, Part, GEOM_LINE, GEOM_POLYGON, NAME_NONE, WINDING_OUTER,
+};
 use tilecodec::mamaps::dict;
 use tilecodec::mamaps::dict::LAYER_TRAFFIC;
 
@@ -28,7 +30,11 @@ fn real() -> Body {
         transit_taper: 0,
         lane_count: 0,
     });
-    earth.parts.push(Part { coord_start: 0, point_count: 4, winding: WINDING_OUTER });
+    earth.parts.push(Part {
+        coord_start: 0,
+        point_count: 4,
+        winding: WINDING_OUTER,
+    });
     earth.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
     body.layers.push(earth);
     let mut water = BodyLayer::new(dict::LAYER_WATER);
@@ -46,7 +52,11 @@ fn real() -> Body {
         transit_taper: 0,
         lane_count: 0,
     });
-    water.parts.push(Part { coord_start: 0, point_count: 4, winding: WINDING_OUTER });
+    water.parts.push(Part {
+        coord_start: 0,
+        point_count: 4,
+        winding: WINDING_OUTER,
+    });
     water.coords = vec![(500, 3000), (1100, 3000), (1100, 3400), (500, 3400)];
     body.layers.push(water);
     body
@@ -99,11 +109,25 @@ fn traffic_body(ids: &[Option<u64>], id_table: bool) -> Body {
     } else {
         Vec::new()
     };
-    Body { extent: DEFAULT_EXTENT, layers: vec![source], names: Vec::new(), ids: table, turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None }
+    Body {
+        extent: DEFAULT_EXTENT,
+        layers: vec![source],
+        names: Vec::new(),
+        ids: table,
+        turn_lanes: Vec::new(),
+        buildings: Vec::new(),
+        heightmap: None,
+        carriageways: Vec::new(),
+        convention: None,
+    }
 }
 
 fn traffic_on() -> LayerToggles {
-    LayerToggles { poi: false, transit: false, traffic: true }
+    LayerToggles {
+        poi: false,
+        transit: false,
+        traffic: true,
+    }
 }
 
 /// One mesh per component segment, each carrying the segment's `component_id` from the id
@@ -113,13 +137,26 @@ fn traffic_on() -> LayerToggles {
 fn traffic_is_one_mesh_per_component_carrying_its_id() {
     let ids = [Some(0x1234_0000_u64 | 5), Some(0x1234_0000 | 6)];
     let body = traffic_body(&ids, true);
-    let mesh = build_toggled(&body, &[], 14, 0, 0, false, traffic_on(), &KindFilter::all(), 1);
+    let mesh = build_toggled(
+        &body,
+        &[],
+        14,
+        0,
+        0,
+        false,
+        traffic_on(),
+        &KindFilter::all(),
+        1,
+    );
     assert_eq!(
         mesh.traffic.iter().map(|t| t.id).collect::<Vec<_>>(),
         vec![0x1234_0000 | 5, 0x1234_0000 | 6],
         "one mesh per segment, id from the side-table, in feature order",
     );
-    assert!(mesh.traffic.iter().all(|t| !t.indices.is_empty()), "every segment tessellates");
+    assert!(
+        mesh.traffic.iter().all(|t| !t.indices.is_empty()),
+        "every segment tessellates"
+    );
 }
 
 /// The overlay is gated at tessellation like the other optional layers: off means nothing
@@ -128,8 +165,21 @@ fn traffic_is_one_mesh_per_component_carrying_its_id() {
 fn traffic_is_gated_off_unless_the_toggle_is_on() {
     let body = traffic_body(&[Some(1), Some(2)], true);
     let off = build(&body, &[], 14, 0, 0, false);
-    assert!(off.traffic.is_empty(), "traffic off tessellates no segments");
-    let on = build_toggled(&body, &[], 14, 0, 0, false, traffic_on(), &KindFilter::all(), 1);
+    assert!(
+        off.traffic.is_empty(),
+        "traffic off tessellates no segments"
+    );
+    let on = build_toggled(
+        &body,
+        &[],
+        14,
+        0,
+        0,
+        false,
+        traffic_on(),
+        &KindFilter::all(),
+        1,
+    );
     assert_eq!(on.traffic.len(), 2, "traffic on tessellates the segments");
 }
 
@@ -139,7 +189,17 @@ fn traffic_is_gated_off_unless_the_toggle_is_on() {
 fn traffic_is_gated_below_its_min_zoom() {
     let body = traffic_body(&[Some(1)], true);
     // deepest = z + ANCESTOR_DEPTH(4); at z0 that is 4, well below the floor.
-    let coarse = build_toggled(&body, &[], 0, 0, 0, false, traffic_on(), &KindFilter::all(), 1);
+    let coarse = build_toggled(
+        &body,
+        &[],
+        0,
+        0,
+        0,
+        false,
+        traffic_on(),
+        &KindFilter::all(),
+        1,
+    );
     assert!(coarse.traffic.is_empty(), "a coarse tile builds no traffic");
     let deep = build_toggled(
         &body,
@@ -161,8 +221,17 @@ fn traffic_is_gated_below_its_min_zoom() {
 #[test]
 fn a_traffic_segment_with_no_id_is_skipped() {
     let none_in_table = traffic_body(&[Some(7), None, Some(9)], true);
-    let mesh =
-        build_toggled(&none_in_table, &[], 14, 0, 0, false, traffic_on(), &KindFilter::all(), 1);
+    let mesh = build_toggled(
+        &none_in_table,
+        &[],
+        14,
+        0,
+        0,
+        false,
+        traffic_on(),
+        &KindFilter::all(),
+        1,
+    );
     assert_eq!(
         mesh.traffic.iter().map(|t| t.id).collect::<Vec<_>>(),
         vec![7, 9],
@@ -170,9 +239,21 @@ fn a_traffic_segment_with_no_id_is_skipped() {
     );
 
     let no_table = traffic_body(&[Some(7), Some(9)], false);
-    let mesh =
-        build_toggled(&no_table, &[], 14, 0, 0, false, traffic_on(), &KindFilter::all(), 1);
-    assert!(mesh.traffic.is_empty(), "a layer with no id table colours nothing, so draws nothing");
+    let mesh = build_toggled(
+        &no_table,
+        &[],
+        14,
+        0,
+        0,
+        false,
+        traffic_on(),
+        &KindFilter::all(),
+        1,
+    );
+    assert!(
+        mesh.traffic.is_empty(),
+        "a layer with no id table colours nothing, so draws nothing"
+    );
 }
 
 /// Colour is never an input to traffic tessellation — the builder takes no colour at all —
@@ -183,12 +264,35 @@ fn a_traffic_segment_with_no_id_is_skipped() {
 #[test]
 fn recolouring_cannot_retessellate_because_colour_is_not_a_tessellation_input() {
     let body = traffic_body(&[Some(11), Some(22)], true);
-    let a = build_toggled(&body, &[], 14, 0, 0, false, traffic_on(), &KindFilter::all(), 1);
-    let b = build_toggled(&body, &[], 14, 0, 0, false, traffic_on(), &KindFilter::all(), 1);
+    let a = build_toggled(
+        &body,
+        &[],
+        14,
+        0,
+        0,
+        false,
+        traffic_on(),
+        &KindFilter::all(),
+        1,
+    );
+    let b = build_toggled(
+        &body,
+        &[],
+        14,
+        0,
+        0,
+        false,
+        traffic_on(),
+        &KindFilter::all(),
+        1,
+    );
     assert_eq!(a.traffic.len(), b.traffic.len());
     for (x, y) in a.traffic.iter().zip(&b.traffic) {
         assert_eq!(x.id, y.id);
-        assert_eq!(x.vertices, y.vertices, "geometry is deterministic and colour-independent");
+        assert_eq!(
+            x.vertices, y.vertices,
+            "geometry is deterministic and colour-independent"
+        );
         assert_eq!(x.indices, y.indices);
     }
 }
@@ -203,9 +307,15 @@ fn building_body(attrs: Option<tilecodec::mamaps::body::BuildingAttrs>) -> Body 
     };
     use tilecodec::mamaps::dict;
     let mut source = BodyLayer::new(dict::LAYER_BUILDINGS);
-    source.parts.push(Part { coord_start: 0, point_count: 5, winding: WINDING_OUTER });
+    source.parts.push(Part {
+        coord_start: 0,
+        point_count: 5,
+        winding: WINDING_OUTER,
+    });
     // A closed square footprint, roughly a quarter of the tile.
-    source.coords.extend_from_slice(&[(0, 0), (1000, 0), (1000, 1000), (0, 1000), (0, 0)]);
+    source
+        .coords
+        .extend_from_slice(&[(0, 0), (1000, 0), (1000, 1000), (0, 1000), (0, 0)]);
     source.features.push(Feature {
         kind: crate::style::kind_id_for_test("building"),
         kind_detail: 0,
@@ -231,7 +341,9 @@ fn building_body(attrs: Option<tilecodec::mamaps::body::BuildingAttrs>) -> Body 
         ids: Vec::new(),
         turn_lanes: Vec::new(),
         buildings,
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None,
+        carriageways: Vec::new(),
+        convention: None,
     }
 }
 
@@ -248,22 +360,43 @@ fn max_building_z(mesh: &TileMesh) -> f32 {
 fn a_building_extrudes_into_a_3d_mesh_not_a_flat_fill() {
     use tilecodec::mamaps::body::BuildingAttrs;
     // A 30 m box (300 dm) at a mid-latitude tile (y = 8192 is the equator at z14).
-    let body = building_body(Some(BuildingAttrs { height: 300, ..Default::default() }));
+    let body = building_body(Some(BuildingAttrs {
+        height: 300,
+        ..Default::default()
+    }));
     let layers = style::layers();
     let mesh = build(&body, &layers, 14, 0, 8192, false);
 
-    assert!(!mesh.buildings.indices.is_empty(), "the building must extrude");
-    assert_eq!(mesh.buildings.indices.len() % 3, 0, "indices come in threes");
-    assert_eq!(mesh.buildings.vertices.len() % roof::FLOATS_PER_VERTEX, 0, "vertices are whole");
+    assert!(
+        !mesh.buildings.indices.is_empty(),
+        "the building must extrude"
+    );
+    assert_eq!(
+        mesh.buildings.indices.len() % 3,
+        0,
+        "indices come in threes"
+    );
+    assert_eq!(
+        mesh.buildings.vertices.len() % roof::FLOATS_PER_VERTEX,
+        0,
+        "vertices are whole"
+    );
     // Buildings draw in their own depth pass, so they must NOT also appear as a flat fill mesh.
     assert!(
         mesh_for(&mesh, &layers, "buildings").is_none(),
         "a building must not double up as a flat fill",
     );
 
-    let zs: Vec<f32> =
-        mesh.buildings.vertices.chunks(roof::FLOATS_PER_VERTEX).map(|c| c[2]).collect();
-    assert!(zs.iter().any(|&z| z.abs() < 1e-6), "walls must start at the base");
+    let zs: Vec<f32> = mesh
+        .buildings
+        .vertices
+        .chunks(roof::FLOATS_PER_VERTEX)
+        .map(|c| c[2])
+        .collect();
+    assert!(
+        zs.iter().any(|&z| z.abs() < 1e-6),
+        "walls must start at the base"
+    );
     assert!(zs.iter().any(|&z| z > 0.0), "the box must extrude upward");
 }
 
@@ -272,7 +405,10 @@ fn a_taller_building_reaches_higher() {
     use tilecodec::mamaps::body::BuildingAttrs;
     let layers = style::layers();
     let short = build(
-        &building_body(Some(BuildingAttrs { height: 200, ..Default::default() })),
+        &building_body(Some(BuildingAttrs {
+            height: 200,
+            ..Default::default()
+        })),
         &layers,
         14,
         0,
@@ -280,7 +416,10 @@ fn a_taller_building_reaches_higher() {
         false,
     );
     let tall = build(
-        &building_body(Some(BuildingAttrs { height: 600, ..Default::default() })),
+        &building_body(Some(BuildingAttrs {
+            height: 600,
+            ..Default::default()
+        })),
         &layers,
         14,
         0,
@@ -302,8 +441,14 @@ fn a_building_with_no_side_table_still_extrudes_a_default_box() {
     // A layer with no building table reads back default attrs, which extrude at the default
     // height rather than nothing — an unattributed building is still a building.
     let mesh = build(&building_body(None), &style::layers(), 14, 0, 8192, false);
-    assert!(!mesh.buildings.indices.is_empty(), "a default building still extrudes");
-    assert!(max_building_z(&mesh) > 0.0, "the default box has a real height");
+    assert!(
+        !mesh.buildings.indices.is_empty(),
+        "a default building still extrudes"
+    );
+    assert!(
+        max_building_z(&mesh) > 0.0,
+        "the default box has a real height"
+    );
 }
 
 #[test]
@@ -312,14 +457,20 @@ fn buildings_are_not_extruded_far_below_their_zoom() {
     // A coarse tile outside the z14 ancestor window carries no buildings at all, the same gate
     // every zoomed-in layer uses.
     let coarse = build(
-        &building_body(Some(BuildingAttrs { height: 300, ..Default::default() })),
+        &building_body(Some(BuildingAttrs {
+            height: 300,
+            ..Default::default()
+        })),
         &style::layers(),
         5,
         0,
         8192,
         false,
     );
-    assert!(coarse.buildings.indices.is_empty(), "a z5 tile is far below the buildings zoom");
+    assert!(
+        coarse.buildings.indices.is_empty(),
+        "a z5 tile is far below the buildings zoom"
+    );
 }
 
 // --- 3D terrain relief (WS-G) ------------------------------------------
@@ -337,27 +488,38 @@ fn heightmap(dim: u16, metres: impl Fn(u16, u16) -> i32) -> tilecodec::mamaps::b
 }
 
 #[test]
-fn a_heightmap_tile_builds_terrain_and_drops_the_flat_earth_fill() {
-    // A tile carrying a heightmap draws its ground as the displaced terrain grid, and its flat
-    // `earth` fill is suppressed so the two do not double up — while the other flat layers
-    // (water) still tessellate as before.
+fn a_heightmap_tile_builds_terrain_and_keeps_the_flat_earth_fill() {
+    // A tile carrying a heightmap draws its ground as the displaced terrain grid, and its
+    // flat `earth` fill is kept as backstop: the terrain draws first depth-tested and the
+    // flat fill paints over its cracks via depth-off layer order, so gaps show earth
+    // colour rather than the water-blue clear colour. Water still tessellates as before.
     let layers = style::layers();
     let mut body = real();
     body.heightmap = Some(heightmap(9, |c, r| (c as i32 + r as i32) * 20));
     let mesh = build(&body, &layers, 11, 339, 770, false);
 
-    assert!(!mesh.terrain.indices.is_empty(), "the heightmap tile builds a terrain grid");
-    assert_eq!(mesh.terrain.indices.len() % 3, 0, "terrain indices come in threes");
+    assert!(
+        !mesh.terrain.indices.is_empty(),
+        "the heightmap tile builds a terrain grid"
+    );
+    assert_eq!(
+        mesh.terrain.indices.len() % 3,
+        0,
+        "terrain indices come in threes"
+    );
     assert_eq!(
         mesh.terrain.vertices.len() % terrain::FLOATS_PER_VERTEX,
         0,
         "terrain vertices are whole",
     );
     assert!(
-        mesh_for(&mesh, &layers, "earth").is_none(),
-        "the flat earth fill is replaced by the terrain grid",
+        mesh_for(&mesh, &layers, "earth").is_some(),
+        "the flat earth fill stays as backstop under the terrain grid",
     );
-    assert!(mesh_for(&mesh, &layers, "water").is_some(), "water still draws flat over terrain");
+    assert!(
+        mesh_for(&mesh, &layers, "water").is_some(),
+        "water still draws flat over terrain"
+    );
 }
 
 #[test]
@@ -366,8 +528,14 @@ fn a_tile_without_a_heightmap_stays_flat() {
     // exactly as it always was.
     let layers = style::layers();
     let mesh = build(&real(), &layers, 11, 339, 770, false);
-    assert!(mesh.terrain.indices.is_empty(), "a tile with no heightmap builds no terrain");
-    assert!(mesh_for(&mesh, &layers, "earth").is_some(), "and keeps its flat earth fill");
+    assert!(
+        mesh.terrain.indices.is_empty(),
+        "a tile with no heightmap builds no terrain"
+    );
+    assert!(
+        mesh_for(&mesh, &layers, "earth").is_some(),
+        "and keeps its flat earth fill"
+    );
 }
 
 #[test]
@@ -379,7 +547,10 @@ fn terrain_height_is_normalised_from_the_dem() {
     let peak_m = 500;
     let mut body = real();
     // Flat except one central sample, so the peak vertex is unambiguous.
-    body.heightmap = Some(heightmap(5, |c, r| if c == 2 && r == 2 { peak_m } else { 0 }));
+    body.heightmap = Some(heightmap(
+        5,
+        |c, r| if c == 2 && r == 2 { peak_m } else { 0 },
+    ));
     let mesh = build(&body, &layers, z, 339, y, false);
 
     let ground = tile_ground_width_m(z, y);

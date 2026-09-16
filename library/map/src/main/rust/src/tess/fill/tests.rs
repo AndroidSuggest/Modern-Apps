@@ -26,7 +26,11 @@ fn a_closed_ring_loses_its_repeated_vertex() {
     let mut v = Vec::new();
     let mut idx = Vec::new();
     tessellate(&[square(4096)], 4096, false, &mut v, &mut idx);
-    assert_eq!(v.len() / FLOATS_PER_VERTEX, 4, "the closing vertex is not a vertex");
+    assert_eq!(
+        v.len() / FLOATS_PER_VERTEX,
+        4,
+        "the closing vertex is not a vertex"
+    );
     assert_eq!(idx.len(), 6);
     // The whole tile, so area 1 in tile-normalised units.
     assert!((covered_area(&v, &idx) - 1.0).abs() < 1e-6);
@@ -189,7 +193,10 @@ fn the_published_ocean_polygon_conserves_area() {
             );
         }
     }
-    assert_eq!(checked, 1, "the z0 ocean polygon must be present and checked");
+    assert_eq!(
+        checked, 1,
+        "the z0 ocean polygon must be present and checked"
+    );
 }
 
 #[test]
@@ -221,7 +228,11 @@ fn many_holes_are_all_cut_out() {
             ]);
         }
     }
-    assert_eq!(rings.len(), 1 + (GRID * GRID) as usize, "one exterior and a hundred holes");
+    assert_eq!(
+        rings.len(),
+        1 + (GRID * GRID) as usize,
+        "one exterior and a hundred holes"
+    );
 
     let mut v = Vec::new();
     let mut idx = Vec::new();
@@ -325,8 +336,14 @@ fn a_hole_crossing_its_exterior_by_one_vertex_is_still_dropped() {
     // from 0.399 to 0.441, because these really cross and their bridged rings really
     // self-intersect. The strict form is deliberate, and this pins it.
     let outer = vec![(0, 0), (1000, 0), (1000, 1000), (0, 1000), (0, 0)];
-    let crossing =
-        vec![(400, 300), (400, 700), (700, 700), (1010, 500), (700, 300), (400, 300)];
+    let crossing = vec![
+        (400, 300),
+        (400, 700),
+        (700, 700),
+        (1010, 500),
+        (700, 300),
+        (400, 300),
+    ];
 
     let mut v = Vec::new();
     let mut idx = Vec::new();
@@ -380,7 +397,13 @@ fn tessellation_conserves_area_on_a_concave_polygon_with_holes() {
     outer.push((4000, 0));
     outer.push((0, 0));
     let hole_a = vec![(100, 100), (100, 300), (300, 300), (300, 100), (100, 100)];
-    let hole_b = vec![(3600, 100), (3600, 400), (3900, 400), (3900, 100), (3600, 100)];
+    let hole_b = vec![
+        (3600, 100),
+        (3600, 400),
+        (3900, 400),
+        (3900, 100),
+        (3600, 100),
+    ];
     let rings = vec![outer, hole_a, hole_b];
 
     let mut v = Vec::new();
@@ -417,7 +440,10 @@ fn a_degenerate_exterior_drops_the_whole_polygon() {
     let mut v = Vec::new();
     let mut idx = Vec::new();
     tessellate(
-        &[vec![(0, 0), (5, 0), (0, 0)], vec![(40, 40), (40, 60), (60, 60), (60, 40), (40, 40)]],
+        &[
+            vec![(0, 0), (5, 0), (0, 0)],
+            vec![(40, 40), (40, 60), (60, 60), (60, 40), (40, 40)],
+        ],
         100,
         false,
         &mut v,
@@ -431,8 +457,17 @@ fn a_degenerate_exterior_drops_the_whole_polygon() {
 fn a_degenerate_hole_leaves_the_exterior() {
     let mut v = Vec::new();
     let mut idx = Vec::new();
-    tessellate(&[square(100), vec![(5, 5), (6, 5)]], 100, false, &mut v, &mut idx);
-    assert!((covered_area(&v, &idx) - 1.0).abs() < 1e-6, "the exterior still fills");
+    tessellate(
+        &[square(100), vec![(5, 5), (6, 5)]],
+        100,
+        false,
+        &mut v,
+        &mut idx,
+    );
+    assert!(
+        (covered_area(&v, &idx) - 1.0).abs() < 1e-6,
+        "the exterior still fills"
+    );
 }
 
 #[test]
@@ -450,7 +485,11 @@ fn a_second_polygon_indices_are_based_at_its_own_vertices() {
     tessellate(&[square(100)], 100, false, &mut v, &mut idx);
     let first = idx.len();
     tessellate(&[square(100)], 100, false, &mut v, &mut idx);
-    assert!(idx[first..].iter().all(|&i| i >= 4), "the second polygon rebases: {:?}", &idx[first..]);
+    assert!(
+        idx[first..].iter().all(|&i| i >= 4),
+        "the second polygon rebases: {:?}",
+        &idx[first..]
+    );
     assert_eq!(v.len() / FLOATS_PER_VERTEX, 8);
 }
 /// **The gate, and the reason the repair pass is kept.** On a polygon that is already valid the
@@ -467,7 +506,10 @@ fn trusting_a_validated_polygon_matches_repairing_it() {
     let mut repaired = (Vec::new(), Vec::new());
     tessellate(&valid, 4096, true, &mut trusted.0, &mut trusted.1);
     tessellate(&valid, 4096, false, &mut repaired.0, &mut repaired.1);
-    assert_eq!(trusted, repaired, "the gate changed the output on a valid polygon");
+    assert_eq!(
+        trusted, repaired,
+        "the gate changed the output on a valid polygon"
+    );
     assert!(!trusted.1.is_empty(), "and it drew something");
 
     // And the hole is really cut out, rather than both paths agreeing on a solid square.

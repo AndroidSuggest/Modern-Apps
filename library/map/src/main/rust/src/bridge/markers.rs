@@ -1,12 +1,12 @@
 //! App pins and simulated transit vehicles.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
+use super::handle::handle_mut;
+use super::log::log;
 use crate::marker::Marker;
 use jni::objects::{JClass, JFloatArray, JIntArray, JLongArray};
 use jni::sys::jlong;
 use jni::JNIEnv;
-use super::handle::handle_mut;
-use super::log::log;
 /// Replace the app's pins with a marker set, drawn by the renderer as billboarded sprites.
 ///
 /// Three parallel bulk arrays, the same convention as
@@ -34,7 +34,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setMarkers<'l>
     lon_lat: JFloatArray<'l>,
     icons: JIntArray<'l>,
 ) {
-    let Some(map) = handle_mut(handle) else { return };
+    let Some(map) = handle_mut(handle) else {
+        return;
+    };
     let id_len = env.get_array_length(&ids).unwrap_or(0).max(0) as usize;
     let icon_len = env.get_array_length(&icons).unwrap_or(0).max(0) as usize;
     let coord_len = env.get_array_length(&lon_lat).unwrap_or(0).max(0) as usize;
@@ -49,7 +51,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setMarkers<'l>
     let mut coord_buf = vec![0f32; n * 2];
     if env.get_long_array_region(&ids, 0, &mut id_buf).is_err()
         || env.get_int_array_region(&icons, 0, &mut icon_buf).is_err()
-        || env.get_float_array_region(&lon_lat, 0, &mut coord_buf).is_err()
+        || env
+            .get_float_array_region(&lon_lat, 0, &mut coord_buf)
+            .is_err()
     {
         log("the marker arrays could not be read; leaving the markers unchanged");
         return;
@@ -110,7 +114,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setVehicles<'l
     icons: JIntArray<'l>,
     colors: JIntArray<'l>,
 ) {
-    let Some(map) = handle_mut(handle) else { return };
+    let Some(map) = handle_mut(handle) else {
+        return;
+    };
     let id_len = env.get_array_length(&ids).unwrap_or(0).max(0) as usize;
     let icon_len = env.get_array_length(&icons).unwrap_or(0).max(0) as usize;
     let coord_len = env.get_array_length(&lon_lat).unwrap_or(0).max(0) as usize;
@@ -128,9 +134,13 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setVehicles<'l
     let mut color_buf = vec![0i32; n.min(color_len)];
     if env.get_long_array_region(&ids, 0, &mut id_buf).is_err()
         || env.get_int_array_region(&icons, 0, &mut icon_buf).is_err()
-        || env.get_float_array_region(&lon_lat, 0, &mut coord_buf).is_err()
+        || env
+            .get_float_array_region(&lon_lat, 0, &mut coord_buf)
+            .is_err()
         || (!color_buf.is_empty()
-            && env.get_int_array_region(&colors, 0, &mut color_buf).is_err())
+            && env
+                .get_int_array_region(&colors, 0, &mut color_buf)
+                .is_err())
     {
         log("the vehicle arrays could not be read; leaving the vehicles unchanged");
         return;

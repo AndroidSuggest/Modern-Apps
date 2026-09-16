@@ -51,6 +51,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DynamicTheme {
+                // The SpinQuant Gemma `.pte` (`Gemma4EtEngine.FILES`) is deliberately NOT
+                // gated here: unmirrored, and gating first launch on it would brick the
+                // app. When the mirror serves it, the service picks it up on its own; the
+                // gated download list stays the `.litertlm` bundle (mirrors `:speech`).
                 InitialModelDownloadChecker(ds, ModelUrls.INITIAL) {
                     OfflineAware {
                         Navigation(assistantViewModel)

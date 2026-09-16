@@ -48,6 +48,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.snapshotFlow
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.GestureOptions
+import com.vayunmathur.library.map.MapOptions
 import com.vayunmathur.library.map.VectorMap
 import com.vayunmathur.library.map.rememberCameraState
 
@@ -129,6 +131,7 @@ fun MapPage(
         Box(Modifier.padding(paddingValues).fillMaxSize()) {
             VectorMap(
                 cameraState = cameraState,
+                options = MapOptions(gestureOptions = GestureOptions.TiltLocked),
                 onMapClick = {
                     selectedCluster = null
                 },

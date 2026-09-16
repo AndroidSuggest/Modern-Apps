@@ -7,10 +7,10 @@ pub struct Pipelines {
     pub fill: vk::Pipeline,
     pub line: vk::Pipeline,
     /// Road carriageways: a filled surface with the lane markings painted onto it, from
-    /// `road_surface.vert`/`.frag` over the 6-float `tess::ribbon` vertex.
+    /// `road_surface.vert`/`.frag` over the 7-float `tess::ribbon` vertex.
     ///
     /// Deliberately a second pipeline rather than a wider [`line`](Self::line). `TrafficMesh` and
-    /// the route overlay both ride the 7-float stroke format and the line pipeline, so widening it
+    /// the route overlay both ride the 8-float stroke format and the line pipeline, so widening it
     /// to carry an across-road coordinate would charge every one of them for a layer they do not
     /// draw — the tradeoff `tile/geometry.rs` already states about the lane fans this replaces.
     ///

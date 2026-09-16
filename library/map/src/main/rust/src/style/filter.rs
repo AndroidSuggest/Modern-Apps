@@ -97,7 +97,11 @@ impl SharedToggles {
         // plain values with no invariant between them beyond the generation, so reading it is
         // sound; refusing to draw the map because a worker died is worse than drawing it.
         let snapshot = self.0.read().unwrap_or_else(|e| e.into_inner());
-        (snapshot.toggles, snapshot.kinds.clone(), snapshot.generation)
+        (
+            snapshot.toggles,
+            snapshot.kinds.clone(),
+            snapshot.generation,
+        )
     }
 
     /// Set the toggles and the kind filter, bumping the generation. Returns `true` when

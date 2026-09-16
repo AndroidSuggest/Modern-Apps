@@ -142,7 +142,7 @@ class MaiaEngine(private val context: Context) {
         model?.let { return it }
         if (closed || attempts >= MAX_ATTEMPTS) return null
         attempts++
-        val handle = MaiaHandle.inAssets(context.assets)
+        val handle = MaiaHandle.inContext(context)
         if (!handle.isAvailable) {
             handle.close()
             return null

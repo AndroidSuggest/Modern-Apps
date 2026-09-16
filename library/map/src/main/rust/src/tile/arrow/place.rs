@@ -61,7 +61,10 @@ pub fn tile_local_per_metre(z: u8, y: u32) -> f32 {
 /// tile it came from, and the renderer holds the tile.
 pub fn placed_anchor(inst: &ArrowInstance, local_per_metre: f32) -> (f32, f32) {
     let back = (SETBACK_M * local_per_metre).min(inst.run).max(0.0);
-    (inst.junction_end.0 - inst.angle.cos() * back, inst.junction_end.1 - inst.angle.sin() * back)
+    (
+        inst.junction_end.0 - inst.angle.cos() * back,
+        inst.junction_end.1 - inst.angle.sin() * back,
+    )
 }
 
 /// How far the approach runs straight back from its junction end, in tile-local units.
@@ -75,11 +78,22 @@ pub fn placed_anchor(inst: &ArrowInstance, local_per_metre: f32) -> (f32, f32) {
 ///
 /// `unit` is the direction of travel at the end, normalised; `backward` picks which end.
 fn straight_run(line: &[(f32, f32)], backward: bool, unit: (f32, f32)) -> f32 {
-    let total: f32 = line.windows(2).map(|p| (p[1].0 - p[0].0).hypot(p[1].1 - p[0].1)).sum();
-    let tip = if backward { line[0] } else { line[line.len() - 1] };
+    let total: f32 = line
+        .windows(2)
+        .map(|p| (p[1].0 - p[0].0).hypot(p[1].1 - p[0].1))
+        .sum();
+    let tip = if backward {
+        line[0]
+    } else {
+        line[line.len() - 1]
+    };
     let mut run = 0.0f32;
     for i in 1..line.len() {
-        let p = if backward { line[i] } else { line[line.len() - 1 - i] };
+        let p = if backward {
+            line[i]
+        } else {
+            line[line.len() - 1 - i]
+        };
         let (vx, vy) = (tip.0 - p.0, tip.1 - p.1);
         let along = vx * unit.0 + vy * unit.1;
         let across = (vx * unit.1 - vy * unit.0).abs();
@@ -126,8 +140,24 @@ pub fn place_arrows(
     }
     let (forward, backward) = lanes_each_way;
     let total = forward.saturating_add(backward);
-    place_dir(line, &turns.forward, false, forward, total, left_hand, &mut out);
-    place_dir(line, &turns.backward, true, backward, total, left_hand, &mut out);
+    place_dir(
+        line,
+        &turns.forward,
+        false,
+        forward,
+        total,
+        left_hand,
+        &mut out,
+    );
+    place_dir(
+        line,
+        &turns.backward,
+        true,
+        backward,
+        total,
+        left_hand,
+        &mut out,
+    );
     out
 }
 

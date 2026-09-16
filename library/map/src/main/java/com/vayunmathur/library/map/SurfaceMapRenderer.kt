@@ -137,9 +137,9 @@ class SurfaceMapRenderer(
      * 60 Hz costs the assignment plus an [invalidate], which is a timestamp and an
      * already-posted check.
      *
-     * [CameraPosition.bearing] rotates the map for heading-up navigation. It is only
-     * usable through this property: the Compose path takes its camera from a
-     * [CameraState], whose [Projection] is north-up only.
+     * [CameraPosition.bearing] rotates the map for heading-up navigation. Usable through this
+     * property and through a [CameraState] on the Compose path: [Projection] now carries the
+     * bearing, so overlays rotate with the basemap on both paths.
      *
      * Ignored while [composeCamera] is set, which is the Compose path only.
      */
@@ -267,12 +267,23 @@ class SurfaceMapRenderer(
     }
 
     /**
-     * A `.mamaps` archive pushed to the device's external files dir, if present. When it
-     * exists the renderer opens it directly and does no networking; otherwise this is
-     * `null` and the renderer uses the built-in URL and its range cache unchanged.
+     * Where tiles come from — see [TileSource]. Remembered so a surface attached after a
+     * host sets it still starts on the right source; changing it after attach takes
+     * effect on the next attach (detach + attach), since workers open their archive once
+     * at creation. Defaults to [TileSource.Server].
+     */
+    var tileSource: TileSource = TileSource.Server
+
+    /**
+     * A `.mamaps` archive pushed to the device's external files dir, if present and
+     * [tileSource] is [TileSource.LocalFile]. When it exists the renderer opens it
+     * directly and does no networking; otherwise this is `null` and the renderer uses
+     * the built-in URL and its range cache unchanged (including the LocalFile fallback
+     * when no archive was pushed).
      */
     private val localArchivePath: String?
         get() {
+            if (tileSource != TileSource.LocalFile) return null
             val root = appContext.getExternalFilesDir(null) ?: appContext.filesDir
             val local = File(root, LOCAL_ARCHIVE_NAME)
             return if (local.exists()) local.absolutePath else null
@@ -397,15 +408,10 @@ class SurfaceMapRenderer(
         val position: CameraPosition
         val widthDp: Float
         val heightDp: Float
-        // Forced to zero on the Compose path, even though CameraState now carries a
-        // twist-gesture bearing: `Projection` — and therefore every `MapMarker`, pin
-        // and cluster positioned through it — is north-up only for bearing, so honouring
-        // one there would rotate the basemap out from under overlays that did not rotate
-        // with it. The twist gesture still turns the state (the compass reads it), but the
-        // Compose basemap stays north-up; only the overlay-free `[camera]` path below draws
-        // it. Tilt is different: `Projection` is pitch-aware (ray/plane), so pitch *is*
-        // honoured on both paths and overlays follow it. Bearing is reachable only through
-        // [camera], on a surface with no Compose overlays above it.
+        // The Compose path carries the twist-gesture bearing end to end: `CameraState`
+        // holds it, `Projection` rotates overlays with it, and the native frame below draws
+        // the basemap with it — so the basemap and everything positioned through the
+        // projection turn together. Tilt is honoured the same way on both paths.
         val bearing: Float
         val state = composeCamera
         if (state != null) {
@@ -413,7 +419,7 @@ class SurfaceMapRenderer(
             position = state.position
             widthDp = viewport.width
             heightDp = viewport.height
-            bearing = 0f
+            bearing = position.bearing.toFloat()
         } else {
             if (widthPx <= 0 || heightPx <= 0 || density <= 0f) return false
             position = camera

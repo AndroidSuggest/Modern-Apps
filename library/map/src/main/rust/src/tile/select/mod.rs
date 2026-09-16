@@ -24,13 +24,12 @@ pub mod tile_id;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_part2;
 
 pub use coverage::{bound, visible};
 pub use fade::{
-    LOD_FADE_SECONDS, fade_in_progress, has_resident_ancestor, lod_fade_alpha,
-    tile_lod_alpha,
+    fade_in_progress, has_resident_ancestor, lod_fade_alpha, tile_lod_alpha, LOD_FADE_SECONDS,
 };
-pub use resident::{
-    ANCESTOR_DEPTH, DESCENDANT_DEPTH, resident_set, stands_in_for_visible,
-};
+pub use resident::{resident_set, stands_in_for_visible, ANCESTOR_DEPTH, DESCENDANT_DEPTH};
 pub use tile_id::TileId;

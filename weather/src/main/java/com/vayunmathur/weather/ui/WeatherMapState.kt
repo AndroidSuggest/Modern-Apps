@@ -9,6 +9,7 @@ import com.vayunmathur.weather.domain.map.fetchOmMapMetadata
 import com.vayunmathur.weather.domain.map.omFileUrl
 import com.vayunmathur.weather.domain.map.omVariable
 import com.vayunmathur.weather.domain.WeatherMetric
+import com.vayunmathur.weather.domain.colorRamp
 import com.vayunmathur.weather.domain.mapMetrics
 import com.vayunmathur.weather.network.RegionTimezone
 import com.vayunmathur.weather.network.WeatherApi

@@ -26,13 +26,17 @@ pub(crate) fn arrow_meshes(tile: &Body, z: u8, left_hand: bool) -> Vec<ArrowInst
     if z.saturating_add(ANCESTOR_DEPTH) < ROAD_LANE_MIN_ZOOM {
         return Vec::new();
     }
-    let Some(source) = tile.layer(LAYER_ROADS) else { return Vec::new() };
+    let Some(source) = tile.layer(LAYER_ROADS) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for (index, feature) in source.features.iter().enumerate() {
         if feature.geom_type != GEOM_LINE {
             continue;
         }
-        let Some(turns) = tile.feature_turns(LAYER_ROADS, index) else { continue };
+        let Some(turns) = tile.feature_turns(LAYER_ROADS, index) else {
+            continue;
+        };
         if turns.is_empty() {
             continue;
         }
@@ -65,8 +69,10 @@ pub(crate) fn arrow_meshes(tile: &Body, z: u8, left_hand: bool) -> Vec<ArrowInst
                 (lanes - lanes / 2, lanes / 2)
             }
         });
-        let lanes_each_way =
-            (lanes_each_way.0.min(u8::MAX.into()) as u8, lanes_each_way.1.min(u8::MAX.into()) as u8);
+        let lanes_each_way = (
+            lanes_each_way.0.min(u8::MAX.into()) as u8,
+            lanes_each_way.1.min(u8::MAX.into()) as u8,
+        );
         out.extend(arrow::place_arrows(&line, turns, lanes_each_way, left_hand));
     }
     out

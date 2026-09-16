@@ -28,9 +28,9 @@ mod urls;
 mod tests;
 
 pub use caching::CachingRangeReader;
-pub use file::FileRangeReader;
 #[cfg(target_os = "android")]
 pub use fetch::JniRangeFetcher;
 pub use fetch::{RangeFetcher, RangeResponse};
-pub use retry::{RETRY_BASE_MS, RETRY_MAX_MS, retry_delay_ms};
-pub use urls::{BASEMAP_ARCHIVE_URL, CACHE_FORMAT, basemap_origin};
+pub use file::FileRangeReader;
+pub use retry::{retry_delay_ms, RETRY_BASE_MS, RETRY_MAX_MS};
+pub use urls::{basemap_origin, BASEMAP_ARCHIVE_URL, CACHE_FORMAT};

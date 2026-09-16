@@ -81,7 +81,11 @@ pub fn visible(camera: &Camera, min_zoom: u8, max_zoom: u8) -> Vec<TileId> {
             if tx < 0 || tx >= n {
                 continue;
             }
-            out.push(TileId { z, x: tx as u32, y: ty as u32 });
+            out.push(TileId {
+                z,
+                x: tx as u32,
+                y: ty as u32,
+            });
         }
     }
     out

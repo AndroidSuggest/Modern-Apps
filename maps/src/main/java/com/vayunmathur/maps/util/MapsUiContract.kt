@@ -1,7 +1,5 @@
 package com.vayunmathur.maps.util
 
-import com.vayunmathur.maps.data.SavedPlace
-
 /**
  * The UI contract between the ViewModels and the screens that can be rendered without a
  * map.
@@ -20,10 +18,6 @@ data class SearchUiState(
     val query: String = "",
     val results: List<SearchResult> = emptyList(),
     val recents: List<String> = emptyList(),
-    // Home/Work quick-access slots (P4), surfaced here since P24 moved them off
-    // the map browse overlay onto the search page. Null = slot not set yet.
-    val savedHome: SavedPlace? = null,
-    val savedWork: SavedPlace? = null,
     /** Whether a search is running. See [SearchPhase]. */
     val searching: Boolean = false,
 ) {
@@ -83,13 +77,6 @@ interface SearchActions {
     fun pickContactAddress(address: String) {}
     fun clearRecents() {}
     fun back() {}
-
-    /**
-     * Tap a Home/Work quick-access chip: recenter/select the saved place and
-     * leave search (mirrors the old map-overlay chip's showSavedPlace). Only
-     * called when the slot is actually set.
-     */
-    fun selectSavedPlace(place: SavedPlace) {}
 
     companion object {
         val Noop: SearchActions = object : SearchActions {}

@@ -23,7 +23,30 @@ upstream export is dynamic-shape; we keep the straight resize to 320×320 that t
 ncnn path already used, **not** the HuggingFace processor's `keep_aspect_ratio`
 letterbox, which would change existing behaviour.
 
-## The face models
+## The ExecuTorch Vulkan candidates
+
+`scrfd500_vulkan_fp16.pte` (face detection, ~1.3 MB), `mbf512_vulkan_fp16.pte`
+(face embedding, ~6.9 MB) and `u2netp_vulkan_fp16.pte` (subject segmentation,
+~2.4 MB) are ExecuTorch exports for the Vulkan delegate, tried first by
+`FaceDetector`, `FaceEmbedder` and `SubjectSegmenter` with the `.tflite` rungs
+below as fallback. All three keep the same weights as the ship rungs
+(SCRFD-500M: torch-vs-ship worst cosine 0.999986; MBF: 0.993956; U²-NetP:
+0.9923) and take the same NCHW planar buffers — the ET paths skip only the
+CHW→NHWC interleave. Converted locally from the sources pinned below
+(recipes in `analysis/et-face/export_scrfd500.py`,
+`analysis/et-face/export_mbf512.py` and `analysis/et-u2netp/export_u2netp.py`;
+staged under `analysis/et-face/` and `analysis/et-u2netp/`, gitignored).
+
+NOTE: the 136-d `mbf136` experiment in `analysis/et-face/` (py-feat checkpoint,
+`Linear(512 → 136)` head) is NOT what ships here — that GDC vector would silently
+corrupt the people-clustering index. `mbf512_vulkan_fp16.pte` is the buffalo_s
+`w600k_mbf` 512-d ArcFace embedding `FaceEmbedder` expects.
+
+A missing file, an unlinked Vulkan delegate (the stock `executorch-android`
+AAR ships XNNPACK only), or a failed run falls back to the `.tflite` rungs,
+which are untouched.
+
+## The `.tflite` ship rungs
 
 `scrfd_500m.maml` (face detection) and `w600k_mbf.maml` (face embedding) are
 InsightFace's **buffalo_s** pack, from

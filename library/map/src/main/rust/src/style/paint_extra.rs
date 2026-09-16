@@ -4,7 +4,7 @@
 //! so it lives here and both files stay small. [`paint::parse`] calls it once per
 //! entry of the flat file's `layers` array.
 
-use super::paint::{MAX_ZOOM, Ramp, color};
+use super::paint::{color, Ramp, MAX_ZOOM};
 use super::{Anchor, Layer, LayerKind, Toggle};
 use serde_json::Value as Json;
 use tilecodec::mamaps::body::{FLAG_IS_BRIDGE, FLAG_IS_LINK, FLAG_IS_TUNNEL};
@@ -59,7 +59,11 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
         "browse_minzoom",
         "maxzoom",
     ];
-    for key in json.as_object().ok_or_else(|| format!("`{id}` is not an object"))?.keys() {
+    for key in json
+        .as_object()
+        .ok_or_else(|| format!("`{id}` is not an object"))?
+        .keys()
+    {
         if !KNOWN.contains(&key.as_str()) {
             return Err(format!("`{id}` has an unknown property `{key}`"));
         }
@@ -77,12 +81,14 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
                 .as_u64()
                 .filter(|z| *z <= MAX_ZOOM as u64)
                 .map(|z| z as u8)
-                .ok_or_else(|| {
-                    format!("`{id}`'s {key} must be a whole zoom in 0..={MAX_ZOOM}")
-                }),
+                .ok_or_else(|| format!("`{id}`'s {key} must be a whole zoom in 0..={MAX_ZOOM}")),
         }
     };
-    let dash = match json.get("dash").and_then(Json::as_array).map(|d| d.as_slice()) {
+    let dash = match json
+        .get("dash")
+        .and_then(Json::as_array)
+        .map(|d| d.as_slice())
+    {
         None => (0.0, 0.0),
         Some([on, off]) => match (on.as_f64(), off.as_f64()) {
             (Some(on), Some(off)) => (on as f32, off as f32),
@@ -138,9 +144,7 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
                         Some("bridge") => FLAG_IS_BRIDGE,
                         Some("link") => FLAG_IS_LINK,
                         other => {
-                            return Err(format!(
-                                "`{id}`'s {key} names an unknown flag {other:?}"
-                            ))
+                            return Err(format!("`{id}`'s {key} names an unknown flag {other:?}"))
                         }
                     };
                 }
@@ -155,11 +159,9 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
             Some(Json::Array(names)) => names
                 .iter()
                 .map(|name| {
-                    name.as_str()
-                        .and_then(super::detail_id)
-                        .ok_or_else(|| {
-                            format!("`{id}` filters on detail `{name}`, which the schema cannot emit")
-                        })
+                    name.as_str().and_then(super::detail_id).ok_or_else(|| {
+                        format!("`{id}` filters on detail `{name}`, which the schema cannot emit")
+                    })
                 })
                 .collect::<Result<_, _>>()?,
             Some(_) => return Err(format!("`{id}`'s {key} must be an array of detail names")),
@@ -194,7 +196,9 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
                 Some("center") => Ok(Anchor::Center),
                 Some("left") => Ok(Anchor::Left),
                 Some("right") => Ok(Anchor::Right),
-                other => Err(format!("`{id}`'s variable_anchor names an unknown anchor {other:?}")),
+                other => Err(format!(
+                    "`{id}`'s variable_anchor names an unknown anchor {other:?}"
+                )),
             })
             .collect::<Result<_, _>>()?,
         Some(_) => return Err(format!("`{id}`'s variable_anchor must be an array")),
@@ -218,7 +222,10 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
         gap_width: Ramp::parse(json.get("gap_width"), &id, "gap_width", 0.0)?,
         spread: Ramp::parse(json.get("spread"), &id, "spread", 0.0)?,
         lanes: Ramp::parse(json.get("lanes"), &id, "lanes", 1.0)?,
-        carriageway: json.get("carriageway").and_then(Json::as_bool).unwrap_or(false),
+        carriageway: json
+            .get("carriageway")
+            .and_then(Json::as_bool)
+            .unwrap_or(false),
         dash,
         text_size: Ramp::parse(json.get("text_size"), &id, "text_size", 0.0)?,
         // Optional second arm: present only where the authored style's `text-size` is a
@@ -232,7 +239,10 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
             Some(value) => Some(Ramp::parse(Some(value), &id, "rank_threshold", 0.0)?),
             None => None,
         },
-        uppercase: json.get("uppercase").and_then(Json::as_bool).unwrap_or(false),
+        uppercase: json
+            .get("uppercase")
+            .and_then(Json::as_bool)
+            .unwrap_or(false),
         medium: json.get("medium").and_then(Json::as_bool).unwrap_or(false),
         toggle,
         icon: json.get("icon").and_then(Json::as_bool).unwrap_or(false),

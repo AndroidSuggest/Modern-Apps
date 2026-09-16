@@ -74,7 +74,11 @@ impl RangeCache {
     ) -> RangeCache {
         let dir = dir.into();
         let _ = fs::create_dir_all(&dir);
-        let cache = RangeCache { dir, max_bytes, clock };
+        let cache = RangeCache {
+            dir,
+            max_bytes,
+            clock,
+        };
         cache.invalidate_on_origin_change(origin);
         cache
     }
@@ -85,7 +89,11 @@ impl RangeCache {
         hasher.update(url.as_bytes());
         hasher.update(b"\n");
         hasher.update(range.as_bytes());
-        hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
+        hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
     }
 
     /// The entry for `key`, or `None` when absent or unreadable.
@@ -112,7 +120,10 @@ impl RangeCache {
         }
         // The data file's mtime is the LRU stamp.
         let _ = filetime_touch(&data_path, (self.clock)());
-        Some(Cached { fetched_at_ms, body })
+        Some(Cached {
+            fetched_at_ms,
+            body,
+        })
     }
 
     /// Is `entry` fresh enough to serve without asking the network?
@@ -210,7 +221,10 @@ impl RangeCache {
     /// Wipe the cache if `origin` differs from its marker.
     fn invalidate_on_origin_change(&self, origin: &str) {
         let marker = self.dir.join(ORIGIN_FILE);
-        if fs::read_to_string(&marker).map(|s| s.trim() == origin).unwrap_or(false) {
+        if fs::read_to_string(&marker)
+            .map(|s| s.trim() == origin)
+            .unwrap_or(false)
+        {
             return;
         }
         if let Ok(read_dir) = fs::read_dir(&self.dir) {
@@ -227,7 +241,10 @@ impl RangeCache {
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Set a file's mtime, which is the LRU stamp.
@@ -253,8 +270,8 @@ mod tests {
 
     impl Fixture {
         fn new(name: &str) -> Fixture {
-            let dir = std::env::temp_dir()
-                .join(format!("rangecache-{name}-{}", std::process::id()));
+            let dir =
+                std::env::temp_dir().join(format!("rangecache-{name}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).expect("temp dir");
             Fixture { dir }
@@ -272,7 +289,12 @@ mod tests {
 
     fn cache_with(dir: &Path, clock: Arc<AtomicU64>, max_bytes: u64) -> RangeCache {
         let c = clock.clone();
-        RangeCache::with_clock(dir, ORIGIN, max_bytes, Box::new(move || c.load(Ordering::SeqCst)))
+        RangeCache::with_clock(
+            dir,
+            ORIGIN,
+            max_bytes,
+            Box::new(move || c.load(Ordering::SeqCst)),
+        )
     }
 
     fn data_files(dir: &Path) -> Vec<PathBuf> {
@@ -299,9 +321,15 @@ mod tests {
 
     #[test]
     fn ranges_of_the_same_url_do_not_collide() {
-        assert_ne!(RangeCache::key(URL, "bytes=0-3"), RangeCache::key(URL, "bytes=4-7"));
+        assert_ne!(
+            RangeCache::key(URL, "bytes=0-3"),
+            RangeCache::key(URL, "bytes=4-7")
+        );
         // And a different archive under the same range is a different entry.
-        assert_ne!(RangeCache::key(URL, "bytes=0-3"), RangeCache::key("https://other", "bytes=0-3"));
+        assert_ne!(
+            RangeCache::key(URL, "bytes=0-3"),
+            RangeCache::key("https://other", "bytes=0-3")
+        );
     }
 
     #[test]
@@ -313,10 +341,16 @@ mod tests {
         cache.write(&key, &[1, 2, 3, 4]);
 
         clock.store(1_000_000 + REFRESH_INTERVAL_MS / 2, Ordering::SeqCst);
-        assert!(cache.is_fresh(&cache.read(&key).unwrap()), "half an interval is still fresh");
+        assert!(
+            cache.is_fresh(&cache.read(&key).unwrap()),
+            "half an interval is still fresh"
+        );
 
         clock.store(1_000_000 + REFRESH_INTERVAL_MS + 1, Ordering::SeqCst);
-        assert!(!cache.is_fresh(&cache.read(&key).unwrap()), "past the interval it is stale");
+        assert!(
+            !cache.is_fresh(&cache.read(&key).unwrap()),
+            "past the interval it is stale"
+        );
     }
 
     #[test]
@@ -332,7 +366,10 @@ mod tests {
         clock.store(1_000_000 + REFRESH_INTERVAL_MS / 2, Ordering::SeqCst);
         let _ = cache.read(&key);
         clock.store(1_000_000 + REFRESH_INTERVAL_MS + 1, Ordering::SeqCst);
-        assert!(!cache.is_fresh(&cache.read(&key).unwrap()), "the earlier read did not extend it");
+        assert!(
+            !cache.is_fresh(&cache.read(&key).unwrap()),
+            "the earlier read did not extend it"
+        );
     }
 
     #[test]
@@ -345,7 +382,10 @@ mod tests {
         let key = RangeCache::key(URL, "bytes=0-3");
         cache.write(&key, &[1, 2, 3, 4]);
         clock.store(1_000_000 + REFRESH_INTERVAL_MS * 100, Ordering::SeqCst);
-        assert_eq!(cache.read(&key).expect("still there").body, vec![1, 2, 3, 4]);
+        assert_eq!(
+            cache.read(&key).expect("still there").body,
+            vec![1, 2, 3, 4]
+        );
     }
 
     #[test]
@@ -357,8 +397,14 @@ mod tests {
         cache.write(&key, &[5u8; 100]);
         // Truncated on disk, e.g. by a failed write we did not see.
         fs::write(f.dir.join(format!("{key}.data")), [0u8; 40]).unwrap();
-        assert!(cache.read(&key).is_none(), "a short body must not be served");
-        assert!(!f.dir.join(format!("{key}.data")).exists(), "and it is dropped");
+        assert!(
+            cache.read(&key).is_none(),
+            "a short body must not be served"
+        );
+        assert!(
+            !f.dir.join(format!("{key}.data")).exists(),
+            "and it is dropped"
+        );
     }
 
     #[test]
@@ -390,8 +436,15 @@ mod tests {
             DEFAULT_MAX_BYTES,
             Box::new(move || c.load(Ordering::SeqCst)),
         );
-        assert_eq!(data_files(&f.dir).len(), 0, "entries from the previous origin are dropped");
-        assert_eq!(fs::read_to_string(f.dir.join(ORIGIN_FILE)).unwrap(), "v2|different");
+        assert_eq!(
+            data_files(&f.dir).len(),
+            0,
+            "entries from the previous origin are dropped"
+        );
+        assert_eq!(
+            fs::read_to_string(f.dir.join(ORIGIN_FILE)).unwrap(),
+            "v2|different"
+        );
     }
 
     #[test]
@@ -419,7 +472,10 @@ mod tests {
             // Distinct mtimes, so eviction order is well defined.
             std::thread::sleep(std::time::Duration::from_millis(12));
         }
-        let total: u64 = data_files(&f.dir).iter().map(|p| fs::metadata(p).unwrap().len()).sum();
+        let total: u64 = data_files(&f.dir)
+            .iter()
+            .map(|p| fs::metadata(p).unwrap().len())
+            .sum();
         assert!(total <= 1000, "cache is {total} bytes, cap is 1000");
         // Evicts to a margin below the cap, not exactly to it.
         assert!(total <= 800, "evicts with headroom: {total}");

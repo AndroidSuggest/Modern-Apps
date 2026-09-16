@@ -118,7 +118,7 @@ fun WindDownScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    val labels = stringResource(R.string.focus_day_initials).split(",")
+                    val labels = stringResource(R.string.day_initials).split(",")
                     for (day in 0 until WINDDOWN_DAYS) {
                         FilterChip(
                             selected = (schedule.daysMask shr day) and 1 == 1,

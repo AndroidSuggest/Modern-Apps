@@ -23,6 +23,9 @@ use crate::tile::sprite::Sprite;
 /// emitted quads are counter-rotated about the anchor so the label stays **upright**
 /// under a heading-up camera. `(1.0, 0.0)` is north-up and costs nothing.
 ///
+/// `ground` samples the tile-normalised ground height under the anchor, carried as the
+/// trailing float so the billboard hangs the quad off the terrain there.
+///
 /// A **curved** label — one carrying a [`centreline`](ShapedLabel::centreline) — takes a
 /// different path: its single line is laid along the polyline by
 /// [`text::emit_curved`](crate::tess::text::emit_curved), one glyph per vertex rotated to the
@@ -37,6 +40,7 @@ pub fn emit_label(
     text_px: f32,
     tile_span_px: f32,
     rotation: (f32, f32),
+    ground: &dyn Fn(f32, f32) -> f32,
     vertices: &mut Vec<f32>,
     indices: &mut Vec<u32>,
 ) {
@@ -44,7 +48,9 @@ pub fn emit_label(
     // A curved (line) label lays its single shaped run along the centreline; the tangent gives
     // each glyph its rotation, so no `upright` counter-rotation and no anchor/offset apply.
     if let Some(centreline) = &label.centreline {
-        let Some(line) = label.lines.first() else { return };
+        let Some(line) = label.lines.first() else {
+            return;
+        };
         text::emit_curved(
             atlas,
             label.weight,
@@ -52,6 +58,7 @@ pub fn emit_label(
             centreline,
             text_px,
             tile_span_px,
+            ground,
             vertices,
             indices,
         );
@@ -67,6 +74,7 @@ pub fn emit_label(
         offset_em,
         text_px,
         tile_span_px,
+        ground,
         vertices,
         indices,
     );
@@ -90,6 +98,9 @@ pub fn emit_label(
 /// projects that anchor and hangs the corner off it at a constant screen offset, so the icon
 /// faces the camera at any pitch. The half-extents below stay a tile-local offset *from* the
 /// anchor rather than a resolved screen position, which is what lets the shader do that.
+///
+/// `ground` samples the tile-normalised height under the anchor — the icon hangs off the same
+/// terrain the label does.
 #[allow(clippy::too_many_arguments)]
 pub fn emit_icon(
     label: &ShapedLabel,
@@ -98,6 +109,7 @@ pub fn emit_icon(
     density: f32,
     tile_span_px: f32,
     rotation: (f32, f32),
+    ground: &dyn Fn(f32, f32) -> f32,
     vertices: &mut Vec<f32>,
     indices: &mut Vec<u32>,
 ) {
@@ -113,19 +125,30 @@ pub fn emit_icon(
     // The sheet is the light half over the dark one, so the theme is one addition here
     // rather than a second atlas or a second resolved `Sprite`. Applied at emit — which
     // runs every frame — so switching palette stays free of re-tessellation.
-    let dv = if dark { crate::tile::sprite::atlas().dark_v_offset() } else { 0.0 };
+    let dv = if dark {
+        crate::tile::sprite::atlas().dark_v_offset()
+    } else {
+        0.0
+    };
     let (v0, v1) = (uv.v0 + dv, uv.v1 + dv);
     let base = (vertices.len() / ICON_FLOATS_PER_VERTEX) as u32;
     let start = vertices.len();
-    // Trailing `cx, cy` is the ground anchor, repeated on all four corners. The corner positions
-    // are the anchor plus a tile-local half-extent, so the shader recovers the screen offset by
-    // subtracting the two — the same contract `tess::text::emit` writes for a glyph.
-    vertices.extend_from_slice(&[x0, y0, uv.u0, v0, cx, cy]);
-    vertices.extend_from_slice(&[x1, y0, uv.u1, v0, cx, cy]);
-    vertices.extend_from_slice(&[x1, y1, uv.u1, v1, cx, cy]);
-    vertices.extend_from_slice(&[x0, y1, uv.u0, v1, cx, cy]);
+    // Trailing `cx, cy` is the ground anchor, repeated on all four corners, plus its terrain
+    // height. The corner positions are the anchor plus a tile-local half-extent, so the shader
+    // recovers the screen offset by subtracting the two — the same contract `tess::text::emit`
+    // writes for a glyph.
+    let anchor_h = ground(cx, cy);
+    vertices.extend_from_slice(&[x0, y0, uv.u0, v0, cx, cy, anchor_h]);
+    vertices.extend_from_slice(&[x1, y0, uv.u1, v0, cx, cy, anchor_h]);
+    vertices.extend_from_slice(&[x1, y1, uv.u1, v1, cx, cy, anchor_h]);
+    vertices.extend_from_slice(&[x0, y1, uv.u0, v1, cx, cy, anchor_h]);
     indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     // Rotates the corner positions about the anchor and leaves the anchor itself alone, so the
     // offset the shader reconstructs is the counter-rotated one.
-    text::upright_stride(&mut vertices[start..], label.anchor, rotation, ICON_FLOATS_PER_VERTEX);
+    text::upright_stride(
+        &mut vertices[start..],
+        label.anchor,
+        rotation,
+        ICON_FLOATS_PER_VERTEX,
+    );
 }

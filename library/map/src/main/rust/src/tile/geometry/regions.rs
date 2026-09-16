@@ -1,6 +1,7 @@
 //! Region shapes for the selection mask, one mesh per region feature.
 use super::convert::widen;
 use super::mesh::RegionMesh;
+use super::terrain::drape_vertices;
 use crate::tess::fill;
 use tilecodec::mamaps::body::{Body, GEOM_POLYGON};
 
@@ -9,8 +10,15 @@ use tilecodec::mamaps::body::{Body, GEOM_POLYGON};
 /// Driven off the archive rather than the style: the mask is not a style layer, and giving it one
 /// would mean the boundary line layer strokes these polygons' tile-edge segments into a grid
 /// across the map — which is exactly what made an earlier attempt at region areas unusable.
-pub(crate) fn region_meshes(tile: &Body, extent: u32, rings_validated: bool) -> Vec<RegionMesh> {
-    let Some(kind) = crate::style::kind_id("region_area") else { return Vec::new() };
+pub(crate) fn region_meshes(
+    tile: &Body,
+    extent: u32,
+    rings_validated: bool,
+    ground_width_m: f64,
+) -> Vec<RegionMesh> {
+    let Some(kind) = crate::style::kind_id("region_area") else {
+        return Vec::new();
+    };
     let Some(source) = tile.layer(tilecodec::mamaps::dict::LAYER_BOUNDARIES) else {
         return Vec::new();
     };
@@ -21,21 +29,35 @@ pub(crate) fn region_meshes(tile: &Body, extent: u32, rings_validated: bool) -> 
         }
         // No id means nothing could gather this piece together with the region's other tiles,
         // so it would mask one tile and leave the rest bright. Better to draw no mask at all.
-        let Some(id) =
-            tile.feature_id(tilecodec::mamaps::dict::LAYER_BOUNDARIES, feature_index)
+        let Some(id) = tile.feature_id(tilecodec::mamaps::dict::LAYER_BOUNDARIES, feature_index)
         else {
             continue;
         };
         if id == tilecodec::mamaps::body::ID_NONE {
             continue;
         }
-        let rings: Vec<Vec<(i32, i32)>> =
-            source.parts_of(feature).iter().map(|part| widen(source.points(part))).collect();
+        let rings: Vec<Vec<(i32, i32)>> = source
+            .parts_of(feature)
+            .iter()
+            .map(|part| widen(source.points(part)))
+            .collect();
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
         fill::tessellate(&rings, extent, rings_validated, &mut vertices, &mut indices);
         if indices.is_empty() {
             continue;
+        }
+        // Drape the mask onto the relief where the tile carries a heightmap, so the
+        // region highlight follows the same ground its fill does; without one the
+        // tessellator's z=0 stands and output is unchanged.
+        if tile.heightmap.is_some() {
+            drape_vertices(
+                &mut vertices,
+                fill::FLOATS_PER_VERTEX,
+                2,
+                &tile.heightmap,
+                ground_width_m,
+            );
         }
         // Exteriors only. `parts_of` yields the exterior first and its holes after, and stage C
         // has already made that ordering true of every polygon in the archive.
@@ -53,7 +75,14 @@ pub(crate) fn region_meshes(tile: &Body, extent: u32, rings_validated: bool) -> 
             })
             .collect();
         let area = outer.iter().map(|ring| ring_area(ring).abs()).sum();
-        out.push(RegionMesh { id, vertices, indices, rings: outer, area, level: feature.kind_detail });
+        out.push(RegionMesh {
+            id,
+            vertices,
+            indices,
+            rings: outer,
+            area,
+            level: feature.kind_detail,
+        });
     }
     out
 }

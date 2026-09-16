@@ -11,6 +11,7 @@ import androidx.health.connect.client.records.MedicalResource
 import androidx.health.connect.client.request.ReadMedicalResourcesInitialRequest
 import androidx.health.connect.client.request.ReadMedicalResourcesPageRequest
 import com.vayunmathur.emergency.data.ImportedAllergy
+import com.vayunmathur.emergency.data.ImportedCondition
 import com.vayunmathur.emergency.data.ImportedMedication
 import com.vayunmathur.emergency.domain.FhirMedicalParse
 
@@ -80,6 +81,12 @@ class HealthConnectMedical(context: Context) {
             .mapNotNull { FhirMedicalParse.parseCurrentMedication(it) }
             .distinctBy { it.displayName }
 
+    /** Active conditions; empty when unavailable, denied, or none recorded. */
+    suspend fun readConditions(): List<ImportedCondition> =
+        readCategory(MedicalResource.MEDICAL_RESOURCE_TYPE_CONDITIONS)
+            .mapNotNull { FhirMedicalParse.parseCondition(it) }
+            .distinctBy { it.displayName }
+
     /** Every FHIR resource of [medicalResourceType] as raw JSON, paging until exhausted. */
     private suspend fun readCategory(medicalResourceType: Int): List<String> {
         if (!isAvailable()) return emptyList()
@@ -110,6 +117,7 @@ class HealthConnectMedical(context: Context) {
         val PERMISSIONS = setOf(
             HealthPermission.PERMISSION_READ_MEDICAL_DATA_ALLERGIES_INTOLERANCES,
             HealthPermission.PERMISSION_READ_MEDICAL_DATA_MEDICATIONS,
+            HealthPermission.PERMISSION_READ_MEDICAL_DATA_CONDITIONS,
         )
 
         private const val PAGE_SIZE = 500

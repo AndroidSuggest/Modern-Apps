@@ -83,6 +83,12 @@ pub fn pack_argb(argb: u32) -> u32 {
 /// [`crate::tile::geometry`] sampling the tile's heightmap; where the tile carries none it
 /// returns 0.0, and the mesh is bit-identical to the un-lifted one.
 ///
+/// `skirt` hangs the wall bottoms below `base + ground` (see `walls::emit_walls`): the wall
+/// bottom is straight between its corners while the rendered terrain folds along the cell
+/// diagonal, so on saddle terrain the surface would poke through the wall between corners.
+/// Dropping the base by a few tile-normalised metres buries the fold. The caller passes 0.0
+/// where the tile carries no usable DEM, which keeps the no-heightmap mesh bit-identical.
+///
 /// `roof_dir_rad` is the roof direction in radians and `roof_orientation` selects which axis the
 /// ridge runs along. An unrecognised `roof_shape` falls back to flat, never panics.
 #[allow(clippy::too_many_arguments)]
@@ -98,6 +104,7 @@ pub fn extrude(
     roof_orientation: u8,
     wall_colour: u32,
     roof_colour: u32,
+    skirt: f32,
     ground: &dyn Fn(f32, f32) -> f32,
     out_v: &mut Vec<f32>,
     out_i: &mut Vec<u32>,
@@ -112,7 +119,10 @@ pub fn extrude(
             while n >= 2 && ring[0] == ring[n - 1] {
                 n -= 1;
             }
-            ring[..n].iter().map(|&(x, y)| (x as f32 * scale, y as f32 * scale)).collect()
+            ring[..n]
+                .iter()
+                .map(|&(x, y)| (x as f32 * scale, y as f32 * scale))
+                .collect()
         })
         .filter(|r: &Vec<(f32, f32)>| r.len() >= 3)
         .collect();
@@ -125,6 +135,22 @@ pub fn extrude(
     let wall_rgba = pack_argb(wall_colour);
     let roof_rgba = pack_argb(roof_colour);
 
-    emit_walls(&local, base, wall_top, wall_rgba, ground, out_v, out_i);
-    emit_roof(rings, extent, validated, &local[0], wall_top, apex, roof_shape, roof_dir_rad, roof_orientation, roof_rgba, ground, out_v, out_i);
+    emit_walls(
+        &local, base, wall_top, wall_rgba, skirt, ground, out_v, out_i,
+    );
+    emit_roof(
+        rings,
+        extent,
+        validated,
+        &local[0],
+        wall_top,
+        apex,
+        roof_shape,
+        roof_dir_rad,
+        roof_orientation,
+        roof_rgba,
+        ground,
+        out_v,
+        out_i,
+    );
 }

@@ -3,7 +3,7 @@ use ash::vk;
 
 use super::msaa::MsaaTarget;
 use super::samples::supported_samples;
-use super::stencil::{StencilTarget, stencil_format};
+use super::stencil::{stencil_format, StencilTarget};
 
 pub struct Swapchain {
     pub loader: ash::khr::swapchain::Device,
@@ -69,16 +69,22 @@ impl Swapchain {
         } else {
             present_modes[0]
         };
-        let max = if capabilities.max_image_count == 0 { u32::MAX } else { capabilities.max_image_count };
+        let max = if capabilities.max_image_count == 0 {
+            u32::MAX
+        } else {
+            capabilities.max_image_count
+        };
         let image_count = (capabilities.min_image_count + 1).min(max);
         // IDENTITY where offered, so the presentation engine does not rotate an image we
         // already produced in display orientation.
-        let pre_transform =
-            if capabilities.supported_transforms.contains(vk::SurfaceTransformFlagsKHR::IDENTITY) {
-                vk::SurfaceTransformFlagsKHR::IDENTITY
-            } else {
-                capabilities.current_transform
-            };
+        let pre_transform = if capabilities
+            .supported_transforms
+            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+        {
+            vk::SurfaceTransformFlagsKHR::IDENTITY
+        } else {
+            capabilities.current_transform
+        };
 
         let loader = ash::khr::swapchain::Device::new(&context.instance, &context.device);
         let create_info = vk::SwapchainCreateInfoKHR::default()
@@ -97,8 +103,9 @@ impl Swapchain {
         let swapchain = loader
             .create_swapchain(&create_info, None)
             .map_err(|e| format!("create_swapchain {e:?}"))?;
-        let images =
-            loader.get_swapchain_images(swapchain).map_err(|e| format!("swapchain images {e:?}"))?;
+        let images = loader
+            .get_swapchain_images(swapchain)
+            .map_err(|e| format!("swapchain images {e:?}"))?;
 
         let samples = supported_samples(context);
         let multisampled = samples != vk::SampleCountFlags::TYPE_1;
@@ -154,8 +161,11 @@ impl Swapchain {
             .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-        let attachments: Vec<vk::AttachmentDescription> =
-            if multisampled { vec![color, resolve, stencil] } else { vec![color, stencil] };
+        let attachments: Vec<vk::AttachmentDescription> = if multisampled {
+            vec![color, resolve, stencil]
+        } else {
+            vec![color, stencil]
+        };
 
         let color_ref = vk::AttachmentReference::default()
             .attachment(0)

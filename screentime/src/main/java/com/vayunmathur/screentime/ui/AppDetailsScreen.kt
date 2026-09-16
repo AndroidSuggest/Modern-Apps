@@ -56,7 +56,7 @@ import java.time.LocalDate
 /**
  * Per-app drill-down
  * Per-app drill-down: the same week/day usage chart as the dashboard, scoped to one app, plus
- * its daily limit and focus membership.
+ * its daily limit and manual pause.
  *
  * Also answers `ACTION_SHOW_SUSPENDED_APP_DETAILS`: when the user taps a paused app, the
  * platform routes the details button here, so the "why is this paused" question lands on the
@@ -81,8 +81,8 @@ class AppDetailsActivity : ComponentActivity() {
                     onTimerChange = { minutes ->
                         state.packageName?.let { viewModel.setTimer(it, minutes) }
                     },
-                    onFocusPausedChange = { paused ->
-                        state.packageName?.let { viewModel.setFocusPaused(it, paused) }
+                    onPausedChange = { paused ->
+                        state.packageName?.let { viewModel.setAppPaused(it, paused) }
                     },
                 )
             }
@@ -119,7 +119,7 @@ fun AppDetailsScreen(
     onSetPeriod: (UsagePeriod) -> Unit,
     onStep: (Boolean) -> Unit,
     onTimerChange: (Int?) -> Unit,
-    onFocusPausedChange: (Boolean) -> Unit,
+    onPausedChange: (Boolean) -> Unit,
 ) {
     var picking by remember { mutableStateOf(false) }
     val scrollBehavior = appBarScrollBehavior()
@@ -171,14 +171,12 @@ fun AppDetailsScreen(
         }
 
         item {
-            SettingsSection(title = stringResource(R.string.focus_title)) {
+            SettingsSection(title = stringResource(R.string.details_pause_title)) {
                 SettingsSwitchRow(
-                    title = stringResource(R.string.details_pause_in_focus),
-                    supportingText =
-                        if (state.focusRunning) stringResource(R.string.details_focus_running)
-                        else stringResource(R.string.details_pause_in_focus_hint),
-                    checked = state.pausedInFocus,
-                    onCheckedChange = onFocusPausedChange,
+                    title = stringResource(R.string.details_pause_app),
+                    supportingText = stringResource(R.string.details_pause_app_hint),
+                    checked = state.appPaused,
+                    onCheckedChange = onPausedChange,
                 )
             }
         }

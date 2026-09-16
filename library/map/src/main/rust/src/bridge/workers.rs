@@ -1,6 +1,8 @@
 //! Tile workers: one archive view each, serving requests until the queue closes.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
+use super::handle::{OnlineFlag, TileResult, ZoomRange};
+use super::log::log;
 use crate::style::{self, SharedToggles};
 use crate::tile::cache::{RangeCache, DEFAULT_MAX_BYTES};
 use crate::tile::geometry;
@@ -9,14 +11,12 @@ use crate::tile::source::BASEMAP_ARCHIVE_URL;
 use crate::tile::source::{
     basemap_origin, CachingRangeReader, FileRangeReader, JniRangeFetcher, RangeFetcher,
 };
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use tilecodec::mamaps::header::Header;
 use tilecodec::mamaps::MamapsArchive;
 use tilecodec::stream::RangeReader;
 use tilecodec::stream::OPEN_PREFIX_BYTES;
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
-use super::handle::{OnlineFlag, TileResult, ZoomRange};
-use super::log::log;
 /// A worker: opens its own view of the archive, then serves tile requests until the queue
 /// closes.
 ///
@@ -63,7 +63,9 @@ pub(crate) fn spawn_worker(
                         }
                     };
                     match MamapsArchive::open(reader) {
-                        Ok(archive) => serve(index, archive, &queue, &finished, &zoom_range, &toggles),
+                        Ok(archive) => {
+                            serve(index, archive, &queue, &finished, &zoom_range, &toggles)
+                        }
                         Err(e) => log(&format!(
                             "worker {index} cannot open the local mamaps archive {path}: {e}"
                         )),
@@ -77,33 +79,40 @@ pub(crate) fn spawn_worker(
             // cache opens once per worker with the full origin marker — wiping on mismatch up
             // front. No two-step reset. A failed fetch poisons the lock for every worker, so one
             // dead network kills the surface's workers once instead of logging four times.
-            let build_id = *header.get_or_init(|| {
-                match JniRangeFetcher.fetch(&archive_url, "bytes=0-127") {
-                    Ok(r)
-                        if r.status == 206
-                            && r.body.len() == tilecodec::mamaps::header::HEADER_LEN =>
-                    {
-                        match Header::parse(&r.body) {
-                            Ok(h) => Some(h.build_id),
-                            Err(e) => {
-                                log(&format!("cannot parse the mamaps header: {e}"));
-                                None
+            let build_id =
+                *header.get_or_init(
+                    || match JniRangeFetcher.fetch(&archive_url, "bytes=0-127") {
+                        Ok(r)
+                            if r.status == 206
+                                && r.body.len() == tilecodec::mamaps::header::HEADER_LEN =>
+                        {
+                            match Header::parse(&r.body) {
+                                Ok(h) => Some(h.build_id),
+                                Err(e) => {
+                                    log(&format!("cannot parse the mamaps header: {e}"));
+                                    None
+                                }
                             }
                         }
-                    }
-                    Ok(r) => {
-                        log(&format!("cannot fetch the mamaps header: HTTP {}", r.status));
-                        None
-                    }
-                    Err(e) => {
-                        log(&format!("cannot fetch the mamaps header: {e}"));
-                        None
-                    }
-                }
-            });
+                        Ok(r) => {
+                            log(&format!(
+                                "cannot fetch the mamaps header: HTTP {}",
+                                r.status
+                            ));
+                            None
+                        }
+                        Err(e) => {
+                            log(&format!("cannot fetch the mamaps header: {e}"));
+                            None
+                        }
+                    },
+                );
             let Some(build_id) = build_id else { return };
-            let cache =
-                RangeCache::open(cache_dir, &basemap_origin(&archive_url, build_id), DEFAULT_MAX_BYTES);
+            let cache = RangeCache::open(
+                cache_dir,
+                &basemap_origin(&archive_url, build_id),
+                DEFAULT_MAX_BYTES,
+            );
             let reader = CachingRangeReader::new_shared(
                 archive_url.clone(),
                 cache,
@@ -115,7 +124,9 @@ pub(crate) fn spawn_worker(
             let archive = match MamapsArchive::open(reader) {
                 Ok(a) => a,
                 Err(e) => {
-                    log(&format!("worker {index} cannot open the mamaps archive: {e}"));
+                    log(&format!(
+                        "worker {index} cannot open the mamaps archive: {e}"
+                    ));
                     return;
                 }
             };
@@ -176,7 +187,10 @@ fn serve<R: RangeReader>(
             )),
             Ok(None) => TileResult::Absent,
             Err(e) => {
-                log(&format!("tile {}/{}/{} failed: {e}", tile.z, tile.x, tile.y));
+                log(&format!(
+                    "tile {}/{}/{} failed: {e}",
+                    tile.z, tile.x, tile.y
+                ));
                 TileResult::Failed
             }
         };

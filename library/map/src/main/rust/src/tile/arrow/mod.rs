@@ -15,8 +15,10 @@ pub mod kind;
 pub mod place;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_part2;
 pub use angle::{nominal_turn_angle, turn_angle};
-pub use glyph::{ARROW_VERTS, arrow_verts, unit_arrow_triangles};
+pub use glyph::{arrow_verts, unit_arrow_triangles, ARROW_VERTS};
 pub use instance::ArrowInstance;
-pub use kind::{TurnArrow, arrow_for};
+pub use kind::{arrow_for, TurnArrow};
 pub use place::{fan_offset, lane_centre, place_arrows, placed_anchor, tile_local_per_metre};

@@ -2,35 +2,26 @@ package com.vayunmathur.library.ocr
 import android.content.Context
 import android.graphics.Bitmap
 import com.vayunmathur.library.ml.RecognizedLine
-import com.vayunmathur.library.ml.TextRecognizer
+import com.vayunmathur.library.ml.TextRecognizerEt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 /**
- * Shared on-device OCR engine using Baidu **PP-OCRv5 mobile**, running on the Vulkan
- * compute runtime in `:library:ml`.
+ * Shared on-device OCR engine using Baidu **PP-OCRv6**, ExecuTorch-only (Vulkan).
  *
- * Detection is DBNet over a PP-HGNetV2 backbone; recognition is a PP-LCNetV3 backbone into a
- * two-block transformer with a CTC head. Both are converted ahead of time to `.maml` by
- * `scripts/ml/ppocr_fold.py` and shipped in this module's assets. The recogniser is the
- * **latin** model (836-char dict covering 47 Latin-script languages; no CJK) for a much
- * smaller footprint.
+ * The single path is the tiny-variant multifunction `.pte` (`TextRecognizerEt`: one
+ * module, `detect` + `recognize` methods, 6,904-char ship latin dict) on the pure-Vulkan
+ * ExecuTorch runtime. Detection is DBNet over a
+ * PP-HGNetV2 backbone; recognition is a PP-LCNetV3 backbone into a two-block transformer
+ * with a CTC head. See `analysis/et-ocr/ET_PATH.md` for the bundle notes.
  *
- * # What replaced what
- *
- * This used to call into the `com.github.vayun-mathur:ncnn-android` AAR, where the whole
- * detect-crop-recognise pipeline lived inside `ppocrv5.cpp` and could not be read or tested.
- * All of it is now Rust in `:library:ml`: the DBNet post-processing in `post::dbnet`, the
- * rotated crop in `post::crop`, the CTC collapse in `post::ctc`, and the sequencing in
- * `post::ocr` - each host-tested against values computed by hand, and both models checked
- * numerically against onnxruntime by `scripts/ml/onnx_parity.py`.
+ * There is no LiteRT/`.tflite` fallback: when the `.pte` is absent (or the Vulkan
+ * delegate is not linked) the engine is inert (returns empty text, never crashes) -
+ * call [isAvailable] to check up front.
  *
  * The engine still adapts the result to the [OcrResult]/[TextBox] shape consumers expect.
- * Reading order is decided natively now, so this no longer sorts.
- *
- * If Vulkan fp16 compute or an asset is unavailable the engine is inert (returns empty text,
- * never crashes) - call [isAvailable] to check up front.
+ * Reading order is decided by the recogniser, so this no longer sorts.
  *
  * All heavy work runs off the main thread (Dispatchers.Default). Instances are safe to reuse
  * sequentially; concurrent calls are serialised internally.
@@ -75,10 +66,10 @@ class OcrEngine(private val context: Context) {
     /** Full result: the joined [text] plus the individual [boxes] it came from. */
     data class OcrResult(val text: String, val boxes: List<TextBox>)
     private val lock = Mutex()
-    private var recognizer: TextRecognizer? = null
-    private var initTried = false
-    /** True if the runtime and the models are present and could be loaded. */
-    suspend fun isAvailable(): Boolean = lock.withLock { ensureInit() }
+    private var etRecognizer: TextRecognizerEt? = null
+    private var etInitTried = false
+    /** True if the ET backend is present and could be loaded. */
+    suspend fun isAvailable(): Boolean = lock.withLock { ensureEtInit() }
     /**
      * Recognise all text in [bitmap] and return it as a single string (lines
      * joined by newlines), or an empty string if nothing is found or the engine
@@ -87,12 +78,15 @@ class OcrEngine(private val context: Context) {
     suspend fun recognize(bitmap: Bitmap): String = recognizeDetailed(bitmap).text
     /** Like [recognize] but also returns the per-region [TextBox]es. */
     suspend fun recognizeDetailed(bitmap: Bitmap): OcrResult = withContext(Dispatchers.Default) {
-        // The lock is held across the whole native call, not just the handle read: `close`
-        // frees the Vulkan handle and reading it afterwards is a use-after-free.
+        // The lock is held across the whole call, not just the handle read: `close`
+        // frees the sessions and reading one afterwards is a use-after-free.
         lock.withLock {
-            if (!ensureInit()) return@withContext OcrResult("", emptyList())
-            val engine = recognizer ?: return@withContext OcrResult("", emptyList())
-            val boxes = engine.recognize(bitmap)
+            if (!ensureEtInit()) return@withContext OcrResult("", emptyList())
+            val engine = etRecognizer ?: return@withContext OcrResult("", emptyList())
+            // The ET path returns null on backend failure (missing `.pte`, no delegate,
+            // failed run): fail closed to empty, never a fallback.
+            val lines = engine.recognize(bitmap) ?: return@withContext OcrResult("", emptyList())
+            val boxes = lines
                 .asSequence()
                 .filter { it.text.isNotBlank() }
                 .map { toTextBox(it) }
@@ -101,24 +95,26 @@ class OcrEngine(private val context: Context) {
             OcrResult(boxes.joinToString("\n") { it.text }.trim(), boxes)
         }
     }
-    /** Release the models. */
+    /** Release the backend. */
     fun close() {
-        try { recognizer?.close() } catch (_: Exception) {}
-        recognizer = null
-        initTried = false
+        try { etRecognizer?.close() } catch (_: Exception) {}
+        etRecognizer = null
+        etInitTried = false
     }
-    /** Create the engine once. */
-    private fun ensureInit(): Boolean {
-        recognizer?.let { return it.isAvailable }
-        if (initTried) return false
-        initTried = true
-        val created = TextRecognizer(context.applicationContext)
+    /**
+     * Create the ExecuTorch engine once. False when the `.pte` is absent (or the module
+     * fails to load) — unavailable, never a throw.
+     */
+    private fun ensureEtInit(): Boolean {
+        etRecognizer?.let { return it.isAvailable }
+        if (etInitTried) return false
+        etInitTried = true
+        val created = TextRecognizerEt(context.applicationContext)
         if (!created.isAvailable) {
-            // Already logged natively under the `ModelRunner` tag, with the reason.
             created.close()
             return false
         }
-        recognizer = created
+        etRecognizer = created
         return true
     }
     private companion object {

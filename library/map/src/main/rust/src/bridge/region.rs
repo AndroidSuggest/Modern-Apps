@@ -1,11 +1,11 @@
 //! Palette switching and the region mask.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
+use super::handle::handle_mut;
 use crate::style::Palette;
 use jni::objects::JClass;
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use jni::JNIEnv;
-use super::handle::handle_mut;
 /// Dim everything outside the region containing this point, and report which one that is.
 ///
 /// Takes a place's coordinates rather than a region id because nothing in the archive links the
@@ -29,7 +29,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setRegionMask<
     level_min: jint,
     level_max: jint,
 ) -> jlong {
-    let Some(map) = handle_mut(handle) else { return 0 };
+    let Some(map) = handle_mut(handle) else {
+        return 0;
+    };
     let levels = (level_min.max(0) as u16)..=(level_max.max(0) as u16);
     match map.renderer.region_at(lon as f64, lat as f64, levels) {
         Some(id) => {

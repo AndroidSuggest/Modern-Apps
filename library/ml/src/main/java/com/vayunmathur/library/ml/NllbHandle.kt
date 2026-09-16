@@ -1,36 +1,40 @@
 package com.vayunmathur.library.ml
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.util.Log
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.LongBuffer
-import java.nio.FloatBuffer
 import java.text.Normalizer
+import org.pytorch.executorch.EValue
+import org.pytorch.executorch.Module
+import org.pytorch.executorch.Tensor
 
 /**
- * On-device translation between any two of 202 languages: NLLB-200-distilled-600M on the
- * reduced ONNX Runtime build.
+ * On-device translation between any two of 202 languages: NLLB-200-distilled-600M,
+ * ExecuTorch-only (Vulkan-lowered `nllb-enc.pte` + `nllb-dec.pte`).
  *
  * NLLB distilled to 600M parameters: 12 encoder layers, 12 decoder layers, `d_model` 1024,
  * 16 heads, a 4096-wide ReLU feed-forward - and a 256,206-entry vocabulary shared between
  * the input embedding and the output projection. **Direct** translation, with no English
  * pivot, so every pair is a single hop.
  *
- * # Three files, downloaded rather than bundled
+ * # Two `.pte` files plus the tokenizer, downloaded rather than bundled
  *
- * `encoder_model_int8.onnx` + `decoder_model_int8.onnx` (`venddair/nllb-200-distilled-600M-onnx`)
- * and `tokenizer.bin` (SPM1, built by `scripts/ml/nllb_tokenizer.py`), which are far too much
- * to ship inside an APK - hence [inDirectory] and no asset path. See `NllbModel` in
+ * `nllb-enc.pte` + `nllb-dec.pte` (Vulkan-lowered encoder/decoder modules mirroring the
+ * export split: encoder `input_ids` + `attention_mask` to `[1,S,1024]` hidden, decoder
+ * `decoder_input_ids` + `encoder_hidden_states` + `encoder_attention_mask` to logits)
+ * and `tokenizer.bin` (SPM1, built by `scripts/ml/nllb_tokenizer.py`), which are far too
+ * much to ship inside an APK - hence [inDirectory] and no asset path. See `NllbModel` in
  * `:translate` for the mirror pins.
  *
- * The ORT decoder is the no-cache export: every step feeds the whole produced prefix (capped at
- * [MAX_TOKENS] = 128, so the quadratic cost is bounded). The Vulkan decoder is the same no-cache
- * export, run through `VulkanSessions.run`: each step likewise feeds the whole produced prefix.
- * The forcing protocol is identical on both paths.
+ * There are no ORT, VulkanSessions, LiteRT or `.onnx`/`.tflite` paths: when the `.pte`
+ * pair is absent (or the Vulkan delegate is not linked) the handle is unavailable and
+ * [translate] returns null. Fail-closed, never a silent fallback.
+ *
+ * The decoder is the no-cache export: every step feeds the whole produced prefix (capped
+ * at [MAX_TOKENS] = 128, so the quadratic cost is bounded). The forcing protocol
+ * (source-token lead, forced-BOS target, EOS stop, [MAX_TOKENS] cap) and the SPM1 codec
+ * are shared.
  *
  * # Both language tokens are required
  *
@@ -48,33 +52,25 @@ import java.text.Normalizer
  *
  * # Availability
  *
- * Construction never throws. [isAvailable] is false when a file is absent or malformed, or
- * when neither backend serves a graph - and then [translate] returns null.
- *
- * When the Vulkan backend is usable and a graph is allowlisted, that graph runs on the
- * Vulkan fast path and ORT is kept only as the fallback, per graph: a Vulkan failure (or
- * short output) falls back to the ORT session when it exists. The 256,206-wide argmax goes
- * through the bridge so the host never scans the full row. Preprocess and the SPM1
- * codec stay Kotlin.
+ * Construction never throws. [isAvailable] is false when a file is absent or malformed,
+ * when the Vulkan delegate is not linked, or when a run fails - and then [translate]
+ * returns null.
  *
  * # Threading
  *
- * Not thread-safe: a translation runs up to 128 decoder steps sharing both sessions (and the
- * Vulkan path re-runs the whole prefix each step), so two concurrent calls would
- * interleave them. A caller must hold a lock across [translate] and [close].
+ * Not thread-safe: a translation runs up to 128 decoder steps sharing both modules, so
+ * two concurrent calls would interleave them. A caller must hold a lock across [translate]
+ * and [close].
  */
 class NllbHandle private constructor(private val directory: File) : AutoCloseable {
     private val lock = Any()
 
-    @Volatile private var encoder: OrtSession? = null
-    @Volatile private var decoder: OrtSession? = null
-    @Volatile private var vulkanEnc: Long = 0L
-    @Volatile private var vulkanDec: Long = 0L
+    @Volatile private var etEnc: Module? = null
+    @Volatile private var etDec: Module? = null
     @Volatile private var table: SpmTable? = null
-    @Volatile private var loadTried = false
-    @Volatile private var vulkanTried = false
+    @Volatile private var etTried = false
 
-    /** True if both graphs came up — on Vulkan, on ORT, or one of each — and the tokenizer parsed. */
+    /** True if the ET encoder, ET decoder and tokenizer all came up. */
     val isAvailable: Boolean get() = ensure()
 
     /**
@@ -98,19 +94,10 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
             val body = vocab.encode(normalised)
             if (body.isEmpty()) return ""
             val source = intArrayOf(sourceToken) + body + intArrayOf(EOS)
-            // Vulkan-first encode; ORT fallback per graph.
-            val hidden = vulkanEncodeSource(source)
-                ?: ortEncodeHidden(source)
-                ?: return null
+            val hidden = etEncodeSource(source) ?: return null
             try {
-                // Vulkan-first decode with a native KV cache; ORT whole-prefix fallback.
-                vulkanTranslateDecode(hidden, source.size, targetToken)?.let { produced ->
-                    return vocab.decode(produced)
-                }
-                ortTranslateDecode(hidden, source.size, targetToken)?.let { produced ->
-                    return vocab.decode(produced)
-                }
-                null
+                val produced = etTranslateDecode(hidden, source.size, targetToken) ?: return null
+                vocab.decode(produced)
             } finally {
                 hidden.closeQuietly()
             }
@@ -120,41 +107,23 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
         }
     }
 
-    /** Free both networks (Vulkan and/or ORT). Idempotent. */
+    /** Free both modules. Idempotent. */
     override fun close() {
         synchronized(lock) {
-            val encHandle = vulkanEnc
-            vulkanEnc = 0L
-            if (encHandle != 0L) {
-                try {
-                    VulkanSessions.close(encHandle)
-                } catch (e: Throwable) {
-                    Log.w(TAG, "nllb vulkan encoder close failed", e)
-                }
-            }
-            val decHandle = vulkanDec
-            vulkanDec = 0L
-            if (decHandle != 0L) {
-                try {
-                    VulkanSessions.close(decHandle)
-                } catch (e: Throwable) {
-                    Log.w(TAG, "nllb vulkan decoder close failed", e)
-                }
-            }
-            encoder = null
-            decoder = null
+            etEnc = null
+            etDec = null
+            ExecutorchSessions.close(etSessionKey(ET_ENCODER_FILE))
+            ExecutorchSessions.close(etSessionKey(ET_DECODER_FILE))
             table = null
-            OnnxSessions.close(sessionKey(ENCODER_FILE))
-            OnnxSessions.close(sessionKey(DECODER_FILE))
         }
     }
 
     override fun toString(): String = "NLLB-200 in $directory"
 
     private fun ensure(): Boolean {
-        if (table != null && (encoder != null || vulkanEnc != 0L) && (decoder != null || vulkanDec != 0L)) return true
+        if (table != null && etEnc != null && etDec != null) return true
         synchronized(lock) {
-            if (table != null && (encoder != null || vulkanEnc != 0L) && (decoder != null || vulkanDec != 0L)) return true
+            if (table != null && etEnc != null && etDec != null) return true
             try {
                 if (table == null) {
                     table = SpmTable.parse(File(directory, TOKENIZER).readBytes())
@@ -164,314 +133,131 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
                 return false
             }
             if (table == null) return false
-            if (!vulkanTried) {
-                vulkanTried = true
-                tryVulkan(sessionKey(ENCODER_FILE), File(directory, ENCODER_FILE).absolutePath) {
-                    vulkanEnc = it
+            if (!etTried) {
+                etTried = true
+                tryEt(etSessionKey(ET_ENCODER_FILE), File(directory, ET_ENCODER_FILE).absolutePath) {
+                    etEnc = it
                 }
-                tryVulkan(sessionKey(DECODER_FILE), File(directory, DECODER_FILE).absolutePath) {
-                    vulkanDec = it
-                }
-            }
-            if ((encoder == null || decoder == null) && !loadTried) {
-                loadTried = true
-                try {
-                    if (encoder == null) {
-                        encoder = OnnxSessions.open(sessionKey(ENCODER_FILE)) {
-                            File(directory, ENCODER_FILE).readBytes()
-                        }
-                    }
-                    if (decoder == null) {
-                        decoder = OnnxSessions.open(sessionKey(DECODER_FILE)) {
-                            File(directory, DECODER_FILE).readBytes()
-                        }
-                    }
-                } catch (e: Throwable) {
-                    Log.e(TAG, "cannot open the NLLB model in $directory", e)
-                    return false
+                tryEt(etSessionKey(ET_DECODER_FILE), File(directory, ET_DECODER_FILE).absolutePath) {
+                    etDec = it
                 }
             }
-            return table != null && (encoder != null || vulkanEnc != 0L) && (decoder != null || vulkanDec != 0L)
+            return table != null && etEnc != null && etDec != null
         }
     }
 
-    private fun sessionKey(name: String): String = "file:${File(directory, name).absolutePath}"
+    private fun etSessionKey(name: String): String = "file:${File(directory, name).absolutePath}"
 
-    /**
-     * Best-effort Vulkan open for one graph from its file on disk; leaves the handle at 0
-     * on any failure so ORT stays the fallback. [VulkanSessions.openPath] resolves any
-     * sidecar weights next to the model file.
-     */
-    private fun tryVulkan(key: String, path: String, assign: (Long) -> Unit) {
+    /** Best-effort ET open for one graph; absent means unavailable, never a fallback. */
+    private fun tryEt(key: String, path: String, assign: (Module) -> Unit) {
         try {
-            if (!VulkanSessions.isUsable()) return
-            if (key !in VulkanSessions.allowlist) return
-            val handle = VulkanSessions.openPath(key, path)
-            if (handle != 0L) {
-                assign(handle)
-                Log.i(TAG, "vulkan session open for $key")
-            }
+            val file = File(path)
+            if (!file.isFile) return
+            val module = ExecutorchSessions.openPath(path) ?: return
+            assign(module)
+            Log.i(TAG, "executorch session open for $key")
         } catch (e: Throwable) {
-            Log.w(TAG, "vulkan open failed for $key, using ORT", e)
+            Log.w(TAG, "executorch open failed for $key", e)
         }
     }
 
     // -- Encoder outputs ------------------------------------------------------
 
-    /** Encoder hidden states materialised on the host so either decoder can consume them. */
+    /** Encoder hidden states materialised on the host so the decoder can consume them. */
     private class EncHidden(val data: FloatArray, val seq: Int, val dim: Int) {
         fun closeQuietly() {
-            // Plain floats; nothing native held. Kept for symmetry with the ORT tensor path.
+            // Plain floats; nothing native held. Kept for symmetry with the module path.
         }
     }
 
-    /** Vulkan encoder run; null when the bridge returns nothing usable. */
-    private fun vulkanEncodeSource(source: IntArray): EncHidden? {
-        val handle = vulkanEnc
-        if (handle == 0L) return null
-        return try {
-            val longIds = LongArray(source.size) { source[it].toLong() }
-            val mask = LongArray(source.size) { 1L }
-            val inputs = listOf(
-                VulkanWire.longs(longArrayOf(1, source.size.toLong()), longIds),
-                VulkanWire.longs(longArrayOf(1, source.size.toLong()), mask),
-            )
-            val outputs = VulkanSessions.run(handle, inputs) ?: return null
-            val hiddenT = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: run {
-                Log.w(TAG, "nllb vulkan encoder returned no f32 output")
-                return null
-            }
-            val floats = hiddenT.asFloats()
-            if (floats.isEmpty()) {
-                Log.w(TAG, "nllb vulkan encoder returned no floats")
-                return null
-            }
-            var seq = source.size
-            var dim = HIDDEN_DIM
-            if (hiddenT.shape.size == 3) {
-                seq = hiddenT.shape[1].toInt()
-                dim = hiddenT.shape[2].toInt()
-            }
-            if (seq <= 0 || dim <= 0 || floats.size != seq * dim) {
-                if (floats.size % HIDDEN_DIM == 0) {
-                    seq = floats.size / HIDDEN_DIM
-                    dim = HIDDEN_DIM
-                } else {
-                    Log.w(TAG, "nllb vulkan encoder returned ${floats.size} floats")
-                    return null
-                }
-            }
-            EncHidden(floats, seq, dim)
-        } catch (e: Throwable) {
-            Log.w(TAG, "nllb vulkan encode failed, trying ORT encode", e)
-            null
-        }
-    }
-
-    /** ORT encoder run, materialised as floats so either decoder can consume them. */
-    private fun ortEncodeHidden(source: IntArray): EncHidden? {
-        val enc = encoder ?: return null
-        return try {
-            val env = OrtEnvironment.getEnvironment()
-            val owned = encodeSource(enc, env, source) ?: return null
-            owned.useOrt { tensor ->
-                val shape = tensor.info.shape
-                val flat = FloatArray(tensor.floatBuffer.remaining())
-                tensor.floatBuffer.get(flat)
-                EncHidden(flat, shape[1].toInt(), shape[2].toInt())
-            }
-        } catch (e: Throwable) {
-            Log.e(TAG, "nllb ORT encode failed", e)
-            null
-        }
-    }
-
-    // -- Vulkan KV-cached decode ------------------------------------------------
+    // -- ExecuTorch split encode/decode -----------------------------------------
 
     /**
-     * Greedy decode over Vulkan, mirroring the ORT forcing protocol: the decoder starts
-     * from `</s>`, step 0 is forced to the target language (never emitted), decoding
-     * proceeds greedily from there, stopping at the first `</s>`.
-     *
-     * The decoder is the no-cache export, so each step feeds the whole produced prefix
-     * through [VulkanSessions.run] exactly like the ORT path. Null when Vulkan cannot
-     * serve the turn so the caller falls back to ORT.
+     * ET encoder run over the split `nllb-enc.pte`, materialised as floats so the decoder
+     * can consume them. Null when the module is absent or the run fails.
      */
-    private fun vulkanTranslateDecode(
+    private fun etEncodeSource(source: IntArray): EncHidden? {
+        val mod = etEnc ?: return null
+        return try {
+            val ids = EValue.from(Tensor.fromBlob(source.map { it.toLong() }.toLongArray(), longArrayOf(1, source.size.toLong())))
+            val mask = EValue.from(
+                Tensor.fromBlob(LongArray(source.size) { 1L }, longArrayOf(1, source.size.toLong())),
+            )
+            val outs = ExecutorchSessions.run(mod, listOf(ids, mask), ET_ENCODE_METHOD) ?: return null
+            val value = outs.firstOrNull() ?: return null
+            if (!value.isTensor) return null
+            val outShape = value.toTensor().shape()
+            if (outShape.size != 3 || outShape[0] != 1L) return null
+            val want = (outShape[1] * outShape[2]).toInt()
+            val flat = value.floatsAllowingHalf("$TAG encode", want) ?: return null
+            EncHidden(flat.copyOf(want), outShape[1].toInt(), outShape[2].toInt())
+        } catch (e: Throwable) {
+            Log.w(TAG, "nllb ET encode failed", e)
+            null
+        }
+    }
+
+    /**
+     * ET whole-prefix decode over the split `nllb-dec.pte`: step 0 is forced to the target
+     * language (never emitted), decoding proceeds greedily from there, stopping at the
+     * first `</s>`. Null when ET cannot serve the turn.
+     */
+    private fun etTranslateDecode(
         hidden: EncHidden,
         sourceLen: Int,
         targetToken: Int,
     ): IntArray? {
-        val handle = vulkanDec
-        if (handle == 0L) return null
+        val mod = etDec ?: return null
         return try {
             val produced = ArrayList<Int>(MAX_TOKENS)
-            // The fed prefix starts from `</s>` and grows by each generated token. Step 0
-            // is forced to the target language (never emitted); decoding proceeds greedily
-            // from there, stopping at the first `</s>`.
             val fed = ArrayList<Int>()
             fed.add(DECODER_START)
             for (step in 0 until MAX_TOKENS) {
                 val prefix = fed.toIntArray()
-                val longIds = LongArray(prefix.size) { prefix[it].toLong() }
-                val mask = LongArray(sourceLen) { 1L }
-                val inputs = listOf(
-                    VulkanWire.longs(longArrayOf(1, prefix.size.toLong()), longIds),
-                    VulkanWire.floats(
-                        longArrayOf(1, hidden.seq.toLong(), hidden.dim.toLong()), hidden.data,
-                    ),
-                    VulkanWire.longs(longArrayOf(1, sourceLen.toLong()), mask),
-                )
-                val outputs = VulkanSessions.run(handle, inputs) ?: return null
-                val next = if (step == 0) {
-                    targetToken
-                } else {
-                    vulkanArgmax(outputs, prefix.size) ?: return null
-                }
+                val row = etDecodeStep(mod, hidden, sourceLen, prefix) ?: return null
+                val next = if (step == 0) targetToken else argmax(row) ?: return null
                 if (next == EOS) break
                 fed.add(next)
                 if (step > 0) produced.add(next)
             }
             produced.toIntArray()
         } catch (e: Throwable) {
-            Log.w(TAG, "nllb vulkan decode failed", e)
+            Log.w(TAG, "nllb ET decode failed", e)
             null
         }
     }
 
-    /**
-     * Argmax of the last-logits row via the bridge, with a host scan fallback.
-     * The 256,206-wide row never needs a full host pass on the happy path.
-     */
-    private fun vulkanArgmax(outputs: List<VulkanTensor>, seqLen: Int): Int? {
-        val logits = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
-        val floats = logits.asFloats()
-        if (floats.isEmpty() || seqLen <= 0 || floats.size % seqLen != 0) return null
-        val vocab = floats.size / seqLen
-        if (vocab <= 0) return null
-        try {
-            return VulkanBridge.argmaxLastRow(logits.bytes, vocab)
-        } catch (e: Throwable) {
-            Log.w(TAG, "nllb bridge argmax failed, scanning on host", e)
-        }
-        val base = (seqLen - 1) * vocab
-        var best = -1
-        var top = Float.NaN
-        for (i in 0 until vocab) {
-            val value = floats[base + i]
-            if (value.isNaN()) continue
-            if (best < 0 || value > top) {
-                best = i
-                top = value
-            }
-        }
-        return if (best < 0) null else best
-    }
-
-    // -- ORT path (unchanged semantics) ---------------------------------------
-
-    /**
-     * ORT whole-prefix decode over a host-materialised [hidden]: wraps the floats in a
-     * tensor once, then feeds the growing prefix each step exactly as before. Null when
-     * the ORT decoder is unavailable so the caller keeps the null-on-failure contract.
-     */
-    private fun ortTranslateDecode(
+    /** One ET decoder step over the prefix [fed]: the last row's logits, or null. */
+    private fun etDecodeStep(
+        mod: Module,
         hidden: EncHidden,
         sourceLen: Int,
-        targetToken: Int,
-    ): IntArray? {
-        val dec = decoder ?: return null
-        return try {
-            val env = OrtEnvironment.getEnvironment()
-            val hiddenTensor = OnnxTensor.createTensor(
-                env, FloatBuffer.wrap(hidden.data),
-                longArrayOf(1, hidden.seq.toLong(), hidden.dim.toLong()),
-            )
-            hiddenTensor.useOrt { owned ->
-                // The decoder starts from `</s>`, and step 0 is forced to the target language
-                // (HuggingFace's `forced_bos_token_id`): the step-0 argmax is discarded, the
-                // forced token feeds step 1 but is never emitted.
-                val produced = ArrayList<Int>(MAX_TOKENS)
-                // The fed prefix starts from `</s>` and grows by each generated token. Step 0
-                // is forced to the target language (never emitted); decoding proceeds greedily
-                // from there, stopping at the first `</s>`.
-                val fed = ArrayList<Int>()
-                fed.add(DECODER_START)
-                for (step in 0 until MAX_TOKENS) {
-                    val logits = decodeStep(dec, env, owned, sourceLen, fed.toIntArray())
-                        ?: return null
-                    val next = if (step == 0) targetToken else argmax(logits) ?: return null
-                    if (next == EOS) break
-                    fed.add(next)
-                    if (step > 0) produced.add(next)
-                }
-                produced.toIntArray()
-            }
-        } catch (e: Throwable) {
-            Log.e(TAG, "nllb ORT decode failed", e)
-            null
-        }
-    }
-
-    private fun encodeSource(enc: OrtSession, env: OrtEnvironment, source: IntArray): OnnxTensor? {
-        val ids = OnnxTensor.createTensor(
-            env, LongBuffer.wrap(source.map { it.toLong() }.toLongArray()),
-            longArrayOf(1, source.size.toLong()),
-        )
-        val mask = OnnxTensor.createTensor(
-            env, LongBuffer.wrap(LongArray(source.size) { 1L }),
-            longArrayOf(1, source.size.toLong()),
-        )
-        ids.useOrt {
-            mask.useOrt {
-                enc.run(mapOf("input_ids" to ids, "attention_mask" to mask)).useOrt { result ->
-                    val out = result.get("last_hidden_state").get() as OnnxTensor
-                    val shape = out.info.shape
-                    val flat = FloatArray((shape[1] * shape[2]).toInt())
-                    out.floatBuffer.get(flat)
-                    // Copy into a tensor we own; the result closes its own values.
-                    return OnnxTensor.createTensor(
-                        env, java.nio.FloatBuffer.wrap(flat), longArrayOf(1, shape[1], shape[2]),
-                    )
-                }
-            }
-        }
-    }
-
-    private fun decodeStep(
-        dec: OrtSession,
-        env: OrtEnvironment,
-        hidden: OnnxTensor,
-        sourceLen: Int,
-        prefix: IntArray,
+        fed: IntArray,
     ): FloatArray? {
-        val ids = OnnxTensor.createTensor(
-            env, LongBuffer.wrap(prefix.map { it.toLong() }.toLongArray()),
-            longArrayOf(1, prefix.size.toLong()),
-        )
-        val encMask = OnnxTensor.createTensor(
-            env, LongBuffer.wrap(LongArray(sourceLen) { 1L }),
-            longArrayOf(1, sourceLen.toLong()),
-        )
-        ids.useOrt {
-            encMask.useOrt {
-                dec.run(
-                    mapOf(
-                        "input_ids" to ids,
-                        "encoder_attention_mask" to encMask,
-                        "encoder_hidden_states" to hidden,
-                    ),
-                ).useOrt { result ->
-                    val out = result.get("logits").get() as OnnxTensor
-                    val shape = out.info.shape
-                    val seq = shape[1].toInt()
-                    val vocab = shape[2].toInt()
-                    val row = FloatArray(vocab)
-                    out.floatBuffer.position((seq - 1) * vocab)
-                    out.floatBuffer.get(row)
-                    return row
-                }
-            }
+        return try {
+            val ids = EValue.from(
+                Tensor.fromBlob(fed.map { it.toLong() }.toLongArray(), longArrayOf(1, fed.size.toLong())),
+            )
+            val states = EValue.from(
+                Tensor.fromBlob(hidden.data, longArrayOf(1, hidden.seq.toLong(), hidden.dim.toLong())),
+            )
+            val mask = EValue.from(
+                Tensor.fromBlob(LongArray(sourceLen) { 1L }, longArrayOf(1, sourceLen.toLong())),
+            )
+            val outs = ExecutorchSessions.run(mod, listOf(ids, states, mask), ET_DECODE_METHOD)
+                ?: return null
+            val value = outs.firstOrNull() ?: return null
+            if (!value.isTensor) return null
+            val outShape = value.toTensor().shape()
+            if (outShape.size != 3 || outShape[0] != 1L) return null
+            val seq = outShape[1].toInt()
+            val vocab = outShape[2].toInt()
+            if (seq <= 0 || vocab <= 0) return null
+            val flat = value.floatsAllowingHalf("$TAG decode", seq * vocab) ?: return null
+            flat.copyOfRange((seq - 1) * vocab, seq * vocab)
+        } catch (e: Throwable) {
+            Log.w(TAG, "nllb ET decode step failed", e)
+            null
         }
     }
 
@@ -643,17 +429,20 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
     companion object {
         private const val TAG = "NllbHandle"
 
-        /** Encoder export. */
-        const val ENCODER_FILE = "encoder_model_int8.onnx"
+        /**
+         * ET encoder export (Vulkan-lowered split). Resolved from the download directory;
+         * absent means unavailable, never a fallback.
+         */
+        const val ET_ENCODER_FILE = "nllb-enc.pte"
 
-        /** Decoder export (ORT: no KV cache, feeds the whole prefix each step). */
-        const val DECODER_FILE = "decoder_model_int8.onnx"
+        /** ET decoder export (Vulkan-lowered split). Same rule. */
+        const val ET_DECODER_FILE = "nllb-dec.pte"
 
         /** SPM1 vocabulary. */
         const val TOKENIZER = "tokenizer.bin"
 
         /** The files [inDirectory] needs, for a caller checking a download is complete. */
-        val FILES: List<String> = listOf(ENCODER_FILE, DECODER_FILE, TOKENIZER)
+        val FILES: List<String> = listOf(ET_ENCODER_FILE, ET_DECODER_FILE, TOKENIZER)
 
         /** Decoder start / EOS / pad / unk, fairseq convention. */
         const val DECODER_START = 2
@@ -663,8 +452,11 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
         /** Greedy steps per translation. */
         const val MAX_TOKENS = 128
 
-        /** Encoder width (`d_model` 1024). */
-        private const val HIDDEN_DIM = 1024
+        /** ET encoder method over the split module. */
+        private const val ET_ENCODE_METHOD = "forward"
+
+        /** ET decoder method over the split module. */
+        private const val ET_DECODE_METHOD = "forward"
 
         /** First NLLB language id; the 202 flores codes follow contiguously. */
         const val FIRST_NLLB_LANG_TOKEN = 256001
@@ -676,8 +468,8 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
         /**
          * The model in a folder on disk, which is the only place it lives.
          *
-         * No `inAssets` counterpart: at ~1.1 GB int8 this is a runtime download to
-         * `getExternalFilesDir`, so there is no APK entry to open.
+         * No `inAssets` counterpart: far too much to ship inside an APK, so this is a
+         * runtime download to `getExternalFilesDir` and there is no APK entry to open.
          */
         fun inDirectory(directory: File): NllbHandle = NllbHandle(directory)
     }

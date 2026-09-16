@@ -34,9 +34,9 @@ pub mod sdf;
 #[cfg(test)]
 mod tests;
 
-pub use atlas::{GlyphAtlas, atlas};
+pub use atlas::{atlas, GlyphAtlas};
 pub use metrics::{
-    ATLAS_COLS, ATLAS_PX, CELL_PX, SDF_SPREAD_PX, UP_EM, GlyphMetrics, UvRect, Weight,
-    charset, fonts_staged,
+    charset, fonts_staged, GlyphMetrics, UvRect, Weight, ATLAS_COLS, ATLAS_PX, CELL_PX,
+    SDF_SPREAD_PX, UP_EM,
 };
 pub use sdf::expand_sdf_r8_to_rgba8;

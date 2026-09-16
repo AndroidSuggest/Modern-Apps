@@ -58,8 +58,8 @@ class ClipWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 }
 
 /**
- * Embed any not-yet-embedded library photos into a SigLIP2 vector — served by
- * the bundled **TinyCLIP** model (see [ClipEmbedder]) — and store the L2-normalised
+ * Embed any not-yet-embedded library photos into a TinyCLIP vector — served by
+ * the downloaded ET pair (see [ClipEmbedder]) — and store the L2-normalised
  * vector on the [Photo] row so semantic search can cosine-compare them against
  * the query's text embedding.
  *
@@ -67,13 +67,13 @@ class ClipWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
  * at a time, throttled between items to keep battery/CPU low, and marks each
  * photo scanned regardless of per-image outcome so we never retry it forever.
  *
- * Gated on the bundled model loading ([ClipEmbedder.embeddingSupport]): if it cannot be opened
- * (corrupt install), skip indexing and leave `clipScanned=0` so OCR/filename search still works.
+ * Gated on the ET pair being available ([ClipEmbedder.embeddingSupport]): if it cannot be opened
+ * (pair not downloaded), skip indexing and leave `clipScanned=0` so OCR/filename search still works.
  */
 suspend fun runClipIndexing(repository: PhotosRepository, context: Context) = coroutineScope {
     val dataStore = DataStoreUtils.getInstance(context)
 
-    // The model ships in the APK, so this only fails on a broken install.
+    // The ET pair is a runtime download, so this fails until the download completes.
     if (ClipEmbedder.embeddingSupport(context) != ClipEmbedder.Support.READY) {
         Log.w("ClipWorker", "TinyCLIP embedder unavailable; skipping semantic indexing")
         return@coroutineScope

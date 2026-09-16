@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.map.CameraPosition
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.GestureOptions
+import com.vayunmathur.library.map.MapOptions
 import com.vayunmathur.library.map.VectorMap
 import com.vayunmathur.library.map.rememberCameraState
 import com.vayunmathur.library.ui.CircularProgressIndicator
@@ -65,7 +67,7 @@ internal fun TrackingMap(ride: ActiveRide?, driverLoc: DriverLocation?, modifier
     }
 
     Box(modifier) {
-        VectorMap(cameraState = camera) {
+        VectorMap(cameraState = camera, options = MapOptions(gestureOptions = GestureOptions.TiltLocked)) {
             pickup?.let {
                 MapMarker(it) {
                     PinChrome(MaterialTheme.colorScheme.tertiary) { IconMyLocation(tint = Color.White) }

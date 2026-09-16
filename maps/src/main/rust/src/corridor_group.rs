@@ -200,14 +200,6 @@ fn approach_offset(
     sum / APPROACH_SAMPLES as f64
 }
 
-/// The taper fraction of step `step`, climbing toward but never reaching
-/// 255 — the full lane belongs to the corridor span the taper leads into.
-fn taper_fraction(step: usize) -> u8 {
-    (255.0 * step as f64 / (TAPER_STEPS + 1) as f64).round() as u8
-}
-
-const TAPER_STEPS: usize = 8;
-
 /// Point query helpers over a candidate's own survey shared by grouping and
 /// spans; thin wrappers over [`super::corridor_geom`].
 fn point_at_owned(points: &[(i32, i32)], cum: &[f64], at: f64) -> (i32, i32) {

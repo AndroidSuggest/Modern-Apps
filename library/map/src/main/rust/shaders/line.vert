@@ -19,10 +19,16 @@
 // one track fan out into parallel coloured lines. It is a push constant for the
 // same reason the width is: it is a screen measurement that ramps with zoom, and
 // baking it into vertices would re-tessellate the layer on every zoom step.
+//
+// `inZ` is the draped ground height in tile-normalised units (metres over the tile's
+// ground width — 0.0 where the tile carries no heightmap). `morph.z` carries the
+// tile's world-px span (Dp) for this frame; multiplying the two recovers the world-px
+// height the perspective matrix expects, exactly as `building.vert` scales its heights.
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inNormal;
 layout(location = 2) in vec2 inExtrude;
 layout(location = 3) in float inDistance;
+layout(location = 4) in float inZ;
 layout(location = 0) out float outDistancePx;
 layout(location = 1) out float outEdgePx;
 layout(push_constant) uniform Push {
@@ -30,6 +36,9 @@ layout(push_constant) uniform Push {
     vec4 color;
     vec4 line;
     vec4 misc;
+    // x: per-tile opacity/morph factor. y: dash phase speed (px/s). z: the tile's
+    // world-px span (Dp), the tile-norm-height -> world-px scale. w reserved.
+    vec4 morph;
 } push;
 
 // Mirrors `style::paint::MIN_HALF_WIDTH_PX`, which GLSL cannot include.
@@ -58,7 +67,18 @@ void main() {
     // every band and so interpolates one unit per screen pixel.
     outEdgePx = offsetPx - centrePx;
     vec2 offsetTile = inNormal * (offsetPx / tilePx);
-    gl_Position = push.tileToClip * vec4(inPosition + offsetTile, 0.0, 1.0);
+    float worldHeight = inZ * push.morph.z;
+    // The height column's w term (tileToClip[2][3]) is 0 on the ortho fast-path (pitch 0)
+    // and -cos(pitch) once tilted — the same test the building shader uses. At pitch 0
+    // feed 0.0 exactly as before, so the flat map is byte-identical with or without a DEM;
+    // tilted, feed the world-px height so the stroke drapes onto the relief. Route and
+    // traffic overlays ride this pipeline with undraped z=0 and a zero span, so they stay
+    // flat by construction.
+    if (abs(push.tileToClip[2][3]) < 1e-6) {
+        gl_Position = push.tileToClip * vec4(inPosition + offsetTile, 0.0, 1.0);
+    } else {
+        gl_Position = push.tileToClip * vec4(inPosition + offsetTile, worldHeight, 1.0);
+    }
     // Distance along the line in pixels, for the dash pattern.
     outDistancePx = inDistance * tilePx;
 }

@@ -1,27 +1,32 @@
 package com.vayunmathur.library.ml
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
-import android.content.res.AssetManager
+import android.content.Context
 import android.util.Log
-import java.nio.FloatBuffer
+import org.pytorch.executorch.EValue
+import org.pytorch.executorch.Module
+import org.pytorch.executorch.Tensor
 
 /**
- * On-device human-move prediction for chess: Maia3-5M on the reduced ONNX Runtime build.
+ * On-device human-move prediction for chess: Maia3-5M, ExecuTorch Vulkan-only, fail-closed.
  *
  * An encoder-only transformer over 64 square tokens — width 256, 8 blocks, 8 heads — at 5.23
- * million parameters. The export (`scripts/ml/maia_to_onnx.py` from `UofTCSSLab/Maia3-5M`)
- * takes `tokens [1, 64, 97]` (square-major planes × 8 plies + clock column) plus the two elo
- * scalars and returns the 4352 move logits directly (from-to pairs plus file promotions).
- * Validated against the torch reference at correlation 1.0, argmax-exact.
+ * million parameters. It predicts what a player *of a given rating* would play, so a weak
+ * setting blunders the way a beginner does. It replaces Stockfish at `Skill Level 0`, which
+ * searched eight ply and then threw a move away in ways no human ever does.
+ *
+ * # One runtime, fail-closed
+ *
+ * The only path is the Vulkan int8-weight-only `.pte` (`maia3_vulkan_int8wo.pte`,
+ * ~6.3 MB, torch-level cos ≥ 0.9990 vs the ship w4 rung) on ExecuTorch: one `forward` call
+ * with three inputs — `tokens [1,64,97]` float32 in the caller's square-major layout,
+ * `self_elo [1]` and `oppo_elo [1]` float32 — returning the 4352 move logits (from-to pairs
+ * plus file promotions) directly. There is no LiteRT fallback: when the `.pte` is absent,
+ * the Vulkan delegate is not linked, or the run fails, [logits] returns null and
+ * [isAvailable] is false.
  *
  * # It predicts, it does not search
  *
  * One forward pass per move and no tree at all, which is the point rather than a compromise.
- * Maia3 is trained on human games to predict what a player *of a given rating* would play, so
- * a weak setting blunders the way a beginner does. It replaces Stockfish at `Skill Level 0`,
- * which searched eight ply and then threw a move away in ways no human ever does.
  *
  * # Strength is an input
  *
@@ -29,10 +34,11 @@ import java.nio.FloatBuffer
  * the model as a blend of two learned embeddings. One weights file therefore covers every
  * difficulty; there is nothing to reload when the player changes it.
  *
- * # One bundled asset, ~21 MiB
+ * # One bundled asset
  *
- * `maia3-5m.onnx` ships inside the APK, so this has an [inAssets] and no download. An asset
- * must be stored **uncompressed** (`noCompress += "onnx"` in `games/chess/build.gradle.kts`).
+ * The graph ships inside the APK, so this has an asset factory and no download. The asset
+ * must be stored **uncompressed** (`noCompress += "pte"` in
+ * `games/chess/build.gradle.kts`).
  *
  * # The caller owns the chess
  *
@@ -43,25 +49,22 @@ import java.nio.FloatBuffer
  *
  * # Availability
  *
- * Construction never throws. [isAvailable] is false when the asset is absent or has an
- * operator outside the reduced build — and then [logits] returns null. The chess app gates
- * its "play against the AI" option on it rather than offering a mode that cannot move.
- *
- * When the Vulkan backend is usable and this graph is allowlisted, inference runs on the
- * Vulkan fast path and ORT is kept only as the fallback: a Vulkan failure (or short output)
- * falls back to the ORT session when it exists, preserving the null-on-failure contract.
+ * Construction never throws. [isAvailable] is false when the backend did not come up — the
+ * asset is absent or has an operator the runtime cannot execute — and then [logits] returns
+ * null. The chess app gates its "play against the AI" option on it rather than offering a
+ * mode that cannot move.
  *
  * # Threading
  *
  * Not thread-safe. A caller must hold a lock across [logits] and [close].
  */
 class MaiaHandle private constructor(private val source: String) : AutoCloseable {
-    private var session: OrtSession? = null
-    private var assetPath: String = GRAPH
-    private var vulkanHandle: Long = 0L
+    private var etModule: Module? = null
+    private var etAssetPath: String = ET_GRAPH
+    private val lock = Any()
 
-    /** True if the graph came up on Vulkan or ORT and is the file this runtime was built against. */
-    val isAvailable: Boolean get() = vulkanHandle != 0L || session != null
+    /** True if the ExecuTorch backend came up. */
+    val isAvailable: Boolean get() = etModule != null
 
     /**
      * The [MOVES] move logits for a board, or null on failure.
@@ -81,138 +84,63 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
      */
     fun logits(planes: FloatArray, selfElo: Int, oppoElo: Int): FloatArray? {
         if (planes.size != PLANE_COUNT * SQUARES) return null
-        // Square-major [64, 12] -> [64, 96] across 8 plies + zero clock column.
-        val tokens = FloatArray(SQUARES * TOKEN_WIDTH)
+        // Square-major [64, 97] (8 plies + zero clock column). The ExecuTorch export takes
+        // this layout directly as [1,64,97].
+        val sqMajor = FloatArray(SQUARES * TOKEN_WIDTH)
         for (square in 0 until SQUARES) {
             for (ply in 0 until HISTORY) {
                 for (plane in 0 until PLANE_COUNT) {
-                    tokens[square * TOKEN_WIDTH + ply * PLANE_COUNT + plane] =
+                    sqMajor[square * TOKEN_WIDTH + ply * PLANE_COUNT + plane] =
                         planes[plane * SQUARES + square]
                 }
             }
         }
         val self = selfElo.coerceIn(0, MAX_ELO).toFloat()
         val oppo = oppoElo.coerceIn(0, MAX_ELO).toFloat()
-        if (vulkanHandle != 0L) {
-            try {
-                vulkanLogits(tokens, self, oppo)?.let { return it }
-            } catch (e: Throwable) {
-                Log.w(TAG, "maia vulkan inference failed, falling back to ORT", e)
-            }
-        }
-        val live = session ?: return null
+        val mod = etModule ?: return null
+        return etLogits(mod, sqMajor, self, oppo)
+    }
+
+    /**
+     * One ExecuTorch `forward` invocation: three inputs, first float output.
+     *
+     * `ExecutorchSessions.runFloat` only covers the single-input case, so Maia — tokens plus
+     * two elo scalars — wraps one [Tensor] per input in an [EValue] and goes through [run]
+     * directly. Reads through [floatsAllowingHalf] (not a FLOAT-only check): the Vulkan fp16
+     * fallback rung returns HALF. Returns null (never throws) on any failure — fail-closed,
+     * no fallback backend.
+     */
+    private fun etLogits(mod: Module, sqMajor: FloatArray, self: Float, oppo: Float): FloatArray? {
         return try {
-            val env = OrtEnvironment.getEnvironment()
-            val tokenTensor = OnnxTensor.createTensor(
-                env, FloatBuffer.wrap(tokens), longArrayOf(1, SQUARES.toLong(), TOKEN_WIDTH.toLong()),
+            val inputs = listOf(
+                EValue.from(Tensor.fromBlob(sqMajor, longArrayOf(1, SQUARES.toLong(), TOKEN_WIDTH.toLong()))),
+                EValue.from(Tensor.fromBlob(floatArrayOf(self), longArrayOf(1))),
+                EValue.from(Tensor.fromBlob(floatArrayOf(oppo), longArrayOf(1))),
             )
-            val selfTensor = OnnxTensor.createTensor(
-                env, floatArrayOf(self),
-            )
-            val oppoTensor = OnnxTensor.createTensor(
-                env, floatArrayOf(oppo),
-            )
-            tokenTensor.useOrt {
-                selfTensor.useOrt {
-                    oppoTensor.useOrt {
-                        live.run(
-                            mapOf(
-                                "tokens" to tokenTensor,
-                                "self_elo" to selfTensor,
-                                "oppo_elo" to oppoTensor,
-                            ),
-                        ).useOrt { result ->
-                            val out = result.get("moves").get() as OnnxTensor
-                            val vec = FloatArray(MOVES)
-                            out.floatBuffer.get(vec)
-                            vec
-                        }
-                    }
-                }
-            }
+            val outputs = synchronized(lock) {
+                ExecutorchSessions.run(mod, inputs)
+            } ?: return null
+            outputs.firstOrNull()?.floatsAllowingHalf(TAG, MOVES)
         } catch (e: Throwable) {
-            Log.e(TAG, "maia inference failed", e)
+            Log.e(TAG, "maia ET inference failed", e)
             null
         }
     }
 
-    /** Free the Vulkan and/or ORT session. Idempotent. */
+    /** Free the backend. Idempotent. */
     override fun close() {
-        val handle = vulkanHandle
-        vulkanHandle = 0L
-        if (handle != 0L) {
-            try {
-                VulkanSessions.close(handle)
-            } catch (e: Throwable) {
-                Log.w(TAG, "maia vulkan close failed", e)
-            }
+        synchronized(lock) {
+            etModule = null
+            ExecutorchSessions.close("asset:$etAssetPath")
         }
-        session = null
-        OnnxSessions.close("asset:$assetPath")
     }
 
     override fun toString(): String = "Maia3-5M from $source"
 
-    /**
-     * Best-effort Vulkan fast path; leaves [vulkanHandle] at 0 on any failure so ORT stays
-     * the fallback. The model bytes are read once and shared by the preflight check
-     * and the open.
-     */
-    private fun tryVulkan(assets: AssetManager, path: String) {
-        try {
-            if (!VulkanSessions.isUsable()) return
-            val key = "asset:$path"
-            val modelBytes = try {
-                assets.open(path).use { it.readBytes() }
-            } catch (e: Throwable) {
-                Log.w(TAG, "cannot read $path for vulkan preflight", e)
-                return
-            }
-            val problem = VulkanSessions.preflight(key, readModel = { modelBytes })
-            if (problem != null) {
-                Log.w(TAG, "vulkan preflight skipped for $path: $problem")
-                return
-            }
-            val handle = VulkanSessions.open(key) { modelBytes }
-            if (handle != 0L) {
-                vulkanHandle = handle
-                Log.i(TAG, "vulkan session open for $key")
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "vulkan open failed for $path, using ORT", e)
-            vulkanHandle = 0L
-        }
-    }
-
-    /**
-     * Vulkan fast path: the same inputs as the ORT call, in the model's input order,
-     * marshalled through the self-describing [VulkanWire] payload.
-     *
-     * Returns null when the bridge returns no bytes or no output has the expected
-     * [MOVES] width, so the caller falls back to ORT.
-     */
-    private fun vulkanLogits(tokens: FloatArray, selfElo: Float, oppoElo: Float): FloatArray? {
-        val handle = vulkanHandle
-        if (handle == 0L) return null
-        val inputs = listOf(
-            VulkanWire.floats(longArrayOf(1, SQUARES.toLong(), TOKEN_WIDTH.toLong()), tokens),
-            VulkanWire.floats(longArrayOf(1), floatArrayOf(selfElo)),
-            VulkanWire.floats(longArrayOf(1), floatArrayOf(oppoElo)),
-        )
-        val outputs = VulkanSessions.run(handle, inputs) ?: return null
-        val moves = outputs.firstOrNull {
-            it.dtype == VulkanWire.DTYPE_F32 && it.bytes.size / 4 == MOVES
-        } ?: run {
-            Log.w(TAG, "maia vulkan produced no $MOVES-wide output")
-            return null
-        }
-        return moves.asFloats()
-    }
-
     companion object {
         private const val TAG = "MaiaHandle"
 
-        /** Board squares, and so the model's sequence length. One token per square. */
+        /** Board squares. One token per square. */
         const val SQUARES = 64
 
         /** Board planes: six piece types for each colour. */
@@ -228,22 +156,37 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
         /** The highest rating the model interpolates to. Higher inputs clamp to it. */
         const val MAX_ELO = 5000
 
-        /** The one graph. A wrong file fails at load. */
-        const val GRAPH = "maia3-5m.onnx"
+        /** The ExecuTorch graph (Vulkan int8-weight-only ship candidate). A wrong file fails at load. */
+        const val ET_GRAPH = "maia3_vulkan_int8wo.pte"
 
         /**
-         * The model from the APK's assets, which is the only place it lives.
+         * The model from the APK's assets: ExecuTorch Vulkan-only, fail-closed.
          *
-         * No `inDirectory` counterpart: at ~21 MiB this is bundled, so there is no download
-         * directory to look in.
+         * The ExecuTorch attempt is skipped unless the Vulkan delegate is linked into the
+         * runtime (`library/ml/libs/executorch-vulkan-1.4.0.aar`, XNNPACK=OFF), so on
+         * devices without the Vulkan AAR this reports unavailable rather than loading a
+         * fallback. Needs a [Context] (not just an `AssetManager`) because
+         * [ExecutorchSessions] stages the `.pte` under `cacheDir/executorch` before
+         * loading it.
          */
-        fun inAssets(assets: AssetManager, path: String = GRAPH): MaiaHandle {
-            val instance = MaiaHandle("the APK's $path")
-            instance.assetPath = path
-            instance.session = OnnxSessions.openAssetManager(assets, path)
-            instance.tryVulkan(assets, path)
-            if (!instance.isAvailable) Log.e(TAG, "cannot open $path")
+        fun inContext(
+            context: Context,
+            ptePath: String = ET_GRAPH,
+        ): MaiaHandle {
+            val instance = MaiaHandle("the APK's $ptePath")
+            instance.etAssetPath = ptePath
+            instance.etModule = openEt(context, ptePath)
+            if (!instance.isAvailable) Log.e(TAG, "cannot open $ptePath")
             return instance
+        }
+
+        private fun openEt(context: Context, ptePath: String): Module? {
+            val backends = ExecutorchSessions.registeredBackends()
+            if (backends?.any { it.contains("Vulkan", ignoreCase = true) } != true) {
+                Log.i(TAG, "Vulkan backend absent, skipping $ptePath")
+                return null
+            }
+            return ExecutorchSessions.openAsset(context, ptePath)
         }
     }
 }

@@ -1,8 +1,8 @@
-use super::*;
 use super::metrics::{MEDIUM_TTF, REGULAR_TTF};
 use super::placement::place_in_cell;
-use ab_glyph::Font as _;
+use super::*;
 use crate::tile::glyph::fonts_staged;
+use ab_glyph::Font as _;
 
 /// The staged TTFs are GitHub 404 pages, not fonts (task 54 re-fetch pending).
 /// These tests need real Noto Sans bytes; they run again once they land.
@@ -22,7 +22,10 @@ fn both_bundled_fonts_parse_and_cover_ascii() {
             atlas.metrics(Weight::Regular, ch).is_some() || ch == ' ',
             "{ch:?} missing from Regular"
         );
-        assert!(atlas.metrics(Weight::Medium, ch).is_some() || ch == ' ', "{ch:?} missing");
+        assert!(
+            atlas.metrics(Weight::Medium, ch).is_some() || ch == ' ',
+            "{ch:?} missing"
+        );
     }
 }
 
@@ -39,7 +42,11 @@ fn the_atlas_is_a_full_r8_image() {
     // (A fully-flat 127 image means the transform wrote nothing.)
     let min = *atlas.pixels.iter().min().unwrap();
     let max = *atlas.pixels.iter().max().unwrap();
-    let mid = atlas.pixels.iter().filter(|&&v| (64..=192).contains(&v)).count();
+    let mid = atlas
+        .pixels
+        .iter()
+        .filter(|&&v| (64..=192).contains(&v))
+        .count();
     assert!(mid > 10_000, "mid {mid}");
     assert!(min < 64, "min {min}");
     assert!(max > 192, "max {max}");
@@ -72,9 +79,15 @@ fn every_char_looks_up_the_cell_it_was_inserted_in() {
     let atlas = GlyphAtlas::build();
     let chars = charset();
     for weight in [Weight::Regular, Weight::Medium] {
-        let base = if weight == Weight::Regular { 0 } else { chars.len() as u32 };
+        let base = if weight == Weight::Regular {
+            0
+        } else {
+            chars.len() as u32
+        };
         for (i, &ch) in chars.iter().enumerate() {
-            let Some(m) = atlas.metrics(weight, ch) else { continue };
+            let Some(m) = atlas.metrics(weight, ch) else {
+                continue;
+            };
             // Insertion assigned Regular -> i, Medium -> len + i.
             assert_eq!(m.cell, base + i as u32, "{weight:?} {ch:?}");
             let Some(uv) = atlas.uv(weight, ch) else {
@@ -88,10 +101,18 @@ fn every_char_looks_up_the_cell_it_was_inserted_in() {
             let row = m.cell / ATLAS_COLS;
             let n = ATLAS_PX as f32;
             let (lo_u, lo_v) = ((col * CELL_PX) as f32 / n, (row * CELL_PX) as f32 / n);
-            let (hi_u, hi_v) =
-                (((col + 1) * CELL_PX) as f32 / n, ((row + 1) * CELL_PX) as f32 / n);
-            assert!(uv.u0 >= lo_u && uv.u1 <= hi_u, "{weight:?} {ch:?} u escapes its cell");
-            assert!(uv.v0 >= lo_v && uv.v1 <= hi_v, "{weight:?} {ch:?} v escapes its cell");
+            let (hi_u, hi_v) = (
+                ((col + 1) * CELL_PX) as f32 / n,
+                ((row + 1) * CELL_PX) as f32 / n,
+            );
+            assert!(
+                uv.u0 >= lo_u && uv.u1 <= hi_u,
+                "{weight:?} {ch:?} u escapes its cell"
+            );
+            assert!(
+                uv.v0 >= lo_v && uv.v1 <= hi_v,
+                "{weight:?} {ch:?} v escapes its cell"
+            );
         }
     }
 }
@@ -113,7 +134,9 @@ fn a_glyphs_uv_rect_has_the_same_aspect_ratio_as_its_quad() {
     let atlas = GlyphAtlas::build();
     let mut checked = 0;
     for ch in charset() {
-        let Some(m) = atlas.metrics(Weight::Regular, ch) else { continue };
+        let Some(m) = atlas.metrics(Weight::Regular, ch) else {
+            continue;
+        };
         if m.w == 0.0 || m.h == 0.0 {
             continue;
         }
@@ -141,14 +164,29 @@ fn a_capitals_quad_is_the_right_size_against_its_advance() {
         return;
     }
     let atlas = GlyphAtlas::build();
-    let m = atlas.metrics(Weight::Regular, 'H').expect("H is in the charset");
+    let m = atlas
+        .metrics(Weight::Regular, 'H')
+        .expect("H is in the charset");
     // Cap height is ~0.714 em; the quad adds spread on both sides, so it
     // lands above that and well under a whole em and a half.
     let em = UP_EM as f32;
-    assert!(m.h / em > 0.71, "H quad {:.3} em is shorter than its cap height", m.h / em);
-    assert!(m.h / em < 1.3, "H quad {:.3} em is implausibly tall", m.h / em);
+    assert!(
+        m.h / em > 0.71,
+        "H quad {:.3} em is shorter than its cap height",
+        m.h / em
+    );
+    assert!(
+        m.h / em < 1.3,
+        "H quad {:.3} em is implausibly tall",
+        m.h / em
+    );
     // And it fills its advance rather than rattling around inside it.
-    assert!(m.w > m.advance * 0.8, "H quad {} narrow against advance {}", m.w, m.advance);
+    assert!(
+        m.w > m.advance * 0.8,
+        "H quad {} narrow against advance {}",
+        m.w,
+        m.advance
+    );
 }
 
 /// `UP_EM` is the denominator for every font-unit metric, so a font whose real
@@ -176,11 +214,29 @@ fn a_glyph_is_centred_in_its_cell_with_the_spread_reserved_all_round() {
     // ox/oy are what let `ink_uv` pad outwards without leaving the cell.
     for (w, h) in [(10, 34), (34, 34), (60, 20), (200, 200), (1, 1)] {
         let p = place_in_cell(w, h);
-        assert!(p.ox >= SDF_SPREAD_PX, "{w}x{h}: ox {} under the margin", p.ox);
-        assert!(p.oy >= SDF_SPREAD_PX, "{w}x{h}: oy {} under the margin", p.oy);
-        assert!(p.ox + p.dw + SDF_SPREAD_PX <= CELL_PX, "{w}x{h}: overruns right");
-        assert!(p.oy + p.dh + SDF_SPREAD_PX <= CELL_PX, "{w}x{h}: overruns bottom");
-        assert!(p.scale > 0.0 && p.scale <= 1.0, "{w}x{h}: scale {}", p.scale);
+        assert!(
+            p.ox >= SDF_SPREAD_PX,
+            "{w}x{h}: ox {} under the margin",
+            p.ox
+        );
+        assert!(
+            p.oy >= SDF_SPREAD_PX,
+            "{w}x{h}: oy {} under the margin",
+            p.oy
+        );
+        assert!(
+            p.ox + p.dw + SDF_SPREAD_PX <= CELL_PX,
+            "{w}x{h}: overruns right"
+        );
+        assert!(
+            p.oy + p.dh + SDF_SPREAD_PX <= CELL_PX,
+            "{w}x{h}: overruns bottom"
+        );
+        assert!(
+            p.scale > 0.0 && p.scale <= 1.0,
+            "{w}x{h}: scale {}",
+            p.scale
+        );
     }
 }
 

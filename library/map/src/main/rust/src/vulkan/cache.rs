@@ -90,7 +90,12 @@ impl ShaderCache {
         } else {
             blob.as_ref().map_or(0, |bytes| bytes.len())
         };
-        ShaderCache { handle, path, on_disk, slot: NEXT_SLOT.fetch_add(1, Ordering::Relaxed) }
+        ShaderCache {
+            handle,
+            path,
+            on_disk,
+            slot: NEXT_SLOT.fetch_add(1, Ordering::Relaxed),
+        }
     }
 
     pub fn handle(&self) -> vk::PipelineCache {

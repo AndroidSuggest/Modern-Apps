@@ -14,15 +14,33 @@
     <string name="tab_title_info">Info</string>
     <!-- View screen: tab showing the emergency contacts. Noun. -->
     <string name="tab_title_contacts">Contacts</string>
+    <!-- View screen: heading above the owner's name and address cards. Noun. -->
+    <string name="group_owner">Owner</string>
+    <!-- View screen: heading above each emergency contact's name and number cards. Noun phrase. -->
+    <string name="group_emergency_contact">Emergency Contact</string>
+    <!-- View screen: heading above the allergies group. Noun. -->
+    <string name="section_allergies">Allergies</string>
+    <!-- View screen: heading above the conditions group. Noun. -->
+    <string name="section_conditions">Conditions</string>
+    <!-- View screen: heading above the medications group. Noun. -->
+    <string name="section_medications">Medications</string>
     <!-- View screen: shown when neither medical info nor contacts are set. -->
     <string name="no_info">No emergency information provided.</string>
-    <!-- View screen: button that opens the editor. Verb phrase. -->
-    <string name="edit_info">Edit information</string>
 
     <!-- Edit screen: owner's name row. Noun. -->
     <string name="field_name">Name</string>
     <!-- Edit screen: address row. Noun. -->
     <string name="field_address">Address</string>
+    <!-- Edit screen: heading above the owner's picked identity. Noun phrase. -->
+    <string name="section_owner_identity">Your identity</string>
+    <!-- Edit screen: row that opens the contact picker for the owner's identity. Verb phrase. -->
+    <string name="choose_owner_contact">Choose your contact</string>
+    <!-- Edit screen: hint shown when no owner contact has been picked yet. -->
+    <string name="owner_identity_empty">Pick your contact to fill in your name and address.</string>
+    <!-- Address chooser: title asking which of the picked contact's addresses to use. Has the contact's name as its argument. -->
+    <string name="owner_address_chooser_title">Which address for <xliff:g id="name" example="Sam Rivera">%1$s</xliff:g>?</string>
+    <!-- Edit screen: shown when the picked owner contact could not be read. -->
+    <string name="fail_pick_owner">Could not read that contact.</string>
     <!-- Edit screen: blood-type row. Noun phrase. -->
     <string name="field_blood_type">Blood type</string>
     <!-- Edit screen: organ-donor row. Noun phrase. -->
@@ -65,10 +83,8 @@
     <!-- Shown in place of the contact list while contacts are still being read. -->
     <string name="contacts_loading">Loading contacts…</string>
 
-    <!-- View/edit screen: heading above allergies read from Health Connect. Noun. -->
-    <string name="section_allergies">Allergies</string>
-    <!-- View/edit screen: heading above current medications read from Health Connect. Noun phrase. -->
-    <string name="section_current_medications">Current medications</string>
+    <!-- View screen: heading above current medications read from Health Connect. Noun phrase. -->
+    <string name="section_current_medications">Medications</string>
     <!-- Attribution shown under the Health Connect sections. -->
     <string name="from_health_connect">From Health Connect</string>
     <!-- Allergy criticality shown as a trailing label on high-severity allergies. Noun phrase. -->

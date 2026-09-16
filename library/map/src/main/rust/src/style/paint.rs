@@ -90,7 +90,10 @@ pub struct Stroke {
 }
 
 impl Stroke {
-    pub const NONE: Stroke = Stroke { width_dp: 0.0, gap_width_dp: 0.0 };
+    pub const NONE: Stroke = Stroke {
+        width_dp: 0.0,
+        gap_width_dp: 0.0,
+    };
 
     /// Would this stroke put anything on screen?
     ///
@@ -107,7 +110,10 @@ impl Stroke {
     /// the shader widens a sub-pixel stroke to [`MIN_HALF_WIDTH_PX`] of geometry and fades it
     /// by coverage instead, so the value handed over stays the width the style asked for.
     pub fn half_px(&self, density: f32) -> (f32, f32) {
-        (self.width_dp * density / 2.0, self.gap_width_dp * density / 2.0)
+        (
+            self.width_dp * density / 2.0,
+            self.gap_width_dp * density / 2.0,
+        )
     }
 }
 
@@ -127,7 +133,10 @@ pub struct Ramp {
 impl Ramp {
     /// A property that does not vary.
     pub fn constant(value: f32) -> Ramp {
-        Ramp { base: 1.0, stops: vec![(0.0, value)] }
+        Ramp {
+            base: 1.0,
+            stops: vec![(0.0, value)],
+        }
     }
 
     /// The value at `zoom`, clamped to the first and last stop outside the ramp's range.
@@ -142,7 +151,11 @@ impl Ramp {
         if zoom >= self.stops[last].0 {
             return self.stops[last].1;
         }
-        let index = self.stops.windows(2).position(|pair| zoom <= pair[1].0).unwrap_or(0);
+        let index = self
+            .stops
+            .windows(2)
+            .position(|pair| zoom <= pair[1].0)
+            .unwrap_or(0);
         let (lower_zoom, lower) = self.stops[index];
         let (upper_zoom, upper) = self.stops[index + 1];
         let span = upper_zoom - lower_zoom;
@@ -162,10 +175,17 @@ impl Ramp {
     /// — which is what makes it the right answer to "does this layer have a gap at all", a
     /// question [`Layer::gapped`] has to answer once rather than per zoom.
     pub fn peak(&self) -> f32 {
-        self.stops.iter().fold(f32::NEG_INFINITY, |peak, (_, value)| peak.max(*value))
+        self.stops
+            .iter()
+            .fold(f32::NEG_INFINITY, |peak, (_, value)| peak.max(*value))
     }
 
-    pub(crate) fn parse(json: Option<&Json>, id: &str, property: &str, default: f32) -> Result<Ramp, String> {
+    pub(crate) fn parse(
+        json: Option<&Json>,
+        id: &str,
+        property: &str,
+        default: f32,
+    ) -> Result<Ramp, String> {
         let Some(json) = json else {
             return Ok(Ramp::constant(default));
         };
@@ -219,7 +239,9 @@ pub struct Style {
 pub fn parse(source: &str) -> Result<Style, String> {
     let root: Json =
         serde_json::from_str(source).map_err(|e| format!("the flat style is not JSON: {e}"))?;
-    let background = root.get("background").ok_or("the flat style has no `background`")?;
+    let background = root
+        .get("background")
+        .ok_or("the flat style has no `background`")?;
     let layers = root
         .get("layers")
         .and_then(Json::as_array)

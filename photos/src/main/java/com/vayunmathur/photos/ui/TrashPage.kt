@@ -43,7 +43,6 @@ import com.vayunmathur.library.ui.IconUnarchive
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.photos.LocalColumnCount
-import com.vayunmathur.photos.NavigationBar
 import com.vayunmathur.photos.Route
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.util.GalleryViewModel
@@ -98,6 +97,7 @@ fun TrashPage(backStack: NavBackStack<Route>, galleryViewModel: GalleryViewModel
         } else {
             stringResource(com.vayunmathur.photos.R.string.label_trash)
         },
+        onNavigateBack = if (isSelectionMode) null else ({ backStack.pop() }),
         onClose = closeSelection,
         actions = {
             if (isSelectionMode) {
@@ -127,7 +127,6 @@ fun TrashPage(backStack: NavBackStack<Route>, galleryViewModel: GalleryViewModel
                 }
             }
         },
-        bottomBar = { if (!isSelectionMode) NavigationBar(Route.Trash, backStack) },
         scrollBehavior = appBarScrollBehavior(),
     ) { paddingValues ->
         if (trashedPhotos.isEmpty()) {

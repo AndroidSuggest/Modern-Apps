@@ -53,7 +53,10 @@ fn unit_centreline(turn: f32) -> [((f32, f32), f32); BEND_SEGMENTS + 2] {
         let point = if straight {
             (BEND_START_X + BEND_LEN * t, 0.0)
         } else {
-            (BEND_START_X + radius * u.sin(), side * radius * (1.0 - u.cos()))
+            (
+                BEND_START_X + radius * u.sin(),
+                side * radius * (1.0 - u.cos()),
+            )
         };
         pts[i + 1] = (point, side * u);
     }
@@ -62,7 +65,10 @@ fn unit_centreline(turn: f32) -> [((f32, f32), f32); BEND_SEGMENTS + 2] {
 
 /// One edge of the shaft at a centreline point, offset perpendicular to the heading there.
 fn shaft_edge(((x, y), heading): ((f32, f32), f32), half_width: f32) -> (f32, f32) {
-    (x - heading.sin() * half_width, y + heading.cos() * half_width)
+    (
+        x - heading.sin() * half_width,
+        y + heading.cos() * half_width,
+    )
 }
 
 /// The arrow as a triangle list in unit coordinates (roughly `-1..1`), running along `+x` — the
@@ -84,8 +90,14 @@ pub fn unit_arrow_triangles(turn: f32) -> [(f32, f32); ARROW_VERTS] {
     let mut n = 0;
     for pair in pts.windows(2) {
         let (a, b) = (pair[0], pair[1]);
-        let (al, ar) = (shaft_edge(a, -SHAFT_HALF_WIDTH), shaft_edge(a, SHAFT_HALF_WIDTH));
-        let (bl, br) = (shaft_edge(b, -SHAFT_HALF_WIDTH), shaft_edge(b, SHAFT_HALF_WIDTH));
+        let (al, ar) = (
+            shaft_edge(a, -SHAFT_HALF_WIDTH),
+            shaft_edge(a, SHAFT_HALF_WIDTH),
+        );
+        let (bl, br) = (
+            shaft_edge(b, -SHAFT_HALF_WIDTH),
+            shaft_edge(b, SHAFT_HALF_WIDTH),
+        );
         out[n..n + 6].copy_from_slice(&[al, bl, br, al, br, ar]);
         n += 6;
     }

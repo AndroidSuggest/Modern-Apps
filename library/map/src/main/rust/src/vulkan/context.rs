@@ -50,7 +50,10 @@ impl Context {
         let entry = Entry::load().map_err(|e| format!("no libvulkan.so: {e:?}"))?;
 
         let app_name = CString::new("map_renderer").expect("static string");
-        let extensions = [ash::khr::surface::NAME.as_ptr(), ash::khr::android_surface::NAME.as_ptr()];
+        let extensions = [
+            ash::khr::surface::NAME.as_ptr(),
+            ash::khr::android_surface::NAME.as_ptr(),
+        ];
         let app_info = vk::ApplicationInfo::default()
             .application_name(&app_name)
             .engine_name(&app_name)
@@ -144,9 +147,9 @@ impl Context {
         entry
             .enumerate_instance_layer_properties()
             .map(|layers| {
-                layers.iter().any(|l| {
-                    CStr::from_ptr(l.layer_name.as_ptr()) == wanted
-                })
+                layers
+                    .iter()
+                    .any(|l| CStr::from_ptr(l.layer_name.as_ptr()) == wanted)
             })
             .unwrap_or(false)
     }

@@ -146,7 +146,13 @@ impl RoutePlacement {
     /// camera needs to place a mesh built at zoom 0.
     pub fn at_zoom(&self, zoom: f64) -> (WorldPx, f64) {
         let scale = 2f64.powf(zoom);
-        (WorldPx { x: self.origin.x * scale, y: self.origin.y * scale }, self.span * scale)
+        (
+            WorldPx {
+                x: self.origin.x * scale,
+                y: self.origin.y * scale,
+            },
+            self.span * scale,
+        )
     }
 
     /// The route line's half-width in **device px** — what a fill pass pushes.
@@ -162,7 +168,8 @@ impl RoutePlacement {
     /// zero-width casing pass would paint a pixel of casing colour poking out from under
     /// the route rather than nothing.
     pub fn casing_half(&self, density: f32) -> Option<f32> {
-        (self.style.casing_dp > 0.0).then(|| self.fill_half(density) + self.style.casing_dp * density)
+        (self.style.casing_dp > 0.0)
+            .then(|| self.fill_half(density) + self.style.casing_dp * density)
     }
 }
 
@@ -184,8 +191,14 @@ pub fn tessellate(segments: &[RouteSegment], style: RouteStyle) -> Option<RouteM
     // square and their strokes line up. Zoom 0 is the reference the mesh is stored at:
     // any zoom would do, since the normalisation divides the scale out, and zero needs
     // no argument.
-    let mut min = WorldPx { x: f64::MAX, y: f64::MAX };
-    let mut max = WorldPx { x: f64::MIN, y: f64::MIN };
+    let mut min = WorldPx {
+        x: f64::MAX,
+        y: f64::MAX,
+    };
+    let mut max = WorldPx {
+        x: f64::MIN,
+        y: f64::MIN,
+    };
     let mut any = false;
     for segment in segments {
         for &(lon, lat) in &segment.points {
@@ -233,13 +246,21 @@ pub fn tessellate(segments: &[RouteSegment], style: RouteStyle) -> Option<RouteM
         if index_count == 0 {
             continue;
         }
-        ranges.push(RouteSegmentRange { color: segment.color, index_offset, index_count });
+        ranges.push(RouteSegmentRange {
+            color: segment.color,
+            index_offset,
+            index_count,
+        });
     }
     if ranges.is_empty() {
         return None;
     }
     Some(RouteMesh {
-        placement: RoutePlacement { origin: min, span, style },
+        placement: RoutePlacement {
+            origin: min,
+            span,
+            style,
+        },
         vertices,
         indices,
         segments: ranges,
@@ -247,7 +268,8 @@ pub fn tessellate(segments: &[RouteSegment], style: RouteStyle) -> Option<RouteM
 }
 
 #[cfg(test)]
-mod tests {
+#[path = "overlay_tests.rs"]
+mod tests;
     use super::*;
     use crate::camera::Camera;
 
@@ -267,12 +289,19 @@ mod tests {
 
     /// Wrap a bare polyline as the one coloured run a single-colour route is.
     fn one(points: &[(f64, f64)]) -> Vec<RouteSegment> {
-        vec![RouteSegment { points: points.to_vec(), color: FILL }]
+        vec![RouteSegment {
+            points: points.to_vec(),
+            color: FILL,
+        }]
     }
 
     /// A three-point route across San Francisco.
     fn sf_route() -> Vec<(f64, f64)> {
-        vec![(-122.4194, 37.7749), (-122.3894, 37.7949), (-122.3694, 37.7849)]
+        vec![
+            (-122.4194, 37.7749),
+            (-122.3894, 37.7949),
+            (-122.3694, 37.7849),
+        ]
     }
 
     fn camera(zoom: f64, bearing: f64) -> Camera {
@@ -297,7 +326,10 @@ mod tests {
         let m = camera.world_quad_to_clip(origin, span);
         let x = m[0] * u + m[4] * v + m[12];
         let y = m[1] * u + m[5] * v + m[13];
-        (x as f64 * camera.width_dp as f64 / 2.0, y as f64 * camera.height_dp as f64 / 2.0)
+        (
+            x as f64 * camera.width_dp as f64 / 2.0,
+            y as f64 * camera.height_dp as f64 / 2.0,
+        )
     }
 
     #[test]
@@ -323,8 +355,14 @@ mod tests {
         // non-overlapping slice of the indices that together cover the whole thing — which
         // is what lets the casing draw the lot once and each fill draw its own slice.
         let segments = vec![
-            RouteSegment { points: vec![(-122.42, 37.77), (-122.40, 37.79)], color: 0xFF00_FF00 },
-            RouteSegment { points: vec![(-122.40, 37.79), (-122.38, 37.78)], color: 0xFFFF_0000 },
+            RouteSegment {
+                points: vec![(-122.42, 37.77), (-122.40, 37.79)],
+                color: 0xFF00_FF00,
+            },
+            RouteSegment {
+                points: vec![(-122.40, 37.79), (-122.38, 37.78)],
+                color: 0xFFFF_0000,
+            },
         ];
         let mesh = tessellate(&segments, style()).expect("two runs");
         assert_eq!(mesh.segments.len(), 2);
@@ -332,8 +370,7 @@ mod tests {
         assert_eq!(mesh.segments[1].color, 0xFFFF_0000);
         assert_eq!(mesh.segments[0].index_offset, 0);
         assert_eq!(
-            mesh.segments[1].index_offset,
-            mesh.segments[0].index_count,
+            mesh.segments[1].index_offset, mesh.segments[0].index_count,
             "the second run starts where the first ends",
         );
         assert_eq!(
@@ -349,8 +386,14 @@ mod tests {
         // One good run and one glitchy single-point run: the good one still draws, and the
         // degenerate one contributes no range rather than blanking the whole route.
         let segments = vec![
-            RouteSegment { points: vec![(-122.42, 37.77), (-122.40, 37.79)], color: FILL },
-            RouteSegment { points: vec![(-122.40, 37.79)], color: 0xFFFF_0000 },
+            RouteSegment {
+                points: vec![(-122.42, 37.77), (-122.40, 37.79)],
+                color: FILL,
+            },
+            RouteSegment {
+                points: vec![(-122.40, 37.79)],
+                color: 0xFFFF_0000,
+            },
         ];
         let mesh = tessellate(&segments, style()).expect("the good run draws");
         assert_eq!(mesh.segments.len(), 1);
@@ -362,13 +405,18 @@ mod tests {
         assert!(tessellate(&[], style()).is_none());
         assert!(tessellate(&one(&[(-122.4, 37.7)]), style()).is_none());
         // Every point in the same place: no bounding box, no direction, no line.
-        assert!(tessellate(&one(&[(-122.4, 37.7), (-122.4, 37.7), (-122.4, 37.7)]), style()).is_none());
+        assert!(tessellate(
+            &one(&[(-122.4, 37.7), (-122.4, 37.7), (-122.4, 37.7)]),
+            style()
+        )
+        .is_none());
     }
 
     #[test]
     fn a_route_running_due_north_still_has_a_square_to_live_in() {
         // Zero width on x, which is what squaring the bounding box exists to survive.
-        let mesh = tessellate(&one(&[(-122.4, 37.7), (-122.4, 37.8)]), style()).expect("a meridian");
+        let mesh =
+            tessellate(&one(&[(-122.4, 37.7), (-122.4, 37.8)]), style()).expect("a meridian");
         assert!(mesh.placement.span > 0.0);
         assert!(mesh.vertices.iter().all(|f| f.is_finite()));
     }
@@ -463,7 +511,10 @@ mod tests {
         let (tx, ty) = screen_dp(&mesh, &turned, u, v);
         // A 90-degree bearing maps (x, y) to (y, -x).
         assert!((tx - ny).abs() < 0.05, "{tx} should be the north-up y {ny}");
-        assert!((ty - -nx).abs() < 0.05, "{ty} should be minus the north-up x {nx}");
+        assert!(
+            (ty - -nx).abs() < 0.05,
+            "{ty} should be minus the north-up x {nx}"
+        );
         // And the distance from the centre is unchanged, because a rotation is not a
         // scale.
         assert!(
@@ -489,7 +540,10 @@ mod tests {
         // casing half-width rather than a zero one: `line.vert` floors a band at half a
         // pixel so a hairline still rasterises, so a zero-width casing would poke a pixel
         // of casing colour out from under the route.
-        let plain = RouteStyle { casing_dp: 0.0, ..style() };
+        let plain = RouteStyle {
+            casing_dp: 0.0,
+            ..style()
+        };
         let mesh = tessellate(&one(&sf_route()), plain).expect("a route");
         assert!(mesh.placement.casing_half(2.0).is_none());
         assert!(mesh.placement.fill_half(2.0) > 0.0);

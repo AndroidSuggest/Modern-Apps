@@ -63,8 +63,11 @@ pub fn resident_set(camera: &Camera, min_zoom: u8, max_zoom: u8) -> Vec<TileId> 
             if tile.z < min_zoom + level {
                 continue;
             }
-            let ancestor =
-                TileId { z: tile.z - level, x: tile.x >> level, y: tile.y >> level };
+            let ancestor = TileId {
+                z: tile.z - level,
+                x: tile.x >> level,
+                y: tile.y >> level,
+            };
             if seen.insert(ancestor.key()) {
                 out.push(ancestor);
             }

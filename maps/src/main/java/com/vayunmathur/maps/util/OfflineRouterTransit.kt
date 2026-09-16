@@ -344,31 +344,65 @@ internal object OfflineRouterTransit {
             } catch (_: Exception) {
                 null
             } ?: continue
-            for (line in raw) {
-                if (line.coords.size < 4) continue
-                val points = mutableListOf<GeoPoint>()
-                var i = 0
-                while (i + 1 < line.coords.size) {
-                    // Native emits [lon, lat] pairs like a RawStep geometry.
-                    points.add(GeoPoint(line.coords[i], line.coords[i + 1]))
-                    i += 2
-                }
-                if (points.size < 2) continue
-                out.add(
-                        RailLine(
-                                name = line.name,
-                                color = if (line.color == 0) null
-                                        else String.format("%06X", line.color and 0xFFFFFF),
-                                mode = gtfsRouteTypeToMode(line.routeType),
-                                points = points,
-                                ordinal = line.ordinal,
-                                lanes = line.lanes,
-                                taper = line.taper,
-                        )
-                )
-            }
+            out.addAll(rawLinesToRailLines(raw))
         }
         out
+    }
+
+    /**
+     * Offline transit lines for the selected stop, read straight from the
+     * on-device timetable pack (GTFS-shape polylines per route serving the
+     * stop) rather than the tile layer that needs an archive rebuild. Buses
+     * included: at one stop a handful of bus polylines is context, not noise.
+     * Empty when no pack covers the stop.
+     */
+    suspend fun stopLines(
+            context: Context,
+            lat: Double,
+            lon: Double,
+    ): List<RailLine> = withContext(Dispatchers.Default) {
+        val base = OfflineRouter.transitBase(context) ?: return@withContext emptyList()
+        val feeds = transitFeeds(base)
+        if (feeds.isEmpty()) return@withContext emptyList()
+
+        val out = mutableListOf<RailLine>()
+        for (feed in feeds) {
+            val raw = try {
+                OfflineRouter.getStopLinesNative(base, feed, lat, lon)
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            out.addAll(rawLinesToRailLines(raw))
+        }
+        out
+    }
+
+    private fun rawLinesToRailLines(raw: Array<OfflineRouter.RawRailLine>): List<RailLine> {
+        val out = mutableListOf<RailLine>()
+        for (line in raw) {
+            if (line.coords.size < 4) continue
+            val points = mutableListOf<GeoPoint>()
+            var i = 0
+            while (i + 1 < line.coords.size) {
+                // Native emits [lon, lat] pairs like a RawStep geometry.
+                points.add(GeoPoint(line.coords[i], line.coords[i + 1]))
+                i += 2
+            }
+            if (points.size < 2) continue
+            out.add(
+                    RailLine(
+                            name = line.name,
+                            color = if (line.color == 0) null
+                                    else String.format("%06X", line.color and 0xFFFFFF),
+                            mode = gtfsRouteTypeToMode(line.routeType),
+                            points = points,
+                            ordinal = line.ordinal,
+                            lanes = line.lanes,
+                            taper = line.taper,
+                    )
+            )
+        }
+        return out
     }
 
     /**

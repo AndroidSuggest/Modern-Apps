@@ -53,12 +53,7 @@ fn on_boundary(x: i32, y: i32, ring: &[(i32, i32)]) -> bool {
         let (x2, y2) = ring[(i + 1) % ring.len()];
         let cross = (x as i64 - x1 as i64) * (y2 as i64 - y1 as i64)
             - (y as i64 - y1 as i64) * (x2 as i64 - x1 as i64);
-        if cross == 0
-            && x >= x1.min(x2)
-            && x <= x1.max(x2)
-            && y >= y1.min(y2)
-            && y <= y1.max(y2)
-        {
+        if cross == 0 && x >= x1.min(x2) && x <= x1.max(x2) && y >= y1.min(y2) && y <= y1.max(y2) {
             return true;
         }
     }
@@ -85,8 +80,7 @@ pub(crate) fn ring_area2(ring: &[(i32, i32)]) -> i64 {
 /// enough to spot the overlapping holes, which overlap over an area rather than just
 /// grazing.
 pub(crate) fn rings_overlap(a: &[(i32, i32)], b: &[(i32, i32)]) -> bool {
-    a.iter().any(|&(x, y)| point_in_ring(x, y, b))
-        || b.iter().any(|&(x, y)| point_in_ring(x, y, a))
+    a.iter().any(|&(x, y)| point_in_ring(x, y, b)) || b.iter().any(|&(x, y)| point_in_ring(x, y, a))
 }
 
 /// Vertex count of `ring` with any repeated closing vertices excluded.

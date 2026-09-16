@@ -13,12 +13,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * Exposes the user's saved places to the UI. P4 introduced the Home/Work
- * quick-access slots; P6 grows this into a full saved-places model backed by
+ * Exposes the user's saved places to the UI. P6 saved-places model backed by
  * [SavedPlaceStore]:
  *
- *  - [home] / [work] — single slots (unchanged public API so P4 wiring keeps
- *    working).
  *  - [saved] — a flat starred list built from the place sheet's Save action.
  *  - [lists] — named collections managed from the saved-places screen.
  *
@@ -30,25 +27,10 @@ import kotlinx.coroutines.launch
 class SavedPlacesViewModel(application: Application) : AndroidViewModel(application) {
     private val store = SavedPlaceStore(DataStoreUtils.getInstance(application))
 
-    val home: StateFlow<SavedPlace?> =
-        store.homeFlow().stateIn(viewModelScope, SharingStarted.Eagerly, store.homeInitial())
-    val work: StateFlow<SavedPlace?> =
-        store.workFlow().stateIn(viewModelScope, SharingStarted.Eagerly, store.workInitial())
     val saved: StateFlow<List<SavedPlace>> =
         store.savedFlow().stateIn(viewModelScope, SharingStarted.Eagerly, store.savedInitial())
     val lists: StateFlow<Map<String, List<SavedPlace>>> =
         store.listsFlow().stateIn(viewModelScope, SharingStarted.Eagerly, store.listsInitial())
-
-    // --- Home / Work slots -------------------------------------------------
-
-    fun setHome(feature: SpecificFeature.RoutableFeature) =
-        launch { store.setHome(SavedPlace.from(feature)) }
-
-    fun setWork(feature: SpecificFeature.RoutableFeature) =
-        launch { store.setWork(SavedPlace.from(feature)) }
-
-    fun clearHome() = launch { store.setHome(null) }
-    fun clearWork() = launch { store.setWork(null) }
 
     // --- Flat saved (starred) list ----------------------------------------
 

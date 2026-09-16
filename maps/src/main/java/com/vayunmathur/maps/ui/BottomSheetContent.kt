@@ -58,22 +58,6 @@ fun BottomSheetContent(
             override fun removeSaved(place: SavedPlace) {
                 savedPlacesViewModel.removeSaved(place)
             }
-            override fun setHome() {
-                (selectedFeature as? SpecificFeature.RoutableFeature)?.let {
-                    savedPlacesViewModel.setHome(it)
-                }
-            }
-            override fun clearHome() {
-                savedPlacesViewModel.clearHome()
-            }
-            override fun setWork() {
-                (selectedFeature as? SpecificFeature.RoutableFeature)?.let {
-                    savedPlacesViewModel.setWork(it)
-                }
-            }
-            override fun clearWork() {
-                savedPlacesViewModel.clearWork()
-            }
             override fun openNearestStop(lat: Double, lon: Double) {
                 transitViewModel.openNearestStop(lat, lon)
             }
@@ -115,11 +99,9 @@ fun BottomSheetContent(
             AdminLabelHeader(selectedFeature.name, selectedFeature.wikipedia)
         is SpecificFeature.Restaurant -> {
             Column {
-                // Weighted so the chips below are measured first: the tab panel scrolls and
-                // would otherwise take every pixel of a tall sheet and leave them at zero
-                // height. They used to be safe behind the panel's 300 dp cap.
+                // Weighted so the sheet fills available space: the tab panel scrolls and
+                // would otherwise take every pixel of a tall sheet.
                 PlaceSheet(panelState.poi, panelState.poiSection, selectedFeature, Modifier.weight(1f, fill = false))
-                SavedPlaceActions(selectedFeature, panelState, panelActions)
             }
         }
         is SpecificFeature.GenericPlace -> {
@@ -138,7 +120,6 @@ fun BottomSheetContent(
                         }
                     } else null,
                 )
-                SavedPlaceActions(selectedFeature, panelState, panelActions)
             }
         }
         is SpecificFeature.Route -> {

@@ -107,8 +107,12 @@ pub struct Push {
     /// reads `misc.z` as the centre-line colour flag rather than a lateral shift.
     pub misc: [f32; 4],
     /// Per-draw animation slot. `morph.x` is the per-tile opacity/morph factor (1.0 = fully
-    /// present) reserved for WS-D's LOD cross-fade; `y`/`z`/`w` are reserved. Appended past
-    /// `misc`, so a shader that never declares it keeps its existing offsets and behaviour.
+    /// present) reserved for WS-D's LOD cross-fade; `morph.y` is the line dash phase speed
+    /// (px/s, read by `line.frag`). `morph.z` is the tile's world-px span (Dp) for this
+    /// frame — the tile-norm-height -> world-px scale the draped flat shaders (`fill.vert`,
+    /// `line.vert`, `road_surface.vert`) multiply their trailing `z` by, mirroring what
+    /// buildings/terrain push as `line.x`. Appended past `misc`, so a shader that never
+    /// declares it keeps its existing offsets and behaviour.
     pub morph: [f32; 4],
 }
 
@@ -133,7 +137,10 @@ mod tests {
         // 128 bytes is the minimum `maxPushConstantsSize` the spec requires, so staying
         // at or under it means no device can reject this.
         assert_eq!(std::mem::size_of::<Push>() as u32, PUSH_CONSTANT_BYTES);
-        assert!(PUSH_CONSTANT_BYTES <= 128, "{PUSH_CONSTANT_BYTES} exceeds the guaranteed 128");
+        assert!(
+            PUSH_CONSTANT_BYTES <= 128,
+            "{PUSH_CONSTANT_BYTES} exceeds the guaranteed 128"
+        );
     }
 
     #[test]

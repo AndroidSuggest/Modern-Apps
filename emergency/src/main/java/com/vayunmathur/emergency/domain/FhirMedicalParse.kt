@@ -2,6 +2,7 @@ package com.vayunmathur.emergency.domain
 
 import com.vayunmathur.emergency.data.AllergyCriticality
 import com.vayunmathur.emergency.data.ImportedAllergy
+import com.vayunmathur.emergency.data.ImportedCondition
 import com.vayunmathur.emergency.data.ImportedMedication
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -83,6 +84,23 @@ object FhirMedicalParse {
                 AllergyCriticality.Unknown -> 2
             }
         }
+
+    /**
+     * One active condition, or null when the resource is not a condition, has no usable
+     * name, or is resolved/inactive.
+     *
+     * Mirrors the health app's status gate (resolved/inactive drop out, everything else
+     * stays): an emergency card should show what the patient has now, not history.
+     */
+    fun parseCondition(data: String): ImportedCondition? {
+        val root = parse(data) ?: return null
+        if (root.str("resourceType") != "Condition") return null
+        if (!isActive(root["clinicalStatus"] as? JsonObject)) return null
+
+        val code = root["code"] as? JsonObject
+        val displayName = displayFrom(code) ?: return null
+        return ImportedCondition(displayName = displayName)
+    }
 
     // --- helpers -------------------------------------------------------------
 

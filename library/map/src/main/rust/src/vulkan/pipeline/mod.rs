@@ -18,6 +18,7 @@
 //! descriptor-set indirection back, because push constants are not inherited.
 
 mod assemble;
+mod attributes;
 mod pipelines;
 mod pipelines_extra;
 mod push;
@@ -25,5 +26,5 @@ mod shaders;
 mod state;
 
 pub use pipelines::Pipelines;
-pub use push::{MORPH_NONE, NO_MARKINGS, PUSH_CONSTANT_BYTES, Push};
+pub use push::{Push, MORPH_NONE, NO_MARKINGS, PUSH_CONSTANT_BYTES};
 pub use state::{Depth, Stencil};

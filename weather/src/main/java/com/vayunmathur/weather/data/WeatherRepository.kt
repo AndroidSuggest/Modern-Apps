@@ -21,6 +21,7 @@ class WeatherRepository private constructor(context: Context) :
     suspend fun deleteLocation(location: SavedLocation) = dao.deleteLocation(location)
     suspend fun setOrder(id: Long, order: Int) = dao.setOrder(id, order)
     suspend fun updateCoordinates(id: Long, lat: Double, lon: Double) = dao.updateCoordinates(id, lat, lon)
+    suspend fun updateName(id: Long, name: String, country: String) = dao.updateName(id, name, country)
     suspend fun replaceCurrentDeviceLocation(newRow: SavedLocation) = dao.replaceCurrentDeviceLocation(newRow)
 
     // Cache

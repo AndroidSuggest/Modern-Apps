@@ -10,33 +10,30 @@ import java.io.File
 /**
  * Runtime-download config for the on-device **NLLB-200-distilled-600M** translation model.
  *
- * Two files: `nllb600.maml` and `tokenizer.bin`, produced by model-eng's conversion
- * pipeline (`scripts/ml/fetch_nllb600.py`, pinning `facebook/nllb-200-distilled-600M`).
- * NLLB distilled to 600M parameters: 12 encoder layers, 12 decoder layers, `d_model`
- * 1024, 16 heads, a 4096-wide ReLU feed-forward, and a 256,206-entry vocabulary shared
- * between the input embedding and the output projection.
+ * Two weight-only-quantized LiteRT exports (ladder_v2 ship rungs: enc w8 cos
+ * 0.99938, dec w8 cos 0.99809) plus `tokenizer.bin` (SPM1, built by
+ * `scripts/ml/nllb_tokenizer.py`). Far too much to ship inside an APK - hence
+ * [inDirectory] and no asset path. See `NllbModel` in `:translate` for the
+ * mirror pins.
  *
- * The model runs on `:library:ml`'s own Vulkan runtime. Native checks the maml's graph
- * id (18, `graph::NLLB`), so a wrong file fails at load.
- *
- * Files are fetched mirror-only from `data.vayunmathur.com/models/nllb600/` via
+ * Files are fetched mirror-only from `data.vayunmathur.com/tflite/nllb/` via
  * [downloadModels]. Auto-install via `InitialModelDownloadChecker` in MainActivity.
  */
 object NllbModel {
-    private const val BASE = "https://data.vayunmathur.com/models/nllb600/"
+    private const val BASE = "https://data.vayunmathur.com/tflite/nllb/"
     const val DIR = "nllb600"
 
     /** The 3 runtime files, SHA-256 pinned. Names and order come from [NllbHandle.FILES]. */
     val FILES: List<ModelDownloadItem> = listOf(
         item(
             NllbHandle.ENCODER_FILE,
-            // 415,378,190 bytes, `venddair/nllb-200-distilled-600M-onnx` int8.
-            "404eefb59a29f947d7d3b05bd92ca10fa1200f39f854907fc2a84cfdfe4f881e",
+            // 417,156,384 bytes, ladder_v2 w8 ship rung.
+            "e414589adaf6a632787d08cc62748adfd156ff98646baef829e7d7b8e7530d97",
         ),
         item(
             NllbHandle.DECODER_FILE,
-            // 728,792,767 bytes, `venddair/nllb-200-distilled-600M-onnx` int8.
-            "b2f3febbb66b7679d9b54b41ed4786fd58dfbef8b269e5f99101d96dcc1e229c",
+            // 734,258,368 bytes, ladder_v2 w8 ship rung.
+            "1f1f15b335cc67496895534c1f99c4452373b54d658781be19c386c27259c056",
         ),
         item(
             NllbHandle.TOKENIZER,
@@ -47,9 +44,10 @@ object NllbModel {
 
     /**
      * The retired files, deleted from an existing install the first time this runs: the
-     * SMaLL-100 set plus the `.maml`-era NLLB weights this build replaces.
+     * SMaLL-100 set, the `.maml`-era weights, and the ONNX-era NLLB pair this build's
+     * LiteRT rungs replace.
      *
-     * Without this an upgrade leaves ~900 MB of unreachable weights in the app's
+     * Without this an upgrade leaves ~1.1 GB of unreachable weights in the app's
      * external files directory, which nothing else will ever remove. Kept as names
      * rather than a wildcard so a future file of ours cannot be caught by it.
      */
@@ -66,8 +64,8 @@ object NllbModel {
         "pos_weights.f32.bin",
     )
 
-    /** The `.maml`-era NLLB file this build's ONNX pair replaces, in the live directory. */
-    private val RETIRED_CURRENT = listOf("nllb600.maml")
+    /** The pre-LiteRT NLLB files this build's .tflite rungs replace, in the live directory. */
+    private val RETIRED_CURRENT = listOf("nllb600.maml", "encoder_model_int8.onnx", "decoder_model_int8.onnx")
 
     private fun item(name: String, sha256: String?) =
         ModelDownloadItem("$BASE$name", "$DIR/$name", "NLLB-200 $name", sha256)

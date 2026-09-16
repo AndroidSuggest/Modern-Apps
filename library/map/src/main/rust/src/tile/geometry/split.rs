@@ -31,7 +31,13 @@ use tilecodec::mamaps::body::Body;
 /// counterparts and have to be changed together.** If one starts assuming a different split and
 /// the other does not, the arrows detach from the centre line on exactly the archives that carry
 /// no table, which is the case with no third source to catch the disagreement.
-pub(crate) fn split_t(tile: &Body, layer: &Layer, feature_index: usize, lanes: u8, left_hand: bool) -> f32 {
+pub(crate) fn split_t(
+    tile: &Body,
+    layer: &Layer,
+    feature_index: usize,
+    lanes: u8,
+    left_hand: bool,
+) -> f32 {
     let (forward, backward) = known_split(tile, layer.source_layer_id, feature_index)
         .unwrap_or_else(|| {
             let lanes = lanes.max(1) as u16;

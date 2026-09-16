@@ -13,13 +13,16 @@ package com.vayunmathur.library.ml
  * One message in a conversation.
  *
  * [images] are soft tokens (`n * 1536` floats) at the head of the turn, [audio] likewise
- * for clips. Pass them unscaled.
+ * for clips. Pass them unscaled. [imagePaths]/[audioPaths] carry the source files for
+ * runtimes (like LiteRT-LM) that consume files directly instead of soft tokens.
  */
 data class GemmaTurn(
     val role: GemmaRole,
     val text: String,
     val images: List<FloatArray> = emptyList(),
     val audio: List<FloatArray> = emptyList(),
+    val imagePaths: List<String> = emptyList(),
+    val audioPaths: List<String> = emptyList(),
 )
 
 /** Who spoke. Gemma's own names, not OpenAI's: the model turn is `model`, not `assistant`. */

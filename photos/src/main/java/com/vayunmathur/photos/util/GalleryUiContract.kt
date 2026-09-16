@@ -45,7 +45,30 @@ data class PeopleUiState(
 /** Everything the albums grid draws. */
 data class AlbumsUiState(
     val albums: List<Album> = emptyList(),
+    /** Built-in collections rendered as icon tiles above the regular albums. */
+    val defaultAlbums: List<DefaultAlbum> = emptyList(),
 )
+
+/**
+ * A built-in collection shown as an album tile with an icon instead of a
+ * cover photo. Trash and the Secure Folder live in their own stores (trashed
+ * MediaStore rows; the encrypted vault), so they cannot be an [Album] — the
+ * screen maps [kind] to its icon, title and destination route.
+ */
+data class DefaultAlbum(
+    val kind: DefaultAlbumKind,
+    /**
+     * Photo count shown under the tile, or null to hide the count line (e.g.
+     * the vault is locked, so its size stays private).
+     */
+    val count: Int? = null,
+)
+
+/** Which built-in collection a [DefaultAlbum] tile opens. */
+enum class DefaultAlbumKind {
+    TRASH,
+    SECURE_FOLDER,
+}
 
 /**
  * Gallery callbacks. Every method has a no-op default so a preview can render the screen

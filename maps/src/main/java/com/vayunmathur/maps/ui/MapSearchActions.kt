@@ -2,7 +2,6 @@ package com.vayunmathur.maps.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.vayunmathur.maps.data.SavedPlace
 import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.util.MapsSearchViewModel
 import com.vayunmathur.maps.util.SearchActions
@@ -33,11 +32,6 @@ internal fun rememberSearchActions(
 
             override fun clearRecents() {
                 searchViewModel.clearRecents()
-            }
-
-            override fun selectSavedPlace(place: SavedPlace) {
-                viewModel.set(place.toFeature())
-                onCloseSearch()
             }
 
             override fun selectResult(result: SearchResult) {

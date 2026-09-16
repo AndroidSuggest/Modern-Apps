@@ -276,4 +276,8 @@ pub struct TileMesh {
     /// behind; without the tag it could not tell a tile built with POI off from one whose
     /// tile simply has no POI in it.
     pub generation: u32,
+    /// The tile's heightmap, retained so per-frame label emission can sample ground height
+    /// under anchors (mirroring how `labels`/`arrows` are retained for per-frame draws).
+    /// `None` where the tile carries none; a few hundred bytes at DEM resolution.
+    pub heightmap: Option<tilecodec::mamaps::body::Heightmap>,
 }

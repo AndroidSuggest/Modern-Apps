@@ -14,10 +14,10 @@ android {
         applicationId = "com.vayunmathur.games.chess"
     }
     androidResources {
-        // Maia3's weights are read straight out of the APK, and a compressed asset would have
-        // to be inflated into a heap buffer before ORT could open it. Costs nothing on download
-        // size: quantised weights barely compress.
-        noCompress += "onnx"
+        // The ExecuTorch Vulkan model is staged the same way: ExecutorchSessions
+        // copies it out of the APK before Module.load, so it must not be deflated.
+        // Quantised weights barely compress, so this costs nothing on download size.
+        noCompress += "pte"
     }
 }
 

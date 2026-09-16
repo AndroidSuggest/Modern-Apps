@@ -9,7 +9,9 @@ pub(crate) fn taper_widths(points: &mut Vec<i32>, taper: Taper, run: f32) -> Vec
         return Vec::new();
     }
     let lengths = cumulative(points);
-    let Some(&total) = lengths.last() else { return Vec::new() };
+    let Some(&total) = lengths.last() else {
+        return Vec::new();
+    };
     // Half the part at most, so the two ramps meet in the middle rather than crossing
     // and inverting. A section shorter than two ramps tapers over all of it.
     let run = run.min(total * 0.5);
@@ -32,8 +34,10 @@ pub(crate) fn taper_widths(points: &mut Vec<i32>, taper: Taper, run: f32) -> Vec
     }
     // Furthest along first: its insertion cannot move the index the nearer one was
     // measured at, so both are computed against the original line and applied in turn.
-    let splits: Vec<(usize, i32, i32)> =
-        wanted.iter().filter_map(|&along| split_at(points, &lengths, along)).collect();
+    let splits: Vec<(usize, i32, i32)> = wanted
+        .iter()
+        .filter_map(|&along| split_at(points, &lengths, along))
+        .collect();
     for (at, x, y) in splits {
         points.splice(at * 2..at * 2, [x, y]);
     }
@@ -76,8 +80,7 @@ fn split_at(points: &[i32], lengths: &[f32], at: f32) -> Option<(usize, i32, i32
         return None;
     }
     let fraction = (at - lengths[before]) / span;
-    let x = points[before * 2] as f32
-        + fraction * (points[after * 2] - points[before * 2]) as f32;
+    let x = points[before * 2] as f32 + fraction * (points[after * 2] - points[before * 2]) as f32;
     let y = points[before * 2 + 1] as f32
         + fraction * (points[after * 2 + 1] - points[before * 2 + 1]) as f32;
     Some((after, x.round() as i32, y.round() as i32))

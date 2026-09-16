@@ -25,7 +25,10 @@ pub(super) struct StencilTarget {
 /// candidate. Every Vulkan implementation must support at least one of `D24_UNORM_S8_UINT` or
 /// `D32_SFLOAT_S8_UINT`, so this never fails on real hardware.
 pub(super) unsafe fn stencil_format(context: &Context) -> Result<vk::Format, String> {
-    for candidate in [vk::Format::D24_UNORM_S8_UINT, vk::Format::D32_SFLOAT_S8_UINT] {
+    for candidate in [
+        vk::Format::D24_UNORM_S8_UINT,
+        vk::Format::D32_SFLOAT_S8_UINT,
+    ] {
         let properties = context
             .instance
             .get_physical_device_format_properties(context.physical_device, candidate);
@@ -50,7 +53,11 @@ impl StencilTarget {
         let image_info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
-            .extent(vk::Extent3D { width: extent.width, height: extent.height, depth: 1 })
+            .extent(vk::Extent3D {
+                width: extent.width,
+                height: extent.height,
+                depth: 1,
+            })
             .mip_levels(1)
             .array_layers(1)
             .samples(samples)
@@ -67,19 +74,21 @@ impl StencilTarget {
             .map_err(|e| format!("create stencil image {e:?}"))?;
 
         let requirements = context.device.get_image_memory_requirements(image);
-        let properties =
-            context.instance.get_physical_device_memory_properties(context.physical_device);
+        let properties = context
+            .instance
+            .get_physical_device_memory_properties(context.physical_device);
         let find = |flags: vk::MemoryPropertyFlags| -> Option<u32> {
             (0..properties.memory_type_count).find(|&i| {
                 requirements.memory_type_bits & (1 << i) != 0
-                    && properties.memory_types[i as usize].property_flags.contains(flags)
+                    && properties.memory_types[i as usize]
+                        .property_flags
+                        .contains(flags)
             })
         };
-        let type_index = find(
-            vk::MemoryPropertyFlags::DEVICE_LOCAL | vk::MemoryPropertyFlags::LAZILY_ALLOCATED,
-        )
-        .or_else(|| find(vk::MemoryPropertyFlags::DEVICE_LOCAL))
-        .ok_or("no device-local memory type for the stencil target")?;
+        let type_index =
+            find(vk::MemoryPropertyFlags::DEVICE_LOCAL | vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
+                .or_else(|| find(vk::MemoryPropertyFlags::DEVICE_LOCAL))
+                .ok_or("no device-local memory type for the stencil target")?;
 
         let allocate = vk::MemoryAllocateInfo::default()
             .allocation_size(requirements.size)
@@ -123,6 +132,10 @@ impl StencilTarget {
                 return Err(format!("create stencil image view {e:?}"));
             }
         };
-        Ok(StencilTarget { image, memory, view })
+        Ok(StencilTarget {
+            image,
+            memory,
+            view,
+        })
     }
 }

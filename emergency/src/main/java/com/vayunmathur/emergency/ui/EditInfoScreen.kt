@@ -8,8 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -38,13 +38,16 @@ import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
 
 /**
- * Edits the owner's identity details and emergency contacts.
+ * Edits the owner's medical details and emergency contacts.
  *
  * Answers `android.settings.EDIT_EMERGENCY_INFO` like GrapheneOS's EditInfoActivity.
- * Contacts are picked with `ACTION_PICK` against `Phone.CONTENT_URI` so the stored value is
- * the per-number URI GrapheneOS persists (not the aggregate contact URI). Adding requires
- * `READ_CONTACTS`, requested here. Allergies and medications are never typed here - they are
- * read from Health Connect, which this screen only offers to connect.
+ * The owner's identity (name, and address when available) is picked from a contact
+ * card with `ACTION_PICK` against `Contacts.CONTENT_URI` and snapshotted into
+ * storage — never typed here. Emergency contacts are picked separately with
+ * `ACTION_PICK` against `Phone.CONTENT_URI` so the stored value is the per-number
+ * URI GrapheneOS persists (not the aggregate contact URI). Picking requires
+ * `READ_CONTACTS`, requested here. Allergies and medications are never typed here -
+ * they are read from Health Connect, which this screen only offers to connect.
  */
 class EditInfoActivity : ComponentActivity() {
 
@@ -75,6 +78,11 @@ private fun EditInfoPage(viewModel: EmergencyViewModel) {
     ) { result ->
         result.data?.data?.let { viewModel.addContact(it) }
     }
+    val pickOwner = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        result.data?.data?.let { viewModel.pickOwner(it) }
+    }
     val requestContacts = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -86,41 +94,55 @@ private fun EditInfoPage(viewModel: EmergencyViewModel) {
         PermissionController.createRequestPermissionResultContract(),
     ) { viewModel.refreshHealthConnect() }
 
+    val gatePick = { open: () -> Unit ->
+        if (state.hasContactsAccess) {
+            open()
+        } else {
+            requestContacts.launch(Manifest.permission.READ_CONTACTS)
+        }
+    }
     EditInfoScreen(
         state = state,
         actions = viewModel,
         onPickContact = {
-            if (state.hasContactsAccess) {
+            gatePick {
                 pickContact.launch(
                     Intent(
                         Intent.ACTION_PICK,
                         ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                     ),
                 )
-            } else {
-                requestContacts.launch(Manifest.permission.READ_CONTACTS)
+            }
+        },
+        onPickOwner = {
+            gatePick {
+                pickOwner.launch(
+                    Intent(
+                        Intent.ACTION_PICK,
+                        ContactsContract.Contacts.CONTENT_URI,
+                    ),
+                )
             }
         },
         onConnectHealth = { requestHealth.launch(HealthConnectMedical.PERMISSIONS) },
     )
 }
 
-/** The editor: identity fields, a Health Connect connect prompt, and contacts add/remove. */
+/** The editor: picked identity, medical fields, a Health Connect prompt, contacts add/remove. */
 @Composable
 fun EditInfoScreen(
     state: EmergencyUiState,
     actions: EmergencyActions,
     onPickContact: () -> Unit,
+    onPickOwner: () -> Unit = {},
     onConnectHealth: () -> Unit = {},
 ) {
     // Local copies so typing does not wait for a repository round-trip; saved on each keystroke
     // (SharedPreferences writes are cheap) so leaving mid-edit loses nothing.
-    var name by remember(state.info.name) { mutableStateOf(state.info.name) }
-    var address by remember(state.info.address) { mutableStateOf(state.info.address) }
     var bloodType by remember(state.info.bloodType) { mutableStateOf(state.info.bloodType) }
     var organDonor by remember(state.info.organDonor) { mutableStateOf(state.info.organDonor) }
     val save = {
-        actions.saveInfo(name, address, bloodType, organDonor)
+        actions.saveMedicalInfo(bloodType, organDonor)
     }
 
     LazyListScaffold(
@@ -129,18 +151,32 @@ fun EditInfoScreen(
         scrollBehavior = appBarScrollBehavior(),
     ) {
         item {
-            EditField(
-                label = stringResource(R.string.field_name),
-                value = name,
-                onChange = { name = it; save() },
-            )
-        }
-        item {
-            EditField(
-                label = stringResource(R.string.field_address),
-                value = address,
-                onChange = { address = it; save() },
-            )
+            SettingsSection(title = stringResource(R.string.section_owner_identity)) {
+                val name = state.info.name
+                if (name.isBlank()) {
+                    SettingsRow(
+                        title = stringResource(R.string.owner_identity_empty),
+                        onClick = onPickOwner,
+                    )
+                } else {
+                    val address = state.info.address
+                    SettingsRow(
+                        title = name,
+                        supportingText = address.ifBlank { null },
+                        onClick = onPickOwner,
+                    )
+                }
+                SettingsRow(
+                    title = stringResource(R.string.choose_owner_contact),
+                    onClick = onPickOwner,
+                )
+                if (state.ownerPickFailed) {
+                    SettingsRow(
+                        title = stringResource(R.string.fail_pick_owner),
+                        onClick = actions::clearOwnerPickFailed,
+                    )
+                }
+            }
         }
         item {
             EditField(
@@ -215,9 +251,19 @@ fun EditInfoScreen(
             }
         }
     }
+
+    val candidates = state.ownerCandidates
+    if (candidates != null) {
+        OwnerAddressDialog(
+            name = candidates.name,
+            addresses = candidates.addresses,
+            onConfirm = actions::confirmOwnerAddress,
+            onDismiss = actions::dismissOwnerPick,
+        )
+    }
 }
 
-/** One identity field: a titled section holding a single text field. */
+/** One medical field: a titled section holding a single text field. */
 @Composable
 private fun EditField(label: String, value: String, onChange: (String) -> Unit) {
     FormSection(title = label) {

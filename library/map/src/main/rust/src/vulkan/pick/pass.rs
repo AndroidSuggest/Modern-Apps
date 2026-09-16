@@ -6,7 +6,7 @@ use crate::vulkan::pipeline::{Push, MORPH_NONE, PUSH_CONSTANT_BYTES};
 use ash::vk;
 
 use super::pipeline::build_pipeline;
-use super::target::{PICK_FORMAT, PickTarget};
+use super::target::{PickTarget, PICK_FORMAT};
 
 /// The slot value the target is cleared to: "nothing here". Real features get 1-based slots.
 const PICK_MISS: u32 = 0;
@@ -119,7 +119,13 @@ impl Pick {
             }
         };
 
-        Ok(Pick { render_pass, layout, pipeline, target: None, readback })
+        Ok(Pick {
+            render_pass,
+            layout,
+            pipeline,
+            target: None,
+            readback,
+        })
     }
 
     /// The feature id under the device-pixel `(x, y)`, or `0` when the tap hit nothing.
@@ -179,11 +185,18 @@ impl Pick {
             return Err(format!("pick begin cmd {e:?}"));
         }
 
-        let clear = [vk::ClearValue { color: vk::ClearColorValue { uint32: [PICK_MISS; 4] } }];
+        let clear = [vk::ClearValue {
+            color: vk::ClearColorValue {
+                uint32: [PICK_MISS; 4],
+            },
+        }];
         let pass = vk::RenderPassBeginInfo::default()
             .render_pass(self.render_pass)
             .framebuffer(target.framebuffer)
-            .render_area(vk::Rect2D { offset: vk::Offset2D { x: 0, y: 0 }, extent })
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent,
+            })
             .clear_values(&clear);
         device.cmd_begin_render_pass(cmd, &pass, vk::SubpassContents::INLINE);
 
@@ -196,8 +209,14 @@ impl Pick {
             .max_depth(1.0);
         device.cmd_set_viewport(cmd, 0, std::slice::from_ref(&viewport));
         let scissor = vk::Rect2D {
-            offset: vk::Offset2D { x: px as i32, y: py as i32 },
-            extent: vk::Extent2D { width: 1, height: 1 },
+            offset: vk::Offset2D {
+                x: px as i32,
+                y: py as i32,
+            },
+            extent: vk::Extent2D {
+                width: 1,
+                height: 1,
+            },
         };
         device.cmd_set_scissor(cmd, 0, std::slice::from_ref(&scissor));
 
@@ -210,7 +229,8 @@ impl Pick {
         for (index, marker) in markers.iter().enumerate() {
             let slot = (index as u32).wrapping_add(1);
             // The same billboard matrix the sprite is drawn with, sized to the marker's tap box.
-            let matrix = camera.screen_quad_to_clip(marker.lon, marker.lat, (MARKER_SIZE_DP * 0.5) as f64);
+            let matrix =
+                camera.screen_quad_to_clip(marker.lon, marker.lat, (MARKER_SIZE_DP * 0.5) as f64);
             let mut push = Push {
                 tile_to_clip: matrix,
                 color: [0.0; 4],
@@ -242,8 +262,16 @@ impl Pick {
                 base_array_layer: 0,
                 layer_count: 1,
             })
-            .image_offset(vk::Offset3D { x: px as i32, y: py as i32, z: 0 })
-            .image_extent(vk::Extent3D { width: 1, height: 1, depth: 1 });
+            .image_offset(vk::Offset3D {
+                x: px as i32,
+                y: py as i32,
+                z: 0,
+            })
+            .image_extent(vk::Extent3D {
+                width: 1,
+                height: 1,
+                depth: 1,
+            });
         device.cmd_copy_image_to_buffer(
             cmd,
             target.image,
@@ -258,8 +286,11 @@ impl Pick {
         }
 
         let submit = vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd));
-        if let Err(e) = device.queue_submit(context.queue, std::slice::from_ref(&submit), vk::Fence::null())
-        {
+        if let Err(e) = device.queue_submit(
+            context.queue,
+            std::slice::from_ref(&submit),
+            vk::Fence::null(),
+        ) {
             free_cmd(device);
             return Err(format!("pick queue_submit {e:?}"));
         }
@@ -287,7 +318,11 @@ impl Pick {
     }
 
     /// Ensure the target exists at `extent`, rebuilding it if the surface was resized.
-    unsafe fn ensure_target(&mut self, context: &Context, extent: vk::Extent2D) -> Result<(), String> {
+    unsafe fn ensure_target(
+        &mut self,
+        context: &Context,
+        extent: vk::Extent2D,
+    ) -> Result<(), String> {
         if self.target.as_ref().is_some_and(|t| t.extent == extent) {
             return Ok(());
         }

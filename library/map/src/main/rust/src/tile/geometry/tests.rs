@@ -1,10 +1,12 @@
 use super::build::{build, build_toggled};
 use super::mesh::{LayerMesh, TileMesh};
-use crate::style::{KindFilter, Layer, LayerKind, LayerToggles};
-use crate::style::paint::Ramp;
 use crate::style;
+use crate::style::paint::Ramp;
+use crate::style::{KindFilter, Layer, LayerKind, LayerToggles};
 use crate::tess::{fill, stroke};
-use tilecodec::mamaps::body::{Body, Feature, Layer as BodyLayer, Part, GEOM_LINE, GEOM_POLYGON, NAME_NONE, WINDING_OUTER};
+use tilecodec::mamaps::body::{
+    Body, Feature, Layer as BodyLayer, Part, GEOM_LINE, GEOM_POLYGON, NAME_NONE, WINDING_OUTER,
+};
 use tilecodec::mamaps::dict;
 
 /// A representative v7 body: one `earth` polygon, one `major_road` LineString
@@ -32,7 +34,11 @@ fn real() -> Body {
         transit_taper: 0,
         lane_count: 0,
     });
-    earth.parts.push(Part { coord_start: 0, point_count: 4, winding: WINDING_OUTER });
+    earth.parts.push(Part {
+        coord_start: 0,
+        point_count: 4,
+        winding: WINDING_OUTER,
+    });
     earth.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
     body.layers.push(earth);
     let mut roads = BodyLayer::new(dict::LAYER_ROADS);
@@ -50,7 +56,11 @@ fn real() -> Body {
         transit_taper: 0,
         lane_count: 1,
     });
-    roads.parts.push(Part { coord_start: 0, point_count: 4, winding: WINDING_OUTER });
+    roads.parts.push(Part {
+        coord_start: 0,
+        point_count: 4,
+        winding: WINDING_OUTER,
+    });
     roads.coords = vec![(100, 100), (1500, 900), (2600, 1800), (3900, 2700)];
     body.layers.push(roads);
     let mut water = BodyLayer::new(dict::LAYER_WATER);
@@ -96,15 +106,33 @@ fn the_real_tile_produces_geometry_for_the_layers_it_has_data_in() {
     let layers = style::layers();
     let mesh = build(&real(), &layers, 14, 339, 770, false);
 
-    assert!(mesh_for(&mesh, &layers, "earth").is_some(), "the earth polygon tessellates");
-    assert!(mesh_for(&mesh, &layers, "water").is_some(), "both water polygons tessellate");
-    assert!(mesh_for(&mesh, &layers, "roads-major").is_some(), "the major_road strokes");
-    assert!(mesh_for(&mesh, &layers, "roads-major-casing").is_some(), "and so does its casing");
+    assert!(
+        mesh_for(&mesh, &layers, "earth").is_some(),
+        "the earth polygon tessellates"
+    );
+    assert!(
+        mesh_for(&mesh, &layers, "water").is_some(),
+        "both water polygons tessellate"
+    );
+    assert!(
+        mesh_for(&mesh, &layers, "roads-major").is_some(),
+        "the major_road strokes"
+    );
+    assert!(
+        mesh_for(&mesh, &layers, "roads-major-casing").is_some(),
+        "and so does its casing"
+    );
 
     // Layers the tile has no data for produce no mesh at all, rather than an empty
     // one that would still cost a draw.
-    assert!(mesh_for(&mesh, &layers, "buildings").is_none(), "no buildings layer here");
-    assert!(mesh_for(&mesh, &layers, "roads-highway").is_none(), "the road is a major_road");
+    assert!(
+        mesh_for(&mesh, &layers, "buildings").is_none(),
+        "no buildings layer here"
+    );
+    assert!(
+        mesh_for(&mesh, &layers, "roads-highway").is_none(),
+        "the road is a major_road"
+    );
     assert!(
         mesh_for(&mesh, &layers, "landuse_park:national_park").is_none(),
         "no landuse layer",
@@ -254,7 +282,10 @@ fn tessellated_output_is_within_the_bounds_the_shaders_assume() {
 
     // Protomaps buffers tiles by a few percent, so a little overspill is expected and
     // 2.0 would not be.
-    assert!(worst_pos < 1.3, "positions reach {worst_pos}, not tile-local 0..1");
+    assert!(
+        worst_pos < 1.3,
+        "positions reach {worst_pos}, not tile-local 0..1"
+    );
     assert!(
         worst_normal <= stroke::MITER_LIMIT + 1e-3,
         "a normal is {worst_normal} long, past the miter limit, so that join is too wide",
@@ -268,7 +299,11 @@ fn tessellated_output_is_within_the_bounds_the_shaders_assume() {
     // silently drop or explode the triangles that share it.
     for m in &mesh.meshes {
         for f in &m.vertices {
-            assert!(f.is_finite(), "{} emitted a non-finite vertex", layers[m.layer_index].id);
+            assert!(
+                f.is_finite(),
+                "{} emitted a non-finite vertex",
+                layers[m.layer_index].id
+            );
         }
     }
 }
@@ -286,8 +321,16 @@ fn positions_are_tile_normalised() {
             LayerKind::Symbol => crate::tile::symbol::FLOATS_PER_VERTEX,
         };
         for chunk in m.vertices.chunks(stride) {
-            assert!(chunk[0] > -3.0 && chunk[0] < 4.0, "x {} is not tile-normalised", chunk[0]);
-            assert!(chunk[1] > -3.0 && chunk[1] < 4.0, "y {} is not tile-normalised", chunk[1]);
+            assert!(
+                chunk[0] > -3.0 && chunk[0] < 4.0,
+                "x {} is not tile-normalised",
+                chunk[0]
+            );
+            assert!(
+                chunk[1] > -3.0 && chunk[1] < 4.0,
+                "y {} is not tile-normalised",
+                chunk[1]
+            );
         }
     }
 }
@@ -299,7 +342,10 @@ fn a_layer_outside_its_zoom_range_is_skipped() {
     // buildings is min_zoom 14, and roads-minor is 13; the tile's road is a
     // major_road anyway.
     assert!(mesh_for(&low, &layers, "roads-minor").is_none());
-    assert!(mesh_for(&low, &layers, "earth").is_some(), "earth draws at every zoom");
+    assert!(
+        mesh_for(&low, &layers, "earth").is_some(),
+        "earth draws at every zoom"
+    );
 }
 
 #[test]
@@ -337,7 +383,11 @@ fn transit_lines_split_into_one_mesh_per_colour() {
     let mut source = BodyLayer::new(dict::LAYER_TRANSIT);
     // Blue, red, blue again — so the test also proves equal colours coalesce into one
     // mesh rather than one mesh per feature.
-    for (color, y) in [(0x00_54_A5u32, 100i16), (0xE3_1E_24, 200), (0x00_54_A5, 300)] {
+    for (color, y) in [
+        (0x00_54_A5u32, 100i16),
+        (0xE3_1E_24, 200),
+        (0x00_54_A5, 300),
+    ] {
         let parts_offset = source.parts.len() as u32;
         source.parts.push(Part {
             coord_start: source.coords.len() as u32,
@@ -363,8 +413,13 @@ fn transit_lines_split_into_one_mesh_per_colour() {
     body.layers.push(source);
 
     let all = style::layers();
-    let at = all.iter().position(|l| l.id == "transit-rail").expect("the transit layer");
-    let Some(only) = all.get(at..=at) else { panic!("a one-layer slice") };
+    let at = all
+        .iter()
+        .position(|l| l.id == "transit-rail")
+        .expect("the transit layer");
+    let Some(only) = all.get(at..=at) else {
+        panic!("a one-layer slice")
+    };
 
     // Off by default, and the gate is before any tessellation: nothing at all.
     assert!(
@@ -372,9 +427,16 @@ fn transit_lines_split_into_one_mesh_per_colour() {
         "an optional layer that is off must tessellate nothing",
     );
 
-    let on = LayerToggles { poi: false, transit: true, traffic: false };
+    let on = LayerToggles {
+        poi: false,
+        transit: true,
+        traffic: false,
+    };
     let mesh = build_toggled(&body, only, 14, 0, 0, false, on, &KindFilter::all(), 7);
-    assert_eq!(mesh.generation, 7, "the mesh records the generation it was built at");
+    assert_eq!(
+        mesh.generation, 7,
+        "the mesh records the generation it was built at"
+    );
     let colours: Vec<Option<u32>> = mesh.meshes.iter().map(|m| m.color_override).collect();
     assert_eq!(
         colours,
@@ -383,7 +445,11 @@ fn transit_lines_split_into_one_mesh_per_colour() {
     );
     // The two blue lines really did share a mesh rather than each getting one.
     let (blue, red) = (&mesh.meshes[0], &mesh.meshes[1]);
-    assert_eq!(blue.indices.len(), red.indices.len() * 2, "two lines against one");
+    assert_eq!(
+        blue.indices.len(),
+        red.indices.len() * 2,
+        "two lines against one"
+    );
     for m in &mesh.meshes {
         assert_eq!(m.kind, LayerKind::Line);
         assert!(!m.indices.is_empty());

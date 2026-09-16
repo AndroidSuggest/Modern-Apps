@@ -208,7 +208,7 @@ object OfflineRouter {
             lon: Double
     ): String?
     /**
-     * Drawable rail lines serving the bbox, read from the timetable pack's
+     * Drawable lines for the bbox, read from the timetable pack's
      * GTFS-shape sections (no tile rebuild needed). `coords` is flat
      * `[lon0, lat0, ...]`; `routeColor` is 0xRRGGBB (`0` when absent).
      * Empty array (not null) when the pack is absent; null on JNI failure.
@@ -223,6 +223,22 @@ object OfflineRouter {
             minLon: Double,
             maxLat: Double,
             maxLon: Double
+    ): Array<RawRailLine>?
+    /**
+     * Drawable lines serving the stop nearest `(lat, lon)`, read from the
+     * timetable pack's GTFS-shape sections like [getRailLinesNative] (same
+     * `RawRailLine` layout, same corridor slots). Buses included: at one stop
+     * a handful of bus polylines is context, not noise. Empty array (not
+     * null) when the pack is absent or no stop is near; null on JNI failure.
+     *
+     * [JvmName] keeps the JVM name JNI-visible; see [findTransitRouteNative].
+     */
+    @JvmName("getStopLinesNative")
+    internal external fun getStopLinesNative(
+            basePath: String,
+            feed: String,
+            lat: Double,
+            lon: Double
     ): Array<RawRailLine>?
     /**
      * A trip's stop-by-stop itinerary for the vehicle-details sheet, decoded
@@ -731,6 +747,14 @@ object OfflineRouter {
             maxLat: Double, maxLon: Double,
     ): List<com.vayunmathur.maps.data.transit.RailLine> =
             OfflineRouterTransit.railLines(context, minLat, minLon, maxLat, maxLon)
+
+    /** Drawable lines for the selected stop — see [OfflineRouterTransit.stopLines]. */
+    suspend fun stopLines(
+            context: Context,
+            lat: Double,
+            lon: Double,
+    ): List<com.vayunmathur.maps.data.transit.RailLine> =
+            OfflineRouterTransit.stopLines(context, lat, lon)
 
     /** Trip itinerary for the vehicle sheet — see [OfflineRouterTransit.tripItinerary]. */
     suspend fun tripItinerary(

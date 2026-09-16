@@ -764,9 +764,13 @@ object PoiIndex {
      * tile's 4096-step grid (about 0.15 m at z16), so a tap's coordinate is close to
      * the side file's `lat_e7`/`lon_e7` but never equal to it.
      *
-     * The name is matched too, not just the distance. A mall and a cafe inside it
-     * can share a coordinate to within a metre, and attaching one's phone number to
-     * the other is the kind of wrong that looks right.
+     * The name is matched first, normalised for case and punctuation (`McDonald's`
+     * vs `McDonalds`, tile `name_en` vs sidecar `name`). A mall and a cafe inside it
+     * can share a coordinate to within a metre, so a name hit still outranks pure
+     * proximity. When nothing nearby matches by name — the tile and the sidecar
+     * genuinely disagree — the nearest POI within [maxMeters] that carries
+     * attributes is returned instead of nothing, so the sheet fills from OSM
+     * rather than opening bare.
      *
      * Costs one [nearest] call, which is a binary search plus a walk of a 25 m box.
      * Still a file read against a cold mmap, so callers keep it off the main thread.
@@ -777,12 +781,35 @@ object PoiIndex {
         name: String,
         maxMeters: Double = 25.0,
     ): PoiAttributes? {
-        if (mapped?.attrs == null || name.isBlank()) return null
-        val match = nearest(lat, lon, limit = 8, maxMeters = maxMeters)
-            .firstOrNull { it.name == name }
-            ?: return null
-        return attributesAt(match.ordinal)
+        val m = mapped
+        if (m?.attrs == null) {
+            Log.d(TAG, "attributesNear: sidecar absent (index loaded=${m != null}); no attrs for \"$name\" at ($lat, $lon)")
+            return null
+        }
+        if (name.isBlank()) return null
+        val candidates = nearest(lat, lon, limit = 8, maxMeters = maxMeters)
+        val sought = normName(name)
+        candidates.firstOrNull { normName(it.name) == sought }?.let { return attributesAt(it.ordinal) }
+        for (rec in candidates) {
+            val attrs = attributesAt(rec.ordinal)
+            if (attrs != null) {
+                Log.d(TAG, "attributesNear: \"$name\" at ($lat, $lon) matched nothing by name; using nearest-with-attrs \"${rec.name}\"")
+                return attrs
+            }
+        }
+        Log.d(TAG, "attributesNear: \"$name\" at ($lat, $lon) matched none of ${candidates.size} candidate(s) within $maxMeters m")
+        return null
     }
+
+    /**
+     * A name reduced to alphanumerics, lowercased, for the sidecar join.
+     *
+     * Tile names and sidecar names disagree on case and punctuation far more often
+     * than on the words themselves, so an exact match misses places both sides
+     * know. Only used to compare two Kotlin-side strings — never against the
+     * Rust writer's sort order, so [String.lowercase] (not [asciiLower]) is fine.
+     */
+    private fun normName(s: String): String = s.lowercase().filter { it.isLetterOrDigit() }
 
     // Record decoding lives in PoiIndexAttrs.kt; this delegates so attributesAt is unchanged.
     private fun decodeAttributes(buf: MappedByteBuffer, from: Int, to: Int): PoiAttributes? =

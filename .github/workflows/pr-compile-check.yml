@@ -30,10 +30,11 @@ jobs:
       - name: Configure Gradle for CI runner
         run: |
           # GitHub-hosted Linux runners are ~16GB RAM / ~4 vCPU. The project's
-          # local gradle.properties sizes the daemon at -Xmx46g, which cannot
-          # start on a runner. GRADLE_USER_HOME (~/.gradle)/gradle.properties
-          # overrides the project gradle.properties, so cap heap + workers to
-          # runner-appropriate values here (leaves the local dev defaults alone).
+          # local gradle.properties defaults to a small daemon heap (./install
+          # all auto-escalates locally); GRADLE_USER_HOME (~/.gradle)/
+          # gradle.properties overrides the project gradle.properties, so cap
+          # heap + workers to runner-appropriate values here (leaves the local
+          # dev defaults alone).
           mkdir -p ~/.gradle
           {
             echo 'org.gradle.jvmargs=-Xmx6144m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC -Dfile.encoding=UTF-8'

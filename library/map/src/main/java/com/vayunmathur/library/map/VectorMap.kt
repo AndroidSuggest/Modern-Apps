@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -193,6 +195,7 @@ fun VectorMap(
             darkBasemap = darkBasemap,
             muted = style == MapStyle.Muted,
             layerOptions = options.layerOptions,
+            tileSource = options.tileSource,
             userPuck = userPuck,
             regionMask = regionMask,
             trafficColors = trafficColors,
@@ -215,11 +218,13 @@ fun VectorMap(
 }
 
 /**
- * A georeferenced image stretched into its bounds' screen rect.
+ * A georeferenced image drawn over the basemap.
  *
- * Drawn in Compose above the Vulkan surface rather than inside the renderer. The map is
- * north-up and axis-aligned, so this is one screen-aligned quad — exactly what the raster
- * renderer did with `drawImage`, and visually identical. Doing it on the GPU side would
+ * Drawn in Compose above the Vulkan surface rather than inside the renderer. North-up this
+ * is one screen-aligned quad — exactly what the raster renderer did with `drawImage`, and
+ * visually identical. Under a bearing the bounds' corners project through the rotated
+ * [Projection], so the overlay draws as a rotated quad matching the basemap beneath it.
+ * Doing it on the GPU side would
  * mean a texture pipeline: a `VkImage`, a sampler, a descriptor set and a second set of
  * upload paths, for a single full-screen quad that Compose already composites.
  *
@@ -231,25 +236,63 @@ fun VectorMap(
 private fun GeoreferencedOverlay(overlay: ImageOverlay, cameraState: CameraState) {
     Canvas(Modifier.fillMaxSize()) {
         val projection = cameraState.projection ?: return@Canvas
+        val bearing = cameraState.position.bearing
         val northWest = projection.screenLocationFromPosition(
             GeoPoint(overlay.bounds.west, overlay.bounds.north)
+        )
+        val northEast = projection.screenLocationFromPosition(
+            GeoPoint(overlay.bounds.east, overlay.bounds.north)
         )
         val southEast = projection.screenLocationFromPosition(
             GeoPoint(overlay.bounds.east, overlay.bounds.south)
         )
-        val left = northWest.x.toPx().roundToInt()
-        val top = northWest.y.toPx().roundToInt()
-        val right = southEast.x.toPx().roundToInt()
-        val bottom = southEast.y.toPx().roundToInt()
-        drawImage(
-            image = overlay.bitmap,
-            srcOffset = IntOffset.Zero,
-            srcSize = IntSize(overlay.bitmap.width, overlay.bitmap.height),
-            dstOffset = IntOffset(left, top),
-            // A zero or negative extent is a degenerate bbox, which drawImage rejects.
-            dstSize = IntSize((right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1)),
-            alpha = overlay.opacity,
+        val southWest = projection.screenLocationFromPosition(
+            GeoPoint(overlay.bounds.west, overlay.bounds.south)
         )
+        if (bearing == 0.0) {
+            val left = northWest.x.toPx().roundToInt()
+            val top = northWest.y.toPx().roundToInt()
+            val right = southEast.x.toPx().roundToInt()
+            val bottom = southEast.y.toPx().roundToInt()
+            drawImage(
+                image = overlay.bitmap,
+                srcOffset = IntOffset.Zero,
+                srcSize = IntSize(overlay.bitmap.width, overlay.bitmap.height),
+                dstOffset = IntOffset(left, top),
+                // A zero or negative extent is a degenerate bbox, which drawImage rejects.
+                dstSize = IntSize((right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1)),
+                alpha = overlay.opacity,
+            )
+            return@Canvas
+        }
+        // Rotated: draw the bounds as a quadrilateral following the same corner order the
+        // basemap rotated by. drawImage has no quad overload, so clip to the rotated path
+        // and draw the axis-aligned image over its AABB — the clip keeps only the quad.
+        val nwX = northWest.x.toPx(); val nwY = northWest.y.toPx()
+        val neX = northEast.x.toPx(); val neY = northEast.y.toPx()
+        val seX = southEast.x.toPx(); val seY = southEast.y.toPx()
+        val swX = southWest.x.toPx(); val swY = southWest.y.toPx()
+        val path = Path().apply {
+            moveTo(nwX, nwY)
+            lineTo(neX, neY)
+            lineTo(seX, seY)
+            lineTo(swX, swY)
+            close()
+        }
+        clipPath(path) {
+            val left = minOf(nwX, neX, seX, swX).roundToInt()
+            val top = minOf(nwY, neY, seY, swY).roundToInt()
+            val right = maxOf(nwX, neX, seX, swX).roundToInt()
+            val bottom = maxOf(nwY, neY, seY, swY).roundToInt()
+            drawImage(
+                image = overlay.bitmap,
+                srcOffset = IntOffset.Zero,
+                srcSize = IntSize(overlay.bitmap.width, overlay.bitmap.height),
+                dstOffset = IntOffset(left, top),
+                dstSize = IntSize((right - left).coerceAtLeast(1), (bottom - top).coerceAtLeast(1)),
+                alpha = overlay.opacity,
+            )
+        }
     }
 }
 

@@ -2,8 +2,16 @@ use crate::tess::stroke::MITER_LIMIT;
 
 /// The normal at point `i`: unit at the ends, a clamped miter in between.
 pub(crate) fn join_normal(points: &[i32], n: usize, i: usize) -> (f32, f32) {
-    let before = if i > 0 { Some(direction(points, i - 1, i)) } else { None };
-    let after = if i < n - 1 { Some(direction(points, i, i + 1)) } else { None };
+    let before = if i > 0 {
+        Some(direction(points, i - 1, i))
+    } else {
+        None
+    };
+    let after = if i < n - 1 {
+        Some(direction(points, i, i + 1))
+    } else {
+        None
+    };
 
     match (before, after) {
         (None, Some(a)) => (-a.1, a.0),
@@ -24,8 +32,16 @@ pub(crate) fn join_normal(points: &[i32], n: usize, i: usize) -> (f32, f32) {
                 mx /= len;
                 my /= len;
                 let cos_half = mx * n1x + my * n1y;
-                let miter = if cos_half > 1e-3 { 1.0 / cos_half } else { MITER_LIMIT };
-                let clamped = if miter > MITER_LIMIT { MITER_LIMIT } else { miter };
+                let miter = if cos_half > 1e-3 {
+                    1.0 / cos_half
+                } else {
+                    MITER_LIMIT
+                };
+                let clamped = if miter > MITER_LIMIT {
+                    MITER_LIMIT
+                } else {
+                    miter
+                };
                 (mx * clamped, my * clamped)
             }
         }

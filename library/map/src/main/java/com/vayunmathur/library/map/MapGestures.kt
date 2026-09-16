@@ -110,7 +110,7 @@ internal fun Modifier.mapGestures(
         // of a pan. A pinch (fingers moving apart / opposite) or a twist is left untouched, so
         // zoom still works.
         .pointerInput(cameraState, gestures, density) {
-            if (!gestures.isScrollEnabled && !gestures.isZoomEnabled) {
+            if ((!gestures.isScrollEnabled && !gestures.isZoomEnabled) || !gestures.isTiltEnabled) {
                 return@pointerInput
             }
             detectVerticalTiltGestures { dyPx -> cameraState.onTilt(dyPx / density) }

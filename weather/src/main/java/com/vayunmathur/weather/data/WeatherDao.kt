@@ -35,6 +35,10 @@ interface WeatherDao {
     @Query("UPDATE SavedLocation SET latitude = :lat, longitude = :lon WHERE id = :id")
     suspend fun updateCoordinates(id: Long, lat: Double, lon: Double)
 
+    /** Updates a saved row's display name in place, e.g. after reverse-geocoding moves. */
+    @Query("UPDATE SavedLocation SET name = :name, country = :country WHERE id = :id")
+    suspend fun updateName(id: Long, name: String, country: String)
+
     /**
      * Replaces the existing "current device" row (if any) with [newRow] in a
      * single transaction. Used by the location provider when it gets a fresh

@@ -34,7 +34,7 @@ private val PIN_SIZE = 26.dp
 private val SAVED_PLACE_COLOR = Color(0xFF1A73E8)
 
 /**
- * Saved-place overlay (Vela's `SavedPin`): Home, Work and the starred list drawn as plain
+ * Saved-place overlay (Vela's `SavedPin`): the starred list drawn as plain
  * Compose over VectorMap. Tap → details via [toSelectedSavedPlace], reusing
  * [SpecificFeature.GenericPlace] so the existing enrichment + place sheet render with no new
  * detail path.
