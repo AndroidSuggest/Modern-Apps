@@ -94,6 +94,7 @@ class MainActivity : ComponentActivity() {
                                         viewModel.onNewGame(it)
                                         showNewGameDialog = false
                                     },
+                                    onDismiss = { showNewGameDialog = false },
                                     aiAvailable = aiAvailable
                                 )
                             }

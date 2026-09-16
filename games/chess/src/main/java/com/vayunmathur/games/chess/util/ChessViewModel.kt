@@ -55,11 +55,24 @@ class ChessViewModel(application: Application) : AndroidViewModel(application), 
     private val _aiAvailable = MutableStateFlow(false)
     val aiAvailable: StateFlow<Boolean> = _aiAvailable.asStateFlow()
 
+    // Guards one-time scoring of a finished game. The win-counting effect lives in composition and
+    // re-runs whenever the Game screen re-enters composition (e.g. returning from the achievements
+    // screen), which must not tick the counter again (#668). Reset on every new game.
+    private var winScored = false
+
     init {
         viewModelScope.launch { _aiAvailable.value = chessApi.isAvailable() }
     }
 
+    /** Returns true only the first time it is called for the current game; false thereafter. */
+    fun claimWinScoring(): Boolean {
+        if (winScored) return false
+        winScored = true
+        return true
+    }
+
     fun onNewGame(gameMode: GameMode) {
+        winScored = false
         val isFlipped = gameMode is GameMode.VsAI && gameMode.playerColor == PieceColor.BLACK
         _uiState.value = ChessUiState(gameMode = gameMode, isBoardFlipped = isFlipped)
         if (gameMode is GameMode.VsAI && gameMode.playerColor == PieceColor.BLACK) {

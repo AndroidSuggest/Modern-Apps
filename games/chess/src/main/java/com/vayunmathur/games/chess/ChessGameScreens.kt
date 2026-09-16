@@ -92,7 +92,7 @@ internal val ChessSidePanelWidth = 300.dp
  * disabled when the model cannot run: a mode that can never move is not worth explaining.
  */
 @Composable
-fun NewGameDialog(onNewGame: (GameMode) -> Unit, aiAvailable: Boolean = true) {
+fun NewGameDialog(onNewGame: (GameMode) -> Unit, onDismiss: () -> Unit = {}, aiAvailable: Boolean = true) {
     var showSettings by remember { mutableStateOf<((PieceColor, Difficulty) -> Unit)?>(null) }
 
     showSettings?.let { startGame ->
@@ -150,7 +150,7 @@ fun NewGameDialog(onNewGame: (GameMode) -> Unit, aiAvailable: Boolean = true) {
         )
     } ?:
         AlertDialog(
-            onDismissRequest = { },
+            onDismissRequest = onDismiss,
             title = { Text(text = stringResource(R.string.new_game)) },
             text = {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -213,11 +213,6 @@ fun ChessGame(
 
         if (playerWins) {
             achievementsManager.onAchievementUnlocked("first_mate")
-            val ds = DataStoreUtils.getInstance(context)
-            val currentWins = (ds.getLong("chess_wins_count") ?: 0L) + 1
-            ds.setLong("chess_wins_count", currentWins)
-            achievementsManager.onProgressUpdated("win_10", currentWins.toInt())
-            achievementsManager.onProgressUpdated("win_50", currentWins.toInt())
 
             if (uiState.board.moves.size <= 40) {
                 achievementsManager.onAchievementUnlocked("won_fast")
@@ -225,6 +220,17 @@ fun ChessGame(
 
             if (mode is GameMode.VsAI && mode.difficulty >= Difficulty.ADVANCED) {
                 achievementsManager.onAchievementUnlocked("win_vs_ai_hard")
+            }
+
+            // Only tick the persistent win counter once per game. This effect re-runs when the
+            // Game screen re-enters composition (e.g. returning from the achievements screen), and
+            // the outcome is still a win, so without this guard the count would climb each time.
+            if (viewModel.claimWinScoring()) {
+                val ds = DataStoreUtils.getInstance(context)
+                val currentWins = (ds.getLong("chess_wins_count") ?: 0L) + 1
+                ds.setLong("chess_wins_count", currentWins)
+                achievementsManager.onProgressUpdated("win_10", currentWins.toInt())
+                achievementsManager.onProgressUpdated("win_50", currentWins.toInt())
             }
         }
     }
