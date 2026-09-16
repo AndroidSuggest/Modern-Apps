@@ -42,4 +42,10 @@
     <string name="shadows">Skuggor</string>
     <string name="warmth">Värme</string>
     <string name="qr_scanning_paused">QR-skanning pausad</string>
+    <string name="lens_ultrawide">UV</string>
+    <string name="lens_wide">1x</string>
+    <string name="lens_tele">Tele</string>
+    <string name="lens_mono">Mono</string>
+    <string name="lens_front">Främre</string>
+    <string name="lens_picker_description">Kameralins</string>
 </resources>
