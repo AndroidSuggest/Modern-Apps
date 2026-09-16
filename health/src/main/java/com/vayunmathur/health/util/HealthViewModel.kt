@@ -271,14 +271,54 @@ class HealthViewModel(
                 HealthAPI.getListOfSums(config.recordType, startTime, endTimeNow, periodType2)
             }
 
-            val mappedChart = rawPairs.map { p ->
+            // Week tab must always show 7 Sunday..Saturday slots. The DAO only
+            // returns days that have records, so mapping it directly collapses
+            // the series left: Tuesday's bar lands in Sunday's slot (#727).
+            // Missing days become null (bar chart renders zero, line chart a
+            // gap) so each value keeps its own weekday slot.
+            val weekSeries = if (selectedTab == 1) {
+                fillWeekSeries(
+                    startDate,
+                    rawPairs.associate { it.first to (it.second to it.third) },
+                )
+            } else null
+            val mappedChart: List<Pair<String, Double?>> = weekSeries?.map { (date, value, _) ->
+                labelFor(selectedTab, date.toEpochDays().toLong()) to value
+            } ?: rawPairs.map { p ->
                 labelFor(selectedTab, p.first) to p.second
             }
-            val mappedSecondaryChart = if (config.isDualSeries) {
-                rawPairs.map { p -> labelFor(selectedTab, p.first) to p.third }
+            val mappedSecondaryChart: List<Pair<String, Double?>>? = if (config.isDualSeries) {
+                weekSeries?.map { (date, _, secondary) ->
+                    labelFor(selectedTab, date.toEpochDays().toLong()) to secondary
+                } ?: rawPairs.map { p -> labelFor(selectedTab, p.first) to p.third }
             } else null
 
-            val history = if (selectedTab != 0) rawPairsHistory.mapIndexed { index, triple ->
+            // Same collapse bug as the chart: label each row by its own date,
+            // not by position. Bar metrics show all 7 days (missing = 0);
+            // line metrics list only days with readings so gaps don't
+            // drag the average to zero.
+            val weekHistorySeries = if (selectedTab == 1) {
+                fillWeekSeries(
+                    startDate,
+                    rawPairsHistory.associate { it.first to (it.second to it.third) },
+                )
+            } else null
+            val history = if (selectedTab == 1 && weekHistorySeries != null) {
+                weekHistorySeries.mapNotNull { (date, value, secondary) ->
+                    if (value == null && config.isLineChart) return@mapNotNull null
+                    val label = localizedDayOfWeekNames(DateNameStyle.FULL)[
+                        date.dayOfWeek.isoDayNumber - 1
+                    ]
+                    HistoryItem(
+                        label = label,
+                        value = value ?: 0.0,
+                        secondaryValue = if (config.isDualSeries) secondary else null,
+                        unit = config.unit,
+                        isGoalMet = (value ?: 0.0) >= config.dailyGoal,
+                        useDecimals = config.useDecimals,
+                    )
+                }.reversed()
+            } else if (selectedTab != 0) rawPairsHistory.mapIndexed { index, triple ->
                 val label = when (selectedTab) {
                     0 -> ""
                     1 -> localizedDayOfWeekNames(DateNameStyle.FULL)[
@@ -327,7 +367,9 @@ class HealthViewModel(
                 chartData = mappedChart,
                 secondaryChartData = mappedSecondaryChart,
                 historyItems = history,
-                totalBarCount = rawPairs.size,
+                // Fixed 7 for the week tab: spacing math must divide by all 7
+                // slots even when only some days have data.
+                totalBarCount = if (selectedTab == 1) 7 else rawPairs.size,
                 primaryRange = mappedChart.mapNotNull { it.second }.let { vals ->
                     if (vals.isEmpty()) null
                     else vals.minOrNull()!!.let { min ->
@@ -593,6 +635,21 @@ class HealthViewModel(
 
     companion object {
         private const val TAG = "HealthViewModel"
+
+        /**
+         * Week-tab slot fill: returns all 7 Sunday..Saturday days of the week
+         * containing [weekStart], each paired with its value (or null when that
+         * day has no records). DAO rows are keyed by epoch day.
+         */
+        internal fun fillWeekSeries(
+            weekStart: LocalDate,
+            valuesByEpochDay: Map<Long, Pair<Double?, Double?>>,
+        ): List<Triple<LocalDate, Double?, Double?>> =
+            (0..6).map { offset ->
+                val date = weekStart.plus(offset, DateTimeUnit.DAY)
+                val pair = valuesByEpochDay[date.toEpochDays().toLong()]
+                Triple(date, pair?.first, pair?.second)
+            }
     }
 }
 
