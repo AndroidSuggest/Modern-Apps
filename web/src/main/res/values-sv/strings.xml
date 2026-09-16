@@ -124,4 +124,5 @@
     <string name="cleartext_blocked_message">%1$s begärdes via vanlig HTTP. Okrypterade anslutningar tillåts endast till enheter i ditt lokala nätverk.</string>
     <string name="local_network_title">Tillåt åtkomst till lokalt nätverk?</string>
     <string name="local_network_message">%1$s verkar vara en enhet i ditt nätverk. Android behöver behörighet till det lokala nätverket innan sidan kan läsas in.</string>
+    <string name="content_filter_blocked_html"><![CDATA[<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:sans-serif;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#111;color:#eee}main{max-width:22rem;padding:2rem;text-align:center}h1{font-size:1.25rem;font-weight:600;margin:0 0 .5rem}p{margin:0;opacity:.7;line-height:1.5}</style></head><body><main><h1>Webbplatsen är blockerad</h1><p>Webbinnehållsfiltrering är aktiverad på den här enheten. Kontakta den som har ställt in föräldrakontrollerna om du tror att detta är ett misstag.</p></main></body></html>]]></string>
 </resources>
