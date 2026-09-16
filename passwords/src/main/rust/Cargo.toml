@@ -11,6 +11,13 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 keepass.workspace = true
+# keepass 0.13.22 needs aes 0.9.x (cipher 0.5 stack) to match its cbc 0.2 dep.
+# Without this direct edge, cargo would reuse only the aes version keepass
+# resolves and could drop the 0.9.2 line the `^0.9` edge needs (the workspace
+# default is 0.8.4 / cipher 0.4 for communicate/pdf/share/betocore). With it,
+# keepass unifies onto exactly 0.9.2 (cipher 0.5, under the <0.9.3 rationale
+# that motivated 0.13.23+). See the workspace `aes09` pin.
+aes09.workspace = true
 jni.workspace = true
 # serde_json now kept only for keepass internal serde, but passwords own flat map JSON was rewritten to std-only
 # (to_json_std/from_json_std) – single-function usage per "just write it ourselves" + "prefer stdlib".
