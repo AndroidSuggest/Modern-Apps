@@ -302,7 +302,7 @@ mod tests {
         // half over the dark one.
         assert_eq!((atlas.width, atlas.height), (512, 532), "the 2x sheet's declared size");
         assert_eq!(atlas.pixels.len(), 512 * 532 * 4, "RGBA8, tightly packed");
-        assert_eq!(atlas.len(), 57, "upstream's 53 entries plus fuel, hotel, bank and atm");
+        assert_eq!(atlas.len(), 61, "upstream's 53 entries plus fuel, hotel, bank, atm and the four vehicle mode sprites");
         assert_eq!(atlas.dark_v_offset(), 0.5, "two equal halves");
     }
 
