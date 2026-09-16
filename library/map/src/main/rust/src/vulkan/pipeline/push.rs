@@ -30,6 +30,11 @@ pub const NO_MARKINGS: f32 = -2.0;
 /// (1.0 = fully present) reserved for WS-D. Both default to a value that leaves the flat 2D
 /// output byte-identical (`clock` is ignored by the current shaders, `morph.x` is 1.0).
 ///
+/// The terrain draw reuses `misc.xyz` as the tile-local eye position (`u, v` in 0..1, height in
+/// tile-norm units) for its Blinn-Phong specular — those slots are dead on that path, which
+/// pushes no tile-px/edge-AA/lateral values, so the reuse costs no new slot and the buildings
+/// pipeline keeps the stock meaning untouched.
+///
 /// # The ribbon draw reads three of these slots differently
 ///
 /// [`ribbon`](Pipelines::ribbon) is a road carriageway rather than a stroke, so `gap_half_px`,

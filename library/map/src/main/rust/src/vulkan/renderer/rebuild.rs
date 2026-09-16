@@ -45,17 +45,18 @@ impl Drop for Renderer {
         unsafe {
             let _ = self.context.device.device_wait_idle();
             for tile in self.tiles.values() {
-                for layer in &tile.layers {
-                    layer.vertices.destroy(&self.context.device);
-                    layer.indices.destroy(&self.context.device);
+                // Draw slices are plain indices into the pools — each pool is one pair.
+                if let Some((v, i)) = &tile.flat {
+                    v.destroy(&self.context.device);
+                    i.destroy(&self.context.device);
                 }
-                for region in &tile.regions {
-                    region.vertices.destroy(&self.context.device);
-                    region.indices.destroy(&self.context.device);
+                if let Some((v, i)) = &tile.lines {
+                    v.destroy(&self.context.device);
+                    i.destroy(&self.context.device);
                 }
-                for road in &tile.carriageways {
-                    road.vertices.destroy(&self.context.device);
-                    road.indices.destroy(&self.context.device);
+                if let Some((v, i)) = &tile.ribbons {
+                    v.destroy(&self.context.device);
+                    i.destroy(&self.context.device);
                 }
                 if let Some(buildings) = &tile.buildings {
                     buildings.vertices.destroy(&self.context.device);
@@ -68,17 +69,17 @@ impl Drop for Renderer {
             }
             self.tiles.clear();
             for (_, tile) in &self.retiring {
-                for layer in &tile.layers {
-                    layer.vertices.destroy(&self.context.device);
-                    layer.indices.destroy(&self.context.device);
+                if let Some((v, i)) = &tile.flat {
+                    v.destroy(&self.context.device);
+                    i.destroy(&self.context.device);
                 }
-                for region in &tile.regions {
-                    region.vertices.destroy(&self.context.device);
-                    region.indices.destroy(&self.context.device);
+                if let Some((v, i)) = &tile.lines {
+                    v.destroy(&self.context.device);
+                    i.destroy(&self.context.device);
                 }
-                for road in &tile.carriageways {
-                    road.vertices.destroy(&self.context.device);
-                    road.indices.destroy(&self.context.device);
+                if let Some((v, i)) = &tile.ribbons {
+                    v.destroy(&self.context.device);
+                    i.destroy(&self.context.device);
                 }
                 if let Some(buildings) = &tile.buildings {
                     buildings.vertices.destroy(&self.context.device);

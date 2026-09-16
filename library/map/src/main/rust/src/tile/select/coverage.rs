@@ -2,6 +2,16 @@ use crate::camera::{Camera, TILE_SIZE};
 
 use super::tile_id::TileId;
 
+/// How far past the camera centre the tilt trapezoid may reach, in viewport heights.
+///
+/// Under tilt the top of the screen recedes toward the horizon — at 65° the far edge is many
+/// viewport-heights away — and an uncapped trapezoid enumerates an unbounded tile strip that is
+/// fogged to the background colour anyway (see `FAR_FADE`). Capping the far reach keeps the
+/// visible set proportional to the viewport instead of the pitch: ground past the cap is still
+/// drawn (the far tiles cover it, faded) but no *extra* tiles are fetched for it. In tile units
+/// the cap bites only at high pitch + low zoom, exactly where the strip would explode.
+const FAR_REACH_VIEWPORTS: f64 = 6.0;
+
 /// The world-px axis-aligned box the viewport covers on the ground, accounting for **both**
 /// bearing and tilt.
 ///
@@ -30,6 +40,15 @@ fn coverage(camera: &Camera) -> (crate::camera::WorldPx, crate::camera::WorldPx)
             max.y = max.y.max(p.y);
         }
     }
+    // Far-distance cap: clamp the box to a radius around the camera centre so a near-horizon
+    // view at high pitch enumerates a bounded strip instead of tiles to the horizon. The
+    // `PITCH_MAX_DEG` cap keeps every corner finite; this keeps the *count* bounded.
+    let centre = crate::camera::project(camera.center_lon, camera.center_lat, camera.zoom);
+    let reach = FAR_REACH_VIEWPORTS * h.max(w);
+    min.x = min.x.max(centre.x - reach);
+    min.y = min.y.max(centre.y - reach);
+    max.x = max.x.min(centre.x + reach);
+    max.y = max.y.min(centre.y + reach);
     (min, max)
 }
 

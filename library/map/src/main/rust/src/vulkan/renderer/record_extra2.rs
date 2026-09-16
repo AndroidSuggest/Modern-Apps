@@ -50,6 +50,11 @@ impl Renderer {
             if tile.traffic.is_empty() {
                 continue;
             }
+            // The line pool, bound at offset 0; each segment draws its slice by firstIndex.
+            let Some((pool_v, pool_i)) = tile.lines.as_ref().map(|(v, i)| (v.buffer, i.buffer))
+            else {
+                continue;
+            };
             let tile_to_clip = camera.tile_to_clip(tile.z, tile.x, tile.y);
             let tile_span_px = camera.tile_span_px(tile.z);
             for segment in &tile.traffic {
@@ -80,14 +85,14 @@ impl Renderer {
                     0,
                     push.as_bytes(),
                 );
-                device.cmd_bind_vertex_buffers(command_buffer, 0, &[segment.vertices.buffer], &[0]);
+                device.cmd_bind_vertex_buffers(command_buffer, 0, &[pool_v], &[0]);
                 device.cmd_bind_index_buffer(
                     command_buffer,
-                    segment.indices.buffer,
+                    pool_i,
                     0,
                     vk::IndexType::UINT32,
                 );
-                device.cmd_draw_indexed(command_buffer, segment.index_count, 1, 0, 0, 0);
+                device.cmd_draw_indexed(command_buffer, segment.index_count, 1, segment.first_index, 0, 0);
                 *submitted += 1;
             }
         }
@@ -111,6 +116,12 @@ impl Renderer {
 
         let mut any = false;
         for tile in self.tiles.values() {
+            // The flat pool, bound at offset 0; each region piece draws its slice by
+            // firstIndex.
+            let Some((pool_v, pool_i)) = tile.flat.as_ref().map(|(v, i)| (v.buffer, i.buffer))
+            else {
+                continue;
+            };
             for region in tile.regions.iter().filter(|r| r.id == selected) {
                 if !any {
                     device.cmd_bind_pipeline(
@@ -137,16 +148,16 @@ impl Renderer {
                 device.cmd_bind_vertex_buffers(
                     command_buffer,
                     0,
-                    &[region.vertices.buffer],
+                    &[pool_v],
                     &[0],
                 );
                 device.cmd_bind_index_buffer(
                     command_buffer,
-                    region.indices.buffer,
+                    pool_i,
                     0,
                     vk::IndexType::UINT32,
                 );
-                device.cmd_draw_indexed(command_buffer, region.index_count, 1, 0, 0, 0);
+                device.cmd_draw_indexed(command_buffer, region.index_count, 1, region.first_index, 0, 0);
                 *submitted += 1;
             }
         }

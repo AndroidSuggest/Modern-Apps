@@ -1,8 +1,7 @@
 use super::{
     BuildingBuffers, CarriagewayBuffers, FRAMES_IN_FLIGHT, LayerBuffers, RegionBuffers,
-    Renderer, ResidentTile, RouteBuffers, TerrainBuffers, TrafficBuffers, TransientBuffers,
+    Renderer, ResidentTile, TerrainBuffers, TrafficBuffers,
 };
-use crate::overlay::RouteMesh;
 use crate::tile::geometry::TileMesh;
 use crate::tile::select;
 use crate::vulkan::buffers::Buffer;
@@ -12,219 +11,157 @@ use ash::vk;
 use std::collections::HashSet;
 
 impl Renderer {
-    /// Draw `mesh` as the navigation route, or take the route away with `None`.
-    ///
-    /// Pure state: a route arrives once and then does not change, so it has
-    /// no business being an argument on [`render`](Self::render). Old buffers
-    /// retire through the frames-in-flight grace queue; on upload failure the
-    /// route is left cleared rather than half-set.
-    pub fn set_route(&mut self, mesh: Option<&RouteMesh>) -> Result<(), String> {
-        if let Some(previous) = self.route.take() {
-            self.transients.push(TransientBuffers {
-                vbuf: previous.vertices,
-                ibuf: previous.indices,
-                frames: FRAMES_IN_FLIGHT,
-            });
-        }
-        let Some(mesh) = mesh else { return Ok(()) };
-        if mesh.indices.is_empty() {
-            return Ok(());
-        }
-        // SAFETY: uploading fresh GPU buffers; the old ones retired above.
-        let buffers = unsafe { self.upload_route_buffers(mesh)? };
-        self.route = Some(buffers);
-        Ok(())
-    }
-
-    /// Draw `mesh` as the pack-driven rail-lines overlay, or take it away
-    /// with `None`. Same mesh, grace queue and cleared-on-failure contract
-    /// as [`set_route`](Self::set_route); a frame does nothing but draw.
-    pub fn set_rail_lines(&mut self, mesh: Option<&RouteMesh>) -> Result<(), String> {
-        if let Some(previous) = self.rail_lines.take() {
-            self.transients.push(TransientBuffers {
-                vbuf: previous.vertices,
-                ibuf: previous.indices,
-                frames: FRAMES_IN_FLIGHT,
-            });
-        }
-        let Some(mesh) = mesh else { return Ok(()) };
-        if mesh.indices.is_empty() {
-            return Ok(());
-        }
-        // SAFETY: uploading fresh GPU buffers; the old ones retired above.
-        let buffers = unsafe { self.upload_route_buffers(mesh)? };
-        self.rail_lines = Some(buffers);
-        Ok(())
-    }
-    /// Upload a [`RouteMesh`] into GPU [`RouteBuffers`], shared by the route
-    /// and rail-lines slots. On failure the vertices are destroyed and the
-    /// slot stays cleared rather than half-set.
-    ///
-    /// # Safety: call only after retiring the slot's previous buffers — a
-    /// command buffer submitted last frame may still be reading them.
-    unsafe fn upload_route_buffers(&self, mesh: &RouteMesh) -> Result<RouteBuffers, String> {
-        let vertices = Buffer::upload(
-            &self.context.instance,
-            self.context.physical_device,
-            &self.context.device,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            &mesh.vertices,
-        )?;
-        let indices = match Buffer::upload(
-            &self.context.instance,
-            self.context.physical_device,
-            &self.context.device,
-            vk::BufferUsageFlags::INDEX_BUFFER,
-            &mesh.indices,
-        ) {
-            Ok(buffer) => buffer,
-            Err(e) => {
-                vertices.destroy(&self.context.device);
-                return Err(e);
-            }
-        };
-        Ok(RouteBuffers {
-            placement: mesh.placement,
-            vertices,
-            indices,
-            index_count: mesh.indices.len() as u32,
-            segments: mesh.segments.clone(),
-        })
-    }
 
     /// Upload a tile's geometry, replacing anything already resident for it.
+    ///
+    /// Same-format meshes share one vertex + one index buffer per pool (see
+    /// [`upload_packed`](crate::vulkan::buffers::upload_packed)): fills (+ the region-mask
+    /// shapes, which are position-only fills) in [`flat`](ResidentTile::flat), strokes (+ the
+    /// traffic segments, which ride the stroke vertex) in [`lines`](ResidentTile::lines), and
+    /// ribbon carriageways in [`ribbons`](ResidentTile::ribbons). Buildings and terrain are
+    /// already one mesh per tile and keep their own pair. A dense tile costs ~5 allocations
+    /// instead of ~60-100, on the same Choreographer callback as before.
     pub fn upload(&mut self, key: u64, mesh: &TileMesh) -> Result<(), String> {
-        let mut layers = Vec::with_capacity(mesh.meshes.len());
+        use crate::style::LayerKind;
+        use crate::tess::{fill, ribbon, stroke};
+        use crate::vulkan::buffers::upload_packed;
+        let instance = &self.context.instance;
+        let physical = self.context.physical_device;
+        let device = &self.context.device;
+        // Fills and region shapes share the position-only flat pool; collect which flat mesh
+        // each belongs to so the draw slices line up with the packed order below.
+        let mut flat_meshes: Vec<(&[f32], &[u32])> = Vec::new();
+        let mut flat_region_at: Vec<usize> = Vec::new();
+        let mut flat_layer_at: Vec<usize> = Vec::new();
         for layer_mesh in &mesh.meshes {
-            if layer_mesh.indices.is_empty() {
+            if layer_mesh.kind != LayerKind::Fill || layer_mesh.indices.is_empty() {
                 continue;
             }
-            unsafe {
-                let vertices = Buffer::upload(
-                    &self.context.instance,
-                    self.context.physical_device,
-                    &self.context.device,
-                    vk::BufferUsageFlags::VERTEX_BUFFER,
-                    &layer_mesh.vertices,
-                )?;
-                let indices = Buffer::upload(
-                    &self.context.instance,
-                    self.context.physical_device,
-                    &self.context.device,
-                    vk::BufferUsageFlags::INDEX_BUFFER,
-                    &layer_mesh.indices,
-                )?;
-                layers.push(LayerBuffers {
-                    layer_index: layer_mesh.layer_index,
-                    kind: layer_mesh.kind,
-                    vertices,
-                    indices,
-                    index_count: layer_mesh.indices.len() as u32,
-                    color_override: layer_mesh.color_override,
-                    lane: layer_mesh.lane,
-                });
-            }
+            flat_layer_at.push(flat_meshes.len());
+            flat_meshes.push((&layer_mesh.vertices, &layer_mesh.indices));
         }
-        let mut regions = Vec::with_capacity(mesh.regions.len());
         for region in &mesh.regions {
-            unsafe {
-                let vertices = Buffer::upload(
-                    &self.context.instance,
-                    self.context.physical_device,
-                    &self.context.device,
-                    vk::BufferUsageFlags::VERTEX_BUFFER,
-                    &region.vertices,
-                )?;
-                let indices = Buffer::upload(
-                    &self.context.instance,
-                    self.context.physical_device,
-                    &self.context.device,
-                    vk::BufferUsageFlags::INDEX_BUFFER,
-                    &region.indices,
-                )?;
-                regions.push(RegionBuffers {
-                    id: region.id,
-                    vertices,
-                    indices,
-                    index_count: region.indices.len() as u32,
-                    rings: region.rings.clone(),
-                    area: region.area,
-                    level: region.level,
-                });
-            }
+            flat_region_at.push(flat_meshes.len());
+            flat_meshes.push((&region.vertices, &region.indices));
         }
-        let mut traffic = Vec::with_capacity(mesh.traffic.len());
+        // Strokes and traffic segments share the 7-float stroke pool.
+        let mut line_meshes: Vec<(&[f32], &[u32])> = Vec::new();
+        let mut line_layer_at: Vec<usize> = Vec::new();
+        let mut line_traffic_at: Vec<usize> = Vec::new();
+        for layer_mesh in &mesh.meshes {
+            if layer_mesh.kind != LayerKind::Line || layer_mesh.indices.is_empty() {
+                continue;
+            }
+            line_layer_at.push(line_meshes.len());
+            line_meshes.push((&layer_mesh.vertices, &layer_mesh.indices));
+        }
         for segment in &mesh.traffic {
             if segment.indices.is_empty() {
                 continue;
             }
-            unsafe {
-                let vertices = Buffer::upload(
-                    &self.context.instance,
-                    self.context.physical_device,
-                    &self.context.device,
-                    vk::BufferUsageFlags::VERTEX_BUFFER,
-                    &segment.vertices,
-                )?;
-                let indices = match Buffer::upload(
-                    &self.context.instance,
-                    self.context.physical_device,
-                    &self.context.device,
-                    vk::BufferUsageFlags::INDEX_BUFFER,
-                    &segment.indices,
-                ) {
-                    Ok(buffer) => buffer,
-                    Err(e) => {
-                        vertices.destroy(&self.context.device);
-                        return Err(e);
-                    }
-                };
-                traffic.push(TrafficBuffers {
-                    id: segment.id,
-                    vertices,
-                    indices,
-                    index_count: segment.indices.len() as u32,
-                });
-            }
+            line_traffic_at.push(line_meshes.len());
+            line_meshes.push((&segment.vertices, &segment.indices));
         }
-        // The tile's road carriageways: one mesh per distinct road shape, uploaded like the
-        // traffic segments above.
-        let mut carriageways = Vec::with_capacity(mesh.carriageways.len());
+        let mut ribbon_meshes: Vec<(&[f32], &[u32])> = Vec::new();
         for road in &mesh.carriageways {
             if road.indices.is_empty() {
                 continue;
             }
-            unsafe {
-                let vertices = Buffer::upload(
-                    &self.context.instance,
-                    self.context.physical_device,
-                    &self.context.device,
-                    vk::BufferUsageFlags::VERTEX_BUFFER,
-                    &road.vertices,
-                )?;
-                let indices = match Buffer::upload(
-                    &self.context.instance,
-                    self.context.physical_device,
-                    &self.context.device,
-                    vk::BufferUsageFlags::INDEX_BUFFER,
-                    &road.indices,
-                ) {
-                    Ok(buffer) => buffer,
-                    Err(e) => {
-                        vertices.destroy(&self.context.device);
-                        return Err(e);
-                    }
-                };
-                carriageways.push(CarriagewayBuffers {
-                    layer_index: road.layer_index,
-                    lanes: road.lanes,
-                    split: road.split,
-                    oneway: road.oneway,
-                    vertices,
-                    indices,
-                    index_count: road.indices.len() as u32,
-                });
+            ribbon_meshes.push((&road.vertices, &road.indices));
+        }
+        // SAFETY: uploading fresh GPU buffers for a tile whose previous buffers (if any)
+        // are retired below, after every buffer below has landed.
+        let flat = unsafe {
+            upload_packed(instance, physical, device, fill::FLOATS_PER_VERTEX, &flat_meshes)?
+        };
+        let lines = unsafe {
+            upload_packed(instance, physical, device, stroke::FLOATS_PER_VERTEX, &line_meshes)?
+        };
+        let ribbons = unsafe {
+            upload_packed(
+                instance,
+                physical,
+                device,
+                ribbon::FLOATS_PER_VERTEX,
+                &ribbon_meshes,
+            )?
+        };
+        let mut flat_layer_iter = flat_layer_at.iter();
+        let mut line_layer_iter = line_layer_at.iter();
+        let mut layers: Vec<LayerBuffers> = Vec::with_capacity(mesh.meshes.len());
+        for layer_mesh in &mesh.meshes {
+            if layer_mesh.indices.is_empty() {
+                continue;
             }
+            // The `*_at` vectors parallel their pool's mesh order: the nth fill-kind mesh is
+            // the nth entry of the flat pool's first-index list, and likewise for lines.
+            let first_index = match layer_mesh.kind {
+                LayerKind::Fill => {
+                    let Some(at) = flat_layer_iter.next() else { continue };
+                    let Some((_, _, first)) = flat.as_ref() else { continue };
+                    first[*at]
+                }
+                LayerKind::Line => {
+                    let Some(at) = line_layer_iter.next() else { continue };
+                    let Some((_, _, first)) = lines.as_ref() else { continue };
+                    first[*at]
+                }
+                LayerKind::Symbol => continue,
+            };
+            layers.push(LayerBuffers {
+                layer_index: layer_mesh.layer_index,
+                kind: layer_mesh.kind,
+                first_index,
+                index_count: layer_mesh.indices.len() as u32,
+                color_override: layer_mesh.color_override,
+                lane: layer_mesh.lane,
+            });
+        }
+        let flat_first: Vec<u32> = flat.as_ref().map(|(_, _, f)| f.clone()).unwrap_or_default();
+        let line_first: Vec<u32> =
+            lines.as_ref().map(|(_, _, f)| f.clone()).unwrap_or_default();
+        let mut regions = Vec::with_capacity(mesh.regions.len());
+        for (n, region) in mesh.regions.iter().enumerate() {
+            let Some(&first_index) = flat_first.get(flat_region_at[n]) else { continue };
+            regions.push(RegionBuffers {
+                id: region.id,
+                first_index,
+                index_count: region.indices.len() as u32,
+                rings: region.rings.clone(),
+                area: region.area,
+                level: region.level,
+            });
+        }
+        let mut traffic = Vec::with_capacity(mesh.traffic.len());
+        for (n, segment) in mesh.traffic.iter().enumerate() {
+            if segment.indices.is_empty() {
+                continue;
+            }
+            let Some(&first_index) = line_first.get(line_traffic_at[n]) else { continue };
+            traffic.push(TrafficBuffers {
+                id: segment.id,
+                first_index,
+                index_count: segment.indices.len() as u32,
+            });
+        }
+        let ribbon_first: Vec<u32> =
+            ribbons.as_ref().map(|(_, _, f)| f.clone()).unwrap_or_default();
+        let mut carriageways = Vec::with_capacity(mesh.carriageways.len());
+        let mut ri = 0usize;
+        for road in &mesh.carriageways {
+            if road.indices.is_empty() {
+                continue;
+            }
+            let Some(&first_index) = ribbon_first.get(ri) else { continue };
+            ri += 1;
+            carriageways.push(CarriagewayBuffers {
+                layer_index: road.layer_index,
+                lanes: road.lanes,
+                split: road.split,
+                oneway: road.oneway,
+                first_index,
+                index_count: road.indices.len() as u32,
+            });
         }
         // The tile's 3D buildings, if any: one combined mesh, uploaded like the rest.
         let buildings = if mesh.buildings.indices.is_empty() {
@@ -291,6 +228,9 @@ impl Renderer {
             }
         };
         let tile = ResidentTile {
+            flat: flat.map(|(v, i, _)| (v, i)),
+            lines: lines.map(|(v, i, _)| (v, i)),
+            ribbons: ribbons.map(|(v, i, _)| (v, i)),
             layers,
             buildings,
             terrain,
@@ -383,21 +323,19 @@ impl Renderer {
                 return true;
             }
             unsafe {
-                for layer in &tile.layers {
-                    layer.vertices.destroy(device);
-                    layer.indices.destroy(device);
+                // Draw slices are plain indices into the pools — nothing per draw to free.
+                // Each pool is one pair no matter how many meshes packed into it.
+                if let Some((v, i)) = &tile.flat {
+                    v.destroy(device);
+                    i.destroy(device);
                 }
-                for region in &tile.regions {
-                    region.vertices.destroy(device);
-                    region.indices.destroy(device);
+                if let Some((v, i)) = &tile.lines {
+                    v.destroy(device);
+                    i.destroy(device);
                 }
-                for segment in &tile.traffic {
-                    segment.vertices.destroy(device);
-                    segment.indices.destroy(device);
-                }
-                for road in &tile.carriageways {
-                    road.vertices.destroy(device);
-                    road.indices.destroy(device);
+                if let Some((v, i)) = &tile.ribbons {
+                    v.destroy(device);
+                    i.destroy(device);
                 }
                 if let Some(buildings) = &tile.buildings {
                     buildings.vertices.destroy(device);

@@ -15,8 +15,11 @@ pub struct CachingRangeReader<F: RangeFetcher> {
     /// False until the first read of the session has gone to the network.
     ///
     /// That read is the archive header, and it is the one entry the cache must not answer from
-    /// itself — see the note in [`RangeReader::read`].
-    prefix_checked: std::sync::atomic::AtomicBool,
+    /// itself — see the note in [`RangeReader::read`]. Shared across a surface's workers (see
+    /// [`new_shared`](Self::new_shared)), so one cold start pays one revalidation, not one per
+    /// worker: each reader used to carry its own flag, and four workers meant four forced
+    /// network reads of the same prefix before any tile was fetched.
+    prefix_checked: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl<F: RangeFetcher> CachingRangeReader<F> {
@@ -26,7 +29,25 @@ impl<F: RangeFetcher> CachingRangeReader<F> {
             cache,
             fetcher,
             online: std::sync::atomic::AtomicBool::new(true),
-            prefix_checked: std::sync::atomic::AtomicBool::new(false),
+            prefix_checked: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+
+    /// [`new`](Self::new) with a session-wide revalidation gate shared by every worker of one
+    /// surface. The first read across *all* readers sharing the gate goes to the network; the
+    /// rest serve from cache per the usual freshness policy.
+    pub fn new_shared(
+        url: impl Into<String>,
+        cache: RangeCache,
+        fetcher: F,
+        prefix_checked: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        CachingRangeReader {
+            url: url.into(),
+            cache,
+            fetcher,
+            online: std::sync::atomic::AtomicBool::new(true),
+            prefix_checked,
         }
     }
 

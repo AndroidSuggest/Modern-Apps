@@ -20,11 +20,16 @@ use super::log::log;
 /// A worker: opens its own view of the archive, then serves tile requests until the queue
 /// closes.
 ///
-/// Each worker holds its **own** [`MamapsArchive`], so its leaf-index cache and range
-/// reads need no lock. The cost is one 16 KB header fetch per worker at startup and a
-/// duplicated leaf cache; the alternative — one archive behind a mutex — would serialise
-/// exactly the round trips this is meant to overlap. The on-disk range cache is shared, and
-/// is safe to share because every entry is written temp-then-renamed.
+/// Each worker holds its **own** [`MamapsArchive`] (and its own leaf-index cache and prefix
+/// parse — small CPU work on an in-memory prefix), so its range reads need no lock. What is
+/// shared across the surface's workers is everything that costs a *network round trip*: the
+/// header `build_id` fetch (one JNI request per cold start, not one per worker, via `header`)
+/// and the forced first-read revalidation (one prefix read, not one per worker, via
+/// `prefix_gate`). The on-disk range cache is shared too, and is safe to share because every
+/// entry is written temp-then-renamed.
+///
+/// `header`/`prefix_gate` are built once per surface in `lifecycle::create` and handed to every
+/// worker: whichever worker arrives first does the fetch while the rest block on it.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_worker(
     index: usize,
@@ -36,6 +41,8 @@ pub(crate) fn spawn_worker(
     online: Arc<OnlineFlag>,
     zoom_range: Arc<ZoomRange>,
     toggles: Arc<SharedToggles>,
+    header: Arc<std::sync::OnceLock<Option<u64>>>,
+    prefix_gate: Arc<std::sync::atomic::AtomicBool>,
 ) {
     let started = std::thread::Builder::new()
         .name(format!("map-tiles-{index}"))
@@ -65,34 +72,44 @@ pub(crate) fn spawn_worker(
                 }
             }
 
-            // Single open: the header prefix is fetched *before* the cache opens, the
-            // `build_id` is read out of it, and the cache opens once with the full
-            // origin marker — wiping on mismatch up front. No two-step reset.
-            let build_id = match JniRangeFetcher.fetch(&archive_url, "bytes=0-127") {
-                Ok(r) if r.status == 206 && r.body.len() == tilecodec::mamaps::header::HEADER_LEN => {
-                    match Header::parse(&r.body) {
-                        Ok(h) => h.build_id,
-                        Err(e) => {
-                            log(&format!("worker {index} cannot parse the mamaps header: {e}"));
-                            return;
+            // Single open: the header prefix is fetched *once per surface* (the first worker
+            // fetches, the rest block on `header`), then the `build_id` is read out of it and the
+            // cache opens once per worker with the full origin marker — wiping on mismatch up
+            // front. No two-step reset. A failed fetch poisons the lock for every worker, so one
+            // dead network kills the surface's workers once instead of logging four times.
+            let build_id = *header.get_or_init(|| {
+                match JniRangeFetcher.fetch(&archive_url, "bytes=0-127") {
+                    Ok(r)
+                        if r.status == 206
+                            && r.body.len() == tilecodec::mamaps::header::HEADER_LEN =>
+                    {
+                        match Header::parse(&r.body) {
+                            Ok(h) => Some(h.build_id),
+                            Err(e) => {
+                                log(&format!("cannot parse the mamaps header: {e}"));
+                                None
+                            }
                         }
                     }
+                    Ok(r) => {
+                        log(&format!("cannot fetch the mamaps header: HTTP {}", r.status));
+                        None
+                    }
+                    Err(e) => {
+                        log(&format!("cannot fetch the mamaps header: {e}"));
+                        None
+                    }
                 }
-                Ok(r) => {
-                    log(&format!(
-                        "worker {index} cannot fetch the mamaps header: HTTP {}",
-                        r.status
-                    ));
-                    return;
-                }
-                Err(e) => {
-                    log(&format!("worker {index} cannot fetch the mamaps header: {e}"));
-                    return;
-                }
-            };
+            });
+            let Some(build_id) = build_id else { return };
             let cache =
                 RangeCache::open(cache_dir, &basemap_origin(&archive_url, build_id), DEFAULT_MAX_BYTES);
-            let reader = CachingRangeReader::new(archive_url.clone(), cache, JniRangeFetcher);
+            let reader = CachingRangeReader::new_shared(
+                archive_url.clone(),
+                cache,
+                JniRangeFetcher,
+                prefix_gate,
+            );
             reader.set_online(online.get());
 
             let archive = match MamapsArchive::open(reader) {

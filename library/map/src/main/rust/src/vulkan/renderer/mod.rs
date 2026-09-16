@@ -9,6 +9,7 @@ use crate::vulkan::buffers::Buffer;
 use ash::vk;
 use std::collections::HashMap;
 
+mod fog;
 mod frame;
 mod mod_extra;
 mod placement;
@@ -27,11 +28,15 @@ pub use mod_extra::Renderer;
 const FRAMES_IN_FLIGHT: usize = 2;
 
 /// One layer's geometry, resident on the GPU.
+///
+/// The mesh lives in its format pool on the tile ([`ResidentTile::flat`] for fills,
+/// [`ResidentTile::lines`] for strokes) and this names its slice: indices are rebased to
+/// absolute at upload, so every draw binds the pool at offset 0 and passes
+/// [`first_index`](Self::first_index).
 struct LayerBuffers {
     layer_index: usize,
     kind: LayerKind,
-    vertices: Buffer,
-    indices: Buffer,
+    first_index: u32,
     index_count: u32,
     /// Set when the mesh carries its own colour — see
     /// [`geometry::LayerMesh::color_override`].
@@ -41,10 +46,24 @@ struct LayerBuffers {
 }
 
 /// One tile's geometry, resident on the GPU.
+///
+/// Same-format meshes share one vertex + one index buffer (see
+/// [`upload_packed`](crate::vulkan::buffers::upload_packed)): 2 `vkAllocateMemory` per pool
+/// instead of 2 per mesh. A dense tile used to cost ~60-100 allocations on the Choreographer
+/// callback and ~6400 live across 64 resident tiles, near the ~4096 driver hard limit; pooled
+/// it costs at most 3 pairs (flat fills, stroked lines, ribbon carriageways) plus the
+/// already-single buildings and terrain meshes.
 struct ResidentTile {
+    /// Position-only 2-float fills: every `LayerKind::Fill` mesh plus the region-mask shapes.
+    flat: Option<(Buffer, Buffer)>,
+    /// 7-float stroked lines: every `LayerKind::Line` mesh plus the live-traffic segments.
+    lines: Option<(Buffer, Buffer)>,
+    /// 6-float ribbon carriageways, one per distinct road-shape push set.
+    ribbons: Option<(Buffer, Buffer)>,
     layers: Vec<LayerBuffers>,
     /// The tile's extruded 3D buildings, or `None` below z14 / where the tile has none. Drawn in
     /// its own depth-tested pass ([`Renderer::record_buildings`]), not the flat layer loop.
+    /// One combined mesh per tile, so this keeps its own buffer pair — nothing to pool.
     buildings: Option<BuildingBuffers>,
     /// The tile's DEM-displaced ground grid, or `None` where the tile carries no heightmap. Drawn
     /// in its own depth-tested pass ([`Renderer::record_terrain`]) before the flat layer loop; a
@@ -90,29 +109,27 @@ struct ResidentTile {
 
 /// One live-traffic component segment, on the GPU.
 ///
-/// The line pipeline's own vertex format, so it draws exactly like a road — the only thing
-/// that differs is the colour, which is looked up from [`Renderer::traffic_colors`] by
-/// [`id`](Self::id) at draw time rather than coming from a style layer.
+/// The geometry lives in the tile's [`lines`](ResidentTile::lines) pool; this names its slice.
+/// Drawn exactly like a road — the only thing that differs is the colour, looked up from
+/// [`Renderer::traffic_colors`] by [`id`](Self::id) at draw time rather than from a style layer.
 struct TrafficBuffers {
     /// The segment's `component_id`, the key into the pushed colour table.
     id: u64,
-    vertices: Buffer,
-    indices: Buffer,
+    first_index: u32,
     index_count: u32,
 }
-
 /// One tile's carriageway surface for one set of road-shape inputs, on the GPU.
 ///
-/// The three shape fields are push constants rather than vertex attributes, which is why they key
-/// the mesh split: every road in the tile that agrees on all three shares this draw.
+/// The geometry lives in the tile's [`ribbons`](ResidentTile::ribbons) pool; this names its
+/// slice. The three shape fields are push constants rather than vertex attributes, which is why
+/// they key the mesh split: every road in the tile that agrees on all three shares this draw.
 struct CarriagewayBuffers {
     /// Index into the style's layer list, for the asphalt colour and the lane width ramp.
     layer_index: usize,
     lanes: u8,
     split: f32,
     oneway: bool,
-    vertices: Buffer,
-    indices: Buffer,
+    first_index: u32,
     index_count: u32,
 }
 
@@ -139,11 +156,13 @@ struct TerrainBuffers {
 }
 
 /// One region's tessellated shape within one tile, on the GPU.
+///
+/// The geometry lives in the tile's [`flat`](ResidentTile::flat) pool; this names its slice.
+/// `rings`/`area`/`level` stay on the CPU for [`Renderer::region_at`].
 struct RegionBuffers {
     /// The OSM relation this piece came from, matched against the selected region.
     id: u64,
-    vertices: Buffer,
-    indices: Buffer,
+    first_index: u32,
     index_count: u32,
     /// Exterior rings in tile-local 0..1, kept on the CPU for [`Renderer::region_at`].
     rings: Vec<Vec<(f32, f32)>>,
@@ -174,7 +193,7 @@ type AcceptSet = HashMap<u64, (bool, u32)>;
 /// Floats are compared as bit patterns rather than by value. This is an identity test — "is this
 /// the same camera the last accept-set was computed from" — and not a question about numeric
 /// closeness, so bits are both the correct comparison and the one that needs no epsilon.
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 struct PlacementKey {
     center_lon: u64,
     center_lat: u64,

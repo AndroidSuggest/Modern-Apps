@@ -29,7 +29,10 @@
 //! One vertex per heightmap sample (`dim * dim`), so the DEM is used at its own resolution with no
 //! resampling, and `(dim - 1)^2` quads between them. Normals come from central differences of the
 //! neighbouring heights (a standard heightfield normal), so a slope reads darker than a flat and
-//! the relief is legible without any shadow pass. A tile whose samples are all equal (flat DEM, or
+//! the relief is legible without any shadow pass. The differences read a 3×3-smoothed copy of the
+//! height field — interior texels only, the border ring verbatim — so facet noise softens while
+//! the two tiles sharing an edge smooth from the same edge samples and agree exactly. Positions
+//! always carry the raw heights untouched. A tile whose samples are all equal (flat DEM, or
 //! filled sea level) produces a flat sheet with every normal pointing straight up — indistinguishable
 //! from the old flat ground once shading is disabled at pitch 0.
 
@@ -37,6 +40,34 @@ use tilecodec::mamaps::body::Heightmap;
 
 /// Floats per terrain vertex: `x, y, z, nx, ny, nz`.
 pub const FLOATS_PER_VERTEX: usize = 6;
+
+/// Smooth the height field for normals only: a 3×3 box blur over interior texels, with the
+/// border ring copied verbatim.
+///
+/// The neighbour tile across a shared edge smooths from the same edge samples (it stores its own
+/// copy of them, and neither side's blur kernel reaches past its own border), so the two shared
+/// edge slopes — and hence the two edge normals — agree bit-for-bit: zero seam risk by
+/// construction. Kept on `f32` tile-normalised heights so the test can compare pre/post blur
+/// exactly, and so positions — which must stay exact — never pass through it.
+fn smooth_heights(raw: &[f32], dim: usize) -> Vec<f32> {
+    let mut out = raw.to_vec();
+    if dim < 3 {
+        // No interior texel exists (a dim-2 grid is all border), so there is nothing to blur.
+        return out;
+    }
+    for row in 1..dim - 1 {
+        for col in 1..dim - 1 {
+            let mut sum = 0.0f32;
+            for dr in -1..=1 {
+                for dc in -1..=1 {
+                    sum += raw[((row as isize + dr) as usize) * dim + (col as isize + dc) as usize];
+                }
+            }
+            out[row * dim + col] = sum / 9.0;
+        }
+    }
+    out
+}
 
 /// Tessellate one tile's heightmap into a relief grid, appending to `out_v`/`out_i`.
 ///
@@ -65,21 +96,35 @@ pub fn tessellate(hm: &Heightmap, ground_width_m: f64, out_v: &mut Vec<f32>, out
 
     let step = 1.0 / (dim as f32 - 1.0);
     let base = (out_v.len() / FLOATS_PER_VERTEX) as u32;
+    // The blurred field behind the normals: central differences below read from this, so
+    // per-sample DEM noise softens, while positions keep the raw `height(col, row)`. The
+    // border ring is verbatim by construction, so the shared-edge slopes — and the edge
+    // normals — agree bit-for-bit with the neighbour tile's.
+    let smooth = {
+        let mut raw = Vec::with_capacity(dim * dim);
+        for row in 0..dim {
+            for col in 0..dim {
+                raw.push(height(col, row));
+            }
+        }
+        smooth_heights(&raw, dim)
+    };
+    let shed = |col: usize, row: usize| -> f32 { smooth[row * dim + col] };
     for row in 0..dim {
         for col in 0..dim {
             let u = col as f32 * step;
             let v = row as f32 * step;
             let z = height(col, row);
 
-            // Central differences, clamped at the tile edge. The spacing is the tile-normalised
-            // grid step, so the slope is in the same units as `z`, which keeps the normal honest
-            // against the height the vertex actually carries.
+            // Central differences over the *smoothed* field, clamped at the tile edge. The spacing
+            // is the tile-normalised grid step, so the slope is in the same units as `z`, which
+            // keeps the normal honest against the height the vertex actually carries.
             let cl = col.saturating_sub(1);
             let cr = (col + 1).min(dim - 1);
             let ru = row.saturating_sub(1);
             let rd = (row + 1).min(dim - 1);
-            let dzdu = (height(cr, row) - height(cl, row)) / ((cr - cl) as f32 * step);
-            let dzdv = (height(col, rd) - height(col, ru)) / ((rd - ru) as f32 * step);
+            let dzdu = (shed(cr, row) - shed(cl, row)) / ((cr - cl) as f32 * step);
+            let dzdv = (shed(col, rd) - shed(col, ru)) / ((rd - ru) as f32 * step);
             // The upward normal of a heightfield z = f(u, v) is (-dz/du, -dz/dv, 1), normalised.
             let mut n = [-dzdu, -dzdv, 1.0];
             let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
@@ -234,5 +279,140 @@ mod tests {
             i[first_indices..].iter().all(|&idx| idx >= first_vertices),
             "the second grid must rebase onto its own vertices",
         );
+    }
+
+    /// Smoothing over a planar ramp must not tilt the normals: a blur of a plane is the same
+    /// plane, so every normal matches the analytic slope normal exactly.
+    #[test]
+    fn a_planar_field_keeps_identical_normals() {
+        // z = 2c + 3r metres over a 7x7 grid: interior central differences recover the slope
+        // exactly, blurred or not.
+        let hm = heightmap(7, |c, r| 2 * c as i32 + 3 * r as i32);
+        let ground = 1000.0;
+        let mut v = Vec::new();
+        let mut i = Vec::new();
+        tessellate(&hm, ground, &mut v, &mut i);
+        // dz/du = 2 m per texel = 2 * dim-1 steps over the tile, normalised by ground width.
+        let step = 1.0 / 6.0;
+        let ex = -2.0 / ground as f32 / step;
+        let ey = -3.0 / ground as f32 / step;
+        let len = (ex * ex + ey * ey + 1.0).sqrt();
+        let want = [ex / len, ey / len, 1.0 / len];
+        for k in 0..v.len() / FLOATS_PER_VERTEX {
+            let (p, n) = vertex(&v, k);
+            // Positions stay on the raw plane.
+            let col = k % 7;
+            let row = k / 7;
+            let z = (2 * col as i32 + 3 * row as i32) as f32 / ground as f32;
+            assert!((p[2] - z).abs() < 1e-6, "position {k} must stay exact, got {}", p[2]);
+            for a in 0..3 {
+                assert!(
+                    (n[a] - want[a]).abs() < 1e-5,
+                    "normal {k} must match the analytic slope normal, got {n:?} want {want:?}",
+                );
+            }
+        }
+    }
+
+    /// The point of the blur: checkerboard DEM noise must tilt interior normals far less than
+    /// the raw central differences would.
+    #[test]
+    fn a_noisy_field_gets_softer_normals() {
+        // ±40 m checkerboard over a 9x9 grid: raw central differences see a ±80 m swing per
+        // texel step; the 3×3 blur averages each interior texel with its opposite-phase
+        // neighbours, which must shrink the off-vertical tilt.
+        let dim = 9usize;
+        let amp = 40i32;
+        let hm = heightmap(dim as u16, |c, r| if (c + r) % 2 == 0 { amp } else { -amp });
+        let ground = 1000.0;
+        let mut v = Vec::new();
+        let mut i = Vec::new();
+        tessellate(&hm, ground, &mut v, &mut i);
+        // Raw tilt the unblurred differences would produce, at an interior vertex: dz/du over
+        // one step is 2*amp metres, normalised.
+        let step = 1.0 / (dim as f32 - 1.0);
+        let raw_tilt = 2.0 * amp as f32 / ground as f32 / step;
+        // Interior vertex one step in from the corner: its kernel mixes blurred interior with
+        // the verbatim border, so the tilt shrinks but stays nonzero — the softening case,
+        // rather than a fully-interior vertex whose symmetric kernel would erase it outright.
+        let (_, n) = vertex(&v, dim + 1);
+        let tilt = (n[0] * n[0] + n[1] * n[1]).sqrt();
+        let raw_off_vertical = raw_tilt / (raw_tilt * raw_tilt + 1.0).sqrt();
+        assert!(
+            tilt < 0.5 * raw_off_vertical,
+            "blurred tilt {tilt} must be well under the raw {raw_off_vertical}",
+        );
+        assert!(n[2] > 0.5, "the normal must stay mostly upright, got {n:?}");
+    }
+
+    /// The border ring passes through the blur untouched — edge differences read the raw
+    /// samples, so the neighbour tile (which stores its own copy of the shared edge) derives
+    /// the same slopes and the seam is invisible by construction.
+    #[test]
+    fn border_texels_are_bit_identical_pre_post_blur() {
+        let dim = 7usize;
+        let hm = heightmap(dim as u16, |c, r| (c as i32 * 13 + r as i32 * 29 + 7) % 61 - 30);
+        let ground = 800.0;
+        let factor = 1.0 / ground;
+        let mut raw = Vec::with_capacity(dim * dim);
+        for row in 0..dim {
+            for col in 0..dim {
+                raw.push(
+                    (Heightmap::metres(hm.sample(col as u16, row as u16).unwrap()) as f64 * factor)
+                        as f32,
+                );
+            }
+        }
+        let blurred = smooth_heights(&raw, dim);
+        for k in 0..raw.len() {
+            let col = k % dim;
+            let row = k / dim;
+            let on_border = col == 0 || row == 0 || col == dim - 1 || row == dim - 1;
+            if on_border {
+                assert_eq!(
+                    blurred[k].to_bits(),
+                    raw[k].to_bits(),
+                    "border texel ({col}, {row}) must pass through the blur untouched",
+                );
+            }
+        }
+        // And at least one interior texel must actually change, or the blur is a no-op.
+        assert!(
+            (1..dim - 1).any(|row| (1..dim - 1)
+                .any(|col| blurred[row * dim + col].to_bits() != raw[row * dim + col].to_bits())),
+            "the blur must move at least one interior texel",
+        );
+    }
+
+    /// Positions and indices are the blur's non-goals: the smoothed field must never leak into
+    /// either. A spiky field is the sharpest probe — raw spikes stay spiky in z, indices stay
+    /// the untouched grid triangulation.
+    #[test]
+    fn positions_and_indices_are_untouched_by_smoothing() {
+        let dim = 5u16;
+        let peak_m = 300;
+        let ground = 1200.0;
+        let centre = dim / 2;
+        let hm = heightmap(dim, |c, r| if c == centre && r == centre { peak_m } else { 0 });
+        let mut v = Vec::new();
+        let mut i = Vec::new();
+        tessellate(&hm, ground, &mut v, &mut i);
+        // The peak vertex keeps its exact raw height — smoothing the position would sink it.
+        let (peak, _) = vertex(&v, centre as usize * dim as usize + centre as usize);
+        assert_eq!(
+            peak[2].to_bits(),
+            (peak_m as f32 / ground as f32).to_bits(),
+            "the peak height must be the exact raw sample",
+        );
+        // The untouched grid indices: two triangles per cell, the same winding as before.
+        let dim32 = dim as u32;
+        let mut want = Vec::new();
+        for row in 0..dim - 1 {
+            for col in 0..dim - 1 {
+                let a = row as u32 * dim32 + col as u32;
+                want.extend_from_slice(&[a, a + 1, a + dim32 + 1, a, a + dim32 + 1, a + dim32]);
+            }
+        }
+        assert_eq!(i, want, "indices must stay the plain grid triangulation");
     }
 }

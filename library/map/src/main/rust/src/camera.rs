@@ -29,8 +29,8 @@ pub const TILE_SIZE: f64 = 512.0;
 /// perspective's far edge is a finite ground distance), so [`Camera::screen_to_world`]
 /// always meets the ground plane and tile selection never has to cover an infinite
 /// trapezoid. `fy = d/half_h = 3` and the horizon enters the screen only past
-/// `atan(fy) ≈ 71°`, so 60 leaves a margin. See [`Camera::pitch_deg`].
-pub const PITCH_MAX_DEG: f64 = 60.0;
+/// `atan(fy) ≈ 71°`, so 65 leaves a margin. See [`Camera::pitch_deg`].
+pub const PITCH_MAX_DEG: f64 = 65.0;
 
 /// The camera as Kotlin measured it.
 #[derive(Clone, Copy, Debug)]

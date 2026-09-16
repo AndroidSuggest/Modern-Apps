@@ -319,3 +319,74 @@ impl ScratchBlock {
 fn align_up(size: vk::DeviceSize) -> vk::DeviceSize {
     (size + SCRATCH_ALIGN - 1) & !(SCRATCH_ALIGN - 1)
 }
+
+/// Pack several same-format meshes into one vertex buffer + one index buffer.
+///
+/// Concatenates the vertex floats and rebases each mesh's indices by its vertex base, then
+/// uploads the two results as a single pair: 2 `vkAllocateMemory` for the whole group instead
+/// of 2 per mesh. A dense tile used to cost ~60-100 allocations on the Choreographer callback
+/// and ~6400 live across 64 resident tiles, near the ~4096 driver hard limit; pooled by format
+/// a tile costs at most 3 pairs (flat fills, stroked lines, ribbon carriageways) plus the
+/// already-single buildings and terrain meshes. Returns the pair plus each mesh's `firstIndex`
+/// in input order — indices are rebased to absolute, so every draw binds both buffers at
+/// offset 0 and passes its `firstIndex`. `None` when there is nothing to pack, in which case
+/// the caller emits no draws, exactly as the per-mesh path did for empty input.
+///
+/// # Safety
+///
+/// `device` must outlive the returned buffers, and the caller must destroy them before
+/// dropping the device — the same contract as [`Buffer::upload`].
+pub unsafe fn upload_packed(
+    instance: &ash::Instance,
+    physical_device: vk::PhysicalDevice,
+    device: &ash::Device,
+    stride_floats: usize,
+    meshes: &[(&[f32], &[u32])],
+) -> Result<Option<(Buffer, Buffer, Vec<u32>)>, String> {
+    let mut total_verts = 0usize;
+    let mut total_indices = 0usize;
+    for (verts, indices) in meshes {
+        if indices.is_empty() {
+            continue;
+        }
+        debug_assert_eq!(verts.len() % stride_floats, 0, "vertex count must be whole");
+        total_verts += verts.len();
+        total_indices += indices.len();
+    }
+    if total_indices == 0 {
+        return Ok(None);
+    }
+    let mut packed_verts = Vec::with_capacity(total_verts);
+    let mut packed_indices = Vec::with_capacity(total_indices);
+    let mut first_index = Vec::with_capacity(meshes.len());
+    for (verts, indices) in meshes {
+        if indices.is_empty() {
+            continue;
+        }
+        let vertex_base = (packed_verts.len() / stride_floats) as u32;
+        first_index.push(packed_indices.len() as u32);
+        packed_verts.extend_from_slice(verts);
+        packed_indices.extend(indices.iter().map(|i| i + vertex_base));
+    }
+    let vertices = Buffer::upload(
+        instance,
+        physical_device,
+        device,
+        vk::BufferUsageFlags::VERTEX_BUFFER,
+        &packed_verts,
+    )?;
+    let indices = match Buffer::upload(
+        instance,
+        physical_device,
+        device,
+        vk::BufferUsageFlags::INDEX_BUFFER,
+        &packed_indices,
+    ) {
+        Ok(buffer) => buffer,
+        Err(e) => {
+            vertices.destroy(device);
+            return Err(e);
+        }
+    };
+    Ok(Some((vertices, indices, first_index)))
+}

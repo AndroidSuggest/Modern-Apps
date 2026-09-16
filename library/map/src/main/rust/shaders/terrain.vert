@@ -11,6 +11,11 @@
 // world-px span for this frame; multiplying the two recovers the real world-px height the WS0
 // perspective matrix expects in its `z` input. At pitch 0 that matrix ignores z for x/y, so the
 // grid reads as the flat tile footprint.
+//
+// Lighting runs per fragment: the normal goes out on `vNormal` and the raw tile-local position
+// on `vTilePos`, so terrain.frag can shade the Lambert term and the Blinn-Phong specular against
+// the tile-local eye `misc.xyz` pushes per draw — no per-vertex scalar, so ridgelines stay sharp
+// however the grid is tessellated.
 
 layout(location = 0) in vec3 inPosition; // tile-local (u, v, height); u,v in 0..1
 layout(location = 1) in vec3 inNormal;   // surface normal in the same tile-local space
@@ -26,17 +31,26 @@ layout(push_constant) uniform Push {
     vec4 morph;
 } push;
 
-layout(location = 0) out float vShade;
-
 // Placed just short of the far plane so, at pitch 0, the ground sits behind every building (which
 // write depths in [0, 0.99]) rather than in front of them — see the pitch-0 branch below.
 const float ORTHO_GROUND_DEPTH = 0.9995;
+
+layout(location = 0) out vec3 vNormal;
+layout(location = 1) out vec3 vTilePos;
 
 void main() {
     float worldHeight = inPosition.z * push.line.x;
     // The height column's w term (tileToClip[2][3]) is 0 on the ortho fast-path (pitch 0) and
     // -cos(pitch) once tilted — the same test the building shader uses to tell the two apart.
     bool ortho = abs(push.tileToClip[2][3]) < 1e-6;
+
+    // The normal in tile-local space, forwarded to the fragment stage for per-fragment Lambert
+    // (mirroring building.frag). Shared by both branches so relief shades at pitch 0 too —
+    // previously the ortho branch forced vShade = 1.0 and hills were invisible top-down.
+    vNormal = inNormal;
+    // The raw tile-local position, forwarded alongside the normal so the fragment stage can
+    // build the view vector against the pushed tile-local eye for the specular term.
+    vTilePos = inPosition;
 
     if (ortho) {
         // Pitch 0: the ortho matrix never lets height touch x/y, so the grid already reads as the
@@ -45,19 +59,10 @@ void main() {
         // depths near the front); the flat 2D layers are depth-off and paint over it regardless.
         gl_Position = push.tileToClip * vec4(inPosition.xy, 0.0, 1.0);
         gl_Position.z = ORTHO_GROUND_DEPTH * gl_Position.w;
-        // No directional shading overhead, so the ground reads as the flat map's single colour.
-        vShade = 1.0;
     } else {
         // Tilted: the full perspective maps a real world-px height to both the projected rise and a
         // depth inside the near/far range, so hills rise, occlude what is behind them, and let
         // buildings on the far side of a ridge be hidden by it.
         gl_Position = push.tileToClip * vec4(inPosition.xy, worldHeight, 1.0);
-        // A fixed light from above and the north-west, in tile-local space (x east, y south, z up),
-        // so slopes facing it read brighter and the far sides of hills sit a shade darker.
-        vec3 n = normalize(inNormal);
-        vec3 lightDir = normalize(vec3(-0.4, -0.4, 1.0));
-        float diffuse = max(dot(n, lightDir), 0.0);
-        // Generous ambient so a shadowed slope stays legible rather than going black.
-        vShade = 0.55 + 0.45 * diffuse;
     }
 }

@@ -9,6 +9,20 @@ use ash::vk;
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
+use std::time::Instant;
+
+/// How long a collision answer may be reused while the camera moves.
+///
+/// The placer is quadratic in accepted boxes plus per-glyph box projection for every curved
+/// label — all of it on the Choreographer callback. During a pan a frame lands every ~16 ms
+/// with a slightly moved camera, so re-placing every frame is what the panning jank is made
+/// of. Within this window a moved camera reuses the last accept-set (labels hold their
+/// relative order; boxes are still re-projected per frame in `refresh_placed`, so what draws
+/// tracks the camera and only the *collision outcome* lags). Past it — or on any non-center
+/// change (zoom, bearing, pitch, tiles, layers, filter) — the pass re-runs. A tap during the
+/// window picks against boxes projected for the current frame, so hit-testing never lags.
+/// hit-testing never lags.
+pub(super) const PLACE_REUSE_MS: u128 = 300;
 
 impl Renderer {
     /// The region whose shape covers this point at the requested administrative level.
@@ -100,8 +114,16 @@ impl Renderer {
                 .collect(),
             layers: layers.len(),
         };
-        if let Some((cached, accepted)) = self.placement_cache.borrow().as_ref() {
+        if let Some((cached, accepted, at)) = self.placement_cache.borrow().as_ref() {
             if *cached == key {
+                return accepted.clone();
+            }
+            // Same everything but the centre: a pan in progress. Reuse the last accept-set
+            // for a short window rather than re-running the quadratic pass every frame.
+            let mut moved = cached.clone();
+            moved.center_lon = key.center_lon;
+            moved.center_lat = key.center_lat;
+            if moved == key && at.elapsed().as_millis() < PLACE_REUSE_MS {
                 return accepted.clone();
             }
         }
@@ -213,7 +235,7 @@ impl Renderer {
             .enumerate()
             .map(|(order, (id, flipped))| (id, (flipped, order as u32)))
             .collect();
-        *self.placement_cache.borrow_mut() = Some((key, accepted.clone()));
+        *self.placement_cache.borrow_mut() = Some((key, accepted.clone(), Instant::now()));
         accepted
     }
 

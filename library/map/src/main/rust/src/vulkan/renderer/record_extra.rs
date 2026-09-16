@@ -3,6 +3,7 @@ use super::{
     PUCK_CONE_HALF_STROKE_DP, PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, Renderer,
     SCRIM_COLOR, TRAFFIC_WIDTH_DP, UserPuck, anchors_for, argb_to_rgba, scale_alpha,
 };
+use super::fog::{apply_fog, fog_factor};
 use crate::camera::Camera;
 use crate::marker::{Marker, MARKER_SIZE_DP};
 use crate::style::paint::Stroke;
@@ -39,6 +40,7 @@ impl Renderer {
         layers: &[Layer],
         palette: Palette,
         ordered: &[u64],
+        clear: u32,
         submitted: &mut usize,
     ) {
         let device = &self.context.device;
@@ -50,6 +52,11 @@ impl Renderer {
             if tile.carriageways.is_empty() {
                 continue;
             }
+            // The ribbon pool, bound at offset 0; each road draws its slice by firstIndex.
+            let Some((pool_v, pool_i)) = tile.ribbons.as_ref().map(|(v, i)| (v.buffer, i.buffer))
+            else {
+                continue;
+            };
             let tile_to_clip = camera.tile_to_clip(tile.z, tile.x, tile.y);
             let tile_span_px = camera.tile_span_px(tile.z);
             let yellow = f32::from(tile.yellow_centre);
@@ -76,8 +83,13 @@ impl Renderer {
                     bound = true;
                 }
                 // The asphalt only. The markings are the shader's own palette, because they have
-                // to match the white it antialiases them against.
-                let asphalt = scale_alpha(layer.color(palette), layer.opacity_at(camera.zoom));
+                // to match the white it antialiases them against. Distance-fogged like the
+                // flat layers so carriageways haze with the ground under tilt.
+                let asphalt = apply_fog(
+                    scale_alpha(layer.color(palette), layer.opacity_at(camera.zoom)),
+                    clear,
+                    fog_factor(camera, tile.z, tile.x, tile.y),
+                );
                 // A lane connector carries no paint. An intersection is not marked out into
                 // lanes on the ground, and a connector is drawn in the carriageway's own colour,
                 // so its markings would be the only part of it with any contrast against the road
@@ -111,14 +123,14 @@ impl Renderer {
                     0,
                     push.as_bytes(),
                 );
-                device.cmd_bind_vertex_buffers(command_buffer, 0, &[road.vertices.buffer], &[0]);
+                device.cmd_bind_vertex_buffers(command_buffer, 0, &[pool_v], &[0]);
                 device.cmd_bind_index_buffer(
                     command_buffer,
-                    road.indices.buffer,
+                    pool_i,
                     0,
                     vk::IndexType::UINT32,
                 );
-                device.cmd_draw_indexed(command_buffer, road.index_count, 1, 0, 0, 0);
+                device.cmd_draw_indexed(command_buffer, road.index_count, 1, road.first_index, 0, 0);
                 *submitted += 1;
             }
         }
@@ -270,12 +282,16 @@ impl Renderer {
     /// opacity for this zoom — the same colour the flat earth fill would have used — pushed once and
     /// shared by every tile. `line.x` carries the tile's world-px span, the scale that turns the
     /// mesh's tile-normalised heights into the world-px height the WS0 matrix's `z` input expects.
+    /// Distance-fogged per tile toward the background like the flat layers (buildings keep their
+    /// per-vertex colours and are deliberately not fogged — no shader change for a z14+-only
+    /// layer whose tiles sit inside the near ramp anyway).
     pub(super) unsafe fn record_terrain(
         &self,
         command_buffer: vk::CommandBuffer,
         camera: &Camera,
         layers: &[Layer],
         palette: Palette,
+        clear: u32,
         submitted: &mut usize,
     ) {
         let Some(earth) =
@@ -287,7 +303,8 @@ impl Renderer {
         if opacity <= 0.0 {
             return;
         }
-        let colour = argb_to_rgba(scale_alpha(earth.color(palette), opacity));
+        let unfogged = argb_to_rgba(scale_alpha(earth.color(palette), opacity));
+        let fog_rgb = argb_to_rgba(clear);
         let device = &self.context.device;
         let mut bound = false;
         for tile in self.tiles.values() {
@@ -300,12 +317,46 @@ impl Renderer {
                 );
                 bound = true;
             }
+            // Same fog as the flat layers, mixed one step later (linear floats rather than
+            // packed ARGB — same ramp, rounding apart). Per tile: far ground hazes out.
+            let f = fog_factor(camera, tile.z, tile.x, tile.y);
+            let colour = [
+                unfogged[0] + (fog_rgb[0] - unfogged[0]) * f,
+                unfogged[1] + (fog_rgb[1] - unfogged[1]) * f,
+                unfogged[2] + (fog_rgb[2] - unfogged[2]) * f,
+                unfogged[3] + (fog_rgb[3] - unfogged[3]) * f,
+            ];
+            // Tile-local eye for the terrain specular, derived the way `fog_factor` derives
+            // its tile geometry: camera centre in world px (`project`, at the camera zoom)
+            // minus the tile origin, over the span (`tile_span_dp`). Tile u/v are world axes
+            // normalised, so no bearing rotation enters — the matrix already owns that.
+            let span = camera.tile_span_dp(tile.z);
+            let (eye_u, eye_v, eye_h) = if span > 0.0 {
+                let centre = crate::camera::project(camera.center_lon, camera.center_lat, camera.zoom);
+                (
+                    ((centre.x - f64::from(tile.x) * span) / span) as f32,
+                    ((centre.y - f64::from(tile.y) * span) / span) as f32,
+                    ((1.5 * f64::from(camera.height_dp)) / span) as f32,
+                )
+            } else {
+                (0.5, 0.5, 1.0e4)
+            };
             let push = Push {
                 tile_to_clip: camera.tile_to_clip(tile.z, tile.x, tile.y),
                 color: colour,
                 // `line.x`: the tile's world-px span, the tile-norm-height -> world-px scale.
                 line: [camera.tile_span_dp(tile.z) as f32, 0.0, 0.0, 0.0],
-                misc: [0.0, 0.0, 0.0, camera.time_seconds],
+                // `misc.xyz`: the tile-local eye for the Blinn-Phong specular — the camera
+                // centre in world px minus the tile origin, over the span, so u/v land in
+                // 0..1 (off-tile when the centre is elsewhere, which is fine: the view
+                // vector stays well-defined). Eye height is the MapLibre-like eye distance
+                // (1.5 viewport-heights, the `d` behind `Camera::perspective`) in the same
+                // tile-norm units as the mesh heights, so `eye - frag` is a true direction
+                // in tile space. At pitch 0 the fragment shader skips the specular outright,
+                // so this only ever steers tilted highlights. A degenerate span falls back
+                // to far-above-centre, where the view vector is straight down and the
+                // highlight collapses to ~0.
+                misc: [eye_u, eye_v, eye_h, camera.time_seconds],
                 morph: MORPH_NONE,
             };
             device.cmd_push_constants(

@@ -99,6 +99,11 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
     let toggles = Arc::new(SharedToggles::new(LayerToggles::default()));
     // One `Receiver` shared by every worker, so whichever is free takes the next tile.
     let queue = Arc::new(Mutex::new(wanted_rx));
+    // One cold-start fetch shared by every worker: the header `build_id` (one JNI round trip,
+    // not one per worker) and the forced first-read revalidation (one prefix read, not one per
+    // worker). See `spawn_worker`.
+    let header = Arc::new(std::sync::OnceLock::new());
+    let prefix_gate = Arc::new(std::sync::atomic::AtomicBool::new(false));
     for index in 0..WORKER_COUNT {
         spawn_worker(
             index,
@@ -110,6 +115,8 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
             online.clone(),
             zoom_range.clone(),
             toggles.clone(),
+            header.clone(),
+            prefix_gate.clone(),
         );
     }
 
