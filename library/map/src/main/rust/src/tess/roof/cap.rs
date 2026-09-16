@@ -11,6 +11,12 @@ const DOME_STEPS: usize = 8;
 
 /// The roof cap: a flat lid for a flat/unknown shape (the true footprint, holes and all), or a
 /// pitched surface over the footprint's oriented box for the five modelled shapes.
+///
+/// Every emitted `z` is its structural height plus the ground offset sampled at that vertex's
+/// `(x, y)`, so the whole roof translates with — never through — the slope beneath: eaves sit
+/// above the walls they cap on both the uphill and downhill sides, and the ridge/apex keeps its
+/// height over the ground. Corners shared between two faces (a ridge endpoint, a hip corner)
+/// sample the same `(x, y)` on both, so they agree bit-for-bit and no crack opens.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_roof(
     rings: &[Vec<(i32, i32)>],
@@ -23,6 +29,7 @@ pub(crate) fn emit_roof(
     roof_dir_rad: f32,
     roof_orientation: u8,
     rgba: u32,
+    ground: &dyn Fn(f32, f32) -> f32,
     out_v: &mut Vec<f32>,
     out_i: &mut Vec<u32>,
 ) {
@@ -30,21 +37,24 @@ pub(crate) fn emit_roof(
     let pitched =
         matches!(roof_shape, ROOF_GABLED | ROOF_HIPPED | ROOF_PYRAMIDAL | ROOF_SKILLION | ROOF_DOME);
     if !pitched || rise <= 0.0 {
-        flat_cap(rings, extent, validated, apex, rgba, out_v, out_i);
+        flat_cap(rings, extent, validated, apex, rgba, ground, out_v, out_i);
         return;
     }
 
     let obb = OrientedBox::of(exterior, roof_dir_rad, roof_orientation);
-    // The roof's own centroid, at mid-roof height, used to orient every face outward.
+    // The roof's own centroid, at mid-roof height, used to orient every face outward. Sampled on
+    // the ground beneath it (heights cancel out of the orientation test either way), so the
+    // facing decision stays the level-footprint one.
     let (ccx, ccy) = obb.point(0.5, 0.5);
-    let centre = [ccx, ccy, (wall_top + apex) * 0.5];
-    let e = wall_top;
-    let a = apex;
-    // `(cu, av)` in the oriented box (`cu` across the slopes, `av` along the ridge) to a 3D point.
+    let centre = [ccx, ccy, (wall_top + apex) * 0.5 + ground(ccx, ccy)];
+    // `(cu, av)` in the oriented box (`cu` across the slopes, `av` along the ridge) to a 3D
+    // point at structural height `z` draped over the ground beneath it.
     let p = |cu: f32, av: f32, z: f32| -> [f32; 3] {
         let (x, y) = obb.point(cu, av);
-        [x, y, z]
+        [x, y, z + ground(x, y)]
     };
+    let e = wall_top;
+    let a = apex;
 
     match roof_shape {
         ROOF_SKILLION => {
@@ -101,12 +111,18 @@ pub(crate) fn emit_roof(
 }
 
 /// A flat roof lid: the footprint tessellated at the apex, every face pointing straight up.
+///
+/// Each corner is lifted by the ground offset beneath it, so the lid follows the slope like the
+/// walls below it — a level lid at one height would bury its uphill edge in the hill. The faces
+/// keep their straight-up normal: the lid is thin relative to the slope, and flat-shaded from
+/// above it reads as one tone either way.
 pub(crate) fn flat_cap(
     rings: &[Vec<(i32, i32)>],
     extent: u32,
     validated: bool,
     apex: f32,
     rgba: u32,
+    ground: &dyn Fn(f32, f32) -> f32,
     out_v: &mut Vec<f32>,
     out_i: &mut Vec<u32>,
 ) {
@@ -117,7 +133,8 @@ pub(crate) fn flat_cap(
         let mut pts = [[0.0f32; 3]; 3];
         for (corner, &vi) in tri.iter().enumerate() {
             let at = vi as usize * fill::FLOATS_PER_VERTEX;
-            pts[corner] = [cap_xy[at], cap_xy[at + 1], apex];
+            let (x, y) = (cap_xy[at], cap_xy[at + 1]);
+            pts[corner] = [x, y, apex + ground(x, y)];
         }
         push_tri(out_v, out_i, pts[0], pts[1], pts[2], [0.0, 0.0, 1.0], rgba);
     }

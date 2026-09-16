@@ -74,6 +74,15 @@ pub fn pack_argb(argb: u32) -> u32 {
 /// (`min_height`), `wall_top` where they meet the eaves (`height - roof_height`), and `apex` the
 /// roof's own top (`height`). A flat roof has `wall_top == apex`.
 ///
+/// `ground` is the tile-normalised ground offset at a tile-local `(u, v)`: every emitted `z`
+/// is its structural height *plus* `ground(u, v)`, so walls keep their height while following
+/// the slope and the roof drapes over the hill (a skillion's rise, a gable's ridge, a dome's
+/// crown all ride parallel to the ground beneath). A flat roof samples the ground at each of
+/// its tessellated vertices and follows the slope too — the alternative, a level lid at one
+/// corner's height, would clip through the uphill ground. The closure comes from
+/// [`crate::tile::geometry`] sampling the tile's heightmap; where the tile carries none it
+/// returns 0.0, and the mesh is bit-identical to the un-lifted one.
+///
 /// `roof_dir_rad` is the roof direction in radians and `roof_orientation` selects which axis the
 /// ridge runs along. An unrecognised `roof_shape` falls back to flat, never panics.
 #[allow(clippy::too_many_arguments)]
@@ -89,6 +98,7 @@ pub fn extrude(
     roof_orientation: u8,
     wall_colour: u32,
     roof_colour: u32,
+    ground: &dyn Fn(f32, f32) -> f32,
     out_v: &mut Vec<f32>,
     out_i: &mut Vec<u32>,
 ) {
@@ -115,6 +125,6 @@ pub fn extrude(
     let wall_rgba = pack_argb(wall_colour);
     let roof_rgba = pack_argb(roof_colour);
 
-    emit_walls(&local, base, wall_top, wall_rgba, out_v, out_i);
-    emit_roof(rings, extent, validated, &local[0], wall_top, apex, roof_shape, roof_dir_rad, roof_orientation, roof_rgba, out_v, out_i);
+    emit_walls(&local, base, wall_top, wall_rgba, ground, out_v, out_i);
+    emit_roof(rings, extent, validated, &local[0], wall_top, apex, roof_shape, roof_dir_rad, roof_orientation, roof_rgba, ground, out_v, out_i);
 }

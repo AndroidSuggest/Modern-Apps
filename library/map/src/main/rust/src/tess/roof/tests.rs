@@ -28,10 +28,17 @@ fn extrude_square(shape: u8, base: f32, wall_top: f32, apex: f32) -> (Vec<f32>, 
         ROOF_ORIENT_ALONG,
         0xFF_00_80_C0,
         0xFF_C0_40_20,
+        &flat_ground,
         &mut v,
         &mut i,
     );
     (v, i)
+}
+
+/// Level ground: every existing test extrudes over a flat datum, so the offsets are 0.0 and
+/// the meshes are the un-lifted ones.
+fn flat_ground(_u: f32, _v: f32) -> f32 {
+    0.0
 }
 
 /// The raw f32 vertex buffer read as bits — so two meshes can be compared for equality without
@@ -170,6 +177,81 @@ fn a_skillion_roof_slopes_from_one_edge_to_the_other() {
 fn empty_rings_emit_nothing() {
     let mut v = Vec::new();
     let mut i = Vec::new();
-    extrude(&[], 100, false, 0.0, 0.2, 0.4, ROOF_FLAT, 0.0, ROOF_ORIENT_ALONG, 0xFFFFFFFF, 0xFFFFFFFF, &mut v, &mut i);
+    extrude(&[], 100, false, 0.0, 0.2, 0.4, ROOF_FLAT, 0.0, ROOF_ORIENT_ALONG, 0xFFFFFFFF, 0xFFFFFFFF, &flat_ground, &mut v, &mut i);
     assert!(v.is_empty() && i.is_empty());
+}
+
+#[test]
+fn a_tilted_ground_drapes_walls_and_roof_without_changing_height() {
+    // A ground plane rising 0.1 tile-norm per unit u: the wall's uphill corners sit 0.1 higher
+    // than its downhill ones, the flat cap rides the same slope (its uphill edge above its
+    // downhill edge), and the wall height itself is unchanged — the building translates with
+    // the hill, it does not stretch.
+    let slope = |u: f32, _v: f32| -> f32 { u * 0.1 };
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    extrude(
+        &unit_square(),
+        100,
+        false,
+        0.0,
+        0.2,
+        0.2,
+        ROOF_FLAT,
+        0.0,
+        ROOF_ORIENT_ALONG,
+        0xFFFFFFFF,
+        0xFFFFFFFF,
+        &slope,
+        &mut v,
+        &mut i,
+    );
+    let count = v.len() / FLOATS_PER_VERTEX;
+    assert!(count > 0);
+    let (mut wall_lo, mut wall_hi) = (f32::MAX, f32::MIN);
+    let (mut cap_lo, mut cap_hi) = (f32::MAX, f32::MIN);
+    for k in 0..count {
+        let (p, n, _) = vertex(&v, k);
+        if n[2] > 0.9 {
+            cap_lo = cap_lo.min(p[2]);
+            cap_hi = cap_hi.max(p[2]);
+        } else {
+            wall_lo = wall_lo.min(p[2]);
+            wall_hi = wall_hi.max(p[2]);
+        }
+    }
+    assert!((cap_hi - cap_lo - 0.1).abs() < 1e-5, "the cap follows the slope, got {cap_lo}..{cap_hi}");
+    assert!(
+        (wall_hi - wall_lo - 0.3).abs() < 1e-5,
+        "the wall spans its 0.2 height plus the 0.1 slope, got {wall_lo}..{wall_hi}",
+    );
+}
+
+#[test]
+fn a_zero_ground_leaves_every_structural_height_exact() {
+    // The pitch-0 guarantee at the unit level: with a 0.0 ground closure the wall base, eaves
+    // and ridge must sit at exactly the structural heights passed in — no offset may leak in.
+    // Compared by bits so a float rounding slip cannot hide.
+    for shape in [ROOF_FLAT, ROOF_GABLED, ROOF_SKILLION, ROOF_PYRAMIDAL] {
+        let (v, _) = extrude_square(shape, 0.05, 0.2, 0.35);
+        let count = v.len() / FLOATS_PER_VERTEX;
+        assert!(count > 0);
+        let mut saw_base = false;
+        let mut saw_eaves = false;
+        let mut saw_ridge = false;
+        for k in 0..count {
+            let (p, _, _) = vertex(&v, k);
+            saw_base |= p[2].to_bits() == 0.05f32.to_bits();
+            saw_eaves |= p[2].to_bits() == 0.2f32.to_bits();
+            saw_ridge |= p[2].to_bits() == 0.35f32.to_bits();
+            assert!(
+                p[2] >= 0.05 && p[2] <= 0.35,
+                "shape {shape}: vertex z {z} escapes the 0.05..0.35 structural band",
+                z = p[2],
+            );
+        }
+        assert!(saw_base, "shape {shape}: no vertex sits at the exact base height");
+        assert!(saw_eaves, "shape {shape}: no vertex sits at the exact eaves height");
+        assert!(saw_ridge, "shape {shape}: no vertex sits at the exact ridge height");
+    }
 }

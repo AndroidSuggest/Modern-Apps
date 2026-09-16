@@ -1,11 +1,16 @@
 use super::geom::{push_tri, ring_centroid};
 
 /// A wall quad per footprint edge, from `base` to `wall_top`, with an outward-facing normal.
+///
+/// Both heights are lifted by the tile-normalised ground offset sampled per corner, so each
+/// wall spans the full structural height while its bottom edge sits on the slope — on flat
+/// ground the two samples agree and the quad is the level rectangle it always was.
 pub(crate) fn emit_walls(
     local: &[Vec<(f32, f32)>],
     base: f32,
     wall_top: f32,
     rgba: u32,
+    ground: &dyn Fn(f32, f32) -> f32,
     out_v: &mut Vec<f32>,
     out_i: &mut Vec<u32>,
 ) {
@@ -35,10 +40,10 @@ pub(crate) fn emit_walls(
             let inv = 1.0 / (nx * nx + ny * ny).sqrt();
             let normal = [nx * inv, ny * inv, 0.0];
 
-            let base0 = [x0, y0, base];
-            let base1 = [x1, y1, base];
-            let top1 = [x1, y1, wall_top];
-            let top0 = [x0, y0, wall_top];
+            let base0 = [x0, y0, base + ground(x0, y0)];
+            let base1 = [x1, y1, base + ground(x1, y1)];
+            let top1 = [x1, y1, wall_top + ground(x1, y1)];
+            let top0 = [x0, y0, wall_top + ground(x0, y0)];
             push_tri(out_v, out_i, base0, base1, top1, normal, rgba);
             push_tri(out_v, out_i, base0, top1, top0, normal, rgba);
         }
