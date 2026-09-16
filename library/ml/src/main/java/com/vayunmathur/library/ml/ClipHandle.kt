@@ -5,8 +5,6 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.res.AssetManager
 import android.util.Log
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
 
@@ -66,7 +64,7 @@ class ClipHandle private constructor(private val source: String) : AutoCloseable
                 vulkanRun(
                     pixels, DUMMY_IDS,
                     attentionMask(DUMMY_IDS.size),
-                    OUT_IMAGE,
+                    OUT_IMAGE_INDEX,
                 )?.let { return it }
             } catch (e: Throwable) {
                 Log.w(TAG, "clip vulkan image embedding failed, falling back to ORT", e)
@@ -99,7 +97,7 @@ class ClipHandle private constructor(private val source: String) : AutoCloseable
                 vulkanRun(
                     dummyPixels(), ids,
                     attentionMask(ids.size),
-                    OUT_TEXT,
+                    OUT_TEXT_INDEX,
                 )?.let { return it }
             } catch (e: Throwable) {
                 Log.w(TAG, "clip vulkan text embedding failed, falling back to ORT", e)
@@ -157,7 +155,7 @@ class ClipHandle private constructor(private val source: String) : AutoCloseable
                 Log.w(TAG, "vulkan preflight skipped for $path: $problem")
                 return
             }
-            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            val handle = VulkanSessions.open(key) { modelBytes }
             if (handle != 0L) {
                 vulkanHandle = handle
                 Log.i(TAG, "vulkan session open for $key")
@@ -169,95 +167,38 @@ class ClipHandle private constructor(private val source: String) : AutoCloseable
     }
 
     /**
-     * Vulkan fast path: the same preprocessed inputs as [run], packed flat little-endian.
+     * Vulkan fast path: the same inputs as [run], in the model's declared input order
+     * (`input_ids`, `pixel_values`, `attention_mask`), marshalled through [VulkanWire].
      *
-     * Returns null when the bridge returns no bytes or the wanted output cannot be located,
-     * so the caller falls back to ORT. Throws on packing errors, which the caller also
-     * treats as fallback.
+     * The combined graph emits both embeddings on every call, `image_embeds` first and
+     * `text_embeds` second, both `[1, 512]` f32; [outputIndex] selects between them.
+     * Returns null when the bridge fails or the wanted output is missing, so the caller
+     * falls back to ORT.
      */
     private fun vulkanRun(
         pixels: FloatArray,
         ids: IntArray,
         mask: LongArray,
-        wanted: String,
+        outputIndex: Int,
     ): FloatArray? {
         val handle = vulkanHandle
         if (handle == 0L) return null
         val tokens = ids.size.toLong()
-        val names = arrayOf(IN_PIXELS, IN_IDS, IN_MASK)
-        val dtypes = intArrayOf(DTYPE_F32, DTYPE_I64, DTYPE_I64)
-        val shapes = longArrayOf(
-            1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong(),
-            1, tokens,
-            1, tokens,
+        val longIds = LongArray(ids.size) { ids[it].toLong() }
+        val inputs = listOf(
+            VulkanWire.longs(longArrayOf(1, tokens), longIds),
+            VulkanWire.floats(longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong()), pixels),
+            VulkanWire.longs(longArrayOf(1, tokens), mask),
         )
-        val shapeOffsets = intArrayOf(0, 4, 6)
-        val payload = packClipInputs(pixels, ids, mask)
-        val outBytes = VulkanBridge.run(handle, names, dtypes, shapes, shapeOffsets, payload)
-            ?: return null
-        val outNames = try {
-            VulkanBridge.lastOutputNames(handle)
-        } catch (e: Throwable) {
-            Log.w(TAG, "clip vulkan output names unavailable", e)
-            null
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val embeds = outputs.filter {
+            it.dtype == VulkanWire.DTYPE_F32 && it.bytes.size / 4 == DIMENSION
         }
-        val outShapes = try {
-            VulkanBridge.lastOutputShapes(handle)
-        } catch (e: Throwable) {
-            Log.w(TAG, "clip vulkan output shapes unavailable", e)
-            null
+        val out = embeds.getOrNull(outputIndex) ?: run {
+            Log.w(TAG, "clip vulkan produced no $DIMENSION-wide output at index $outputIndex")
+            return null
         }
-        return parseFloatOutput(outBytes, outNames, outShapes, wanted)
-    }
-
-    /**
-     * Locate [wanted] in the flat little-endian output payload.
-     *
-     * The bridge concatenates every graph output in [names] order; the flat shape dims split
-     * evenly across names (both CLIP outputs are `[1, 512]`), so each output's float window
-     * is its shape chunk. Without metadata the single-output size is assumed, with the
-     * two-output interleave (`image` first, `text` second) as the fallback.
-     */
-    private fun parseFloatOutput(
-        outputs: ByteArray,
-        names: Array<String>?,
-        shapesFlat: LongArray?,
-        wanted: String,
-    ): FloatArray? {
-        val floats = leToFloats(outputs)
-        if (names != null && names.isNotEmpty() && shapesFlat != null) {
-            if (shapesFlat.size % names.size == 0) {
-                val rank = shapesFlat.size / names.size
-                var offset = 0
-                for (i in names.indices) {
-                    var numel = 1L
-                    for (r in 0 until rank) numel *= shapesFlat[i * rank + r]
-                    val count = numel.toInt()
-                    if (names[i] == wanted) {
-                        if (count <= 0 || offset + count > floats.size) {
-                            Log.w(TAG, "clip vulkan output $wanted out of range")
-                            return null
-                        }
-                        return floats.copyOfRange(offset, offset + count)
-                    }
-                    offset += count
-                }
-                Log.w(TAG, "clip vulkan output $wanted not in ${names.toList()}")
-                return null
-            }
-            val perOutput = floats.size / names.size
-            val index = names.indexOf(wanted)
-            if (index < 0 || perOutput <= 0 || (index + 1) * perOutput > floats.size) return null
-            return floats.copyOfRange(index * perOutput, (index + 1) * perOutput)
-        }
-        if (floats.size == DIMENSION) return floats
-        if (floats.size == 2 * DIMENSION) {
-            return if (wanted == OUT_IMAGE) floats.copyOfRange(0, DIMENSION)
-            else floats.copyOfRange(DIMENSION, 2 * DIMENSION)
-        }
-        if (floats.size > DIMENSION) return floats.copyOfRange(0, DIMENSION)
-        Log.w(TAG, "clip vulkan returned ${floats.size} floats, want $DIMENSION")
-        return null
+        return out.asFloats()
     }
 
     private fun run(
@@ -314,9 +255,9 @@ class ClipHandle private constructor(private val source: String) : AutoCloseable
         private const val OUT_IMAGE = "image_embeds"
         private const val OUT_TEXT = "text_embeds"
 
-        /** ONNX TensorProto elem types as carried in the Vulkan `dtypes` array. */
-        private const val DTYPE_F32 = 1
-        private const val DTYPE_I64 = 7
+        /** Output positions in the combined graph: image_embeds first, text_embeds second. */
+        private const val OUT_IMAGE_INDEX = 0
+        private const val OUT_TEXT_INDEX = 1
 
         private val DUMMY_IDS = IntArray(CONTEXT_LENGTH)
 
@@ -338,20 +279,5 @@ class ClipHandle private constructor(private val source: String) : AutoCloseable
         private fun attentionMask(size: Int): LongArray = LongArray(size) { 1L }
 
         private fun dummyPixels(): FloatArray = FloatArray(3 * IMAGE_SIZE * IMAGE_SIZE)
-
-        private fun packClipInputs(pixels: FloatArray, ids: IntArray, mask: LongArray): ByteArray {
-            val buf = ByteBuffer.allocate(pixels.size * 4 + ids.size * 8 + mask.size * 8)
-                .order(ByteOrder.LITTLE_ENDIAN)
-            for (v in pixels) buf.putFloat(v)
-            for (id in ids) buf.putLong(id.toLong())
-            for (m in mask) buf.putLong(m)
-            return buf.array()
-        }
-
-        private fun leToFloats(bytes: ByteArray): FloatArray {
-            val out = FloatArray(bytes.size / 4)
-            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(out)
-            return out
-        }
     }
 }

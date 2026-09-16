@@ -51,7 +51,9 @@ fn load_member_ways(
     Ok(members)
 }
 
-/// Pass 3: id index plus resolved coordinates. Moved whole from `extract`.
+/// Pass 3: id index plus resolved coordinates, with `places`/`poi` label nodes classified and
+/// spilled in the same pass. Grew the sink, select and layers params when pass 4 was folded in.
+#[allow(clippy::too_many_arguments)]
 fn build_resolved_table(
     input: &Path,
     blobs: &[pbf::BlobLoc],
@@ -60,10 +62,13 @@ fn build_resolved_table(
     members: &HashMap<i64, Vec<i64>>,
     way_refs: u64,
     way_max_ref: i64,
+    select: &Select,
+    layers: Layers,
+    sink: &mut Sink,
     stats: &mut Stats,
     mark: &dyn Fn(&str),
 ) -> Result<NodeLocations> {
-    // --- pass 3: the coordinates those two asked for --------------------------------------
+    // --- pass 3: the coordinates those two asked for, plus the label nodes ----------------
     //
     // The classified ways are read off disk instead of walked in memory. Order does not matter to
     // either path below, so this is a plain streaming pass over the spill.
@@ -80,7 +85,40 @@ fn build_resolved_table(
     };
     mark("id index built, refs freed");
     stats.nodes_needed = table.len() as u64;
-    let table = resolve_nodes(input, &blobs, &blob_kinds, "Pass 3: nodes", table)?;
+    // The node region is the bulk of a planet PBF, so it is inflated once: the coordinate resolve
+    // and the label-node classification share this pass. `classify` runs in the block visitor across
+    // the pool and is pure -- it is exactly what the old pass 4 body did per node -- and the labels
+    // it returns are drained to the sink **in chunk order**, ahead of every way and relation, which
+    // is the order pass 4 spilled them in and what keeps the archive byte-identical.
+    //
+    // Only label layers are consulted: a node is never a road, a lake or a building, so running the
+    // full schema over 2 B nodes would pay the tag scan for nothing.
+    let classify = |node: &NodeView| {
+        if !select.matches(|k| node.tags.get_str(k)) {
+            return None;
+        }
+        let class = schema::classify(&node.tags, false, layers)?;
+        if !is_label(class.layer) {
+            return None;
+        }
+        let name = schema::display_name(&node.tags, class.layer);
+        Some((
+            class,
+            node.lon_e7 as f64 * 1e-7,
+            node.lat_e7 as f64 * 1e-7,
+            name,
+            tagged_id(node.id, ELEMENT_NODE),
+        ))
+    };
+    let drain = |hits: Vec<(Class, f64, f64, Option<String>, u64)>| -> Result<()> {
+        for (class, lon, lat, name, id) in hits {
+            sink.push_named(&class, &Geometry::Points(vec![(lon, lat)]), name.as_deref(), id)?;
+            stats.features += 1;
+            stats.nodes_classified += 1;
+        }
+        Ok(())
+    };
+    let table = resolve_nodes_with(input, &blobs, &blob_kinds, "Pass 3: nodes", table, classify, drain)?;
     mark("coordinates resolved");
     // The split, when asked for. Note what it does and does not separate: the first number is the
     // protobuf decode of each block *plus* the id lookups inside it, because bracketing the lookups
@@ -101,6 +139,7 @@ fn inherit_lane_counts(
     spill_path: &Path,
     ways_path: &Path,
     table: &NodeLocations,
+    ways_classified: usize,
 ) -> Result<Vec<(i64, u8)>> {
     // --- lane inheritance -------------------------------------------------------------------
     //
@@ -112,7 +151,14 @@ fn inherit_lane_counts(
         let mut collector = crate::lanefill::Collector::create(spill_path)?;
         let mut reader = WayReader::open(&ways_path)?;
         let mut refs: Vec<i64> = Vec::new();
+        let mut bar = Progress::new(
+            "Lane inheritance: scan".to_string(),
+            ways_classified,
+            "way(s)",
+            true,
+        );
         while let Some((id, class, name, lane_count, _, _, _, _)) = reader.next(&mut refs)? {
+            bar.tick("way(s)");
             // Roads, and not slip roads. A ramp leaves a junction carrying its parent's name on
             // very nearly its parent's heading, so it would inherit the mainline's width onto a
             // single-lane ramp; `corridor` leaves links out of a corridor for the same reason.
@@ -134,81 +180,11 @@ fn inherit_lane_counts(
                 line: &line,
             })?;
         }
+        bar.finish("way(s)");
         collector.finish()?
     };
 
     Ok(inherited_lanes)
-}
-
-/// Node pass: label nodes straight into the sink. Moved whole from `extract`.
-fn spill_node_labels(
-    input: &Path,
-    blobs: &[pbf::BlobLoc],
-    blob_kinds: &[u8],
-    select: &Select,
-    layers: Layers,
-    sink: &mut Sink,
-    stats: &mut Stats,
-    mark: &dyn Fn(&str),
-) -> Result<()> {
-    // --- node pass: labels ----------------------------------------------------------------
-    //
-    // Nodes carry no refs to resolve — their coordinates are inline — so they classify and spill
-    // in one pass, straight into the sink: a label is one point and one name, and holding tens of
-    // millions of them for a later loop would be a second materialise for no reason. Ways and
-    // relations below only *add* to the sink, so spilling nodes first changes no order the tiler
-    // reads (it groups by layer id).
-    //
-    // Only label layers are consulted here: a node is never a road, a lake or a building, and
-    // running the full schema over 2 B nodes would pay the tag scan for nothing.
-    pbf::run_pass_sink(
-        input,
-        &blobs,
-        Some(&blob_kinds),
-        KIND_NODES,
-        "Pass 4: nodes",
-        Vec::<(Class, f64, f64, Option<String>, u64)>::new,
-        |state, block| {
-            let mut kinds = 0u8;
-            visit_block(block, KIND_NODES, &mut kinds, &mut |el| {
-                if let Element::Node(node) = el {
-                    if !select.matches(|k| node.tags.get_str(k)) {
-                        return Ok(());
-                    }
-                    if let Some(class) = schema::classify(&node.tags, false, layers) {
-                        if is_label(class.layer) {
-                            let name = schema::display_name(&node.tags, class.layer);
-                            state.push((
-                                class,
-                                node.lon_e7 as f64 * 1e-7,
-                                node.lat_e7 as f64 * 1e-7,
-                                name,
-                                tagged_id(node.id, ELEMENT_NODE),
-                            ));
-                        }
-                    }
-                }
-                Ok(())
-            })?;
-            Ok(kinds)
-        },
-        |hits| {
-            for (class, lon, lat, name, id) in hits {
-                sink.push_named(
-                    &class,
-                    &Geometry::Points(vec![(lon, lat)]),
-                    name.as_deref(),
-                    id,
-                )?;
-                stats.features += 1;
-                stats.nodes_classified += 1;
-            }
-            Ok(())
-        },
-    )?;
-    mark("nodes labelled");
-
-    Ok(())
 }
 
 /// Materialise classified ways off disk, in id order. Moved whole from `extract`.

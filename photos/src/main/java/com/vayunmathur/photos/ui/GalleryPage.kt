@@ -33,6 +33,7 @@ fun GalleryPage(
 ) {
     val allPhotos by galleryViewModel.photos.collectAsState()
     val photos by remember { derivedStateOf { allPhotos.filter { !it.isTrashed } } }
+    val albums by galleryViewModel.albums.collectAsState()
     val context = LocalContext.current
 
     val selectedIds by galleryViewModel.selectedIds.collectAsState()
@@ -52,8 +53,13 @@ fun GalleryPage(
 
     val mediaResultLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            galleryViewModel.clearSelection()
-            galleryViewModel.runSync()
+            // A pending album move consumes the grant and does its own refresh; the
+            // trash/delete/secure-folder paths that share this launcher fall through
+            // to the plain clear-and-resync.
+            if (!galleryViewModel.consumePendingMove()) {
+                galleryViewModel.clearSelection()
+                galleryViewModel.runSync()
+            }
         }
     }
 
@@ -124,6 +130,19 @@ fun GalleryPage(
                 val pendingIntent = MediaStore.createTrashRequest(context.contentResolver, uris, true)
                 mediaResultLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
             }
+
+            override fun addSelectionToAlbum(name: String) {
+                val album = com.vayunmathur.photos.util.AlbumMediaStore.sanitizeAlbumName(name)
+                if (album.isBlank()) return
+                val selected = currentPhotos.filter { it.id in currentSelectedIds }
+                if (selected.isEmpty()) return
+                galleryViewModel.requestAlbumMove(selected, album)
+                val pendingIntent = MediaStore.createWriteRequest(
+                    context.contentResolver,
+                    com.vayunmathur.photos.util.AlbumMediaStore.urisOf(selected),
+                )
+                mediaResultLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+            }
         }
     }
 
@@ -140,6 +159,7 @@ fun GalleryPage(
             ocrTargetCount = indexTargetCount,
             clipCount = clipCount,
             clipTargetCount = indexTargetCount,
+            albums = albums,
         ),
         actions = actions,
     )

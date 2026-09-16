@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -76,10 +78,19 @@ internal class CameraScreenState(
     val panoCurrentAngle: Float,
     val panoDirection: Int,
     val panoPitch: Float,
+    // Composition-local state that must OUTLIVE this holder: rememberCameraScreenState
+    // recreates the holder whenever any collected value changes (roll, zoom, ...), which
+    // is many times a second. These are backed by stable remember{}s so the portrait mask
+    // survives long enough for the preview to render it, and the open settings pane and
+    // icon rotation don't reset. Passing the backing state in (rather than declaring
+    // mutableStateOf here) means every recreated holder shares the same instance.
+    activeSettingState: MutableState<CameraSetting?>,
+    maskBitmapState: MutableState<Bitmap?>,
+    deviceRotationState: MutableIntState,
 ) {
-    var activeSetting by mutableStateOf<CameraSetting?>(null)
-    var maskBitmap by mutableStateOf<Bitmap?>(null)
-    var deviceRotation by mutableIntStateOf(0)
+    var activeSetting by activeSettingState
+    var maskBitmap by maskBitmapState
+    var deviceRotation by deviceRotationState
 
     val isPhotoType get() = cameraMode in listOf(CameraMode.PHOTO, CameraMode.PORTRAIT, CameraMode.PANORAMA, CameraMode.PHOTOSPHERE)
     val isSloMo get() = cameraMode == CameraMode.SLOW_MO
@@ -164,6 +175,13 @@ internal fun rememberCameraScreenState(viewModel: CameraViewModel): CameraScreen
     val panoDirection by viewModel.panoramaEngine.sweepDirection.collectAsState()
     val panoPitch by viewModel.panoramaEngine.currentPitch.collectAsState()
 
+    // Kept OUTSIDE the remember(keys) below so they survive holder recreation. Without this
+    // the portrait bokeh mask (written from BokehAnalyzer's background thread) is reset to
+    // null every time a collected value like roll changes, and the preview never blurs.
+    val activeSettingState = remember { mutableStateOf<CameraSetting?>(null) }
+    val maskBitmapState = remember { mutableStateOf<Bitmap?>(null) }
+    val deviceRotationState = remember { mutableIntStateOf(0) }
+
     return remember(
         cameraMode, lensFacing, selectedLens, availableLenses, hasFlashUnit, flashMode, torchEnabled, isRecording, recordingDuration,
         timerCountdown, qrResult, aspectRatio, zoomRatio, mirrorFront, timerDuration,
@@ -229,6 +247,9 @@ internal fun rememberCameraScreenState(viewModel: CameraViewModel): CameraScreen
             panoCurrentAngle = panoCurrentAngle,
             panoDirection = panoDirection,
             panoPitch = panoPitch,
+            activeSettingState = activeSettingState,
+            maskBitmapState = maskBitmapState,
+            deviceRotationState = deviceRotationState,
         )
     }
 }

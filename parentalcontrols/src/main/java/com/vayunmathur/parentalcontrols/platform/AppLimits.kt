@@ -77,6 +77,8 @@ class AppLimits(private val context: Context) {
      * `queryAndAggregateUsageStats` is public SDK and needs `PACKAGE_USAGE_STATS`, which is an
      * app-op rather than a role grant - see the manifest note. If it is not held this returns
      * zero, and a cap then measures from the moment it was armed instead of from midnight.
+     * Check [UsageAccess.isGranted] first when the distinction matters; this stays
+     * zero-on-denied so observers always arm with a safe value.
      */
     fun timeUsedToday(packageName: String): Duration {
         val usage = usage ?: return Duration.ZERO

@@ -41,6 +41,21 @@
         <item quantity="one"><xliff:g id="count" example="12">%1$d</xliff:g> photo</item>
         <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> photos</item>
     </plurals>
+    <!-- Title of the selection action / dialog to add the chosen photos to an album. Verb phrase -->
+    <string name="label_add_to_album">Add to album</string>
+    <!-- Text field label/hint for entering an album name. Noun -->
+    <string name="album_name_hint">Album name</string>
+    <!-- Confirm button in the add-to-album dialog that creates a new album. Verb -->
+    <string name="album_create">Create</string>
+    <!-- Overflow menu item / confirm button to rename the current album. Verb -->
+    <string name="album_rename">Rename</string>
+    <!-- Overflow menu item / confirm button to delete the current album. Verb -->
+    <string name="album_delete">Delete album</string>
+    <!-- Delete-album confirmation body. Photos are kept; only the album grouping is removed. %1$s = album name -->
+    <string name="album_delete_confirm">Remove the album \"<xliff:g id="name" example="Beach">%1$s</xliff:g>\"? The photos will be kept and returned to your library.</string>
+    <!-- Generic cancel button in dialogs. Verb -->
+    <string name="action_cancel">Cancel</string>
+
     <!-- Generic selection count badge in TopAppBar of Gallery, SecureFolder, Trash. %1$d = number selected -->
     <string name="items_selected"><xliff:g id="count" example="5">%1$d</xliff:g> selected</string>
     <!-- Vault viewer error when the encrypted file cannot be decrypted to the cache. Sentence -->

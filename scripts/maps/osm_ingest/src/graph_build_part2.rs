@@ -21,11 +21,14 @@ fn collapse_within_ways<W: std::io::Write + Send>(
     report_way_blobs(blobs.len(), &built.kinds);
 
     let mut kept = Bitset::new(u64::from(slots));
+    let mut prog = crate::progress::Progress::new("Selecting kept nodes", u64::from(slots));
     for i in 0..slots {
         if index.present.get(u64::from(i)) && chains::survives(&built.endpoints, &degree, i) {
             kept.set(u64::from(i));
         }
+        prog.inc();
     }
+    prog.finish();
     drop(degree);
 
     let count = spill.chain_count()?;
@@ -145,14 +148,18 @@ struct Synth {
 
 fn build_csr(spill: &chains::Spill, kept_count: u32, ids: &FinalIds) -> Result<Csr> {
     println!("Building the edge index over {kept_count} node(s)...");
+    let chain_total = spill.chain_count()?;
     let mut edge_ptr = vec![0u64; kept_count as usize + 2];
     let mut hdr = spill.headers()?;
+    let mut prog = crate::progress::Progress::new("Edge index: counting", chain_total);
     while let Some(c) = hdr.next()? {
         edge_ptr[ids.get(c.first) as usize + 1] += 1;
         if !c.oneway {
             edge_ptr[ids.get(c.last) as usize + 1] += 1;
         }
+        prog.inc();
     }
+    prog.finish();
     for i in 0..=kept_count as usize {
         edge_ptr[i + 1] += edge_ptr[i];
     }
@@ -161,6 +168,7 @@ fn build_csr(spill: &chains::Spill, kept_count: u32, ids: &FinalIds) -> Result<C
     let mut targets = vec![0u32; total as usize];
     let mut cursor: Vec<u64> = edge_ptr[..=kept_count as usize].to_vec();
     let mut hdr = spill.headers()?;
+    let mut prog = crate::progress::Progress::new("Edge index: scatter", chain_total);
     while let Some(c) = hdr.next()? {
         let (a, b) = (ids.get(c.first), ids.get(c.last));
         let slot = &mut cursor[a as usize];
@@ -171,7 +179,9 @@ fn build_csr(spill: &chains::Spill, kept_count: u32, ids: &FinalIds) -> Result<C
             targets[*slot as usize] = a;
             *slot += 1;
         }
+        prog.inc();
     }
+    prog.finish();
     edge_ptr.truncate(kept_count as usize + 1);
 
     // Per group, so `twin_is_unique` can binary-search it. Sorting the whole array
@@ -198,6 +208,7 @@ fn build_csr(spill: &chains::Spill, kept_count: u32, ids: &FinalIds) -> Result<C
         consumed = end;
     }
     let ptr = &edge_ptr;
+    eprintln!("Sorting edge groups across {workers} worker(s)...");
     par::install(|| {
         pieces.par_iter_mut().for_each(|(lo, hi, buf)| {
             let base = ptr[*lo] as usize;

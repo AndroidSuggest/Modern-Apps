@@ -115,9 +115,15 @@ class AppTimers(private val context: Context) {
      * Per-package foreground map since local midnight, for the dashboard list.
      *
      * One query serves the whole screen; callers filter to launchable packages themselves.
+     *
+     * Null when the usage-stats op is not held or the query fails - which the dashboard must
+     * render as a permission prompt, not as "0 min". An empty (non-null) map means access is
+     * granted but nothing has been used yet. Entries with zero time are dropped here; the
+     * ViewModel keeps sub-minute entries (millis > 0) so they render as "<1 min".
      */
-    fun usageTodayByPackage(): Map<String, Long> {
-        val usage = usage ?: return emptyMap()
+    fun usageTodayByPackage(): Map<String, Long>? {
+        val usage = usage ?: return null
+        if (!UsageAccess.isGranted(context)) return null
         val midnight = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         return runCatching {
             usage.queryAndAggregateUsageStats(midnight, System.currentTimeMillis())
@@ -125,7 +131,7 @@ class AppTimers(private val context: Context) {
                 .filterValues { it > 0 }
         }.getOrElse {
             Log.w(TAG, "no usage stats; is PACKAGE_USAGE_STATS granted?", it)
-            emptyMap()
+            null
         }
     }
 

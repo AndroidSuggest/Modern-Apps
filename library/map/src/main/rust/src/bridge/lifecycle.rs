@@ -26,6 +26,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
     _class: JClass<'l>,
     surface: JObject<'l>,
     cache_dir: JString<'l>,
+    local_path: JString<'l>,
     width: jint,
     height: jint,
     dark: jboolean,
@@ -42,6 +43,21 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
     let cache_dir: String = match env.get_string(&cache_dir) {
         Ok(s) => s.into(),
         Err(_) => return 0,
+    };
+
+    // A pushed on-device archive, or `None` when the path is null/empty: the worker then
+    // reads that file directly instead of the built-in URL. A null or empty string means
+    // "no local file", which is the default every existing caller passes.
+    let local_path: Option<String> = if local_path.is_null() {
+        None
+    } else {
+        match env.get_string(&local_path) {
+            Ok(s) => {
+                let s: String = s.into();
+                if s.is_empty() { None } else { Some(s) }
+            }
+            Err(_) => None,
+        }
     };
 
     let window = unsafe {
@@ -88,6 +104,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
             index,
             BASEMAP_ARCHIVE_URL.to_string(),
             cache_dir.clone(),
+            local_path.clone(),
             queue.clone(),
             finished_tx.clone(),
             online.clone(),

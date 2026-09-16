@@ -115,12 +115,18 @@
         let (input, out, opts) = parse_args(&["cal.osm.pbf".into()]).unwrap();
         assert_eq!(input, PathBuf::from("cal.osm.pbf"));
         assert_eq!(out, PathBuf::from("map_data"));
-        assert!(!opts.within_way_chains, "the legacy path is the default");
+        assert!(
+            opts.within_way_chains,
+            "the streaming within-way path is the CLI default"
+        );
         let (_, out, _) = parse_args(&["cal.osm.pbf".into(), "--out".into(), "d".into()]).unwrap();
         assert_eq!(out, PathBuf::from("d"));
         let (_, _, opts) =
-            parse_args(&["cal.osm.pbf".into(), "--within-way-chains".into()]).unwrap();
-        assert!(opts.within_way_chains);
+            parse_args(&["cal.osm.pbf".into(), "--reference-collapse".into()]).unwrap();
+        assert!(
+            !opts.within_way_chains,
+            "--reference-collapse opts back into the reference path"
+        );
         assert_eq!(opts.round_count(), 1, "one round is the default");
         assert!(opts.spill_dir.is_none(), "the spill defaults to the output dir");
         let (_, _, opts) = parse_args(&["cal.osm.pbf".into(), "--rounds".into(), "8".into()]).unwrap();

@@ -46,14 +46,19 @@ private const val MODE_ALLOWED = 0
  */
 object UsageAccess {
 
+    /** The usage-stats op state after [ensure] ran; denied means mid-day resume is lost. */
+    enum class Status { GRANTED, DENIED }
+
     /**
      * Grant ourselves the usage-stats op if it is not already allowed.
      *
      * Idempotent and cheap - the check is a public call and the grant only runs when the mode is
      * wrong - so callers can invoke it on every reconcile rather than tracking whether it ran.
+     * Returns the post-attempt status so callers can distinguish "granted" from "limits measure
+     * from arm time", instead of that degrading silently.
      */
-    fun ensure(context: Context) {
-        val ops = context.getSystemService<AppOpsManager>() ?: return
+    fun ensure(context: Context): Status {
+        val ops = context.getSystemService<AppOpsManager>() ?: return Status.DENIED
         val uid = Process.myUid()
         val packageName = context.packageName
 
@@ -61,9 +66,9 @@ object UsageAccess {
             ops.unsafeCheckOpNoThrow(OPSTR_GET_USAGE_STATS, uid, packageName)
         }.getOrElse {
             Log.w(TAG, "could not read the usage-stats op", it)
-            return
+            return Status.DENIED
         }
-        if (current == MODE_ALLOWED) return
+        if (current == MODE_ALLOWED) return Status.GRANTED
 
         val method = runCatching {
             AppOpsManager::class.java.getMethod(
@@ -74,16 +79,34 @@ object UsageAccess {
             )
         }.getOrElse {
             Log.w(TAG, "AppOpsManager.setUidMode is unreachable", it)
-            return
+            return Status.DENIED
         }
 
-        runCatching { method.invoke(ops, OPSTR_GET_USAGE_STATS, uid, MODE_ALLOWED) }
-            .onSuccess { Log.i(TAG, "granted the usage-stats op to ourselves") }
-            .onFailure {
-                // SecurityException when MANAGE_APP_OPS_MODES is not held, which happens if the
-                // role is unheld or the manifest declaration was dropped. Limits still work from
-                // the moment they are armed; only the mid-day resume is lost.
-                Log.w(TAG, "could not grant the usage-stats op; limits will not survive a reboot", it)
-            }
+        val granted = runCatching {
+            method.invoke(ops, OPSTR_GET_USAGE_STATS, uid, MODE_ALLOWED)
+            ops.unsafeCheckOpNoThrow(OPSTR_GET_USAGE_STATS, uid, packageName)
+        }.getOrElse {
+            // SecurityException when MANAGE_APP_OPS_MODES is not held, which happens if the
+            // role is unheld or the manifest declaration was dropped. Limits still work from
+            // the moment they are armed; only the mid-day resume is lost.
+            Log.w(TAG, "could not grant the usage-stats op; limits will not survive a reboot", it)
+            return Status.DENIED
+        }
+        return if (granted == MODE_ALLOWED) {
+            Log.i(TAG, "granted the usage-stats op to ourselves")
+            Status.GRANTED
+        } else {
+            Log.w(TAG, "usage-stats op still denied after self-grant; limits will not survive a reboot")
+            Status.DENIED
+        }
+    }
+
+    /** True when the op is currently allowed; the cheap check half of [ensure]. */
+    fun isGranted(context: Context): Boolean {
+        val ops = context.getSystemService<AppOpsManager>() ?: return false
+        return runCatching {
+            ops.unsafeCheckOpNoThrow(OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName) ==
+                MODE_ALLOWED
+        }.getOrDefault(false)
     }
 }

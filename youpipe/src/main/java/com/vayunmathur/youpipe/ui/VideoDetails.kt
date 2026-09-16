@@ -38,6 +38,7 @@ import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconDownload
 import com.vayunmathur.library.ui.IconSave
+import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
@@ -93,39 +94,45 @@ fun VideoDetails(
                     )
                 }
             }
-        }, trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { actions.addToPlaylist() }) {
-                    IconSave()
-                }
-                val downloadProgress = state.downloadProgress
-                if (downloadProgress != null) {
-                    CircularProgressIndicator(
-                        progress = { downloadProgress },
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp
-                    )
-                    IconButton(onClick = { actions.cancelDownload() }) {
-                        IconClose()
-                    }
-                } else if (!state.downloaded) {
-                    IconButton(onClick = {
-                        isDownloadDialogVisible = true
-                    }) {
-                        IconDownload()
-                    }
-                } else {
-                    IconButton(onClick = { actions.deleteDownload() }) {
-                        IconDelete(tint = MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
         }) {
             Text(
                 state.title,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = if (titleSharedKey == null) Modifier else Modifier.sharedText(titleSharedKey),
             )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = { actions.share() }) {
+                IconShare()
+            }
+            IconButton(onClick = { actions.addToPlaylist() }) {
+                IconSave()
+            }
+            val downloadProgress = state.downloadProgress
+            if (downloadProgress != null) {
+                CircularProgressIndicator(
+                    progress = { downloadProgress },
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp
+                )
+                IconButton(onClick = { actions.cancelDownload() }) {
+                    IconClose()
+                }
+            } else if (!state.downloaded) {
+                IconButton(onClick = {
+                    isDownloadDialogVisible = true
+                }) {
+                    IconDownload()
+                }
+            } else {
+                IconButton(onClick = { actions.deleteDownload() }) {
+                    IconDelete(tint = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
 }

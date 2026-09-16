@@ -10,6 +10,7 @@ import com.vayunmathur.screentime.data.AppTimer
 import com.vayunmathur.screentime.data.FocusProfile
 import com.vayunmathur.screentime.data.ScreenTimeRules
 import com.vayunmathur.screentime.data.WindDownSchedule
+import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,39 +20,85 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** One launchable app with today's usage and its timer, if any. */
+/** One launchable app with its usage over the selected range and its timer, if any. */
 data class TimedApp(
     val packageName: String,
     val label: String,
-    val usedMinutes: Long,
+    val usedMillis: Long,
     val timer: AppTimer?,
-)
+) {
+    /** Whole minutes, truncated; prefer [usedMillis] for display so sub-minute use shows. */
+    val usedMinutes: Long get() = usedMillis / 60_000L
+}
 
-/** Everything the Screen Time screens draw. */
+/** Everything the Screen Time dashboard draws. */
 data class ScreenTimeUiState(
-    val totalMinutes: Long = 0,
+    /** Which span the chart and list cover. */
+    val period: UsagePeriod = UsagePeriod.Week,
+    /** Any date inside the shown week, or the shown day itself. */
+    val anchorDate: LocalDate = LocalDate.now(),
+    /** The chart bars: 7 (Mon-Sun) for a week, 24 (hours) for a day. */
+    val chart: List<UsageBar> = emptyList(),
+    /** Total foreground time across the range. */
+    val totalMillis: Long = 0,
+    /** Daily average (week) or hourly average (day) shown beside the total. */
+    val averageMillis: Long = 0,
     val apps: List<TimedApp> = emptyList(),
     val focus: FocusProfile = FocusProfile(),
     val focusRunning: Boolean = false,
     val windDown: WindDownSchedule = WindDownSchedule(),
+    /** True while the launchable-app list is still being read; never derived from its content. */
     val loading: Boolean = true,
+    /** False when the usage-stats op is denied - the dashboard must prompt, not show "0 min". */
+    val hasUsageAccess: Boolean = false,
+    /** True once [loadLaunchableApps] has run, even when it found nothing (visibility loss). */
+    val installedLoaded: Boolean = false,
+) {
+    /** Whole minutes, truncated; prefer [totalMillis] for display. */
+    val totalMinutes: Long get() = totalMillis / 60_000L
+}
+
+/** Everything the per-app details screen draws. */
+data class AppDetailsUiState(
+    val packageName: String? = null,
+    val label: String? = null,
+    val period: UsagePeriod = UsagePeriod.Week,
+    val anchorDate: LocalDate = LocalDate.now(),
+    val chart: List<UsageBar> = emptyList(),
+    val totalMillis: Long = 0,
+    val averageMillis: Long = 0,
+    val timerMinutes: Int? = null,
+    val pausedInFocus: Boolean = false,
+    val focusRunning: Boolean = false,
+    val hasUsageAccess: Boolean = false,
 )
 
 class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
 
     private val rules = ScreenTimeRules.get(app)
-    private val timers = AppTimers(app)
+    private val history = UsageHistory(app)
     private val installed = MutableStateFlow<List<Pair<String, String>>>(emptyList())
-    private val usage = MutableStateFlow<Map<String, Long>>(emptyMap())
+    private val installedLoaded = MutableStateFlow(false)
+    private val hasUsageAccess = MutableStateFlow(false)
     private val focusRunning = MutableStateFlow(false)
+    private val period = MutableStateFlow(UsagePeriod.Week)
+    private val anchorDate = MutableStateFlow(LocalDate.now())
+    private val rangeHistory = MutableStateFlow(UsageHistoryData())
+
+    private val detailPackage = MutableStateFlow<String?>(null)
+    private val detailHistory = MutableStateFlow(UsageHistoryData())
 
     val state: StateFlow<ScreenTimeUiState> = combine(
         rules.allTimers,
         rules.focusProfile,
         rules.windDownSchedule,
         installed,
-        usage,
+        installedLoaded,
+        hasUsageAccess,
         focusRunning,
+        period,
+        anchorDate,
+        rangeHistory,
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val timerList = flows[0] as List<AppTimer>
@@ -59,37 +106,118 @@ class ScreenTimeViewModel(app: Application) : AndroidViewModel(app) {
         val windDown = flows[2] as WindDownSchedule
         @Suppress("UNCHECKED_CAST")
         val apps = flows[3] as List<Pair<String, String>>
-        @Suppress("UNCHECKED_CAST")
-        val used = flows[4] as Map<String, Long>
-        val running = flows[5] as Boolean
+        val appsLoaded = flows[4] as Boolean
+        val access = flows[5] as Boolean
+        val running = flows[6] as Boolean
+        val periodValue = flows[7] as UsagePeriod
+        val anchor = flows[8] as LocalDate
+        val hist = flows[9] as UsageHistoryData
         val byPackage = timerList.associateBy { it.packageName }
+        // Keep timed apps even at 0 ms; keep used-but-untimed apps even under a minute.
         val timed = apps.mapNotNull { (pkg, label) ->
-            val minutes = (used[pkg] ?: 0L) / 60_000L
-            if (minutes == 0L && byPackage[pkg] == null) null
-            else TimedApp(pkg, label, minutes, byPackage[pkg])
-        }.sortedByDescending { it.usedMinutes }
+            val millis = hist.perApp[pkg] ?: 0L
+            if (millis == 0L && byPackage[pkg] == null) null
+            else TimedApp(pkg, label, millis, byPackage[pkg])
+        }.sortedByDescending { it.usedMillis }
         ScreenTimeUiState(
-            totalMinutes = (used.values.sum() / 60_000L),
+            period = periodValue,
+            anchorDate = anchor,
+            chart = hist.bars,
+            totalMillis = hist.totalMillis,
+            averageMillis = hist.averageMillis,
             apps = timed,
             focus = focus,
             focusRunning = running,
             windDown = windDown,
-            loading = apps.isEmpty(),
+            loading = !appsLoaded,
+            hasUsageAccess = access,
+            installedLoaded = appsLoaded,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), ScreenTimeUiState())
 
+    val detailState: StateFlow<AppDetailsUiState> = combine(
+        detailPackage,
+        detailHistory,
+        rules.allTimers,
+        rules.focusProfile,
+        focusRunning,
+        installed,
+        period,
+        anchorDate,
+        hasUsageAccess,
+    ) { flows ->
+        val pkg = flows[0] as String?
+        val hist = flows[1] as UsageHistoryData
+        @Suppress("UNCHECKED_CAST")
+        val timerList = flows[2] as List<AppTimer>
+        val focus = flows[3] as FocusProfile
+        val running = flows[4] as Boolean
+        @Suppress("UNCHECKED_CAST")
+        val apps = flows[5] as List<Pair<String, String>>
+        val periodValue = flows[6] as UsagePeriod
+        val anchor = flows[7] as LocalDate
+        val access = flows[8] as Boolean
+        AppDetailsUiState(
+            packageName = pkg,
+            label = apps.firstOrNull { it.first == pkg }?.second,
+            period = periodValue,
+            anchorDate = anchor,
+            chart = hist.bars,
+            totalMillis = hist.totalMillis,
+            averageMillis = hist.averageMillis,
+            timerMinutes = timerList.firstOrNull { it.packageName == pkg }?.dailyLimitMinutes,
+            pausedInFocus = pkg != null && pkg in focus.pausedPackages,
+            focusRunning = running,
+            hasUsageAccess = access,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), AppDetailsUiState())
+
     init {
-        viewModelScope.launch { installed.value = loadLaunchableApps() }
+        viewModelScope.launch {
+            installed.value = loadLaunchableApps()
+            installedLoaded.value = true
+        }
         refresh()
     }
 
-    /** Re-reads usage and focus state; called on resume and after every mutation. */
+    /** Re-reads permission state, usage history and focus; called on resume and after mutations. */
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
-            UsageAccess.ensure(getApplication())
-            usage.value = timers.usageTodayByPackage()
+            // Permission state first: the history below is empty exactly when this is DENIED,
+            // so set it before reading so a frame never mixes the old flag with the new data.
+            hasUsageAccess.value =
+                UsageAccess.ensure(getApplication()) == UsageAccess.Status.GRANTED
+            val periodValue = period.value
+            val anchor = anchorDate.value
+            rangeHistory.value = history.aggregate(periodValue, anchor)
+            detailPackage.value?.let { pkg ->
+                detailHistory.value = history.forPackage(periodValue, anchor, pkg)
+            }
             focusRunning.value = Coordinator(getApplication()).isFocusActive()
         }
+    }
+
+    /** Switches the chart between the week and day spans. */
+    fun setPeriod(newPeriod: UsagePeriod) {
+        if (period.value == newPeriod) return
+        period.value = newPeriod
+        anchorDate.value = LocalDate.now()
+        refresh()
+    }
+
+    /** Steps the shown week/day backward or forward, never past today. */
+    fun stepAnchor(forward: Boolean) {
+        val delta = if (period.value == UsagePeriod.Day) 1L else 7L
+        val next = if (forward) anchorDate.value.plusDays(delta) else anchorDate.value.minusDays(delta)
+        val today = LocalDate.now()
+        anchorDate.value = if (next.isAfter(today)) today else next
+        refresh()
+    }
+
+    /** Points the details screen at [packageName] and loads its series. */
+    fun openDetail(packageName: String?) {
+        detailPackage.value = packageName
+        refresh()
     }
 
     fun setTimer(packageName: String, minutes: Int?) {

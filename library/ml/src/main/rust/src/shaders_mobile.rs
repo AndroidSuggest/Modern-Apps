@@ -18,25 +18,40 @@
 //! lands on the first inference unless the app warms the pipelines up front.
 //! Call [`warmup_plan`] during the loading screen (or any other
 //! non-interactive window) and create one pipeline per returned
-//! [`WarmupEntry`]; later inferences then hit the in-memory [`PipelineCache`]
-//! instead of the driver compiler.
+//! [`WarmupEntry`]; later inferences then hit the in-memory
+//! [`PipelineCache`] instead of the driver compiler.
 //!
 //! # Layout
 //!
 //! * [`DeviceCaps`] + [`select_path`] — pick a [`ShaderPath`] per device and
 //!   dtype, with cooperative-matrix gated to NVIDIA + extension.
-//! * [`workgroup_for_path`] — mobile workgroup sizes (64/128 invocations,
-//!   never desktop `16x16`).
-//! * [`PipelineCacheKey`] + [`PipelineCache`] — in-memory cache keyed by
-//!   (model hash, path, caps) with a disk-cache stub for a future persistent
-//!   store.
+//! * [`crate::shaders_workgroup`] — mobile workgroup sizes (64/128
+//!   invocations, never desktop `16x16`); re-exported here.
+//! * [`crate::shaders_cache`] — in-memory cache keyed by (model hash, path,
+//!   caps) with a disk-cache stub; re-exported here.
 //! * [`chunk_dispatch`] — split large matmuls into thermal-friendly dispatches.
-
-use std::collections::HashMap;
 
 use thiserror::Error;
 
 use crate::tensors::Dtype;
+
+// Re-exported so existing `crate::shaders_mobile::…` paths keep working
+// (notably `vulkan_session.rs`, which this split must not break).
+
+/// Small mobile workgroup total (`64x1x1`); see [`crate::shaders_workgroup`].
+pub use crate::shaders_workgroup::MOBILE_WORKGROUP_SMALL;
+/// Large mobile workgroup total (`128x1x1`); see [`crate::shaders_workgroup`].
+pub use crate::shaders_workgroup::MOBILE_WORKGROUP_LARGE;
+/// Validate a 1-D mobile workgroup total; see [`crate::shaders_workgroup`].
+pub use crate::shaders_workgroup::workgroup_shape;
+/// Choose the `[x, y, z]` workgroup; see [`crate::shaders_workgroup`].
+pub use crate::shaders_workgroup::workgroup_for_path;
+/// One cached pipeline entry; see [`crate::shaders_cache`].
+pub use crate::shaders_cache::CachedPipeline;
+/// In-memory pipeline cache; see [`crate::shaders_cache`].
+pub use crate::shaders_cache::PipelineCache;
+/// Cache key identifying one compiled pipeline; see [`crate::shaders_cache`].
+pub use crate::shaders_cache::PipelineCacheKey;
 
 /// Failures reported by the mobile shader fallback policy.
 ///
@@ -130,8 +145,9 @@ pub struct DeviceCaps {
     pub supports_fp16_arithmetic: bool,
     /// `maxComputeWorkGroupInvocations` reported by the device.
     ///
-    /// Clamped down to the mobile set (64/128) by [`workgroup_for_path`];
-    /// values above 128 never produce desktop-style 256-invocation groups.
+    /// Clamped down to the mobile set (64/128) by
+    /// [`crate::shaders_workgroup::workgroup_for_path`]; values above 128
+    /// never produce desktop-style 256-invocation groups.
     pub max_workgroup_invocations: u32,
 }
 
@@ -250,6 +266,7 @@ pub fn select_path(caps: &DeviceCaps, dtype: Dtype) -> ShaderPath {
                             ShaderPath::PolyfillIntDot
                         }
                     }
+                    Dtype::Bool => ShaderPath::WgslFallback,
                 }
             } else if dtype == Dtype::I64 && !caps.supports_int_dot {
                 ShaderPath::PolyfillIntDot
@@ -258,160 +275,6 @@ pub fn select_path(caps: &DeviceCaps, dtype: Dtype) -> ShaderPath {
             }
         }
     }
-}
-
-/// Total invocations of the small mobile workgroup (`64x1x1`).
-///
-/// Default for WGSL-fallback and polyfill dispatches: fits every Adreno/Mali
-/// part and stays thermally cheap.
-pub const MOBILE_WORKGROUP_SMALL: u32 = 64;
-
-/// Total invocations of the large mobile workgroup (`128x1x1`).
-///
-/// Used for cooperative-matrix dispatches when the device reports at least
-/// 128 `maxComputeWorkGroupInvocations`. Desktop-style `16x16` (256) tiling
-/// is deliberately absent: some mobile drivers reject it.
-pub const MOBILE_WORKGROUP_LARGE: u32 = 128;
-
-/// Validate a 1-D mobile workgroup total.
-///
-/// Returns `[total, 1, 1]` for 64 or 128 and
-/// [`MobileShaderError::UnsupportedWorkgroup`] for anything else — notably
-/// 256, the desktop `16x16` tiling this module never emits.
-pub fn workgroup_shape(total: u32) -> Result<[u32; 3], MobileShaderError> {
-    match total {
-        MOBILE_WORKGROUP_SMALL | MOBILE_WORKGROUP_LARGE => Ok([total, 1, 1]),
-        other => Err(MobileShaderError::UnsupportedWorkgroup(other)),
-    }
-}
-
-/// Choose the `[x, y, z]` workgroup for `path` on `caps`.
-///
-/// Cooperative-matrix dispatches take the 128-wide group when the device
-/// allows it; every other path takes the thermally cheaper 64-wide group. The
-/// result is always 1-D (`[n, 1, 1]`) — never desktop `16x16` — and never
-/// exceeds `min(caps.max_workgroup_invocations, 128)` in total invocations.
-pub fn workgroup_for_path(path: ShaderPath, caps: &DeviceCaps) -> [u32; 3] {
-    let large_allowed = caps.max_workgroup_invocations >= MOBILE_WORKGROUP_LARGE;
-    let total = if large_allowed && path == ShaderPath::CoopMatrix16 {
-        MOBILE_WORKGROUP_LARGE
-    } else {
-        MOBILE_WORKGROUP_SMALL
-    };
-    [total, 1, 1]
-}
-
-/// Cache key identifying one compiled pipeline.
-///
-/// The triple `(model_hash, path, caps_fingerprint)` means a model update, a
-/// shader-path change, or a device/driver change each maps to a distinct entry
-/// instead of colliding with a stale pipeline.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PipelineCacheKey {
-    /// Hash of the model bytes the pipeline was compiled for.
-    pub model_hash: u64,
-    /// Shader variant the pipeline was compiled from.
-    pub path: ShaderPath,
-    /// [`DeviceCaps::fingerprint`] of the device it was compiled for.
-    pub caps_fingerprint: u64,
-}
-
-impl PipelineCacheKey {
-    /// Build a key from its three legs, fingerprinting `caps` inline.
-    pub fn new(model_hash: u64, path: ShaderPath, caps: &DeviceCaps) -> Self {
-        Self {
-            model_hash,
-            path,
-            caps_fingerprint: caps.fingerprint(),
-        }
-    }
-}
-
-/// One cached pipeline entry: its key plus the tuning it was built with.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CachedPipeline {
-    /// Key this entry is stored under.
-    pub key: PipelineCacheKey,
-    /// Workgroup the pipeline was created with (see [`workgroup_for_path`]).
-    pub workgroup: [u32; 3],
-    /// Row budget per dispatch used with this pipeline (see [`chunk_dispatch`]).
-    pub chunk_rows: u64,
-}
-
-impl CachedPipeline {
-    /// Build an entry; never panics.
-    pub const fn new(key: PipelineCacheKey, workgroup: [u32; 3], chunk_rows: u64) -> Self {
-        Self {
-            key,
-            workgroup,
-            chunk_rows,
-        }
-    }
-}
-
-/// In-memory pipeline cache keyed by ([`PipelineCacheKey`]).
-///
-/// Lives for the duration of the process (or the owning session) and absorbs
-/// the first-run compile hitch after [`warmup_plan`] pre-populates it: steady
-/// state inference should always hit [`PipelineCache::lookup`].
-#[derive(Debug, Default)]
-pub struct PipelineCache {
-    /// Compiled entries by key.
-    entries: HashMap<PipelineCacheKey, CachedPipeline>,
-}
-
-impl PipelineCache {
-    /// Create an empty cache.
-    pub fn new() -> Self {
-        Self {
-            entries: HashMap::new(),
-        }
-    }
-
-    /// Look up the entry for `key`, or `None` on a miss.
-    ///
-    /// A miss on first run is expected (the driver has not compiled this
-    /// (model, path, caps) triple yet); warm the cache via [`warmup_plan`].
-    pub fn lookup(&self, key: &PipelineCacheKey) -> Option<&CachedPipeline> {
-        self.entries.get(key)
-    }
-
-    /// Insert or replace the entry for its own key.
-    pub fn insert(&mut self, entry: CachedPipeline) {
-        self.entries.insert(entry.key.clone(), entry);
-    }
-
-    /// Number of entries currently held.
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    /// Whether the cache holds no entries.
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    /// Drop all entries while keeping the handle usable.
-    pub fn clear(&mut self) {
-        self.entries.clear();
-    }
-
-    /// Disk-cache stub: pretend to fetch `key` from persistent storage.
-    ///
-    /// Always returns `None` for now. This is the seam where a future change
-    /// will read `vkPipelineCache` blobs (or compiled WGSL artifacts) from
-    /// the app cache dir; the key already carries everything needed to
-    /// namespace the file (`model_hash` / `path` / `caps_fingerprint`).
-    pub fn load_from_disk(&self, _key: &PipelineCacheKey) -> Option<CachedPipeline> {
-        None
-    }
-
-    /// Disk-cache stub: pretend to persist `entry` to disk.
-    ///
-    /// Currently a no-op accepted for API stability so callers can be written
-    /// against the persistent-cache flow before the filesystem backing lands.
-    /// It performs no I/O and never fails.
-    pub fn store_to_disk(&self, _entry: &CachedPipeline) {}
 }
 
 /// One chunk of a split matmul dispatch: `row_count` rows at `row_offset`.
@@ -507,8 +370,8 @@ pub fn warmup_plan(model_hash: u64, caps: &DeviceCaps, dtypes: &[Dtype]) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        DeviceCaps, DispatchChunk, GpuVendor, MobileShaderError, PipelineCache, PipelineCacheKey,
-        ShaderPath, chunk_dispatch, select_path, warmup_plan, workgroup_for_path, workgroup_shape,
+        DeviceCaps, DispatchChunk, GpuVendor, MobileShaderError, ShaderPath, chunk_dispatch,
+        select_path, warmup_plan,
     };
     use crate::tensors::Dtype;
 
@@ -580,49 +443,6 @@ mod tests {
             select_path(&caps, Dtype::F32) == ShaderPath::WgslFallback,
             "float without dot",
         )
-    }
-
-    #[test]
-    fn workgroup_sizes_are_mobile_only() -> Result<(), MobileShaderError> {
-        expect(workgroup_shape(64)? == [64, 1, 1], "shape 64")?;
-        expect(workgroup_shape(128)? == [128, 1, 1], "shape 128")?;
-        match workgroup_shape(256) {
-            Err(MobileShaderError::UnsupportedWorkgroup(256)) => Ok(()),
-            Err(other) => Err(other),
-            Ok(_) => Err(MobileShaderError::ExpectationFailed("256 accepted".to_owned())),
-        }?;
-        let caps = nvidia_caps();
-        let group = workgroup_for_path(ShaderPath::WgslFallback, &caps);
-        expect(group == [64, 1, 1], "fallback prefers small")?;
-        let coop = workgroup_for_path(ShaderPath::CoopMatrix16, &caps);
-        expect(coop == [128, 1, 1], "coop takes large when allowed")?;
-        let tiny = DeviceCaps::conservative();
-        let clamped = workgroup_for_path(ShaderPath::CoopMatrix16, &tiny);
-        expect(clamped == [64, 1, 1], "small device clamps coop to 64")
-    }
-
-    #[test]
-    fn cache_key_covers_model_path_and_caps() -> Result<(), MobileShaderError> {
-        let caps = nvidia_caps();
-        let hit = PipelineCacheKey::new(0xA11CE, ShaderPath::CoopMatrix16, &caps);
-        let mut cache = PipelineCache::new();
-        expect(cache.is_empty(), "starts empty")?;
-        cache.insert(super::CachedPipeline::new(hit.clone(), [128, 1, 1], 1024));
-        expect(cache.len() == 1, "insert grows cache")?;
-        expect(cache.lookup(&hit).is_some(), "same triple hits")?;
-        let other_model = PipelineCacheKey::new(0xBEEF, ShaderPath::CoopMatrix16, &caps);
-        expect(cache.lookup(&other_model).is_none(), "model hash splits")?;
-        let other_path = PipelineCacheKey::new(0xA11CE, ShaderPath::WgslFallback, &caps);
-        expect(cache.lookup(&other_path).is_none(), "path splits")?;
-        let other_caps = PipelineCacheKey::new(
-            0xA11CE,
-            ShaderPath::CoopMatrix16,
-            &DeviceCaps::conservative(),
-        );
-        expect(cache.lookup(&other_caps).is_none(), "caps split")?;
-        expect(cache.load_from_disk(&hit).is_none(), "disk stub misses")?;
-        cache.clear();
-        expect(cache.is_empty(), "clear empties cache")
     }
 
     #[test]

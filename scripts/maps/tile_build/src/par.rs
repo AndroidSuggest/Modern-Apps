@@ -191,6 +191,17 @@ pub fn min_task_len(items: usize) -> usize {
     (items / want_tasks).max(1)
 }
 
+/// A target number of encode tasks for a batch split by cost rather than by count.
+///
+/// The same "a few tasks per thread" aim as [`min_task_len`], but the encode pass groups tiles by
+/// cumulative geometry cost — one dense city tile outweighs a thousand rural ones — so it needs a
+/// task *count* to divide the total cost by, not a minimum run length. [`min_task_len`]'s contiguous
+/// runs cannot isolate that heavy tile; cost-based groups make it its own task, which is what keeps
+/// one dense tile from stranding a whole task's worth of cores while it finishes alone.
+pub fn encode_task_count() -> usize {
+    threads().saturating_mul(4).max(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

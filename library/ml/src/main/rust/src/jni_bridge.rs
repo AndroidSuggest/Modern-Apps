@@ -7,12 +7,13 @@
 //! ## Expected Kotlin declarations (static natives on the `VulkanBridge` object)
 //!
 //! ```kotlin
-//! static external fun probe(): String?
+//! static external fun probe(): Int
 //! static external fun load(model: ByteArray, tag: String): Long
 //! static external fun loadPreflight(model: ByteArray): String?
 //! static external fun loadPath(path: String): Long
 //! static external fun close(handle: Long)
 //! static external fun run(handle: Long, flatInput: ByteArray): ByteArray?
+//! static external fun lastError(handle: Long): String?
 //! static external fun lastOutputShapes(handle: Long): String?
 //! static external fun lastOutputNames(handle: Long): String?
 //! static external fun kvCreate(handle: Long, maxTokens: Int): Long
@@ -75,7 +76,7 @@ fn read_bytes(env: &mut JNIEnv, array: JByteArray) -> Option<Vec<u8>> {
 
 /// Copies a Java `String` into a Rust `String`, or `None` on JNI failure.
 fn read_string(env: &mut JNIEnv, value: JString) -> Option<String> {
-    env.get_string(value)
+    env.get_string(&value)
         .ok()
         .and_then(|text| text.to_str().map(str::to_owned).ok())
 }
@@ -158,12 +159,10 @@ fn with_cached<R>(
 /// Reports Vulkan device capabilities as a JSON string, or null on failure.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_ml_VulkanBridge_probe(
-    mut env: JNIEnv,
+    _env: JNIEnv,
     _cls: JClass,
-) -> jstring {
-    guard(std::ptr::null_mut(), || {
-        jstring_or_null(&mut env, Some(probe::probe_json()))
-    })
+) -> jint {
+    guard(0, || probe::probe_device())
 }
 
 /// Loads a model from its bytes; `tag` is an opaque label for logs or caches.
@@ -181,7 +180,7 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_VulkanBridge_load(
             None => return 0,
         };
         let tag = read_string(&mut env, tag).unwrap_or_default();
-        match GpuSession::load(&bytes, &tag) {
+        match GpuSession::load(&bytes, None, &tag) {
             Ok(session) => box_session(session),
             Err(_) => 0,
         }
@@ -201,11 +200,10 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_VulkanBridge_loadPrefligh
             Some(bytes) => bytes,
             None => return std::ptr::null_mut(),
         };
-        let summary = match GpuSession::preflight(&bytes) {
-            Ok(summary) => summary,
-            Err(_) => return std::ptr::null_mut(),
-        };
-        jstring_or_null(&mut env, Some(summary))
+        match GpuSession::preflight(&bytes, None) {
+            Ok(()) => jstring_or_null(&mut env, None),
+            Err(e) => jstring_or_null(&mut env, Some(e.to_string())),
+        }
     })
 }
 
@@ -260,8 +258,38 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_VulkanBridge_run(
             Some(input) => input,
             None => return std::ptr::null_mut(),
         };
-        let output = with_session(handle, None, |session| session.run(&input).ok());
+        let output = with_session(handle, None, |session| {
+            let tensors: Vec<tensors::HostTensor> =
+                crate::tensors::decode_payload(&input).ok()?;
+            match session.run(tensors) {
+                Ok(outputs) => Some(crate::tensors::encode_payload(&outputs)),
+                Err(err) => {
+                    // Payload stays null (CPU fallback contract) but the reason
+                    // is logged and stashed on the session for `lastError`.
+                    log::warn!("vulkan run failed on handle {handle}: {err}");
+                    None
+                }
+            }
+        });
         jbytes_or_null(&mut env, output)
+    })
+}
+
+/// Returns the session's most recent `run` / `runCached` failure text, or null
+/// when no error is pending, the handle is bad, or JNI allocation fails.
+///
+/// Consumes the stored error (take semantics), so a follow-up call returns null
+/// until the next failed run. Used to diagnose a null run payload without
+/// breaking the CPU-fallback contract.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_library_ml_VulkanBridge_lastError(
+    mut env: JNIEnv,
+    _cls: JClass,
+    handle: jlong,
+) -> jstring {
+    guard(std::ptr::null_mut(), || {
+        let text = with_session(handle, None, |session| session.take_last_error());
+        jstring_or_null(&mut env, text)
     })
 }
 
@@ -349,7 +377,17 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_VulkanBridge_runCached(
             None => return std::ptr::null_mut(),
         };
         let output = with_cached(handle, kv_handle, None, |session, cache| {
-            session.run_cached(cache, &input).ok()
+            let tensors: Vec<tensors::HostTensor> =
+                crate::tensors::decode_payload(&input).ok()?;
+            match session.run_cached(cache, tensors) {
+                Ok(outputs) => Some(crate::tensors::encode_payload(&outputs)),
+                Err(err) => {
+                    // Payload stays null (CPU fallback contract) but the reason
+                    // is logged and stashed on the session for `lastError`.
+                    log::warn!("vulkan runCached failed on handle {handle}: {err}");
+                    None
+                }
+            }
         });
         jbytes_or_null(&mut env, output)
     })

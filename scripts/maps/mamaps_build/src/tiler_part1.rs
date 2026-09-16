@@ -75,24 +75,24 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
                 stats.rings.add(rings);
                 stats.lines.add(lines);
                 let encoded = encoded;
-                let Some((stored, raw_len)) = encoded else { continue };
+                let Some((stored, raw_len, hash)) = encoded else { continue };
                 // Uncompressed, as this column has always meant.
                 stats.bytes += raw_len as u64;
                 stats.tiles += 1;
-                writer.append_stored(id, &stored)?;
+                writer.append_stored_with_hash(id, &stored, hash)?;
                 written += 1;
                 // Every 25k tiles: often enough to look alive on a continent, rare enough that the
                 // write itself is never the cost.
                 if written - shown >= 25_000 {
                     shown = written;
-                    print!("\r{:<28} [{written:>10} tile(s)]", format!("Encode z{z}"));
-                    let _ = std::io::Write::flush(&mut std::io::stdout());
+                    eprint!("\r{:<28} [{written:>10} tile(s)]", format!("Encode z{z}"));
+                    let _ = std::io::Write::flush(&mut std::io::stderr());
                 }
             }
             stats.append_ms += appending.elapsed().as_millis() as u64;
         }
         if written > 0 {
-            println!("\r{:<28} [{written:>10} tile(s)]", format!("Encode z{z}"));
+            eprintln!("\r{:<28} [{written:>10} tile(s)]", format!("Encode z{z}"));
         }
         // Reserved, written, on disk and read back must agree. A chunk that quietly lost entries
         // would produce an archive with holes in it and nothing downstream could tell.

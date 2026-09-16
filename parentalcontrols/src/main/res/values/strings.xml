@@ -3,10 +3,36 @@
     <!-- App name. Shown in app info and in Settings' list of supervision apps; there is still no launcher entry. -->
     <string name="app_name">Parental Controls</string>
 
-    <!-- Bedtime screen: title, also the label of its row in Settings > Parental controls. Noun. -->
-    <string name="bedtime_title">Bedtime</string>
-    <!-- One-line summary under the Bedtime row in Settings. -->
-    <string name="bedtime_summary">Make chosen apps unavailable overnight</string>
+    <!-- Dashboard: title of the top-level parental-controls screen. Noun phrase. -->
+    <string name="dashboard_title">Parental controls</string>
+    <!-- Dashboard: the master on/off switch for all controls on this device. Noun phrase. -->
+    <string name="controls_for_this_phone">Controls for this phone</string>
+    <!-- Dashboard: row that opens the web content filters. Noun phrase. -->
+    <string name="dashboard_web_filters">Web content filters</string>
+    <!-- Dashboard: row that opens PIN management. Verb phrase. -->
+    <string name="dashboard_manage_pin">Manage your PIN</string>
+    <!-- Dashboard: summary for a control that is turned off. Adjective. -->
+    <string name="summary_off">Off</string>
+    <!-- Dashboard: summary for a limit with no value set. Verb phrase. -->
+    <string name="summary_not_set">Not set</string>
+    <!-- Dashboard: summary under App limits when at least one app is capped. Statement. -->
+    <string name="summary_app_limits_set">App limits set</string>
+    <!-- Dashboard: summary under App limits when none are capped. Statement. -->
+    <string name="summary_no_app_limits">No app limits</string>
+    <!-- Dashboard: summary under Web content filters. Statement. -->
+    <string name="summary_web_filters">Filtering explicit sites &amp; search results</string>
+
+    <!-- Web content filters screen: title. Noun phrase. -->
+    <string name="web_filters_title">Web content filters</string>
+    <!-- Web content filters screen: the on/off toggle. Verb phrase. -->
+    <string name="web_filters_toggle">Filter explicit sites</string>
+    <!-- Web content filters screen: explanation under the toggle. -->
+    <string name="web_filters_toggle_hint">Blur explicit sites and turn on SafeSearch in supported browsers.</string>
+
+    <!-- Bedtime screen: title, also the label of its row in Settings > Parental controls. Noun phrase. -->
+    <string name="bedtime_title">Child bedtime</string>
+    <!-- One-line summary under the Child bedtime row in Settings. -->
+    <string name="bedtime_summary">Parental schedule: chosen apps stay closed overnight</string>
     <!-- Bedtime screen: the main on/off switch. Verb phrase. -->
     <string name="bedtime_enable">Use a bedtime schedule</string>
     <!-- Bedtime screen: explanation under the main switch. -->

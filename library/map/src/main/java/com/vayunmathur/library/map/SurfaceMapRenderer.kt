@@ -267,6 +267,18 @@ class SurfaceMapRenderer(
     }
 
     /**
+     * A `.mamaps` archive pushed to the device's external files dir, if present. When it
+     * exists the renderer opens it directly and does no networking; otherwise this is
+     * `null` and the renderer uses the built-in URL and its range cache unchanged.
+     */
+    private val localArchivePath: String?
+        get() {
+            val root = appContext.getExternalFilesDir(null) ?: appContext.filesDir
+            val local = File(root, LOCAL_ARCHIVE_NAME)
+            return if (local.exists()) local.absolutePath else null
+        }
+
+    /**
      * Bring the native renderer up on [surface] at [widthPx] x [heightPx] pixels, replaying
      * the deferred theme, layers, connectivity, puck and region mask before any frame is
      * drawn. [renderState] is final when this returns.
@@ -286,7 +298,7 @@ class SurfaceMapRenderer(
             renderState = MapRenderState.Unavailable(MapRenderState.Reason.RendererLibraryMissing)
             return
         }
-        handle = MapNative.create(surface, cacheDir.absolutePath, widthPx, heightPx, dark, muted)
+        handle = MapNative.create(surface, cacheDir.absolutePath, localArchivePath, widthPx, heightPx, dark, muted)
         if (handle == 0L) {
             Log.e(TAG, "the Vulkan renderer failed to start; see MapRenderer in logcat")
             renderState = MapRenderState.Unavailable(MapRenderState.Reason.RendererStartFailed)
@@ -684,6 +696,10 @@ class SurfaceMapRenderer(
     internal companion object {
         const val TAG = "SurfaceMapRenderer"
         const val CACHE_DIR_NAME = "vectortilecache"
+        // Matches the maps app's MapTileCache.BASEMAP_ARCHIVE_FILE and the sideload
+        // gate in MainActivity: one pushed basemap.mamaps satisfies the download gate,
+        // the offline router, POI, and this renderer's local read.
+        const val LOCAL_ARCHIVE_NAME = "basemap.mamaps"
 
         /**
          * How long the frame loop keeps running after the last change it noticed.

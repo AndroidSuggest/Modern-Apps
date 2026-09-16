@@ -60,14 +60,20 @@ impl Iterator for Merged<'_> {
             }
             self.next.pop();
             let held = self.front[index].take().expect("a heap key without its entry");
-            let (_, layer) = match held {
+            let (_, mut layer) = match held {
                 Ok(entry) => entry,
                 Err(e) => return Some(Err(e)),
             };
             // Entries for one layer are adjacent, because the key sorts the layer before the chunk.
             // So the accumulator only ever has to look at the layer it started last.
             match layers.last_mut() {
-                Some(last) if last.layer.layer_id == layer_id => concatenate(last, layer),
+                Some(last) if last.layer.layer_id == layer_id => {
+                    concatenate(last, &mut layer);
+                    // `layer`'s arenas are drained now; hand them back so the next decode on this
+                    // stream reuses them instead of allocating. Only the concatenated entries come
+                    // back — the one that starts a layer escapes into `layers` and is encoded.
+                    self.chunks[index].recycle(layer);
+                }
                 _ => layers.push(layer),
             }
             let head = self.chunks[index].next().transpose();
@@ -95,32 +101,28 @@ impl Iterator for Merged<'_> {
 /// Names remap alongside: each chunk's `name_idx` addresses its own table, so every incoming
 /// feature's index is translated into the accumulator's (interning on first use, in merge order —
 /// which is chunk order, which is deterministic).
-fn concatenate(into: &mut ChunkEntry, from: ChunkEntry) {
+fn concatenate(into: &mut ChunkEntry, from: &mut ChunkEntry) {
     let parts_base = into.layer.parts.len() as u32;
     let coords_base = into.layer.coords.len() as u32;
     // Names remap first, while both tables are still borrowed shared: each incoming index is
     // translated into the accumulator's (interning on first use, in merge order — which is chunk
-    // order, which is deterministic). Only then do the arenas move.
-    let remap: Vec<u16> = from
-        .layer
-        .features
-        .iter()
-        .map(|feature| {
-            if feature.name_idx == tilecodec::mamaps::body::NAME_NONE {
-                tilecodec::mamaps::body::NAME_NONE
-            } else {
-                into.intern(Some(&from.names[feature.name_idx as usize - 1]))
-            }
-        })
-        .collect();
-    into.layer.features.extend(from.layer.features.into_iter().zip(remap).map(
+    // order, which is deterministic). Only then do the arenas move. A probe-only `HashMap` keyed on
+    // the accumulator's names turns what was a linear scan per incoming feature into a lookup, so a
+    // dense tile stops being quadratic in its name table; the table itself is still grown in
+    // first-use order, so the indices and bytes are byte for byte what a linear scan produced.
+    let remap = remap_names(&mut into.names, from);
+    // Drained rather than consumed by value: `from` is handed back to its reader afterwards so the
+    // next decode can reuse these arenas. `drain(..)` empties the source while keeping its capacity,
+    // which is exactly what a recycled buffer needs; the elements moved, and their order, are what
+    // `into_iter` would have yielded, so `into` is byte for byte the same layer.
+    into.layer.features.extend(from.layer.features.drain(..).zip(remap).map(
         |(mut feature, name_idx)| {
             feature.parts_offset += parts_base;
             feature.name_idx = name_idx;
             feature
         },
     ));
-    into.layer.parts.extend(from.layer.parts.into_iter().map(|mut part| {
+    into.layer.parts.extend(from.layer.parts.drain(..).map(|mut part| {
         part.coord_start += coords_base;
         part
     }));
@@ -129,11 +131,52 @@ fn concatenate(into: &mut ChunkEntry, from: ChunkEntry) {
     // the same order the features were, which is what keeps the two parallel.
     into.ids.extend_from_slice(&from.ids);
     // The turn masks ride the same way: values parallel to features, concatenated in feature order.
-    into.turn_lanes.extend(from.turn_lanes);
+    into.turn_lanes.extend(from.turn_lanes.drain(..));
     // The building attrs ride the same way, dense-parallel to the buildings layer's features.
-    into.buildings.extend(from.buildings);
+    into.buildings.extend(from.buildings.drain(..));
     // And the carriageways, dense-parallel to the roads layer's.
-    into.carriageways.extend(from.carriageways);
+    into.carriageways.extend(from.carriageways.drain(..));
+}
+
+/// Translate `from`'s feature name indices into `into_names`, growing it in first-use order.
+///
+/// A probe-only `HashMap` over the accumulator's table replaces the old linear `position` scan, so
+/// concatenating a dense tile is no longer quadratic in its name count. The map is never iterated:
+/// new names are appended to `into_names` in exactly the order they are first seen, so the resulting
+/// table — and every index into it — is byte for byte what a linear scan would have produced.
+fn remap_names(into_names: &mut Vec<String>, from: &ChunkEntry) -> Vec<u16> {
+    let mut new: Vec<&str> = Vec::new();
+    let remap: Vec<u16> = {
+        let mut index: HashMap<&str, u16> = HashMap::with_capacity(into_names.len());
+        for (i, name) in into_names.iter().enumerate() {
+            index.insert(name.as_str(), i as u16 + 1);
+        }
+        let base = into_names.len();
+        from.layer
+            .features
+            .iter()
+            .map(|feature| {
+                if feature.name_idx == tilecodec::mamaps::body::NAME_NONE {
+                    tilecodec::mamaps::body::NAME_NONE
+                } else {
+                    let name = from.names[feature.name_idx as usize - 1].as_str();
+                    match index.get(name) {
+                        Some(&at) => at,
+                        None => {
+                            let idx = (base + new.len()) as u16 + 1;
+                            index.insert(name, idx);
+                            new.push(name);
+                            idx
+                        }
+                    }
+                }
+            })
+            .collect()
+    };
+    for name in new {
+        into_names.push(name.to_string());
+    }
+    remap
 }
 
 /// Stage C and body encoding for a batch of merged tiles, in parallel, results in tile order.
@@ -231,8 +274,11 @@ fn timed<R>(on: bool, counter: &std::sync::atomic::AtomicU64, f: impl FnOnce() -
 }
 
 /// One encoded tile on its way back from [`encode_batch`]: its id, the compressed body with its raw
-/// length, and what stage C and coalescing did to it.
+/// length and its FNV-1a dedup hash, and what stage C and coalescing did to it.
+///
+/// The hash is computed in the encode worker (see [`encode_tile`]) so the serial append thread does
+/// not have to walk the whole body to derive the dedup key.
 ///
 /// Folded by the caller in `tile_id` order rather than accumulated across workers, so the counters
 /// need no atomics and a million tiles do not contend on three cache lines.
-type Encoded = (u64, Option<(Vec<u8>, usize)>, crate::rings::Stats, crate::coalesce::Stats);
+type Encoded = (u64, Option<(Vec<u8>, usize, u64)>, crate::rings::Stats, crate::coalesce::Stats);

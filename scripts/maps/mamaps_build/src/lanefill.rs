@@ -144,6 +144,8 @@ use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use osm_ingest::proto::{err, Error, Result};
+use rayon::prelude::*;
+use tile_build::par;
 
 /// The longest way that may inherit, in metres. See the module docs for why 50 and why metres.
 pub const MAX_STUB_M: f64 = 50.0;
@@ -313,21 +315,34 @@ impl Collector {
         // `(way, end, donor lanes, one-way)`. The only state that outlives a partition, because a
         // way's two endpoints hash to two different files and the "donor at both ends" condition
         // cannot be decided until both have been seen.
-        let mut found: Vec<(i64, u8, u8, bool)> = Vec::new();
-        let mut records: Vec<Record> = Vec::new();
-        for path in &self.paths {
-            read_partition(path, &mut records)?;
-            if records.is_empty() {
-                continue;
-            }
-            // Sorted rather than hashed, for the reason `corridor::promote` gives: a hash map over
-            // the record count is the largest thing this pass would otherwise allocate. The full
-            // key makes the order total, so the output does not depend on the write order.
-            records.sort_unstable_by_key(|r| (r.node, r.way, r.flags));
-            for run in records.chunk_by(|a, b| a.node == b.node) {
-                pair_up(run, &mut found);
-            }
-        }
+        //
+        // The 256 partitions are independent — every record for a node lives in exactly the one
+        // partition `partition_of` sends it to — so each is read, sorted and paired on its own
+        // thread and the per-partition pairs concatenated. `found` is globally sorted below, so the
+        // concatenation order never reaches the output: the resolution stays independent of both
+        // the write order and the partition order.
+        let per_partition: Vec<Vec<(i64, u8, u8, bool)>> = par::install(|| {
+            self.paths
+                .par_iter()
+                .map(|path| -> Result<Vec<(i64, u8, u8, bool)>> {
+                    let mut records: Vec<Record> = Vec::new();
+                    read_partition(path, &mut records)?;
+                    let mut local: Vec<(i64, u8, u8, bool)> = Vec::new();
+                    if !records.is_empty() {
+                        // Sorted rather than hashed, for the reason `corridor::promote` gives: a
+                        // hash map over the record count is the largest thing this pass would
+                        // otherwise allocate. The full key makes the order total, so the output
+                        // does not depend on the write order.
+                        records.sort_unstable_by_key(|r| (r.node, r.way, r.flags));
+                        for run in records.chunk_by(|a, b| a.node == b.node) {
+                            pair_up(run, &mut local);
+                        }
+                    }
+                    Ok(local)
+                })
+                .collect::<Result<Vec<_>>>()
+        })?;
+        let mut found: Vec<(i64, u8, u8, bool)> = per_partition.into_iter().flatten().collect();
         for path in &self.paths {
             let _ = std::fs::remove_file(path);
         }

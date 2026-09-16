@@ -6,8 +6,6 @@ import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
@@ -139,7 +137,7 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
                 Log.w(TAG, "vulkan preflight skipped for $asset: $problem")
                 return
             }
-            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            val handle = VulkanSessions.open(key) { modelBytes }
             if (handle != 0L) {
                 vulkanHandle = handle
                 Log.i(TAG, "vulkan session open for $key")
@@ -153,23 +151,22 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
     /**
      * Vulkan fast path over the already-preprocessed NCHW input.
      *
-     * Returns null when the bridge returns no bytes or too few floats, so the caller falls
+     * Returns null when the bridge fails or produces too few floats, so the caller falls
      * back to ORT. The graph has a single `alphas [1,1,256,256]` output, so the mask is the
-     * head of the payload.
+     * first f32 output at least [SIZE]×[SIZE] wide.
      */
     private fun vulkanSegment(handle: Long, input: FloatArray): SegmentationMask? {
-        val names = arrayOf(INPUT)
-        val dtypes = intArrayOf(DTYPE_F32)
-        val shapes = longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())
-        val shapeOffsets = intArrayOf(0)
-        val outBytes = VulkanBridge.run(handle, names, dtypes, shapes, shapeOffsets, floatsToLe(input))
-            ?: return null
-        val floats = leToFloats(outBytes)
-        if (floats.size < SIZE * SIZE) {
-            Log.w(TAG, "vulkan selfie returned ${floats.size} floats, want ${SIZE * SIZE}")
+        val inputs = listOf(
+            VulkanWire.floats(longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong()), input),
+        )
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val out = outputs.firstOrNull {
+            it.dtype == VulkanWire.DTYPE_F32 && it.bytes.size / 4 >= SIZE * SIZE
+        } ?: run {
+            Log.w(TAG, "vulkan selfie produced no ${SIZE * SIZE}-wide output")
             return null
         }
-        return SegmentationMask(SIZE, SIZE, floats.copyOfRange(0, SIZE * SIZE))
+        return SegmentationMask(SIZE, SIZE, out.asFloats().copyOfRange(0, SIZE * SIZE))
     }
 
     companion object {
@@ -178,20 +175,5 @@ class SelfieSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Aut
         private const val TAG = "SelfieSegmenter"
         private const val SIZE = 256
         private const val INPUT = "pixel_values"
-
-        /** ONNX TensorProto FLOAT, as carried in the Vulkan `dtypes` array. */
-        private const val DTYPE_F32 = 1
-
-        private fun floatsToLe(values: FloatArray): ByteArray {
-            val buf = ByteBuffer.allocate(values.size * 4).order(ByteOrder.LITTLE_ENDIAN)
-            for (v in values) buf.putFloat(v)
-            return buf.array()
-        }
-
-        private fun leToFloats(bytes: ByteArray): FloatArray {
-            val out = FloatArray(bytes.size / 4)
-            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(out)
-            return out
-        }
     }
 }

@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      A like-for-like replacement for GrapheneOS's EmergencyInfo
+      (platform_packages_apps_EmergencyInfo, package com.android.emergency), namespaced to
+      com.vayunmathur.emergency because a Gradle-built app cannot be platform-signed.
+
+      Component contract mirrored 1:1 (see C:\Users\Vayun\.llms\plans\maos_emergency_app.plan.md):
+      view/edit/medical activities answering the same platform actions, the Settings
+      suggestion alias, the ia.emergency injection alias, the search indexables provider,
+      the FileProvider for avatar photos, and the gesture provider speaking the
+      settingslib EmergencyNumberUtils call() protocol against our own authorities.
+
+      Privileged-only declarations (MANAGE_USERS, WRITE_SECURE_SETTINGS, CALL_PRIVILEGED,
+      READ_PRIVILEGED_PHONE_STATE) follow the parentalcontrols/screentime precedent: declared
+      with ProtectedPermissions ignored, used only inside runCatching with an explicit denied
+      path. They stay inert until the MAOS build promotes this app; nothing crashes without
+      them. The one deliberate omission is EmergencyDialerTrampoline (DIAL_EMERGENCY), which
+      GrapheneOS itself ships disabled - we delegate call placement to Settings, we are not
+      a dialer.
+    -->
+    <!-- Countdown vibration waveform during the SOS countdown. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The SOS receiver fires the call broadcast from the background alarm. -->
+    <uses-permission android:name="android.permission.START_ACTIVITIES_FROM_BACKGROUND" />
+    <!-- The SOS countdown runs as a foreground service with its notification. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- specialUse foreground subtype for the SOS countdown service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Reads the SIM emergency-number list so the SOS screen names the real number. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Privileged half of emergency-number lookup. Inert without priv-app promotion. -->
+    <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE"
+        tools:ignore="ProtectedPermissions" />
+    <!-- Places the fallback emergency call when Settings' emergency provider is absent. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Guards the gesture provider, mirroring GrapheneOS. Inert without promotion. -->
+    <uses-permission android:name="android.permission.CALL_PRIVILEGED"
+        tools:ignore="ProtectedPermissions" />
+    <!-- Emergency contacts are read from the contacts provider. Runtime grant. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Owner name/icon on the view screen. Graceful fallback without it. -->
+    <uses-permission android:name="android.permission.MANAGE_USERS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- Gesture provider persists EMERGENCY_GESTURE_* to Settings.Secure. Priv-only. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- The SOS alarm must fire at the exact countdown end. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Re-arms nothing persistent, but the countdown alarm must survive reboot windows. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- SOS countdown and restriction-trip notices. A normal runtime permission. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Read-only Personal Health Record access, to surface allergies and current medications from
+      Health Connect on the view card. Requested from the edit screen and allowed to be refused;
+      only grantable on Android 15 with an updated Health Connect module, so on older devices the
+      card simply shows the stored fields. Mirrors the health app's medical read permissions.
+    -->
+    <uses-permission android:name="android.permission.health.READ_MEDICAL_DATA_ALLERGIES_INTOLERANCES" />
+    <uses-permission android:name="android.permission.health.READ_MEDICAL_DATA_MEDICATIONS" />
+
+    <!-- Not requested, deliberately: no INTERNET. Medical info, contacts and the SOS
+         countdown are all local; the call itself goes through the telephony stack. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:defaultToDeviceProtectedStorage="true"
+        android:directBootAware="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.General">
+        <!--
+          Read-only view: medical info + emergency contacts, reachable over the lock screen.
+          Answers android.telephony.action.EMERGENCY_ASSISTANCE like GrapheneOS's
+          ViewInfoActivity. No launcher entry - reached from Settings, the lock screen and
+          the SOS flow, the same way EmergencyInfo is.
+        -->
+        <activity
+            android:name=".ui.ViewInfoActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:taskAffinity="com.android.settings"
+            android:theme="@style/Theme.General">
+            <intent-filter>
+                <action android:name="android.telephony.action.EMERGENCY_ASSISTANCE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Edit entry: contacts + medical info. Answers android.settings.EDIT_EMERGENCY_INFO
+          like GrapheneOS's EditInfoActivity.
+        -->
+        <activity
+            android:name=".ui.EditInfoActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.android.settings"
+            android:theme="@style/Theme.General">
+            <intent-filter>
+                <action android:name="android.settings.EDIT_EMERGENCY_INFO" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Settings first-run suggestion, independent of the edit activity so it can be
+          disabled once any info or contact is set (see EmergencyRepository). Mirrors
+          GrapheneOS's EditInfoSuggestion alias.
+        -->
+        <activity-alias
+            android:name=".ui.EditInfoSuggestion"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.EditInfoActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="com.android.settings.suggested.category.FIRST_IMPRESSION" />
+            </intent-filter>
+            <meta-data
+                android:name="com.android.settings.dismiss"
+                android:value="11,15,30" />
+            <meta-data
+                android:name="com.android.settings.title"
+                android:resource="@string/settings_suggestion_title" />
+            <meta-data
+                android:name="com.android.settings.summary"
+                android:resource="@string/settings_suggestion_body" />
+            <meta-data
+                android:name="com.android.settings.icon"
+                android:resource="@mipmap/ic_launcher" />
+        </activity-alias>
+
+        <!--
+          The Settings > Safety & emergency row. Mirrors GrapheneOS's EmergencyInfoActivity
+          alias: same IA_SETTINGS action, same ia.emergency category, same order and profile.
+        -->
+        <activity-alias
+            android:name=".ui.EmergencyInfoAlias"
+            android:exported="false"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.EditInfoActivity">
+            <intent-filter>
+                <action android:name="com.android.settings.action.IA_SETTINGS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="com.android.settings.category"
+                android:value="com.android.settings.category.ia.emergency" />
+            <meta-data
+                android:name="com.android.settings.order"
+                android:value="60" />
+            <meta-data
+                android:name="com.android.settings.icon"
+                android:resource="@mipmap/ic_launcher" />
+            <meta-data
+                android:name="com.android.settings.icon_tintable"
+                android:value="true" />
+            <meta-data
+                android:name="com.android.settings.summary"
+                android:resource="@string/injection_summary_empty" />
+            <meta-data
+                android:name="com.android.settings.profile"
+                android:value="primary_profile_only" />
+        </activity-alias>
+
+        <!--
+          The SOS countdown screen, reached from the power-button gesture via SystemUI.
+          Not exported: only the platform gesture path (or our own notification action)
+          starts it explicitly. Ignores back press; finishing without cancel hands the
+          countdown to the foreground service.
+        -->
+        <activity
+            android:name=".ui.SosActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:theme="@style/Theme.General" />
+
+        <!--
+          SOS countdown service: notification + exact alarm + vibration + warning sound.
+          Not exported: started explicitly by the SOS screen and the receiver.
+          specialUse, following screentime's FocusService: this is not an ongoing call
+          (phoneCall type would need FOREGROUND_SERVICE_PHONE_CALL and misdescribes a
+          countdown), it keeps the gesture countdown alive while the screen is off.
+        -->
+        <service
+            android:name=".service.SosCountdownService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Counts down to placing an emergency call so the gesture survives the screen turning off." />
+        </service>
+
+        <!--
+          SOS outcomes: MAKE places the call (via Settings' emergency provider, falling back
+          to an explicit emergency-call intent) and CANCEL stops the service. Not exported:
+          both are explicit-class intents from our own notification, alarm and screen.
+        -->
+        <receiver
+            android:name=".receiver.SosActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.vayunmathur.emergency.broadcast.MAKE_EMERGENCY_CALL" />
+                <action android:name="com.vayunmathur.emergency.broadcast.CANCEL_EMERGENCY_COUNTDOWN" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Settings search indexing for the emergency rows. -->
+        <provider
+            android:name=".platform.EmergencySearchIndexablesProvider"
+            android:authorities="com.vayunmathur.emergency"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:multiprocess="false"
+            android:permission="android.permission.READ_SEARCH_INDEXABLES">
+            <intent-filter>
+                <action android:name="android.content.action.SEARCH_INDEXABLES_PROVIDER" />
+            </intent-filter>
+        </provider>
+
+        <!-- Avatar photo sharing for the medical-info editor. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.vayunmathur.emergency.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!--
+          Gesture state for Settings: number override, gesture/sound toggles, UI-showing
+          heartbeat. Mirrors GrapheneOS's EmergencyGestureContentProvider call() protocol;
+          CALL_PRIVILEGED guards it the same way. Query/insert/update/delete throw.
+        -->
+        <provider
+            android:name=".platform.GestureProvider"
+            android:authorities="com.vayunmathur.emergency.gesture"
+            android:exported="true"
+            android:permission="android.permission.CALL_PRIVILEGED" />
+
+        <!--
+          Health Connect requires an app that reads medical data to answer the permissions
+          rationale intent, and to expose a VIEW_PERMISSION_USAGE entry point. Both mirror the
+          health app: the rationale screen can be empty, and the alias points Settings at it.
+        -->
+        <activity
+            android:name=".ui.PermissionsRationaleActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".ui.PermissionsRationaleActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+    </application>
+
+    <!-- Avatar capture in the medical-info editor. -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <data android:mimeType="image/*" />
+        </intent>
+    </queries>
+</manifest>

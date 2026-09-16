@@ -37,12 +37,15 @@ internal object MapNative {
      * the cache dir: like the archive `maps` downloads, it is large and expensive to
      * rebuild, so it should not be the first thing the platform reclaims.
      *
-     * The renderer always reads the built-in `planet.mamaps` archive URL: there is no
-     * local-override path.
+     * [localPath] is an optional path to a `.mamaps` archive already on the device. When
+     * it names an existing file the renderer reads that file directly and does no
+     * networking at all; `null` or empty keeps the built-in `planet.mamaps` URL and its
+     * range cache unchanged.
      */
     external fun create(
         surface: Surface,
         cacheDir: String,
+        localPath: String?,
         width: Int,
         height: Int,
         dark: Boolean,

@@ -4,16 +4,21 @@
 # in, final .mamaps out. One command does the whole pipeline:
 #
 #   [1] check every input exists + the free-space preflight
-#   [2] cargo-build the four host tools (road_graph, transit_shapes,
-#       mamaps_build, mamaps_dump)
+#   [2] cargo-build the host tools (road_graph, poi_extract, transit_shapes,
+#       mamaps_build, mamaps_dump, mamaps_pack)
 #   [3] build the road graph into a TEMP dir (never the final output)
 #   [4] derive the transit-routes layer from the world-transit feeds manifest
 #       (build_world_transit.sh --work DIR leaves feeds.manifest + gtfs/ there;
 #       -WorldTransit defaults to the manifest beside the pack)
-#   [5] run mamaps_build with pbf + coastline + temp graph + routes + dem -> $Out
-#   [6] header check via mamaps_dump (rings_validated, 16 KiB prefix budget,
-#       build_id printed) + TIME/PER-ZOOM/PEAK-MEMORY summary, then delete every
-#       intermediate unless -Keep.
+#   [5] run mamaps_build with pbf + coastline + temp graph + routes + dem into a
+#       TEMP tiles-only archive ($tmp/tiles.mamaps) -- NO sidecar footer yet
+#   [6] extract the POI sidecars from the pbf into a TEMP dir, then mamaps_pack
+#       the graph + POI + transit sidecar sections onto the temp tiles archive
+#       to produce the FINAL $Out (this is what adds the MAMA8 sidecar footer
+#       the app's router, departure boards and POI tags read)
+#   [7] header check via mamaps_dump on the FINAL $Out (rings_validated, 16 KiB
+#       prefix budget, build_id printed) + TIME/PER-ZOOM/PEAK-MEMORY summary,
+#       then delete every intermediate unless -Keep.
 #
 # Nothing here is optional content: every input is mandatory and every build is
 # all 12 layers at z0-14. -Threads/-Keep/-Verify are
@@ -48,12 +53,17 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Fixed inputs -- no file-location options.
-$Pbf          = Join-Path $PSScriptRoot "inputs/planet.osm.pbf"
+# TESTING: California extract. Revert to planet by swapping the next line back:
+# $Pbf = Join-Path $PSScriptRoot "inputs/planet.osm.pbf"
+$Pbf          = Join-Path $PSScriptRoot "inputs/california-latest.osm.pbf"
 $Out          = Join-Path $PSScriptRoot "inputs/world.mamaps"
 $Coastline    = Join-Path $PSScriptRoot "inputs/coastline.shp"
 $WorldTransit = Join-Path $PSScriptRoot "inputs/world.transit"
 $Dem          = Join-Path $PSScriptRoot "inputs/world.mdem"
-$TransitManifest = Join-Path (Split-Path $WorldTransit -Parent) "feeds.manifest"
+# build_world_transit.sh leaves the feeds manifest + unzipped gtfs/ in its fixed
+# work dir (world_transit_work), not in inputs/. Step [3/7] re-runs transit_shapes
+# over those to build the transit-line geometry layer.
+$TransitManifest = Join-Path $PSScriptRoot "world_transit_work/feeds.manifest"
 
 function Find-Built([string] $crate, [string] $name) {
     $built = Join-Path $PSScriptRoot "$crate\target\release\$name.exe"
@@ -72,7 +82,7 @@ function Size([double] $b) {
     return "{0,9:N0} B " -f $b
 }
 
-# --- [1/6] inputs -------------------------------------------------------
+# --- inputs -------------------------------------------------------------
 foreach ($pair in @(@($Pbf, "pbf"), @($Coastline, "coastline"), @($WorldTransit, "world.transit"), @($Dem, "dem"))) {
     if (-not (Test-Path $pair[0])) { throw "$($pair[1]) not found: $($pair[0])" }
 }
@@ -88,15 +98,20 @@ $TransitManifest = (Resolve-Path $TransitManifest).Path
 # zoom's tile chunks and the archive being assembled. On north-america that is
 # about 29 + 23 + 17 GB against a 14 GB .pbf, so six times the source is the
 # rule of thumb -- and running out an hour into z14, after stage A has already
-# been paid for, is the failure this exists to avoid.
+# been paid for, is the failure this warning exists to flag.
+#
+# It is a warning, not a hard stop: the 6x figure is a north-america-derived
+# upper estimate, and a build may well fit in less. Proceeding on a smaller disk
+# is allowed -- you accept the risk of a late z14 out-of-space.
 $pbfBytes = (Get-Item $Pbf).Length
 $wanted = $pbfBytes * 6
 $root = [System.IO.Path]::GetPathRoot($Out)
 $free = (New-Object System.IO.DriveInfo $root).AvailableFreeSpace
 if ($free -lt $wanted) {
-    throw ("{0} has {1:N1} GB free and this build wants about {2:N1} GB " -f `
+    Write-Warning (("{0} has {1:N1} GB free; this build may want up to about {2:N1} GB " -f `
             $root, ($free / 1GB), ($wanted / 1GB)) +
-          "(feature spill + one zoom's tile chunks + the archive). Free some disk and retry."
+          "(feature spill + one zoom's tile chunks + the archive). Proceeding anyway -- " +
+          "a large planet run could still hit an out-of-space at z14.")
 }
 
 $tmp = "$Out.buildtmp"
@@ -105,6 +120,10 @@ New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $graphDir = Join-Path $tmp "graph"
 $routes   = Join-Path $tmp "transit-routes.geojsonseq"
 $log      = Join-Path $tmp "build.log"
+# mamaps_build now emits a TILES-ONLY archive here; mamaps_pack folds the
+# graph/POI/transit sidecars onto it to produce the final $Out.
+$tilesTmp = Join-Path $tmp "tiles.mamaps"
+$poiDir   = Join-Path $tmp "poi"
 if (Test-Path $Out) { Remove-Item $Out -Force }
 
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
@@ -120,33 +139,50 @@ Remove-Item Env:RAYON_NUM_THREADS -ErrorAction SilentlyContinue
 Remove-Item Env:MAPS_TIMING -ErrorAction SilentlyContinue
 Remove-Item Env:MAPS_PREFETCH_LANES -ErrorAction SilentlyContinue
 
-# --- [2/6] build the host tools ------------------------------------------
-Write-Host "[1/6] Building the host tools"
-foreach ($crate in @(@("osm_ingest", "road_graph"), @("gtfs_ingest", "transit_shapes"), @("mamaps_build", "mamaps_build"))) {
+# --- [1/7] build the host tools ------------------------------------------
+Write-Host "[1/7] Building the host tools"
+foreach ($crate in @(@("osm_ingest", "road_graph"), @("osm_ingest", "poi_extract"), @("gtfs_ingest", "transit_shapes"), @("mamaps_build", "mamaps_build"))) {
     cargo build --release --manifest-path (Join-Path $PSScriptRoot "$($crate[0])\Cargo.toml") --bin $($crate[1])
     if ($LASTEXITCODE -ne 0) { throw "cargo build $($crate[0])/$($crate[1]) failed with exit code $LASTEXITCODE" }
 }
-cargo build --release --manifest-path (Join-Path $PSScriptRoot "tile_build\Cargo.toml") --bin mamaps_dump
-if ($LASTEXITCODE -ne 0) { throw "cargo build tile_build/mamaps_dump failed with exit code $LASTEXITCODE" }
-$roadGraph = Find-Built "osm_ingest" "road_graph"
-$shapes    = Find-Built "gtfs_ingest" "transit_shapes"
-$build     = Find-Built "mamaps_build" "mamaps_build"
-$dump      = Find-Built "tile_build" "mamaps_dump"
+foreach ($bin in @("mamaps_dump", "mamaps_pack")) {
+    cargo build --release --manifest-path (Join-Path $PSScriptRoot "tile_build\Cargo.toml") --bin $bin
+    if ($LASTEXITCODE -ne 0) { throw "cargo build tile_build/$bin failed with exit code $LASTEXITCODE" }
+}
+$roadGraph  = Find-Built "osm_ingest" "road_graph"
+$poiExtract = Find-Built "osm_ingest" "poi_extract"
+$shapes     = Find-Built "gtfs_ingest" "transit_shapes"
+$build      = Find-Built "mamaps_build" "mamaps_build"
+$dump       = Find-Built "tile_build" "mamaps_dump"
+$pack       = Find-Built "tile_build" "mamaps_pack"
 
-# --- [3/6] road graph into temp ------------------------------------------
-Write-Host "[2/6] Building the routing graph -> $graphDir"
+# --- [2/7] road graph into temp ------------------------------------------
+Write-Host "[2/7] Building the routing graph -> $graphDir"
 & $roadGraph $Pbf --out $graphDir
 if ($LASTEXITCODE -ne 0) { throw "road_graph failed with exit code $LASTEXITCODE" }
 
-# --- [4/6] transit routes from the world-transit feeds --------------------
-Write-Host "[3/6] Deriving transit routes from $TransitManifest"
+# --- [3/7] transit routes from the world-transit feeds --------------------
+Write-Host "[3/7] Deriving transit routes from $TransitManifest"
 $manifestDir = Split-Path $TransitManifest -Parent
+# build_world_transit.sh runs under WSL and writes absolute /mnt/<drive>/... feed
+# paths. This is a Windows build, so translate those back to <drive>:\... . If the
+# stored path is gone, fall back to the feed's dir under the manifest's own gtfs/.
+function Resolve-FeedDir([string] $dir) {
+    if ($dir -match '^/mnt/([a-zA-Z])/(.*)$') {
+        $dir = "$($Matches[1].ToUpper()):\" + ($Matches[2] -replace '/', '\')
+    }
+    if (-not [System.IO.Path]::IsPathRooted($dir)) { $dir = Join-Path $manifestDir $dir }
+    if (-not (Test-Path (Join-Path $dir "stops.txt"))) {
+        $local = Join-Path (Join-Path $manifestDir "gtfs") (Split-Path $dir -Leaf)
+        if (Test-Path (Join-Path $local "stops.txt")) { return $local }
+    }
+    return $dir
+}
 $resolvedLines = foreach ($line in (Get-Content $TransitManifest)) {
     if ($line -notmatch '\S') { continue }
     $parts = $line -split '=', 3
     if ($parts.Count -lt 2 -or -not $parts[0] -or -not $parts[1]) { throw "unparsable manifest line: $line" }
-    $dir = $parts[1]
-    if (-not [System.IO.Path]::IsPathRooted($dir)) { $dir = Join-Path $manifestDir $dir }
+    $dir = Resolve-FeedDir $parts[1]
     if (-not (Test-Path (Join-Path $dir "stops.txt"))) {
         throw "feed dir has no stops.txt (stale manifest?): $dir"
     }
@@ -157,9 +193,9 @@ if (-not $resolvedLines -or $resolvedLines.Count -eq 0) { throw "no usable feeds
 & $shapes $routes --manifest (Join-Path $tmp "feeds.resolved.manifest")
 if ($LASTEXITCODE -ne 0) { throw "transit_shapes failed with exit code $LASTEXITCODE" }
 
-# --- [5/6] the archive ----------------------------------------------------
+# --- [4/7] the tiles-only archive (temp) ----------------------------------
 # Started before the build, so the first spike cannot be missed.
-$spill = [System.IO.Path]::ChangeExtension($Out, "features.tmp")
+$spill = [System.IO.Path]::ChangeExtension($tilesTmp, "features.tmp")
 $sampler = Start-Job -ArgumentList "mamaps_build", $spill -ScriptBlock {
     param($name, $spill)
     $peakWs = 0L; $peakSpill = 0L
@@ -177,12 +213,12 @@ $sampler = Start-Job -ArgumentList "mamaps_build", $spill -ScriptBlock {
     }
 }
 
-Write-Host "[4/6] Building $(Split-Path $Out -Leaf)   z0..z14$(if ($Threads -gt 0) { ", $Threads thread(s)" })"
+Write-Host "[4/7] Building $(Split-Path $tilesTmp -Leaf) (tiles only)   z0..z14$(if ($Threads -gt 0) { ", $Threads thread(s)" })"
 Write-Host ""
 # Tee-Object keeps the bars live on the console AND captures stdout to the log,
 # which the summary below parses. No redirect: the bars need the console to redraw on.
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-& $build --input $Pbf --out $Out `
+& $build --input $Pbf --out $tilesTmp `
     --coastline $Coastline `
     --graph $graphDir `
     --transit-routes $routes `
@@ -202,7 +238,29 @@ if ($exit -ne 0) {
     exit $exit
 }
 
-# --- [6/6] header check + report ------------------------------------------
+# --- [5/7] POI sidecars ---------------------------------------------------
+# The offline POI / restaurant tags come from here: poi_extract bakes the five
+# poi_*.bin side files the packer folds in. --index fixes the dir; --attrs,
+# --spatial and --name-index default to their poi_*.bin names beside it, which
+# is exactly the set mamaps_pack --poi expects. The --geojson output is the
+# baked-vector feed and is not consumed by the pack, but poi_extract requires it.
+Write-Host "[5/7] Extracting POI sidecars -> $poiDir"
+New-Item -ItemType Directory -Force -Path $poiDir | Out-Null
+& $poiExtract $Pbf `
+    --geojson (Join-Path $poiDir "poi.geojsonseq") `
+    --names (Join-Path $poiDir "poi_names.bin") `
+    --index (Join-Path $poiDir "poi_index.bin")
+if ($LASTEXITCODE -ne 0) { throw "poi_extract failed with exit code $LASTEXITCODE" }
+
+# --- [6/7] pack the sidecars onto the tiles archive -> FINAL $Out ----------
+# mamaps_build emits tiles only (no MAMA8 footer); the graph / transit / POI
+# sections the app's router, departure boards and POI tags need are appended
+# here. This is the step that turns a tiles-only archive into a complete pack.
+Write-Host "[6/7] Packing graph + POI + transit sidecars -> $(Split-Path $Out -Leaf)"
+& $pack --tiles $tilesTmp --graph $graphDir --poi $poiDir --transit $WorldTransit --out $Out
+if ($LASTEXITCODE -ne 0) { throw "mamaps_pack failed with exit code $LASTEXITCODE" }
+
+# --- [7/7] header check + report ------------------------------------------
 # The binary prints its own per-zoom table (`z0 ...`, `z1 ...`) plus the
 # `classified ...` and `wrote ... build_id ...` lines. Parsed here rather than
 # re-derived.
@@ -232,23 +290,26 @@ if ($h["rings_validated"] -ne "true") { throw "rings_validated is '$($h["rings_v
 # range request and not two.
 $prefix = [long]$h["prefix_bytes"]
 if ($prefix -gt 16384) { throw "prefix is $prefix bytes of 16384 -- a cold open costs two requests" }
-Write-Host "[5/6] Header ok: rings_validated true, prefix $prefix/16384 B, build_id $($h["build_id"])"
+Write-Host "[7/7] Header ok: rings_validated true, prefix $prefix/16384 B, build_id $($h["build_id"])"
 
 $sha = (Get-FileHash $Out -Algorithm SHA256).Hash
 if ($Verify) {
     # harden_mamaps.sh's full 1/3/32-thread matrix, folded in cheaply: one
     # single-threaded rebuild must be byte-identical. A differing hash means an
     # emit path whose order comes from a pool (e.g. a HashMap iterated on emit).
-    Write-Host "[6/6] Verifying: rebuilding at 1 thread"
+    Write-Host "Verifying determinism: rebuilding at 1 thread + repacking"
+    $verifyTiles = Join-Path $tmp "verify-tiles.mamaps"
     $verifyOut = Join-Path $tmp "verify.mamaps"
     $env:RAYON_NUM_THREADS = "1"
     Remove-Item Env:MAPS_THREADS -ErrorAction SilentlyContinue
-    & $build --input $Pbf --out $verifyOut `
+    & $build --input $Pbf --out $verifyTiles `
         --coastline $Coastline `
         --graph $graphDir `
         --transit-routes $routes `
         --dem $Dem | Tee-Object -FilePath (Join-Path $tmp "verify.log") | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "verify rebuild failed with exit code $LASTEXITCODE" }
+    & $pack --tiles $verifyTiles --graph $graphDir --poi $poiDir --transit $WorldTransit --out $verifyOut
+    if ($LASTEXITCODE -ne 0) { throw "verify pack failed with exit code $LASTEXITCODE" }
     $vsha = (Get-FileHash $verifyOut -Algorithm SHA256).Hash
     if ($vsha -ne $sha) { throw "determinism FAIL: 1-thread rebuild differs ($vsha vs $sha)" }
     Write-Host "  ok: 1-thread rebuild is byte-identical"

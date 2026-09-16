@@ -28,6 +28,8 @@ data class GalleryUiState(
     val ocrTargetCount: Int = 0,
     val clipCount: Int = 0,
     val clipTargetCount: Int = 0,
+    /** Existing albums, for the "Add to album" picker's list of destinations. */
+    val albums: List<Album> = emptyList(),
 )
 
 /** Everything the people grid draws. */
@@ -64,6 +66,13 @@ interface GalleryActions {
 
     /** Ask MediaStore to trash the current selection. */
     fun trashSelection() {}
+
+    /**
+     * Move the current selection into album [name] (created on first use),
+     * through the MediaStore folder mechanism. Needs a write-consent launcher, so
+     * the binder supplies it.
+     */
+    fun addSelectionToAlbum(name: String) {}
 
     companion object {
         val Noop: GalleryActions = object : GalleryActions {}

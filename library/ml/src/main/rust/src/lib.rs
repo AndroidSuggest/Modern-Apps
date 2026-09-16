@@ -29,6 +29,18 @@
 /// Always compiled, even without the `vulkan` feature.
 pub mod tensors;
 
+/// Failure type for host-side tensor packing ([`tensors::TensorError`]).
+///
+/// Always compiled, even without the `vulkan` feature.
+pub mod tensors_error;
+
+/// Self-describing `MLV1` tensor wire format (encode/decode) shared with
+/// Kotlin `VulkanWire`. Split from [`tensors`] to keep each file under the
+/// repo's 500-line limit; re-exported there for existing call sites.
+///
+/// Always compiled, even without the `vulkan` feature.
+pub mod tensors_wire;
+
 /// Mobile shader + pipeline fallback policy (device caps, shader-path
 /// selection, workgroups, pipeline cache, chunked dispatch, warmup).
 ///
@@ -36,12 +48,40 @@ pub mod tensors;
 /// with no GPU dependency, like [`tensors`].
 pub mod shaders_mobile;
 
+/// Mobile workgroup selection (64/128 1-D groups, never desktop `16x16`).
+///
+/// Always compiled, even without the `vulkan` feature: host-side policy
+/// with no GPU dependency. Re-exported from [`shaders_mobile`] so existing
+/// `shaders_mobile::…` paths keep working.
+pub mod shaders_workgroup;
+
+/// In-memory pipeline cache keyed by (model hash, path, caps).
+///
+/// Always compiled, even without the `vulkan` feature: host-side policy
+/// with no GPU dependency. Re-exported from [`shaders_mobile`] so existing
+/// `shaders_mobile::…` paths keep working.
+pub mod shaders_cache;
+
 /// Mobile memory budget helpers (chunked weight upload, staging pool,
 /// peak-RSS accounting, unified-memory hint, ORT fallback signal).
 ///
 /// Always compiled, even without the `vulkan` feature: host-side planning
 /// with no GPU dependency, like [`tensors`].
 pub mod memory;
+
+/// Reusable staging-buffer accounting for chunked uploads.
+///
+/// Always compiled, even without the `vulkan` feature: host-side planning
+/// with no GPU dependency, like [`memory`]. Re-exported from [`memory`]
+/// so existing `memory::…` paths keep working.
+pub mod memory_pool;
+
+/// Current and peak resident-set-size accounting, in bytes.
+///
+/// Always compiled, even without the `vulkan` feature: host-side planning
+/// with no GPU dependency, like [`memory`]. Re-exported from [`memory`]
+/// so existing `memory::…` paths keep working.
+pub mod memory_stats;
 
 /// Android Vulkan device bootstrap (instance, device, queue, caps).
 #[cfg(feature = "vulkan")]
@@ -58,3 +98,7 @@ pub mod vulkan_session;
 /// The JNI entry points Kotlin calls into.
 #[cfg(feature = "vulkan")]
 pub mod jni_bridge;
+
+/// Mobile shader-fallback pipeline cache/warmup state (host-side policy).
+#[cfg(feature = "vulkan")]
+pub mod mobile_pipeline;

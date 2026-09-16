@@ -104,6 +104,41 @@
         </service>
 
         <!--
+          The top-level "Parental controls" page. MAOS patches the platform Settings supervision
+          entry to redirect here (see vendor/modern-apps patches), so this - not the AOSP
+          supervision dashboard - is what the user sees. Exported because Settings launches it
+          from another process; the page is read-only and every change is behind the parent PIN.
+        -->
+        <activity
+            android:name=".ui.DashboardActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="true"
+            android:label="@string/dashboard_title"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.General">
+            <intent-filter>
+                <action android:name="com.vayunmathur.parentalcontrols.action.DASHBOARD" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.app.supervision.action.INTERSTITIAL_SCREEN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Web content filters, opened from the dashboard. Not exported: launched explicitly by
+          our own dashboard, and guarded by MANAGE_SUPERVISION like the other editors.
+        -->
+        <activity
+            android:name=".ui.WebContentFiltersActivity"
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:exported="false"
+            android:label="@string/web_filters_title"
+            android:permission="android.permission.MANAGE_SUPERVISION"
+            android:theme="@style/Theme.General" />
+
+        <!--
           The parental-control features themselves.
 
           AOSP ships no bedtime or app-limit UI: SupervisionDashboardScreen declares an EMPTY

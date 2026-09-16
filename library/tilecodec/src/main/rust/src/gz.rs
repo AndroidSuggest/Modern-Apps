@@ -136,6 +136,49 @@ impl Compressor {
         }
         &self.scratch[..at]
     }
+
+    /// Raw DEFLATE of `data`, appended straight onto `out`.
+    ///
+    /// The same bytes [`Self::deflate`] produces, written into the caller's buffer instead of this
+    /// compressor's `scratch` — so a `.mamaps` body can be framed (its 16-byte header, then the
+    /// frame) in one allocation with no copy of the deflated bytes out of `scratch` afterwards. See
+    /// [`crate::mamaps::write::compress_body_with`], the one caller this exists for.
+    ///
+    /// Byte-identical to [`Self::deflate`]: DEFLATE output is a function of the input and the
+    /// parameters alone, not of how the output buffer is sized or chunked, so writing into `out`
+    /// rather than `scratch` cannot change a byte.
+    pub fn deflate_into(&mut self, data: &[u8], out: &mut Vec<u8>) {
+        use miniz_oxide::deflate::core::{compress, TDEFLFlush, TDEFLStatus};
+
+        if self.used {
+            self.state.reset();
+        }
+        self.used = true;
+
+        let base = out.len();
+        let want = data.len().saturating_add(data.len() / 2).saturating_add(64);
+        out.resize(base + want, 0);
+
+        let mut input = data;
+        let mut at = 0usize;
+        loop {
+            let (status, read, wrote) =
+                compress(&mut self.state, input, &mut out[base + at..], TDEFLFlush::Finish);
+            at += wrote;
+            match status {
+                TDEFLStatus::Done => break,
+                TDEFLStatus::Okay if read <= input.len() => {
+                    input = &input[read..];
+                    if out.len() - (base + at) < 64 {
+                        let grown = ((out.len() - base) * 2).max(at + 64);
+                        out.resize(base + grown, 0);
+                    }
+                }
+                other => panic!("deflate failed unexpectedly: {other:?}"),
+            }
+        }
+        out.truncate(base + at);
+    }
 }
 
 /// The 10-byte gzip header, the deflate body, then CRC32 and ISIZE.

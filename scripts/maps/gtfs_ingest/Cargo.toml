@@ -43,6 +43,7 @@ name = "transit_shapes"
 path = "src/bin/transit_shapes.rs"
 
 [dependencies]
+rayon = "1"
 
 [profile.release]
 opt-level = 3

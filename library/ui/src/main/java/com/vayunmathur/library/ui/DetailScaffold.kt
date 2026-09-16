@@ -1,6 +1,7 @@
 package com.vayunmathur.library.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,6 +9,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -61,7 +64,7 @@ fun DetailScaffold(
     scrollBehavior = scrollBehavior,
     bottomBar = bottomBar,
 ) { pad ->
-    DetailColumn(pad, content)
+    DetailColumn(pad, fillHeight = false, content)
 }
 
 /** [DetailScaffold] with a title slot, for a styled or truncated heading. */
@@ -77,6 +80,7 @@ fun DetailScaffold(
     actions: @Composable RowScope.() -> Unit = {},
     scrollBehavior: TopAppBarScrollBehavior,
     bottomBar: @Composable () -> Unit = {},
+    fillHeight: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) = AppScaffold(
     title = title,
@@ -90,7 +94,7 @@ fun DetailScaffold(
     scrollBehavior = scrollBehavior,
     bottomBar = bottomBar,
 ) { pad ->
-    DetailColumn(pad, content)
+    DetailColumn(pad, fillHeight, content)
 }
 
 /** [DetailScaffold] for a screen that owns a back stack, wiring the back button to it. */
@@ -201,16 +205,42 @@ fun <T : NavKey> DetailLazyColumn(
 )
 
 @Composable
-private fun DetailColumn(pad: PaddingValues, content: @Composable ColumnScope.() -> Unit) {
-    Column(
+private fun DetailColumn(
+    pad: PaddingValues,
+    fillHeight: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    if (!fillHeight) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(pad)
+                .padding(horizontal = paneContentMargin())
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+            content = content,
+        )
+        return
+    }
+    // Constrain the scrolling column to be at least as tall as the viewport so a
+    // weighted child in [content] can fill the empty space below the blocks (and
+    // still scroll once the content outgrows the screen).
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .padding(pad)
-            .padding(horizontal = paneContentMargin())
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md),
-        content = content,
-    )
+            .padding(pad),
+    ) {
+        val minContentHeight = maxHeight
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = paneContentMargin())
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = minContentHeight),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+            content = content,
+        )
+    }
 }
 
 @Composable

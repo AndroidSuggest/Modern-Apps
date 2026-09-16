@@ -15,6 +15,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -24,6 +26,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
@@ -99,6 +102,9 @@ fun ContinuousParagraphEditor(
     onToggleCheckbox: ((globalParaIndex: Int) -> Unit)? = null,
     onFocusChangedCb: (Boolean) -> Unit = {},
     onDeletePrevBlock: () -> Unit = {},
+    focusRequester: FocusRequester? = null,
+    caretRequest: Int? = null,
+    onCaretRequestHandled: () -> Unit = {},
     remoteCarets: List<RemoteCaret> = emptyList(),
 ) {
     val paras = (start..endInclusive).mapNotNull { (doc.content[it] as? OdfContentBlock.Paragraph)?.paragraph }
@@ -130,6 +136,17 @@ fun ContinuousParagraphEditor(
             onSelectionChange(start, endInclusive, tfv.selection.min, tfv.selection.max)
         }
         prevRange = key
+    }
+    // External request to focus this editor and move the caret (Int.MAX_VALUE = end).
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(caretRequest) {
+        val req = caretRequest ?: return@LaunchedEffect
+        val target = req.coerceIn(0, tfv.text.length)
+        tfv = TextFieldValue(tfv.text, TextRange(target))
+        onSelectionChange(start, endInclusive, target, target)
+        focusRequester?.requestFocus()
+        keyboard?.show()
+        onCaretRequestHandled()
     }
     Box(modifier) {
         // Let Compose own the caret. The built-in cursor is positioned with the SAME internal
@@ -166,6 +183,7 @@ fun ContinuousParagraphEditor(
             onTextLayout = { layout = it },
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             modifier = Modifier.fillMaxWidth()
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .onPreviewKeyEvent { ev ->
                     // Backspace at the very start of this run deletes the object (image, page break,
                     // table of contents, chart…) sitting just above it.

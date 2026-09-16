@@ -36,7 +36,7 @@ object WidgetRefresh {
         CoroutineScope(Dispatchers.IO).launch {
             UsageAccess.ensure(app)
             val timers = AppTimers(app)
-            val byPackage = timers.usageTodayByPackage()
+            val byPackage = timers.usageTodayByPackage() ?: emptyMap()
             val total = byPackage.values.sum() / 60_000L
             val top = byPackage.maxByOrNull { it.value }
             val topLabel = top?.key?.let { labelFor(app, it) }

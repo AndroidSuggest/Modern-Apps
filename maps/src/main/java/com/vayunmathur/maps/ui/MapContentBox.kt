@@ -97,7 +97,10 @@ internal fun MapPageScope.MapContentBox(
                         // stands down for the duration rather than floating over it.
                         if (!isNavigating) {
                             TopAppBarOverlay(
-                                actions = settingsAction,
+                                // Hidden while a route is selected: the route preview and
+                                // navigation own the top, so the settings button steps aside
+                                // rather than wasting that space.
+                                actions = if (routeFeature == null) settingsAction else emptyList(),
                                 // The chips ride in the bar's title rather than in a row of their
                                 // own below it. They bring their own filled containers, which is
                                 // what keeps them readable over the map; the bar itself stays

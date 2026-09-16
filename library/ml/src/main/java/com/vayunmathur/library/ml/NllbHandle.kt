@@ -28,10 +28,9 @@ import java.text.Normalizer
  * `:translate` for the mirror pins.
  *
  * The ORT decoder is the no-cache export: every step feeds the whole produced prefix (capped at
- * [MAX_TOKENS] = 128, so the quadratic cost is bounded). The Vulkan decoder threads a native
- * KV cache instead (one `kvCreate` per translation, mirroring Whisper's Past/emptyPast
- * structure): the first step primes from `</s>`, then one-token cached steps feed only the
- * last token. The forcing protocol is identical on both paths.
+ * [MAX_TOKENS] = 128, so the quadratic cost is bounded). The Vulkan decoder is the same no-cache
+ * export, run through `VulkanSessions.run`: each step likewise feeds the whole produced prefix.
+ * The forcing protocol is identical on both paths.
  *
  * # Both language tokens are required
  *
@@ -61,7 +60,7 @@ import java.text.Normalizer
  * # Threading
  *
  * Not thread-safe: a translation runs up to 128 decoder steps sharing both sessions (and the
- * Vulkan path holds a native KV cache for the whole turn), so two concurrent calls would
+ * Vulkan path re-runs the whole prefix each step), so two concurrent calls would
  * interleave them. A caller must hold a lock across [translate] and [close].
  */
 class NllbHandle private constructor(private val directory: File) : AutoCloseable {
@@ -167,10 +166,10 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
             if (table == null) return false
             if (!vulkanTried) {
                 vulkanTried = true
-                tryVulkan(sessionKey(ENCODER_FILE), { File(directory, ENCODER_FILE).readBytes() }) {
+                tryVulkan(sessionKey(ENCODER_FILE), File(directory, ENCODER_FILE).absolutePath) {
                     vulkanEnc = it
                 }
-                tryVulkan(sessionKey(DECODER_FILE), { File(directory, DECODER_FILE).readBytes() }) {
+                tryVulkan(sessionKey(DECODER_FILE), File(directory, DECODER_FILE).absolutePath) {
                     vulkanDec = it
                 }
             }
@@ -199,26 +198,15 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
     private fun sessionKey(name: String): String = "file:${File(directory, name).absolutePath}"
 
     /**
-     * Best-effort Vulkan open for one graph; leaves the handle at 0 on any failure so
-     * ORT stays the fallback. The model bytes are read once and shared by the
-     * preflight check and the open.
+     * Best-effort Vulkan open for one graph from its file on disk; leaves the handle at 0
+     * on any failure so ORT stays the fallback. [VulkanSessions.openPath] resolves any
+     * sidecar weights next to the model file.
      */
-    private fun tryVulkan(key: String, readModel: () -> ByteArray, assign: (Long) -> Unit) {
+    private fun tryVulkan(key: String, path: String, assign: (Long) -> Unit) {
         try {
             if (!VulkanSessions.isUsable()) return
             if (key !in VulkanSessions.allowlist) return
-            val modelBytes = try {
-                readModel()
-            } catch (e: Throwable) {
-                Log.w(TAG, "cannot read $key for vulkan preflight", e)
-                return
-            }
-            val problem = VulkanSessions.preflight(key) { modelBytes }
-            if (problem != null) {
-                Log.w(TAG, "vulkan preflight skipped for $key: $problem")
-                return
-            }
-            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            val handle = VulkanSessions.openPath(key, path)
             if (handle != 0L) {
                 assign(handle)
                 Log.i(TAG, "vulkan session open for $key")
@@ -242,24 +230,27 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
         val handle = vulkanEnc
         if (handle == 0L) return null
         return try {
-            val names = arrayOf("input_ids", "attention_mask")
-            val dtypes = intArrayOf(DTYPE_I64, DTYPE_I64)
-            val shapes = longArrayOf(1, source.size.toLong(), 1, source.size.toLong())
-            val payload = packIdsAndMask(source)
-            val outBytes = VulkanBridge.run(handle, names, dtypes, shapes, intArrayOf(0, 2), payload)
-                ?: return null
-            val floats = leToFloats(outBytes)
+            val longIds = LongArray(source.size) { source[it].toLong() }
+            val mask = LongArray(source.size) { 1L }
+            val inputs = listOf(
+                VulkanWire.longs(longArrayOf(1, source.size.toLong()), longIds),
+                VulkanWire.longs(longArrayOf(1, source.size.toLong()), mask),
+            )
+            val outputs = VulkanSessions.run(handle, inputs) ?: return null
+            val hiddenT = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: run {
+                Log.w(TAG, "nllb vulkan encoder returned no f32 output")
+                return null
+            }
+            val floats = hiddenT.asFloats()
             if (floats.isEmpty()) {
                 Log.w(TAG, "nllb vulkan encoder returned no floats")
                 return null
             }
             var seq = source.size
             var dim = HIDDEN_DIM
-            runCatching { VulkanBridge.lastOutputShapes(handle) }.getOrNull()?.let { outShapes ->
-                if (outShapes.size == 3) {
-                    seq = outShapes[1].toInt()
-                    dim = outShapes[2].toInt()
-                }
+            if (hiddenT.shape.size == 3) {
+                seq = hiddenT.shape[1].toInt()
+                dim = hiddenT.shape[2].toInt()
             }
             if (seq <= 0 || dim <= 0 || floats.size != seq * dim) {
                 if (floats.size % HIDDEN_DIM == 0) {
@@ -302,10 +293,9 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
      * from `</s>`, step 0 is forced to the target language (never emitted), decoding
      * proceeds greedily from there, stopping at the first `</s>`.
      *
-     * Unlike the ORT whole-prefix loop, each step feeds only its last token through
-     * `runCached` against the native KV cache (one [VulkanBridge.kvCreate] per turn,
-     * mirroring Whisper's Past/emptyPast structure). Null when Vulkan cannot serve the
-     * turn so the caller falls back to ORT.
+     * The decoder is the no-cache export, so each step feeds the whole produced prefix
+     * through [VulkanSessions.run] exactly like the ORT path. Null when Vulkan cannot
+     * serve the turn so the caller falls back to ORT.
      */
     private fun vulkanTranslateDecode(
         hidden: EncHidden,
@@ -314,79 +304,57 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
     ): IntArray? {
         val handle = vulkanDec
         if (handle == 0L) return null
-        val kv = try {
-            VulkanBridge.kvCreate(handle, MAX_TOKENS + 2)
-        } catch (e: Throwable) {
-            Log.w(TAG, "nllb vulkan kvCreate failed", e)
-            return null
-        }
-        if (kv == 0L) return null
-        try {
+        return try {
             val produced = ArrayList<Int>(MAX_TOKENS)
-            // Prime from `</s>`; the step-0 output is discarded and the forced target
-            // feeds the next step but is never emitted.
-            var next = DECODER_START
-            var primed = false
-            for (step in 0 until MAX_TOKENS + 1) {
-                val payload = packNllbStep(next, hidden.data, sourceLen)
-                val shapes = longArrayOf(
-                    1, 1,
-                    1, hidden.seq.toLong(), hidden.dim.toLong(),
-                    1, sourceLen.toLong(),
+            // The fed prefix starts from `</s>` and grows by each generated token. Step 0
+            // is forced to the target language (never emitted); decoding proceeds greedily
+            // from there, stopping at the first `</s>`.
+            val fed = ArrayList<Int>()
+            fed.add(DECODER_START)
+            for (step in 0 until MAX_TOKENS) {
+                val prefix = fed.toIntArray()
+                val longIds = LongArray(prefix.size) { prefix[it].toLong() }
+                val mask = LongArray(sourceLen) { 1L }
+                val inputs = listOf(
+                    VulkanWire.longs(longArrayOf(1, prefix.size.toLong()), longIds),
+                    VulkanWire.floats(
+                        longArrayOf(1, hidden.seq.toLong(), hidden.dim.toLong()), hidden.data,
+                    ),
+                    VulkanWire.longs(longArrayOf(1, sourceLen.toLong()), mask),
                 )
-                val outBytes = try {
-                    VulkanBridge.runCached(
-                        handle, kv,
-                        arrayOf("input_ids", "encoder_hidden_states", "encoder_attention_mask"),
-                        intArrayOf(DTYPE_I64, DTYPE_F32, DTYPE_I64),
-                        shapes, intArrayOf(0, 2, 5), payload,
-                    )
-                } catch (e: Throwable) {
-                    Log.w(TAG, "nllb vulkan decode step $step failed", e)
-                    return null
-                } ?: return null
-                if (!primed) {
-                    primed = true
-                    next = targetToken
-                    continue
+                val outputs = VulkanSessions.run(handle, inputs) ?: return null
+                val next = if (step == 0) {
+                    targetToken
+                } else {
+                    vulkanArgmax(outputs, prefix.size) ?: return null
                 }
-                val id = vulkanArgmax(outBytes) ?: return null
-                if (id == EOS) break
-                produced.add(id)
-                if (produced.size >= MAX_TOKENS) break
-                next = id
+                if (next == EOS) break
+                fed.add(next)
+                if (step > 0) produced.add(next)
             }
-            return produced.toIntArray()
-        } finally {
-            runCatching { VulkanBridge.kvClose(kv) }
+            produced.toIntArray()
+        } catch (e: Throwable) {
+            Log.w(TAG, "nllb vulkan decode failed", e)
+            null
         }
     }
 
     /**
-     * Argmax of the single last-logits row via the bridge, with a host scan fallback.
+     * Argmax of the last-logits row via the bridge, with a host scan fallback.
      * The 256,206-wide row never needs a full host pass on the happy path.
      */
-    private fun vulkanArgmax(payload: ByteArray): Int? {
-        val floats = leToFloats(payload)
-        if (floats.isEmpty()) return null
-        // Cached steps return one row; tolerate a [seq, vocab] payload by taking the last row.
-        var vocab = floats.size
-        var base = 0
-        runCatching { VulkanBridge.lastOutputShapes(vulkanDec) }.getOrNull()?.let { outShapes ->
-            if (outShapes.size == 3 && outShapes[2] > 0) {
-                val v = outShapes[2].toInt()
-                if (floats.size % v == 0) {
-                    vocab = v
-                    base = floats.size - v
-                }
-            }
-        }
-        if (vocab <= 0 || base + vocab > floats.size) return null
+    private fun vulkanArgmax(outputs: List<VulkanTensor>, seqLen: Int): Int? {
+        val logits = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
+        val floats = logits.asFloats()
+        if (floats.isEmpty() || seqLen <= 0 || floats.size % seqLen != 0) return null
+        val vocab = floats.size / seqLen
+        if (vocab <= 0) return null
         try {
-            return VulkanBridge.argmaxLastRow(payload, (floats.size / vocab), vocab, IntArray(0))
+            return VulkanBridge.argmaxLastRow(logits.bytes, vocab)
         } catch (e: Throwable) {
             Log.w(TAG, "nllb bridge argmax failed, scanning on host", e)
         }
+        val base = (seqLen - 1) * vocab
         var best = -1
         var top = Float.NaN
         for (i in 0 until vocab) {
@@ -698,10 +666,6 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
         /** Encoder width (`d_model` 1024). */
         private const val HIDDEN_DIM = 1024
 
-        /** ONNX TensorProto elem types as carried in the Vulkan `dtypes` array. */
-        private const val DTYPE_F32 = 1
-        private const val DTYPE_I64 = 7
-
         /** First NLLB language id; the 202 flores codes follow contiguously. */
         const val FIRST_NLLB_LANG_TOKEN = 256001
         const val NLLB_LANGUAGES = 202
@@ -716,30 +680,5 @@ class NllbHandle private constructor(private val directory: File) : AutoCloseabl
          * `getExternalFilesDir`, so there is no APK entry to open.
          */
         fun inDirectory(directory: File): NllbHandle = NllbHandle(directory)
-
-        /** `input_ids` (i64) + `attention_mask` (i64 ones), packed in order. */
-        private fun packIdsAndMask(ids: IntArray): ByteArray {
-            val buf = ByteBuffer.allocate(ids.size * 8 + ids.size * 8)
-                .order(ByteOrder.LITTLE_ENDIAN)
-            for (id in ids) buf.putLong(id.toLong())
-            for (i in ids.indices) buf.putLong(1L)
-            return buf.array()
-        }
-
-        /** One cached decoder step: last `input_ids` token + hidden + encoder mask, packed in order. */
-        private fun packNllbStep(token: Int, hidden: FloatArray, sourceLen: Int): ByteArray {
-            val buf = ByteBuffer.allocate(8 + hidden.size * 4 + sourceLen * 8)
-                .order(ByteOrder.LITTLE_ENDIAN)
-            buf.putLong(token.toLong())
-            for (v in hidden) buf.putFloat(v)
-            for (i in 0 until sourceLen) buf.putLong(1L)
-            return buf.array()
-        }
-
-        private fun leToFloats(bytes: ByteArray): FloatArray {
-            val out = FloatArray(bytes.size / 4)
-            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(out)
-            return out
-        }
     }
 }

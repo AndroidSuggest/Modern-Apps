@@ -5,8 +5,6 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.res.AssetManager
 import android.util.Log
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
 
@@ -212,24 +210,25 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
     private fun vulkanEncodeMel(mel: FloatArray): EncHidden? {
         val handle = vulkanEnc
         if (handle == 0L) return null
-        val names = arrayOf("input_features")
-        val dtypes = intArrayOf(DTYPE_F32)
-        val shapes = longArrayOf(1, MELS.toLong(), FRAMES.toLong())
-        val payload = packFloats(mel)
-        val outBytes = VulkanBridge.run(handle, names, dtypes, shapes, intArrayOf(0), payload)
-            ?: return null
-        val floats = leToFloats(outBytes)
+        val outputs = VulkanSessions.run(
+            handle,
+            listOf(VulkanWire.floats(longArrayOf(1, MELS.toLong(), FRAMES.toLong()), mel)),
+        ) ?: return null
+        val hiddenT = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: run {
+            Log.w(TAG, "whisper vulkan encoder returned no f32 output")
+            return null
+        }
+        val floats = hiddenT.asFloats()
         if (floats.isEmpty()) {
             Log.w(TAG, "whisper vulkan encoder returned no floats")
             return null
         }
-        // Prefer the bridge's output metadata; fall back to the known [1, 1500, 512].
-        val outShapes = runCatching { VulkanBridge.lastOutputShapes(handle) }.getOrNull()
+        // Prefer the output tensor's shape; fall back to the known [1, 1500, 512].
         var seq = ENC_SEQ
         var dim = ENC_DIM
-        if (outShapes != null && outShapes.size == 3) {
-            seq = outShapes[1].toInt()
-            dim = outShapes[2].toInt()
+        if (hiddenT.shape.size == 3) {
+            seq = hiddenT.shape[1].toInt()
+            dim = hiddenT.shape[2].toInt()
         }
         if (seq <= 0 || dim <= 0 || floats.size != seq * dim) {
             // Last resort: infer the sequence length from the payload itself.
@@ -250,15 +249,18 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             val kv = VulkanBridge.kvCreate(decHandle, DETECT_MAX_SEQ)
             if (kv == 0L) return null
             try {
-                val outBytes = VulkanBridge.runCached(
-                    decHandle, kv,
-                    arrayOf("input_ids", "encoder_hidden_states", "use_cache_branch"),
-                    intArrayOf(DTYPE_I64, DTYPE_F32, DTYPE_BOOL),
-                    longArrayOf(1, 1, 1, hidden.seq.toLong(), hidden.dim.toLong(), 1),
-                    intArrayOf(0, 2, 5),
-                    packDecodeStep(intArrayOf(special[0]), hidden.data, useCache = false),
-                ) ?: return null
-                val floats = leToFloats(outBytes)
+                val inputs = listOf(
+                    VulkanWire.longs(longArrayOf(1, 1), longArrayOf(special[0].toLong())),
+                    VulkanWire.floats(
+                        longArrayOf(1, hidden.seq.toLong(), hidden.dim.toLong()), hidden.data,
+                    ),
+                    boolTensor(false),
+                )
+                val outBytes = VulkanBridge.runCached(decHandle, kv, VulkanWire.encode(inputs))
+                    ?: return null
+                val logits = VulkanWire.decode(outBytes)
+                    ?.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
+                val floats = logits.asFloats()
                 if (floats.isEmpty()) return null
                 val vocab = floats.size // seqLen is 1 here.
                 val fallback = 50259
@@ -306,19 +308,16 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             var step = 0
             while (step < limit) {
                 val ids = if (step == 0) prompt else intArrayOf(next)
-                val payload = packDecodeStep(ids, hidden.data, useCache = step > 0)
-                val shapes = longArrayOf(
-                    1, ids.size.toLong(),
-                    1, hidden.seq.toLong(), hidden.dim.toLong(),
-                    1,
+                val longIds = LongArray(ids.size) { ids[it].toLong() }
+                val inputs = listOf(
+                    VulkanWire.longs(longArrayOf(1, ids.size.toLong()), longIds),
+                    VulkanWire.floats(
+                        longArrayOf(1, hidden.seq.toLong(), hidden.dim.toLong()), hidden.data,
+                    ),
+                    boolTensor(step > 0),
                 )
                 val outBytes = try {
-                    VulkanBridge.runCached(
-                        decHandle, kv,
-                        arrayOf("input_ids", "encoder_hidden_states", "use_cache_branch"),
-                        intArrayOf(DTYPE_I64, DTYPE_F32, DTYPE_BOOL),
-                        shapes, intArrayOf(0, 2, 5), payload,
-                    )
+                    VulkanBridge.runCached(decHandle, kv, VulkanWire.encode(inputs))
                 } catch (e: Throwable) {
                     Log.w(TAG, "whisper vulkan decode step $step failed", e)
                     return null
@@ -344,14 +343,22 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
         } else {
             suppress.toIntArray()
         }
-        val floats = leToFloats(payload)
+        val logits = VulkanWire.decode(payload)
+            ?.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
+        val floats = logits.asFloats()
         if (floats.isEmpty()) return null
+        if (seqLen <= 0 || floats.size % seqLen != 0) return null
         val vocab = floats.size / seqLen
-        if (vocab <= 0 || floats.size % seqLen != 0) return null
-        try {
-            return VulkanBridge.argmaxLastRow(payload, seqLen, vocab, suppressMerged)
-        } catch (e: Throwable) {
-            Log.w(TAG, "whisper bridge argmax failed, scanning on host", e)
+        if (vocab <= 0) return null
+        // No suppression: the bridge argmax over the last row is exact.
+        if (suppressMerged.isEmpty()) {
+            val idx = try {
+                VulkanBridge.argmaxLastRow(logits.bytes, vocab)
+            } catch (e: Throwable) {
+                Log.w(TAG, "whisper bridge argmax failed, scanning on host", e)
+                -1
+            }
+            if (idx >= 0) return idx
         }
         var best = 0
         var bestScore = -Float.MAX_VALUE
@@ -388,7 +395,25 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
                 Log.w(TAG, "vulkan preflight skipped for $key: $problem")
                 return
             }
-            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            val handle = VulkanSessions.open(key) { modelBytes }
+            if (handle != 0L) {
+                assign(handle)
+                Log.i(TAG, "vulkan session open for $key")
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "vulkan open failed for $key, using ORT", e)
+        }
+    }
+
+    /**
+     * Best-effort Vulkan open from a file on disk; leaves the handle at 0 on any failure so
+     * ORT stays the fallback. [VulkanSessions.openPath] resolves any sidecar weights.
+     */
+    private fun tryVulkanPath(key: String, path: String, assign: (Long) -> Unit) {
+        try {
+            if (!VulkanSessions.isUsable()) return
+            if (key !in VulkanSessions.allowlist) return
+            val handle = VulkanSessions.openPath(key, path)
             if (handle != 0L) {
                 assign(handle)
                 Log.i(TAG, "vulkan session open for $key")
@@ -578,10 +603,12 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
         /** Positions the detection probe may occupy: prompt length plus one. */
         private const val DETECT_MAX_SEQ = 8
 
-        /** ONNX TensorProto elem types as carried in the Vulkan `dtypes` array. */
-        private const val DTYPE_F32 = 1
-        private const val DTYPE_I64 = 7
+        /** ONNX TensorProto BOOL, for the decoder's `use_cache_branch` flag. */
         private const val DTYPE_BOOL = 9
+
+        /** A single-element bool tensor for `use_cache_branch` (no [VulkanWire] helper). */
+        private fun boolTensor(value: Boolean): VulkanTensor =
+            VulkanTensor(DTYPE_BOOL, longArrayOf(1), byteArrayOf(if (value) 1 else 0))
 
         /**
          * The model from the APK's assets, which is the only place it lives.
@@ -649,12 +676,12 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             instance.decoder = OnnxSessions.open(instance.sessionKey(DECODER)) {
                 java.io.File(directory, DECODER).readBytes()
             }
-            val encKey = "file:${java.io.File(directory, ENCODER).absolutePath}"
-            val decKey = "file:${java.io.File(directory, DECODER).absolutePath}"
-            instance.tryVulkan(encKey, { java.io.File(directory, ENCODER).readBytes() }) {
+            val encFile = java.io.File(directory, ENCODER)
+            val decFile = java.io.File(directory, DECODER)
+            instance.tryVulkanPath("file:${encFile.absolutePath}", encFile.absolutePath) {
                 instance.vulkanEnc = it
             }
-            instance.tryVulkan(decKey, { java.io.File(directory, DECODER).readBytes() }) {
+            instance.tryVulkanPath("file:${decFile.absolutePath}", decFile.absolutePath) {
                 instance.vulkanDec = it
             }
             if (!instance.isAvailable) Log.e(TAG, "cannot open $directory")
@@ -678,26 +705,5 @@ class WhisperHandle private constructor(private val source: String) : AutoClosea
             }
         }
 
-        /** `input_ids` (i64) + `encoder_hidden_states` (f32) + `use_cache_branch` (bool), packed in order. */
-        private fun packDecodeStep(ids: IntArray, hidden: FloatArray, useCache: Boolean): ByteArray {
-            val buf = ByteBuffer.allocate(ids.size * 8 + hidden.size * 4 + 1)
-                .order(ByteOrder.LITTLE_ENDIAN)
-            for (id in ids) buf.putLong(id.toLong())
-            for (v in hidden) buf.putFloat(v)
-            buf.put(if (useCache) 1 else 0)
-            return buf.array()
-        }
-
-        private fun packFloats(values: FloatArray): ByteArray {
-            val buf = ByteBuffer.allocate(values.size * 4).order(ByteOrder.LITTLE_ENDIAN)
-            for (v in values) buf.putFloat(v)
-            return buf.array()
-        }
-
-        private fun leToFloats(bytes: ByteArray): FloatArray {
-            val out = FloatArray(bytes.size / 4)
-            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(out)
-            return out
-        }
     }
 }

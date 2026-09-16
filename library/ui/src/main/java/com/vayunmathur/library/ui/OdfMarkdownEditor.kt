@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.drop
@@ -56,6 +57,13 @@ class OdfMarkdownEditorController internal constructor(
     internal var selEnd by mutableIntStateOf(0)
     var focused by mutableStateOf(false)
         internal set
+    internal val focusRequester = FocusRequester()
+    // A pending caret offset to move to (coerced into the text) once focused;
+    // Int.MAX_VALUE means "end of the text". Cleared after the field applies it.
+    internal var caretRequest by mutableStateOf<Int?>(null)
+
+    /** Focus this editor and place the caret at the end of its text. */
+    fun requestFocusAtEnd() { caretRequest = Int.MAX_VALUE }
 }
 
 @Composable
@@ -97,6 +105,9 @@ fun OdfMarkdownEditorField(
             if (para != null) controller.editor.setCheckboxChecked(idx, !para.listChecked)
         },
         onFocusChangedCb = { controller.focused = it },
+        focusRequester = controller.focusRequester,
+        caretRequest = controller.caretRequest,
+        onCaretRequestHandled = { controller.caretRequest = null },
         modifier = modifier,
     )
 }

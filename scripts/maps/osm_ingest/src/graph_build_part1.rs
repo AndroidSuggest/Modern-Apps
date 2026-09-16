@@ -141,6 +141,13 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
         },
     )?;
     println!("{marked} graph node(s) expected");
+    // Cache the complete blob-kinds mask beside the graph so a `mamaps_build` run over the same
+    // `.pbf` can skip its own full pass-1 scan. This pass inflated every blob with `None`, so the
+    // mask is complete. Best-effort: a write failure must not fail the graph build, which never
+    // reads the sidecar itself.
+    if let Err(e) = pbf::write_blob_kinds(out_dir, input, &blob_kinds) {
+        eprintln!("warning: could not write blob-kinds sidecar: {e}");
+    }
     let slots = cap_u32("marked graph node", marked)?;
 
     // --- The rank index ------------------------------------------------------
@@ -212,9 +219,12 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
         )?
     };
 
+    let mut prog = crate::progress::Progress::new("Interning stop codes", stop_codes.len() as u64);
     for (_, code) in &stop_codes {
         pool.intern(code).map_err(io_err)?;
+        prog.inc();
     }
+    prog.finish();
     drop(stop_codes);
 
     // `saturating_sub` because a file with no routable ways and no stop nodes
@@ -239,12 +249,15 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     // to be collapsed away.
     println!("Sorting {kept_count} surviving node(s) by spatial key...");
     let mut keys: Vec<(u64, u32)> = Vec::with_capacity(kept_count as usize);
+    let mut prog = crate::progress::Progress::new("Morton keys", u64::from(slots));
     for i in 0..slots {
         if kept.get(u64::from(i)) {
             let (lat_e7, lon_e7) = coords[i as usize];
             keys.push((spatial_from_e7(lat_e7, lon_e7), i));
         }
+        prog.inc();
     }
+    prog.finish();
     debug_assert_eq!(keys.len(), kept_count as usize);
     // The key is `(spatial, dense)`, and the loop above pushed `dense` ascending, so
     // this is exactly the order the previous STABLE `sort_by_key(spatial)` produced:
@@ -253,18 +266,22 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     // an UNSTABLE parallel sort be substituted without changing a single final id --
     // and final ids are what `nodes.bin`, `edges.bin` and every offset in the pack are
     // numbered by, so this is the one comparison in the build that must not move.
+    eprintln!("Sorting {kept_count} spatial key(s)...");
     par::install(|| keys.par_sort_unstable());
 
     let mut final_of_kept = vec![0u32; kept_count as usize];
     let mut node_coords: Vec<geom::Pt> = Vec::with_capacity(kept_count as usize);
     let mut stops_final = Bitset::new(u64::from(kept_count));
+    let mut prog = crate::progress::Progress::new("Final id assignment", keys.len() as u64);
     for (final_id, (_, dense)) in keys.iter().enumerate() {
         final_of_kept[kept.dense(u64::from(*dense)) as usize] = final_id as u32;
         node_coords.push(coords[*dense as usize]);
         if stop.get(u64::from(*dense)) {
             stops_final.set(final_id as u64);
         }
+        prog.inc();
     }
+    prog.finish();
     drop(keys);
     drop(stop);
     // The chain spill holds coordinates, so nothing downstream needs the array

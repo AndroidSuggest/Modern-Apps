@@ -18,22 +18,26 @@ private const val TAG = "ScreenTimeUsageAccess"
  * reflection buys visibility into the `@SystemApi` setter, not the privilege itself.
  *
  * Idempotent: called on every reconcile before anything reads usage, so a revoked op heals
- * itself instead of silently zeroing the dashboard.
+ * itself instead of silently zeroing the dashboard. Returns the post-attempt status so the
+ * dashboard can tell "denied - needs a Settings visit" apart from "granted but empty".
  */
 object UsageAccess {
 
-    fun ensure(context: Context) {
-        val appOps = context.getSystemService<AppOpsManager>() ?: return
+    /** The usage-stats op state after [ensure] ran; denied means the user must grant it. */
+    enum class Status { GRANTED, DENIED }
+
+    fun ensure(context: Context): Status {
+        val appOps = context.getSystemService<AppOpsManager>() ?: return Status.DENIED
         val uid = Process.myUid()
         val pkg = context.packageName
         val mode = runCatching {
             appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, uid, pkg)
         }.getOrElse {
             Log.w(TAG, "could not check the usage-stats op", it)
-            return
+            return Status.DENIED
         }
-        if (mode == AppOpsManager.MODE_ALLOWED) return
-        runCatching {
+        if (mode == AppOpsManager.MODE_ALLOWED) return Status.GRANTED
+        val granted = runCatching {
             val setUidMode = AppOpsManager::class.java.getMethod(
                 "setUidMode",
                 String::class.java,
@@ -41,6 +45,23 @@ object UsageAccess {
                 Int::class.javaPrimitiveType!!,
             )
             setUidMode.invoke(appOps, AppOpsManager.OPSTR_GET_USAGE_STATS, uid, AppOpsManager.MODE_ALLOWED)
-        }.onFailure { Log.w(TAG, "could not self-grant the usage-stats op", it) }
+            appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, uid, pkg)
+        }.getOrElse {
+            Log.w(TAG, "could not self-grant the usage-stats op", it)
+            return Status.DENIED
+        }
+        return if (granted == AppOpsManager.MODE_ALLOWED) Status.GRANTED else Status.DENIED
+    }
+
+    /** True when the op is currently allowed; the cheap check half of [ensure]. */
+    fun isGranted(context: Context): Boolean {
+        val appOps = context.getSystemService<AppOpsManager>() ?: return false
+        return runCatching {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName,
+            ) == AppOpsManager.MODE_ALLOWED
+        }.getOrDefault(false)
     }
 }

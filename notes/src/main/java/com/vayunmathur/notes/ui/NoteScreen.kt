@@ -1,14 +1,18 @@
 package com.vayunmathur.notes.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,6 +67,15 @@ fun NoteScreen(state: NoteUiState, actions: NoteActions, sharedTextKey: Any? = n
     var focusedBlockId by remember { mutableStateOf<String?>(null) }
     var activeController by remember { mutableStateOf<OdfMarkdownEditorController?>(null) }
 
+    // The controller for each text block, so tapping the empty space below the note
+    // can focus the last one and drop the caret at its end.
+    val textControllers = remember { mutableStateMapOf<String, OdfMarkdownEditorController>() }
+    fun focusNoteEnd() {
+        val lastTextId = state.blocks.lastOrNull { it is NoteBlock.Text }?.id ?: return
+        textControllers[lastTextId]?.requestFocusAtEnd()
+    }
+    val tapBelowInteraction = remember { MutableInteractionSource() }
+
     DetailScaffold(
         title = {},
         onNavigateBack = { actions.back() },
@@ -91,6 +104,7 @@ fun NoteScreen(state: NoteUiState, actions: NoteActions, sharedTextKey: Any? = n
             }
         },
         scrollBehavior = appBarScrollBehavior(),
+        fillHeight = true,
     ) {
         BasicTextField(
                 state.title,
@@ -127,6 +141,10 @@ fun NoteScreen(state: NoteUiState, actions: NoteActions, sharedTextKey: Any? = n
                                     activeController = controller
                                 }
                             }
+                            DisposableEffect(controller) {
+                                textControllers[block.id] = controller
+                                onDispose { textControllers.remove(block.id) }
+                            }
                             OdfMarkdownEditorField(controller = controller, modifier = Modifier.fillMaxWidth())
                         }
 
@@ -149,5 +167,17 @@ fun NoteScreen(state: NoteUiState, actions: NoteActions, sharedTextKey: Any? = n
                     }
                 }
             }
+
+            // Empty space below the last block. The note has no visible boundary, so
+            // let a tap anywhere under it drop the caret at the end of the note.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clickable(
+                        interactionSource = tapBelowInteraction,
+                        indication = null,
+                    ) { focusNoteEnd() }
+            )
     }
 }

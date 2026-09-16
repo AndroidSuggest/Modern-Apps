@@ -64,47 +64,18 @@ import kotlin.random.Random
  *
  * Not thread-safe. A caller must hold a lock across [synthesize], [voice] and [close].
  *
- * # Vulkan-first inference (task 8)
+ * # Vulkan-first inference
  *
- * Assumed APIs (task 5 infra; written against them even if not landed yet —
- * no validation build is run for this task). Shapes follow the landed
- * `WhisperHandle`/`ClipHandle` convention: packed little-endian payloads with
- * per-input dtype/shape descriptors.
+ * Each of the four graphs gets its own `vulkanHandle` next to its ORT session,
+ * opened best-effort in [ensure]. Every graph call tries Vulkan first via
+ * [VulkanSessions.run] and falls back to ORT per call, so mixed states (duration
+ * on Vulkan, vocoder on ORT and vice versa) all serve. The 16-step Euler loop in
+ * [synthesize] calls [runSampler] per step, so a mid-synthesis Vulkan failure
+ * falls back step-by-step without losing audio.
  *
- * ```
- * object VulkanSessions {
- *   fun probe(): Boolean
- *   fun isUsable(): Boolean
- *   val allowlist: Set<String>                          // model keys cleared for Vulkan
- *   fun preflight(key: String, readModel: () -> ByteArray): String? // null = clear
- *   fun open(key: String, readModel: () -> ByteArray, options: Any?): Long // 0L on failure
- *   fun load(app: android.content.Context, assetPath: String): Long  // 0L on failure
- *   fun close(handle: Long)                                         // idempotent
- * }
- * object VulkanBridge {
- *   fun probe(): Boolean
- *   fun load(assetPath: String): Long
- *   fun loadPath(path: String): Long                   // file on disk, incl. Gemma .onnx_data sidecars
- *   fun loadPreflight(handle: Long): Boolean
- *   fun close(handle: Long)
- *   fun run(handle: Long, names: Array<String>, dtypes: IntArray, shapes: LongArray, shapeOffsets: IntArray, payload: ByteArray): ByteArray?
- *   fun lastOutputNames(handle: Long): Array<String>?
- *   fun lastOutputShapes(handle: Long): LongArray?
- *   fun kvCreate(handle: Long, maxSeq: Int): Long
- *   fun kvClose(kv: Long)
- *   fun runCached(handle: Long, kv: Long, names: Array<String>, dtypes: IntArray, shapes: LongArray, shapeOffsets: IntArray, payload: ByteArray): ByteArray?
- *   fun argmaxLastRow(payload: ByteArray, seqLen: Int, vocab: Int, suppress: IntArray): Int
- * }
- * ```
- *
- * Each of the four graphs gets its own `vulkanHandle` next to its ORT session.
- * Every graph call tries Vulkan first and falls back to ORT per call, so mixed
- * states (duration on Vulkan, vocoder on ORT and vice versa) all serve. The
- * 16-step Euler loop in [synthesize] calls `run` per step through [runSampler],
- * so a mid-synthesis Vulkan failure falls back step-by-step without losing audio.
- *
- * Int64 inputs (`text_ids`) are widened to fp32 for the Vulkan attempt; a shape
- * or dtype rejection falls back to ORT. The vocoder's ConvNeXt stack is the most
+ * Inputs cross the boundary through the self-describing [VulkanWire] payload in
+ * each graph's declared input order (`text_ids` as i64, the rest f32); a shape or
+ * dtype rejection falls back to ORT. The vocoder's ConvNeXt stack is the most
  * likely Vulkan fallback (convs); the attempt is still made and validated by
  * output shape before use.
  */
@@ -262,18 +233,25 @@ class SupertonicSynthesizer private constructor(
             if (!VulkanSessions.isUsable()) return
             val key = sessionKey(bundle, name)
             if (key !in VulkanSessions.allowlist) return
-            val modelBytes = try {
-                bundle.read(name)
-            } catch (e: Throwable) {
-                Log.w(TAG, "cannot read $name for vulkan preflight", e)
-                return
+            // Disk bundles open by path (resolves any sidecar weights); the APK bundle
+            // has no filesystem path, so it preflights and opens from bytes.
+            val path = bundle.modelPath(name)
+            val handle = if (path != null) {
+                VulkanSessions.openPath(key, path)
+            } else {
+                val modelBytes = try {
+                    bundle.read(name)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "cannot read $name for vulkan preflight", e)
+                    return
+                }
+                val problem = VulkanSessions.preflight(key) { modelBytes }
+                if (problem != null) {
+                    Log.w(TAG, "vulkan preflight skipped for $name: $problem")
+                    return
+                }
+                VulkanSessions.open(key) { modelBytes }
             }
-            val problem = VulkanSessions.preflight(key) { modelBytes }
-            if (problem != null) {
-                Log.w(TAG, "vulkan preflight skipped for $name: $problem")
-                return
-            }
-            val handle = VulkanSessions.open(key, { modelBytes }, null)
             if (handle != 0L) {
                 assign(handle)
                 Log.i(TAG, "vulkan session open for $key")
@@ -322,6 +300,9 @@ class SupertonicSynthesizer private constructor(
         /** All of [name], for models and small files alike. */
         fun read(name: String): ByteArray
 
+        /** Filesystem path for model [name] when it lives on disk (for openPath), else null. */
+        fun modelPath(name: String): String?
+
         /** Stable key prefix for this bundle's cached sessions. */
         fun key(): String
     }
@@ -332,6 +313,8 @@ class SupertonicSynthesizer private constructor(
             val full = if (name.startsWith("style_")) "$path/voices/$name" else "$path/$name"
             return assets.open(full).use { it.readBytes() }
         }
+
+        override fun modelPath(name: String): String? = null
 
         override fun key(): String = "asset:$path/"
 
@@ -352,6 +335,12 @@ class SupertonicSynthesizer private constructor(
             val file = File(directory, name)
             require(file.isFile) { "$name is missing from $directory" }
             return file.readBytes()
+        }
+
+        override fun modelPath(name: String): String? {
+            if (name.startsWith("style_")) return null
+            val file = File(directory, name)
+            return if (file.isFile) file.absolutePath else null
         }
 
         override fun key(): String = "file:${directory.absolutePath}/"
@@ -550,16 +539,19 @@ class SupertonicSynthesizer private constructor(
         val handle = vulkanDuration
         if (handle == 0L) return null
         val words = ids.size.toLong()
-        val payload = packDurationInputs(ids, dp)
-        val outBytes = VulkanBridge.run(
-            handle,
-            arrayOf("text_ids", "style_dp", "text_mask"),
-            intArrayOf(DTYPE_I64, DTYPE_F32, DTYPE_F32),
-            longArrayOf(1, words, 1, 8, 16, 1, 1, words),
-            intArrayOf(0, 2, 5),
-            payload,
-        ) ?: return null
-        val floats = leToFloats(outBytes)
+        val longIds = LongArray(ids.size) { ids[it].toLong() }
+        val mask = FloatArray(ids.size) { 1f }
+        val inputs = listOf(
+            VulkanWire.longs(longArrayOf(1, words), longIds),
+            VulkanWire.floats(longArrayOf(1, 8, 16), dp),
+            VulkanWire.floats(longArrayOf(1, 1, words), mask),
+        )
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val out = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: run {
+            Log.w(TAG, "vulkan duration returned no floats")
+            return null
+        }
+        val floats = out.asFloats()
         if (floats.isEmpty()) {
             Log.w(TAG, "vulkan duration returned no floats")
             return null
@@ -570,29 +562,28 @@ class SupertonicSynthesizer private constructor(
     /**
      * Text conditioning (`text_emb [1, 256, chars]`) from Vulkan, or null to ORT.
      *
-     * The known `[1, 256, chars]` geometry splits the single output; the bridge
-     * metadata ([VulkanBridge.lastOutputShapes]) wins when present.
+     * The known `[1, 256, chars]` geometry splits the output; the output tensor's
+     * own shape wins when it is rank 3.
      */
     private fun vulkanRunText(ids: IntArray, ttl: FloatArray): FloatArray? {
         val handle = vulkanText
         if (handle == 0L) return null
         val words = ids.size.toLong()
-        val payload = packTextInputs(ids, ttl)
-        val outBytes = VulkanBridge.run(
-            handle,
-            arrayOf("text_ids", "style_ttl", "text_mask"),
-            intArrayOf(DTYPE_I64, DTYPE_F32, DTYPE_F32),
-            longArrayOf(1, words, 1, 50, 256, 1, 1, words),
-            intArrayOf(0, 2, 5),
-            payload,
-        ) ?: return null
-        val floats = leToFloats(outBytes)
+        val longIds = LongArray(ids.size) { ids[it].toLong() }
+        val mask = FloatArray(ids.size) { 1f }
+        val inputs = listOf(
+            VulkanWire.longs(longArrayOf(1, words), longIds),
+            VulkanWire.floats(longArrayOf(1, 50, 256), ttl),
+            VulkanWire.floats(longArrayOf(1, 1, words), mask),
+        )
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val out = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
+        val floats = out.asFloats()
         val want = 256 * ids.size
-        val shapes = runCatching { VulkanBridge.lastOutputShapes(handle) }.getOrNull()
-        if (shapes != null && shapes.size >= 3) {
-            val numel = shapes[0] * shapes[1] * shapes[2]
+        if (out.shape.size >= 3) {
+            val numel = out.shape[0] * out.shape[1] * out.shape[2]
             if (numel in 1..floats.size) return floats.copyOfRange(0, numel.toInt())
-            Log.w(TAG, "vulkan text_emb shape ${shapes.toList()} disagrees with ${floats.size} floats")
+            Log.w(TAG, "vulkan text_emb shape ${out.shape.toList()} disagrees with ${floats.size} floats")
             return null
         }
         if (floats.size < want) {
@@ -619,35 +610,25 @@ class SupertonicSynthesizer private constructor(
         if (handle == 0L) return null
         val framesL = frames.toLong()
         val charsL = chars.toLong()
-        val payload = packSamplerInputs(latent, textEmb, ttl, frames, chars, step)
-        val outBytes = VulkanBridge.run(
-            handle,
-            arrayOf(
-                "noisy_latent", "text_emb", "style_ttl", "latent_mask",
-                "text_mask", "current_step", "total_step",
-            ),
-            intArrayOf(
-                DTYPE_F32, DTYPE_F32, DTYPE_F32, DTYPE_F32,
-                DTYPE_F32, DTYPE_F32, DTYPE_F32,
-            ),
-            longArrayOf(
-                1, LATENT_CHANNELS.toLong(), framesL,
-                1, 256, charsL,
-                1, 50, 256,
-                1, 1, framesL,
-                1, 1, charsL,
-                1,
-                1,
-            ),
-            intArrayOf(0, 3, 6, 9, 12, 15, 16),
-            payload,
-        ) ?: return null
-        val floats = leToFloats(outBytes)
-        if (floats.size != latent.size) {
-            Log.w(TAG, "vulkan sampler returned ${floats.size} floats, want ${latent.size}")
+        val latentMask = FloatArray(frames) { 1f }
+        val textMask = FloatArray(chars) { 1f }
+        val inputs = listOf(
+            VulkanWire.floats(longArrayOf(1, LATENT_CHANNELS.toLong(), framesL), latent),
+            VulkanWire.floats(longArrayOf(1, 256, charsL), textEmb),
+            VulkanWire.floats(longArrayOf(1, 50, 256), ttl),
+            VulkanWire.floats(longArrayOf(1, 1, framesL), latentMask),
+            VulkanWire.floats(longArrayOf(1, 1, charsL), textMask),
+            VulkanWire.floats(longArrayOf(1), floatArrayOf(step.toFloat())),
+            VulkanWire.floats(longArrayOf(1), floatArrayOf(STEPS.toFloat())),
+        )
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val out = outputs.firstOrNull {
+            it.dtype == VulkanWire.DTYPE_F32 && it.bytes.size / 4 == latent.size
+        } ?: run {
+            Log.w(TAG, "vulkan sampler produced no ${latent.size}-wide output")
             return null
         }
-        return floats
+        return out.asFloats()
     }
 
     /**
@@ -660,15 +641,12 @@ class SupertonicSynthesizer private constructor(
     private fun vulkanRunVocoder(latent: FloatArray, frames: Int): FloatArray? {
         val handle = vulkanVocoder
         if (handle == 0L) return null
-        val outBytes = VulkanBridge.run(
-            handle,
-            arrayOf("latent"),
-            intArrayOf(DTYPE_F32),
-            longArrayOf(1, LATENT_CHANNELS.toLong(), frames.toLong()),
-            intArrayOf(0),
-            packFloats(latent),
-        ) ?: return null
-        val floats = leToFloats(outBytes)
+        val inputs = listOf(
+            VulkanWire.floats(longArrayOf(1, LATENT_CHANNELS.toLong(), frames.toLong()), latent),
+        )
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val out = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 } ?: return null
+        val floats = out.asFloats()
         val want = frames * SAMPLES_PER_FRAME
         if (floats.size < want) {
             Log.w(TAG, "vulkan vocoder returned ${floats.size} floats, want $want")
@@ -780,70 +758,6 @@ class SupertonicSynthesizer private constructor(
         )
 
         const val INDEXER = "unicode_indexer.json"
-
-        /** ONNX TensorProto elem types as carried in the Vulkan `dtypes` array. */
-        private const val DTYPE_F32 = 1
-        private const val DTYPE_I64 = 7
-
-        /** `text_ids` (i64) + `style_dp [1,8,16]` (f32) + `text_mask [1,1,W]` (f32), packed in order. */
-        private fun packDurationInputs(ids: IntArray, dp: FloatArray): ByteArray {
-            val mask = FloatArray(ids.size) { 1f }
-            val buf = java.nio.ByteBuffer.allocate(ids.size * 8 + (dp.size + mask.size) * 4)
-                .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-            for (id in ids) buf.putLong(id.toLong())
-            for (v in dp) buf.putFloat(v)
-            for (v in mask) buf.putFloat(v)
-            return buf.array()
-        }
-
-        /** `text_ids` (i64) + `style_ttl [1,50,256]` (f32) + `text_mask [1,1,W]` (f32), packed in order. */
-        private fun packTextInputs(ids: IntArray, ttl: FloatArray): ByteArray {
-            val mask = FloatArray(ids.size) { 1f }
-            val buf = java.nio.ByteBuffer.allocate(ids.size * 8 + (ttl.size + mask.size) * 4)
-                .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-            for (id in ids) buf.putLong(id.toLong())
-            for (v in ttl) buf.putFloat(v)
-            for (v in mask) buf.putFloat(v)
-            return buf.array()
-        }
-
-        /** Seven sampler inputs in ORT order, all f32 on the wire. */
-        private fun packSamplerInputs(
-            latent: FloatArray,
-            textEmb: FloatArray,
-            ttl: FloatArray,
-            frames: Int,
-            chars: Int,
-            step: Int,
-        ): ByteArray {
-            val latentMask = FloatArray(frames) { 1f }
-            val textMask = FloatArray(chars) { 1f }
-            val buf = java.nio.ByteBuffer.allocate(
-                (latent.size + textEmb.size + ttl.size + latentMask.size + textMask.size + 2) * 4,
-            ).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-            for (v in latent) buf.putFloat(v)
-            for (v in textEmb) buf.putFloat(v)
-            for (v in ttl) buf.putFloat(v)
-            for (v in latentMask) buf.putFloat(v)
-            for (v in textMask) buf.putFloat(v)
-            buf.putFloat(step.toFloat())
-            buf.putFloat(STEPS.toFloat())
-            return buf.array()
-        }
-
-        private fun packFloats(values: FloatArray): ByteArray {
-            val buf = java.nio.ByteBuffer.allocate(values.size * 4)
-                .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-            for (v in values) buf.putFloat(v)
-            return buf.array()
-        }
-
-        private fun leToFloats(bytes: ByteArray): FloatArray {
-            val out = FloatArray(bytes.size / 4)
-            java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                .asFloatBuffer().get(out)
-            return out
-        }
 
         /** The bundle shipped inside the APK. */
         fun inAssets(

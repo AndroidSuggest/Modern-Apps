@@ -370,6 +370,7 @@ impl Bitset {
         let blocks = used.div_ceil(RANK_BLOCK_BYTES);
         self.rank = Vec::with_capacity(blocks + 1);
         let mut total = 0u64;
+        let mut prog = crate::progress::Progress::new("Rank index", blocks as u64);
         for b in 0..blocks {
             self.rank.push(total);
             let start = b * RANK_BLOCK_BYTES;
@@ -378,7 +379,9 @@ impl Bitset {
                 .iter()
                 .map(|byte| u64::from(byte.count_ones()))
                 .sum::<u64>();
+            prog.inc();
         }
+        prog.finish();
         self.rank.push(total);
         total
     }

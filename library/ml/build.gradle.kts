@@ -16,4 +16,4 @@ dependencies {
     implementation(libs.onnxruntime.android)
 }
 
-rustNativeLib("ml_vulkan", "ml")
+rustNativeLib("ml_vulkan", "ml", features = listOf("vulkan"))

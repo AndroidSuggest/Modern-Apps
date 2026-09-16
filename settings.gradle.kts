@@ -120,6 +120,7 @@ include(":logviewer")
 include(":updater")
 include(":parentalcontrols")
 include(":screentime")
+include(":emergency")
 include(":auto")
 include(":auto:protocol")
 

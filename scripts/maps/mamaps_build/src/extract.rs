@@ -43,9 +43,9 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use osm_ingest::nodeloc::{resolve_nodes, NodeLocations};
-use osm_ingest::osm::{visit_block, Element, MEMBER_WAY};
-use osm_ingest::pbf::{self, KIND_NODES, KIND_RELATIONS, KIND_WAYS};
+use osm_ingest::nodeloc::{resolve_nodes_with, NodeLocations};
+use osm_ingest::osm::{visit_block, Element, NodeView, MEMBER_WAY};
+use osm_ingest::pbf::{self, KIND_RELATIONS, KIND_WAYS};
 use osm_ingest::proto::{err, Result};
 use osm_ingest::rings::{self, MemberWay, RingStats};
 use osm_ingest::select::Select;

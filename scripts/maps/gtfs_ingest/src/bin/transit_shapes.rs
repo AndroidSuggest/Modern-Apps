@@ -250,13 +250,11 @@ fn polyline_hash(points: &[(i32, i32)]) -> u64 {
 /// Read one feed and reduce it to candidate lines.
 fn read_feed(spec: &FeedSpec) -> Result<FeedLines, String> {
     let (name, dir, _) = spec;
-    let require = |file: &str| -> Result<Csv, String> {
-        gtfs::read_table(dir, file).ok_or_else(|| {
-            format!("feed '{name}' ({}) missing required GTFS file: {file}", dir.display())
-        })
-    };
-    let routes_csv = require("routes.txt")?;
-    let trips_csv = require("trips.txt")?;
+    // Shapes are the only thing this layer draws, so a feed without a usable shapes.txt
+    // contributes nothing — decided first, before the (often multi-GB) routes.txt and
+    // trips.txt are touched. A national feed with no shapes.txt still carries a huge
+    // routes/trips/stop_times, and reading those only to return empty is what stalled the
+    // chunk barrier on mega-feeds like gb_great_britain while the other cores idled.
     let Some(shapes) = gtfs::read_shapes(dir) else {
         // Optional in GTFS, and a feed without it can still route — it just draws
         // nothing. Not an error, or one bus-only agency would fail a whole region.
@@ -265,6 +263,13 @@ fn read_feed(spec: &FeedSpec) -> Result<FeedLines, String> {
         );
         return Ok(FeedLines::default());
     };
+    let require = |file: &str| -> Result<Csv, String> {
+        gtfs::read_table(dir, file).ok_or_else(|| {
+            format!("feed '{name}' ({}) missing required GTFS file: {file}", dir.display())
+        })
+    };
+    let routes_csv = require("routes.txt")?;
+    let trips_csv = require("trips.txt")?;
 
     let rail = rail_routes(&routes_csv);
     let by_route = shape_ids_by_route(&trips_csv, &rail);

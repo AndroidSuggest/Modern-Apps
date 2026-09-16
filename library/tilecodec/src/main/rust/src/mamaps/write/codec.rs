@@ -30,13 +30,20 @@ pub fn compress_body_with(deflate: &mut crate::gz::Compressor, encoded: &[u8]) -
     let header_len = body::BODY_HEADER_LEN;
     let mut out = Vec::with_capacity(encoded.len());
     out.extend_from_slice(&encoded[..header_len]);
-    out.extend_from_slice(deflate.deflate(&encoded[header_len..]));
+    // Deflate straight into `out` after the header, rather than into the compressor's `scratch` and
+    // then copying it here. The frame is one allocation with no memcpy of the compressed bytes.
+    deflate.deflate_into(&encoded[header_len..], &mut out);
     out
 }
 
 /// FNV-1a. Only ever a bucket key — every hit is confirmed by comparing bytes — so it needs to be
 /// fast and well spread, not collision-proof.
-pub(crate) fn hash64(data: &[u8]) -> u64 {
+///
+/// Public so a generator can compute the dedup key in its parallel encode worker and hand it to
+/// [`super::writer::StreamWriter::append_stored_with_hash`], keeping the hash off the serial append
+/// thread — the same reasoning as [`compress_body_with`] for DEFLATE. It is a pure function of the
+/// stored bytes, so the key, and therefore every dedup decision, is unchanged.
+pub fn hash64(data: &[u8]) -> u64 {
     let mut h = 0xcbf2_9ce4_8422_2325u64;
     for &b in data {
         h ^= b as u64;

@@ -20,6 +20,7 @@
 
 mod caching;
 mod fetch;
+mod file;
 mod retry;
 mod urls;
 
@@ -27,6 +28,7 @@ mod urls;
 mod tests;
 
 pub use caching::CachingRangeReader;
+pub use file::FileRangeReader;
 #[cfg(target_os = "android")]
 pub use fetch::JniRangeFetcher;
 pub use fetch::{RangeFetcher, RangeResponse};

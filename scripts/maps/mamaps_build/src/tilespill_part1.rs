@@ -26,7 +26,8 @@ impl ChunkReader<'_> {
             payload_bytes(header.features, header.parts, header.coords, header.ids) as usize;
         self.fill(ENTRY_HEADER_BYTES + fixed)?;
         let body = self.used + ENTRY_HEADER_BYTES;
-        let mut entry = decode_fixed(&header, &self.buf[body..body + fixed])?;
+        let spare = self.spare.take();
+        let mut entry = decode_fixed(&header, &self.buf[body..body + fixed], spare)?;
         self.used = body + fixed;
         // Counted, not differenced: `fill` compacts the buffer when it tops up, so a span across
         // two buffer positions is not the difference of two offsets.
@@ -59,7 +60,7 @@ impl ChunkReader<'_> {
         // The turn-lane section, after the names when the flag is set: one record per feature,
         // each a u8 forward count, u8 backward count, then that many u16 masks each.
         if header.has_turns {
-            entry.turn_lanes = Vec::with_capacity(header.features);
+            entry.turn_lanes.reserve(header.features);
             for _ in 0..header.features {
                 self.fill(2)?;
                 let (fwd, bwd) =
@@ -84,7 +85,7 @@ impl ChunkReader<'_> {
         // The building section, after the turn-lane section when the flag is set: one
         // BUILDING_BYTES record per feature, dense.
         if header.has_buildings {
-            entry.buildings = Vec::with_capacity(header.features);
+            entry.buildings.reserve(header.features);
             for _ in 0..header.features {
                 self.fill(BUILDING_BYTES)?;
                 let o = self.used;
@@ -114,7 +115,7 @@ impl ChunkReader<'_> {
         // The carriageway section, last, when the flag is set: one [`CARRIAGEWAY_RECORD_LEN`]
         // record per feature, dense.
         if header.has_carriageways {
-            entry.carriageways = Vec::with_capacity(header.features);
+            entry.carriageways.reserve(header.features);
             for _ in 0..header.features {
                 self.fill(CARRIAGEWAY_RECORD_LEN)?;
                 let o = self.used;
@@ -166,6 +167,26 @@ impl ChunkReader<'_> {
             .map_err(|e| Error(format!("reading {}: {e}", self.spill.path.display())))?;
         self.at += take as u64;
         Ok(())
+    }
+
+    /// Take back an entry whose arenas the merge has drained, to reuse on the next decode.
+    ///
+    /// The merge hands this back the emptied [`ChunkEntry`] it just concatenated into its
+    /// accumulator; [`Self::next`] then fills these buffers instead of allocating fresh ones. Every
+    /// arena is cleared (so no stale value can leak into a later entry) but its capacity is kept,
+    /// which is the whole point. A single slot is enough: the merge consumes one of a reader's
+    /// entries and immediately decodes the next, so the buffers are back in hand exactly when the
+    /// next decode wants them.
+    pub fn recycle(&mut self, mut entry: ChunkEntry) {
+        entry.layer.features.clear();
+        entry.layer.parts.clear();
+        entry.layer.coords.clear();
+        entry.names.clear();
+        entry.ids.clear();
+        entry.turn_lanes.clear();
+        entry.buildings.clear();
+        entry.carriageways.clear();
+        self.spare = Some(entry);
     }
 }
 
@@ -370,18 +391,44 @@ fn entry_header(head: &[u8; ENTRY_HEADER_BYTES]) -> Result<EntryHeader> {
 
 /// Decode an entry's fixed arenas. `payload` is exactly the fixed bytes the header accounted
 /// for; names are pulled separately by the reader, one inline length at a time.
-fn decode_fixed(header: &EntryHeader, payload: &[u8]) -> Result<ChunkEntry> {
+///
+/// `spare` is a previously-yielded entry the merge handed back, its arenas emptied but their
+/// capacity kept. Reusing it turns four `Vec` allocations per entry into four `clear`/`reserve`
+/// pairs on the serial merge thread. The decoded values are identical either way: every arena is
+/// cleared before it is refilled, so nothing of the old entry survives.
+fn decode_fixed(
+    header: &EntryHeader,
+    payload: &[u8],
+    spare: Option<ChunkEntry>,
+) -> Result<ChunkEntry> {
     let u16_at = |b: &[u8], o: usize| u16::from_le_bytes(b[o..o + 2].try_into().expect("2 bytes"));
     let u32_at = |b: &[u8], o: usize| u32::from_le_bytes(b[o..o + 4].try_into().expect("4 bytes"));
     let i16_at = |b: &[u8], o: usize| i16::from_le_bytes(b[o..o + 2].try_into().expect("2 bytes"));
 
+    let mut entry = spare.unwrap_or_else(|| ChunkEntry::new(header.layer_id));
+    entry.layer.layer_id = header.layer_id;
+    entry.layer.features.clear();
+    entry.layer.features.reserve(header.features);
+    entry.layer.parts.clear();
+    entry.layer.parts.reserve(header.parts);
+    entry.layer.coords.clear();
+    entry.layer.coords.reserve(header.coords);
+    entry.ids.clear();
+    entry.ids.reserve(header.ids);
+    // The reader fills these; clear so a reused entry starts empty. Names are reserved here (the
+    // count is in the header); the section arenas are reserved by the reader when their flag is set.
+    entry.names.clear();
+    entry.names.reserve(header.names);
+    entry.turn_lanes.clear();
+    entry.buildings.clear();
+    entry.carriageways.clear();
+
     let mut at = 0usize;
-    let mut features = Vec::with_capacity(header.features);
     for _ in 0..header.features {
         let b = payload
             .get(at..at + FEATURE_BYTES)
             .ok_or_else(|| Error("a tile chunk entry's features run past its payload".to_string()))?;
-        features.push(BodyFeature {
+        entry.layer.features.push(BodyFeature {
             kind: u16_at(b, 0),
             kind_detail: u16_at(b, 2),
             geom_type: b[4],
@@ -397,42 +444,31 @@ fn decode_fixed(header: &EntryHeader, payload: &[u8]) -> Result<ChunkEntry> {
         });
         at += FEATURE_BYTES;
     }
-    let mut parts = Vec::with_capacity(header.parts);
     for _ in 0..header.parts {
         let b = payload
             .get(at..at + PART_BYTES)
             .ok_or_else(|| Error("a tile chunk entry's parts run past its payload".to_string()))?;
-        parts.push(Part {
+        entry.layer.parts.push(Part {
             coord_start: u32_at(b, 0),
             point_count: u32_at(b, 4),
             winding: u16_at(b, 8),
         });
         at += PART_BYTES;
     }
-    let mut coords = Vec::with_capacity(header.coords);
     for _ in 0..header.coords {
         let b = payload
             .get(at..at + COORD_BYTES)
             .ok_or_else(|| Error("a tile chunk entry's coords run past its payload".to_string()))?;
-        coords.push((i16_at(b, 0), i16_at(b, 2)));
+        entry.layer.coords.push((i16_at(b, 0), i16_at(b, 2)));
         at += COORD_BYTES;
     }
-    let mut ids = Vec::with_capacity(header.ids);
     for _ in 0..header.ids {
         let b = payload
             .get(at..at + ID_BYTES)
             .ok_or_else(|| Error("a tile chunk entry's ids run past its payload".to_string()))?;
-        ids.push(u64::from_le_bytes(b.try_into().expect("8 bytes")));
+        entry.ids.push(u64::from_le_bytes(b.try_into().expect("8 bytes")));
         at += ID_BYTES;
     }
     debug_assert_eq!(at, payload.len(), "the fixed arenas must consume their payload exactly");
-    let names = Vec::with_capacity(header.names);
-    Ok(ChunkEntry {
-        layer: BodyLayer { layer_id: header.layer_id, features, parts, coords },
-        names,
-        ids,
-        turn_lanes: Vec::new(),
-        buildings: Vec::new(),
-        carriageways: Vec::new(),
-    })
+    Ok(entry)
 }

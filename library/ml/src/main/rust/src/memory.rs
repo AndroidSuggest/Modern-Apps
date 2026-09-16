@@ -1,18 +1,32 @@
 //! Mobile memory budget helpers for Vulkan weight upload and inference.
 //!
 //! Pure host-side planning with no GPU dependency: chunking arithmetic, a
-//! staging-buffer pool, peak-RSS accounting, a unified-memory hint for
-//! Adreno/Mali parts, and the low-memory signal that routes work to the ORT
-//! CPU path. Always compiled, even without the `vulkan` feature, so host
-//! checks and unit tests stay dependency-free.
+//! unified-memory hint for Adreno/Mali parts, and the low-memory signal that
+//! routes work to the ORT CPU path. Always compiled, even without the
+//! `vulkan` feature, so host checks and unit tests stay dependency-free.
 //!
-//! The Vulkan session layer applies these plans when the `vulkan` feature is
+//! The reusable staging-buffer pool lives in [`crate::memory_pool`] and the
+//! peak-RSS accounting lives in [`crate::memory_stats`]; both are
+//! re-exported here so existing `crate::memory::…` paths keep working. The
+//! Vulkan session layer applies these plans when the `vulkan` feature is
 //! enabled; this module never touches the device itself.
 //!
 //! All arithmetic saturates or is checked: every fallible helper returns
 //! [`MemoryError`] instead of panicking.
 
 use thiserror::Error;
+
+/// Reusable staging-buffer accounting for chunked uploads.
+///
+/// Re-exported from [`crate::memory_pool`]; see [`crate::memory_pool`]
+/// for the owning documentation.
+pub use crate::memory_pool::StagingPool;
+
+/// Current and peak resident-set-size accounting, in bytes.
+///
+/// Re-exported from [`crate::memory_stats`]; see [`crate::memory_stats`]
+/// for the owning documentation.
+pub use crate::memory_stats::PeakTracker;
 
 /// Largest single weight-upload chunk: 64 MiB.
 ///
@@ -162,146 +176,6 @@ pub fn plan_chunks(total_bytes: usize) -> Result<Vec<Chunk>, MemoryError> {
     Ok(out)
 }
 
-/// Reusable staging-buffer accounting for chunked uploads.
-///
-/// The pool tracks how many upload-sized buffers are live so at most
-/// `capacity` chunks are in flight at once. It owns no memory itself: the
-/// Vulkan layer allocates the real buffers and pairs each allocation with
-/// [`StagingPool::acquire`] and each recycle with [`StagingPool::release`].
-#[derive(Debug)]
-pub struct StagingPool {
-    /// Bytes per staging buffer.
-    chunk_bytes: usize,
-    /// Maximum simultaneously acquired buffers.
-    capacity: usize,
-    /// Buffers currently acquired.
-    in_use: usize,
-}
-
-impl StagingPool {
-    /// Build a pool of `capacity` buffers of `chunk_bytes` bytes.
-    ///
-    /// A zero `capacity` is legal and simply makes every
-    /// [`StagingPool::acquire`] fail with [`MemoryError::PoolExhausted`];
-    /// a zero `chunk_bytes` is rejected with [`MemoryError::EmptyChunk`].
-    pub fn new(chunk_bytes: usize, capacity: usize) -> Result<Self, MemoryError> {
-        if chunk_bytes == 0 {
-            return Err(MemoryError::EmptyChunk);
-        }
-        Ok(Self {
-            chunk_bytes,
-            capacity,
-            in_use: 0,
-        })
-    }
-
-    /// Build the default pool: 64 MiB buffers, [`DEFAULT_STAGING_BUFFERS`].
-    pub fn with_defaults() -> Self {
-        Self {
-            chunk_bytes: MAX_CHUNK_BYTES,
-            capacity: DEFAULT_STAGING_BUFFERS,
-            in_use: 0,
-        }
-    }
-
-    /// Acquire one buffer, or [`MemoryError::PoolExhausted`] when full.
-    pub fn acquire(&mut self) -> Result<(), MemoryError> {
-        if self.in_use >= self.capacity {
-            return Err(MemoryError::PoolExhausted {
-                in_use: self.in_use,
-                capacity: self.capacity,
-            });
-        }
-        self.in_use = self.in_use.saturating_add(1);
-        Ok(())
-    }
-
-    /// Release one buffer, or [`MemoryError::PoolOverRelease`] when idle.
-    pub fn release(&mut self) -> Result<(), MemoryError> {
-        if self.in_use == 0 {
-            return Err(MemoryError::PoolOverRelease);
-        }
-        self.in_use -= 1;
-        Ok(())
-    }
-
-    /// Return the bytes per staging buffer.
-    pub fn chunk_bytes(&self) -> usize {
-        self.chunk_bytes
-    }
-
-    /// Return the maximum simultaneously acquired buffers.
-    pub fn capacity(&self) -> usize {
-        self.capacity
-    }
-
-    /// Return the currently acquired buffers.
-    pub fn in_use(&self) -> usize {
-        self.in_use
-    }
-
-    /// Return the currently free buffers; saturates at zero.
-    pub fn free(&self) -> usize {
-        self.capacity.saturating_sub(self.in_use)
-    }
-}
-
-/// Current and peak resident-set-size accounting, in bytes.
-///
-/// The Vulkan layer feeds every device/host allocation through
-/// [`PeakTracker::add`] and every release through [`PeakTracker::release`];
-/// [`PeakTracker::peak_bytes`] is the high-water mark used to size future
-/// budgets and to explain OOM kills in logs.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct PeakTracker {
-    /// Bytes currently tracked as live.
-    current_bytes: u64,
-    /// Maximum live bytes observed (until [`PeakTracker::reset_peak`]).
-    peak_bytes: u64,
-}
-
-impl PeakTracker {
-    /// Create an empty tracker.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Record `bytes` newly live; the peak follows the maximum. Saturates
-    /// instead of wrapping on absurd inputs.
-    pub fn add(&mut self, bytes: u64) {
-        self.current_bytes = self.current_bytes.saturating_add(bytes);
-        self.peak_bytes = self.peak_bytes.max(self.current_bytes);
-    }
-
-    /// Record `bytes` released, or [`MemoryError::UntrackedRelease`] when
-    /// `bytes` exceeds what is tracked as live.
-    pub fn release(&mut self, bytes: u64) -> Result<(), MemoryError> {
-        if bytes > self.current_bytes {
-            return Err(MemoryError::UntrackedRelease {
-                release: bytes,
-                current: self.current_bytes,
-            });
-        }
-        self.current_bytes -= bytes;
-        Ok(())
-    }
-
-    /// Return the currently live bytes.
-    pub fn current_bytes(&self) -> u64 {
-        self.current_bytes
-    }
-
-    /// Return the high-water mark in bytes.
-    pub fn peak_bytes(&self) -> u64 {
-        self.peak_bytes
-    }
-
-    /// Reset the high-water mark to the current level.
-    pub fn reset_peak(&mut self) {
-        self.peak_bytes = self.current_bytes;
-    }
-}
-
 /// What kind of memory the GPU exposes, from its advertised device name.
 ///
 /// Adreno (Qualcomm) and Mali (ARM) parts share one physical pool between
@@ -339,7 +213,7 @@ pub fn hint_for_device_name(name: &str) -> GpuMemoryKind {
     if name.is_empty() {
         return GpuMemoryKind::Unknown;
     }
-    let lowered: Vec<u8> = name.bytes().map(u8::to_ascii_lowercase).collect();
+    let lowered: Vec<u8> = name.bytes().map(|b| b.to_ascii_lowercase()).collect();
     if contains_bytes(&lowered, b"adreno") {
         GpuMemoryKind::AdrenoUnified
     } else if contains_bytes(&lowered, b"mali") {
@@ -376,14 +250,13 @@ pub enum ExecutionPath {
 /// Select the execution path from `available_bytes` vs `required_bytes`.
 ///
 /// Vulkan wins only when `available_bytes` covers `required_bytes` plus
-/// [`LOW_MEMORY_HEADROOM_BYTES`]; the addition saturates, so gigantic
-/// requirements safely resolve to [`ExecutionPath::OrtCpu`].
+/// [`LOW_MEMORY_HEADROOM_BYTES`]; the addition is checked, so gigantic
+/// requirements that would overflow safely resolve to
+/// [`ExecutionPath::OrtCpu`].
 pub fn select_path(available_bytes: u64, required_bytes: u64) -> ExecutionPath {
-    let need = required_bytes.saturating_add(LOW_MEMORY_HEADROOM_BYTES);
-    if available_bytes >= need {
-        ExecutionPath::Vulkan
-    } else {
-        ExecutionPath::OrtCpu
+    match required_bytes.checked_add(LOW_MEMORY_HEADROOM_BYTES) {
+        Some(need) if available_bytes >= need => ExecutionPath::Vulkan,
+        _ => ExecutionPath::OrtCpu,
     }
 }
 
@@ -392,20 +265,65 @@ pub fn should_fallback_to_ort(available_bytes: u64, required_bytes: u64) -> bool
     select_path(available_bytes, required_bytes) == ExecutionPath::OrtCpu
 }
 
+/// Largest model file the Vulkan path attempts without consulting free memory.
+///
+/// Above this size [`path_for_model_file`] routes to
+/// [`ExecutionPath::OrtCpu`] unconditionally: a 728 MiB NLLB decoder plus its
+/// transient protobuf/IR copies cannot fit a 4–6 GB phone's budget alongside
+/// the [`LOW_MEMORY_HEADROOM_BYTES`] headroom.
+pub const VULKAN_MODEL_FILE_CAP_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Estimate of currently free host memory in bytes.
+///
+/// Std-only: parses `MemAvailable` from `/proc/meminfo` (present on Android
+/// and desktop Linux). Returns [`None`] where the file is absent or
+/// unparsable so callers fall back to the conservative
+/// [`VULKAN_MODEL_FILE_CAP_BYTES`] cap instead of guessing.
+pub fn available_bytes() -> Option<u64> {
+    let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+    for line in text.lines() {
+        let mut parts = line.split_whitespace();
+        if parts.next() == Some("MemAvailable:") {
+            let kilobytes: u64 = parts.next()?.parse().ok()?;
+            return kilobytes.checked_mul(1024);
+        }
+    }
+    None
+}
+
+/// Execution path for a model file of `file_len_bytes` on-disk bytes.
+///
+/// Over-cap files always route to [`ExecutionPath::OrtCpu`]; under-cap files
+/// defer to [`select_path`] when `available` is known and attempt Vulkan when
+/// it is not (the cap already bounds that risk). The caller maps `OrtCpu` to
+/// a fallback error, never an abort.
+pub fn path_for_model_file(file_len_bytes: u64, available: Option<u64>) -> ExecutionPath {
+    if file_len_bytes > VULKAN_MODEL_FILE_CAP_BYTES {
+        return ExecutionPath::OrtCpu;
+    }
+    match available {
+        Some(avail) => select_path(avail, file_len_bytes),
+        None => ExecutionPath::Vulkan,
+    }
+}
+
 /// Unit tests for the memory-budget helpers.
 ///
 /// These run without the `vulkan` feature: this module has no GPU
 /// dependency. Like `tensors`, every test returns a [`Result`] and reports
 /// mismatches as strings instead of using `assert!` or `unwrap`, per the
 /// workspace `panic` / `unwrap_used` lints.
+///
+/// Pool accounting is tested in [`crate::memory_pool`] and peak-RSS
+/// accounting in [`crate::memory_stats`].
 #[cfg(test)]
 mod tests {
     use super::{
-        Chunk, ExecutionPath, GpuMemoryKind, MemoryError, PeakTracker, StagingPool,
-        chunk_count, chunk_range, hint_for_device_name, plan_chunks, prefers_host_visible,
+        Chunk, ExecutionPath, GpuMemoryKind, MemoryError, chunk_count, chunk_range,
+        hint_for_device_name, path_for_model_file, plan_chunks, prefers_host_visible,
         select_path, should_fallback_to_ort,
     };
-    use super::{DEFAULT_STAGING_BUFFERS, LOW_MEMORY_HEADROOM_BYTES, MAX_CHUNK_BYTES};
+    use super::{LOW_MEMORY_HEADROOM_BYTES, MAX_CHUNK_BYTES, VULKAN_MODEL_FILE_CAP_BYTES};
 
     #[test]
     fn count_rejects_zero() -> Result<(), String> {
@@ -432,9 +350,7 @@ mod tests {
 
     #[test]
     fn plan_covers_total_without_gaps() -> Result<(), String> {
-        let total = MAX_CHUNK_BYTES
-            .saturating_mul(2)
-            .saturating_add(7);
+        let total = MAX_CHUNK_BYTES.saturating_mul(2).saturating_add(7);
         let chunks = plan_chunks(total).map_err(|err| err.to_string())?;
         let mut covered: usize = 0;
         let mut count: usize = 0;
@@ -487,59 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn pool_cycles_and_reports_limits() -> Result<(), String> {
-        let mut pool = StagingPool::with_defaults();
-        if pool.capacity() != DEFAULT_STAGING_BUFFERS {
-            return Err("default pool has the wrong capacity".to_owned());
-        }
-        pool.acquire().map_err(|err| err.to_string())?;
-        pool.acquire().map_err(|err| err.to_string())?;
-        if pool.free() != 0 {
-            return Err("full pool should report no free buffers".to_owned());
-        }
-        match pool.acquire() {
-            Err(MemoryError::PoolExhausted { in_use, capacity }) => {
-                if in_use != pool.in_use() || capacity != pool.capacity() {
-                    return Err("exhaustion report disagrees with pool".to_owned());
-                }
-            }
-            Err(other) => return Err(other.to_string()),
-            Ok(()) => return Err("over-acquire should fail".to_owned()),
-        }
-        pool.release().map_err(|err| err.to_string())?;
-        pool.release().map_err(|err| err.to_string())?;
-        match pool.release() {
-            Err(MemoryError::PoolOverRelease) => Ok(()),
-            Err(other) => Err(other.to_string()),
-            Ok(()) => Err("over-release should fail".to_owned()),
-        }
-    }
-
-    #[test]
-    fn peak_tracks_high_water() -> Result<(), String> {
-        let mut tracker = PeakTracker::new();
-        tracker.add(100);
-        tracker.add(50);
-        tracker.release(30).map_err(|err| err.to_string())?;
-        if tracker.current_bytes() != 120 {
-            return Err("current bytes should be 120".to_owned());
-        }
-        if tracker.peak_bytes() != 150 {
-            return Err("peak should hold the high-water mark".to_owned());
-        }
-        match tracker.release(121) {
-            Err(MemoryError::UntrackedRelease { release: 121, current: 120 }) => {}
-            Err(other) => return Err(other.to_string()),
-            Ok(()) => return Err("untracked release should fail".to_owned()),
-        }
-        tracker.reset_peak();
-        if tracker.peak_bytes() != tracker.current_bytes() {
-            return Err("reset should drop the peak to current".to_owned());
-        }
-        Ok(())
-    }
-
-    #[test]
     fn hints_classify_device_names() -> Result<(), String> {
         if hint_for_device_name("Qualcomm Adreno 740") != GpuMemoryKind::AdrenoUnified {
             return Err("adreno name should map to AdrenoUnified".to_owned());
@@ -571,12 +434,43 @@ mod tests {
         if select_path(u64::MAX, 1) != ExecutionPath::Vulkan {
             return Err("ample memory should select Vulkan".to_owned());
         }
-        let tight = LOW_MEMORY_HEADROOM_BYTES.saturating_add(100).saturating_sub(1);
+        let tight = LOW_MEMORY_HEADROOM_BYTES
+            .saturating_add(100)
+            .saturating_sub(1);
         if !should_fallback_to_ort(tight, 100) {
             return Err("sub-headroom budget should fall back to ORT".to_owned());
         }
         if should_fallback_to_ort(u64::MAX, u64::MAX) != true {
             return Err("gigantic requirement should fall back to ORT".to_owned());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn model_file_gate_refuses_over_cap() -> Result<(), String> {
+        // 728 MiB NLLB decoder: over the 512 MiB cap, refused outright.
+        let decoder = 728 * 1024 * 1024;
+        if decoder <= VULKAN_MODEL_FILE_CAP_BYTES {
+            return Err("test assumes a 728 MiB model exceeds the cap".to_owned());
+        }
+        if path_for_model_file(decoder, Some(u64::MAX)) != ExecutionPath::OrtCpu {
+            return Err("over-cap model should route to ORT even with free memory".to_owned());
+        }
+        // Under-cap file with ample memory stays on Vulkan.
+        let small: u64 = 100 * 1024 * 1024;
+        let ample = small
+            .saturating_add(LOW_MEMORY_HEADROOM_BYTES)
+            .saturating_add(1);
+        if path_for_model_file(small, Some(ample)) != ExecutionPath::Vulkan {
+            return Err("small model with ample memory should stay on Vulkan".to_owned());
+        }
+        // Tight memory still routes the small file to ORT.
+        if path_for_model_file(small, Some(small)) != ExecutionPath::OrtCpu {
+            return Err("small model with tight memory should route to ORT".to_owned());
+        }
+        // Unknown free memory: cap alone decides.
+        if path_for_model_file(small, None) != ExecutionPath::Vulkan {
+            return Err("unknown memory with an under-cap file should attempt Vulkan".to_owned());
         }
         Ok(())
     }

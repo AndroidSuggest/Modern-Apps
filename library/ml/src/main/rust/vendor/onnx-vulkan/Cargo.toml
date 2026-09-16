@@ -1,0 +1,24 @@
+[package]
+name = "onnx-vulkan"
+description = "Run ONNX models on a Vulkan GPU in pure Rust — no ONNX Runtime. Session::load → run → get"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.87"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/automataIA/onnx-vulkan-rs"
+readme = "README.md"
+keywords = ["onnx", "vulkan", "gpu", "inference", "neural-network"]
+categories = ["science", "hardware-support"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+onnx-vulkan-core = { path = "../onnx-vulkan-core" }
+onnx-vulkan-frontend = { path = "../onnx-vulkan-frontend" }
+onnx-vulkan-tune = { path = "../onnx-vulkan-tune" }
+vk-compute = { path = "../vk-compute" }
+log = "0.4"
+
+[dev-dependencies]
+env_logger = "0.11"

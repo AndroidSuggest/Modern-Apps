@@ -2328,6 +2328,7 @@ name = "ml_vulkan"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ash",
  "jni",
  "log",
  "onnx-vulkan",
@@ -2551,7 +2552,6 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "onnx-vulkan"
 version = "0.0.1"
-source = "git+https://github.com/automataIA/onnx-vulkan-rs?rev=c3aa968#c3aa96803575559554089c2f7b2417f2a66f5a0b"
 dependencies = [
  "log",
  "onnx-vulkan-core",
@@ -2563,7 +2563,6 @@ dependencies = [
 [[package]]
 name = "onnx-vulkan-core"
 version = "0.0.1"
-source = "git+https://github.com/automataIA/onnx-vulkan-rs?rev=c3aa968#c3aa96803575559554089c2f7b2417f2a66f5a0b"
 dependencies = [
  "anyhow",
  "log",
@@ -2574,7 +2573,6 @@ dependencies = [
 [[package]]
 name = "onnx-vulkan-frontend"
 version = "0.0.1"
-source = "git+https://github.com/automataIA/onnx-vulkan-rs?rev=c3aa968#c3aa96803575559554089c2f7b2417f2a66f5a0b"
 dependencies = [
  "log",
  "onnx-vulkan-core",
@@ -2586,7 +2584,6 @@ dependencies = [
 [[package]]
 name = "onnx-vulkan-tune"
 version = "0.0.1"
-source = "git+https://github.com/automataIA/onnx-vulkan-rs?rev=c3aa968#c3aa96803575559554089c2f7b2417f2a66f5a0b"
 dependencies = [
  "onnx-vulkan-core",
  "onnx-vulkan-frontend",
@@ -4112,7 +4109,6 @@ dependencies = [
 [[package]]
 name = "vk-compute"
 version = "0.0.1"
-source = "git+https://github.com/automataIA/onnx-vulkan-rs?rev=c3aa968#c3aa96803575559554089c2f7b2417f2a66f5a0b"
 dependencies = [
  "anyhow",
  "ash",

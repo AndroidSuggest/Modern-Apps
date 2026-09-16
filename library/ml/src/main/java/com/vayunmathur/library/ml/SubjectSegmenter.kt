@@ -6,8 +6,6 @@ import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.FloatBuffer
 
 /**
@@ -139,7 +137,7 @@ class SubjectSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Au
                 Log.w(TAG, "vulkan preflight skipped for $asset: $problem")
                 return
             }
-            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            val handle = VulkanSessions.open(key) { modelBytes }
             if (handle != 0L) {
                 vulkanHandle = handle
                 Log.i(TAG, "vulkan session open for $key")
@@ -153,57 +151,23 @@ class SubjectSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Au
     /**
      * Vulkan fast path over the already-preprocessed NCHW input.
      *
-     * Returns null when the bridge returns no bytes or the fused `d0` output cannot be
-     * located, so the caller falls back to ORT. The bridge concatenates every graph output
-     * in name order, so `d0` is found by name via the output shapes; without output metadata
-     * output 0 is assumed to be `d0`, matching the MAML `record(&[d0])` behaviour.
+     * Returns null when the bridge fails or produces too few floats, so the caller falls
+     * back to ORT. The graph emits seven `[1,1,320,320]` maps in declared order; only the
+     * fused `d0` (output 0, the one the MAML `record(&[d0])` path produced) is read, so the
+     * mask is the first f32 output at least [SIZE]×[SIZE] wide.
      */
     private fun vulkanSegment(handle: Long, input: FloatArray): SegmentationMask? {
-        val names = arrayOf(INPUT)
-        val dtypes = intArrayOf(DTYPE_F32)
-        val shapes = longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong())
-        val shapeOffsets = intArrayOf(0)
-        val outBytes = VulkanBridge.run(handle, names, dtypes, shapes, shapeOffsets, floatsToLe(input))
-            ?: return null
-        val floats = leToFloats(outBytes)
-        val outNames = try {
-            VulkanBridge.lastOutputNames(handle)
-        } catch (e: Throwable) {
-            Log.w(TAG, "u2netp vulkan output names unavailable", e)
-            null
-        }
-        val outShapes = try {
-            VulkanBridge.lastOutputShapes(handle)
-        } catch (e: Throwable) {
-            Log.w(TAG, "u2netp vulkan output shapes unavailable", e)
-            null
-        }
-        if (outNames != null && outNames.isNotEmpty() && outShapes != null &&
-            outShapes.size % outNames.size == 0
-        ) {
-            val rank = outShapes.size / outNames.size
-            var offset = 0
-            for (i in outNames.indices) {
-                var numel = 1L
-                for (r in 0 until rank) numel *= outShapes[i * rank + r]
-                val count = numel.toInt()
-                if (outNames[i] == OUTPUT) {
-                    if (count < SIZE * SIZE || offset + count > floats.size) {
-                        Log.w(TAG, "vulkan u2netp output $OUTPUT out of range")
-                        return null
-                    }
-                    return SegmentationMask(SIZE, SIZE, floats.copyOfRange(offset, offset + SIZE * SIZE))
-                }
-                offset += count
-            }
-            Log.w(TAG, "vulkan u2netp output $OUTPUT not in ${outNames.toList()}")
+        val inputs = listOf(
+            VulkanWire.floats(longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong()), input),
+        )
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val out = outputs.firstOrNull {
+            it.dtype == VulkanWire.DTYPE_F32 && it.bytes.size / 4 >= SIZE * SIZE
+        } ?: run {
+            Log.w(TAG, "vulkan u2netp produced no ${SIZE * SIZE}-wide output")
             return null
         }
-        if (floats.size < SIZE * SIZE) {
-            Log.w(TAG, "vulkan u2netp returned ${floats.size} floats, want ${SIZE * SIZE}")
-            return null
-        }
-        return SegmentationMask(SIZE, SIZE, floats.copyOfRange(0, SIZE * SIZE))
+        return SegmentationMask(SIZE, SIZE, out.asFloats().copyOfRange(0, SIZE * SIZE))
     }
 
     companion object {
@@ -214,20 +178,5 @@ class SubjectSegmenter(context: Context, assetName: String = DEFAULT_ASSET) : Au
         private const val INPUT = "input.1"
         /** The fused `d0` output: graph output 0, the only one the MAML path produced. */
         private const val OUTPUT = "1959"
-
-        /** ONNX TensorProto FLOAT, as carried in the Vulkan `dtypes` array. */
-        private const val DTYPE_F32 = 1
-
-        private fun floatsToLe(values: FloatArray): ByteArray {
-            val buf = ByteBuffer.allocate(values.size * 4).order(ByteOrder.LITTLE_ENDIAN)
-            for (v in values) buf.putFloat(v)
-            return buf.array()
-        }
-
-        private fun leToFloats(bytes: ByteArray): FloatArray {
-            val out = FloatArray(bytes.size / 4)
-            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(out)
-            return out
-        }
     }
 }

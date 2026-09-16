@@ -1,0 +1,21 @@
+[package]
+name = "vk-compute"
+description = "Pure-Rust Vulkan compute runtime: deferred command stream, persistent descriptor arena, WGSL→SPIR-V via naga, GPU timestamp profiler"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.87"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/automataIA/onnx-vulkan-rs"
+readme = "README.md"
+keywords = ["vulkan", "gpu", "compute", "ash", "spir-v"]
+categories = ["graphics", "hardware-support"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+ash = "0.38"
+gpu-allocator = { version = "0.28", default-features = false, features = ["vulkan", "std"] }
+naga = { version = "30", features = ["wgsl-in", "spv-out"] }
+anyhow = "1"
+log = "0.4"

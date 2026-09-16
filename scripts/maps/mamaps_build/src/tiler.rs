@@ -95,7 +95,7 @@
 //! `merge_ms` is the number to watch; a parallel run-merge cascade is the escape hatch if it is bad.
 
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::{BTreeMap, BinaryHeap, HashMap};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -310,11 +310,6 @@ impl ChunkEntry {
             buildings: Vec::new(),
             carriageways: Vec::new(),
         }
-    }
-
-    /// The body's index for `name`, interning on first use. `None` in, `NAME_NONE` out.
-    fn intern(&mut self, name: Option<&str>) -> u16 {
-        intern_name(&mut self.names, name)
     }
 }
 

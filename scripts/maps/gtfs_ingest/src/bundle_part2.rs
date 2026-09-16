@@ -329,8 +329,14 @@ struct Sample {
     uy: f64,
 }
 
+/// One walked sample of a line: its point and the unit direction of travel there.
+///
+/// Exposed so a caller that runs several of [`Covered`]'s gates over one line can walk it
+/// once and hand the samples to each, rather than every gate re-walking the same points.
+pub type Walked = ((i32, i32), f64, f64);
+
 /// Walk a polyline at [`SAMPLE_M`], returning each sample with its unit direction of travel.
-fn walk(points: &[(i32, i32)]) -> Vec<((i32, i32), f64, f64)> {
+pub fn walk(points: &[(i32, i32)]) -> Vec<Walked> {
     let walked = resample(points, SAMPLE_M);
     if walked.len() < 2 {
         return Vec::new();
@@ -395,4 +401,11 @@ pub struct Covered {
     cells: std::collections::HashMap<Cell, Vec<u32>>,
     /// Which service drew each sample, parallel to `points`. See [`Covered::crowd`].
     tags: Vec<u32>,
+    /// The `(cell, tag)` pairs already holding a representative. One sample per cell per
+    /// service is enough for [`covers`](Covered::covers) and [`tags_over`](Covered::tags_over):
+    /// both ask whether *any* sample of a service is within a corridor of a point, and every
+    /// sample of one service in one cell answers that identically. Keeping only the first turns
+    /// a cell's occupancy from overlap depth — a trunk republished by a dozen feeds is a dozen
+    /// sample runs in the same cells — into distinct services, which is what those gates read.
+    filled: std::collections::HashSet<(Cell, u32)>,
 }

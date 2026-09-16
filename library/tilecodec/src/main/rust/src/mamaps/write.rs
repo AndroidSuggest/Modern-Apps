@@ -58,7 +58,7 @@ pub mod writer_extra;
 #[cfg(all(test, feature = "write"))]
 mod tests;
 
-pub use codec::{compress_body, compress_body_with};
+pub use codec::{compress_body, compress_body_with, hash64};
 pub use options::Options;
 pub use writer::StreamWriter;
 pub(crate) use writer::Pending;

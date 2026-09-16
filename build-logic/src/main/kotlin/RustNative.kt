@@ -73,11 +73,16 @@ private val KNOWN_RUST_ABIS = listOf(
  *                   the modules that need a second ABI pay for the extra cargo build;
  *                   pass [ABI_ARMV7] for libraries consumed by an app that sets
  *                   `nativeAbis { armv7 = true }`.
+ * @param features   Cargo features to enable via `--features`. Resolved to a plain
+ *                   String list at configuration time so the build stays
+ *                   configuration-cache compatible (only the strings cross into
+ *                   the task action, never the Project).
  */
 fun Project.rustNativeLib(
     crate: String,
     remapLabel: String = crate,
     extraAbis: List<String> = emptyList(),
+    features: List<String> = emptyList(),
 ) {
     // Serialize cargoBuild across all Rust modules to avoid concurrent rustup installs.
     val rustLock = gradle.sharedServices.registerIfAbsent(
@@ -117,6 +122,11 @@ fun Project.rustNativeLib(
             )
     }
 
+    // Config-cache compatible: snapshot to plain Strings at configuration time so
+    // only the strings (never the Project) cross into the task actions below.
+    val cargoFeatureArgs: List<String> =
+        if (features.isNotEmpty()) listOf("--features", features.joinToString(",")) else emptyList()
+
     val perAbi = rustAbis.map { abi ->
         val (abiDir, triple) = abi
         tasks.register<Exec>("cargoBuild_${abiDir.replace('-', '_')}") {
@@ -153,6 +163,17 @@ fun Project.rustNativeLib(
             // Same staleness hazard as shaders above: without this the task stays up
             // to date and the old bindings ship.
             file("src/main/rust/schema").takeIf { it.isDirectory }?.let { inputs.dir(it) }
+            // Whole-crate safety net: track every source under src/main/rust so ANY
+            // rust change invalidates cargoBuild - crucially the vendored dependency
+            // crates under vendor/ (e.g. :library:ml's vendor/onnx-vulkan-core), which
+            // the path-specific inputs above do NOT cover. Before this, editing a
+            // vendored crate left the task UP-TO-DATE and shipped a stale .so. Exclude
+            // target/ because cargo writes this task's own .so there; folding build
+            // output back in as an input means the task can never be up to date. The
+            // FileTree is a FileCollection resolved at configuration time, so only the
+            // file set (never the Project) crosses into the task action.
+            inputs.files(fileTree("src/main/rust") { exclude("target/**") })
+                .withPropertyName("rustCrateTree")
             // Root workspace unified (Cargo.toml + Cargo.lock + rust-toolchain.toml)
             inputs.file(rootProject.file("Cargo.toml"))
             inputs.file(rootProject.file("Cargo.lock"))
@@ -205,7 +226,15 @@ fun Project.rustNativeLib(
             }
             environment("CARGO_INCREMENTAL", "0")
 
-            commandLine("$cargoBin/cargo$exeExt", "build", "--locked", "--release", "--target", triple)
+            commandLine(
+                "$cargoBin/cargo$exeExt",
+                "build",
+                "--locked",
+                "--release",
+                "--target",
+                triple,
+                *cargoFeatureArgs.toTypedArray(),
+            )
 
             doLast {
                 destSo.parentFile.mkdirs()

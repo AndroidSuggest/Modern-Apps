@@ -32,6 +32,7 @@ pub mod nodeloc;
 pub mod osm;
 pub mod par;
 pub mod pbf;
+pub(crate) mod progress;
 pub mod pbf_extra;
 pub mod poi_attrs;
 pub mod poi_build;

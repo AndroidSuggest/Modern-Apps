@@ -4,7 +4,7 @@ Features:
 - Shows how long each app is used per day, with a dashboard and per-app details
 - Sets per-app timers that pause the app when its time is used up
 - Focus mode pauses distracting apps on demand or on a schedule, with a Quick Settings tile
-- Bedtime wind-down dims the screen to grayscale and turns on Do Not Disturb overnight
+- Wind Down dims the screen to grayscale and turns on Do Not Disturb overnight
 - Mindful nudges and launch-friction screens for apps you want to use less
 - Runs entirely on the device; no account, no sync and nothing uploaded
 

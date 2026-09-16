@@ -49,6 +49,14 @@ interface PhotoDao {
     @Query("UPDATE Photo SET isTrashed = 1 WHERE id = :id")
     suspend fun setTrashed(id: Long)
 
+    /**
+     * Retarget the MediaStore bucket (album) column for [ids]. Column-targeted so
+     * it never rewrites the heavy clipEmbedding BLOB — the Albums move optimistically
+     * reflects a folder change before the next sync backfills BUCKET_DISPLAY_NAME.
+     */
+    @Query("UPDATE Photo SET album = :album WHERE id IN (:ids)")
+    suspend fun setAlbum(ids: List<Long>, album: String?)
+
     @Query("SELECT * FROM Photo WHERE isTrashed = 0 AND (ocrText LIKE '%' || :query || '%' OR name LIKE '%' || :query || '%') ORDER BY date DESC")
     suspend fun searchPhotos(query: String): List<Photo>
 

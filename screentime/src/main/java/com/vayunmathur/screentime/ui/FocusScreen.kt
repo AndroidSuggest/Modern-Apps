@@ -163,7 +163,7 @@ fun FocusScreen(
             val app = state.apps[index]
             SettingsSwitchRow(
                 title = app.label,
-                supportingText = formatMinutes(app.usedMinutes),
+                supportingText = formatStat(app.usedMillis),
                 checked = app.packageName in focus.pausedPackages,
                 onCheckedChange = { onAppPausedChange(app.packageName, it) },
             )
@@ -212,12 +212,3 @@ private const val FOCUS_DAYS = 7
 
 private fun formatScheduleMinute(minuteOfDay: Int): String =
     "%02d:%02d".format(minuteOfDay / 60, minuteOfDay % 60)
-
-private fun formatMinutes(minutes: Long): String =
-    if (minutes < 60) {
-        "$minutes min"
-    } else {
-        val hours = minutes / 60
-        val rest = minutes % 60
-        if (rest == 0L) "$hours h" else "$hours h $rest min"
-    }

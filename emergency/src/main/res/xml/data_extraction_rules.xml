@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <!--
+      Nothing to carry. Medical info and emergency contacts are device-local emergency
+      data; a backup that restores them onto another device would misidentify the owner
+      to first responders. `allowBackup="false"` in the manifest already says so; this
+      file exists because the manifest references it.
+    -->
+    <cloud-backup />
+    <device-transfer />
+</data-extraction-rules>

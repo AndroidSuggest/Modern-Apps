@@ -43,6 +43,78 @@ pub fn probe_compression(path: &Path, blobs: &[BlobLoc]) -> Result<()> {
     Ok(())
 }
 
+/// The file name a full pass's blob-kinds mask is cached under, beside a tool's output.
+pub const BLOB_KINDS_FILE: &str = "blob_kinds.bin";
+
+/// Magic + version for the blob-kinds sidecar. Bumped if the header or payload layout changes, so an
+/// old sidecar is rejected rather than misread.
+const BLOB_KINDS_MAGIC: &[u8; 4] = b"MBK1";
+
+/// Header bytes before the per-blob kind payload: magic, blob count, source length, mtime.
+const BLOB_KINDS_HEAD: usize = 4 + 8 + 8 + 8 + 4;
+
+/// Persist a complete per-blob kind mask beside a tool's output, guarded against the source `.pbf`
+/// it describes.
+///
+/// A full pass already learns which blobs hold nodes, ways or relations; two tools run back to back
+/// over the same file (`road_graph` then `mamaps_build`) both want that mask, and the second would
+/// otherwise pay a full scan to recompute it. Writing it here lets the second load it instead. The
+/// guard -- blob count, file length and mtime -- is what makes a stale sidecar a fall-back rather
+/// than a wrong answer; see [`load_blob_kinds`].
+pub fn write_blob_kinds(dir: &Path, input: &Path, kinds: &[u8]) -> Result<()> {
+    let meta = std::fs::metadata(input)
+        .map_err(|e| Error(format!("cannot stat {}: {e}", input.display())))?;
+    let (secs, nanos) = mtime_parts(&meta);
+    let mut out = Vec::with_capacity(BLOB_KINDS_HEAD + kinds.len());
+    out.extend_from_slice(BLOB_KINDS_MAGIC);
+    out.extend_from_slice(&(kinds.len() as u64).to_le_bytes());
+    out.extend_from_slice(&meta.len().to_le_bytes());
+    out.extend_from_slice(&secs.to_le_bytes());
+    out.extend_from_slice(&nanos.to_le_bytes());
+    out.extend_from_slice(kinds);
+    let path = dir.join(BLOB_KINDS_FILE);
+    std::fs::write(&path, &out)
+        .map_err(|e| Error(format!("cannot write {}: {e}", path.display())))
+}
+
+/// Load a blob-kinds mask written by [`write_blob_kinds`], but only if it still describes `input`.
+///
+/// `None` on any mismatch or error -- a missing file, wrong magic, a different blob count, a changed
+/// length or mtime, a short read -- so the caller falls back to a full scan. `blobs` supplies the
+/// count the mask must match; nothing here trusts the file's own count past that check. The returned
+/// mask is byte-for-byte what a full pass over `input` would produce, so feeding it to a later pass
+/// changes no output.
+pub fn load_blob_kinds(dir: &Path, input: &Path, blobs: &[BlobLoc]) -> Option<Vec<u8>> {
+    let raw = std::fs::read(dir.join(BLOB_KINDS_FILE)).ok()?;
+    if raw.len() < BLOB_KINDS_HEAD || &raw[0..4] != BLOB_KINDS_MAGIC {
+        return None;
+    }
+    let count = u64::from_le_bytes(raw[4..12].try_into().ok()?);
+    let file_len = u64::from_le_bytes(raw[12..20].try_into().ok()?);
+    let secs = u64::from_le_bytes(raw[20..28].try_into().ok()?);
+    let nanos = u32::from_le_bytes(raw[28..32].try_into().ok()?);
+    // The count must match the file being read now, and the payload must be exactly that many bytes:
+    // a truncated or padded sidecar is as untrustworthy as a stale one.
+    if count as usize != blobs.len() || raw.len() != BLOB_KINDS_HEAD + blobs.len() {
+        return None;
+    }
+    let meta = std::fs::metadata(input).ok()?;
+    if meta.len() != file_len || mtime_parts(&meta) != (secs, nanos) {
+        return None;
+    }
+    Some(raw[BLOB_KINDS_HEAD..].to_vec())
+}
+
+/// A file's modification time as `(seconds, nanoseconds)` since the Unix epoch, or `(0, 0)` when the
+/// platform cannot report one. Split rather than a single `u128` so the sidecar header is fixed-width
+/// integers that any reader can parse without a wide type.
+fn mtime_parts(meta: &std::fs::Metadata) -> (u64, u32) {
+    match meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()) {
+        Some(d) => (d.as_secs(), d.subsec_nanos()),
+        None => (0, 0),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,5 +458,41 @@ mod tests {
         blob[0] = 4 << 3 | WIRE_BYTES;
         let err = inflate_blob(&blob, &mut out).unwrap_err();
         assert!(err.0.contains("lzma"), "{}", err.0);
+    }
+
+    /// The blob-kinds sidecar round trips, and every guard rejects a file that no longer matches: a
+    /// stale sidecar must load as `None` (a full-scan fallback), never as a wrong mask.
+    #[test]
+    fn a_blob_kinds_sidecar_round_trips_and_the_guards_reject_a_changed_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "osm_ingest_bk_{}_{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("in.osm.pbf");
+        std::fs::write(&input, b"a fake pbf, only its length and mtime matter here").unwrap();
+
+        let blobs: Vec<BlobLoc> = (0..5).map(|_| BlobLoc { offset: 0, datasize: 0 }).collect();
+        let kinds = vec![KIND_NODES, KIND_NODES | KIND_WAYS, KIND_WAYS, KIND_RELATIONS, 0];
+        write_blob_kinds(&dir, &input, &kinds).unwrap();
+
+        // Happy path: same file, same blob count.
+        assert_eq!(load_blob_kinds(&dir, &input, &blobs).as_deref(), Some(kinds.as_slice()));
+        // A different blob count is a different file to pass 1, whatever the sidecar claims.
+        let fewer: Vec<BlobLoc> = blobs[..4].to_vec();
+        assert!(load_blob_kinds(&dir, &input, &fewer).is_none(), "blob-count guard did not fire");
+        // A changed source length must invalidate it.
+        std::fs::write(&input, b"a different length entirely").unwrap();
+        assert!(load_blob_kinds(&dir, &input, &blobs).is_none(), "length guard did not fire");
+        // Wrong magic: a foreign or corrupt file at the path is rejected, not misread.
+        std::fs::write(dir.join(BLOB_KINDS_FILE), b"not a real sidecar").unwrap();
+        assert!(load_blob_kinds(&dir, &input, &blobs).is_none(), "magic guard did not fire");
+        // A missing sidecar is simply a full-scan fallback.
+        std::fs::remove_file(dir.join(BLOB_KINDS_FILE)).unwrap();
+        assert!(load_blob_kinds(&dir, &input, &blobs).is_none(), "a missing sidecar must be None");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

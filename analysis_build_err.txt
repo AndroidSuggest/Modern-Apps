@@ -1,0 +1,400 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\astronomy\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\photos\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\office\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\weather\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\pdf\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\camera\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\maps\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\networklocation\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\euicc\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\passwords\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\vpn\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\library\e2ee-p2p\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\measure\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\communicate\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\youpipe\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   C:\Users\Vayun\Documents\code\Modern-Apps\share\src\main\rust\Cargo.toml
+workspace: C:\Users\Vayun\Documents\code\Modern-Apps\Cargo.toml
+warning: C:\Users\Vayun\Documents\code\Modern-Apps\third_party\betocore\crypto_provider_rustcrypto\Cargo.toml: `default-features` is ignored for rand, since `default-features` was not specified for `workspace.dependencies.rand`, this could become a hard error in the future
+    Checking ml_vulkan v0.1.0 (C:\Users\Vayun\Documents\code\Modern-Apps\library\ml\src\main\rust)
+error[E0432]: unresolved import `ash`
+  --> library\ml\src\main\rust\src\device.rs:29:5
+   |
+29 | use ash::{Entry, vk};
+   |     ^^^ use of unresolved module or unlinked crate `ash`
+   |
+   = help: if you wanted to use a crate named `ash`, use `cargo add ash` to add it to your `Cargo.toml`
+
+error[E0432]: unresolved import `super::vulkan_session::KvCache`
+  --> library\ml\src\main\rust\src\jni_bridge.rs:61:41
+   |
+61 | use super::vulkan_session::{GpuSession, KvCache};
+   |                                         ^^^^^^^ no `KvCache` in `vulkan_session`
+
+error[E0433]: cannot find `GpuTensor` in `onnx_vulkan`
+   --> library\ml\src\main\rust\src\vulkan_session.rs:101:49
+    |
+101 |             inputs.into_iter().map(onnx_vulkan::GpuTensor::from).collect();
+    |                                                 ^^^^^^^^^ could not find `GpuTensor` in `onnx_vulkan`
+    |
+help: an enum with a similar name exists
+    |
+101 -             inputs.into_iter().map(onnx_vulkan::GpuTensor::from).collect();
+101 +             inputs.into_iter().map(onnx_vulkan::Tensor::from).collect();
+    |
+
+error[E0425]: cannot find type `GpuTensor` in crate `onnx_vulkan`
+   --> library\ml\src\main\rust\src\vulkan_session.rs:100:42
+    |
+100 |         let gpu_inputs: Vec<onnx_vulkan::GpuTensor> =
+    |                                          ^^^^^^^^^
+    |
+   ::: C:\Users\Vayun\.cargo\git\checkouts\onnx-vulkan-rs-91074aa5a2270394\c3aa968\crates\onnx-vulkan-core\src\device.rs:36:1
+    |
+ 36 | pub enum Tensor<'a> {
+    | ------------------- similarly named enum `Tensor` defined here
+    |
+help: an enum with a similar name exists
+    |
+100 -         let gpu_inputs: Vec<onnx_vulkan::GpuTensor> =
+100 +         let gpu_inputs: Vec<onnx_vulkan::Tensor> =
+    |
+
+error[E0425]: cannot find function `probe_json` in module `probe`
+   --> library\ml\src\main\rust\src\jni_bridge.rs:165:47
+    |
+165 |         jstring_or_null(&mut env, Some(probe::probe_json()))
+    |                                               ^^^^^^^^^^ not found in `probe`
+
+error[E0308]: mismatched types
+  --> library\ml\src\main\rust\src\vulkan_session.rs:66:60
+   |
+66 |         onnx_vulkan::Error::Load(msg) => VulcanError::Load(msg),
+   |                                          ----------------- ^^^ expected `String`, found `Error`
+   |                                          |
+   |                                          arguments to this enum variant are incorrect
+   |
+note: tuple variant defined here
+  --> library\ml\src\main\rust\src\vulkan_session.rs:25:5
+   |
+25 |     Load(String),
+   |     ^^^^
+help: try using a conversion method
+   |
+66 |         onnx_vulkan::Error::Load(msg) => VulcanError::Load(msg.to_string()),
+   |                                                               ++++++++++++
+
+error[E0599]: no associated function or constant named `from_bytes` found for struct `Session` in the current scope
+   --> library\ml\src\main\rust\src\vulkan_session.rs:81:45
+    |
+ 81 |         let session = onnx_vulkan::Session::from_bytes(bytes, base_dir).map_err(map_native_error)?;
+    |                                             ^^^^^^^^^^ associated function or constant not found in `Session`
+    |
+note: if you're trying to build a new `Session` consider using one of the following associated functions:
+      Session::load
+      Session::load_from_bytes
+   --> C:\Users\Vayun\.cargo\git\checkouts\onnx-vulkan-rs-91074aa5a2270394\c3aa968\crates\onnx-vulkan\src\lib.rs:147:5
+    |
+147 |     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+154 |     pub fn load_from_bytes(bytes: &[u8], base_dir: Option<&Path>) -> Result<Self> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is an associated function `load_from_bytes` with a similar name
+    |
+ 81 |         let session = onnx_vulkan::Session::load_from_bytes(bytes, base_dir).map_err(map_native_error)?;
+    |                                             +++++
+
+error[E0599]: the method `into_iter` exists for struct `Run<'_>`, but its trait bounds were not satisfied
+   --> library\ml\src\main\rust\src\vulkan_session.rs:104:14
+    |
+103 | /         gpu_outputs
+104 | |             .into_iter()
+    | |             -^^^^^^^^^ method cannot be called on `Run<'_>` due to unsatisfied trait bounds
+    | |_____________|
+    |
+    |
+   ::: C:\Users\Vayun\.cargo\git\checkouts\onnx-vulkan-rs-91074aa5a2270394\c3aa968\crates\onnx-vulkan\src\lib.rs:726:1
+    |
+726 |   pub struct Run<'a> {
+    |   ------------------ doesn't satisfy `Run<'_>: IntoIterator` or `Run<'_>: Iterator`
+    |
+    = note: the following trait bounds were not satisfied:
+            `Run<'_>: Iterator`
+            which is required by `Run<'_>: IntoIterator`
+            `&Run<'_>: Iterator`
+            which is required by `&Run<'_>: IntoIterator`
+            `&mut Run<'_>: Iterator`
+            which is required by `&mut Run<'_>: IntoIterator`
+
+error[E0277]: the trait bound `VulcanError: From<Infallible>` is not satisfied
+   --> library\ml\src\main\rust\src\vulkan_session.rs:105:27
+    |
+105 |             .map(|tensor| HostTensor::try_from(tensor).map_err(VulcanError::from))
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `From<Infallible>` is not implemented for `VulcanError`
+      but trait `From<TensorError>` is implemented for it
+   --> library\ml\src\main\rust\src\vulkan_session.rs:37:14
+    |
+ 37 |     Tensor(#[from] TensorError),
+    |              ^^^^
+    = help: for that trait implementation, expected `TensorError`, found `Infallible`
+
+error[E0277]: the trait bound `VulcanError: From<Infallible>` is not satisfied
+   --> library\ml\src\main\rust\src\vulkan_session.rs:105:64
+    |
+105 |             .map(|tensor| HostTensor::try_from(tensor).map_err(VulcanError::from))
+    |                                                                ^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `From<Infallible>` is not implemented for `VulcanError`
+      but trait `From<TensorError>` is implemented for it
+   --> library\ml\src\main\rust\src\vulkan_session.rs:37:14
+    |
+ 37 |     Tensor(#[from] TensorError),
+    |              ^^^^
+    = help: for that trait implementation, expected `TensorError`, found `Infallible`
+
+error[E0599]: no method named `plan_stats` found for reference `&Session` in the current scope
+   --> library\ml\src\main\rust\src\vulkan_session.rs:115:78
+    |
+115 |                 Some(session) => format!("key={} plan={}", self.key, session.plan_stats()),
+    |                                                                              ^^^^^^^^^^ method not found in `&Session`
+
+error[E0061]: this function takes 2 arguments but 0 arguments were supplied
+   --> library\ml\src\main\rust\src\vulkan_session.rs:151:20
+    |
+151 |             cache: onnx_vulkan::KvCache::new(),
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^-- two arguments of type `&Session` and `usize` are missing
+    |
+note: associated function defined here
+   --> C:\Users\Vayun\.cargo\git\checkouts\onnx-vulkan-rs-91074aa5a2270394\c3aa968\crates\onnx-vulkan\src\lib.rs:634:12
+    |
+634 |     pub fn new(session: &Session, max_seq_len: usize) -> Result<Self> {
+    |            ^^^
+help: provide the arguments
+    |
+151 |             cache: onnx_vulkan::KvCache::new(/* &Session */, /* usize */),
+    |                                              +++++++++++++++++++++++++++
+
+error[E0308]: mismatched types
+   --> library\ml\src\main\rust\src\vulkan_session.rs:151:20
+    |
+151 |             cache: onnx_vulkan::KvCache::new(),
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `KvCache`, found `Result<KvCache, Error>`
+    |
+    = note: expected struct `KvCache`
+                 found enum `Result<KvCache, onnx_vulkan::Error>`
+help: consider using `Result::expect` to unwrap the `Result<KvCache, onnx_vulkan::Error>` value, panicking if the value is a `Result::Err`
+    |
+151 |             cache: onnx_vulkan::KvCache::new().expect("REASON"),
+    |                                               +++++++++++++++++
+
+error[E0308]: mismatched types
+    --> library\ml\src\main\rust\src\jni_bridge.rs:78:20
+     |
+  78 |     env.get_string(value)
+     |         ---------- ^^^^^ expected `&JString<'_>`, found `JString<'_>`
+     |         |
+     |         arguments to this method are incorrect
+     |
+note: method defined here
+    --> C:\Users\Vayun\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\jni-0.21.1\src\wrapper\jnienv.rs:1629:12
+     |
+1629 |     pub fn get_string<'other_local: 'obj_ref, 'obj_ref>(
+     |            ^^^^^^^^^^
+help: consider borrowing here
+     |
+  78 |     env.get_string(&value)
+     |                    +
+
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+   --> library\ml\src\main\rust\src\jni_bridge.rs:184:15
+    |
+184 |         match GpuSession::load(&bytes, &tag) {
+    |               ^^^^^^^^^^^^^^^^         ---- argument #2 of type `Option<&str>` is missing
+    |
+note: associated function defined here
+   --> library\ml\src\main\rust\src\vulkan_session.rs:80:12
+    |
+ 80 |     pub fn load(bytes: &[u8], base_dir: Option<&str>, key: &str) -> Result<Self, VulcanError> {
+    |            ^^^^               ----------------------
+help: provide the argument
+    |
+184 |         match GpuSession::load(&bytes, /* Option<&str> */, &tag) {
+    |                                        +++++++++++++++++++
+
+error[E0599]: no associated function or constant named `preflight` found for struct `GpuSession` in the current scope
+   --> library\ml\src\main\rust\src\jni_bridge.rs:204:41
+    |
+204 |         let summary = match GpuSession::preflight(&bytes) {
+    |                                         ^^^^^^^^^ associated function or constant not found in `GpuSession`
+    |
+   ::: library\ml\src\main\rust\src\vulkan_session.rs:52:1
+    |
+ 52 | pub struct GpuSession {
+    | --------------------- associated function or constant `preflight` not found for this struct
+    |
+note: if you're trying to build a new `GpuSession`, consider using `GpuSession::load` which returns `Result<GpuSession, VulcanError>`
+   --> library\ml\src\main\rust\src\vulkan_session.rs:80:5
+    |
+ 80 |     pub fn load(bytes: &[u8], base_dir: Option<&str>, key: &str) -> Result<Self, VulcanError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `load_path` found for struct `GpuSession` in the current scope
+   --> library\ml\src\main\rust\src\jni_bridge.rs:224:27
+    |
+224 |         match GpuSession::load_path(&path) {
+    |                           ^^^^^^^^^ associated function or constant not found in `GpuSession`
+    |
+   ::: library\ml\src\main\rust\src\vulkan_session.rs:52:1
+    |
+ 52 | pub struct GpuSession {
+    | --------------------- associated function or constant `load_path` not found for this struct
+    |
+note: if you're trying to build a new `GpuSession`, consider using `GpuSession::load` which returns `Result<GpuSession, VulcanError>`
+   --> library\ml\src\main\rust\src\vulkan_session.rs:80:5
+    |
+ 80 |     pub fn load(bytes: &[u8], base_dir: Option<&str>, key: &str) -> Result<Self, VulcanError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0308]: mismatched types
+   --> library\ml\src\main\rust\src\jni_bridge.rs:263:71
+    |
+263 |         let output = with_session(handle, None, |session| session.run(&input).ok());
+    |                                                                   --- ^^^^^^ expected `Vec<HostTensor>`, found `&Vec<u8>`
+    |                                                                   |
+    |                                                                   arguments to this method are incorrect
+    |
+    = note: expected struct `Vec<tensors::HostTensor>`
+            found reference `&Vec<u8>`
+note: method defined here
+   --> library\ml\src\main\rust\src\vulkan_session.rs:92:12
+    |
+ 92 |     pub fn run(&self, inputs: Vec<HostTensor>) -> Result<Vec<HostTensor>, VulcanError> {
+    |            ^^^        -----------------------
+
+error[E0308]: mismatched types
+   --> library\ml\src\main\rust\src\jni_bridge.rs:264:34
+    |
+264 |         jbytes_or_null(&mut env, output)
+    |         --------------           ^^^^^^ expected `Option<Vec<u8>>`, found `Option<Vec<HostTensor>>`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected enum `Option<Vec<u8>>`
+               found enum `Option<Vec<tensors::HostTensor>>`
+note: function defined here
+   --> library\ml\src\main\rust\src\jni_bridge.rs:97:4
+    |
+ 97 | fn jbytes_or_null(env: &mut JNIEnv, data: Option<Vec<u8>>) -> jbyteArray {
+    |    ^^^^^^^^^^^^^^                   ---------------------
+
+error[E0599]: no method named `output_shapes_json` found for mutable reference `&mut GpuSession` in the current scope
+   --> library\ml\src\main\rust\src\jni_bridge.rs:278:26
+    |
+278 |             Some(session.output_shapes_json())
+    |                          ^^^^^^^^^^^^^^^^^^ method not found in `&mut GpuSession`
+
+error[E0599]: no method named `output_names_json` found for mutable reference `&mut GpuSession` in the current scope
+   --> library\ml\src\main\rust\src\jni_bridge.rs:293:70
+    |
+293 |         let json = with_session(handle, None, |session| Some(session.output_names_json()));
+    |                                                                      ^^^^^^^^^^^^^^^^^ method not found in `&mut GpuSession`
+
+error[E0599]: no method named `create_kv` found for mutable reference `&mut GpuSession` in the current scope
+   --> library\ml\src\main\rust\src\jni_bridge.rs:310:27
+    |
+310 |             match session.create_kv(max_tokens) {
+    |                           ^^^^^^^^^ method not found in `&mut GpuSession`
+
+error[E0433]: cannot find module or crate `ash` in this scope
+   --> library\ml\src\main\rust\src\device.rs:142:16
+    |
+142 |     instance: &ash::Instance,
+    |                ^^^ use of unresolved module or unlinked crate `ash`
+    |
+    = help: if you wanted to use a crate named `ash`, use `cargo add ash` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `ash` in this scope
+   --> library\ml\src\main\rust\src\device.rs:165:16
+    |
+165 |     instance: &ash::Instance,
+    |                ^^^ use of unresolved module or unlinked crate `ash`
+    |
+    = help: if you wanted to use a crate named `ash`, use `cargo add ash` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `ash` in this scope
+   --> library\ml\src\main\rust\src\device.rs:194:45
+    |
+194 | fn create_instance(entry: &Entry) -> Result<ash::Instance, DeviceError> {
+    |                                             ^^^ use of unresolved module or unlinked crate `ash`
+    |
+    = help: if you wanted to use a crate named `ash`, use `cargo add ash` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `ash` in this scope
+   --> library\ml\src\main\rust\src\device.rs:207:16
+    |
+207 |     instance: &ash::Instance,
+    |                ^^^ use of unresolved module or unlinked crate `ash`
+    |
+    = help: if you wanted to use a crate named `ash`, use `cargo add ash` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `ash` in this scope
+   --> library\ml\src\main\rust\src\device.rs:249:15
+    |
+249 |     instance: ash::Instance,
+    |               ^^^ use of unresolved module or unlinked crate `ash`
+    |
+    = help: if you wanted to use a crate named `ash`, use `cargo add ash` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `ash` in this scope
+   --> library\ml\src\main\rust\src\device.rs:251:14
+    |
+251 |     logical: ash::Device,
+    |              ^^^ use of unresolved module or unlinked crate `ash`
+    |
+    = help: if you wanted to use a crate named `ash`, use `cargo add ash` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `ash` in this scope
+   --> library\ml\src\main\rust\src\device.rs:260:37
+    |
+260 |     pub const fn logical(&self) -> &ash::Device {
+    |                                     ^^^ use of unresolved module or unlinked crate `ash`
+    |
+    = help: if you wanted to use a crate named `ash`, use `cargo add ash` to add it to your `Cargo.toml`
+
+Some errors have detailed explanations: E0061, E0277, E0308, E0425, E0432, E0433, E0599.
+For more information about an error, try `rustc --explain E0061`.
+error: could not compile `ml_vulkan` (lib) due to 29 previous errors

@@ -52,20 +52,16 @@ data class RecognizedLine(
  * is ported from `post::{dbnet,crop,ctc,ocr}` and now runs here in Kotlin rather than
  * natively, crossing one session per region instead of one JNI call per bitmap.
  *
- * # Vulkan-first inference (task 6)
+ * # Vulkan-first inference
  *
- * Landed `VulkanSessions`/`VulkanBridge` API (same package
- * `com.vayunmathur.library.ml`): `isUsable()`, `open(key, readModel, baseDir)`,
- * `preflight(key, readModel)` (null = clear), `close(handle)` on
- * `VulkanSessions`; packed little-endian `run` plus `lastOutputNames` /
- * `lastOutputShapes` on `VulkanBridge`.
- *
- * Vulkan only runs the two graphs. Preprocess (`OnnxPreprocess.readablePixels`,
- * `letterboxPlanar`, the BGR recognition normalisation below) and post (DBNet regions,
- * rotated crop/warp, CTC decode, reading order) stay in Kotlin and are shared by both
- * paths. Detection and recognition each hold their own `vulkanHandle` next to their ORT
- * session; every graph call tries Vulkan first and falls back to ORT, so mixed states
- * (det on Vulkan, rec on ORT and vice versa) all serve.
+ * When [VulkanSessions] reports the driver usable and a graph is allowlisted, that graph
+ * runs on the Vulkan fast path through the self-describing [VulkanWire] payload; ORT is kept
+ * as the fallback. Preprocess (`OnnxPreprocess.readablePixels`, `letterboxPlanar`, the BGR
+ * recognition normalisation below) and post (DBNet regions, rotated crop/warp, CTC decode,
+ * reading order) stay in Kotlin and are shared by both paths. Detection and recognition each
+ * hold their own `vulkanHandle` next to their ORT session; every graph call tries Vulkan
+ * first and falls back to ORT, so mixed states (det on Vulkan, rec on ORT and vice versa)
+ * all serve.
  *
  * # Availability
  *
@@ -189,7 +185,7 @@ class TextRecognizer(
                 Log.w(TAG, "vulkan preflight skipped for $asset: $problem")
                 return
             }
-            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            val handle = VulkanSessions.open(key) { modelBytes }
             if (handle != 0L) {
                 assign(handle)
                 Log.i(TAG, "vulkan session open for $key")
@@ -225,33 +221,17 @@ class TextRecognizer(
 
     /**
      * Detection probability map from Vulkan, or null to fall back to ORT.
-     * Single output (`fetch_name_0 [B,1,H,W]`); validated against
-     * [VulkanBridge.lastOutputShapes] when available.
+     * Single output (`fetch_name_0 [B,1,H,W]`) selected by dtype; a leading batch/channel
+     * wrap collapses to the H*W map on the Kotlin side.
      */
     private fun vulkanDetMap(handle: Long, input: FloatArray): FloatArray? {
         if (handle == 0L) return null
-        val outBytes = try {
-            VulkanBridge.run(
-                handle,
-                arrayOf(DET_INPUT),
-                intArrayOf(DTYPE_F32),
-                longArrayOf(1, 3, DET_SIDE.toLong(), DET_SIDE.toLong()),
-                longArrayOf(0),
-                floatsToLe(input),
-            )
-        } catch (_: Throwable) {
-            return null
-        } ?: return null
-        val flat = leToFloats(outBytes)
+        val inputs = listOf(
+            VulkanWire.floats(longArrayOf(1, 3, DET_SIDE.toLong(), DET_SIDE.toLong()), input),
+        )
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val flat = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 }?.asFloats() ?: return null
         if (flat.isEmpty()) return null
-        runCatching { VulkanBridge.lastOutputShapes(handle) }.getOrNull()?.let { shapes ->
-            if (shapes.isNotEmpty()) {
-                var product = 1L
-                for (dim in shapes) product *= if (dim < 0) 1L else dim
-                // Batch/singleton dims collapse to the H*W map on the Kotlin side.
-                if (flat.size != product.toInt() && flat.size != DET_SIDE * DET_SIDE) return null
-            }
-        }
         if (flat.size != DET_SIDE * DET_SIDE) {
             // Single-output graph: accept a leading batch/channel wrap, reject anything else.
             if (flat.size < DET_SIDE * DET_SIDE) return null
@@ -280,31 +260,16 @@ class TextRecognizer(
 
     /**
      * Recognition logits from Vulkan, or null to fall back to ORT.
-     * Single output (`fetch_name_0 [B,T,838]` flattened to `T*838`).
+     * Single output (`fetch_name_0 [B,T,838]` flattened to `T*838`) selected by dtype.
      */
     private fun vulkanRecLogits(handle: Long, input: FloatArray): FloatArray? {
         if (handle == 0L) return null
-        val outBytes = try {
-            VulkanBridge.run(
-                handle,
-                arrayOf(REC_INPUT),
-                intArrayOf(DTYPE_F32),
-                longArrayOf(1, 3, REC_HEIGHT.toLong(), REC_WIDTH.toLong()),
-                longArrayOf(0),
-                floatsToLe(input),
-            )
-        } catch (_: Throwable) {
-            return null
-        } ?: return null
-        val flat = leToFloats(outBytes)
+        val inputs = listOf(
+            VulkanWire.floats(longArrayOf(1, 3, REC_HEIGHT.toLong(), REC_WIDTH.toLong()), input),
+        )
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val flat = outputs.firstOrNull { it.dtype == VulkanWire.DTYPE_F32 }?.asFloats() ?: return null
         if (flat.isEmpty()) return null
-        runCatching { VulkanBridge.lastOutputShapes(handle) }.getOrNull()?.let { shapes ->
-            if (shapes.isNotEmpty()) {
-                var product = 1L
-                for (dim in shapes) product *= if (dim < 0) 1L else dim
-                if (flat.size != product.toInt() && flat.size != REC_TIMESTEPS * LOGITS) return null
-            }
-        }
         if (flat.size != REC_TIMESTEPS * LOGITS) return null
         return flat
     }
@@ -691,22 +656,5 @@ class TextRecognizer(
         private const val ELONGATED = 2.7f
         private const val PAD_LEVEL = 128
         private const val ROW_BAND = 16f
-
-        /** ONNX TensorProto FLOAT, as carried in the Vulkan `dtypes` array. */
-        private const val DTYPE_F32 = 1
-
-        private fun floatsToLe(values: FloatArray): ByteArray {
-            val buf = java.nio.ByteBuffer.allocate(values.size * 4)
-                .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-            for (v in values) buf.putFloat(v)
-            return buf.array()
-        }
-
-        private fun leToFloats(bytes: ByteArray): FloatArray {
-            val out = FloatArray(bytes.size / 4)
-            java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                .asFloatBuffer().get(out)
-            return out
-        }
     }
 }

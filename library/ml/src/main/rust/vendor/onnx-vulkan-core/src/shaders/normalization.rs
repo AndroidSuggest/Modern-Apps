@@ -1,0 +1,219 @@
+//! Shared shaders and dispatch layouts for row normalizations
+//! (`Softmax`, `LayerNormalization`, `SimplifiedLayerNormalization`,
+//! `SkipSimplifiedLayerNormalization`).
+
+pub const SOFTMAX_BINDINGS: u32 = 2;
+pub const SOFTMAX_PUSH_BYTES: u32 = 20;
+pub const LAYERNORM_BINDINGS: u32 = 6;
+pub const LAYERNORM_PUSH_BYTES: u32 = 24;
+pub const BATCHNORM_BINDINGS: u32 = 6;
+pub const BATCHNORM_PUSH_BYTES: u32 = 16;
+
+/// f32 `BatchNormalization` inference (`is_test`): one thread per element,
+/// `out = (x - mean)/sqrt(var + eps) * scale + B`, with all four parameters
+/// indexed per channel. Channel is dim 1 (NCHW): for a contiguous
+/// `[N, C, spatial]` layout it is `(i / spatial) % C`. `var` is renamed to
+/// `var_in` because `var` is a WGSL keyword.
+pub const BATCHNORM: &str = r#"
+@group(0) @binding(0) var<storage, read> x: array<f32>;
+@group(0) @binding(1) var<storage, read> scale: array<f32>;
+@group(0) @binding(2) var<storage, read> bias: array<f32>;
+@group(0) @binding(3) var<storage, read> mean: array<f32>;
+@group(0) @binding(4) var<storage, read> var_in: array<f32>;
+@group(0) @binding(5) var<storage, read_write> out: array<f32>;
+
+struct Push { n: u32, channels: u32, spatial: u32, eps: f32 }
+var<immediate> pc: Push;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= pc.n) { return; }
+    let c = (i / pc.spatial) % pc.channels;
+    let inv_std = inverseSqrt(var_in[c] + pc.eps);
+    out[i] = (x[i] - mean[c]) * inv_std * scale[c] + bias[c];
+}
+"#;
+
+/// Numerically stable f32 Softmax on **any axis**: one workgroup per
+/// row, max → sum of exps → normalization, with shared memory reductions.
+///
+/// Row is non-contiguous in general: `c` elements separated by `inner`
+/// (product of dimensions past axis). With last axis `inner = 1` falling back
+/// to contiguous case. Rows are indexed on a 2D grid
+/// (`gx` per grid row) because `rows` easily exceeds the limit of
+/// 65535 workgroups per dimension.
+pub const SOFTMAX: &str = r#"
+@group(0) @binding(0) var<storage, read> x: array<f32>;
+@group(0) @binding(1) var<storage, read_write> out: array<f32>;
+
+// `pitch` is the distance between rows, `c` how many of each row to normalize.
+// They are equal everywhere except attention against a resident cache, where the
+// score buffer is laid out for the whole cache so the grid stays the same from
+// token to token while only `total` keys exist. Normalizing the padding instead
+// — even filled with a masked-out sentinel — is not equivalent: a row whose real
+// keys are *all* masked (a graph can supply a bias that masks everything) then
+// spreads its probability over the padding rather than over the row.
+struct Push { c: u32, inner: u32, rows: u32, pitch: u32, gx: u32 }
+var<immediate> pc: Push;
+
+var<workgroup> sred: array<f32, 256>;
+
+@compute @workgroup_size(256)
+fn main(
+    @builtin(workgroup_id) wid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+) {
+    let row = wid.y * pc.gx + wid.x;
+    if (row >= pc.rows) { return; }
+    // row r → (outer, inner_idx): base = outer * pitch * inner + inner_idx
+    let base = (row / pc.inner) * pc.pitch * pc.inner + (row % pc.inner);
+
+    // 1) row max
+    var m = -3.4028235e38;
+    var i = lid.x;
+    while (i < pc.c) {
+        m = max(m, x[base + i * pc.inner]);
+        i = i + 256u;
+    }
+    sred[lid.x] = m;
+    workgroupBarrier();
+    var s = 128u;
+    while (s > 0u) {
+        if (lid.x < s) {
+            sred[lid.x] = max(sred[lid.x], sred[lid.x + s]);
+        }
+        workgroupBarrier();
+        s = s / 2u;
+    }
+    let row_max = sred[0];
+    workgroupBarrier();
+
+    // 2) sum of exps
+    var sum = 0.0;
+    i = lid.x;
+    while (i < pc.c) {
+        sum = sum + exp(x[base + i * pc.inner] - row_max);
+        i = i + 256u;
+    }
+    sred[lid.x] = sum;
+    workgroupBarrier();
+    s = 128u;
+    while (s > 0u) {
+        if (lid.x < s) {
+            sred[lid.x] = sred[lid.x] + sred[lid.x + s];
+        }
+        workgroupBarrier();
+        s = s / 2u;
+    }
+    let inv_sum = 1.0 / sred[0];
+
+    // 3) write-out
+    i = lid.x;
+    while (i < pc.c) {
+        out[base + i * pc.inner] = exp(x[base + i * pc.inner] - row_max) * inv_sum;
+        i = i + 256u;
+    }
+}
+"#;
+
+/// f32 LayerNormalization: one workgroup per row, sum/sum-of-squares reduction
+/// in shared memory → mean and variance → optional scale and bias (`has_bias`).
+///
+/// `simplified` switches it to **RMS normalization**
+/// (`SimplifiedLayerNormalization`, 157 nodes of gemma3-1b): the mean is not
+/// subtracted and the denominator is the root mean square, so the sum
+/// reduction is skipped entirely. The two share a kernel because they differ by
+/// that one term; the branch is on a push constant, hence uniform across the
+/// workgroup and free of divergence.
+///
+/// `has_skip` adds the residual **before** normalizing
+/// (`SkipSimplifiedLayerNormalization`, 72 nodes of qwen2.5-VL's decoder), and
+/// `has_sum` writes that sum out as the op's fourth output — which 71 of those
+/// 72 nodes consume as the next layer's residual, so recomputing it as a
+/// separate `Add` would be a second pass over the same memory. Same reason the
+/// branch is on a push constant: `x + skip` is read twice by the reduction and
+/// once more by the write-out, and splitting the op would materialize it twice.
+pub const LAYERNORM: &str = r#"
+@group(0) @binding(0) var<storage, read> x: array<f32>;
+@group(0) @binding(1) var<storage, read> scale: array<f32>;
+@group(0) @binding(2) var<storage, read> bias: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out: array<f32>;
+@group(0) @binding(4) var<storage, read> skip: array<f32>;
+@group(0) @binding(5) var<storage, read_write> sum_out: array<f32>;
+
+struct Push { c: u32, eps: f32, has_bias: u32, simplified: u32, has_skip: u32, has_sum: u32 }
+var<immediate> pc: Push;
+
+/// The value the normalization actually sees: `x`, plus the residual when the
+/// skip form is dispatched.
+fn value(i: u32) -> f32 {
+    if (pc.has_skip != 0u) { return x[i] + skip[i]; }
+    return x[i];
+}
+
+var<workgroup> ssum: array<f32, 256>;
+var<workgroup> ssq: array<f32, 256>;
+
+@compute @workgroup_size(256)
+fn main(
+    @builtin(workgroup_id) wid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+) {
+    let row = wid.x;
+    let base = row * pc.c;
+    let centered = pc.simplified == 0u;
+    var sum = 0.0;
+    var sq = 0.0;
+    var i = lid.x;
+    while (i < pc.c) {
+        let v = value(base + i);
+        sum = sum + v;
+        sq = sq + v * v;
+        i = i + 256u;
+    }
+    ssum[lid.x] = sum;
+    ssq[lid.x] = sq;
+    workgroupBarrier();
+    var s = 128u;
+    while (s > 0u) {
+        if (lid.x < s) {
+            ssum[lid.x] = ssum[lid.x] + ssum[lid.x + s];
+            ssq[lid.x] = ssq[lid.x] + ssq[lid.x + s];
+        }
+        workgroupBarrier();
+        s = s / 2u;
+    }
+    // RMS normalization is this one minus the mean: the denominator becomes
+    // the root mean square of the row and nothing is subtracted from x
+    var mean = 0.0;
+    if (centered) {
+        mean = ssum[0] / f32(pc.c);
+    }
+    let variance = ssq[0] / f32(pc.c) - mean * mean;
+    let inv_std = inverseSqrt(variance + pc.eps);
+    i = lid.x;
+    while (i < pc.c) {
+        let raw = value(base + i);
+        if (pc.has_sum != 0u) {
+            sum_out[base + i] = raw;
+        }
+        var v = (raw - mean) * inv_std * scale[i];
+        if (pc.has_bias != 0u) {
+            v = v + bias[i];
+        }
+        out[base + i] = v;
+        i = i + 256u;
+    }
+}
+"#;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn sources_compile() {
+        for source in [super::SOFTMAX, super::LAYERNORM, super::BATCHNORM] {
+            vk_compute::compile_wgsl(source).expect("valid normalization shader");
+        }
+    }
+}

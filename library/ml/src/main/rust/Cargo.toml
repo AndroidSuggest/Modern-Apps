@@ -11,7 +11,7 @@ doc = false
 
 [features]
 default = []
-vulkan = ["dep:onnx-vulkan"]
+vulkan = ["dep:onnx-vulkan", "dep:ash"]
 
 [dependencies]
 jni.workspace = true
@@ -19,6 +19,7 @@ log.workspace = true
 anyhow = "1.0.75"
 thiserror = "2"
 onnx-vulkan = { git = "https://github.com/automataIA/onnx-vulkan-rs", rev = "c3aa968", optional = true }
+ash = { version = "0.38", optional = true }
 
 [lints]
 workspace = true
@@ -36,3 +37,15 @@ workspace = true
 # onnx-vulkan = { path = "../../../../../third_party/onnx-vulkan" }
 # vk-compute = { path = "../../../../../third_party/vk-compute" }
 # onnx-vulkan-core = { path = "../../../../../third_party/onnx-vulkan-core" }
+
+# c_char fix (ash 0.38 expects *const c_char): vendored vk-compute with the
+# three `as_ptr() as *const c_char` casts in `src/context.rs`.
+# NOTE: cargo only honours [patch] in the workspace root, so this entry is
+# mirrored in the repo-root Cargo.toml; this copy documents the override
+# alongside the vendored tree per VENDORING.md.
+[patch."https://github.com/automataIA/onnx-vulkan-rs"]
+vk-compute = { path = "vendor/vk-compute" }
+onnx-vulkan = { path = "vendor/onnx-vulkan" }
+onnx-vulkan-core = { path = "vendor/onnx-vulkan-core" }
+onnx-vulkan-frontend = { path = "vendor/onnx-vulkan-frontend" }
+onnx-vulkan-tune = { path = "vendor/onnx-vulkan-tune" }

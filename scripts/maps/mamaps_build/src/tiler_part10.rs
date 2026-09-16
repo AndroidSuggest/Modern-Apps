@@ -257,7 +257,7 @@ mod tests_part10 {
         push(&mut first, &feature, &box_at(0));
         let mut second = ChunkEntry::new(dict::LAYER_WATER);
         push(&mut second, &feature, &box_at(1000));
-        concatenate(&mut first, second);
+        concatenate(&mut first, &mut second);
 
         assert_eq!(first, together, "two chunks concatenated are not the one-pass layer");
         // Spelled out as well, because `assert_eq` on the whole layer would also pass if both were

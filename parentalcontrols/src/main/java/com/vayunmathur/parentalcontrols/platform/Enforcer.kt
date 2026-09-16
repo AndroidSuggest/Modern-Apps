@@ -113,6 +113,19 @@ class Enforcer(private val context: Context) {
             Log.w(TAG, "no supervision policy channel; nothing will be enforced")
             return
         }
+        // Master switch off ("Controls for this phone"): lift every block, stop timing, and
+        // arm nothing. The child's device behaves as if unsupervised until it is turned on.
+        if (!SupervisionMaster.isEnabled(context)) {
+            val all = rules.allRulesNow()
+            for (rule in all) policies.allow(rule.packageName)
+            limits.sync(emptyList(), emptyList())
+            bedtime.armAll(
+                rules.scheduleNow().copy(enabled = false),
+                rules.downtimeNow().copy(enabled = false),
+                rules.schoolTimeNow().copy(enabled = false),
+            )
+            return
+        }
         val now = LocalDateTime.now()
         val bedtimeSchedule = rules.scheduleNow()
         val downtimeSchedule = rules.downtimeNow()
@@ -126,7 +139,9 @@ class Enforcer(private val context: Context) {
         limitState.pruneToToday()
         // Cheap and idempotent, and it has to happen before AppLimits.sync below: without the
         // usage-stats op an observer is armed with timeUsed = 0.
-        UsageAccess.ensure(context)
+        if (UsageAccess.ensure(context) == UsageAccess.Status.DENIED) {
+            Log.w(TAG, "usage-stats op denied; limits measure from arm time until it is granted")
+        }
 
         val deviceOverBudget = deviceOverBudgetNow(bonuses)
 

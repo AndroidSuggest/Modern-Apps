@@ -2,6 +2,7 @@
 //! to keep the bin under the file-size limit. Behaviour-identical.
 
 use super::*;
+use rayon::prelude::*;
 
 pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
     let mut seen: HashSet<(u64, u32)> = HashSet::new();
@@ -36,6 +37,8 @@ pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let chunk_size = threads.saturating_mul(2).max(1);
 
+    let total = specs.len();
+    let mut processed = 0usize;
     for chunk in specs.chunks(chunk_size) {
         let next = AtomicUsize::new(0);
         let parsed: Mutex<Vec<(usize, Result<FeedLines, String>)>> =
@@ -56,64 +59,82 @@ pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
         // Back into spec order, so the fold below sees exactly the sequence it used to.
         parsed.sort_unstable_by_key(|(i, _)| *i);
 
-        for (i, feed) in parsed {
-            let spec = &chunk[i];
+        // Feeds unwrapped in spec order and their lines gathered, so the dedup key of every
+        // line can be computed wide before the sequential fold. Stats accumulate here so an
+        // unreadable feed still surfaces its error in feed order, exactly as before.
+        let mut chunk_lines: Vec<Line> = Vec::new();
+        for (_, feed) in parsed {
             let feed = feed?;
             kept += feed.routes_kept;
             without_shape += feed.routes_without_shape;
             shapes_read += feed.shapes_read;
-            let mut new = 0usize;
-            for line in feed.lines {
-                // Across feeds as well as within one, so an alignment published by both a city
-                // feed and the regional feed that merges it draws once.
-                //
-                // Keyed on the colour too, which the hash alone was not: two services running
-                // the same track are routinely published against one `shape_id`, and dropping
-                // one of them because its geometry had been seen is how a corridor loses a
-                // line. This is only the fast path for the subtraction below, which would reach
-                // the same answer the slow way.
-                if !seen.insert((polyline_hash(&line.points), line.color)) {
-                    deduped += 1;
-                    continue;
-                }
-                let mode_cover = by_mode.entry(line.mode).or_default();
-                let redundant = if line.fallback {
-                    mode_cover.covered_fraction(&line.points) >= MOSTLY_DRAWN
-                } else {
-                    by_color
-                        .entry((line.mode, line.color))
-                        .or_default()
-                        .covered_fraction(&line.points)
-                        >= MOSTLY_DRAWN
-                };
-                if redundant {
-                    merged += 1;
-                    continue;
-                }
-                // The gates above are colour-scoped, deliberately: two services sharing a track
-                // are two real services and both should draw. On a planet that stops being true.
-                // One alignment is republished by a city feed, the regional feed containing it and
-                // a national feed on top, each with its own `route_color` and often its own
-                // `route_type`, so each reads as a distinct service and claims its own lane. That
-                // is what makes one railway render as fifteen jagged parallel lines.
-                //
-                // A ceiling rather than a ban, so the two-services-on-one-track case the tests
-                // pin still works. Above it the track is already saying everything it can.
-                if mode_cover.crowd_reaches(&line.points, MAX_SERVICES_PER_TRACK) {
-                    crowded += 1;
-                    continue;
-                }
-                mode_cover.add_tagged(&line.points, line.color);
-                by_color.entry((line.mode, line.color)).or_default().add(&line.points);
-                if line.fallback {
-                    fell_back += 1;
-                }
-                lines.push(line);
-                new += 1;
+            chunk_lines.extend(feed.lines);
+            processed += 1;
+            eprint!("\rtransit_shapes: {processed}/{total} feed(s) parsed");
+            let _ = std::io::stderr().flush();
+        }
+
+        // The dedup key is a content hash of the geometry, so it is order-independent and every
+        // line's can be computed in parallel. Only the `seen.insert` below stays sequential —
+        // it is what decides, in feed order, which duplicate of a shared alignment survives.
+        let keys: Vec<(u64, u32)> = chunk_lines
+            .par_iter()
+            .map(|line| (polyline_hash(&line.points), line.color))
+            .collect();
+
+        for (line, key) in chunk_lines.into_iter().zip(keys) {
+            // Across feeds as well as within one, so an alignment published by both a city
+            // feed and the regional feed that merges it draws once.
+            //
+            // Keyed on the colour too, which the hash alone was not: two services running
+            // the same track are routinely published against one `shape_id`, and dropping
+            // one of them because its geometry had been seen is how a corridor loses a
+            // line. This is only the fast path for the subtraction below, which would reach
+            // the same answer the slow way.
+            if !seen.insert(key) {
+                deduped += 1;
+                continue;
             }
-            eprintln!("transit_shapes: feed '{}': {new} new line(s)", spec.0);
+            // Walked once here: `covered_fraction`, `crowd_reaches` and the two `add`s
+            // below each used to re-walk `line.points` and allocate a fresh sample vector.
+            // The samples depend only on the geometry, so one walk feeds all four.
+            let walked = bundle::walk(&line.points);
+            let mode_cover = by_mode.entry(line.mode).or_default();
+            let redundant = if line.fallback {
+                mode_cover.covered_fraction_walked(&walked) >= MOSTLY_DRAWN
+            } else {
+                by_color
+                    .entry((line.mode, line.color))
+                    .or_default()
+                    .covered_fraction_walked(&walked)
+                    >= MOSTLY_DRAWN
+            };
+            if redundant {
+                merged += 1;
+                continue;
+            }
+            // The gates above are colour-scoped, deliberately: two services sharing a track
+            // are two real services and both should draw. On a planet that stops being true.
+            // One alignment is republished by a city feed, the regional feed containing it and
+            // a national feed on top, each with its own `route_color` and often its own
+            // `route_type`, so each reads as a distinct service and claims its own lane. That
+            // is what makes one railway render as fifteen jagged parallel lines.
+            //
+            // A ceiling rather than a ban, so the two-services-on-one-track case the tests
+            // pin still works. Above it the track is already saying everything it can.
+            if mode_cover.crowd_reaches_walked(&walked, MAX_SERVICES_PER_TRACK) {
+                crowded += 1;
+                continue;
+            }
+            mode_cover.add_tagged_walked(&walked, line.color);
+            by_color.entry((line.mode, line.color)).or_default().add_walked(&walked);
+            if line.fallback {
+                fell_back += 1;
+            }
+            lines.push(line);
         }
     }
+    eprintln!();
     drop(by_color);
     drop(by_mode);
 
@@ -126,7 +147,7 @@ pub(crate) fn run(out_path: &Path, specs: &[FeedSpec]) -> Result<(), String> {
     // Deterministic output, so a rebuild produces a byte-identical layer and the
     // tile diff is empty when nothing changed. Feed order already fixes which
     // duplicate survives; this fixes the order they are written in.
-    lines.sort_by(|a, b| {
+    lines.par_sort_by(|a, b| {
         a.points
             .cmp(&b.points)
             .then_with(|| a.color.cmp(&b.color))

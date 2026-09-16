@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.vayunmathur.photos.data.Photo
 import com.vayunmathur.photos.data.PhotosRepository
+import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 
@@ -49,6 +53,25 @@ class GalleryViewModel(
     // Kept for external callers that still reference photoDao/faceDao as PhotosRepository
     val photoDao get() = repository
     val faceDao get() = repository
+
+    private val dataStore = DataStoreUtils.getInstance(application)
+
+    /**
+     * User-chosen album covers, `albumName -> photoId`. MediaStore has no per-folder
+     * cover concept, so this is the one piece of app-side album *metadata* (not
+     * membership, which stays in MediaStore folders). Seeded from DataStore in
+     * [init] and folded into [albums]; a null/absent entry falls back to the
+     * newest photo in the bucket.
+     */
+    private val _albumCovers = MutableStateFlow<Map<String, Long>>(emptyMap())
+
+    /**
+     * A pending album move awaiting the MediaStore write-consent result. Set by
+     * [requestAlbumMove] before the binder launches [android.provider.MediaStore.createWriteRequest],
+     * consumed by [consumePendingMove] on RESULT_OK. Held here rather than in
+     * Compose state so the launcher callback never reads a stale closure.
+     */
+    private var pendingMove: Pair<List<Photo>, String?>? = null
 
     val photos: StateFlow<List<Photo>> = repository.getAllFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -181,17 +204,21 @@ class GalleryViewModel(
      * R.string.albums_unknown.
      */
     val albums: StateFlow<List<Album>> =
-        photoDao.getAllFlow()
+        combine(photoDao.getAllFlow(), _albumCovers) { allPhotos, covers -> allPhotos to covers }
             .conflate()
-            .map { allPhotos ->
+            .map { (allPhotos, covers) ->
                 allPhotos.filter { !it.isTrashed }
                     .groupBy { it.album?.takeIf { name -> name.isNotBlank() } ?: Album.UNKNOWN_NAME }
                     .map { (name, albumPhotos) ->
+                        // getAllFlow is ORDER BY date DESC, so the first row is
+                        // the album's newest photo — the default cover. A
+                        // user-chosen cover overrides it when that photo is still
+                        // in the bucket.
+                        val cover = covers[name]?.let { id -> albumPhotos.firstOrNull { it.id == id } }
+                            ?: albumPhotos.first()
                         Album(
                             name = name,
-                            // getAllFlow is ORDER BY date DESC, so the first row
-                            // is the album's newest photo — the cover.
-                            coverPhoto = albumPhotos.first(),
+                            coverPhoto = cover,
                             photos = albumPhotos,
                         )
                     }
@@ -235,6 +262,15 @@ class GalleryViewModel(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     init {
+        // Restore user-chosen album covers.
+        viewModelScope.launch {
+            val json = dataStore.getStringAwait(ALBUM_COVERS_KEY)
+            if (!json.isNullOrBlank()) {
+                runCatching { Json.decodeFromString<Map<String, Long>>(json) }
+                    .getOrNull()?.let { _albumCovers.value = it }
+            }
+        }
+
         // Debounced search: re-query whenever the query string changes.
         viewModelScope.launch {
             _searchQuery
@@ -392,8 +428,63 @@ class GalleryViewModel(
         }
     }
 
+    // ------------------------------------------------------------------
+    // Albums (MediaStore folder moves)
+    // ------------------------------------------------------------------
+
+    /**
+     * Record a pending move of [photos] into [album] (null = remove from album)
+     * for the binder to run [android.provider.MediaStore.createWriteRequest]
+     * against; [consumePendingMove] performs the actual move once write access is
+     * granted.
+     */
+    fun requestAlbumMove(photos: List<Photo>, album: String?) {
+        pendingMove = photos to album
+    }
+
+    /**
+     * Run the move recorded by [requestAlbumMove], if any. Returns true when a
+     * move was pending (and started), so the caller knows not to fall back to the
+     * trash/delete refresh path that shares the same result launcher.
+     */
+    fun consumePendingMove(): Boolean {
+        val move = pendingMove ?: return false
+        pendingMove = null
+        moveToAlbum(move.first, move.second)
+        return true
+    }
+
+    /**
+     * Persist the RELATIVE_PATH move for [photos] into [album] (null = move back
+     * to the media root), then reflect the new bucket locally and resync. Write
+     * access must already be granted (see [requestAlbumMove]).
+     */
+    fun moveToAlbum(photos: List<Photo>, album: String?) {
+        if (photos.isEmpty()) return
+        val target = album?.takeIf { it.isNotBlank() }
+        viewModelScope.launch(Dispatchers.IO) {
+            val movedIds = AlbumMediaStore.applyMove(getApplication(), photos, target)
+            if (movedIds.isNotEmpty()) {
+                // Column-targeted so the optimistic update never nulls a clipEmbedding.
+                repository.setAlbum(movedIds, target)
+            }
+            clearSelection()
+            runSync()
+        }
+    }
+
+    /** Choose which photo represents [albumName] in the Albums grid. */
+    fun setAlbumCover(albumName: String, photoId: Long) {
+        val updated = _albumCovers.value + (albumName to photoId)
+        _albumCovers.value = updated
+        viewModelScope.launch { dataStore.setString(ALBUM_COVERS_KEY, Json.encodeToString(updated)) }
+    }
+
     companion object {
         private const val TAG = "GalleryViewModel"
+
+        /** DataStore key holding the `albumName -> photoId` cover map as JSON. */
+        private const val ALBUM_COVERS_KEY = "album_covers"
 
         /**
          * Minimum cosine similarity for a photo to count as a semantic match.

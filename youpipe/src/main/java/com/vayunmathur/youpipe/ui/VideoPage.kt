@@ -29,6 +29,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.youpipe.R
@@ -42,6 +43,7 @@ import com.vayunmathur.youpipe.util.YouPipeViewModel
 import com.vayunmathur.youpipe.util.applyDownloadedStreams
 import com.vayunmathur.youpipe.util.clearVideoError
 import com.vayunmathur.youpipe.util.loadVideo
+import com.vayunmathur.youpipe.util.videoIDtoURL
 import com.vayunmathur.youpipe.util.DownloadManager
 import kotlin.time.Instant
 
@@ -293,6 +295,10 @@ fun VideoPage(
 
             override fun addToPlaylist() {
                 backStack.add(Route.AddToPlaylist(videoID))
+            }
+
+            override fun share() {
+                ExternalIntents.shareText(context, videoIDtoURL(videoID))
             }
         },
         fullscreen = isFullscreen,

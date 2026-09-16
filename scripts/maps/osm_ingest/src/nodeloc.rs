@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic;
 
 use crate::geojson::Coord;
-use crate::osm::{visit_block, Element};
+use crate::osm::{visit_block, Element, NodeView};
 use crate::pbf::{self, KIND_NODES};
 use crate::proto::{Error, Result};
 
@@ -35,7 +35,7 @@ use crate::proto::{Error, Result};
 /// ~27 scattered cache lines and misses on most of them; this searches a 19 MB base array and then
 /// scans at most 63 contiguous bytes, which is one or two lines.
 pub struct NodeLocations {
-    ids: IdIndex,
+    ids: NodeIds,
     locs: Locs,
 }
 
@@ -142,14 +142,15 @@ const BLOCK: usize = 64;
 /// Searchable through `&self` alone, because [`resolve_nodes`] hands it to every worker in a PBF pass
 /// while the sink writes coordinates.
 ///
-/// # The next step, if the node pass is still hot
+/// # When this is used, and when [`RankIndex`] is instead
 ///
-/// A rank-select bitset over the node id space would make [`IdIndex::find`] `O(1)` instead of a
-/// binary search plus a varint scan, and would cut a planet index from ~12.9 GB to ~2 GB -- because
-/// its size follows the id *space*, which is bounded, rather than the id *count*. It is attractive
-/// and it is not here, because it is a second index implementation to maintain and the caller-side
-/// bitset in `mamaps_build`'s `extract` already removed the blocker that prompted it. Revisit if the
-/// node pass is measured hot after that.
+/// This compressed form costs `O(count)` -- ~1.2 bytes per *needed* id -- so it is the right shape
+/// for a sub-continent extract, where the needed set is a sparse subset of a 13 G id space and a
+/// bitset over that space would dwarf it. [`NodeLocations::new`] builds it. The planet path
+/// ([`NodeLocations::from_sorted`], fed by a caller-side bitset) builds a [`RankIndex`] instead: at
+/// planet scale the needed set is most of the id space, so a rank-select bitset that costs
+/// `O(id space)` -- ~2 GB, bounded -- beats this index's ~12.9 GB, and its `find` is `O(1)` rather
+/// than a binary search plus a varint scan. [`NodeIds`] is the switch between the two.
 #[derive(Default)]
 struct IdIndex {
     /// The first id of each block, ascending. What the binary search runs over.
@@ -381,7 +382,7 @@ impl NodeLocations {
     pub fn new(mut ids: Vec<i64>) -> Result<NodeLocations> {
         ids.sort_unstable();
         ids.dedup();
-        let index = IdIndex::build(&ids);
+        let index = NodeIds::build(&ids);
         // The plain vector goes here rather than being kept alongside: it is 8 bytes per id against
         // the index's ~1.2, and holding both would give back the saving. Freed before the coordinate
         // array is mapped, so the two never peak together.
@@ -402,7 +403,7 @@ impl NodeLocations {
     /// bitset walked low to high satisfies it by construction, which is the only reason this is safe
     /// to expose.
     pub fn from_sorted(ids: impl Iterator<Item = i64>, len: usize) -> Result<NodeLocations> {
-        let index = IdIndex::build_sorted(ids, len);
+        let index = NodeIds::build_sorted(ids, len);
         let locs = Locs::new(index.len())?;
         Ok(NodeLocations { ids: index, locs })
     }
@@ -446,3 +447,4 @@ impl NodeLocations {
 }
 
 include!("nodeloc_part1.rs");
+include!("nodeloc_part2.rs");

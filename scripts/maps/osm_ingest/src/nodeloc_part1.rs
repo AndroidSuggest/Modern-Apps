@@ -43,11 +43,50 @@ pub fn resolve_nodes(
     blobs: &[pbf::BlobLoc],
     blob_kinds: &[u8],
     label: &str,
-    mut table: NodeLocations,
+    table: NodeLocations,
 ) -> Result<NodeLocations> {
     if table.is_empty() {
         return Ok(table);
     }
+    // The plain node pass: coordinates only, no per-node classification. `road_graph` and the
+    // `osm_ingest` extract take this path; `mamaps_build` takes [`resolve_nodes_with`] to fold its
+    // label-node classification into the same inflate.
+    resolve_nodes_with(
+        input,
+        blobs,
+        blob_kinds,
+        label,
+        table,
+        |_: &NodeView| Option::<()>::None,
+        |_: Vec<()>| Ok(()),
+    )
+}
+
+/// [`resolve_nodes`] plus a per-node classification folded into the same pass.
+///
+/// The node region of a planet PBF is most of the file, so a caller that also needs to classify
+/// nodes -- `mamaps_build` spilling `places`/`poi` label points -- would otherwise inflate it a
+/// second time. `classify` runs inside the block visitor, in parallel with every other block, and
+/// must be pure: it sees one [`NodeView`] and returns an owned item or `None`. `drain` then receives
+/// each chunk's collected items **in chunk order**, serialised behind the same lock the coordinate
+/// writes go through, so a caller can push them straight to a sink without reordering the output.
+///
+/// The classification runs over every node blob regardless of whether the coordinate table is empty,
+/// because a label set is independent of the way-ref set the coordinates serve.
+pub fn resolve_nodes_with<L, C, D>(
+    input: &Path,
+    blobs: &[pbf::BlobLoc],
+    blob_kinds: &[u8],
+    label: &str,
+    mut table: NodeLocations,
+    classify: C,
+    mut drain: D,
+) -> Result<NodeLocations>
+where
+    L: Send,
+    C: Fn(&NodeView) -> Option<L> + Sync,
+    D: FnMut(Vec<L>) -> Result<()> + Send,
+{
     let on = timing();
     // Moved out so the workers can search it while the sink writes coordinates; put back below.
     let ids = std::mem::take(&mut table.ids);
@@ -58,8 +97,8 @@ pub fn resolve_nodes(
         Some(blob_kinds),
         KIND_NODES,
         label,
-        Vec::<(u64, i32, i32)>::new,
-        |state: &mut Vec<(u64, i32, i32)>, block| {
+        || (Vec::<(u64, i32, i32)>::new(), Vec::<L>::new()),
+        |state: &mut (Vec<(u64, i32, i32)>, Vec<L>), block| {
             let at = on.then(std::time::Instant::now);
             let mut kinds = 0u8;
             // One cursor per block, because that is the run of ascending ids: a PBF block's dense
@@ -69,7 +108,10 @@ pub fn resolve_nodes(
             visit_block(block, KIND_NODES, &mut kinds, &mut |el: Element| {
                 if let Element::Node(n) = el {
                     if let Some(idx) = cursor.find(n.id) {
-                        state.push((idx, n.lat_e7, n.lon_e7));
+                        state.0.push((idx, n.lat_e7, n.lon_e7));
+                    }
+                    if let Some(item) = classify(&n) {
+                        state.1.push(item);
                     }
                 }
                 Ok(())
@@ -79,14 +121,17 @@ pub fn resolve_nodes(
             }
             Ok(kinds)
         },
-        |chunk| {
+        |(coords, items)| {
             let at = on.then(std::time::Instant::now);
-            for (idx, lat, lon) in chunk {
+            for (idx, lat, lon) in coords {
                 locs.set(idx as usize, lat, lon);
             }
             if let Some(at) = at {
                 WRITE_NANOS.fetch_add(at.elapsed().as_nanos() as u64, atomic::Ordering::Relaxed);
             }
+            // After the coordinate writes, so a caller that both resolves and classifies sees the
+            // two in the order this pass names them.
+            drain(items)?;
             Ok(())
         },
     )?;

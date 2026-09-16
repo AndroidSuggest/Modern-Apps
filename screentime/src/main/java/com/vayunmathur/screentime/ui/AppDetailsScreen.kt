@@ -6,28 +6,57 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.IconArrowForward
+import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.LazyListScaffold
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.SegmentedButton
+import com.vayunmathur.library.ui.SegmentedButtonDefaults
 import com.vayunmathur.library.ui.SettingsRow
 import com.vayunmathur.library.ui.SettingsSection
 import com.vayunmathur.library.ui.SettingsSwitchRow
+import com.vayunmathur.library.ui.SingleChoiceSegmentedButtonRow
+import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.TopAppBar
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.screentime.R
+import com.vayunmathur.screentime.platform.AppDetailsUiState
 import com.vayunmathur.screentime.platform.ScreenTimeViewModel
+import com.vayunmathur.screentime.platform.UsagePeriod
+import java.time.LocalDate
 
 /**
- * Per-app drill-down: today's usage, the timer, and focus membership.
+ * Per-app drill-down
+ * Per-app drill-down: the same week/day usage chart as the dashboard, scoped to one app, plus
+ * its daily limit and focus membership.
  *
  * Also answers `ACTION_SHOW_SUSPENDED_APP_DETAILS`: when the user taps a paused app, the
  * platform routes the details button here, so the "why is this paused" question lands on the
@@ -40,23 +69,20 @@ class AppDetailsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        viewModel.openDetail(suspendedPackage())
         setContent {
             DynamicTheme {
-                val state by viewModel.state.collectAsStateWithLifecycle()
-                val pkg = suspendedPackage() ?: state.apps.firstOrNull()?.packageName
-                val app = state.apps.firstOrNull { it.packageName == pkg }
+                val state by viewModel.detailState.collectAsStateWithLifecycle()
                 AppDetailsScreen(
-                    packageName = pkg,
-                    appLabel = app?.label,
-                    usedMinutes = app?.usedMinutes,
-                    timerMinutes = app?.timer?.dailyLimitMinutes,
-                    pausedInFocus = app?.packageName in state.focus.pausedPackages,
-                    focusRunning = state.focusRunning,
+                    state = state,
+                    onBack = { finish() },
+                    onSetPeriod = viewModel::setPeriod,
+                    onStep = viewModel::stepAnchor,
                     onTimerChange = { minutes ->
-                        pkg?.let { viewModel.setTimer(it, minutes) }
+                        state.packageName?.let { viewModel.setTimer(it, minutes) }
                     },
                     onFocusPausedChange = { paused ->
-                        pkg?.let { viewModel.setFocusPaused(it, paused) }
+                        state.packageName?.let { viewModel.setFocusPaused(it, paused) }
                     },
                 )
             }
@@ -85,39 +111,59 @@ class AppDetailsActivity : ComponentActivity() {
     }
 }
 
-/** Actions the details screen can take. */
-data class DetailsActions(
-    val onTimerChange: (Int?) -> Unit,
-    val onFocusPausedChange: (Boolean) -> Unit,
-)
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppDetailsScreen(
-    packageName: String?,
-    appLabel: String?,
-    usedMinutes: Long?,
-    timerMinutes: Int?,
-    pausedInFocus: Boolean,
-    focusRunning: Boolean,
+    state: AppDetailsUiState,
+    onBack: () -> Unit,
+    onSetPeriod: (UsagePeriod) -> Unit,
+    onStep: (Boolean) -> Unit,
     onTimerChange: (Int?) -> Unit,
     onFocusPausedChange: (Boolean) -> Unit,
 ) {
     var picking by remember { mutableStateOf(false) }
+    val scrollBehavior = appBarScrollBehavior()
+    val title = state.label ?: stringResource(R.string.details_title)
 
     LazyListScaffold(
-        title = appLabel ?: stringResource(R.string.details_title),
         horizontalPadding = 0.dp,
-        scrollBehavior = appBarScrollBehavior(),
+        scrollBehavior = scrollBehavior,
+        topBar = {
+            TopAppBar(
+                scrollBehavior = scrollBehavior,
+                navigationIcon = {
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onBack),
+                        contentAlignment = Alignment.Center,
+                    ) { IconBack() }
+                },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        state.packageName?.let {
+                            AppIconImage(it, Modifier.size(28.dp).clip(CircleShape))
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(title)
+                    }
+                },
+            )
+        },
     ) {
+        item { DetailPeriodToggle(state.period, onSetPeriod) }
+
+        if (state.hasUsageAccess) {
+            item { DetailUsageCard(state, onStep) }
+        }
+
         item {
             SettingsSection(title = stringResource(R.string.details_usage)) {
                 SettingsRow(
-                    title = stringResource(R.string.details_today),
-                    supportingText = formatDetailsMinutes(usedMinutes ?: 0),
-                )
-                SettingsRow(
                     title = stringResource(R.string.details_timer),
-                    supportingText = timerMinutes?.let { formatDetailsMinutes(it.toLong()) }
+                    supportingText = state.timerMinutes?.let { formatMinutes(it.toLong()) }
                         ?: stringResource(R.string.timer_none),
                     onClick = { picking = true },
                 )
@@ -129,23 +175,23 @@ fun AppDetailsScreen(
                 SettingsSwitchRow(
                     title = stringResource(R.string.details_pause_in_focus),
                     supportingText =
-                        if (focusRunning) stringResource(R.string.details_focus_running)
+                        if (state.focusRunning) stringResource(R.string.details_focus_running)
                         else stringResource(R.string.details_pause_in_focus_hint),
-                    checked = pausedInFocus,
+                    checked = state.pausedInFocus,
                     onCheckedChange = onFocusPausedChange,
                 )
             }
         }
 
-        if (packageName == null) {
-            item { SettingsRow(title = stringResource(R.string.details_no_app)) }
+        if (state.packageName == null) {
+            item { SettingsSection { SettingsRow(title = stringResource(R.string.details_no_app)) } }
         }
     }
 
     if (picking) {
         AlertDialog(
             onDismissRequest = { picking = false },
-            title = { Text(appLabel ?: stringResource(R.string.details_title)) },
+            title = { Text(title) },
             text = {
                 SettingsSection {
                     SettingsRow(
@@ -154,7 +200,7 @@ fun AppDetailsScreen(
                     )
                     for (minutes in DETAILS_CHOICES) {
                         SettingsRow(
-                            title = formatDetailsMinutes(minutes.toLong()),
+                            title = formatMinutes(minutes.toLong()),
                             onClick = { onTimerChange(minutes); picking = false },
                         )
                     }
@@ -170,13 +216,103 @@ fun AppDetailsScreen(
     }
 }
 
-private val DETAILS_CHOICES = listOf(15, 30, 45, 60, 90, 120, 180, 240)
-
-private fun formatDetailsMinutes(minutes: Long): String =
-    if (minutes < 60) {
-        "$minutes min"
-    } else {
-        val hours = minutes / 60
-        val rest = minutes % 60
-        if (rest == 0L) "$hours h" else "$hours h $rest min"
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DetailPeriodToggle(period: UsagePeriod, onSetPeriod: (UsagePeriod) -> Unit) {
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        SegmentedButton(
+            selected = period == UsagePeriod.Week,
+            onClick = { onSetPeriod(UsagePeriod.Week) },
+            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+        ) { Text(stringResource(R.string.period_week)) }
+        SegmentedButton(
+            selected = period == UsagePeriod.Day,
+            onClick = { onSetPeriod(UsagePeriod.Day) },
+            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+        ) { Text(stringResource(R.string.period_day)) }
     }
+}
+
+@Composable
+private fun DetailUsageCard(state: AppDetailsUiState, onStep: (Boolean) -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.largeIncreased,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = stringResource(R.string.stat_total),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = formatStat(state.totalMillis),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            UsageBarChart(
+                bars = state.chart,
+                averageMillis = state.averageMillis,
+                labelEvery = if (state.period == UsagePeriod.Week) 1 else 4,
+            )
+            Spacer(Modifier.height(8.dp))
+            DetailRangeStepper(state.period, state.anchorDate, onStep)
+        }
+    }
+}
+
+@Composable
+private fun DetailRangeStepper(period: UsagePeriod, anchor: LocalDate, onStep: (Boolean) -> Unit) {
+    val today = LocalDate.now()
+    val canForward = if (period == UsagePeriod.Day) {
+        anchor.isBefore(today)
+    } else {
+        weekStart(anchor).isBefore(weekStart(today))
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        DetailStepButton(enabled = true, forward = false, onStep = onStep)
+        Text(
+            text = rangeLabel(period, anchor),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f),
+        )
+        DetailStepButton(enabled = canForward, forward = true, onStep = onStep)
+    }
+}
+
+@Composable
+private fun DetailStepButton(enabled: Boolean, forward: Boolean, onStep: (Boolean) -> Unit) {
+    val tint = if (enabled) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+    }
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .then(if (enabled) Modifier.clickable { onStep(forward) } else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (forward) IconArrowForward(tint = tint) else IconBack(tint = tint)
+    }
+}
+
+private val DETAILS_CHOICES = listOf(15, 30, 45, 60, 90, 120, 180, 240)

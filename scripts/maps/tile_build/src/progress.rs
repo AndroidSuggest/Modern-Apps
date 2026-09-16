@@ -29,8 +29,8 @@ impl Progress {
             on,
         };
         if p.on {
-            print!("\r{:<28} [  0%] {} {unit}", p.label, p.total);
-            let _ = std::io::stdout().flush();
+            eprint!("\r{:<28} [  0%] {} {unit}", p.label, p.total);
+            let _ = std::io::stderr().flush();
         }
         p
     }
@@ -45,15 +45,15 @@ impl Progress {
         let pct = self.done * 100 / self.total;
         if pct != self.last_pct {
             self.last_pct = pct;
-            print!("\r{:<28} [{pct:>3}%] {} {unit}", self.label, self.total);
-            let _ = std::io::stdout().flush();
+            eprint!("\r{:<28} [{pct:>3}%] {} {unit}", self.label, self.total);
+            let _ = std::io::stderr().flush();
         }
     }
 
     /// Leave the finished line on screen, so a multi-zoom build shows every zoom.
     pub fn finish(&self, unit: &str) {
         if self.on {
-            println!("\r{:<28} [100%] {} {unit}", self.label, self.total);
+            eprintln!("\r{:<28} [100%] {} {unit}", self.label, self.total);
         }
     }
 }

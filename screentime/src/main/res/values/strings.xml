@@ -8,8 +8,8 @@
     <!-- One-line summary under the Focus mode row in Settings. -->
     <string name="focus_summary">Pause distracting apps on demand or on a schedule</string>
 
-    <!-- Wind-down: title, also the label of its Settings row. Noun. -->
-    <string name="winddown_title">Bedtime</string>
+    <!-- Wind-down: title, also the label of its Settings row. Noun phrase. -->
+    <string name="winddown_title">Wind Down</string>
     <!-- One-line summary under the Bedtime row in Settings. -->
     <string name="winddown_summary">Grayscale and Do Not Disturb overnight</string>
 
@@ -17,8 +17,6 @@
     <string name="details_usage">Usage</string>
     <!-- Per-app details: title of the drill-down screen. Noun phrase. -->
     <string name="details_title">Time spent</string>
-    <!-- Details: today's usage row. Noun phrase. -->
-    <string name="details_today">Used today</string>
     <!-- Details: timer row. Noun. -->
     <string name="details_timer">Timer</string>
     <!-- Details: focus-membership row. Verb phrase. -->
@@ -50,8 +48,35 @@
     <!-- Widget: heading above the total. Noun phrase. -->
     <string name="widget_today">Today</string>
 
-    <!-- Dashboard: heading of today's total row. Noun phrase. -->
-    <string name="dashboard_today">Today</string>
+    <!-- Dashboard: one-line summary under the Screen Time row in Settings. -->
+    <string name="dashboard_summary">Today\'s total and per-app usage, with timers</string>
+
+    <!-- Dashboard: week/day chart toggle. Noun. -->
+    <string name="period_week">Week</string>
+    <!-- Dashboard: week/day chart toggle. Noun. -->
+    <string name="period_day">Day</string>
+    <!-- Dashboard: label above the total-time figure. Noun phrase. -->
+    <string name="stat_total">Total screen time</string>
+    <!-- Dashboard: label above the per-day average (week view). Noun phrase. -->
+    <string name="stat_daily_average">Daily average</string>
+    <!-- Dashboard: label above the per-hour average (day view). Noun phrase. -->
+    <string name="stat_hourly_average">Hourly average</string>
+    <!-- Dashboard: shown above the date when the day view is on today. Noun. -->
+    <string name="range_today">Today</string>
+    <!-- Dashboard: title of the usage-access prompt shown when the usage-stats op is denied. -->
+    <string name="dashboard_no_access_title">Usage access is off</string>
+    <!-- Dashboard: explanation under the usage-access prompt. -->
+    <string name="dashboard_no_access_hint">Allow Screen Time to read app usage in Settings to see today\'s totals.</string>
+    <!-- Dashboard: button that opens the usage-access screen in Settings. Verb phrase. -->
+    <string name="dashboard_no_access_action">Open usage access</string>
+    <!-- Dashboard: shown when usage access is granted but nothing has been used and no timer is set. -->
+    <string name="dashboard_no_usage_title">Nothing used yet</string>
+    <!-- Dashboard: explanation under the nothing-used row. -->
+    <string name="dashboard_no_usage_hint">Apps you use today will appear here.</string>
+    <!-- Dashboard: shown when the launchable app list came back empty (package visibility loss). -->
+    <string name="dashboard_no_apps_title">No apps found</string>
+    <!-- Dashboard: explanation under the no-apps row. -->
+    <string name="dashboard_no_apps_hint">The app list came back empty, so there is nothing to show yet.</string>
     <!-- Dashboard: shown for an app with no timer set, and as the option that removes one. -->
     <string name="timer_none">No timer</string>
 

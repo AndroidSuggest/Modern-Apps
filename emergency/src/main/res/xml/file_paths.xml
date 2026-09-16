@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Avatar photos staged for the medical-info editor; cache only, never backed up. -->
+    <cache-path name="avatars" path="avatars/" />
+</paths>

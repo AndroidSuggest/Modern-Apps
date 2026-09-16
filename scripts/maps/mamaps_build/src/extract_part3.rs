@@ -1,4 +1,62 @@
-/// Materialise relations; returns the driving-side conventions. Moved whole.
+/// One relation's geometry, built off the shared tables with nothing mutable touched, so a batch of
+/// them fans out across the pool exactly as [`materialise_ways`] does. The sink and the conventions
+/// grid are fed from these **in relation order** in the serial drain, which is what keeps the
+/// archive byte-identical: the drain order is the spill order is the archive's.
+enum BuiltRelation {
+    /// A label relation centroided to a point, `None` when it had no locatable members.
+    Label(Option<(f64, f64)>),
+    /// A border relation's member lines, already filtered to those with two or more points.
+    Border(Vec<Vec<(f64, f64)>>),
+    /// An area relation's stitched rings and the ring stats that stitching produced. The stats are
+    /// per-relation here and summed into [`Stats::rings`] serially — they are four additive counts,
+    /// so the sum is the same in any order.
+    Area { polygons: Vec<rings::Polygon>, rings: RingStats },
+}
+
+/// Build one relation's geometry. Reads only the shared `members` map and the resolved `table`,
+/// both immutable, so it is safe to call across the pool. See [`BuiltRelation`].
+fn build_relation(
+    relation: &Relation,
+    members: &HashMap<i64, Vec<i64>>,
+    table: &NodeLocations,
+) -> BuiltRelation {
+    // A `places` relation (a country, a region) is labelled at its centroid: one point, not a
+    // stitched shape. The border itself lives in `boundaries`; this is the name.
+    if is_label(relation.class.layer) {
+        let line: Vec<(f64, f64)> = relation
+            .members
+            .iter()
+            .filter_map(|(id, _)| members.get(id))
+            .flat_map(|refs| table.line(refs))
+            .collect();
+        return BuiltRelation::Label(centroid(&line));
+    }
+    // A boundary relation's members are the border. Each is emitted as its own line rather than
+    // stitched: the renderer strokes them, and a gap between two member ways is invisible in a
+    // stroke while a failed stitch would drop the whole border.
+    if !relation.area {
+        let lines: Vec<Vec<(f64, f64)>> = relation
+            .members
+            .iter()
+            .filter_map(|(id, _)| members.get(id))
+            .map(|refs| table.line(refs))
+            .filter(|line| line.len() >= 2)
+            .collect();
+        return BuiltRelation::Border(lines);
+    }
+    let member_ways: Vec<MemberWay> = relation
+        .members
+        .iter()
+        .filter_map(|(id, inner)| {
+            Some(MemberWay { refs: members.get(id)?.clone(), outer: !inner })
+        })
+        .collect();
+    let mut rings = RingStats::default();
+    let polygons = rings::assemble(&member_ways, |id| locate(table, id), &mut rings);
+    BuiltRelation::Area { polygons, rings }
+}
+
+/// Materialise relations; returns the driving-side conventions.
 fn materialise_relations(
     relations: &[Relation],
     members: &HashMap<i64, Vec<i64>>,
@@ -15,19 +73,25 @@ fn materialise_relations(
     // Which driving side and centre-line colour applies where, accumulated as the country shapes
     // go past.
     let mut conventions = schema::boundaries::Conventions::default();
-    for relation in relations {
-        bar.tick("relation(s)");
-        // A `places` relation (a country, a region) is labelled at its centroid: one point, not
-        // a stitched shape. The border itself lives in `boundaries`; this is the name.
-        if is_label(relation.class.layer) {
-            let line: Vec<(f64, f64)> = relation
-                .members
-                .iter()
-                .filter_map(|(id, _)| members.get(id))
-                .flat_map(|refs| table.line(refs))
-                .collect();
-            match centroid(&line) {
-                Some(point) => {
+    // Batched, the [`materialise_ways`] pattern: `rings::assemble`, `centroid` and `table.line` are
+    // the heavy per-relation work, are independent, and touch no shared mutable state, so a batch of
+    // them goes as wide as the pool. The sink and the conventions grid then take the results **in
+    // relation order**, which keeps the archive byte-identical. `conventions.add` in particular has
+    // precedence rules (an interior claim outranks a border one), so it must stay serial and in
+    // order.
+    const MATERIALISE_RELATIONS_BATCH: usize = 4096;
+    let mut built: Vec<BuiltRelation> = Vec::with_capacity(MATERIALISE_RELATIONS_BATCH);
+    for batch in relations.chunks(MATERIALISE_RELATIONS_BATCH) {
+        built.clear();
+        par::install(|| {
+            batch
+                .par_iter()
+                .map(|relation| build_relation(relation, members, table))
+                .collect_into_vec(&mut built);
+        });
+        for (relation, geometry) in batch.iter().zip(built.drain(..)) {
+            match geometry {
+                BuiltRelation::Label(Some(point)) => {
                     sink.push_named(
                         &relation.class,
                         &Geometry::Points(vec![point]),
@@ -36,61 +100,62 @@ fn materialise_relations(
                     )?;
                     stats.features += 1;
                 }
-                None => stats.geometry_failed += 1,
+                BuiltRelation::Label(None) => stats.geometry_failed += 1,
+                BuiltRelation::Border(lines) => {
+                    if lines.is_empty() {
+                        stats.geometry_failed += 1;
+                    } else {
+                        sink.push(&relation.class, &Geometry::Lines(lines))?;
+                        stats.features += 1;
+                    }
+                }
+                BuiltRelation::Area { polygons, rings } => {
+                    // Accumulated whether or not the stitch produced anything, exactly as the
+                    // in-place `&mut stats.rings` did: a failed stitch still counted its unclosed
+                    // and orphan rings.
+                    stats.rings.outer_rings += rings.outer_rings;
+                    stats.rings.inner_rings += rings.inner_rings;
+                    stats.rings.unclosed += rings.unclosed;
+                    stats.rings.orphan_inner += rings.orphan_inner;
+                    if polygons.is_empty() {
+                        stats.geometry_failed += 1;
+                    } else {
+                        // The id is what lets the mask gather a region's tile-clipped pieces back
+                        // together.
+                        let id = if tracks_ids(&relation.class) {
+                            tagged_id(relation.id, ELEMENT_RELATION)
+                        } else {
+                            tilecodec::mamaps::body::ID_NONE
+                        };
+                        // A multipolygon building carries its S3DB attributes into the building side
+                        // table, just as a building way does.
+                        if let Some(building) = relation.building {
+                            sink.push_building(
+                                &relation.class,
+                                &Geometry::Polygons(polygons),
+                                None,
+                                building,
+                            )?;
+                        } else {
+                            // The country's own shape is also what says how its roads are marked.
+                            // Stamped before the shape is moved into the sink, from the assembled
+                            // rings, so the grid and the border line agree about where it is.
+                            if let Some(iso) = &relation.iso {
+                                conventions.add(iso, &polygons);
+                            }
+                            sink.push_named(
+                                &relation.class,
+                                &Geometry::Polygons(polygons),
+                                None,
+                                id,
+                            )?;
+                        }
+                        stats.features += 1;
+                    }
+                }
             }
-            continue;
+            bar.tick("relation(s)");
         }
-        // A boundary relation's members are the border. Each is emitted as its own line rather than
-        // stitched: the renderer strokes them, and a gap between two member ways is invisible in a
-        // stroke while a failed stitch would drop the whole border.
-        if !relation.area {
-            let lines: Vec<Vec<(f64, f64)>> = relation
-                .members
-                .iter()
-                .filter_map(|(id, _)| members.get(id))
-                .map(|refs| table.line(refs))
-                .filter(|line| line.len() >= 2)
-                .collect();
-            if lines.is_empty() {
-                stats.geometry_failed += 1;
-                continue;
-            }
-            sink.push(&relation.class, &Geometry::Lines(lines))?;
-            stats.features += 1;
-            continue;
-        }
-        let member_ways: Vec<MemberWay> = relation
-            .members
-            .iter()
-            .filter_map(|(id, inner)| {
-                Some(MemberWay { refs: members.get(id)?.clone(), outer: !inner })
-            })
-            .collect();
-        let polygons = rings::assemble(&member_ways, |id| locate(&table, id), &mut stats.rings);
-        if polygons.is_empty() {
-            stats.geometry_failed += 1;
-            continue;
-        }
-        // The id is what lets the mask gather a region's tile-clipped pieces back together.
-        let id = if tracks_ids(&relation.class) {
-            tagged_id(relation.id, ELEMENT_RELATION)
-        } else {
-            tilecodec::mamaps::body::ID_NONE
-        };
-        // A multipolygon building carries its S3DB attributes into the building side table, just
-        // as a building way does.
-        if let Some(building) = relation.building {
-            sink.push_building(&relation.class, &Geometry::Polygons(polygons), None, building)?;
-        } else {
-            // The country's own shape is also what says how its roads are marked. Stamped before
-            // the shape is moved into the sink, from the assembled rings rather than from a
-            // separate geometry, so the grid and the border line agree about where the country is.
-            if let Some(iso) = &relation.iso {
-                conventions.add(iso, &polygons);
-            }
-            sink.push_named(&relation.class, &Geometry::Polygons(polygons), None, id)?;
-        }
-        stats.features += 1;
     }
     bar.finish("relation(s)");
 
@@ -154,10 +219,24 @@ fn append_external_and_finish(
     // node's own incident edges, so there is nothing to read that the traffic pass did not
     // already need. `conventions` decides which side of a road the direction of travel sits
     // on, and is borrowed here because it is moved into the store below.
+    println!("building lane connectors from the v6 routing graph for the junction layer");
     stats.junction_connectors = schema::junction::stream_junctions(graph, &conventions, &mut sink)?;
     stats.features += stats.junction_connectors;
     println!("  {} lane connector(s)", stats.junction_connectors);
+    // `sink.finish` itself is a flush, not a loop: every feature was serialised and its coordinates
+    // e7-quantised in the `push` that spilled it, back in `materialise_ways`/`materialise_relations`
+    // (both parallel, both under a "Materialise:" bar) and in the streams above. The spill's byte
+    // order is the archive's, so that write stays serial by construction — there is nothing here to
+    // parallelise. The bar makes the finalise step visible rather than a silent tail of the ~25 s
+    // this phase costs; `stats.features` is the count the sink is closing over.
+    let bar = Progress::new(
+        "Finalise: features".to_string(),
+        stats.features as usize,
+        "feature(s)",
+        true,
+    );
     let store = sink.finish(spill_path)?;
+    bar.finish("feature(s)");
     let store = store.with_conventions(conventions);
     // The one phase that had no mark after it, and it turned out to be the largest single item in the
     // build outside tiling: ~25 s of a 136 s California run. It is 170 M coordinate lookups through

@@ -27,8 +27,24 @@ pub fn extract(
     // directory needs nothing else to be writable.
     let ways_path = spill_path.with_extension("ways.tmp");
 
-    let pass1 = run_pass1(input, &blobs, &select, layers, &ways_path, &mut stats, &mark)?;
+    // A blob-kinds mask cached beside the routing graph -- `road_graph`'s pass 1 wrote it over this
+    // same `.pbf` -- lets pass 1 skip node blobs outright rather than inflating them to learn they
+    // hold no ways or relations. Guarded by blob count, file length and mtime, so a missing or stale
+    // sidecar simply falls back to a full scan. Byte-neutral either way: the mask `run_pass1` returns
+    // carries the skipped blobs' kinds, so it is a complete description of the file regardless.
+    let graph_kinds = pbf::load_blob_kinds(graph, input, &blobs);
+    if graph_kinds.is_some() {
+        mark("blob kinds loaded from graph sidecar");
+    }
+
+    let pass1 = run_pass1(input, &blobs, graph_kinds.as_deref(), &select, layers, &ways_path, &mut stats, &mark)?;
     let members = load_member_ways(input, &blobs, &pass1.blob_kinds, &pass1.relations)?;
+    // Created before the fused node pass below, which spills `places`/`poi` label nodes straight
+    // into it. This sits where pass 4's `Sink::create` used to, moved earlier so those labels reach
+    // the sink in the same order -- chunk order, ahead of every way and relation -- they did when
+    // classification was its own pass after the coordinate resolve. Nothing else touches
+    // `spill_path` until then; the ways scratch and lane-fill temps hang off `with_extension`.
+    let mut sink = Sink::create(spill_path)?;
     let table = build_resolved_table(
         input,
         &blobs,
@@ -37,29 +53,23 @@ pub fn extract(
         &members,
         pass1.way_refs,
         pass1.way_max_ref,
-        &mut stats,
-        &mark,
-    )?;
-    let inherited_lanes = inherit_lane_counts(spill_path, &ways_path, &table)?;
-    stats.lanes_inherited = inherited_lanes.len() as u64;
-    mark("lane counts inherited");
-
-    // --- materialise ----------------------------------------------------------------------
-    //
-    // Ways in **id order**, which is the order the spill file is already in. (Comment kept
-    // with the orchestration rather than the helper, to say why this order is safe.)
-    mark("materialising");
-    let mut sink = Sink::create(spill_path)?;
-    spill_node_labels(
-        input,
-        &blobs,
-        &pass1.blob_kinds,
         &select,
         layers,
         &mut sink,
         &mut stats,
         &mark,
     )?;
+    let inherited_lanes =
+        inherit_lane_counts(spill_path, &ways_path, &table, stats.ways_classified as usize)?;
+    stats.lanes_inherited = inherited_lanes.len() as u64;
+    mark("lane counts inherited");
+
+    // --- materialise ----------------------------------------------------------------------
+    //
+    // Ways in **id order**, which is the order the spill file is already in. The label nodes were
+    // already spilled into `sink` during the fused node pass above, so this only *adds* ways and
+    // relations after them -- the order the tiler groups by layer id from.
+    mark("materialising");
     materialise_ways(
         &ways_path,
         &pass1.promoted,
@@ -95,9 +105,14 @@ struct Pass1Out {
 
 /// Pass 1 (ways + relations) plus the corridor promotion. Moved whole from
 /// `extract` so part files can cut at fn boundaries; behavior identical.
+///
+/// `blob_kinds_in` is an optional pre-computed mask (the graph sidecar) that lets this pass skip
+/// node blobs; `None` means scan the whole file. Either way the mask it returns is complete.
+#[allow(clippy::too_many_arguments)]
 fn run_pass1(
     input: &Path,
     blobs: &[pbf::BlobLoc],
+    blob_kinds_in: Option<&[u8]>,
     select: &Select,
     layers: Layers,
     ways_path: &Path,
@@ -121,7 +136,7 @@ fn run_pass1(
     let blob_kinds = pbf::run_pass_sink(
         input,
         &blobs,
-        None,
+        blob_kinds_in,
         KIND_WAYS | KIND_RELATIONS,
         "Pass 1: ways and relations",
         || {

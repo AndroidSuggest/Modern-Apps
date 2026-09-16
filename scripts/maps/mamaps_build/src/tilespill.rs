@@ -280,6 +280,7 @@ impl ChunkSpill {
             buf: Vec::new(),
             used: 0,
             window: window.max(ENTRY_HEADER_BYTES),
+            spare: None,
         }
     }
 
@@ -348,6 +349,12 @@ pub struct ChunkReader<'a> {
     /// How much of `buf` has been yielded.
     used: usize,
     window: usize,
+    /// A recycled entry's emptied arenas, handed back by the merge after it drains an entry into
+    /// its accumulator. `decode` reuses these buffers instead of allocating four fresh `Vec`s per
+    /// entry — the decode is on the serial merge thread, so its allocator churn is Amdahl time.
+    /// `None` until the merge returns one; a decoded entry is byte-identical whether it was built
+    /// from a recycled arena or a fresh one, because the contents are written the same way.
+    spare: Option<ChunkEntry>,
 }
 
 include!("tilespill_part1.rs");

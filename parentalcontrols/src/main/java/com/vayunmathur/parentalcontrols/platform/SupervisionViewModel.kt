@@ -30,6 +30,7 @@ data class SupervisableApp(
 
 /** Everything the supervision screens draw. */
 data class SupervisionUiState(
+    val controlsEnabled: Boolean = true,
     val schedule: BedtimeSchedule = BedtimeSchedule(),
     val downtime: DowntimeSchedule = DowntimeSchedule(),
     val schoolTime: SchoolTimeSchedule = SchoolTimeSchedule(),
@@ -42,6 +43,7 @@ class SupervisionViewModel(app: Application) : AndroidViewModel(app) {
 
     private val rules = SupervisionRules.get(app)
     private val installed = MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    private val controlsEnabled = MutableStateFlow(SupervisionMaster.isEnabled(app))
 
     val state: StateFlow<SupervisionUiState> = combine(
         rules.schedule,
@@ -50,6 +52,7 @@ class SupervisionViewModel(app: Application) : AndroidViewModel(app) {
         rules.dailyLimitMinutes,
         rules.allRules,
         installed,
+        controlsEnabled,
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val schedule = flows[0] as BedtimeSchedule
@@ -59,8 +62,10 @@ class SupervisionViewModel(app: Application) : AndroidViewModel(app) {
         val ruleList = flows[4] as List<AppRule>
         @Suppress("UNCHECKED_CAST")
         val apps = flows[5] as List<Pair<String, String>>
+        val enabled = flows[6] as Boolean
         val byPackage = ruleList.associateBy { it.packageName }
         SupervisionUiState(
+            controlsEnabled = enabled,
             schedule = schedule,
             downtime = downtime,
             schoolTime = schoolTime,
@@ -72,6 +77,13 @@ class SupervisionViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch { installed.value = loadLaunchableApps() }
+    }
+
+    /** Flips the device-wide master switch and reconciles the whole device to match. */
+    fun setControlsEnabled(enabled: Boolean) {
+        SupervisionMaster.setEnabled(getApplication(), enabled)
+        controlsEnabled.value = enabled
+        viewModelScope.launch { reconcile() }
     }
 
     fun setScheduleEnabled(enabled: Boolean) = edit { it.copy(enabled = enabled) }

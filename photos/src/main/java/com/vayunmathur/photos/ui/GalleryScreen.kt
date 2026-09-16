@@ -58,6 +58,7 @@ import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconDelete
+import com.vayunmathur.library.ui.IconAlbum
 import com.vayunmathur.library.ui.IconSearch
 import com.vayunmathur.library.ui.invisibleClickable
 import com.vayunmathur.library.util.NavBackStack
@@ -105,6 +106,7 @@ fun GalleryScreen(
 ) {
     var columnCount by LocalColumnCount.current
     var searchActive by remember { mutableStateOf(initialSearchActive) }
+    var showAlbumPicker by remember { mutableStateOf(false) }
     val isSelectionMode = state.selectedIds.isNotEmpty()
 
     // Grouping is O(library) with a timezone conversion per photo, so it runs on
@@ -151,6 +153,9 @@ fun GalleryScreen(
                             }
                         },
                         actions = {
+                            IconButton(onClick = { showAlbumPicker = true }) {
+                                IconAlbum()
+                            }
                             IconButton(onClick = { actions.moveSelectionToSecureFolder() }) {
                                 IconLock()
                             }
@@ -311,6 +316,17 @@ fun GalleryScreen(
                 }
             }
         }
+    }
+
+    if (showAlbumPicker) {
+        AlbumPickerDialog(
+            existingAlbums = state.albums.map { it.name },
+            onDismiss = { showAlbumPicker = false },
+            onConfirm = { name ->
+                showAlbumPicker = false
+                actions.addSelectionToAlbum(name)
+            },
+        )
     }
 }
 

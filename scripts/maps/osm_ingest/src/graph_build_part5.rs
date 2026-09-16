@@ -124,7 +124,7 @@ fn io_err(e: std::io::Error) -> Error {
 }
 
 /// Parse the tool's command line:
-/// `road_graph IN.osm.pbf [--out DIR] [--within-way-chains] [--rounds N]
+/// `road_graph IN.osm.pbf [--out DIR] [--reference-collapse] [--rounds N]
 /// [--spill-dir DIR] [--spill-pts-dir DIR] [--dem DATASET.mdem] [--stats]`.
 pub fn parse_args(
     args: &[String],
@@ -132,6 +132,11 @@ pub fn parse_args(
     let mut input: Option<PathBuf> = None;
     let mut out = PathBuf::from("map_data");
     let mut opts = Options::default();
+    // The CLI defaults to the streaming within-way collapse: it is the only path
+    // whose working set fits a planet build on a commodity box. The reference
+    // whole-graph collapse stays reachable for cross-checking via
+    // --reference-collapse. The library default (`Options::default`) is unchanged.
+    opts.within_way_chains = true;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -140,7 +145,7 @@ pub fn parse_args(
                 let dir = args.get(i).ok_or_else(|| "--out needs a directory".to_string())?;
                 out = PathBuf::from(dir);
             }
-            "--within-way-chains" => opts.within_way_chains = true,
+            "--reference-collapse" => opts.within_way_chains = false,
             "--stats" => opts.stats = true,
             "--threads" => {
                 i += 1;

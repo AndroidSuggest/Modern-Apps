@@ -131,7 +131,8 @@ impl StreamWriter {
             ));
         }
         let stored = if self.options.compress { compress_body(encoded) } else { encoded.to_vec() };
-        self.push(tile_id, &stored)
+        let hash = hash64(&stored);
+        self.push(tile_id, &stored, hash)
     }
 
     /// Append a body already compressed by [`compress_body`].
@@ -155,11 +156,41 @@ impl StreamWriter {
         }
         // The 16-byte body header rides uncompressed ahead of the frame, so this still validates.
         Body::raw_len(stored)?;
-        self.push(tile_id, stored)
+        let hash = hash64(stored);
+        self.push(tile_id, stored, hash)
     }
 
-    /// The part both appends share: range and order checks, dedup, and the index entry.
-    fn push(&mut self, tile_id: u64, stored: &[u8]) -> Result<()> {
+    /// [`Self::append_stored`], with the FNV-1a dedup key already computed by the caller.
+    ///
+    /// The hash is over the whole stored body, and on a continent that is hundreds of megabytes
+    /// pushed through one core on the serial append thread — downstream of the parallel encode,
+    /// exactly the place [`compress_body_with`] moved DEFLATE out of. A generator that already holds
+    /// each body in a worker can hash it there and hand the key over, leaving the append thread the
+    /// index bookkeeping it should be.
+    ///
+    /// `hash` must be [`hash64`] of `stored`; the writer trusts it as the bucket key and still
+    /// confirms every candidate by a full byte compare, so a wrong hash could only ever cost a
+    /// missed dedup, never a wrong body. Passing the right one keeps every dedup decision — and the
+    /// archive — byte for byte identical to [`Self::append_stored`].
+    pub fn append_stored_with_hash(
+        &mut self,
+        tile_id: u64,
+        stored: &[u8],
+        hash: u64,
+    ) -> Result<()> {
+        if !self.options.compress {
+            return err(
+                "append_stored was given a compressed body but this archive stores them raw"
+                    .to_string(),
+            );
+        }
+        Body::raw_len(stored)?;
+        self.push(tile_id, stored, hash)
+    }
+
+    /// The part both appends share: range and order checks, dedup, and the index entry. `hash` is
+    /// the FNV-1a dedup key of `stored`, computed by the caller so it need not sit on this thread.
+    fn push(&mut self, tile_id: u64, stored: &[u8], hash: u64) -> Result<()> {
         let (z, _, _) = crate::pmtiles::tile_zxy(tile_id);
         if z < self.options.min_zoom || z > self.options.max_zoom {
             return err(format!(
@@ -199,7 +230,7 @@ impl StreamWriter {
             }
         }
 
-        let key = (hash64(&stored), length);
+        let key = (hash, length);
         // `seen` and `data` are borrowed apart because confirming a candidate may read the spill,
         // which needs `&mut`, while the bucket being walked lives in the map.
         let StreamWriter { seen, data, distinct, .. } = &mut *self;

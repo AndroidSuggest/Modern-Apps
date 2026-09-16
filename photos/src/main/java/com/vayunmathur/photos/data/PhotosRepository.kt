@@ -41,6 +41,7 @@ class PhotosRepository private constructor(context: Context) :
     suspend fun delete(value: Photo): Int = photoDao.delete(value)
     suspend fun deleteByIds(ids: List<Long>) = photoDao.deleteByIds(ids)
     suspend fun setTrashed(id: Long) = photoDao.setTrashed(id)
+    suspend fun setAlbum(ids: List<Long>, album: String?) = photoDao.setAlbum(ids, album)
     suspend fun searchPhotos(query: String): List<Photo> = photoDao.searchPhotos(query)
     suspend fun getUnscannedForOCR(): List<PhotoScanTarget> = photoDao.getUnscannedForOCR()
     suspend fun getUnscannedForFaces(): List<PhotoScanTarget> = photoDao.getUnscannedForFaces()

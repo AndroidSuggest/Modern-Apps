@@ -24,6 +24,7 @@ use crate::proto::{self, Error, Reader, Result, WIRE_BYTES};
 use crate::pbf_extra::decode_blob_header;
 
 pub use crate::pbf_extra::probe_compression;
+pub use crate::pbf_extra::{load_blob_kinds, write_blob_kinds, BLOB_KINDS_FILE};
 
 /// Kind bits: which entity types a pass wants, and which a blob contains.
 pub const KIND_NODES: u8 = 1;
@@ -412,7 +413,7 @@ where
     // Every chunk was deposited, and deposits drain in order, so nothing can be
     // left behind unless a sink call failed above.
     debug_assert_eq!(d.next, n_chunks, "chunks left undrained");
-    println!("\r{label:<28} [100%]");
+    eprintln!("\r{label:<28} [100%]");
     Ok(kinds.iter().map(|k| k.load(Ordering::Relaxed)).collect())
 }
 
@@ -492,7 +493,7 @@ fn report(label: &str, done: &AtomicUsize, last_pct: &AtomicUsize, total: usize)
             .compare_exchange(prev, pct, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
     {
-        print!("\r{label:<28} [{pct}%] ");
-        let _ = std::io::stdout().flush();
+        eprint!("\r{label:<28} [{pct}%] ");
+        let _ = std::io::stderr().flush();
     }
 }

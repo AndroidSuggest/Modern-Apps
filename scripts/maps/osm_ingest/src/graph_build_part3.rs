@@ -54,7 +54,9 @@ fn reconnect_isolated_stops(coords: &[geom::Pt], stops: &Bitset, csr: &Csr) -> R
     // One size per component id. Planet has ~291 K components, so 1.2 MB.
     let mut sizes: Vec<u32> = Vec::new();
     let mut queue: Vec<u32> = Vec::with_capacity(n);
+    let mut prog = crate::progress::Progress::new("Connected components", n as u64);
     for start in 0..n {
+        prog.inc();
         if component[start] != u32::MAX {
             continue;
         }
@@ -75,6 +77,7 @@ fn reconnect_isolated_stops(coords: &[geom::Pt], stops: &Bitset, csr: &Csr) -> R
         }
         sizes.push((queue.len() - base) as u32);
     }
+    prog.finish();
     drop(queue);
 
     let lcc_size = sizes.iter().copied().max().unwrap_or(0);
@@ -228,6 +231,7 @@ fn write_graph(
     // wrap and point a node at another node's edge range.
     cap_u32("directed edge", edge_count)?;
     println!("Writing {edge_count} edge(s) in {rounds} round(s)...");
+    let chain_total = spill.chain_count()?;
 
     let mut nodes_out = BufWriter::new(create(&out_dir.join("nodes.bin"))?);
     let mut edges_out = EdgeFile::create(out_dir, "edges.bin", edge_count)?;
@@ -259,6 +263,10 @@ fn write_graph(
         buffer.clear();
         let mut hdr = spill.headers()?;
         let mut ci = 0u32;
+        let mut prog = crate::progress::Progress::new(
+            format!("Round {}/{rounds}: scan", round + 1),
+            chain_total,
+        );
         while let Some(c) = hdr.next()? {
             let (a, b) = (ids.get(c.first), ids.get(c.last));
             if (lo..hi).contains(&a) {
@@ -268,7 +276,9 @@ fn write_graph(
                 buffer.push(chain_edge(&c, ci, b, a, true));
             }
             ci += 1;
+            prog.inc();
         }
+        prog.finish();
         let synth_lo = synth.partition_point(|s| s.source < lo);
         let synth_hi = synth.partition_point(|s| s.source < hi);
         for s in &synth[synth_lo..synth_hi] {
@@ -310,6 +320,10 @@ fn write_graph(
         buffer.sort_by_key(|e| (e.source, e.target, e.chain));
 
         let mut cursor = 0usize;
+        let mut wprog = crate::progress::Progress::new(
+            format!("Round {}/{rounds}: write", round + 1),
+            u64::from(hi - lo),
+        );
         for v in lo..hi {
             let node = node_coords[v as usize];
             write_node(&mut nodes_out, node.0, node.1, edge_ptr as u32).map_err(io_err)?;
@@ -377,7 +391,9 @@ fn write_graph(
                 cursor += 1;
             }
             census.node((edge_ptr - degree_base) as u32);
+            wprog.inc();
         }
+        wprog.finish();
         debug_assert_eq!(cursor, buffer.len(), "the round left edges unwritten");
     }
 

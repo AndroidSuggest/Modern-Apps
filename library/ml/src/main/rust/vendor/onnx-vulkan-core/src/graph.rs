@@ -1,0 +1,588 @@
+//! Owned intermediate representation of an ONNX graph.
+
+use crate::host_ops::HostTensor;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+
+/// Elementary `TensorProto` type according to ONNX numeric codes.
+///
+/// The enum explicitly indicates these codes belong to the ONNX format and not
+/// to ONNX Runtime. Sub-byte types do not have integer byte widths and
+/// will be handled by the frontend alongside their packing format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(i32)]
+pub enum ElementType {
+    Undefined = 0,
+    Float32 = 1,
+    Uint8 = 2,
+    Int8 = 3,
+    Uint16 = 4,
+    Int16 = 5,
+    Int32 = 6,
+    Int64 = 7,
+    String = 8,
+    Bool = 9,
+    Float16 = 10,
+    Float64 = 11,
+    Uint32 = 12,
+    Uint64 = 13,
+    Complex64 = 14,
+    Complex128 = 15,
+    Bfloat16 = 16,
+    Float8E4M3Fn = 17,
+    Float8E4M3Fnuz = 18,
+    Float8E5M2 = 19,
+    Float8E5M2Fnuz = 20,
+    Uint4 = 21,
+    Int4 = 22,
+    Float4E2M1 = 23,
+    Uint2 = 24,
+    Int2 = 25,
+    Float8E8M0 = 26,
+}
+
+impl ElementType {
+    /// Logical bit width of a fixed-size element.
+    pub const fn bit_width(self) -> Option<usize> {
+        match self {
+            Self::Float32 | Self::Int32 | Self::Uint32 => Some(32),
+            Self::Uint8
+            | Self::Int8
+            | Self::Bool
+            | Self::Float8E4M3Fn
+            | Self::Float8E4M3Fnuz
+            | Self::Float8E5M2
+            | Self::Float8E5M2Fnuz
+            | Self::Float8E8M0 => Some(8),
+            Self::Uint16 | Self::Int16 | Self::Float16 | Self::Bfloat16 => Some(16),
+            Self::Int64 | Self::Float64 | Self::Uint64 | Self::Complex64 => Some(64),
+            Self::Complex128 => Some(128),
+            Self::Uint4 | Self::Int4 | Self::Float4E2M1 => Some(4),
+            Self::Uint2 | Self::Int2 => Some(2),
+            Self::Undefined | Self::String => None,
+        }
+    }
+
+    /// Byte width of a fixed-size element.
+    ///
+    /// Returns `None` for sub-byte types: use [`storage_len`] when
+    /// packed buffer size is needed.
+    pub const fn byte_width(self) -> Option<usize> {
+        match self.bit_width() {
+            Some(bits) if bits >= 8 => Some(bits / 8),
+            _ => None,
+        }
+    }
+}
+
+impl TryFrom<i32> for ElementType {
+    type Error = UnknownElementType;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Undefined),
+            1 => Ok(Self::Float32),
+            2 => Ok(Self::Uint8),
+            3 => Ok(Self::Int8),
+            4 => Ok(Self::Uint16),
+            5 => Ok(Self::Int16),
+            6 => Ok(Self::Int32),
+            7 => Ok(Self::Int64),
+            8 => Ok(Self::String),
+            9 => Ok(Self::Bool),
+            10 => Ok(Self::Float16),
+            11 => Ok(Self::Float64),
+            12 => Ok(Self::Uint32),
+            13 => Ok(Self::Uint64),
+            14 => Ok(Self::Complex64),
+            15 => Ok(Self::Complex128),
+            16 => Ok(Self::Bfloat16),
+            17 => Ok(Self::Float8E4M3Fn),
+            18 => Ok(Self::Float8E4M3Fnuz),
+            19 => Ok(Self::Float8E5M2),
+            20 => Ok(Self::Float8E5M2Fnuz),
+            21 => Ok(Self::Uint4),
+            22 => Ok(Self::Int4),
+            23 => Ok(Self::Float4E2M1),
+            24 => Ok(Self::Uint2),
+            25 => Ok(Self::Int2),
+            26 => Ok(Self::Float8E8M0),
+            code => Err(UnknownElementType(code)),
+        }
+    }
+}
+
+/// ONNX tensor code unrecognized by core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnknownElementType(pub i32);
+
+impl std::fmt::Display for UnknownElementType {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "unknown ONNX tensor element type {}", self.0)
+    }
+}
+
+impl std::error::Error for UnknownElementType {}
+
+/// Bytes per element, or zero for unknown/variable-size types.
+///
+/// Keeps the signature used by the existing interpreter for now. The frontend
+/// must reject unsupported types before execution.
+pub fn elem_size(dtype: i32) -> usize {
+    ElementType::try_from(dtype)
+        .ok()
+        .and_then(ElementType::byte_width)
+        .unwrap_or(0)
+}
+
+/// Packed buffer size for `element_count` ONNX elements.
+pub fn storage_len(dtype: i32, element_count: usize) -> Option<usize> {
+    let bits = ElementType::try_from(dtype).ok()?.bit_width()?;
+    element_count
+        .checked_mul(bits)?
+        .checked_add(7)
+        .map(|n| n / 8)
+}
+
+/// Value of an ONNX attribute.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttrValue {
+    Int(i64),
+    Ints(Vec<i64>),
+    Float(f32),
+    Floats(Vec<f32>),
+    String(String),
+    Tensor(InitializerIr),
+    /// A subgraph attribute (`If`'s `then_branch`/`else_branch`, and the bodies
+    /// of `Loop`/`Scan`). Boxed because a `GraphIr` owns nodes whose attributes
+    /// are `AttrValue` again, so an unboxed variant would make the enum
+    /// recursively sized.
+    Graph(Box<GraphIr>),
+}
+
+impl AttrValue {
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Self::Int(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn as_tensor(&self) -> Option<&InitializerIr> {
+        match self {
+            Self::Tensor(tensor) => Some(tensor),
+            _ => None,
+        }
+    }
+
+    pub fn as_ints(&self) -> Option<&[i64]> {
+        match self {
+            Self::Ints(values) => Some(values),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub fn as_f32(&self) -> Option<f32> {
+        match self {
+            Self::Float(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn as_graph(&self) -> Option<&GraphIr> {
+        match self {
+            Self::Graph(graph) => Some(graph),
+            _ => None,
+        }
+    }
+}
+
+/// Owned ONNX node, independent of the source format.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeIr {
+    /// ONNX domain; empty string for the standard `ai.onnx` operators.
+    pub domain: String,
+    pub op: String,
+    /// Version of the operator set this node's `domain` was imported at — the
+    /// model's opset, **not** the operator's own resolved schema version.
+    ///
+    /// The distinction cost a bug: the two are different numbers (a `Pad` in a
+    /// model at opset 17 resolves to schema version 13), and the field used to
+    /// be called `since_version` while the frontend put the model opset in it
+    /// and the ORT plugin put `Node_GetSinceVersion` in it. Coverage decided on
+    /// that field would have decided differently per host, which is the one
+    /// thing the shared IR exists to prevent. Both producers now write the
+    /// model opset; [`crate::is_implemented_node`] reads it as such.
+    pub opset: i32,
+    pub name: String,
+    /// Names of input values; empty string = missing optional input.
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    pub attrs: HashMap<String, AttrValue>,
+}
+
+/// Constant tensor copied into host memory.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InitializerIr {
+    /// Numeric `TensorProto.DataType` code from the ONNX standard.
+    pub dtype: i32,
+    pub shape: Vec<i64>,
+    pub data: Vec<u8>,
+}
+
+/// Complete IR of an ONNX graph or subgraph.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GraphIr {
+    /// Nodes in stable topological order.
+    pub nodes: Vec<NodeIr>,
+    pub initializers: HashMap<String, InitializerIr>,
+    /// External graph inputs, excluding constant initializers.
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    /// Element type of every value the producer could resolve, by name
+    /// (`TensorProto.DataType` codes).
+    ///
+    /// Coverage used to be decided on the op name and its attributes alone,
+    /// which is how a `uint8` `MaxPool` was claimed by an f32 kernel and
+    /// answered with reinterpreted bytes — `max|Δ| = 8.086`, argmax 489 → 611,
+    /// wrong and silent. [`crate::unsupported_dtype`] reads this map to refuse
+    /// that at load time.
+    ///
+    /// Empty is not "no types": it is "this producer resolved none", and the
+    /// check treats an unknown type as permitted, because refusing what we
+    /// simply failed to infer would reject working models.
+    pub value_types: HashMap<String, i32>,
+}
+
+/// Stable digest of the executable graph contract.
+///
+/// Node order and graph input/output order remain significant. Unordered maps
+/// are sorted before encoding. Initializer contents participate in the digest,
+/// but callers only receive the digest: an execution-plan manifest can validate
+/// external weights without embedding another copy of them.
+pub fn graph_digest(graph: &GraphIr) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    field(&mut digest, b"onnx-vulkan-graph-digest-v1");
+    strings(&mut digest, &graph.inputs);
+    strings(&mut digest, &graph.outputs);
+
+    integer(&mut digest, graph.nodes.len() as u64);
+    for node in &graph.nodes {
+        field(&mut digest, node.domain.as_bytes());
+        field(&mut digest, node.op.as_bytes());
+        field(&mut digest, &node.opset.to_le_bytes());
+        field(&mut digest, node.name.as_bytes());
+        strings(&mut digest, &node.inputs);
+        strings(&mut digest, &node.outputs);
+        let mut attrs = node.attrs.iter().collect::<Vec<_>>();
+        attrs.sort_unstable_by_key(|(name, _)| *name);
+        integer(&mut digest, attrs.len() as u64);
+        for (name, value) in attrs {
+            field(&mut digest, name.as_bytes());
+            attribute(&mut digest, value);
+        }
+    }
+
+    let mut initializers = graph.initializers.iter().collect::<Vec<_>>();
+    initializers.sort_unstable_by_key(|(name, _)| *name);
+    integer(&mut digest, initializers.len() as u64);
+    for (name, initializer) in initializers {
+        field(&mut digest, name.as_bytes());
+        initializer_digest(&mut digest, initializer);
+    }
+
+    let mut value_types = graph.value_types.iter().collect::<Vec<_>>();
+    value_types.sort_unstable_by_key(|(name, _)| *name);
+    integer(&mut digest, value_types.len() as u64);
+    for (name, dtype) in value_types {
+        field(&mut digest, name.as_bytes());
+        field(&mut digest, &dtype.to_le_bytes());
+    }
+    digest.finalize().into()
+}
+
+fn integer(digest: &mut Sha256, value: u64) {
+    digest.update(value.to_le_bytes());
+}
+
+fn field(digest: &mut Sha256, bytes: &[u8]) {
+    integer(digest, bytes.len() as u64);
+    digest.update(bytes);
+}
+
+fn strings(digest: &mut Sha256, values: &[String]) {
+    integer(digest, values.len() as u64);
+    for value in values {
+        field(digest, value.as_bytes());
+    }
+}
+
+fn initializer_digest(digest: &mut Sha256, initializer: &InitializerIr) {
+    field(digest, &initializer.dtype.to_le_bytes());
+    integer(digest, initializer.shape.len() as u64);
+    for dimension in &initializer.shape {
+        field(digest, &dimension.to_le_bytes());
+    }
+    field(digest, &initializer.data);
+}
+
+fn attribute(digest: &mut Sha256, value: &AttrValue) {
+    match value {
+        AttrValue::Int(value) => {
+            digest.update([0]);
+            field(digest, &value.to_le_bytes());
+        }
+        AttrValue::Ints(values) => {
+            digest.update([1]);
+            integer(digest, values.len() as u64);
+            for value in values {
+                field(digest, &value.to_le_bytes());
+            }
+        }
+        AttrValue::Float(value) => {
+            digest.update([2]);
+            field(digest, &value.to_bits().to_le_bytes());
+        }
+        AttrValue::Floats(values) => {
+            digest.update([3]);
+            integer(digest, values.len() as u64);
+            for value in values {
+                field(digest, &value.to_bits().to_le_bytes());
+            }
+        }
+        AttrValue::String(value) => {
+            digest.update([4]);
+            field(digest, value.as_bytes());
+        }
+        AttrValue::Tensor(value) => {
+            digest.update([5]);
+            initializer_digest(digest, value);
+        }
+        AttrValue::Graph(value) => {
+            digest.update([6]);
+            digest.update(graph_digest(value));
+        }
+    }
+}
+
+/// Ops whose `axes` migrated from attribute to input, with the input index.
+///
+/// ONNX moved `axes` to inputs at different times: `ReduceSum` from
+/// opset 13, the other reductions from opset 18. The two forms describe the
+/// same node.
+const AXES_AS_INPUT: [(&str, usize); 4] = [
+    ("ReduceSum", 1),
+    ("ReduceMean", 1),
+    ("ReduceMax", 1),
+    ("ReduceMin", 1),
+];
+
+/// Values produced by `Constant` nodes, indexed by output name.
+///
+/// They are as constant as initializers: ORT usually folds them already, but
+/// not when optimizations are disabled. Merging them with initializers makes
+/// canonicalization independent of the optimization level.
+pub fn constant_outputs(nodes: &[NodeIr]) -> HashMap<String, InitializerIr> {
+    nodes
+        .iter()
+        .filter(|n| n.op == "Constant" && n.domain.is_empty())
+        .filter_map(|n| {
+            let tensor = n.attrs.get("value")?.as_tensor()?;
+            Some((n.outputs.first()?.clone(), tensor.clone()))
+        })
+        .collect()
+}
+
+/// Promotes parameters passed as **constant input** to an attribute.
+///
+/// This is needed because the capability check sees one node at a time and
+/// cannot resolve the value of an input: without this normalization a
+/// `ReduceSum` with axes in an initializer would be rejected, splitting the
+/// block, even though it is identical to the attribute form.
+///
+/// Must be applied **before** the support check and before execution, on the
+/// same IR, so the two decisions cannot diverge. Unaffected nodes stay
+/// unchanged.
+pub fn fold_constant_params(node: &mut NodeIr, initializers: &HashMap<String, InitializerIr>) {
+    let Some(&(_, index)) = AXES_AS_INPUT.iter().find(|(op, _)| *op == node.op) else {
+        return;
+    };
+    if node.attrs.contains_key("axes") {
+        return;
+    }
+    let Some(name) = node.inputs.get(index).filter(|n| !n.is_empty()) else {
+        return;
+    };
+    let Some(init) = initializers.get(name) else {
+        return;
+    };
+    let Ok(axes) = HostTensor::new(init.dtype, init.shape.clone(), init.data.clone()).to_i64()
+    else {
+        return;
+    };
+    node.attrs.insert("axes".to_string(), AttrValue::Ints(axes));
+    node.inputs.truncate(index);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn element_type_codes_and_widths_match_onnx() {
+        assert_eq!(ElementType::try_from(1), Ok(ElementType::Float32));
+        assert_eq!(ElementType::try_from(10), Ok(ElementType::Float16));
+        assert_eq!(ElementType::try_from(999), Err(UnknownElementType(999)));
+        assert_eq!(elem_size(ElementType::Int8 as i32), 1);
+        assert_eq!(elem_size(ElementType::Float32 as i32), 4);
+        assert_eq!(elem_size(ElementType::Complex128 as i32), 16);
+        assert_eq!(elem_size(ElementType::String as i32), 0);
+        assert_eq!(ElementType::Int4.byte_width(), None);
+        assert_eq!(storage_len(ElementType::Int4 as i32, 3), Some(2));
+        assert_eq!(storage_len(ElementType::Uint2 as i32, 5), Some(2));
+    }
+
+    #[test]
+    fn graph_ir_is_owned_and_frontend_independent() {
+        let initializer = InitializerIr {
+            dtype: ElementType::Float32 as i32,
+            shape: vec![2],
+            data: vec![0; 8],
+        };
+        let graph = GraphIr {
+            nodes: vec![NodeIr {
+                domain: String::new(),
+                op: "Add".into(),
+                opset: 14,
+                name: "add".into(),
+                inputs: vec!["x".into(), "bias".into()],
+                outputs: vec!["y".into()],
+                attrs: HashMap::new(),
+            }],
+            initializers: HashMap::from([("bias".into(), initializer)]),
+            inputs: vec!["x".into()],
+            outputs: vec!["y".into()],
+            ..Default::default()
+        };
+
+        assert_eq!(graph.nodes[0].op, "Add");
+        assert_eq!(graph.initializers["bias"].data.len(), 8);
+    }
+
+    #[test]
+    fn graph_digest_is_canonical_and_content_sensitive() {
+        let node = NodeIr {
+            domain: String::new(),
+            op: "Add".into(),
+            opset: 14,
+            name: "add".into(),
+            inputs: vec!["x".into(), "bias".into()],
+            outputs: vec!["y".into()],
+            attrs: HashMap::from([
+                ("beta".into(), AttrValue::Float(1.0)),
+                ("axes".into(), AttrValue::Ints(vec![1, 2])),
+            ]),
+        };
+        let initializer = InitializerIr {
+            dtype: ElementType::Float32 as i32,
+            shape: vec![1],
+            data: 1.0_f32.to_le_bytes().to_vec(),
+        };
+        let graph = GraphIr {
+            nodes: vec![node.clone()],
+            initializers: HashMap::from([("bias".into(), initializer.clone())]),
+            inputs: vec!["x".into()],
+            outputs: vec!["y".into()],
+            value_types: HashMap::from([("y".into(), 1), ("x".into(), 1)]),
+        };
+        let reordered = GraphIr {
+            nodes: vec![NodeIr {
+                attrs: HashMap::from([
+                    ("axes".into(), AttrValue::Ints(vec![1, 2])),
+                    ("beta".into(), AttrValue::Float(1.0)),
+                ]),
+                ..node
+            }],
+            value_types: HashMap::from([("x".into(), 1), ("y".into(), 1)]),
+            ..graph.clone()
+        };
+        assert_eq!(graph_digest(&graph), graph_digest(&reordered));
+
+        let mut changed = graph;
+        changed.initializers.get_mut("bias").unwrap().data[0] ^= 1;
+        assert_ne!(graph_digest(&changed), graph_digest(&reordered));
+    }
+
+    #[test]
+    fn reduce_all_and_axes_input_gate() {
+        // No axes attribute and no axes input: the reduce-all form. With the
+        // default `noop_with_empty_axes = 0` every axis is reduced and the node
+        // is implemented; with `= 1` it is an identity the kernel does not do.
+        let base = NodeIr {
+            domain: String::new(),
+            op: "ReduceMean".into(),
+            opset: 18,
+            name: "r".into(),
+            inputs: vec!["x".into()],
+            outputs: vec!["y".into()],
+            attrs: HashMap::new(),
+        };
+        assert!(
+            crate::is_implemented_node(&base),
+            "reduce-all (noop=0 default)"
+        );
+
+        let mut noop = base.clone();
+        noop.attrs
+            .insert("noop_with_empty_axes".into(), AttrValue::Int(1));
+        assert!(!crate::is_implemented_node(&noop), "identity form refused");
+
+        // An empty axes attribute is the same reduce-all form.
+        let mut empty = base.clone();
+        empty.attrs.insert("axes".into(), AttrValue::Ints(vec![]));
+        assert!(
+            crate::is_implemented_node(&empty),
+            "empty axes = reduce all"
+        );
+
+        // A constant axes input folds into the attribute and is then accepted.
+        let mut folded = NodeIr {
+            inputs: vec!["x".into(), "axes".into()],
+            ..base.clone()
+        };
+        let initializers = HashMap::from([(
+            "axes".to_string(),
+            InitializerIr {
+                dtype: ElementType::Int64 as i32,
+                shape: vec![1],
+                data: 1i64.to_le_bytes().to_vec(),
+            },
+        )]);
+        assert!(
+            !crate::is_implemented_node(&folded),
+            "constant axes input, before folding"
+        );
+        fold_constant_params(&mut folded, &initializers);
+        assert_eq!(folded.attrs.get("axes"), Some(&AttrValue::Ints(vec![1])));
+        assert!(
+            crate::is_implemented_node(&folded),
+            "constant axes input, after folding"
+        );
+
+        // A non-constant axes input stays an input and is refused.
+        let mut unresolved = folded.clone();
+        unresolved.attrs.remove("axes");
+        unresolved.inputs.push("axes".into());
+        assert!(
+            !crate::is_implemented_node(&unresolved),
+            "unresolved axes input refused"
+        );
+    }
+}

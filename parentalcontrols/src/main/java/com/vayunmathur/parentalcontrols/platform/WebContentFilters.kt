@@ -1,0 +1,26 @@
+package com.vayunmathur.parentalcontrols.platform
+
+import android.content.Context
+
+/**
+ * The "Filter explicit sites" preference behind the Web content filters row.
+ *
+ * Stored in SharedPreferences alongside the other on-device parental settings. Actual browser
+ * enforcement is not wired from this app (it would need a supervision-aware browser); this keeps
+ * the parent's choice so it can drive enforcement once a hook exists.
+ */
+object WebContentFilters {
+
+    private const val PREFS = "parentalcontrols_web_filters"
+    private const val KEY_ENABLED = "filter_explicit_sites"
+
+    fun isEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ENABLED, false)
+
+    fun setEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
+    }
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+}

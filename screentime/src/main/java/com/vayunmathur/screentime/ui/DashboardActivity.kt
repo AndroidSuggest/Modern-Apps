@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import android.content.Intent
 import android.os.Bundle
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -11,10 +12,10 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.screentime.platform.ScreenTimeViewModel
 
 /**
- * The screen-time dashboard, reached from the launcher.
+ * The screen-time dashboard, reached from Settings (no launcher icon).
  *
- * Unlike parental controls - which has no launcher entry and lives in Settings - self-managed
- * screen time is something the user opens deliberately, so this is a normal launcher activity.
+ * Self-managed screen time lives under Settings > Digital Wellbeing; this activity answers the
+ * homepage row registered in the manifest rather than a launcher intent.
  */
 class DashboardActivity : ComponentActivity() {
 
@@ -29,8 +30,14 @@ class DashboardActivity : ComponentActivity() {
                 DashboardScreen(
                     state = state,
                     actions = DashboardActions(
-                        onRefresh = viewModel::refresh,
-                        onTimerChange = viewModel::setTimer,
+                        onSetPeriod = viewModel::setPeriod,
+                        onStep = viewModel::stepAnchor,
+                        onOpenApp = { packageName ->
+                            startActivity(
+                                Intent(this, AppDetailsActivity::class.java)
+                                    .putExtra(AppDetailsActivity.EXTRA_DETAILS_PACKAGE, packageName),
+                            )
+                        },
                     ),
                 )
             }

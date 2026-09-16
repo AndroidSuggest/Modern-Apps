@@ -6,9 +6,27 @@ impl Covered {
 
     /// Record every metre of `line` as drawn by service `tag`.
     pub fn add_tagged(&mut self, line: &[(i32, i32)], tag: u32) {
-        for sample in walk(line) {
+        self.add_tagged_walked(&walk(line), tag);
+    }
+
+    /// [`add`](Self::add) over samples already walked by [`walk`].
+    pub fn add_walked(&mut self, walked: &[Walked]) {
+        self.add_tagged_walked(walked, 0);
+    }
+
+    /// [`add_tagged`](Self::add_tagged) over samples already walked by [`walk`], so a caller
+    /// running several gates over one line walks it once and shares the result.
+    pub fn add_tagged_walked(&mut self, walked: &[Walked], tag: u32) {
+        for &sample in walked {
+            let cell = cell_of(sample.0);
+            // One representative per cell per service: a second sample of the same service in
+            // the same cell cannot change any `covers`/`tags_over` answer, and dropping it is
+            // what stops a heavily-republished trunk's buckets growing with the feed count.
+            if !self.filled.insert((cell, tag)) {
+                continue;
+            }
             let at = self.points.len() as u32;
-            self.cells.entry(cell_of(sample.0)).or_default().push(at);
+            self.cells.entry(cell).or_default().push(at);
             self.points.push(sample);
             self.tags.push(tag);
         }
@@ -32,11 +50,16 @@ impl Covered {
     /// never used, only compared against it, and this is called once per surviving line over a
     /// structure holding every sample of every line already drawn.
     pub fn crowd_reaches(&self, line: &[(i32, i32)], limit: usize) -> bool {
+        self.crowd_reaches_walked(&walk(line), limit)
+    }
+
+    /// [`crowd_reaches`](Self::crowd_reaches) over samples already walked by [`walk`].
+    pub fn crowd_reaches_walked(&self, walked: &[Walked], limit: usize) -> bool {
         if limit == 0 {
             return true;
         }
         let mut seen: Vec<u32> = Vec::new();
-        for &(point, ux, uy) in &walk(line) {
+        for &(point, ux, uy) in walked {
             seen.clear();
             self.tags_over(point, ux, uy, &mut seen, limit);
             if seen.len() >= limit {
@@ -109,7 +132,11 @@ impl Covered {
     /// into fragments and left holes where a piece fell below the length worth emitting. A
     /// fraction keeps the whole-line rule and only moves where the threshold sits.
     pub fn covered_fraction(&self, line: &[(i32, i32)]) -> f64 {
-        let walked = walk(line);
+        self.covered_fraction_walked(&walk(line))
+    }
+
+    /// [`covered_fraction`](Self::covered_fraction) over samples already walked by [`walk`].
+    pub fn covered_fraction_walked(&self, walked: &[Walked]) -> f64 {
         if walked.is_empty() {
             return 0.0;
         }
@@ -142,14 +169,25 @@ impl Covered {
 }
 
 /// Every candidate's samples, flat, with the range each candidate's own block occupies.
+///
+/// Each candidate is resampled independently, so the walks go wide and are concatenated back
+/// in candidate order — the blocks, and every sample within them, come out exactly as the
+/// sequential walk left them, so nothing downstream can tell the difference.
 fn sample_all(candidates: &[Candidate]) -> (Vec<Sample>, Vec<Range<usize>>) {
-    let mut out = Vec::new();
+    let per: Vec<Vec<Sample>> = candidates
+        .par_iter()
+        .map(|candidate| {
+            walk(candidate.points)
+                .into_iter()
+                .map(|(point, ux, uy)| Sample { route: candidate.route, point, ux, uy })
+                .collect()
+        })
+        .collect();
+    let mut out = Vec::with_capacity(per.iter().map(Vec::len).sum());
     let mut blocks = Vec::with_capacity(candidates.len());
-    for candidate in candidates {
+    for samples in per {
         let start = out.len();
-        for (point, ux, uy) in walk(candidate.points) {
-            out.push(Sample { route: candidate.route, point, ux, uy });
-        }
+        out.extend(samples);
         blocks.push(start..out.len());
     }
     (out, blocks)
@@ -182,7 +220,7 @@ impl Grid {
     fn build(samples: &[Sample]) -> Grid {
         let mut entries: Vec<(Cell, u32)> =
             samples.iter().enumerate().map(|(i, s)| (cell_of(s.point), i as u32)).collect();
-        entries.sort_unstable();
+        entries.par_sort_unstable();
         Grid { entries }
     }
 

@@ -71,6 +71,7 @@
 //! vector or a `BTreeMap`.
 
 use crate::shapes::{distance_m, project, resample};
+use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -359,6 +360,17 @@ pub fn assign(candidates: &[Candidate]) -> Vec<Vec<Span>> {
     // core for ten minutes with sixty-three threads finished. Sample probes are uniform enough
     // for a range split; candidates are not.
     let total = candidates.len();
+    // Largest-first dispatch (longest-processing-time scheduling): hand out the heaviest
+    // candidates first so the one transcontinental line overlaps with all the small work
+    // instead of being picked last and grinding alone on one core at the end (the 99%
+    // straggler). Cost is proxied by run count -- the same "orders of magnitude more runs"
+    // the note above names. Output is unaffected: each result carries its candidate index and
+    // the parts are re-sorted by it below, so dispatch order never reaches the archive.
+    let order: Vec<usize> = {
+        let mut o: Vec<usize> = (0..total).collect();
+        o.sort_unstable_by_key(|&i| std::cmp::Reverse(runs[i].len()));
+        o
+    };
     let cut_next = AtomicUsize::new(0);
     let cut_done = AtomicUsize::new(0);
     let cut_parts: Mutex<Vec<(usize, Vec<Span>)>> = Mutex::new(Vec::with_capacity(total));
@@ -372,15 +384,17 @@ pub fn assign(candidates: &[Candidate]) -> Vec<Vec<Span>> {
         let blocks = &blocks;
         let probe_cum = &probe_cum;
         let own_cum = &own_cum;
+        let order = &order;
         std::thread::scope(|scope| {
             for _ in 0..threads.min(total.max(1)) {
                 scope.spawn(move || {
                     let mut local: Vec<(usize, Vec<Span>)> = Vec::new();
                     loop {
-                        let at = cut_next.fetch_add(1, AtomicOrdering::Relaxed);
-                        if at >= total {
+                        let slot = cut_next.fetch_add(1, AtomicOrdering::Relaxed);
+                        if slot >= total {
                             break;
                         }
+                        let at = order[slot];
                         local.push((
                             at,
                             spans_of(

@@ -5,65 +5,8 @@
 //! GPU. It only knows two [`Dtype`]s — the ones every `:library:ml` model
 //! uses — so the surface stays small and every failure is a [`TensorError`].
 
-use thiserror::Error;
-
-/// Failures while packing, unpacking, or validating host tensors.
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum TensorError {
-    /// The `i32` dtype code matches no [`Dtype`].
-    #[error("unknown dtype code: {0}")]
-    UnknownDtype(i32),
-    /// A shape dimension is negative or otherwise unusable.
-    #[error("invalid shape: {0}")]
-    InvalidShape(String),
-    /// The byte buffer length does not match dtype and shape.
-    #[error("byte length mismatch: expected {expected}, got {actual}")]
-    ByteLengthMismatch {
-        /// Required length in bytes.
-        expected: usize,
-        /// Length actually supplied.
-        actual: usize,
-    },
-    /// The parallel input slices have different lengths.
-    #[error("mismatched lengths: dtypes {dtypes}, shapes {shapes}, offsets {offsets}")]
-    MismatchedLengths {
-        /// Length of the dtypes slice.
-        dtypes: usize,
-        /// Length of the shapes slice.
-        shapes: usize,
-        /// Length of the offsets slice.
-        offsets: usize,
-    },
-    /// An offset window runs past the end of the payload.
-    #[error("payload out of bounds: offset {offset} with len {len} exceeds {total}")]
-    PayloadOutOfBounds {
-        /// Requested start offset.
-        offset: usize,
-        /// Requested window length.
-        len: usize,
-        /// Total payload length.
-        total: usize,
-    },
-    /// Element-count arithmetic overflowed.
-    #[error("shape overflows address space: {0}")]
-    ShapeOverflow(String),
-    /// A byte buffer is not a multiple of the element size.
-    #[error("invalid byte length {len} for element size {elem}")]
-    InvalidByteLength {
-        /// Buffer length in bytes.
-        len: usize,
-        /// Required element size in bytes.
-        elem: usize,
-    },
-    /// The tensor holds a different dtype than the accessor expected.
-    #[error("dtype mismatch: expected {expected}, got {actual}")]
-    DtypeMismatch {
-        /// Requested dtype code.
-        expected: i32,
-        /// Tensor's actual dtype code.
-        actual: i32,
-    },
-}
+/// Re-exported so existing `crate::tensors::TensorError` paths keep working.
+pub use crate::tensors_error::TensorError;
 
 /// Element type of a [`HostTensor`], using ONNX TensorProto codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +15,8 @@ pub enum Dtype {
     F32 = 1,
     /// 64-bit int (`INT64 = 7`).
     I64 = 7,
+    /// Boolean (`BOOL = 9`), stored as one byte per element (0 or 1).
+    Bool = 9,
 }
 
 impl Dtype {
@@ -80,6 +25,7 @@ impl Dtype {
         match value {
             1 => Some(Self::F32),
             7 => Some(Self::I64),
+            9 => Some(Self::Bool),
             _ => None,
         }
     }
@@ -94,6 +40,7 @@ impl Dtype {
         match self {
             Self::F32 => 4,
             Self::I64 => 8,
+            Self::Bool => 1,
         }
     }
 }
@@ -124,6 +71,12 @@ impl HostTensor {
     pub fn from_i64(shape: Vec<i64>, values: &[i64]) -> Result<Self, TensorError> {
         let bytes = encode_i64_le(values);
         Self::new(Dtype::I64, shape, bytes)
+    }
+
+    /// Build a `Bool` tensor from shape and values (one byte each, 0 or 1).
+    pub fn from_bool(shape: Vec<i64>, values: &[bool]) -> Result<Self, TensorError> {
+        let bytes = encode_bool(values);
+        Self::new(Dtype::Bool, shape, bytes)
     }
 
     /// Return the element type.
@@ -182,6 +135,17 @@ impl HostTensor {
             });
         }
         decode_i64_le(&self.bytes)
+    }
+
+    /// Decode the bytes as `bool`, failing on dtype mismatch.
+    pub fn as_bool(&self) -> Result<Vec<bool>, TensorError> {
+        if self.dtype != Dtype::Bool {
+            return Err(TensorError::DtypeMismatch {
+                expected: Dtype::Bool.to_i32(),
+                actual: self.dtype.to_i32(),
+            });
+        }
+        Ok(decode_bool(&self.bytes))
     }
 }
 
@@ -259,6 +223,16 @@ pub fn decode_i64_le(bytes: &[u8]) -> Result<Vec<i64>, TensorError> {
         out.push(i64::from_le_bytes(raw));
     }
     Ok(out)
+}
+
+/// Encode `bool` values as one byte each (0 or 1).
+pub fn encode_bool(values: &[bool]) -> Vec<u8> {
+    values.iter().map(|&v| u8::from(v)).collect()
+}
+
+/// Decode bytes into `bool` values, treating any non-zero byte as `true`.
+pub fn decode_bool(bytes: &[u8]) -> Vec<bool> {
+    bytes.iter().map(|&b| b != 0).collect()
 }
 
 /// Index of the maximum value in the last row of little-endian `f32` logits.
@@ -345,6 +319,15 @@ pub fn join_outputs(outputs: Vec<HostTensor>) -> Vec<u8> {
     }
     out
 }
+
+// ---------------------------------------------------------------------------
+// Self-describing wire format (v1)
+// ---------------------------------------------------------------------------
+// The `MLV1` encoder/decoder lives in [`crate::tensors_wire`] to keep this file
+// under the repo's 500-line-per-file limit; re-exported here so existing
+// `crate::tensors::{encode_payload, decode_payload, PAYLOAD_MAGIC}` call sites
+// (jni_bridge, tests) keep resolving.
+pub use crate::tensors_wire::{decode_payload, encode_payload, PAYLOAD_MAGIC};
 
 /// Unit tests for host-side tensor packing.
 ///

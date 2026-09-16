@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Default for the SOS gesture when Settings.Secure is unreadable. GrapheneOS reads
+         com.android.internal bools we cannot see; these are our local equivalents. -->
+    <bool name="default_emergency_gesture_enabled">false</bool>
+    <bool name="default_emergency_gesture_sound_enabled">true</bool>
+
+    <!-- SOS countdown length and tick, mirroring GrapheneOS's
+         emergency_action_count_down_millis / emergency_action_count_down_interval. -->
+    <integer name="sos_count_down_millis">5000</integer>
+    <integer name="sos_count_down_interval">250</integer>
+</resources>

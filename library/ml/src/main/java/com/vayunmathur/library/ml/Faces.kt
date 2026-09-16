@@ -39,33 +39,15 @@ import kotlin.math.min
  * `640 / long side`, truncated, centred, border raw-zero through the SCRFD
  * normalisation), and boxes are mapped back onto the source bitmap as `0..1` fractions.
  *
- * # Vulkan-first inference (task 6)
+ * # Vulkan-first inference
  *
- * Landed `VulkanSessions`/`VulkanBridge` API (same package
- * `com.vayunmathur.library.ml`):
- *
- * ```
- * object VulkanSessions {
- *   var probe: Int                                        // driver capability bits
- *   fun isUsable(): Boolean
- *   fun open(key: String, readModel: () -> ByteArray, baseDir: String?): Long // 0L on failure
- *   fun preflight(key: String, baseDir: String? = null, readModel: () -> ByteArray): String? // null = clear
- *   fun close(handle: Long)                               // idempotent
- * }
- * object VulkanBridge {
- *   fun run(handle: Long, names: Array<String>, dtypes: IntArray, shapes: LongArray, offsets: LongArray, payload: ByteArray): ByteArray?
- *   fun lastOutputNames(handle: Long): Array<String>?
- *   fun lastOutputShapes(handle: Long): LongArray?
- *   fun close(handle: Long)
- * }
- * ```
- *
- * Vulkan only runs the graph over packed little-endian payloads (f32 = dtype 1
- * here). Preprocess (`OnnxPreprocess`) and post
- * (SCRFD cell-major decode, greedy NMS, source mapping, L2 left to caller) stay in
- * Kotlin and are shared by both paths. Each instance holds one `vulkanHandle` alongside
- * its ORT session; inference tries Vulkan first and falls back to ORT per call, so a
- * mid-run Vulkan failure still returns results when ORT is available.
+ * When [VulkanSessions] reports the driver usable and this graph is allowlisted, inference
+ * runs on the Vulkan fast path through the self-describing [VulkanWire] payload; ORT is kept
+ * as the fallback. Preprocess (`OnnxPreprocess`) and post (SCRFD cell-major decode, greedy
+ * NMS, source mapping, L2 left to caller) stay in Kotlin and are shared by both paths. Each
+ * instance holds one `vulkanHandle` alongside its ORT session; inference tries Vulkan first
+ * and falls back to ORT per call, so a mid-run Vulkan failure still returns results when ORT
+ * is available.
  */
 
 /** One detected face. Every coordinate is a fraction of the source bitmap, `0..1`. */
@@ -209,7 +191,7 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
                 Log.w(TAG, "vulkan preflight skipped for $asset: $problem")
                 return
             }
-            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            val handle = VulkanSessions.open(key) { modelBytes }
             if (handle != 0L) {
                 vulkanHandle = handle
                 Log.i(TAG, "vulkan session open for $key")
@@ -251,105 +233,21 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
     )
 
     /**
-     * Run the SCRFD graph on Vulkan and resolve its 9 outputs by name, falling back to
-     * positional order when the metadata is absent.
-     *
-     * The bridge concatenates every graph output in name order; the flat shape dims
-     * split evenly across names (each SCRFD map is one tensor), so each output's
-     * float window is its shape chunk. Sizes are validated against
-     * [VulkanBridge.lastOutputShapes] when available.
+     * Run the SCRFD graph on Vulkan and return its 9 outputs in model output order:
+     * score/box/keypoint per stride level (8, 16, 32). Returns null on any failure or a
+     * wrong output count so the caller falls back to ORT.
      */
     private fun vulkanOutputs(handle: Long, input: FloatArray): VulkanFaceOutputs? {
-        val payload = facesFloatsToLe(input)
-        val outBytes = try {
-            VulkanBridge.run(
-                handle,
-                arrayOf(INPUT),
-                intArrayOf(DTYPE_F32),
-                longArrayOf(1, 3, LONG_SIDE.toLong(), LONG_SIDE.toLong()),
-                longArrayOf(0),
-                payload,
-            )
-        } catch (_: Throwable) {
-            return null
-        } ?: return null
-        val floats = facesLeToFloats(outBytes)
-        if (floats.isEmpty()) return null
-        val names: Array<String> = runCatching {
-            VulkanBridge.lastOutputNames(handle)
-        }.getOrNull() ?: emptyArray()
-        val shapes: LongArray? = runCatching {
-            VulkanBridge.lastOutputShapes(handle)
-        }.getOrNull()
-        // Canonical graph order: score/box/kp per stride level.
-        val wantedOrder = listOf(
-            SCORES[0], BOXES[0], KEYPOINTS[0],
-            SCORES[1], BOXES[1], KEYPOINTS[1],
-            SCORES[2], BOXES[2], KEYPOINTS[2],
+        val inputs = listOf(
+            VulkanWire.floats(longArrayOf(1, 3, LONG_SIDE.toLong(), LONG_SIDE.toLong()), input),
         )
-        fun shapeProduct(shape: LongArray): Int {
-            var product = 1L
-            for (dim in shape) product *= if (dim < 0) 1L else dim
-            return product.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        }
-        // Split the flat payload into per-output windows, using the shape
-        // metadata when it divides evenly across the wanted names.
-        val windows: List<FloatArray> = if (shapes != null && names.size == wantedOrder.size &&
-            shapes.size % wantedOrder.size == 0
-        ) {
-            val rank = shapes.size / wantedOrder.size
-            var offset = 0
-            val list = ArrayList<FloatArray>(wantedOrder.size)
-            for (i in wantedOrder.indices) {
-                var numel = 1L
-                for (r in 0 until rank) numel *= shapes[i * rank + r]
-                val count = numel.toInt()
-                if (count <= 0 || offset + count > floats.size) return null
-                list += floats.copyOfRange(offset, offset + count)
-                offset += count
-            }
-            list
-        } else if (names.size == wantedOrder.size && names.isNotEmpty()) {
-            // Names present but no usable shapes: map each wanted name through
-            // the reported order, assuming equal-sized outputs.
-            val perOutput = floats.size / wantedOrder.size
-            if (perOutput <= 0 || perOutput * wantedOrder.size != floats.size) return null
-            wantedOrder.map { wanted ->
-                val index = names.indexOf(wanted).takeIf { it >= 0 } ?: return null
-                floats.copyOfRange(index * perOutput, (index + 1) * perOutput)
-            }
-        } else {
-            // No metadata: assume equal-sized outputs in canonical order.
-            val perOutput = floats.size / wantedOrder.size
-            if (perOutput <= 0 || perOutput * wantedOrder.size != floats.size) return null
-            List(wantedOrder.size) { i ->
-                floats.copyOfRange(i * perOutput, (i + 1) * perOutput)
-            }
-        }
-        // Validate against the reported shape when present and aligned.
-        if (shapes != null && shapes.isNotEmpty()) {
-            val shapeIndexFor = { wanted: String, wantedIndex: Int ->
-                if (names.isNotEmpty()) {
-                    names.indexOf(wanted).takeIf { it >= 0 } ?: wantedIndex
-                } else {
-                    wantedIndex
-                }
-            }
-            if (shapes.size % wantedOrder.size == 0) {
-                val rank = shapes.size / wantedOrder.size
-                wantedOrder.forEachIndexed { wantedIndex, wanted ->
-                    val shape = LongArray(rank) { r ->
-                        shapes[shapeIndexFor(wanted, wantedIndex) * rank + r]
-                    }
-                    if (windows[wantedIndex].size != shapeProduct(shape)) return null
-                }
-            }
-        }
-        val resolved = windows
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        if (outputs.size != STRIDES.size * 3) return null
+        val out = outputs.map { it.asFloats() }
         return VulkanFaceOutputs(
-            scores = listOf(resolved[0], resolved[3], resolved[6]),
-            boxes = listOf(resolved[1], resolved[4], resolved[7]),
-            keypoints = listOf(resolved[2], resolved[5], resolved[8]),
+            scores = listOf(out[0], out[3], out[6]),
+            boxes = listOf(out[1], out[4], out[7]),
+            keypoints = listOf(out[2], out[5], out[8]),
         )
     }
 
@@ -452,30 +350,11 @@ class FaceDetector(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
         private const val KEYPOINT_COUNT = 5
         private const val SCORE_THRESHOLD = 0.5f
         private const val IOU_THRESHOLD = 0.45f
-
-        /** ONNX TensorProto FLOAT, as carried in the Vulkan `dtypes` array. */
-        private const val DTYPE_F32 = 1
         private val STRIDES = intArrayOf(8, 16, 32)
         private val SCORES = arrayOf("443", "468", "493")
         private val BOXES = arrayOf("446", "471", "496")
         private val KEYPOINTS = arrayOf("449", "474", "499")
     }
-}
-
-/** Pack f32 values little-endian for the Vulkan bridge. File-private, shared by both face graphs. */
-private fun facesFloatsToLe(values: FloatArray): ByteArray {
-    val buf = java.nio.ByteBuffer.allocate(values.size * 4)
-        .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-    for (v in values) buf.putFloat(v)
-    return buf.array()
-}
-
-/** Unpack the bridge's little-endian f32 payload. */
-private fun facesLeToFloats(bytes: ByteArray): FloatArray {
-    val out = FloatArray(bytes.size / 4)
-    java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        .asFloatBuffer().get(out)
-    return out
 }
 
 /**
@@ -578,7 +457,7 @@ class FaceEmbedder(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
                 Log.w(TAG, "vulkan preflight skipped for $asset: $problem")
                 return
             }
-            val handle = VulkanSessions.open(key, { modelBytes }, null)
+            val handle = VulkanSessions.open(key) { modelBytes }
             if (handle != 0L) {
                 vulkanHandle = handle
                 Log.i(TAG, "vulkan session open for $key")
@@ -605,32 +484,16 @@ class FaceEmbedder(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
         }
     }
 
-    /** Run the embedding graph on Vulkan; the single output is resolved by shape then size. */
+    /** Run the embedding graph on Vulkan; the single 512-d output is selected by element count. */
     private fun vulkanEmbedding(handle: Long, input: FloatArray): FloatArray? {
-        val outBytes = try {
-            VulkanBridge.run(
-                handle,
-                arrayOf(INPUT),
-                intArrayOf(DTYPE_F32),
-                longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong()),
-                longArrayOf(0),
-                facesFloatsToLe(input),
-            )
-        } catch (_: Throwable) {
-            return null
-        } ?: return null
-        val vec = facesLeToFloats(outBytes)
-        if (vec.isEmpty()) return null
-        runCatching { VulkanBridge.lastOutputShapes(handle) }.getOrNull()?.let { shapes ->
-            if (shapes.isNotEmpty()) {
-                var product = 1L
-                // Single-output graph: the flat dims describe the one tensor.
-                for (dim in shapes) product *= if (dim < 0) 1L else dim
-                if (vec.size != product.toInt() && vec.size != EMBEDDING_LENGTH) return null
-            }
-        }
-        if (vec.size != EMBEDDING_LENGTH) {
-            Log.e(TAG, "vulkan returned a ${vec.size}-value embedding, expected $EMBEDDING_LENGTH")
+        val inputs = listOf(
+            VulkanWire.floats(longArrayOf(1, 3, SIZE.toLong(), SIZE.toLong()), input),
+        )
+        val outputs = VulkanSessions.run(handle, inputs) ?: return null
+        val vec = outputs.firstOrNull {
+            it.dtype == VulkanWire.DTYPE_F32 && it.bytes.size / 4 == EMBEDDING_LENGTH
+        }?.asFloats() ?: run {
+            Log.e(TAG, "vulkan produced no $EMBEDDING_LENGTH-value embedding")
             return null
         }
         return vec
@@ -644,8 +507,5 @@ class FaceEmbedder(context: Context, assetName: String = DEFAULT_ASSET) : AutoCl
         private const val TAG = "FaceEmbedder"
         private const val SIZE = 112
         private const val INPUT = "input.1"
-
-        /** ONNX TensorProto FLOAT, as carried in the Vulkan `dtypes` array. */
-        private const val DTYPE_F32 = 1
     }
 }
