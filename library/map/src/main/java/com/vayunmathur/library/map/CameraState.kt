@@ -188,15 +188,23 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
      * Applies a transform gesture, anchoring the geographic point under
      * [centroidDp] so pinch-zoom keeps that point fixed. Deltas are in logical
      * (dp) units.
+     *
+     * [rotationDeg] is the two-finger twist since the last event, in degrees
+     * (Compose's `detectTransformGestures` convention: counterclockwise positive).
+     * The camera bearing is clockwise-from-north, so it is subtracted. Ignored unless
+     * [rotateEnabled]; pan and zoom never reset the bearing either way (the position is
+     * `copy`ied, not rebuilt).
      */
     internal fun onGesture(
         centroidDp: Offset,
         panDp: Offset,
         zoomChange: Float,
+        rotationDeg: Float = 0f,
         minZoom: Double,
         maxZoom: Double,
         scrollEnabled: Boolean,
         zoomEnabled: Boolean,
+        rotateEnabled: Boolean = true,
     ) {
         val vp = viewportDp ?: return
         // Never zoom out past a full-screen world.
@@ -224,9 +232,24 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
             }
         }
 
+        var bearing = position.bearing
+        if (rotateEnabled && rotationDeg != 0f) {
+            bearing = wrapBearing(bearing - rotationDeg * ROTATION_SENSITIVITY)
+        }
+
         // `copy`, not a fresh `CameraPosition`: a gesture pans and zooms, and rebuilding
         // the position from scratch would silently reset the bearing to north.
-        position = position.copy(target = center, zoom = zoom)
+        position = position.copy(target = center, zoom = zoom, bearing = bearing)
+    }
+
+    /**
+     * Applies a two-finger twist rotation. [deltaDeg] is clockwise-from-north positive
+     * (already converted from the gesture detector's convention by [onGesture]); it wraps
+     * 0–360 rather than clamping, so spinning past north continues through it.
+     */
+    internal fun onRotate(deltaDeg: Double) {
+        if (deltaDeg == 0.0) return
+        position = position.copy(bearing = wrapBearing(position.bearing + deltaDeg))
     }
 
     /**
@@ -241,10 +264,21 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
 }
 
 /** Largest tilt the renderer supports, in degrees. Mirrors the native `PITCH_MAX_DEG` cap. */
-const val MAX_PITCH: Double = 60.0
+const val MAX_PITCH: Double = 65.0
 
 /** Degrees of tilt per Dp of two-finger vertical drag: a ~150 Dp drag sweeps the full range. */
 private const val PITCH_DEG_PER_DP = 0.4
+
+/**
+ * How much of the twist gesture reaches the bearing: 1.0 tracks the fingers exactly.
+ *
+ * Below 1.0 would feel laggy against the fingers; above would overshoot them. The detector
+ * reports the rotation since the last event, so this is a pure gain, not a threshold.
+ */
+private const val ROTATION_SENSITIVITY = 1.0f
+
+/** Bearing wrapped to 0–360: spinning past north continues through it rather than clamping. */
+internal fun wrapBearing(bearing: Double): Double = ((bearing % 360.0) + 360.0) % 360.0
 
 /** Zoom levels covered by a quick-zoom drag across the full viewport height. */
 private const val QUICK_ZOOM_LEVELS_PER_VIEWPORT = 4.0

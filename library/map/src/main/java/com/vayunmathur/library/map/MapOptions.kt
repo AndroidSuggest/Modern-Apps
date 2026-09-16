@@ -1,16 +1,18 @@
 package com.vayunmathur.library.map
 
 /**
- * Which pan/zoom gestures are enabled. Rotation and tilt are unsupported (the
- * map is always north-up), so there are no toggles for them.
+ * Which pan/zoom/rotate gestures are enabled. Tilt (two-finger vertical drag) is always on
+ * where the detector runs; rotation needs no separate detector, so it is one flag here.
  */
 data class GestureOptions(
     val isScrollEnabled: Boolean = true,
     val isZoomEnabled: Boolean = true,
+    val isRotateEnabled: Boolean = true,
 ) {
     companion object {
-        /** Pan + zoom enabled; rotation/tilt unsupported anyway. */
-        val RotationLocked = GestureOptions(isScrollEnabled = true, isZoomEnabled = true)
+        /** Pan + zoom, rotation locked north-up (the old default behaviour). */
+        val RotationLocked =
+            GestureOptions(isScrollEnabled = true, isZoomEnabled = true, isRotateEnabled = false)
 
         /** All gestures disabled (static map). */
         val AllDisabled = GestureOptions(isScrollEnabled = false, isZoomEnabled = false)

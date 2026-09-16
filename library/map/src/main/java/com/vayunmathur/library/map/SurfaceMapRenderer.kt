@@ -397,12 +397,15 @@ class SurfaceMapRenderer(
         val position: CameraPosition
         val widthDp: Float
         val heightDp: Float
-        // Forced to zero on the Compose path. `Projection` — and therefore every
-        // `MapMarker`, pin and cluster positioned through it — is north-up only for bearing, so
-        // honouring a bearing there would rotate the basemap out from under overlays that
-        // did not rotate with it. Tilt is different: `Projection` is now pitch-aware (ray/plane),
-        // so pitch *is* honoured on both paths and overlays follow it. Bearing is reachable
-        // only through [camera], on a surface with no Compose overlays above it.
+        // Forced to zero on the Compose path, even though CameraState now carries a
+        // twist-gesture bearing: `Projection` — and therefore every `MapMarker`, pin
+        // and cluster positioned through it — is north-up only for bearing, so honouring
+        // one there would rotate the basemap out from under overlays that did not rotate
+        // with it. The twist gesture still turns the state (the compass reads it), but the
+        // Compose basemap stays north-up; only the overlay-free `[camera]` path below draws
+        // it. Tilt is different: `Projection` is pitch-aware (ray/plane), so pitch *is*
+        // honoured on both paths and overlays follow it. Bearing is reachable only through
+        // [camera], on a surface with no Compose overlays above it.
         val bearing: Float
         val state = composeCamera
         if (state != null) {

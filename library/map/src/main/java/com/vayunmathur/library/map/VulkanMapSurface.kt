@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.TextureView
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -85,6 +87,12 @@ internal fun VulkanMapSurface(
     modifier: Modifier = Modifier,
     onFrame: () -> Unit = {},
     fallback: @Composable (MapRenderState.Unavailable) -> Unit = {},
+    /**
+     * Show the per-step frame-time table ([FrameStatsOverlay]) over the surface. Off by
+     * default so release pays nothing; a dev host passes true (e.g. from its `DEV_BUILD`).
+     * The overlay polls the native copy and never wakes the frame loop.
+     */
+    showFrameStats: Boolean = false,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current.density
@@ -221,17 +229,26 @@ internal fun VulkanMapSurface(
         ConnectivityMonitor.isOnline.collect { renderer.setOnline(it) }
     }
 
-    AndroidView(
-        factory = {
-            TextureView(context).apply {
-                // The map is opaque, so tell the compositor: a translucent TextureView is
-                // blended every frame for nothing.
-                isOpaque = true
-                surfaceTextureListener = host
-            }
-        },
-        modifier = modifier,
-    )
+    Box(modifier) {
+        AndroidView(
+            factory = {
+                TextureView(context).apply {
+                    // The map is opaque, so tell the compositor: a translucent TextureView is
+                    // blended every frame for nothing.
+                    isOpaque = true
+                    surfaceTextureListener = host
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // The debug table floats over the surface's top-start corner; gated inside, so
+        // `false` composes nothing at all.
+        FrameStatsOverlay(
+            renderer = renderer,
+            enabled = showFrameStats,
+        )
+    }
 
     // Over the TextureView rather than instead of it: the listener that reports the failure
     // only runs once the view is attached, so removing the view would remove the thing that

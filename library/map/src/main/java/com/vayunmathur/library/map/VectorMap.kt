@@ -129,6 +129,12 @@ fun VectorMap(
     onMapClickWithScreen: ((MapClick) -> Unit)? = null,
     onFrame: () -> Unit = {},
     fallback: @Composable (MapRenderState.Unavailable) -> Unit = {},
+    /**
+     * Show the per-step native frame-time table over the map. Off by default so release
+     * pays nothing; a dev host passes true (e.g. from its `DEV_BUILD`). Polls the native
+     * copy at ~3 Hz and never wakes the frame loop.
+     */
+    showFrameStats: Boolean = false,
     content: @Composable MapScope.() -> Unit = {},
 ) {
     val density = LocalDensity.current.density
@@ -197,6 +203,7 @@ fun VectorMap(
             modifier = Modifier.fillMaxSize(),
             onFrame = onFrame,
             fallback = fallback,
+            showFrameStats = showFrameStats,
         )
 
         if (imageOverlay != null) {

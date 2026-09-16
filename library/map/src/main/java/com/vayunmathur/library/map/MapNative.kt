@@ -375,6 +375,16 @@ internal object MapNative {
     external fun pickAt(handle: Long, xDp: Float, yDp: Float): Long
 
     /**
+     * The last frame's per-step times in nanos, in native step order (see the `Step` enum's
+     * `ALL` in `timing.rs`).
+     *
+     * For the debug overlay's slow poll (~2–4 Hz): a copy, so the render thread never blocks
+     * on it. Empty when the handle is dead or nothing has been drawn yet. Must never drive
+     * the frame loop.
+     */
+    external fun lastFrameStepTimesNanos(handle: Long): LongArray
+
+    /**
      * Destroy the renderer, wait for the GPU to go idle, and release the window.
      *
      * Must be called before the [Surface] is released, and exactly once per successful

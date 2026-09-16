@@ -89,17 +89,19 @@ internal fun Modifier.mapGestures(
             cameraState.setViewport(Size(it.width / density, it.height / density))
         }
         .pointerInput(cameraState, gestures, zoomRange, density) {
-            detectTransformGestures { centroid, pan, zoom, _ ->
-                if (!gestures.isScrollEnabled && !gestures.isZoomEnabled) return@detectTransformGestures
+            detectTransformGestures { centroid, pan, zoom, rotation ->
+                if (!gestures.isScrollEnabled && !gestures.isZoomEnabled && !gestures.isRotateEnabled) return@detectTransformGestures
                 zoomAnim.value?.cancel()
                 cameraState.onGesture(
                     centroidDp = toDp(centroid),
                     panDp = toDp(pan),
                     zoomChange = zoom,
+                    rotationDeg = rotation,
                     minZoom = zoomRange.start.toDouble(),
                     maxZoom = zoomRange.endInclusive.toDouble(),
                     scrollEnabled = gestures.isScrollEnabled,
                     zoomEnabled = gestures.isZoomEnabled,
+                    rotateEnabled = gestures.isRotateEnabled,
                 )
             }
         }
