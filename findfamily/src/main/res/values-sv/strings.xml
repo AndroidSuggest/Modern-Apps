@@ -161,4 +161,19 @@
     <string name="permission_grant_bluetooth">Tillåt Bluetooth</string>
     <string name="permission_bluetooth_granted">Bluetooth är tillåtet</string>
     <string name="permission_bluetooth_explanation">Behövs för att hitta enheter i närheten.</string>
+    <string name="notification_channel_noshow_name"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> · Varningar vid utebliven ankomst</string>
+    <string name="notification_channel_noshow_desc">Aviseringar när <xliff:g id="person_name" example="Alice">%1$s</xliff:g> inte kommer till en förväntad plats</string>
+    <string name="noshow_watch_button">Bevaka utebliven ankomst</string>
+    <string name="noshow_title">Bevaka att <xliff:g id="person_name" example="Alice">%1$s</xliff:g> inte anländer</string>
+    <string name="noshow_place_label">Förväntad plats</string>
+    <string name="noshow_place_any">Var som helst</string>
+    <string name="noshow_pick_date">Välj datum</string>
+    <string name="noshow_pick_time">Välj tid</string>
+    <string name="noshow_grace_label">Vänta extra</string>
+    <plurals name="noshow_grace_minutes">
+        <item quantity="one"><xliff:g id="minutes" example="1">%1$d</xliff:g> minut</item>
+        <item quantity="other"><xliff:g id="minutes" example="30">%1$d</xliff:g> minuter</item>
+    </plurals>
+    <string name="noshow_save">Bevaka</string>
+    <string name="noshow_scheduled">Bevakning av utebliven ankomst har ställts in</string>
 </resources>
