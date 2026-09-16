@@ -73,6 +73,7 @@ internal fun MapPageScope.MapContentBox(
                     satelliteEnabled = satelliteEnabled,
                     safetyEnabled = safetyEnabled,
                     transitEnabled = transitEnabled,
+                    selectedTransitStop = selectedTransitStop,
                     darkBasemap = darkMap,
                 )
 
@@ -183,11 +184,11 @@ internal fun MapPageScope.MapContentBox(
 
                     // Browse controls, plus the layers and settings buttons, which stay out while
                     // a place is selected and ride above the sheet — see [MapFabStack].
-                    // GAP (deferred, camera is target+zoom only): bearing is always 0
-                    // north-up, so the compass hides itself and reset-north is a no-op.
+                    // The compass reads the live camera bearing: the twist gesture rotates the
+                    // basemap on the overlay-free path, and tapping it animates back to north.
                     MapFabStack(
                         camera = camera,
-                        bearing = 0.0,
+                        bearing = camera.position.bearing,
                         browsing = browsing,
                         // Whichever of the three is occupying the bottom: at most one sheet is
                         // ever up, and the search bar is only drawn when neither is.
@@ -196,9 +197,13 @@ internal fun MapPageScope.MapContentBox(
                         lift = {
                             (if (searchBarVisible) searchBarLiftPx.toFloat() else 0f).roundToInt()
                         },
-                        // GAP (deferred, camera is target+zoom only): nothing to reset —
-                        // the map is always north-up. Kept so the control slot survives.
-                        onResetNorth = {},
+                        // Reset-north: animate the bearing back to 0, keeping target/zoom/pitch.
+                        // `animateTo` already interpolates the short way round.
+                        onResetNorth = {
+                            coroutineScope.launch {
+                                camera.animateTo(camera.position.copy(bearing = 0.0))
+                            }
+                        },
                         onLayers = { chrome.show(MapOverlay.Layers) },
                         onParking = {
                             val spot = parkingSpot
