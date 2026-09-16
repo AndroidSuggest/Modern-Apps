@@ -3,6 +3,7 @@ use crate::camera::Camera;
 use crate::marker::Marker;
 use crate::style::{Layer, Palette};
 use crate::tile::select;
+use crate::timing::{Step, nanos_since};
 use ash::vk;
 
 impl Renderer {
@@ -223,18 +224,26 @@ impl Renderer {
 
         let frame = &self.frames[self.frame_index];
         let device = &self.context.device;
+        let fence_start = std::time::Instant::now();
         unsafe {
             device
                 .wait_for_fences(std::slice::from_ref(&frame.in_flight), true, u64::MAX)
                 .map_err(|e| format!("wait_for_fences {e:?}"))?;
         }
+        let fence_nanos = nanos_since(fence_start);
         // Only now is it safe to free what previous frames referenced.
+        let retire_start = std::time::Instant::now();
         self.collect_retired();
         // Same fence, same reason: it says this frame slot's previous commands have retired, so
         // nothing is still reading the scratch they drew from.
         unsafe { self.scratch[self.frame_index].reset() };
+        let retire_nanos = nanos_since(retire_start);
+        let fence_sample = fence_nanos;
+        self.step_times.borrow_mut().record(Step::FenceWait, fence_sample);
+        self.step_times.borrow_mut().record(Step::CollectRetired, retire_nanos);
 
         let frame = &self.frames[self.frame_index];
+        let acquire_start = std::time::Instant::now();
         let acquired = unsafe {
             self.swapchain.loader.acquire_next_image(
                 self.swapchain.swapchain,
@@ -243,6 +252,7 @@ impl Renderer {
                 vk::Fence::null(),
             )
         };
+        self.step_times.borrow_mut().record(Step::Acquire, nanos_since(acquire_start));
         let image_index = match acquired {
             Ok((index, _suboptimal)) => index,
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
@@ -271,7 +281,10 @@ impl Renderer {
             device
                 .reset_fences(std::slice::from_ref(&in_flight))
                 .map_err(|e| format!("reset_fences {e:?}"))?;
-            self.record(command_buffer, image_index as usize, camera, layers, palette, clear, filter)?;
+            let record_start = std::time::Instant::now();
+            let record_outcome = self.record(command_buffer, image_index as usize, camera, layers, palette, clear, filter);
+            self.step_times.borrow_mut().record(Step::RecordTotal, nanos_since(record_start));
+            record_outcome?;
 
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             let submit = vk::SubmitInfo::default()
@@ -282,9 +295,11 @@ impl Renderer {
             let queue = self.context.queue;
             let swapchain = self.swapchain.swapchain;
             let loader = self.swapchain.loader.clone();
+            let submit_start = std::time::Instant::now();
             device
                 .queue_submit(queue, std::slice::from_ref(&submit), in_flight)
                 .map_err(|e| format!("queue_submit {e:?}"))?;
+            self.step_times.borrow_mut().record(Step::Submit, nanos_since(submit_start));
 
             let swapchains = [swapchain];
             let indices = [image_index];
@@ -292,7 +307,10 @@ impl Renderer {
                 .wait_semaphores(std::slice::from_ref(&render_finished))
                 .swapchains(&swapchains)
                 .image_indices(&indices);
-            match loader.queue_present(queue, &present) {
+            let present_start = std::time::Instant::now();
+            let present_outcome = loader.queue_present(queue, &present);
+            self.step_times.borrow_mut().record(Step::Present, nanos_since(present_start));
+            match present_outcome {
                 Ok(false) => {}
                 // `VK_SUBOPTIMAL_KHR` is a success code, not an error: the swapchain still
                 // presents correctly, it just no longer matches the surface's ideal properties.

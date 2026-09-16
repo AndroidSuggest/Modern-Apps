@@ -14,6 +14,7 @@ use super::{
     AcceptSet, Frame, Overlay, PlacedHit, PlacementKey, Quad, ResidentTile, RouteBuffers,
     TransientBuffers,
 };
+use crate::style::LayerKind;
 
 pub struct Renderer {
     pub(crate) context: Context,
@@ -31,6 +32,33 @@ pub struct Renderer {
     pub(crate) sprite_atlas: Option<SampledImage>,
     pub(crate) sprite_set: Option<vk::DescriptorSet>,
     pub(crate) command_pool: vk::CommandPool,
+    /// Per-frame scratch, reused across frames rather than reallocated per record.
+    ///
+    /// `record_inner` runs on every frame on the Choreographer callback; allocating its working
+    /// sets (`draws`, `ordered`, `resident`, `tile_alpha`, `deferred_symbols`) fresh each time
+    /// is allocator traffic for values that are recomputed wholesale. These live on the renderer
+    /// and are cleared at the top of each record instead.
+    pub(crate) scratch_draws: Vec<(
+        u8,
+        u32,
+        u32,
+        LayerKind,
+        ash::vk::Buffer,
+        ash::vk::Buffer,
+        u32,
+        u32,
+        Option<u32>,
+        (u8, u8, u8),
+    )>,
+    /// Resident-tile keys sorted coarsest-first for draw order (see `record_inner`).
+    pub(crate) scratch_ordered: Vec<u64>,
+    /// Resident-tile key set for the LOD cross-fade + placement key.
+    pub(crate) scratch_resident: std::collections::HashSet<u64>,
+    /// Per-tile LOD opacity for the frame (see `tile_lod_alpha`).
+    pub(crate) scratch_tile_alpha: std::collections::HashMap<u64, f32>,
+    /// `(tile key, layer index)` symbol draws deferred past the buildings pass.
+    pub(crate) scratch_deferred_symbols: Vec<(u64, usize)>,
+    /// Per-frame synchronisation and its command buffer.
     pub(crate) frames: Vec<Frame>,
     pub(crate) frame_index: usize,
     pub(crate) tiles: HashMap<u64, ResidentTile>,
@@ -64,18 +92,29 @@ pub struct Renderer {
     /// A `Cell` because `record` takes `&self`; the frame path is single-threaded, as the
     /// module docs of [`crate::bridge`] set out.
     pub(crate) submitted_draws: Cell<usize>,
+    /// Per-step frame timing (see [`crate::timing`]): last-frame steps plus the rolling
+    /// sum/max the `%60` rollup reports. A `RefCell` because the record sub-passes take `&self`
+    /// — the same reason `placed` is one — and each record is a short leaf borrow.
+    pub(crate) step_times: std::cell::RefCell<crate::timing::StepTimes>,
     /// Task-17 pick state: the last frame's PLACED labels — accept-set id,
     /// screen box in DEVICE px, layer index, display name, kind string, and
     /// anchor lon/lat — so `pick_labels` answers without re-tessellating.
-    /// Refreshed by `record_inner` every frame; read by the JNI pick path.
+    /// Refreshed by `record_inner` only when the accept-set changes (see the
+    /// `last_accept_ids` guard there); read by the JNI pick path.
     pub(crate) placed: std::cell::RefCell<Vec<PlacedHit>>,
+    /// Sorted accept-set ids of the last `refresh_placed`, so `record_inner` can skip the
+    /// per-frame String clones when the placement was reused (see `PLACE_REUSE_MS`).
+    pub(crate) last_accept_ids: std::cell::RefCell<Option<Vec<u64>>>,
     /// The last symbol placement and the state it was computed from.
     ///
     /// [`place_symbols`](Self::place_symbols) projects a collision box for every glyph of every
     /// curved label and then runs a solver that is quadratic in accepted boxes, all of it on the
     /// Choreographer callback. None of that depends on the frame clock, so a camera that has not
-    /// moved gets last frame's answer instead of the same computation again.
-    pub(crate) placement_cache: std::cell::RefCell<Option<(PlacementKey, AcceptSet)>>,
+    /// moved gets last frame's answer instead of the same computation again — and a camera that
+    /// has only *panned* within [`PLACE_REUSE_MS`](super::PLACE_REUSE_MS) reuses it
+    /// too, which is what keeps panning from re-placing every frame.
+    pub(crate) placement_cache:
+        std::cell::RefCell<Option<(PlacementKey, AcceptSet, std::time::Instant)>>,
     /// What this frame draws on top of every tile, in order. See [`Overlay`].
     pub(crate) overlays: Vec<Overlay>,
     /// The geometry every overlay shares, uploaded once.

@@ -13,6 +13,8 @@
 //! * [`camera`] — a camera snapshot from Kotlin to a per-tile clip matrix.
 //! * [`overlay`] — geographic polylines that are not tile data: the navigation route.
 //! * [`tile`] — the streaming mamaps reader, its range cache, and tile selection.
+//! * [`timing`] — per-step frame timing: `Instant` deltas on the render thread, no Vulkan, no
+//!   JNI, host-testable.
 //! * `vulkan` — device, swapchain, pipelines, frame. Android only.
 //!
 //! # The JNI boundary
@@ -42,6 +44,7 @@ pub mod pipeline_cache;
 pub mod style;
 pub mod tess;
 pub mod tile;
+pub mod timing;
 
 #[cfg(target_os = "android")]
 pub mod vulkan;

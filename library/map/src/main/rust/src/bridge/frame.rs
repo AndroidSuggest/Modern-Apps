@@ -5,6 +5,7 @@ use crate::camera::Camera;
 use crate::style;
 use crate::tile::select;
 use crate::tile::source::retry_delay_ms;
+use crate::timing::{Step, nanos_since};
 use jni::objects::JClass;
 use jni::sys::{jboolean, jfloat, jlong};
 use jni::JNIEnv;
@@ -28,6 +29,9 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     frame_time_nanos: jlong,
 ) -> jboolean {
     let Some(map) = handle_mut(handle) else { return 0 };
+    // Per-step timing for the `%60` rollup: `Instant` deltas only, never the camera clock
+    // (which wraps hourly). The render thread is the only writer.
+    let jni_start = std::time::Instant::now();
 
     // The camera zoom crosses the boundary untouched. MapLibre parity is
     // `camera::TILE_SIZE` being 512, the convention the archives are authored on, so
@@ -63,6 +67,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // Upload whatever the workers finished, up to `UPLOADS_PER_FRAME`. Doing it here rather than
     // on a worker keeps every Vulkan call on one thread; bounding it keeps a burst of finished
     // tiles from landing in a single frame.
+    let drain_start = std::time::Instant::now();
     let mut uploads = 0usize;
     while uploads < UPLOADS_PER_FRAME {
         let Ok((key, result)) = map.finished.try_recv() else { break };
@@ -107,6 +112,11 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // `visible` goes to `retain` as well as to the fetch loop, because the other half of the
     // fallback — already-resident *descendants*, which are what stops a zoom-out blanking the
     // map — cannot be named in a keep list without enumerating tiles that were never fetched.
+    //
+    // The drain sample lands here rather than right after the loop: it covers the channel
+    // receives and the uploads, not the select below.
+    map.renderer.step_times.borrow_mut().record(Step::UploadDrain, nanos_since(drain_start));
+    let select_start = std::time::Instant::now();
     let (min_zoom, max_zoom) = map.zoom_range.get();
     // A tile is "had" only if it was tessellated at the current toggle generation, so a
     // toggle change re-requests the resident set through this same loop rather than
@@ -143,6 +153,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
         map.retry.retain(|key, _| visible.iter().any(|t| t.key() == *key));
     }
     map.renderer.retain(&keep, &visible, RESIDENT_TILE_CAP);
+    map.renderer.step_times.borrow_mut().record(Step::Select, nanos_since(select_start));
 
     // Once a second, state what the renderer actually has. Every bug in this file so far has
     // been invisible from the outside: a viewport nobody measured, a zoom level the archive
@@ -155,9 +166,13 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
         // `meshes` is what is resident, `draws` what the last frame actually submitted. They
         // differ wherever the authored style ramps a layer's width to zero, so reporting only
         // the first would claim roads are being drawn at zooms where they are gated out.
+        //
+        // The step rollup is built (and its window reset) only on this frame: every other
+        // frame pays integer stores only. `avg/max` per step in ms over the last 60 frames.
+        let steps = map.renderer.step_times.borrow_mut().report(60);
         log_info(&format!(
             "z{:.2} @{:.4},{:.4} b{:.0} vp {}x{}dp {}x{}px msaa {}x | resident {} tiles, {} meshes, \
-             {} draws, {} tris | {} in flight, {} absent | archive z{}..{}",
+             {} draws, {} tris | {} in flight, {} absent | archive z{}..{} | {}",
             camera.zoom,
             camera.center_lon,
             camera.center_lat,
@@ -175,6 +190,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
             map.absent.len(),
             min_zoom,
             max_zoom,
+            steps,
         ));
     }
 
@@ -182,17 +198,49 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // narrows which POIs are drawn and pulls its own kinds in earlier than the ambient map shows
     // them. See `Layer::draws_at_focused`.
     let (_, kinds, _) = map.toggles.get();
-    match map.renderer.render(
+    let outcome = map.renderer.render(
         &camera,
         &map.layers,
         map.palette,
         style::background(map.palette.variant),
         &kinds,
-    ) {
+    );
+    // The JNI-entry sample closes here: it covers drain + select + render, which is the whole
+    // native half of the frame the host asked for.
+    map.renderer.step_times.borrow_mut().record(Step::JniEntry, nanos_since(jni_start));
+    match outcome {
         Ok(drawn) => jboolean::from(drawn),
         Err(e) => {
             log(&format!("frame failed: {e}"));
             0
         }
     }
+}
+
+/// The last frame's per-step times in nanos, in [`Step::ALL`](crate::timing::Step) order.
+///
+/// For the debug overlay's slow poll (~2–4 Hz): a copy, so the render thread never blocks on it.
+/// A dead handle (or a JNI failure) answers an empty array rather than crashing — the overlay
+/// reads that as "no data yet". Must never drive `needs_frame` or alter the frame loop.
+#[no_mangle]
+pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_lastFrameStepTimesNanos<'l>(
+    env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+) -> jni::sys::jlongArray {
+    let empty = env.new_long_array(0).expect("step-times empty array");
+    let Some(map) = handle_mut(handle) else { return empty.into_raw() };
+    let last = map.renderer.step_times.borrow();
+    let nanos = last.last_nanos();
+    let out = match env.new_long_array(nanos.len() as i32) {
+        Ok(a) => a,
+        Err(_) => return empty.into_raw(),
+    };
+    // `i64` is only the JNI carrier: the samples are `u64` nanos, and no step of a frame can
+    // reach the sign bit, so the cast is exact.
+    let wide: Vec<i64> = nanos.iter().map(|&n| n as i64).collect();
+    if env.set_long_array_region(&out, 0, &wide).is_err() {
+        return empty.into_raw();
+    }
+    out.into_raw()
 }
