@@ -1,15 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Zdrowie</string>
-    
     <string name="grant_permissions">Przyznaj uprawnienia</string>
     <string name="grant_permissions_rationale">Ta aplikacja odczytuje i zapisuje Twoje dane zdrowotne za pośrednictwem Health Connect. Żadne informacje nie opuszczają Twojego urządzenia.</string>
-
     <string name="tab_day">Dzień</string>
     <string name="tab_week">Tydzień</string>
     <string name="tab_month">Miesiąc</string>
     <string name="tab_year">Rok</string>
-    
     <string name="week_range"><xliff:g id="start_date" example="May 12">%1$s</xliff:g> – <xliff:g id="end_date" example="May 18">%2$s</xliff:g></string>
     <string name="no_data_available">Brak danych dla tego okresu</string>
     <string name="unit_per_day_avg_format"><xliff:g id="unit" example="steps">%1$s</xliff:g>/dzień (śr.)</string>
@@ -17,7 +14,6 @@
     <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2026">%2$d</xliff:g></string>
     <string name="value_unit_space_format"><xliff:g id="value" example="12,345">%1$s</xliff:g> <xliff:g id="unit" example="steps">%2$s</xliff:g></string>
     <string name="k_format"><xliff:g id="thousands" example="12">%1$s</xliff:g> tys.</string>
-
     <string name="metric_energy_burned">Spalone kalorie</string>
     <string name="metric_active_calories">Aktywne kalorie</string>
     <string name="metric_basal_metabolic_rate">Podstawowa przemiana materii (BMR)</string>
@@ -44,16 +40,13 @@
     <string name="metric_body_water_mass">Zawartość wody w organizmie</string>
     <string name="metric_sleep">Sen</string>
     <string name="metric_exercise_duration">Ćwiczenia</string>
-
     <string name="label_awake">Wybudzenie</string>
     <string name="label_rem">REM</string>
     <string name="label_core">Płytki</string>
     <string name="label_deep">Głęboki</string>
-
     <string name="section_body_composition">Skład ciała</string>
     <string name="label_active">Aktywność</string>
     <string name="label_today">Dzisiaj</string>
-
     <string name="slash_value_format"><xliff:g id="first" example="120">%1$s</xliff:g>/<xliff:g id="second" example="80">%2$s</xliff:g></string>
     <string name="dash_value_format"><xliff:g id="min" example="60">%1$s</xliff:g> - <xliff:g id="max" example="140">%2$s</xliff:g></string>
     <string name="hours_minutes_format"><xliff:g id="hours" example="7">%1$d</xliff:g> godz. <xliff:g id="minutes" example="30">%2$d</xliff:g> min</string>
@@ -67,18 +60,15 @@
     <string name="label_heart_rate">Tętno</string>
     <string name="label_sleep">Sen</string>
     <string name="label_hydration">Nawodnienie</string>
-
     <string name="label_blood_pressure">Ciśnienie krwi</string>
     <string name="label_oxygen_saturation">Natlenienie krwi</string>
     <string name="label_resting_heart_rate">Tętno spoczynkowe</string>
-
     <string name="label_height">Wzrost</string>
     <string name="label_weight">Waga</string>
     <string name="label_body_fat">Tkanka tłuszczowa</string>
     <string name="label_lean_body_mass">Beztłuszczowa masa ciała</string>
     <string name="label_bone_mass">Masa kostna</string>
     <string name="label_body_water_mass">Zawartość wody w organizmie</string>
-
     <string name="unit_bpm">ud./min</string>
     <string name="unit_percent">%</string>
     <string name="unit_cm">cm</string>
@@ -92,7 +82,6 @@
     <string name="unit_min">min</string>
     <string name="unit_cal">kcal</string>
     <string name="label_blood_pressure_unit">mmHg</string>
-
     <string name="nutrition_breakdown">Analiza składników odżywczych</string>
     <string name="recipes">Przepisy</string>
     <string name="ingredients">Składniki</string>
@@ -106,20 +95,17 @@
     <string name="confirm">Zatwierdź</string>
     <string name="search_ingredient">Wyszukaj składnik</string>
     <string name="search">Szukaj</string>
-
     <string name="log_hydration">Zapisz nawodnienie</string>
     <string name="log_meal">Zapisz posiłek</string>
     <string name="log_body_metric">Zapisz: <xliff:g id="metric" example="Weight">%1$s</xliff:g></string>
     <string name="nav_today">Dzisiaj</string>
     <string name="nav_nutrition">Odżywianie</string>
     <string name="nav_body">Ciało</string>
-
     <string name="section_latest_vitals">Najnowsze parametry</string>
     <string name="section_last_night">Ostatnia noc</string>
     <string name="section_quick_stats">Szybkie statystyki</string>
     <string name="label_exercise">Ćwiczenia</string>
     <string name="no_workouts">Brak zarejestrowanych treningów</string>
-
     <string name="view_full_breakdown">Zobacz pełne zestawienie</string>
     <string name="no_results_found">Nie znaleziono wyników</string>
     <string name="original_1">Oryginał: <xliff:g id="original_name" example="Pomidor">%1$s</xliff:g></string>
@@ -129,7 +115,6 @@
     <string name="food_database_preparing">Przygotowywanie <xliff:g id="products_done" example="120 000">%1$s</xliff:g> z <xliff:g id="products_total" example="465 000">%2$s</xliff:g> produktów</string>
     <string name="food_database_retry">Spróbuj ponownie</string>
     <string name="food_database_attribution">Dane żywieniowe z Open Food Facts, ODbL v1.0</string>
-
     <string name="segments">Segmenty</string>
     <string name="laps">Okrążenia</string>
     <string name="lap">Okrążenie <xliff:g id="lap_index" example="1">%1$s</xliff:g></string>
@@ -142,10 +127,8 @@
     <string name="add_your_first_ingredient">Dodaj swój pierwszy składnik</string>
     <string name="create_your_first_recipe">Utwórz swój pierwszy przepis</string>
     <string name="edit_recipe">Edytuj przepis</string>
-
     <string name="no_meals_logged_today">Nie zapisano dziś żadnych posiłków</string>
     <string name="meals_cal"><xliff:g id="meal_count" example="3">%1$s</xliff:g> posiłki · <xliff:g id="total_cal" example="850">%2$s</xliff:g> kcal</string>
-
     <string name="hydration_liters">Litry</string>
     <string name="hydration_milliliters">Mililitry</string>
     <string name="hydration_ounces">Uncje</string>
@@ -154,10 +137,8 @@
     <string name="quantity_x_100g">Ilość (× 100 g)</string>
     <string name="servings">Porcje</string>
     <string name="kcal_2">kcal</string>
-
     <string name="nav_medication">Leki</string>
     <string name="nav_records">Dokumentacja</string>
-
     <string name="vaccinations">Szczepienia</string>
     <string name="allergies">Alergie</string>
     <string name="conditions">Choroby</string>
@@ -166,16 +147,13 @@
         <item quantity="other">%1$d wpisów</item>
     </plurals>
     <string name="nothing_recorded">Nie zapisano jeszcze żadnych danych</string>
-
     <string name="phr_unavailable">Usługa Health Connect na tym urządzeniu nie może przechowywać dokumentacji medycznej, dlatego dane te są przechowywane tylko w aplikacji.</string>
-
     <string name="no_vaccinations">Brak szczepień</string>
     <string name="no_vaccinations_message">Dodaj szczepienie, aby rozpocząć dokumentację, którą możesz przechowywać i udostępniać.</string>
     <string name="add_vaccination">Dodaj szczepienie</string>
     <string name="edit_vaccination">Edytuj szczepienie</string>
     <string name="delete_vaccination_confirm">Usunąć wpis dotyczący szczepienia %1$s?</string>
     <string name="cvx_code">CVX %1$s</string>
-
     <string name="no_medications">Brak leków</string>
     <string name="no_medications_message">Dodaj lek, aby śledzić, co przyjmujesz i kiedy.</string>
     <string name="add_medication">Dodaj lek</string>
@@ -186,12 +164,10 @@
     <string name="medication_status_active">Przyjmowany</string>
     <string name="medication_status_completed">Zakończony</string>
     <string name="medication_status_stopped">Przerwany</string>
-
     <string name="section_what">Co</string>
     <string name="section_when">Kiedy</string>
     <string name="section_details">Szczegóły</string>
     <string name="section_attachments">Załączniki</string>
-
     <string name="field_vaccine">Szczepionka</string>
     <string name="choose_a_vaccine">Wybierz szczepionkę</string>
     <string name="field_date_given">Data podania</string>
@@ -203,7 +179,6 @@
     <string name="field_note">Notatka</string>
     <string name="attach_file">Dołącz plik PDF lub zdjęcie</string>
     <string name="attachment_untitled">Załącznik</string>
-
     <string name="field_medication">Lek</string>
     <string name="choose_a_medication">Wybierz lek</string>
     <string name="field_strength_and_form">Moc i postać</string>
@@ -212,7 +187,6 @@
     <string name="field_ended">Zakończono</string>
     <string name="field_dosage">Dawkowanie</string>
     <string name="field_status">Status</string>
-
     <string name="search_vaccines">Szukaj szczepionek</string>
     <string name="search_medications">Szukaj leków</string>
     <string name="search_strengths">Szukaj mocy</string>
@@ -222,16 +196,13 @@
     <string name="use_typed_name">Użyj „%1$s”</string>
     <string name="cvx_retired">Wycofany kod</string>
     <string name="date_range"><xliff:g example="1 marca 2026" id="start">%1$s</xliff:g> – <xliff:g example="4 kwietnia 2026" id="end">%2$s</xliff:g></string>
-
     <string name="channel_dose_reminder_name">Przypomnienia o dawce</string>
     <string name="channel_dose_reminder_description">Powiadamia, gdy nadejdzie pora przyjęcia leku.</string>
     <string name="channel_dose_ringing_name">Trwające przypomnienie</string>
     <string name="channel_dose_ringing_description">Wyświetlane, gdy rozlega się przypomnienie o dawce.</string>
-
     <string name="dose_due_title">Czas przyjąć lek</string>
     <string name="dose_taken">Przyjęto</string>
     <string name="dose_snooze">Odłóż</string>
-
     <string name="section_reminders">Przypomnienia</string>
     <string name="remind_me">Przypomnij mi o przyjęciu</string>
     <string name="dose_times">Pory dnia</string>
@@ -244,7 +215,6 @@
     <string name="full_screen_intent_needed">Przypomnienia mogą przejąć ekran dopiero po zezwoleniu na powiadomienia pełnoekranowe.</string>
     <string name="grant_full_screen">Zezwól</string>
     <string name="next_dose">Następna dawka <xliff:g example="Jutro 08:00" id="when">%1$s</xliff:g></string>
-
     <string name="day_initial_sunday">N</string>
     <string name="day_initial_monday">P</string>
     <string name="day_initial_tuesday">W</string>
@@ -252,7 +222,6 @@
     <string name="day_initial_thursday">C</string>
     <string name="day_initial_friday">P</string>
     <string name="day_initial_saturday">S</string>
-
     <string name="no_allergies">Nie zapisano żadnych alergii</string>
     <string name="no_allergies_message">Zapisz alergię, aby była przechowywana wraz z Twoimi danymi zdrowotnymi.</string>
     <string name="add_allergy">Dodaj alergię</string>
@@ -272,7 +241,6 @@
     <string name="allergy_criticality_low">Niska</string>
     <string name="allergy_criticality_high">Wysoka</string>
     <string name="allergy_criticality_unknown">Nieznana</string>
-
     <string name="no_conditions">Nie zapisano żadnych chorób</string>
     <string name="no_conditions_message">Zapisz diagnozę, aby mieć swoją listę chorób zawsze przy sobie.</string>
     <string name="add_condition">Dodaj chorobę</string>
@@ -286,11 +254,9 @@
     <string name="condition_status_recurrence">Nawrót</string>
     <string name="condition_status_remission">W remisji</string>
     <string name="condition_status_resolved">Ustąpiła</string>
-
     <string name="search_allergens">Szukaj alergenów</string>
     <string name="search_conditions">Szukaj chorób</string>
     <string name="search_lab_tests">Szukaj badań laboratoryjnych</string>
-
     <string name="lab_results">Wyniki badań laboratoryjnych</string>
     <string name="no_lab_results">Brak wyników badań laboratoryjnych</string>
     <string name="no_lab_results_message">Zapisz wynik badania, aby przechowywać go wraz z pozostałą historią medyczną.</string>
@@ -305,7 +271,6 @@
     <string name="field_reference_low">Norma od</string>
     <string name="field_reference_high">Norma do</string>
     <string name="field_taken_on">Data pobrania</string>
-
     <string name="about_you">O Tobie</string>
     <string name="about_you_overline">Aktualny stan</string>
     <string name="section_pregnancy">Ciąża</string>
@@ -321,4 +286,33 @@
     <string name="smoking_never">Nigdy nie palono</string>
     <string name="smoking_former">Były palacz</string>
     <string name="smoking_current">Obecnie pali</string>
+    <string name="social_alcohol">Jak często pijesz napoje alkoholowe?</string>
+    <string name="social_drugs">Ile razy w ciągu ostatniego roku zażyłeś(-aś) nielegalny narkotyk lub lek wydawany na receptę w celach innych niż medyczne?</string>
+    <string name="social_housing">Jaka jest obecnie Twoja sytuacja mieszkaniowa?</string>
+    <string name="social_food_worried">W ciągu ostatnich 12 miesięcy martwiliśmy się, czy nie zabraknie nam jedzenia, zanim zdobędziemy pieniądze na zakup kolejnego.</string>
+    <string name="social_food_ran_out">W ciągu ostatnich 12 miesięcy kupione przez nas jedzenie po prostu się skończyło, a nie mieliśmy pieniędzy na zakup kolejnego.</string>
+    <string name="social_transport">Czy brak transportu uniemożliwił Ci dotarcie na wizyty lekarskie, do pracy lub po rzeczy codziennego użytku?</string>
+    <string name="section_lifestyle">Styl życia</string>
+    <string name="section_circumstances">Sytuacja życiowa</string>
+    <string name="not_answered">Bez odpowiedzi</string>
+    <string name="freq_never">Nigdy</string>
+    <string name="freq_once_or_twice">Raz lub dwa razy</string>
+    <string name="freq_monthly">Raz w miesiącu</string>
+    <string name="freq_weekly">Raz w tygodniu</string>
+    <string name="freq_daily">Codziennie lub prawie codziennie</string>
+    <string name="audit_monthly_or_less">Raz w miesiącu lub rzadziej</string>
+    <string name="audit_2_4_month">2 do 4 razy w miesiącu</string>
+    <string name="audit_2_3_week">2 do 3 razy w tygodniu</string>
+    <string name="audit_4_plus_week">4 lub więcej razy w tygodniu</string>
+    <string name="housing_steady">Mam stałe miejsce zamieszkania</string>
+    <string name="housing_worried">Mam obecnie gdzie mieszkać, ale martwię się, że to stracę</string>
+    <string name="housing_none">Nie mam stałego miejsca zamieszkania</string>
+    <string name="hvs_often_true">Często prawda</string>
+    <string name="hvs_sometimes_true">Czasami prawda</string>
+    <string name="hvs_never_true">Nigdy prawda</string>
+    <string name="transport_medical">Tak, na wizyty lekarskie lub po odbiór leków</string>
+    <string name="transport_non_medical">Tak, do pracy lub po inne potrzebne rzeczy</string>
+    <string name="transport_no">Nie</string>
+    <string name="decline_to_answer">Wolę nie odpowiadać</string>
+    <string name="last_taken">Ostatnio przyjęto: %1$s</string>
 </resources>
