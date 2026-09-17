@@ -45,10 +45,12 @@ mod paint_extra;
 mod paint_extra2;
 #[cfg(test)]
 mod paint_extra3;
+#[cfg(test)] mod paint_extra6;
 #[cfg(test)]
 mod paint_extra4;
 #[cfg(test)]
 mod paint_extra5;
+#[cfg(test)] mod paint_extra7;
 
 mod filter;
 mod kinds;

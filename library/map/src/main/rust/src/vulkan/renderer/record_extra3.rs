@@ -1,9 +1,10 @@
 use super::{
-    anchors_for, argb_to_rgba, scale_alpha, Overlay, Renderer, UserPuck, ARROW_COLOR, ARROW_DP,
+    anchors_for, argb_to_rgba, scale_alpha, Overlay, Renderer, ARROW_COLOR, ARROW_DP,
     BUILDINGS_DRAW_MIN_ZOOM, IDENTITY, PUCK_COLOR, PUCK_CONE_DP, PUCK_CONE_HALF_STROKE_DP,
     PUCK_DOT_DP, PUCK_QUAD_DP, PUCK_RIM_DP, QUAD_INDICES, SCRIM_COLOR, TRAFFIC_WIDTH_DP,
     VEHICLE_RING_DP, VEHICLE_RING_QUAD_DP,
 };
+use super::record_markers::emit_marker_corners;
 use crate::camera::Camera;
 use crate::marker::{Marker, MARKER_SIZE_DP};
 use crate::style::paint::Stroke;
@@ -36,6 +37,9 @@ impl Renderer {
         palette: Palette,
         markers: &[Marker],
         submitted: &mut usize,
+        // This frame's globe flag: far-side markers culled, screen quads placed
+        // via the globe anchor — or the flat billboard path bit-identically.
+        globe: bool,
     ) {
         let Some(sprite_set) = self.sprite_set else {
             return;
@@ -57,25 +61,46 @@ impl Renderer {
             else {
                 continue;
             };
-            // The billboard matrix for this marker (upright + screen-constant under tilt). Its
-            // translation column is the quad centre in clip space; columns 0 and 1 are the local
-            // Dp axes. All four corners share the same `w` (the matrix's `w` columns for the two
-            // in-plane axes are zero on both the ortho and the tilted path), so the perspective
-            // divide is one number per marker.
-            let m = camera.screen_quad_to_clip(marker.lon, marker.lat, 1.0);
-            let w = m[15] as f64;
-            if w <= 0.0 {
-                continue; // behind the eye / above the horizon under tilt: nothing to draw.
-            }
-            let cx = m[12] as f64 / w;
-            let cy = m[13] as f64 / w;
+            // Globe: far-side markers are on the planet's far side — culled, not
+            // drawn. Near-side markers resolve their clip quad through the globe
+            // anchor (screen position of the lon/lat on the ball) with the same
+            // screen-constant size as the flat path.
+            let (cx, cy, xu, yu, xv, yv, w) = if globe {
+                let Some((sx, sy)) = camera.globe_anchor_to_screen(marker.lon, marker.lat) else {
+                    continue;
+                };
+                // Clip-space centre from Dp: clip = 2*dp/dim - 1 (y down, matching
+                // the flat matrices' sign convention).
+                let cx = (sx / camera.width_dp as f64 * 2.0 - 1.0) as f64;
+                let cy = (sy / camera.height_dp as f64 * 2.0 - 1.0) as f64;
+                // Dp axes in clip space: one Dp is 2/dim clip units.
+                let xu = 2.0 / camera.width_dp as f64;
+                let yv = 2.0 / camera.height_dp as f64;
+                (cx, cy, xu, 0.0, 0.0, yv, 1.0)
+            } else {
+                // The billboard matrix for this marker (upright + screen-constant under tilt). Its
+                // translation column is the quad centre in clip space; columns 0 and 1 are the local
+                // Dp axes. All four corners share the same `w` (the matrix's `w` columns for the two
+                // in-plane axes are zero on both the ortho and the tilted path), so the perspective
+                // divide is one number per marker.
+                let m = camera.screen_quad_to_clip(marker.lon, marker.lat, 1.0);
+                let w = m[15] as f64;
+                if w <= 0.0 {
+                    continue; // behind the eye / above the horizon under tilt: nothing to draw.
+                }
+                let cx = m[12] as f64 / w;
+                let cy = m[13] as f64 / w;
+                let (xu, yu) = (m[0] as f64 / w, m[1] as f64 / w);
+                let (xv, yv) = (m[4] as f64 / w, m[5] as f64 / w);
+                (cx, cy, xu, yu, xv, yv, w)
+            };
+            let _ = w;
             // Draw the icon at `MARKER_SIZE_DP` on its larger side, keeping its aspect ratio. With
             // `radius_dp = 1.0` above, a local coordinate is one Dp, so these half-extents are Dp.
+            // (On the globe the quad is axis-aligned clip — same units, same math.)
             let scale = MARKER_SIZE_DP / sprite.width_dp.max(sprite.height_dp).max(1e-3);
             let hw = (sprite.width_dp * scale * 0.5) as f64;
             let hh = (sprite.height_dp * scale * 0.5) as f64;
-            let (xu, yu) = (m[0] as f64, m[1] as f64); // local +u axis, clip space
-            let (xv, yv) = (m[4] as f64, m[5] as f64); // local +v axis, clip space
             let uv = sprite.uv;
             let (v0, v1) = (uv.v0 + dv, uv.v1 + dv);
             let base = (vertices.len() / 4) as u32;
@@ -87,15 +112,7 @@ impl Renderer {
                 (hw, hh, uv.u1, v1),
                 (-hw, hh, uv.u0, v1),
             ];
-            for (lu, lv, tu, tv) in corners {
-                let ox = (lu * xu + lv * xv) / w;
-                let oy = (lu * yu + lv * yv) / w;
-                vertices.push((cx + ox) as f32);
-                vertices.push((cy + oy) as f32);
-                vertices.push(tu);
-                vertices.push(tv);
-            }
-            indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+            emit_marker_corners(&mut vertices, &mut indices, base, corners, cx, cy, xu, yu, xv, yv, w);
         }
         if indices.is_empty() {
             return;
@@ -137,6 +154,8 @@ impl Renderer {
         camera: &Camera,
         vehicles: &[Marker],
         submitted: &mut usize,
+        // This frame's globe flag: far-side vehicles culled via the globe anchor.
+        globe: bool,
     ) {
         let density = camera.density;
         let device = &self.context.device;
@@ -156,7 +175,16 @@ impl Renderer {
             if v.colour == 0 {
                 continue;
             }
-            let m = camera.screen_quad_to_clip(v.lon, v.lat, VEHICLE_RING_QUAD_DP as f64);
+            // Globe: far-side vehicles culled; near-side placed via the globe anchor.
+            // The ring quad is screen-constant either way, so only the matrix differs.
+            let m = if globe {
+                let Some((sx, sy)) = camera.globe_anchor_to_screen(v.lon, v.lat) else {
+                    continue;
+                };
+                super::placement::globe_screen_quad(camera, sx, sy, VEHICLE_RING_QUAD_DP as f64)
+            } else {
+                camera.screen_quad_to_clip(v.lon, v.lat, VEHICLE_RING_QUAD_DP as f64)
+            };
             if m[15] <= 0.0 {
                 continue; // behind the eye / above the horizon under tilt.
             }
@@ -192,6 +220,10 @@ impl Renderer {
     ///
     /// Only labels in `accepted` (see [`place_symbols`](Self::place_symbols))
     /// emit; the rest lost their collisions this frame.
+    ///
+    /// The emit + draw half lives in `record_symbol_emit` (file-length split):
+    /// this function resolves the tile, its ground sampler and its billboard
+    /// inputs, then hands them over.
     #[allow(clippy::too_many_arguments)]
     pub(super) unsafe fn record_symbol(
         &mut self,
@@ -204,6 +236,9 @@ impl Renderer {
         accepted: &HashMap<u64, (bool, u32)>,
         submitted: &mut usize,
         bound: &mut Option<LayerKind>,
+        // This frame's globe flag: globe symbol/icon pipelines + sphere push, or
+        // the flat path bit-identically above.
+        globe: bool,
     ) {
         use crate::tile::{placement, symbol};
         let Some(glyph_set) = self.glyph_set else {
@@ -342,79 +377,24 @@ impl Renderer {
         if batches.is_empty() && icon_indices.is_empty() {
             return;
         }
-        let halo = argb_to_rgba(layer.halo_color(palette));
-        let color = argb_to_rgba(scale_alpha(
-            layer.color(palette),
-            layer.opacity_at(camera.zoom),
-        ));
-        let sdf_per_em = crate::tile::glyph::atlas().sdf_per_em;
-
-        // Icons first, so the label's halo paints over the icon's edge rather than under
-        // it — the order MapLibre draws them in.
-        if let Some(sprite_set) = self.sprite_set.filter(|_| !icon_indices.is_empty()) {
-            let push = Push {
-                tile_to_clip: tile_clip,
-                // Only the alpha is read by `sprite.frag`: an icon draws in its own
-                // colours, since the reference sets no `icon-color`.
-                color,
-                // `sprite.frag` reads none of `line`; `w` is the billboard flag the shared vertex
-                // shader reads, so an icon stands up under tilt on the same terms as its label.
-                line: [0.0, 0.0, 0.0, billboard_flag],
-                // `misc.x` is the tile's world-px span (Dp): the anchor-height scale the
-                // billboard shader multiplies by. (Was the device-px span; the vertex
-                // shader documented it unused and nothing reads it.)
-                misc: [camera.tile_span_dp(tz) as f32, 0.0, 0.0, 0.0],
-                // The pitch-0 linear 2x2, as for the text below — the same matrix, so the icon and
-                // the name beside it resolve their screen offsets identically.
-                morph: [ortho2x2[0], ortho2x2[1], ortho2x2[2], ortho2x2[3]],
-            };
-            self.draw_symbol_batch(
-                command_buffer,
-                self.pipelines.icon,
-                sprite_set,
-                &icon_vertices,
-                &icon_indices,
-                &push,
-                submitted,
-            );
-            // The icon pipeline shares `LayerKind::Symbol`, so this still forces the
-            // fill/line path to rebind. The symbol pipeline is bound again immediately
-            // below whenever there is any text — and a label with an icon always has
-            // text, because `shape_label` returns nothing for an empty name.
-            *bound = Some(LayerKind::Symbol);
-        }
-
-        for (text_px, vertices, indices) in &batches {
-            // Halo width from the style (authored text-halo-width, 1px), in device px
-            // like the text size beside it; text color + opacity per palette.
-            let push = Push {
-                tile_to_clip: tile_clip,
-                color,
-                line: [
-                    *text_px,
-                    layer.halo_width * camera.density,
-                    sdf_per_em,
-                    billboard_flag,
-                ],
-                // `misc.x` is the tile's world-px span (Dp): the anchor-height scale.
-                // `yzw` stay the halo rgb the fragment shader reads.
-                misc: [camera.tile_span_dp(tz) as f32, halo[0], halo[1], halo[2]],
-                // Repurposed for the symbol billboard pipeline: the pitch-0 tile matrix's linear
-                // 2x2, so the shader can add a screen-constant glyph offset under tilt. The symbol
-                // fragment shader does not read `morph`, so this collides with nothing.
-                morph: [ortho2x2[0], ortho2x2[1], ortho2x2[2], ortho2x2[3]],
-            };
-            self.draw_symbol_batch(
-                command_buffer,
-                self.pipelines.symbol,
-                glyph_set,
-                vertices,
-                indices,
-                &push,
-                submitted,
-            );
-            *bound = Some(LayerKind::Symbol);
-        }
+        self.record_symbol_emit(
+            command_buffer,
+            layer,
+            camera,
+            palette,
+            tz,
+            tile_clip,
+            tile_span_px,
+            billboard_flag,
+            ortho2x2,
+            &batches,
+            &icon_vertices,
+            &icon_indices,
+            glyph_set,
+            submitted,
+            bound,
+            globe,
+        );
     }
 
     /// Suballocate one vertex/index pair out of this frame's scratch ring, bind `pipeline` with

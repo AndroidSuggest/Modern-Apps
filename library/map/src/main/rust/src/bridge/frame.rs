@@ -27,6 +27,8 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     height_dp: jfloat,
     density: jfloat,
     frame_time_nanos: jlong,
+    globe: jboolean,
+    moon: jboolean,
 ) -> jboolean {
     let Some(map) = handle_mut(handle) else {
         return 0;
@@ -61,6 +63,8 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
         density,
         bearing_deg: bearing as f64,
         pitch_deg: (pitch as f64).clamp(0.0, crate::camera::PITCH_MAX_DEG),
+        globe: globe != 0,
+        moon: moon != 0,
         time_seconds: ((frame_time_nanos.rem_euclid(crate::camera::CLOCK_WRAP_NANOS)) as f64
             / 1_000_000_000.0) as f32,
     };
@@ -70,7 +74,16 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // Upload whatever the workers finished, up to `UPLOADS_PER_FRAME`. Doing it here rather than
     // on a worker keeps every Vulkan call on one thread; bounding it keeps a burst of finished
     // tiles from landing in a single frame.
+    //
+    // Skipped on Moon frames: the Moon draws one uploaded texture pair, not tiles —
+    // no selection runs, nothing is in flight, and draining here would upload Earth
+    // tiles the Moon frame never draws (wasted uploads + residency churn under the
+    // Moon). The Earth set resumes untouched when the body switches back.
+    //
+    // The drain sample below still records (zero elapsed on Moon frames) so the
+    // frame-time rollup keeps its shape.
     let drain_start = std::time::Instant::now();
+    if !crate::camera::moon_active(&camera) {
     let mut uploads = 0usize;
     while uploads < UPLOADS_PER_FRAME {
         let Ok((key, result)) = map.finished.try_recv() else {
@@ -107,13 +120,14 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
             }
         }
     }
+    } // end Moon drain skip.
 
     // Keep the visible tiles plus any ancestor of one that we already have, but **fetch
-    // only the visible tiles**. An ancestor is a fallback for a tile still in flight, so
-    // it is only worth drawing if it is already resident — fetching one spends a round trip
-    // to show a blurrier version of a tile that is being fetched anyway, and because
-    // ancestors sort first it spent that latency before requesting what the user is
-    // actually looking at.
+    // only the visible tiles**. An ancestor is a fallback for a tile that has not arrived yet, so
+    // it is only useful if we **already have it** — fetching one costs a round trip to draw a
+    // blurrier version of a tile that is being fetched anyway. (Moon frames skip this
+    // whole block: `visible`/`keep` below are empty and `retain` keeps the Earth set
+    // untouched — see the guard.)
     //
     // `visible` goes to `retain` as well as to the fetch loop, because the other half of the
     // fallback — already-resident *descendants*, which are what stops a zoom-out blanking the
@@ -132,11 +146,19 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // needing a path of its own. The stale mesh keeps drawing until its replacement
     // arrives.
     let (_, _, generation) = map.toggles.get();
-    let visible = select::visible(&camera, min_zoom, max_zoom);
-    let keep: Vec<u64> = select::resident_set(&camera, min_zoom, max_zoom)
-        .iter()
-        .map(|t| t.key())
-        .collect();
+    // Moon frames: no selection, no fetch, no eviction. The Earth resident set,
+    // in-flight set and backoffs below are all left exactly as they were, so
+    // switching back to Earth resumes mid-stream rather than refetching.
+    let (visible, keep): (Vec<select::TileId>, Vec<u64>) = if crate::camera::moon_active(&camera) {
+        (Vec::new(), Vec::new())
+    } else {
+        let visible = select::visible(&camera, min_zoom, max_zoom);
+        let keep: Vec<u64> = select::resident_set(&camera, min_zoom, max_zoom)
+            .iter()
+            .map(|t| t.key())
+            .collect();
+        (visible, keep)
+    };
     let now = std::time::Instant::now();
     for tile in &visible {
         let key = tile.key();
@@ -157,14 +179,22 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // answer "draw now" forever, spinning the on-demand loop at 60fps for a tile that is off
     // screen. Only the visible set is ever fetched, so only the visible set may hold a backoff.
     //
+    // Skipped on Moon frames along with the fetch above: `visible` is empty, and
+    // retaining against it would drop every Earth backoff (harmless but wasteful)
+    // — worse, `retain` below with an empty keep would EVICT the Earth set. The
+    // Moon guard keeps both calls out.
+    //
     // Linear rather than a `HashSet` of the visible keys, deliberately: this runs per frame,
     // `retry` is empty in the ordinary case (so the closure never runs), and a viewport is a
     // couple of dozen tiles. Building a set here would allocate every frame to save nothing.
-    if !map.retry.is_empty() {
-        map.retry
-            .retain(|key, _| visible.iter().any(|t| t.key() == *key));
+    let moon = crate::camera::moon_active(&camera);
+    if !moon {
+        if !map.retry.is_empty() {
+            map.retry
+                .retain(|key, _| visible.iter().any(|t| t.key() == *key));
+        }
+        map.renderer.retain(&keep, &visible, RESIDENT_TILE_CAP);
     }
-    map.renderer.retain(&keep, &visible, RESIDENT_TILE_CAP);
     map.renderer
         .step_times
         .borrow_mut()

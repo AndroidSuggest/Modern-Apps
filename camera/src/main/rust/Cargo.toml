@@ -24,10 +24,3 @@ jpeg-encoder = { version = "0.6.1", default-features = false }
 # crates (simba, wide, safe_arch, bytemuck, approx, paste, num-rational,
 # num-iter, nalgebra-macros).
 # rayon removed – was 6 crates (crossbeam-deque/epoch/utils/either/rayon-core) for par_iter in bundle/matching/stitch – now std iter (prefer stdlib)
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"

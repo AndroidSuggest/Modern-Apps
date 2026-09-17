@@ -58,9 +58,17 @@ fn coverage(camera: &Camera) -> (crate::camera::WorldPx, crate::camera::WorldPx)
 /// *and* tilt — so a rotation pulls in the extra ring of tiles the rotated corners reach and a tilt
 /// pulls in the trapezoid of ground the receding top of the screen covers. At bearing zero and
 /// pitch zero the box is the viewport and this is what it always was.
+///
+/// On the globe ([`crate::camera::globe_active`]) coverage is the disc the viewport sees:
+/// every tile whose Mercator rect intersects the visible hemisphere cap. Tiles fully
+/// behind the limb are skipped — they would bend to the far side and be depth-culled
+/// anyway, so fetching them is pure waste.
 pub fn visible(camera: &Camera, min_zoom: u8, max_zoom: u8) -> Vec<TileId> {
     if camera.width_dp <= 0.0 || camera.height_dp <= 0.0 {
         return Vec::new();
+    }
+    if crate::camera::globe_active(camera) {
+        return globe_visible(camera, min_zoom, max_zoom);
     }
     let z = (camera.zoom.floor().max(0.0) as u32).clamp(min_zoom as u32, max_zoom as u32) as u8;
     let n = 1i64 << z;
@@ -100,4 +108,61 @@ pub fn bound(camera: &Camera) -> usize {
     let across = (max.x - min.x) / TILE_SIZE + 2.0;
     let down = (max.y - min.y) / TILE_SIZE + 2.0;
     (across * down).ceil() as usize
+}
+
+/// Globe coverage: every tile at the (clamped) zoom whose Mercator rect touches
+/// the visible hemisphere.
+///
+/// The hemisphere is the set of lon/lat within 90° (great-circle) of the camera
+/// centre; a tile is kept when any of its rect — corners plus edge midpoints
+/// (a tile can straddle the limb with all four corners behind it) — is on the
+/// near side. The zoom is the same floor-then-clamp the flat path uses, so the
+/// globe and the flat map agree on tile size at the detail threshold.
+fn globe_visible(camera: &Camera, min_zoom: u8, max_zoom: u8) -> Vec<TileId> {
+    let z = (camera.zoom.floor().max(0.0) as u32).clamp(min_zoom as u32, max_zoom as u32) as u8;
+    let n = 1i64 << z;
+    // Hemisphere cap in lon/lat: sample the tile rect's corners + edge midpoints
+    // and keep the tile when any sample is within 90° of the centre. Lon/lat come
+    // from the tile grid directly (not via a world-size round trip), so this is
+    // exact at any camera zoom.
+    let lon_at = |tx: i64| tx as f64 / n as f64 * 360.0 - 180.0;
+    let lat_at = |ty: i64| {
+        let n_pi = std::f64::consts::PI - 2.0 * std::f64::consts::PI * ty as f64 / n as f64;
+        n_pi.sinh().atan() * 180.0 / std::f64::consts::PI
+    };
+    let mut out = Vec::new();
+    for ty in 0..n {
+        let lat_n = lat_at(ty);
+        let lat_s = lat_at(ty + 1);
+        let mid_lat = (lat_n + lat_s) / 2.0;
+        for tx in 0..n {
+            let lon_w = lon_at(tx);
+            let lon_e = lon_at(tx + 1);
+            let mid_lon = (lon_w + lon_e) / 2.0;
+            let near = [
+                (lon_w, lat_n),
+                (mid_lon, lat_n),
+                (lon_e, lat_n),
+                (lon_e, mid_lat),
+                (lon_e, lat_s),
+                (mid_lon, lat_s),
+                (lon_w, lat_s),
+                (lon_w, mid_lat),
+                (mid_lon, mid_lat),
+            ]
+            .iter()
+            .any(|&(lon, lat)| {
+                let (_, _, z) = crate::camera::globe_point(camera.center_lon, camera.center_lat, lon, lat);
+                z >= 0.0
+            });
+            if near {
+                out.push(TileId {
+                    z,
+                    x: tx as u32,
+                    y: ty as u32,
+                });
+            }
+        }
+    }
+    out
 }

@@ -10,20 +10,22 @@ androidComponents {
     }
 }
 
-dependencies {
-    // On-device inference executor: full ONNX Runtime (the reduced 1.27.0-r1 rebuild lacks
-    // Conv(11) and other vision ops; it returns as -r2 with the full op set).
-    implementation(libs.onnxruntime.android)
-    // LiteRT (TFLite) CompiledModel API for the quantized ladder ship rungs.
-    implementation(libs.litert.android)
-    // ExecuTorch Module API: custom Vulkan+XNNPACK AAR built from source
-    // (pytorch/executorch v1.4.0, EXECUTORCH_BUILD_VULKAN=ON, arm64+x86_64),
-    // checked in at library/ml/libs/. Replaces the stock executorch-android:1.4.0
-    // from Maven (XNNPACK-only — verified zero Vulkan refs in its .so). File deps
-    // carry no POM, so the AAR's runtime deps are declared explicitly below.
-    implementation(files("libs/executorch-vulkan-1.4.0.aar"))
-    implementation(libs.fbjni)
-    implementation(libs.soloader.nativeloader)
-}
-
-rustNativeLib("ml_vulkan", "ml", features = listOf("vulkan"))
+// The Vulkan compute ML runtime: `library/ml/src/main/rust`, on ash.
+//
+// No `externalNativeBuild` and no `ndkVersion`: there is no C++ or CMake in this repo
+// (CMake was deliberately removed — see maps/build.gradle.kts:29-31), so cargo does the
+// cross-compile and the NDK is only reached for its clang wrappers and glslc.
+//
+// Shaders are GLSL compute compiled to SPIR-V by the crate's own build.rs, which resolves
+// glslc from the NDK and fails the build if it cannot.
+// `-PemulatorAbi=x86_64` additionally cross-compiles for the emulator's ABI so the gate can be
+// exercised on an x86_64 host. Off unless asked for, so no default or release build is affected.
+rustNativeLib(
+    "modelrunner",
+    "ml",
+    extraAbis = if (providers.gradleProperty("emulatorAbi").orNull == ABI_X86_64) {
+        listOf(ABI_X86_64)
+    } else {
+        emptyList()
+    },
+)

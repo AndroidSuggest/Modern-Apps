@@ -40,11 +40,22 @@ class MapSettingsViewModel(application: Application) : AndroidViewModel(applicat
         MapPreferences.KEY_VOICE_GUIDANCE, MapPreferences.DEFAULT_VOICE_GUIDANCE,
     )
 
+    /**
+     * True-3D-sphere globe (maps-only; no other app reads this). Off by default
+     * so the flat Mercator map is unchanged until the user opts in.
+     */
+    val globeEnabled: StateFlow<Boolean> = boolPref(
+        MapPreferences.KEY_GLOBE, MapPreferences.DEFAULT_GLOBE,
+    )
+
     fun setThemeMode(mode: ThemeMode) =
         launch { ds.setString(MapPreferences.KEY_THEME_MODE, mode.pref) }
 
     fun setVoiceGuidance(enabled: Boolean) =
         launch { ds.setBoolean(MapPreferences.KEY_VOICE_GUIDANCE, enabled) }
+
+    fun setGlobeEnabled(enabled: Boolean) =
+        launch { ds.setBoolean(MapPreferences.KEY_GLOBE, enabled) }
 
     // --- Layers sheet ------------------------------------------------------
 

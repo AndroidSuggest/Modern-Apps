@@ -25,10 +25,3 @@ jni.workspace = true
 # keepass depends on serde derive feature? It uses serde for XML parsing, but not JSON in save_kdbx4 path? Keep both for now,
 # but passwords own lib.rs no longer uses serde_json.
 serde = { version = "1.0.228" }
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true

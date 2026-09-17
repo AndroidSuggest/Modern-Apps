@@ -3,6 +3,10 @@
 /// Features go to disk rather than into a `Vec`, because holding them was 4.9 GB of a measured
 /// 10.03 GB California peak and nothing reads them until the tiler does. Classified ways go to a
 /// scratch file beside it for the same reason. See [`crate::store`].
+///
+/// `region` filters the **built** layers (`roads`, `poi`, `buildings`) to the
+/// region's bbox. Every other layer is always included regardless. `None`
+/// (world) disables the filter entirely.
 pub fn extract(
     input: &Path,
     layers: Layers,
@@ -10,6 +14,7 @@ pub fn extract(
     transit_routes: &Path,
     graph: &Path,
     spill_path: &Path,
+    region: Option<osm_ingest::bbox::BBox>,
 ) -> Result<(Store, Stats)> {
     // Stage A's boundaries are printed with their elapsed time so an external RSS sampler can say
     // which of them the peak belongs to. Three candidates sit within seconds of each other -- the ref
@@ -32,9 +37,21 @@ pub fn extract(
     // hold no ways or relations. Guarded by blob count, file length and mtime, so a missing or stale
     // sidecar simply falls back to a full scan. Byte-neutral either way: the mask `run_pass1` returns
     // carries the skipped blobs' kinds, so it is a complete description of the file regardless.
+    //
+    // The sidecar also proves the graph was built over THIS pbf: when the
+    // region filter is on, a world graph beside a california tile build (or
+    // vice versa) would silently mismatch layers. A missing sidecar here only
+    // warns — the blob mask itself is optional — but a region build still
+    // validates the graph's own coverage below in `append_external_and_finish`.
     let graph_kinds = pbf::load_blob_kinds(graph, input, &blobs);
     if graph_kinds.is_some() {
         mark("blob kinds loaded from graph sidecar");
+    }
+    if let Some(b) = region.as_ref() {
+        println!(
+            "region filter: keeping roads/pois/buildings touching {:.3},{:.3} .. {:.3},{:.3}",
+            b.min_lon, b.min_lat, b.max_lon, b.max_lat,
+        );
     }
 
     let pass1 = run_pass1(input, &blobs, graph_kinds.as_deref(), &select, layers, &ways_path, &mut stats, &mark)?;
@@ -55,6 +72,7 @@ pub fn extract(
         pass1.way_max_ref,
         &select,
         layers,
+        region.as_ref(),
         &mut sink,
         &mut stats,
         &mark,
@@ -75,11 +93,18 @@ pub fn extract(
         &pass1.promoted,
         &inherited_lanes,
         &table,
+        region.as_ref(),
         &mut sink,
         &mut stats,
     )?;
-    let conventions =
-        materialise_relations(&pass1.relations, &members, &table, &mut sink, &mut stats)?;
+    let conventions = materialise_relations(
+        &pass1.relations,
+        &members,
+        &table,
+        region.as_ref(),
+        &mut sink,
+        &mut stats,
+    )?;
     let store = append_external_and_finish(
         coastline,
         transit_routes,

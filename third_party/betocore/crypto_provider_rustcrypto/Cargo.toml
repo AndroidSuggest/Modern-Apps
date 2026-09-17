@@ -27,7 +27,7 @@ sec1.workspace = true
 ed25519-dalek = { workspace = true, default-features = false, features = [
     "rand_core",
 ] }
-rand = { workspace = true, default-features = false }
+rand = { workspace = true }
 rand_core.workspace = true
 subtle.workspace = true
 aes.workspace = true

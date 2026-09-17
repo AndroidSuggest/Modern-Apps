@@ -14,6 +14,8 @@ pub(crate) mod tests {
             bearing_deg: 0.0,
             pitch_deg: 0.0,
             time_seconds: 0.0,
+            globe: false,
+            moon: false,
         }
     }
 
@@ -104,6 +106,8 @@ pub(crate) mod tests {
             bearing_deg: 0.0,
             pitch_deg: 0.0,
             time_seconds: 0.0,
+            globe: false,
+            moon: false,
         };
         // The tile containing SF at z10, and SF's tile-local position in it.
         let world = project(-122.4194, 37.7749, 10.0);

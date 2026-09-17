@@ -65,6 +65,30 @@ data class CameraPosition(
 class CameraState(initial: CameraPosition = CameraPosition()) {
     var position: CameraPosition by mutableStateOf(initial)
 
+    /**
+     * Whether to draw a true-3D-sphere globe instead of the flat Mercator map.
+     *
+     * Off by default, so every existing host is unchanged. Set from `VectorMap`'s
+     * `globeEnabled` param (itself default-off; only `maps` opts in). Transient like
+     * [viewportDp]: owned by the host's composition, not persisted in the saver.
+     *
+     * While on, the "fill" zoom floor is bypassed (a globe is a ball with space
+     * around it, not a plane that must cover the viewport) and [projection] uses
+     * the orthographic-sphere branch below [GLOBE_DETAIL_ZOOM]. Past that zoom the
+     * sphere is indistinguishable from flat, so the projection and the renderer
+     * both use the flat path bit-identically (this mirrors the native
+     * `GLOBE_FLAT_THRESHOLD`, which must stay in step).
+     */
+    var globeEnabled: Boolean by mutableStateOf(false)
+
+    /**
+     * Which body the globe draws once active. Earth is the vector basemap;
+     * Moon is the NASA SVS raster pair. Session-scoped (owned by the host's
+     * composition like [globeEnabled], never persisted) and only read while the
+     * globe is active — setting Moon without the globe changes nothing.
+     */
+    var body: MapBody by mutableStateOf(MapBody.Earth)
+
     /** Viewport size in logical (dp) units; null until first layout. */
     internal var viewportDp: Size? by mutableStateOf(null)
 
@@ -91,6 +115,9 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
      */
     internal fun setViewport(size: Size) {
         viewportDp = size
+        // A globe is a ball with space around it, not a plane that must cover the
+        // viewport — enforcing the fill floor would forbid zooming out to the globe.
+        if (globeEnabled) return
         val floor = fillZoom(size)
         if (position.zoom < floor) position = position.copy(zoom = floor)
     }
@@ -111,7 +138,11 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
      */
     val projection: Projection? by derivedStateOf {
         viewportDp?.let { vp ->
-            Projection(position.target, position.zoom, vp.width, vp.height, position.pitch, position.bearing, labelQueryProvider, markerPickProvider)
+            Projection(
+                position.target, position.zoom, vp.width, vp.height,
+                position.pitch, position.bearing, labelQueryProvider, markerPickProvider,
+                globe = globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM,
+            )
         }
     }
 
@@ -181,7 +212,9 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
 
     /** Clamps [zoom] to [minZoom]..[maxZoom], never below the "fill" floor for [vp]. */
     private fun clampZoom(zoom: Double, vp: Size, minZoom: Double, maxZoom: Double): Double =
-        zoom.coerceIn(maxOf(minZoom, fillZoom(vp)), maxZoom)
+        // Globe: no fill floor (see `setViewport`).
+        if (globeEnabled) zoom.coerceIn(minZoom, maxZoom)
+        else zoom.coerceIn(maxOf(minZoom, fillZoom(vp)), maxZoom)
 
     /**
      * Applies a transform gesture, anchoring the geographic point under
@@ -206,8 +239,8 @@ class CameraState(initial: CameraPosition = CameraPosition()) {
         rotateEnabled: Boolean = true,
     ) {
         val vp = viewportDp ?: return
-        // Never zoom out past a full-screen world.
-        val effectiveMinZoom = maxOf(minZoom, fillZoom(vp))
+        // Never zoom out past a full-screen world — unless a globe, which has space around it.
+        val effectiveMinZoom = if (globeEnabled) minZoom else maxOf(minZoom, fillZoom(vp))
         var zoom = position.zoom
 
         // Pan: dragging content one way shifts the world the same way, so the

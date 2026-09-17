@@ -19,10 +19,3 @@ jni.workspace = true
 jni_http = { path = "../../../../library/jni-http/src/main/rust" }
 
 # Patch moved to workspace root Cargo.toml
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true

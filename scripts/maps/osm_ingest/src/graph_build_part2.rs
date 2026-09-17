@@ -11,12 +11,13 @@ fn collapse_within_ways<W: std::io::Write + Send>(
     coords: &[geom::Pt],
     stop: &Bitset,
     slots: u32,
+    filter: RegionFilter,
     pool: &mut NamePool<W>,
 ) -> Result<Collapsed> {
-    let degree = chains::count_degrees(input, blobs, blob_kinds, index, slots)?;
+    let degree = chains::count_degrees(input, blobs, blob_kinds, index, slots, filter)?;
     let spill = chains::Spill::split(spill_dir, spill_pts_dir);
     let built = chains::build(
-        input, blobs, blob_kinds, index, coords, &degree, stop, slots, pool, &spill,
+        input, blobs, blob_kinds, index, coords, &degree, stop, slots, filter, pool, &spill,
     )?;
     report_way_blobs(blobs.len(), &built.kinds);
 
@@ -249,7 +250,11 @@ fn twin_is_unique(csr: &Csr, synth: &[Synth], source: u32, target: u32) -> bool 
     hi - lo + from_synth == 1
 }
 
-fn pass1_blob(state: &mut Pass1, block: &pbf::PrimitiveBlock) -> Result<u8> {
+fn pass1_blob(
+    state: &mut Pass1,
+    block: &pbf::PrimitiveBlock,
+    filter: RegionFilter,
+) -> Result<u8> {
     let mut kinds = 0u8;
     visit_block(
         block,
@@ -263,7 +268,13 @@ fn pass1_blob(state: &mut Pass1, block: &pbf::PrimitiveBlock) -> Result<u8> {
                         n.tags.get_str("railway"),
                         n.tags.get_str("public_transport"),
                     ) {
-                        state.stop_nodes.push(n.id);
+                        // A stop outside the region never enters the graph. The
+                        // node carries its own coordinates, so this is the one
+                        // place the region filter can apply without a location
+                        // table.
+                        if crate::bbox::keep_e7(filter.as_ref(), n.lat_e7, n.lon_e7) {
+                            state.stop_nodes.push(n.id);
+                        }
                     }
                 }
                 Element::Way(w) => {
@@ -297,6 +308,7 @@ fn way_blob(
     block: &pbf::PrimitiveBlock,
     index: &NodeIndex,
     coords: &[geom::Pt],
+    filter: RegionFilter,
 ) -> Result<u8> {
     let mut kinds = 0u8;
     visit_block(block, KIND_WAYS, &mut kinds, &mut |el: Element| {
@@ -306,6 +318,24 @@ fn way_blob(
         let type_ = tags::get_hw_id(w.tags.get_str("highway"));
         if type_ == 0 {
             return Ok(());
+        }
+        // Region filter: keep the way when ANY node touches the box (the
+        // `complete_ways` rule — truncating at the boundary would invent a
+        // vertex). Coordinates are resolved by now, so this is a direct test.
+        if let Some(b) = filter.as_ref() {
+            let mut touches = false;
+            for r in w.refs {
+                if let Some(d) = index.dense(*r) {
+                    let (lat_e7, lon_e7) = coords[d as usize];
+                    if b.contains_e7(lat_e7, lon_e7) {
+                        touches = true;
+                        break;
+                    }
+                }
+            }
+            if !touches {
+                return Ok(());
+            }
         }
         let attrs = way_attrs(&w, type_, &mut state.lanes, &mut state.names);
         for pair in w.refs.windows(2) {

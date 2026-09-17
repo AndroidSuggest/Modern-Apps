@@ -1,0 +1,17 @@
+{
+  "width": 2048,
+  "height": 1024,
+  "format": "RG8 packed uint16",
+  "units": "half-metres + 20000 (i.e. metres = (v - 20000) / 2), rel 1737.4km sphere",
+  "radius_km": 1737.4,
+  "projection": "equirectangular",
+  "lon_range": [
+    -180,
+    180
+  ],
+  "lat_range": [
+    -90,
+    90
+  ],
+  "source": "NASA SVS 4720 ldem_64 (LOLA GDR 64ppd float km)"
+}

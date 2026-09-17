@@ -6,7 +6,6 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import com.vayunmathur.library.ml.ClipHandle
-import com.vayunmathur.photos.platform.PhotosEtModels
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -51,22 +50,18 @@ import kotlinx.coroutines.withContext
  */
 object ClipEmbedder {
 
-    /** HuggingFace source of the ET pair — the only embedding space this embedder serves. */
-    const val MODEL_ID_ET = "wkcn/TinyCLIP-ViT-39M-16-Text-19M-YFCC15M"
+    /** HuggingFace source, also the id stored for change-detection re-indexing. */
+    const val MODEL_ID = "onnx-community/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M-ONNX"
 
     /**
      * Bump whenever the embedding space changes so
      * [com.vayunmathur.photos.work.SyncWorker.runClipIndexing] clears every stored vector and
      * re-indexes.
      *
-     * 6 = TinyCLIP on ExecuTorch only (split-tower Vulkan fp16 pair, fail-closed, no
-     * bundled fallback). 5 was the same weights ET-first with the bundled LiteRT rung
-     * as fallback; re-index on the bump to drop any vectors the fallback rung wrote.
-     * 4 was the same weights on `:library:ml`'s bundled rung alone. 3 was the same
-     * model on onnxruntime, and the two agree only to 0.9835 on a text query — see
-     * the class docs. 2 was OpenAssistant's 768-d SigLIP2.
+     * 4 = TinyCLIP's 512-d space on `:library:ml`. 3 was the same model on onnxruntime, and the two
+     * agree only to 0.9835 on a text query — see the class docs. 2 was OpenAssistant's 768-d SigLIP2.
      */
-    const val EMBEDDER_VERSION = 6
+    const val EMBEDDER_VERSION = 4
 
     /** Whether semantic search can run at all. */
     enum class Support { READY, UNAVAILABLE }
@@ -99,8 +94,7 @@ object ClipEmbedder {
 
     fun embeddingInfo(context: Context): Info {
         ensureInit(context)
-        // ET Vulkan-only: the pair (39M) is the only space, so the id is stable.
-        return Info(MODEL_ID_ET, ClipHandle.DIMENSION)
+        return Info(MODEL_ID, ClipHandle.DIMENSION)
     }
 
     private fun ensureInit(context: Context): Boolean {
@@ -115,16 +109,9 @@ object ClipEmbedder {
                 Log.e(TAG, "CLIP merges asset missing")
                 return false
             }
-            // ET Vulkan-only, fail-closed: the split-tower `.pte` pair from the download
-            // directory. A missing pair means semantic search is unavailable — there is
-            // no bundled fallback. Construction never throws: absent files, a missing
-            // Vulkan delegate and a failed open all come back unavailable.
-            val dir = PhotosEtModels.etDir(app)
-            if (dir == null || !PhotosEtModels.isDownloaded(app)) {
-                Log.e(TAG, "TinyCLIP ET pair not downloaded, embedder unavailable")
-                return false
-            }
-            val handle = ClipHandle.inDirectory(app, dir)
+            // Construction never throws: an absent, compressed or malformed asset, a missing
+            // `libmodelrunner.so` and a device without fp16 compute all come back unavailable.
+            val handle = ClipHandle.inAssets(app.assets)
             if (!handle.isAvailable) {
                 Log.e(TAG, "cannot bring up $handle")
                 handle.close()

@@ -24,11 +24,11 @@ class Gemma4AudioBudgetTest {
     /** What `generate` allows audio, given a fixed prompt cost and a reply reserve. */
     private fun budget(fixed: Int, limit: Int) = MAX_CONTEXT - maxOf(limit, 3) - fixed
 
-    private fun clip(positions: Int) = GemmaPart.Audio(FloatArray(positions * SOFT_TOKEN_WIDTH))
+    private fun clip(positions: Int) = Gemma4Handle.Part.Audio(FloatArray(positions * SOFT_TOKEN_WIDTH))
 
-    private fun text(positions: Int) = GemmaPart.Tokens(IntArray(positions))
+    private fun text(positions: Int) = Gemma4Handle.Part.Tokens(IntArray(positions))
 
-    private fun List<GemmaPart>.positions() = sumOf { it.positions }
+    private fun List<Gemma4Handle.Part>.positions() = sumOf { it.positions }
 
     @Test
     fun `a clip larger than the budget is trimmed to exactly the budget`() {
@@ -37,7 +37,7 @@ class Gemma4AudioBudgetTest {
         val fitted = fitAudio(parts, allowed)
 
         assertTrue(allowed < 750, "the clip has to exceed the budget or nothing is being tested")
-        assertEquals(allowed, fitted.filterIsInstance<GemmaPart.Audio>().sumOf { it.positions })
+        assertEquals(allowed, fitted.filterIsInstance<Gemma4Handle.Part.Audio>().sumOf { it.positions })
         assertTrue(fitted.positions() <= MAX_CONTEXT - 512, "the reply must still have its 512")
     }
 
@@ -64,7 +64,7 @@ class Gemma4AudioBudgetTest {
         val fitted = fitAudio(parts, budget(fixed = 340, limit = 512))
 
         assertEquals(parts, fitted)
-        assertEquals(750, fitted.filterIsInstance<GemmaPart.Audio>().single().positions)
+        assertEquals(750, fitted.filterIsInstance<Gemma4Handle.Part.Audio>().single().positions)
     }
 
     @Test
@@ -88,14 +88,14 @@ class Gemma4AudioBudgetTest {
         val over = budget(fixed = 1871, limit = 512)
 
         assertTrue(over < 0, "1871 with a 512-token reply genuinely overruns the window")
-        assertEquals(emptyList(), fitAudio(listOf(clip(12)), over).filterIsInstance<GemmaPart.Audio>())
+        assertEquals(emptyList(), fitAudio(listOf(clip(12)), over).filterIsInstance<Gemma4Handle.Part.Audio>())
     }
 
     @Test
     fun `earlier clips are served before later ones`() {
         val fitted = fitAudio(listOf(clip(10), clip(10)), 15)
 
-        assertEquals(listOf(10, 5), fitted.filterIsInstance<GemmaPart.Audio>().map { it.positions })
+        assertEquals(listOf(10, 5), fitted.filterIsInstance<Gemma4Handle.Part.Audio>().map { it.positions })
     }
 
     /**
@@ -110,6 +110,6 @@ class Gemma4AudioBudgetTest {
         assertTrue(budget(fixed = 340, limit = 512) >= 750, "a full clip fits once the tools go")
 
         val trimmed = fitAudio(listOf(text(340), clip(750)), budget(340, 512))
-        assertEquals(750, trimmed.filterIsInstance<GemmaPart.Audio>().single().positions)
+        assertEquals(750, trimmed.filterIsInstance<Gemma4Handle.Part.Audio>().single().positions)
     }
 }

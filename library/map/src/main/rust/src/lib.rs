@@ -38,8 +38,12 @@ pub mod camera;
 pub mod camera_extra;
 pub mod camera_extra2;
 pub mod camera_extra3;
+pub mod camera_globe;
+#[cfg(test)]
+mod camera_globe_tests;
 pub mod marker;
 pub mod overlay;
+pub mod overlay_parts;
 pub mod pipeline_cache;
 pub mod style;
 pub mod tess;

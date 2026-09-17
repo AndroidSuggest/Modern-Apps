@@ -43,6 +43,67 @@ pub(crate) fn tracks_ids(class: &crate::schema::Class) -> bool {
         || class.layer == LAYER_TRAFFIC
 }
 
+/// Is this one of the region-filtered layers (`roads`, `poi`, `buildings`)?
+///
+/// Only these three are filtered by `--region`. Every other layer is always
+/// included regardless of the region setting.
+pub(crate) fn is_region_filtered(layer: u8) -> bool {
+    use tilecodec::mamaps::dict::{LAYER_BUILDINGS, LAYER_POI, LAYER_ROADS};
+    layer == LAYER_ROADS || layer == LAYER_POI || layer == LAYER_BUILDINGS
+}
+
+/// Does a materialised geometry touch the region bbox?
+///
+/// Touches-box, never containment: a way straddling the border is kept whole
+/// (the `complete_ways` rule — truncating would invent a vertex). `None`
+/// (world) keeps everything.
+pub(crate) fn geometry_touches(
+    geometry: &Geometry,
+    region: Option<&osm_ingest::bbox::BBox>,
+) -> bool {
+    let Some(b) = region else {
+        return true;
+    };
+    let mut touches = false;
+    let mut visit = |&(lon, lat): &(f64, f64)| {
+        // e7 integers, matching `BBox::contains_e7`'s exactness: a float
+        // comparison would drop a coordinate sitting exactly on the edge.
+        let (lon_e7, lat_e7) = ((lon * 1e7).round() as i32, (lat * 1e7).round() as i32);
+        touches |= b.contains_e7(lat_e7, lon_e7);
+    };
+    match geometry {
+        Geometry::Points(points) => points.iter().for_each(&mut visit),
+        Geometry::Lines(lines) => lines.iter().flatten().for_each(&mut visit),
+        Geometry::Polygons(polygons) => polygons.iter().flatten().flatten().for_each(&mut visit),
+    }
+    touches
+}
+
+/// Does a lon/lat point touch the region bbox? `None` (world) is always true.
+pub(crate) fn point_touches(point: &(f64, f64), region: Option<&osm_ingest::bbox::BBox>) -> bool {
+    let Some(b) = region else {
+        return true;
+    };
+    let (lon_e7, lat_e7) =
+        ((point.0 * 1e7).round() as i32, (point.1 * 1e7).round() as i32);
+    b.contains_e7(lat_e7, lon_e7)
+}
+
+/// Do stitched polygons touch the region bbox? One touching ring keeps the
+/// whole relation — clipping happens per tile in the tiler, not here.
+pub(crate) fn polygons_touch(
+    polygons: &[rings::Polygon],
+    region: Option<&osm_ingest::bbox::BBox>,
+) -> bool {
+    let Some(b) = region else {
+        return true;
+    };
+    polygons.iter().flatten().flatten().any(|&(lon, lat)| {
+        let (lon_e7, lat_e7) = ((lon * 1e7).round() as i32, (lat * 1e7).round() as i32);
+        b.contains_e7(lat_e7, lon_e7)
+    })
+}
+
 /// The centroid of a coordinate list: the arithmetic mean, or `None` when there is nothing.
 ///
 /// A label anchor, not a geometric centroid — cheap and exactly what a basemap needs. Area

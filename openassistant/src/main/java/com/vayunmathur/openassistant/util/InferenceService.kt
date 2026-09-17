@@ -1,6 +1,4 @@
 package com.vayunmathur.openassistant.util
-import com.vayunmathur.library.ml.GemmaRole
-import com.vayunmathur.library.ml.GemmaTurn
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,6 +13,7 @@ import android.os.ResultReceiver
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.IntentCompat
+import com.vayunmathur.library.ml.Gemma4Handle
 import com.vayunmathur.library.util.SecureResultReceiver
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.*
@@ -79,10 +78,10 @@ class InferenceService : Service() {
          * even nothing fits, which leaves `generate` to refuse exactly as it does today.
          */
         internal fun evict(
-            history: List<GemmaTurn>,
+            history: List<Gemma4Handle.Turn>,
             floor: Int = 0,
-            fits: (List<GemmaTurn>) -> Boolean,
-        ): List<GemmaTurn> {
+            fits: (List<Gemma4Handle.Turn>) -> Boolean,
+        ): List<Gemma4Handle.Turn> {
             var kept = history
             while (kept.size > floor && !fits(kept)) kept = kept.drop(oldestExchange(kept))
             return kept
@@ -95,10 +94,10 @@ class InferenceService : Service() {
          * The single-turn case is what a leading model turn needs - the remains of a pair whose
          * user half went in an earlier call.
          */
-        private fun oldestExchange(history: List<GemmaTurn>): Int =
+        private fun oldestExchange(history: List<Gemma4Handle.Turn>): Int =
             if (history.size > 1 &&
-                history[0].role == GemmaRole.USER &&
-                history[1].role == GemmaRole.MODEL
+                history[0].role == Gemma4Handle.Role.USER &&
+                history[1].role == Gemma4Handle.Role.MODEL
             ) 2 else 1
 
         /** The system prompt used when the user has not set a custom one. */
@@ -142,7 +141,6 @@ class InferenceService : Service() {
     private val intentQueue = Channel<InferenceJob.Intent>(Channel.UNLIMITED)
 
     private var engine: Gemma4Engine? = null
-    private var etEngine: Gemma4EtEngine? = null
 
     /**
      * The conversation whose history is loaded, -1 for none and -2 for an intent job.
@@ -153,10 +151,10 @@ class InferenceService : Service() {
     private var currentConversationId: Long = -1L
 
     /** History for the conversation being served. */
-    private var currentHistory: List<GemmaTurn> = emptyList()
+    private var currentHistory: List<Gemma4Handle.Turn> = emptyList()
 
     /** The tool table, rebuilt per conversation because the tools capture its id. */
-    private var currentTools: AssistantToolSet? = null
+    private var currentTools: ToolRegistry? = null
 
     private val repository by lazy { OpenAssistantRepository.get(applicationContext) }
     private val conversationDao get() = repository.conversationDaoRef
@@ -315,8 +313,6 @@ class InferenceService : Service() {
             currentConversationId = -1L
             engine?.close()
             engine = null
-            etEngine?.close()
-            etEngine = null
             try {
                 ensureEngineInitialized()
                 resetConversation(job.conversationId, job.userText)
@@ -362,7 +358,7 @@ class InferenceService : Service() {
         val live = engine ?: return
         val images = live.encodeImages(imagePaths.toList())
         val prompt = userText + attachmentNote(imagePaths.size - images.size, 0)
-        val turns = listOf(GemmaTurn(GemmaRole.USER, prompt, imagePaths = images))
+        val turns = listOf(Gemma4Handle.Turn(Gemma4Handle.Role.USER, prompt, images))
 
         // The early halt is the whole point of streaming here: the moment a complete object that
         // satisfies the schema has arrived, there is nothing to gain by letting the model write
@@ -438,7 +434,7 @@ class InferenceService : Service() {
 
         val directory = applicationContext.getExternalFilesDir(null)
             ?: throw Exception("no external files directory")
-        for (name in Gemma4Engine.FILES) {
+        for (name in Gemma4Handle.FILES) {
             val file = File(directory, name)
             if (!file.isFile) throw Exception("$name is missing from $directory")
         }
@@ -451,21 +447,35 @@ class InferenceService : Service() {
         }
         engine?.close()
         engine = started
-        // ET-first opportunist: resolves the SpinQuant `.pte` + tokenizer when the files
-        // are on disk and the Vulkan delegate is linked; absent means "litertlm serves",
-        // never a throw. Text-only turns then try the `.pte` first (see runInferenceLoop).
-        try {
-            val etStarted = Gemma4EtEngine(directory)
-            val etLoaded = withContext(Dispatchers.IO) { etStarted.ensureLoaded() }
-            if (etLoaded) {
-                etEngine?.close()
-                etEngine = etStarted
-            } else {
-                etStarted.close()
-            }
-        } catch (e: Throwable) {
-            Log.w("InferenceService", "gemma4 ET unavailable, using litertlm", e)
-        }
+        dumpPrefix()
+    }
+
+    /** The system prompt, from settings or the default. */
+    /**
+     * Write the fixed prompt prefix to disk, for `bake_gemma4_prefix` to precompute.
+     *
+     * The tool declarations are built by reflection over [AssistantToolSet], so the desktop
+     * baker cannot produce them - it has no Kotlin. Rather than transcribe them into the baker
+     * and let the two drift silently, the app emits exactly the text it would send and the baker
+     * consumes that. Drift then becomes impossible by construction.
+     *
+     * Costs one small file write per load. Nothing reads it on device; it is pulled off with
+     * `adb` when the cache is rebuilt, which happens when the prompt or the tools change.
+     */
+    private fun dumpPrefix() {
+        runCatching {
+            val declarations =
+                ToolRegistry(AssistantToolSet(applicationContext, memoryDao, messageDao, 0L))
+                    .declarations
+            // Exactly `Gemma4Handle.render`'s opening, with no conversation and no generation
+            // prompt - the part that never changes.
+            val prefix = "<bos><|turn>system\n" + DEFAULT_SYSTEM_PROMPT +
+                Gemma4Handle.declareTools(declarations)
+            val directory = applicationContext.getExternalFilesDir(null) ?: return
+            File(directory, "prefix.txt").writeText(prefix)
+            Log.i("InferenceService", "wrote prefix.txt, ${prefix.length} chars, " +
+                "${declarations.size} tools")
+        }.onFailure { Log.w("InferenceService", "cannot write prefix.txt: $it") }
     }
 
     /// The system prompt, which is no longer configurable.
@@ -503,11 +513,11 @@ class InferenceService : Service() {
             .filter { it.role != ROLE_ERROR }
             .map { msg ->
                 val role =
-                    if (msg.role == "assistant") GemmaRole.MODEL else GemmaRole.USER
-                GemmaTurn(role, msg.text)
+                    if (msg.role == "assistant") Gemma4Handle.Role.MODEL else Gemma4Handle.Role.USER
+                Gemma4Handle.Turn(role, msg.text)
             }
         currentTools =
-            AssistantToolSet(applicationContext, memoryDao, messageDao, id)
+            ToolRegistry(AssistantToolSet(applicationContext, memoryDao, messageDao, id))
         currentConversationId = id
         engine?.reset()
     }
@@ -525,29 +535,43 @@ class InferenceService : Service() {
     /**
      * [history] with its oldest exchanges dropped until [turn] can actually be sent.
      *
-     * A refusal here is not one bad turn but a dead conversation: the failure is written
-     * back as a message, so without this the next prompt is longer still.
+     * [Gemma4Handle.generate] refuses an over-long prompt rather than shortening it, and a
+     * refusal here is not one bad turn but a dead conversation: the failure is written back as a
+     * message, so without this the next prompt is longer still.
+     *
+     * # Two passes, and history yields to the clip before the clip yields to history
+     *
+     * The first pass measures the turn WITH its audio at full length, so old turns are dropped to
+     * seat the clip whole - down to [HISTORY_FLOOR]. Trimming a clip costs its tail, which is
+     * where a spoken request usually keeps its question; dropping a six-turn-old exchange costs
+     * much less. Past the floor the priority inverts and `Gemma4Handle` trims the clip instead.
+     *
+     * The second pass measures TEXT ONLY with no floor. It is what guarantees the turn is
+     * sendable, and it is unconditional: a turn that cannot be sent is worse than one that has
+     * forgotten something. When the fixed prefix alone exceeds the ceiling this empties history
+     * entirely, which is correct - keeping one exchange there would cost the reply far more than
+     * it costs to have forgotten it.
      *
      * Dropped in user+model pairs, so what survives is still a conversation rather than a reply
      * whose question has gone. A leading model turn, which is what a split pair leaves behind,
      * goes on its own.
-     *
-     * [measure] defaults to the `.litertlm` engine's window; pass the ET engine's when the
-     * turn may run there — its 2048 window is tighter, so fitting to litertlm would let an
-     * ET turn overflow mid-prefill.
      */
     private fun evictToFit(
         live: Gemma4Engine,
-        history: List<GemmaTurn>,
-        turn: GemmaTurn,
+        history: List<Gemma4Handle.Turn>,
+        turn: Gemma4Handle.Turn,
         system: String?,
-        measure: (List<GemmaTurn>) -> Int = { rest -> live.positionsFor(rest, system, currentTools) },
-        ceiling: Int = live.promptCeiling(),
-    ): List<GemmaTurn> {
+    ): List<Gemma4Handle.Turn> {
         val bare = turn.copy(audio = emptyList())
-        fun text(rest: List<GemmaTurn>) = measure(rest + bare)
+        val ceiling = live.promptCeiling()
+        // `positionsFor` trims audio into whatever the text leaves, so asking it about the whole
+        // turn would always answer "fits" and history would never yield. The clip is added at its
+        // full length instead, which is the question actually being asked: does it fit UNTRIMMED?
+        val clip = turn.audio.sumOf { it.size / Gemma4Handle.SOFT_TOKEN_WIDTH }
+        fun text(rest: List<Gemma4Handle.Turn>) =
+            live.positionsFor(rest + bare, system, currentTools)
 
-        var kept = evict(history, HISTORY_FLOOR) { text(it) <= ceiling }
+        var kept = evict(history, HISTORY_FLOOR) { text(it) + clip <= ceiling }
         kept = evict(kept) { text(it) <= ceiling }
         if (kept.size < history.size) {
             Log.w(
@@ -587,34 +611,18 @@ class InferenceService : Service() {
         val audio = live.encodeAudio(present)
         val system = systemPrompt()
         val attachments = attachmentNote(unread, attached.size - audio.size)
-        fun turnOf(note: String) = GemmaTurn(
-            GemmaRole.USER, userText + attachments + note,
-            imagePaths = images, audioPaths = audio,
+        fun turnOf(note: String) = Gemma4Handle.Turn(
+            Gemma4Handle.Role.USER, userText + attachments + note, images, audio,
         )
 
         // Fitted at most twice: the note telling the model it has forgotten something costs
         // positions of its own, so once anything has been dropped the prompt is measured again
         // with the note in place. The second pass may drop one more exchange; the count in the
         // note is taken from the final result, and a one-digit change does not alter its length.
-        //
-        // Text-only turns fit against the ET window when the ET engine is ready: a prompt that
-        // fits litertlm's 8192 but not the `.pte`'s 2048 would overflow mid-prefill. Media
-        // turns always fit to litertlm — the `.pte` cannot serve them.
-        val etLive = etEngine?.takeIf { it.isReady }
-        val textOnly = images.isEmpty() && audio.isEmpty()
-        val etCandidate = textOnly && etLive != null
-        fun measureFor(rest: List<GemmaTurn>): Int =
-            if (etCandidate) {
-                etLive.positionsFor(rest, system, currentTools)
-            } else {
-                live.positionsFor(rest, system, currentTools)
-            }
-        val ceilingFor = if (etCandidate) etLive.promptCeiling() else live.promptCeiling()
-        var kept = evictToFit(live, currentHistory, turnOf(""), system, ::measureFor, ceilingFor)
+        var kept = evictToFit(live, currentHistory, turnOf(""), system)
         if (kept.size < currentHistory.size) {
             kept = evictToFit(
                 live, currentHistory, turnOf(historyNote(currentHistory.size - kept.size)), system,
-                ::measureFor, ceilingFor,
             )
         }
         val dropped = currentHistory.size - kept.size
@@ -622,15 +630,9 @@ class InferenceService : Service() {
 
         // Streaming is a callback rather than a Flow now, and Room is still the channel the UI
         // watches - so each partial is written straight through, exactly as before.
-        //
-        // ET-first for text-only turns: a `.pte` reply streams exactly like a litertlm one
-        // (same strip + partial contract). Null — unavailable, overflowed, native failure —
-        // falls through to litertlm below rather than failing the turn.
         var stopped = false
-        suspend fun streamAsk(
-            ask: suspend ((String) -> Boolean) -> String?,
-        ): String? = withContext(Dispatchers.IO) {
-            ask { partial ->
+        val reply = withContext(Dispatchers.IO) {
+            live.ask(turns, system, currentTools) { partial ->
                 if (halt) {
                     halt = false
                     stopped = true
@@ -641,15 +643,6 @@ class InferenceService : Service() {
                 }
                 true
             }
-        }
-        var reply: String? = null
-        if (etCandidate) {
-            val et = etLive
-            reply = streamAsk { onPartial -> et.ask(turns, system, currentTools, onPartial = onPartial) }
-            if (reply != null) Log.i("InferenceService", "served by gemma4 ET")
-        }
-        if (reply == null) {
-            reply = streamAsk { onPartial -> live.ask(turns, system, currentTools, onPartial = onPartial) }
         }
 
         if (stopped) {
@@ -676,7 +669,7 @@ class InferenceService : Service() {
             messageDao.deleteById(aiMsgId)
         } else {
             updateMessageInDb(aiMsgId, reply)
-            currentHistory = turns + GemmaTurn(GemmaRole.MODEL, reply)
+            currentHistory = turns + Gemma4Handle.Turn(Gemma4Handle.Role.MODEL, reply)
         }
     }
 
@@ -697,8 +690,6 @@ class InferenceService : Service() {
         serviceScope.cancel()
         engine?.close()
         engine = null
-        etEngine?.close()
-        etEngine = null
         super.onDestroy()
     }
 }

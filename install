@@ -23,8 +23,9 @@ Description:
   - Installs via adb package sessions with the .idsig sidecar staged, so
     updates to preinstalled MAOS system apps get fs-verity (plain
     installDev/installRelease and `adb install` never stage it and always fail
-    those updates). Auto-bumps -PversionCodeOverride when the on-device system
-    package is at the same versionCode as the build.
+    those updates). Auto-passes -PversionCodeOverride when the on-device
+    package is at the same versionCode as the build: +1 for system apps,
+    exactly the on-device version for user apps.
 
 Examples:
   ./install dev contacts                    -> :contacts:assembleDev + session install
@@ -452,6 +453,12 @@ device_version_code() {
     | sed -nE 's/^package:\S+[[:space:]]+versionCode:([0-9]+).*/\1/p' | head -1
 }
 
+# exit 0 when the package is installed as a system app.
+is_system_app() {
+  "$ADB_BIN" -s "$TARGET_SERIAL" shell pm list packages -s "$1" 2>/dev/null \
+    | tr -d '\r' | grep -qFx "package:$1"
+}
+
 install_apk_via_session() {
   local apk="$1" package_id="$2"
   local apk_name apk_size session device_apk idsig device_idsig commit_out
@@ -523,9 +530,9 @@ fi
 
 # --- versionCodeOverride: MAOS refuses to update a system package to the same
 # versionCode, so an APK built from the same version.txt as the on-device OS image
-# can never be installed over it. Query the device once; if any requested package
-# is installed at >= the repo version, bump every built APK by one (version.txt
-# itself stays untouched).
+# can never be installed over it. Query the device once; for system apps bump to
+# one above the on-device version, for user apps just match it exactly
+# (version.txt itself stays untouched).
 REPO_VERSION="$(sed -n '1p' "$ROOT/version.txt" | tr -d '\r' | xargs)"
 NEED_BUMP="$REPO_VERSION"
 if [[ -n "$TARGET_SERIAL" ]]; then
@@ -535,8 +542,17 @@ if [[ -n "$TARGET_SERIAL" ]]; then
     if [[ -n "$pkg" ]]; then
       dev_v="$(device_version_code "$pkg")"
       if [[ -n "$dev_v" && "$dev_v" -ge "$NEED_BUMP" ]]; then
-        echo "Info: $pkg is at versionCode $dev_v on-device (>= repo $REPO_VERSION); will build with -PversionCodeOverride=$((dev_v + 1))."
-        NEED_BUMP=$((dev_v + 1))
+        if is_system_app "$pkg"; then
+          target=$((dev_v + 1))
+          kind="system app"
+        else
+          target=$dev_v
+          kind="user app"
+        fi
+        if [[ "$target" -gt "$NEED_BUMP" ]]; then
+          NEED_BUMP=$target
+          echo "Info: $pkg is a $kind at versionCode $dev_v on-device (>= repo $REPO_VERSION); will build with -PversionCodeOverride=$target."
+        fi
       fi
     fi
     idx=$((idx + 1))

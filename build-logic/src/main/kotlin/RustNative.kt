@@ -164,8 +164,8 @@ fun Project.rustNativeLib(
             // to date and the old bindings ship.
             file("src/main/rust/schema").takeIf { it.isDirectory }?.let { inputs.dir(it) }
             // Whole-crate safety net: track every source under src/main/rust so ANY
-            // rust change invalidates cargoBuild - crucially the vendored dependency
-            // crates under vendor/ (e.g. :library:ml's vendor/onnx-vulkan-core), which
+            // rust change invalidates cargoBuild - crucially vendored dependency
+            // crates under vendor/, which
             // the path-specific inputs above do NOT cover. Before this, editing a
             // vendored crate left the task UP-TO-DATE and shipped a stale .so. Exclude
             // target/ because cargo writes this task's own .so there; folding build

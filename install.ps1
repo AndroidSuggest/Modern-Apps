@@ -39,8 +39,9 @@ Description:
   - Installs via adb package sessions with the .idsig sidecar staged, so
     updates to preinstalled MAOS system apps get fs-verity (plain
     installDev/installRelease and `adb install` never stage it and always fail
-    those updates). Auto-bumps -PversionCodeOverride when the on-device system
-    package is at the same versionCode as the build.
+    those updates). Auto-passes -PversionCodeOverride when the on-device
+    package is at the same versionCode as the build: +1 for system apps,
+    exactly the on-device version for user apps.
 
 Examples:
   ./install dev contacts                    -> :contacts:assembleDev + session install
@@ -431,7 +432,7 @@ function Get-DeviceVersions([string]$adbBin, [string]$serial, [string[]]$package
         $listed = Invoke-Adb $adbBin @('-s', $serial, 'shell', 'pm', 'list', 'packages', '--show-versioncode')
         $out = @($listed.Output)
         foreach ($line in $out) {
-            $m = [regex]::Match($line, '^package:(\S+)\s+versionCode:(\d+)')
+            $m = [regex]::Match($line.Trim(), '^package:(\S+)\s+versionCode:(\d+)')
             if ($m.Success -and ($packageIds -contains $m.Groups[1].Value)) {
                 $versions[$m.Groups[1].Value] = [int]$m.Groups[2].Value
             }
@@ -441,6 +442,25 @@ function Get-DeviceVersions([string]$adbBin, [string]$serial, [string[]]$package
         Write-Host 'Warning: could not query device package versions; proceeding without versionCodeOverride.'
     }
     return $versions
+}
+
+function Get-DeviceSystemApps([string]$adbBin, [string]$serial, [string[]]$packageIds) {
+    $systemApps = @()
+    if (-not $adbBin -or -not $serial) { return $systemApps }
+    try {
+        $listed = Invoke-Adb $adbBin @('-s', $serial, 'shell', 'pm', 'list', 'packages', '-s')
+        $out = @($listed.Output)
+        foreach ($line in $out) {
+            $m = [regex]::Match($line.Trim(), '^package:(\S+)$')
+            if ($m.Success -and ($packageIds -contains $m.Groups[1].Value)) {
+                $systemApps += $m.Groups[1].Value
+            }
+        }
+    }
+    catch {
+        Write-Host 'Warning: could not query device system packages; treating all as user apps.'
+    }
+    return $systemApps
 }
 
 function Install-ApkViaSession([string]$adbBin, [string]$serial, [string]$apk, [string]$packageId) {
@@ -519,10 +539,11 @@ if ($allExpanded) {
 
 # --- versionCodeOverride: MAOS refuses to update a system package to the same
 # versionCode, so an APK built from the same version.txt as the on-device OS image
-# can never be installed over it. Query the device once; if any requested package
-# is installed at >= the repo version, bump every built APK by one (version.txt
-# itself stays untouched).
-$repoVersion = Get-RepoVersionCode
+# can never be installed over it. Query the device once; for system apps bump to
+# one above the on-device version, for user apps just match it exactly
+# (version.txt itself stays untouched).
+$baseVersion = Get-RepoVersionCode
+$repoVersion = $baseVersion
 $packageIds = @()
 $packageByModule = @{}
 foreach ($mod in $normalizedModules) {
@@ -533,11 +554,23 @@ foreach ($mod in $normalizedModules) {
     }
 }
 $deviceVersions = Get-DeviceVersions $adb $target $packageIds
+$systemApps = Get-DeviceSystemApps $adb $target $packageIds
 $needBump = $false
 foreach ($pkg in $packageIds) {
     if ($deviceVersions.ContainsKey($pkg) -and $deviceVersions[$pkg] -ge $repoVersion) {
-        Write-Host "Info: $pkg is at versionCode $($deviceVersions[$pkg]) on-device (>= repo $repoVersion); will build with -PversionCodeOverride=$($deviceVersions[$pkg] + 1)."
-        if (($deviceVersions[$pkg] + 1) -gt $repoVersion) { $repoVersion = $deviceVersions[$pkg] + 1; $needBump = $true }
+        if ($systemApps -contains $pkg) {
+            $targetVersion = $deviceVersions[$pkg] + 1
+            $kind = 'system app'
+        }
+        else {
+            $targetVersion = $deviceVersions[$pkg]
+            $kind = 'user app'
+        }
+        if ($targetVersion -gt $repoVersion) {
+            $repoVersion = $targetVersion
+            $needBump = $true
+            Write-Host "Info: $pkg is a $kind at versionCode $($deviceVersions[$pkg]) on-device (>= repo $baseVersion); will build with -PversionCodeOverride=$targetVersion."
+        }
     }
 }
 if ($needBump) {

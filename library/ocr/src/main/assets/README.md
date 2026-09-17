@@ -1,12 +1,5 @@
 # `:library:ocr` bundled model assets
 
-> NOTE (ET drop-ins, task 18): the `.maml` sections below describe removed files — the
-> live pair is `ppocrv6-det_fp16.tflite` + `ppocrv6-rec_fp16.tflite` + `ppocrv6_keys.txt`
-> (LiteRT ship rungs). The ExecuTorch candidates (`pp_ocrv6_vulkan_fp16.pte` primary,
-> `pp_ocrv6_xnnpack_int8.pte` fallback, `ppocrv6_charset.txt` full charset — see
-> `analysis/et-ocr/ET_PATH.md`) resolve opportunistically from these same assets when they
-> ship; `TextRecognizerEt` + `OcrEngine` pick them up with the `.tflite` pair as fallback.
-
 ## `ppocr_det.maml` — text detection
 
 Apache-2.0, from https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx

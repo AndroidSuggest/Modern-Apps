@@ -22,6 +22,7 @@ mod layers;
 mod lifecycle;
 mod log;
 mod markers;
+mod moon;
 mod pick;
 mod puck;
 mod region;

@@ -130,6 +130,10 @@ class SurfaceMapRenderer(
     private var lastPosition: CameraPosition? = null
     private var lastWidthDp = 0f
     private var lastHeightDp = 0f
+    /** The globe flag the last frame was drawn with — part of the change backstop above. */
+    private var lastGlobe = false
+    /** The Moon flag the last frame was drawn with — part of the change backstop above. */
+    private var lastMoon = false
 
     /**
      * Where the map is looking, and which way is up. Read once per frame on the main
@@ -235,12 +239,61 @@ class SurfaceMapRenderer(
     internal var railStyle = RouteStyle()
 
     /**
+     * The Moon raster pair, remembered so a surface attached after the push —
+     * or re-attached after a recreate — still starts with the Moon available,
+     * the same way [userPuck] and [routeSegments] are.
+     */
+    private var moonTextures: MoonTextures? = null
+
+    /**
      * The last-pushed live-traffic colour table (`component_id`s and their ARGB), remembered so
      * a push that arrived before the surface existed — or that has to outlive the surface being
      * recreated — is re-applied in the first frame, the same way [route] is. `null` means the
      * overlay has nothing to draw (never pushed, or cleared).
      */
     internal var trafficSpeeds: Pair<LongArray, IntArray>? = null
+
+    /**
+     * Whether to draw the orthographic-sphere globe rather than the flat map.
+     *
+     * Pulled per frame out of the Compose `CameraState` (see [composeCamera]), like
+     * the camera itself — a `LaunchedEffect` in `VulkanMapSurface` invalidates on
+     * change, so flipping the toggle while idle still redraws. Read alongside the
+     * camera in [renderFrame] and handed to the native frame as its `globe` flag.
+     * Plain `var` (not Compose state): only ever written from effects, read on the
+     * frame callback. Default-off; the car path never sets it.
+     */
+    var globeEnabled: Boolean = false
+
+    /**
+     * Which body the globe draws. Earth (default) is the vector basemap; Moon is
+     * the maps-pushed raster pair (see [SurfaceMapRenderer.setMoonTextures]).
+     * Plain `var` like [globeEnabled]: written from effects, read on the frame
+     * callback. Only read while the globe is active.
+     */
+    var body: MapBody = MapBody.Earth
+
+    /**
+     * Upload the Moon raster pair after attach (and after any re-attach — the
+     * native textures die with the renderer like every other GPU state, so this
+     * must be replayed; see `attachSurface`). [colorRgba] is `width x height`
+     * RGBA8, [demRg] is `demWidth x demHeight` RG8 packed uint16. Remembered so
+     * a surface attached after the push still starts with the Moon available.
+     */
+    fun setMoonTextures(
+        colorRgba: ByteArray,
+        width: Int,
+        height: Int,
+        demRg: ByteArray,
+        demWidth: Int,
+        demHeight: Int,
+    ) {
+        moonTextures = MoonTextures(colorRgba, width, height, demRg, demWidth, demHeight)
+        if (handle != 0L) {
+            MapNative.setMoonTextures(handle, colorRgba, width, height, demRg, demWidth, demHeight)
+        }
+        invalidate()
+    }
 
     /** The region to mask and which rung of the admin stack it is, or `null` for no mask. */
     private var regionProbe: RegionMask? = null
@@ -327,6 +380,7 @@ class SurfaceMapRenderer(
         applyTraffic()
         applyMarkers()
         applyVehicles()
+        applyMoonTextures()
         renderState = MapRenderState.Rendering
         syncFrameLoop()
         // The whole deferred set was just replayed into a brand-new native renderer, and the
@@ -413,6 +467,12 @@ class SurfaceMapRenderer(
         // the basemap with it — so the basemap and everything positioned through the
         // projection turn together. Tilt is honoured the same way on both paths.
         val bearing: Float
+        // The globe flag, pulled per frame like the camera itself (see `globeEnabled`):
+        // past the detail threshold both sides use the flat path bit-identically.
+        val globe: Boolean
+        // The body, pulled per frame like the globe flag: Moon only reads while
+        // the globe is active (past the threshold both sides use flat Earth).
+        val moon: Boolean
         val state = composeCamera
         if (state != null) {
             val viewport = state.viewportDp ?: return false
@@ -420,20 +480,26 @@ class SurfaceMapRenderer(
             widthDp = viewport.width
             heightDp = viewport.height
             bearing = position.bearing.toFloat()
+            globe = state.globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM
+            moon = globe && state.body == MapBody.Moon
         } else {
             if (widthPx <= 0 || heightPx <= 0 || density <= 0f) return false
             position = camera
             widthDp = widthPx / density
             heightDp = heightPx / density
             bearing = position.bearing.toFloat()
+            globe = globeEnabled && position.zoom < GLOBE_DETAIL_ZOOM
+            moon = globe && body == MapBody.Moon
         }
         // The backstop for a camera that moved without telling us: the Compose path pulls its
         // camera out of a CameraState here, and a gesture that somehow reached it without
         // waking the loop would otherwise draw one frame and settle mid-movement.
-        if (position != lastPosition || widthDp != lastWidthDp || heightDp != lastHeightDp) {
+        if (position != lastPosition || widthDp != lastWidthDp || heightDp != lastHeightDp || globe != lastGlobe || moon != lastMoon) {
             lastPosition = position
             lastWidthDp = widthDp
             lastHeightDp = heightDp
+            lastGlobe = globe
+            lastMoon = moon
             lastChangeNanos = System.nanoTime()
         }
         val drawn = MapNative.render(
@@ -447,6 +513,8 @@ class SurfaceMapRenderer(
             heightDp,
             density,
             frameTimeNanos,
+            globe,
+            moon,
         )
         if (drawn) onFrame()
         if (!regionResolved) applyRegionMask()
@@ -699,6 +767,49 @@ class SurfaceMapRenderer(
         MapNative.setVehicles(handle, packed.ids, packed.lonLat, packed.icons, packed.colors)
     }
 
+    private fun applyMoonTextures() {
+        if (handle == 0L) return
+        val moon = moonTextures ?: return
+        MapNative.setMoonTextures(
+            handle,
+            moon.colorRgba, moon.width, moon.height,
+            moon.demRg, moon.demWidth, moon.demHeight,
+        )
+    }
+
+/**
+ * The Moon raster pair the host pushes for the lunar globe: converted LROC
+ * color (RGBA8) + converted LDEM (RG8 packed uint16). Plain holder so the
+ * renderer can remember and replay it across re-attach like every other
+ * deferred state.
+ */
+data class MoonTextures(
+    val colorRgba: ByteArray,
+    val width: Int,
+    val height: Int,
+    val demRg: ByteArray,
+    val demWidth: Int,
+    val demHeight: Int,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is MoonTextures) return false
+        return width == other.width && height == other.height &&
+            demWidth == other.demWidth && demHeight == other.demHeight &&
+            colorRgba.contentEquals(other.colorRgba) && demRg.contentEquals(other.demRg)
+    }
+
+    override fun hashCode(): Int {
+        var result = width
+        result = 31 * result + height
+        result = 31 * result + demWidth
+        result = 31 * result + demHeight
+        result = 31 * result + colorRgba.contentHashCode()
+        result = 31 * result + demRg.contentHashCode()
+        return result
+    }
+}
+
 
     // `internal` (not `private`) so the frame-loop contract is testable: `IDLE_GRACE_NANOS`
     // is pinned by `FrameLoopWakeTest`.
@@ -727,5 +838,38 @@ class SurfaceMapRenderer(
         internal val IDLE_GRACE_NANOS = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(250)
 
         // DEFAULT_ROUTE_COLOR lives in SurfaceMapOverlays.kt.
+    }
+}
+
+/**
+ * The Moon raster pair the host pushes for the lunar globe: converted LROC
+ * color (RGBA8) + converted LDEM (RG8 packed uint16). Plain holder so the
+ * renderer can remember and replay it across re-attach like every other
+ * deferred state.
+ */
+data class MoonTextures(
+    val colorRgba: ByteArray,
+    val width: Int,
+    val height: Int,
+    val demRg: ByteArray,
+    val demWidth: Int,
+    val demHeight: Int,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is MoonTextures) return false
+        return width == other.width && height == other.height &&
+            demWidth == other.demWidth && demHeight == other.demHeight &&
+            colorRgba.contentEquals(other.colorRgba) && demRg.contentEquals(other.demRg)
+    }
+
+    override fun hashCode(): Int {
+        var result = width
+        result = 31 * result + height
+        result = 31 * result + demWidth
+        result = 31 * result + demHeight
+        result = 31 * result + colorRgba.contentHashCode()
+        result = 31 * result + demRg.contentHashCode()
+        return result
     }
 }

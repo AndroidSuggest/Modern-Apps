@@ -393,7 +393,7 @@ impl Bitset {
     /// next, so callers must test [`Bitset::get`] first or they will silently
     /// alias two nodes together.
     #[inline]
-    fn dense(&self, idx: u64) -> u32 {
+    pub(crate) fn dense(&self, idx: u64) -> u32 {
         let byte = (idx / 8) as usize;
         let block = byte / RANK_BLOCK_BYTES;
         let start = block * RANK_BLOCK_BYTES;
@@ -416,7 +416,7 @@ impl Bitset {
 /// `(0, 0)`, a point in the Atlantic that corrupts distances, spatial keys and
 /// polylines while leaving every count looking plausible.
 pub(crate) struct NodeIndex {
-    mask: Bitset,
+    pub(crate) mask: Bitset,
     present: Bitset,
 }
 
@@ -440,6 +440,15 @@ struct Pass1 {
     refs: Vec<i64>,
     stop_nodes: Vec<i64>,
 }
+
+/// A region bbox filter, or `None` for a world build.
+///
+/// Passed by value into the block visitors (it is `Copy`): every routable way
+/// whose nodes all fall outside is dropped, and a stop outside never enters
+/// the graph. Ways are kept whole when any node touches — the same
+/// `complete_ways` rule [`crate::bbox`] documents — so a road straddling the
+/// border keeps its boundary stub rather than ending mid-segment.
+pub type RegionFilter = Option<crate::bbox::BBox>;
 
 include!("graph_build_part1.rs");
 include!("graph_build_part2.rs");

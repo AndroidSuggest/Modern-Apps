@@ -11,6 +11,9 @@ import com.vayunmathur.cast.domain.ClientState
 import com.vayunmathur.cast.platform.CastController
 import com.vayunmathur.cast.platform.CastPairActivity
 import com.vayunmathur.cast.platform.MirrorPhase
+import com.vayunmathur.cast.platform.connect
+import com.vayunmathur.cast.platform.disconnect
+import com.vayunmathur.cast.platform.startDesktopMode
 import com.vayunmathur.library.ui.ExternalIntents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

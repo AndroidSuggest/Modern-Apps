@@ -14,10 +14,3 @@ crate-type = ["cdylib", "rlib"]
 jni.workspace = true
 # rayon removed – was 6 crates (crossbeam-deque/epoch/utils, either, rayon-core + rayon)
 # Replaced by std::thread::scope in blur.rs / stylize.rs preserving parallelism
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"

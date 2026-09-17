@@ -3,6 +3,8 @@ package com.vayunmathur.maps.ui
 import android.content.Context
 import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.MapBody
+import com.vayunmathur.library.map.MoonTextures
 import com.vayunmathur.library.ui.FreeHeightSheetState
 import com.vayunmathur.library.ui.Messenger
 import com.vayunmathur.library.ui.OverlayAction
@@ -128,6 +130,9 @@ internal class MapPageScope(
     val satelliteEnabled: Boolean,
     val safetyEnabled: Boolean,
     val transitEnabled: Boolean,
+    val globeEnabled: Boolean,
+    val body: MapBody,
+    val moonTextures: MoonTextures?,
     val darkMap: Boolean,
     val navState: NavigationSessionManager.NavState,
     val navSession: NavigationSessionManager.NavSession,

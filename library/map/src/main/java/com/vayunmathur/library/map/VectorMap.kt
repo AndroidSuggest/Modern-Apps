@@ -53,6 +53,13 @@ import kotlin.math.roundToInt
  *
  * @param style [MapStyle.Standard] or [MapStyle.Muted] — muted for hosts drawing their own
  *   data on top, which is what `weather` needs.
+ * @param globeEnabled draw the true-3D-sphere globe (orthographic sphere) instead of the
+ *   flat Mercator map. Off by default, so every existing host is unchanged — only `maps`
+ *   opts in, driven by its settings toggle. Below [GLOBE_DETAIL_ZOOM] the basemap, the
+ *   Compose overlays ([Projection]) and the gesture math all use the sphere; past it the
+ *   sphere is sub-pixel from flat, so both paths use the flat math bit-identically.
+ *   The globe path is north-up level: bearing and the two-finger tilt are ignored while
+ *   it is active (tilting a planet is a separate workstream).
  * @param darkBasemap which palette to paint. Defaults to the system theme. The dark colours
  *   are `maps`' own contrast-checked `BasemapPalette`, so the apps agree with each other.
  *   Switching is free: only a push constant changes.
@@ -93,6 +100,24 @@ fun VectorMap(
     style: MapStyle = MapStyle.Standard,
     darkBasemap: Boolean = isSystemInDarkTheme(),
     zoomRange: ClosedFloatingPointRange<Float> = 0f..20f,
+    /**
+     * See the KDoc above: true while `maps`' globe toggle is on. Default-off so
+     * every other host keeps the flat Mercator map it always had.
+     */
+    globeEnabled: Boolean = false,
+    /**
+     * Which body to draw. Earth is the default every host keeps; maps passes
+     * Moon when its session body switch says so (only read while [globeEnabled]
+     * is on and the globe is active — a zoomed-in Moon reads as Earth).
+     */
+    body: MapBody = MapBody.Earth,
+    /**
+     * Moon raster pair, uploaded to the native side on attach (and re-attach).
+     * Null (default) means no Moon available — a Moon frame then draws the
+     * clear colour rather than failing. Only maps sets this, lazily on first
+     * Moon select so Earth sessions never pay the 36MB read.
+     */
+    moonTextures: MoonTextures? = null,
     options: MapOptions = MapOptions(),
     imageOverlay: ImageOverlay? = null,
     userPuck: UserPuck? = null,
@@ -140,6 +165,13 @@ fun VectorMap(
     content: @Composable MapScope.() -> Unit = {},
 ) {
     val density = LocalDensity.current.density
+
+    // Own the flag into the CameraState (which the gestures, the projection and the
+    // native frame all read) rather than threading it per call: one writer, many readers.
+    // `false` writes are cheap state no-ops, so non-globe hosts pay nothing per frame.
+    LaunchedEffect(globeEnabled) { cameraState.globeEnabled = globeEnabled }
+    // Same ownership for the body: session-scoped, read only while the globe is active.
+    LaunchedEffect(body) { cameraState.body = body }
 
     // Read through `rememberUpdatedState` so the lambda handed to `mapGestures` keeps a
     // stable identity: its `pointerInput` is keyed on the camera and gesture options, not on
@@ -196,6 +228,9 @@ fun VectorMap(
             muted = style == MapStyle.Muted,
             layerOptions = options.layerOptions,
             tileSource = options.tileSource,
+            globeEnabled = globeEnabled,
+            body = body,
+            moonTextures = moonTextures,
             userPuck = userPuck,
             regionMask = regionMask,
             trafficColors = trafficColors,

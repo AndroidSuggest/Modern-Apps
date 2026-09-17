@@ -133,6 +133,23 @@ pub fn build(
     spatial: &Path,
     name_index: &Path,
 ) -> Result<Stats> {
+    build_with(input, geojson, names, index, attrs, spatial, name_index, None)
+}
+
+/// [`build`] with a region bbox filter: `Some` keeps only POIs touching the
+/// box, `None` (world) keeps everything. Ways and relations are kept whole
+/// when any vertex touches — the `complete_ways` rule — so a POI straddling
+/// the border keeps its true centroid rather than one computed from a clip.
+pub fn build_with(
+    input: &Path,
+    geojson: &Path,
+    names: &Path,
+    index: &Path,
+    attrs: &Path,
+    spatial: &Path,
+    name_index: &Path,
+    bbox: Option<crate::bbox::BBox>,
+) -> Result<Stats> {
     // Fail before the three passes rather than after them if an output path is
     // unwritable.
     for path in [geojson, names, index, attrs, spatial, name_index] {
@@ -206,7 +223,7 @@ pub fn build(
         KIND_NODES,
         "Pass 3: nodes",
         NodePass::default,
-        |state, block| node_blob(state, block, &needed),
+        |state, block| node_blob(state, block, &needed, bbox.as_ref()),
     )?;
     let mut pois: Vec<Poi> = Vec::new();
     let mut locs: Vec<(i32, i32)> = vec![(NO_LOC, NO_LOC); needed.len()];
@@ -224,8 +241,22 @@ pub fn build(
         (lat != NO_LOC).then_some((lat, lon))
     };
 
+    // A POI touches the region when any of its vertices does — same
+    // `complete_ways` rule as the graph. The centroid is computed from the
+    // whole ring regardless, so a border-straddling POI keeps its true
+    // location.
+    let touches = |ids: &mut dyn Iterator<Item = i64>| -> bool {
+        let Some(b) = bbox.as_ref() else {
+            return true;
+        };
+        ids.filter_map(&location).any(|(lat, lon)| b.contains_e7(lat, lon))
+    };
+
     // --- Area centroids ------------------------------------------------------
     for area in &way_areas {
+        if !touches(&mut area.refs.iter().copied()) {
+            continue;
+        }
         // A closed way's ring is its own node list minus the repeated closing
         // node.
         if let Some(poi) = ring_centroid(area.refs[..area.refs.len() - 1].iter().copied(), &location)
@@ -248,6 +279,9 @@ pub fn build(
             .collect();
         refs.sort_unstable();
         refs.dedup();
+        if !touches(&mut refs.iter().copied()) {
+            continue;
+        }
         if let Some(poi) = ring_centroid(refs.iter().copied(), &location) {
             pois.push(make_poi(poi, area.type_, -area.id, &area.name, area.attrs.clone()));
         }
@@ -367,7 +401,12 @@ fn way_blob(
     Ok(kinds)
 }
 
-fn node_blob(state: &mut NodePass, block: &pbf::PrimitiveBlock, needed: &[i64]) -> Result<u8> {
+fn node_blob(
+    state: &mut NodePass,
+    block: &pbf::PrimitiveBlock,
+    needed: &[i64],
+    bbox: Option<&crate::bbox::BBox>,
+) -> Result<u8> {
     let mut kinds = 0u8;
     visit_block(block, KIND_NODES, &mut kinds, &mut |el: Element| {
         if let Element::Node(n) = el {
@@ -375,6 +414,11 @@ fn node_blob(state: &mut NodePass, block: &pbf::PrimitiveBlock, needed: &[i64]) 
                 state.locs.push((idx as u32, n.lat_e7, n.lon_e7));
             }
             if n.tags.is_empty() {
+                return Ok(());
+            }
+            // A node POI outside the region is dropped here; its own location
+            // arrives with it, so no location table is needed.
+            if !crate::bbox::keep_e7(bbox, n.lat_e7, n.lon_e7) {
                 return Ok(());
             }
             let name = match n.tags.get("name") {

@@ -47,10 +47,10 @@ use std::path::{Path, PathBuf};
 
 use crate::compact::Chain;
 use crate::geom;
-use crate::graph_build::{way_attrs, Bitset, NodeIndex, WayAttrs};
+use crate::graph_build::{way_attrs, Bitset, NodeIndex, WayAttrs, BITSET_SIZE};
 use crate::names::{LocalNames, NamePool, NO_NAME};
 use crate::osm::{visit_block, Element};
-use crate::pbf::{self, BlobLoc, KIND_WAYS};
+use crate::pbf::{self, BlobLoc, KIND_NODES, KIND_WAYS};
 use crate::proto::{Error, Result};
 use crate::spatial::accurate_dist_mm;
 use crate::tags;
@@ -83,14 +83,101 @@ struct DegreePass {
 }
 
 /// One saturating incidence count per dense node id.
+///
+/// `filter` drops segments the same way the chain walk does: a way no node of
+/// which touches the region contributes no incidence, so its nodes stay degree
+/// 0 and never survive. Both this and [`build`] must ask the same question —
+/// see [`segment`] — or a chain dead-ends where the degrees say pass-through.
 pub(crate) fn count_degrees(
     input: &Path,
     blobs: &[BlobLoc],
     blob_kinds: &[u8],
     index: &NodeIndex,
     slots: u32,
+    filter: crate::graph_build::RegionFilter,
 ) -> Result<Vec<u8>> {
     let mut degree = vec![0u8; slots as usize];
+    if filter.is_none() {
+        // World build: the fast path, unchanged. Every routable way's segments
+        // count, and no coordinate table is needed.
+        let _ = pbf::run_pass_sink(
+            input,
+            blobs,
+            Some(blob_kinds),
+            KIND_WAYS,
+            "Pass 3: node degrees",
+            DegreePass::default,
+            |state: &mut DegreePass, block| {
+                let mut kinds = 0u8;
+                visit_block(block, KIND_WAYS, &mut kinds, &mut |el: Element| {
+                    if let Element::Way(w) = el {
+                        if tags::get_hw_id(w.tags.get_str("highway")) != 0 {
+                            for pair in w.refs.windows(2) {
+                                if let Some((u, v)) = segment(index, pair[0], pair[1]) {
+                                    state.endpoints.push(u);
+                                    state.endpoints.push(v);
+                                }
+                            }
+                        }
+                    }
+                    Ok(())
+                })?;
+                Ok(kinds)
+            },
+            |chunk| {
+                for e in chunk.endpoints {
+                    let d = &mut degree[e as usize];
+                    *d = d.saturating_add(1);
+                }
+                Ok(())
+            },
+        )?;
+        return Ok(degree);
+    }
+    // Region build: degrees must agree with the chain walk's filter, or a
+    // chain dead-ends where the degrees say pass-through. The filter needs
+    // coordinates, which live in pass 2's `coords` — not visible here — so
+    // this resolves the marked nodes' locations in a side table first. One
+    // extra node-region scan; dwarfed by what the region saves downstream.
+    let bbox = filter.expect("checked above");
+    let mut locs: Vec<Option<(i32, i32)>> = vec![None; slots as usize];
+    {
+        // (dense id, lat_e7, lon_e7), folded in chunk order.
+        let _ = pbf::run_pass_sink(
+            input,
+            blobs,
+            Some(blob_kinds),
+            KIND_NODES,
+            "Pass 3: region locations",
+            Vec::<(u32, i32, i32)>::new,
+            |state: &mut Vec<(u32, i32, i32)>, block| {
+                let mut kinds = 0u8;
+                visit_block(block, KIND_NODES, &mut kinds, &mut |el: Element| {
+                    if let Element::Node(n) = el {
+                        if n.id >= 0 && (n.id as u64) < BITSET_SIZE && index.mask.get(n.id as u64) {
+                            let d = index.mask.dense(n.id as u64);
+                            state.push((d, n.lat_e7, n.lon_e7));
+                        }
+                    }
+                    Ok(())
+                })?;
+                Ok(kinds)
+            },
+            |chunk| {
+                for (d, lat, lon) in chunk {
+                    locs[d as usize] = Some((lat, lon));
+                }
+                Ok(())
+            },
+        )?;
+    }
+    let touches = |refs: &[i64]| -> bool {
+        refs.iter().any(|r| {
+            index.dense(*r).and_then(|d| locs[d as usize]).is_some_and(|(lat, lon)| {
+                bbox.contains_e7(lat, lon)
+            })
+        })
+    };
     let _ = pbf::run_pass_sink(
         input,
         blobs,
@@ -102,7 +189,7 @@ pub(crate) fn count_degrees(
             let mut kinds = 0u8;
             visit_block(block, KIND_WAYS, &mut kinds, &mut |el: Element| {
                 if let Element::Way(w) = el {
-                    if tags::get_hw_id(w.tags.get_str("highway")) != 0 {
+                    if tags::get_hw_id(w.tags.get_str("highway")) != 0 && touches(w.refs) {
                         for pair in w.refs.windows(2) {
                             if let Some((u, v)) = segment(index, pair[0], pair[1]) {
                                 state.endpoints.push(u);
@@ -174,6 +261,7 @@ pub(crate) fn build<W: Write + Send>(
     degree: &[u8],
     stop: &Bitset,
     slots: u32,
+    filter: crate::graph_build::RegionFilter,
     pool: &mut NamePool<W>,
     spill: &Spill,
 ) -> Result<Chains> {
@@ -193,7 +281,7 @@ pub(crate) fn build<W: Write + Send>(
         KIND_WAYS,
         "Pass 4: chains",
         ChainPass::default,
-        |state: &mut ChainPass, block| chain_blob(state, block, index, coords, degree, stop),
+        |state: &mut ChainPass, block| chain_blob(state, block, index, coords, degree, stop, filter),
         |chunk| {
             let name_map = chunk
                 .names
@@ -239,6 +327,7 @@ fn chain_blob(
     coords: &[geom::Pt],
     degree: &[u8],
     stop: &Bitset,
+    filter: crate::graph_build::RegionFilter,
 ) -> Result<u8> {
     let mut kinds = 0u8;
     let mut path: Vec<u32> = Vec::new();
@@ -250,6 +339,24 @@ fn chain_blob(
         let type_ = tags::get_hw_id(w.tags.get_str("highway"));
         if type_ == 0 {
             return Ok(());
+        }
+        // Region filter: keep the way when ANY node touches the box. Coords
+        // are resolved by now so this is a direct test, same rule as the
+        // reference path's `way_blob`.
+        if let Some(b) = filter.as_ref() {
+            let mut touches = false;
+            for r in w.refs {
+                if let Some(d) = index.dense(*r) {
+                    let (lat_e7, lon_e7) = coords[d as usize];
+                    if b.contains_e7(lat_e7, lon_e7) {
+                        touches = true;
+                        break;
+                    }
+                }
+            }
+            if !touches {
+                return Ok(());
+            }
         }
         let attrs = way_attrs(&w, type_, &mut state.lanes, &mut state.names);
         path.clear();

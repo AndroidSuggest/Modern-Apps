@@ -125,7 +125,7 @@ fn io_err(e: std::io::Error) -> Error {
 
 /// Parse the tool's command line:
 /// `road_graph IN.osm.pbf [--out DIR] [--reference-collapse] [--rounds N]
-/// [--spill-dir DIR] [--spill-pts-dir DIR] [--dem DATASET.mdem] [--stats]`.
+/// [--spill-dir DIR] [--spill-pts-dir DIR] [--dem DATASET.mdem] [--region california|world] [--stats]`.
 pub fn parse_args(
     args: &[String],
 ) -> std::result::Result<(PathBuf, PathBuf, Options), String> {
@@ -183,6 +183,14 @@ pub fn parse_args(
                     .get(i)
                     .ok_or_else(|| "--dem needs a .mdem dataset path".to_string())?;
                 opts.dem = Some(PathBuf::from(path));
+            }
+            "--region" => {
+                i += 1;
+                let value = args
+                    .get(i)
+                    .ok_or_else(|| "--region needs `california` or `world`".to_string())?;
+                let region = crate::region::Region::parse(value).map_err(|e| e.0)?;
+                opts.bbox = region.bbox();
             }
             a if a.starts_with('-') => return Err(format!("unknown option: {a}")),
             a => {

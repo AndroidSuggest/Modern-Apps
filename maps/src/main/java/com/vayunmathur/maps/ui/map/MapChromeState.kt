@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.retain.retain
 import androidx.compose.runtime.setValue
+import com.vayunmathur.library.map.MapBody
 import com.vayunmathur.maps.data.PostedLimit
 import com.vayunmathur.maps.ui.MapCategory
 import com.vayunmathur.maps.util.RouteService
@@ -55,6 +56,14 @@ class MapChromeState internal constructor(
 
     /** Active browse-category POI filter, or null for no filter. */
     var selectedCategory by selectedCategoryState
+
+    /**
+     * Which body the globe draws: Earth (vector basemap) or Moon (NASA SVS
+     * raster pair). Session-only — deliberately `remember`, not `retain`:
+     * rotation keeps it (same composition), but a process restart resets to
+     * Earth. A view, not a setting.
+     */
+    var body: MapBody by mutableStateOf(MapBody.Earth)
 
     /** Which modal sheet is up. */
     var overlay by overlayState

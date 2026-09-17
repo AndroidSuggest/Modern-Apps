@@ -51,11 +51,17 @@ impl Renderer {
         device: &ash::Device,
         fill: vk::Pipeline,
         line: vk::Pipeline,
+        fill_globe: vk::Pipeline,
+        line_globe: vk::Pipeline,
         layout: vk::PipelineLayout,
         edge_aa: f32,
         bound: &mut Option<LayerKind>,
         submitted: &mut usize,
     ) {
+        // The globe flag for this frame: the globe matrices + shaders + depth path
+        // below, or the flat path bit-identically above. Read once (not per tile)
+        // so a frame cannot mix the two.
+        let globe = crate::camera::globe_active(camera);
         for (index, layer) in layers.iter().enumerate() {
             // `min_zoom`/`max_zoom` are a data-and-cost gate, not paint: they say which zooms
             // the archive is worth asking for this layer at. Paint is the ramp below.
@@ -157,17 +163,22 @@ impl Renderer {
                 // (owned by WS-B's `line.frag`) ignores `morph.x`, so road casings stay crisp
                 // while the fill fades — the fade reads as the flat basemap ramping in.
                 let tile_fade = tile_alpha.get(key).copied().unwrap_or(1.0);
-                for &(tz, tx, ty, kind, vbuf, ibuf, first_index, count, color_override, lane) in
+                    for &(tz, tx, ty, kind, vbuf, ibuf, first_index, count, color_override, lane) in
                     draws.iter()
                 {
-                    if *bound != Some(kind) {
-                        let pipeline = match kind {
-                            LayerKind::Fill => fill,
-                            LayerKind::Line => line,
-                            // Symbols never take this path (drawn above); this arm is
-                            // unreachable but the match must stay exhaustive.
-                            LayerKind::Symbol => continue,
-                        };
+                if *bound != Some(kind) {
+                    // The bound cache is per kind: globe and flat share the kind key
+                    // but never mix in one frame (`globe` is read once above), so the
+                    // first bind of the frame wins and stays for the frame.
+                    let pipeline = match kind {
+                        LayerKind::Fill if globe => fill_globe,
+                        LayerKind::Fill => fill,
+                        LayerKind::Line if globe => line_globe,
+                        LayerKind::Line => line,
+                        // Symbols never take this path (drawn above); this arm is
+                        // unreachable but the match must stay exhaustive.
+                        LayerKind::Symbol => continue,
+                    };
                         device.cmd_bind_pipeline(
                             command_buffer,
                             vk::PipelineBindPoint::GRAPHICS,
@@ -213,14 +224,36 @@ impl Renderer {
                         tile_to_clip: camera.tile_to_clip(tz, tx, ty),
                         color: argb_to_rgba(scale_alpha(base, opacity)),
                         line: [half_width_px, half_gap_px, layer.dash.0, layer.dash.1],
-                        misc: [
-                            camera.tile_span_px(tz),
-                            edge_aa,
-                            lateral_px,
-                            camera.time_seconds,
-                        ],
+                        misc: if globe {
+                            // Globe: centre lon/lat (degrees) for the sphere basis.
+                            [
+                                camera.center_lon as f32,
+                                camera.center_lat as f32,
+                                lateral_px,
+                                camera.time_seconds,
+                            ]
+                        } else {
+                            [
+                                camera.tile_span_px(tz),
+                                edge_aa,
+                                lateral_px,
+                                camera.time_seconds,
+                            ]
+                        },
                         // `morph.z` is the tile's world-px span (Dp): the draped-`z` scale.
-                        morph: [tile_fade, 0.0, camera.tile_span_dp(tz) as f32, 0.0],
+                        // On the globe it is the globe radius (Dp) instead, and morph.xy
+                        // the half-viewport (Dp) — see the `*_globe.vert` headers.
+                        morph: if globe {
+                            let r = crate::camera::globe_radius(camera.zoom) as f32;
+                            [
+                                tile_fade,
+                                camera.width_dp / 2.0,
+                                r,
+                                camera.height_dp / 2.0,
+                            ]
+                        } else {
+                            [tile_fade, 0.0, camera.tile_span_dp(tz) as f32, 0.0]
+                        },
                     };
                     device.cmd_push_constants(
                         command_buffer,

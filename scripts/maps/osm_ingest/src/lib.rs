@@ -38,6 +38,7 @@ pub mod poi_attrs;
 pub mod poi_build;
 pub mod poi_side;
 pub mod proto;
+pub mod region;
 pub mod rings;
 pub mod roads;
 pub mod safety;

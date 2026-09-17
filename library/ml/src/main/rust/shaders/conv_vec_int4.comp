@@ -1,0 +1,196 @@
+#version 450
+//! `conv_vec_int8.comp` for a **4-bit** kernel with **per-block** scales.
+//!
+//! # What differs from the int8 gemv
+//!
+//! Only where the scale is applied. An int8 kernel has one scale per output row, so it multiplies
+//! the finished accumulator once. Four bits cannot hold a row's dynamic range at one scale, so
+//! there is one per block of `I4_BLOCK` taps along the contraction axis, and the scale has to
+//! reach the product rather than the total.
+//!
+//! The scale table is rank 2, `(out_channels, ceil(in_c / I4_BLOCK))`, at `p.act_weight` - the
+//! same push field the int8 shaders use for their per-row scale, since it means the same thing
+//! one rank up.
+//!
+//! # The lane pattern is unchanged, and that costs a fetch
+//!
+//! Lanes stride by 64 over the contraction axis, which is right for coalescing and wrong for
+//! block reuse: at `I4_BLOCK` 32 a lane's block changes on every iteration, so the scale is
+//! fetched per tap per row rather than hoisted per block. Fetching it from the fp16 view is a
+//! cached read and the alternative - giving each lane a contiguous chunk so its blocks are
+//! consecutive - trades that for uncoalesced weight reads, which is the worse end of the deal at
+//! these widths. Worth re-measuring if this ever becomes the bottleneck; it is written the simple
+//! way deliberately.
+//!
+//! # Push fields
+//!
+//! As `conv_vec_int8.comp`: `p.weight` is a 32-bit **word** offset, `p.act_weight` the scale
+//! table, `p.bias` the bias, `p.in_c` the taps, `p.out_c` the output channels and `p.count` the
+//! workgroup count, one per group of [`ROWS`] channels.
+
+// Reductions happen in registers across a subgroup rather than through shared memory across the
+// whole workgroup. See the tail of `main` for why that is worth an extension requirement.
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#include "common.glsl"
+
+/// Output channels one workgroup owns.
+///
+/// Eight, not two. At `I4_BLOCK` 32 a 64-lane workgroup strides 2048 taps, so the
+/// loop below runs once for every projection narrower than 2048 — which is 71% of a
+/// decode step's bytes — and a wave's whole life is two loads, one dependent ALU
+/// burst, a barrier, and exit, with nothing to overlap. Eight rows give the same
+/// workgroup eight independent (load, unpack, accumulate) chains per iteration, so
+/// iteration N+1's loads issue while iteration N's ALU runs. Measured on the probe
+/// harness (`analysis/gemv_probe`, variant H against G); unmeasured on a shipped
+/// device, which is why `report_gemv_scaling` exists.
+///
+/// Eight divides the workgroup count by four against `ROWS` 2. That costs occupancy
+/// where the output is narrow — see the table below — and buys the stream where it
+/// is wide, which is where the bytes are.
+///
+/// | `out` | workgroups | vs 448 warp slots | share of decode bytes |
+/// | ---: | ---: | :--- | :--- |
+/// | 256 | 32 | 0.3x — idle | 1.7%, gate/kv sliding |
+/// | 1536 | 192 | 1.7x thin | 29.3%, `down` + projections |
+/// | 12288+ | 1536+ | 13.7x+ comfortable | 69%, `gate_up` + head |
+///
+/// `CONV_VEC_ROWS` in `nets/mod.rs` must equal this: Rust dispatches `out / ROWS`
+/// workgroups, and disagreeing leaves channels never written. There is a test holding
+/// that (`the_gemv_row_count_matches_both_shaders`).
+#define ROWS 8u
+
+/// Per-lane partial sums, one row of 64 per output channel.
+///
+/// 8 KB at `ROWS` 8, against 16 KB of guaranteed `maxComputeSharedMemorySize`. Half
+/// the guarantee, and the reason `ROWS` stops here rather than at 16: doubling again
+/// would take the whole budget for the partials alone, before the driver accounts
+/// for anything else it stages.
+shared float partial[ROWS][64];
+
+void main() {
+    uint tile = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    if (tile >= p.count) {
+        return;
+    }
+    uint channel_base = tile * ROWS;
+    uint lane = gl_LocalInvocationID.x;
+    uint blocks = (p.in_c + I4_BLOCK - 1u) / I4_BLOCK;
+    float acc[ROWS];
+    for (uint r = 0u; r < ROWS; r++) {
+        acc[r] = 0.0;
+    }
+    // A lane owns whole blocks rather than a stride-64 scatter, so each row's scale is fetched
+    // once per 32 taps instead of once per tap.
+    //
+    // The scatter was the obvious pattern and it made the scale the dominant cost: at
+    // `I4_BLOCK` 32 a stride-64 lane lands in a different block on every iteration, so nothing
+    // could be reused and the inner loop did two loads per weight - the nibble and its scale.
+    // This does 32 nibbles against one scale per row.
+    //
+    // Coalescing survives the change. A lane reads 32 consecutive nibbles, which is 16 bytes,
+    // and neighbouring lanes are 16 bytes apart - so a warp still sweeps one contiguous run.
+    for (uint base = lane * I4_BLOCK; base < p.in_c; base += 64u * I4_BLOCK) {
+        uint block = base / I4_BLOCK;
+        float scale[ROWS];
+        for (uint r = 0u; r < ROWS; r++) {
+            scale[r] = int4_scale(channel_base + r, block, blocks);
+        }
+        uint last = min(base + I4_BLOCK, p.in_c);
+        // Eight nibbles a word, unpacked once.
+        //
+        // `int4_at` loads a whole 32-bit word to extract four bits, so calling it per tap read
+        // the same word eight times. The compiler cannot hoist that - the loads are indexed by
+        // a loop variable through a storage buffer, so it must assume they may differ. On a
+        // desktop the cache hid it; on a phone this is the dominant kernel and the redundancy
+        // is eight times the weight traffic it needs.
+        //
+        // A block is 32 nibbles at a 32-aligned start, so it is exactly four whole words and
+        // no nibble straddles the boundary.
+        // A whole block in one 16-byte load, when the row lets us.
+        //
+        // `I4_BLOCK` is 32 nibbles, which is exactly one `uvec4`. Fetching it that way instead of
+        // four separate words is four times fewer memory instructions for identical bytes - and
+        // on a Tensor G4 that is close to four times the throughput: a gemv reading words
+        // reaches 4.7 GB/s where a shader reading `uvec4` reaches 19.6.
+        //
+        // Only when a row's blocks start 16-byte aligned, which needs `in_c` to be a multiple of
+        // 32 since a row begins at `channel * in_c`. Every projection in this model satisfies
+        // that; the scalar path below is kept for the ones that will not.
+        // `p.weight` counts 32-bit words, so a `uvec4` index is `p.weight / 4` plus the
+        // nibble offset over 32. Both divisions must be exact or the load straddles: hence the
+        // alignment checks rather than a bare shift.
+        bool wide = (p.in_c & 31u) == 0u && (p.weight & 3u) == 0u && (last - base) == I4_BLOCK;
+        if (wide) {
+            for (uint r = 0u; r < ROWS; r++) {
+                uvec4 packed = weights128[p.weight / 4u + ((channel_base + r) * p.in_c + base) / 32u];
+                float total = 0.0;
+                for (uint word = 0u; word < 4u; word++) {
+                    uint bits = packed[word];
+                    for (uint n = 0u; n < 8u; n++) {
+                        int code = bitfieldExtract(int(bits), int(n << 2u), 4);
+                        total += float(code) * float(arena[p.in0 + base + word * 8u + n]);
+                    }
+                }
+                acc[r] += total * scale[r];
+            }
+            continue;
+        }
+        for (uint r = 0u; r < ROWS; r++) {
+            uint row = (channel_base + r) * p.in_c;
+            float total = 0.0;
+            uint taken = 0u;
+            uint span = last - base;
+            // A row starts wherever `channel * in_c` puts it, which is **not** a multiple of
+            // eight in general - so a block's nibbles can straddle word boundaries and the first
+            // one can sit part-way into a word. Walking word by word and taking only what this
+            // word holds is what makes that safe; assuming four aligned words per block passes
+            // for even channels and reads the wrong nibbles for odd ones.
+            while (taken < span) {
+                uint at = row + base + taken;
+                uint word = weights32[p.weight + (at >> 3u)];
+                uint offset = at & 7u;
+                uint run = min(8u - offset, span - taken);
+                for (uint n = 0u; n < run; n++) {
+                    // Sign-extended from four bits, as `int4_at` does.
+                    int code = bitfieldExtract(int(word), int((offset + n) << 2u), 4);
+                    total += float(code) * float(arena[p.in0 + base + taken + n]);
+                }
+                taken += run;
+            }
+            acc[r] += total * scale[r];
+        }
+    }
+    // Reduce inside each subgroup first, then across the few subgroups a workgroup holds.
+    //
+    // On a Mali G715 the subgroup is 16 wide, so a 64-lane workgroup is four of them
+    // and the barrier below is a real cross-subgroup sync — paid once per output tile,
+    // inside every weight kernel of a decode step.
+    //
+    // `subgroupAdd` does the first 16 in registers with no barrier, leaving
+    // `gl_NumSubgroups` values to combine instead of 64.
+    //
+    // At `ROWS` 8 the tail loop below reads `partial[lane][0..4]`, one row per
+    // finishing lane. Lanes 8..63 return after the barrier; only lanes 0..8 store.
+    for (uint r = 0u; r < ROWS; r++) {
+        float summed = subgroupAdd(acc[r]);
+        if (subgroupElect()) {
+            partial[r][gl_SubgroupID] = summed;
+        }
+    }
+    barrier();
+    if (lane >= ROWS) {
+        return;
+    }
+    uint channel = channel_base + lane;
+    if (channel >= p.out_c) {
+        return;
+    }
+    float total = 0.0;
+    for (uint i = 0u; i < gl_NumSubgroups; i++) {
+        total += partial[lane][i];
+    }
+    // Already scaled inside the loop, so only the bias is left.
+    float offset = float(weights[p.bias + channel]);
+    arena[p.out_at + channel] = float16_t(fused_store(total + offset, p.act, channel, channel));
+}

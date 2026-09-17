@@ -3,8 +3,12 @@ package com.vayunmathur.library.map
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.asin
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * One tile-baked placed label hit by [Projection.queryRenderedLabels].
@@ -65,6 +69,13 @@ class Projection internal constructor(
     private val bearingDeg: Double = 0.0,
     private val labelQuery: ((DpRect, Set<String>) -> List<PlacedLabel>)? = null,
     private val markerPick: ((Float, Float) -> Long)? = null,
+    /**
+     * Whether this projection draws the orthographic-sphere globe rather than
+     * the flat Mercator map. False for every host but `maps` with the globe
+     * toggle on (and always false past [GLOBE_DETAIL_ZOOM], where the sphere is
+     * indistinguishable from flat — see [CameraState.globeEnabled]).
+     */
+    private val globe: Boolean = false,
 ) {
     private val halfW = widthDp / 2.0
     private val halfH = heightDp / 2.0
@@ -77,6 +88,7 @@ class Projection internal constructor(
 
     /** Screen location (from the viewport top-left) of a geographic [position]. */
     fun screenLocationFromPosition(position: GeoPoint): DpOffset {
+        if (globe) return globeScreenLocationFromPosition(position)
         val c = Mercator.project(center.longitude, center.latitude, zoom)
         val p = Mercator.project(position.longitude, position.latitude, zoom)
         val dx = p.x - c.x
@@ -121,6 +133,7 @@ class Projection internal constructor(
      * readback — both of which are terrain-correct because they read what was actually drawn.
      */
     fun positionFromScreenLocation(offset: DpOffset): GeoPoint {
+        if (globe) return globePositionFromScreenLocation(offset)
         val c = Mercator.project(center.longitude, center.latitude, zoom)
         val sx: Double
         val sy: Double
@@ -152,8 +165,110 @@ class Projection internal constructor(
         return Mercator.unproject(c.x + cos * sx - sin * sy, c.y + sin * sx + cos * sy, zoom)
     }
 
+    /**
+     * Orthographic-sphere forward projection: lon/lat to the screen point, or far
+     * off-screen when the point is on the far side of the planet.
+     *
+     * Mirrors the native `globe_project` exactly: the same [GLOBE_DETAIL_ZOOM]
+     * sphere radius, the same 3D basis, so Compose overlays land where the
+     * renderer drew the basemap under them. Bearing/pitch are folded in by the
+     * caller's pre-rotation of the basis only insofar as the native path does —
+     * the globe path is north-up level (tilt under globe is disabled at call
+     * sites), so like every other globe helper this takes no bearing/pitch.
+     */
+    private fun globeScreenLocationFromPosition(position: GeoPoint): DpOffset {
+        val (x, y, z) = globeProject(position.longitude, position.latitude)
+        if (z < 0.0) return DpOffset((-1e5f).dp, (-1e5f).dp)
+        return DpOffset((halfW + x).toFloat().dp, (halfH - y).toFloat().dp)
+    }
+
+    /**
+     * Orthographic-sphere inverse: the lon/lat under a screen point, or the
+     * limb-clamped point when the tap is off the disc (the nearest visible
+     * ground, so a tap on space still reverse-geocodes to the edge in view).
+     */
+    private fun globePositionFromScreenLocation(offset: DpOffset): GeoPoint {
+        val dx = offset.x.value - halfW
+        val dy = halfH - offset.y.value
+        val r = globeRadius()
+        val dist = sqrt(dx * dx + dy * dy)
+        // Off the disc: clamp to the limb along the same ray.
+        val (nx, ny) = if (dist > r) Pair(dx / dist * r, dy / dist * r) else Pair(dx, dy)
+        val nz = sqrt((r * r - nx * nx - ny * ny).coerceAtLeast(0.0))
+        return globeUnproject(nx, ny, nz)
+    }
+
+    /**
+     * 3D unit-sphere point for lon/lat *relative to the camera centre*: rotates
+     * the ECEF-style position so the centre is at (0, 0, 1), then scales by the
+     * globe radius. The far side is z < 0.
+     */
+    private fun globeProject(longitude: Double, latitude: Double): Triple<Double, Double, Double> {
+        val (x, y, z) = globePoint(center.longitude, center.latitude, longitude, latitude)
+        val r = globeRadius()
+        return Triple(x * r, y * r, z * r)
+    }
+
+    private fun globeUnproject(nx: Double, ny: Double, nz: Double): GeoPoint {
+        // Normalise back to the unit sphere (nx/ny/nz are in Dp), then invert.
+        val r = globeRadius()
+        val (lon, lat) = globeLonLat(center.longitude, center.latitude, nx / r, ny / r, nz / r)
+        return GeoPoint(lon, lat)
+    }
+
+    /** Screen radius of the globe in Dp: the sphere that fits the zoom scale. */
+    private fun globeRadius(): Double {
+        // World width at this zoom is `worldSize`; the globe shows half the planet
+        // across 2r, so r = worldSize/2 scaled to the viewport: match the native
+        // `globe_radius` (screen-fit radius at the same zoom).
+        val world = Mercator.worldSize(zoom)
+        return world / 2.0
+    }
+
+    /**
+     * Visible-ground bounds on the globe: the hemisphere cap around the centre,
+     * intersected with the viewport disc. Sampled on a grid (not just corners),
+     * because corners are routinely off-disc and limb-clamping them would shrink
+     * the box to the wrong ground.
+     */
+    private fun globeVisibleBounds(): GeoBounds {
+        val pts = mutableListOf(center)
+        val steps = 8
+        for (i in 0..steps) {
+            for (j in 0..steps) {
+                pts += globePositionFromScreenLocation(
+                    DpOffset((widthDp * i / steps).dp, (heightDp * j / steps).dp)
+                )
+            }
+        }
+        // Antimeridian: when the disc straddles ±180 the numeric min/max spans the
+        // whole planet. Detect the wrap (span > 180) and report the wrapped box.
+        val lons = pts.map { it.longitude }
+        val span = lons.max() - lons.min()
+        val west: Double
+        val east: Double
+        if (span > 180.0) {
+            west = pts.filter { it.longitude > 0 }.minOf { it.longitude }
+            east = pts.filter { it.longitude < 0 }.maxOf { it.longitude }
+        } else {
+            west = lons.min()
+            east = lons.max()
+        }
+        return GeoBounds(
+            west = west,
+            south = pts.minOf { it.latitude },
+            east = east,
+            north = pts.maxOf { it.latitude },
+        )
+    }
+
     /** The lon/lat bounds of the currently visible viewport. */
     fun queryVisibleBoundingBox(): GeoBounds {
+        if (globe) {
+            // The visible hemisphere around the centre: corners may be off-disc, and
+            // sampling them would clamp to the limb and shrink the box wrongly.
+            return globeVisibleBounds()
+        }
         if (pitchDeg == 0.0 && bearingDeg == 0.0) {
             val topLeft = positionFromScreenLocation(DpOffset(0.dp, 0.dp))
             val bottomRight = positionFromScreenLocation(DpOffset(widthDp.dp, heightDp.dp))
@@ -204,4 +319,71 @@ class Projection internal constructor(
      * `0` only when nothing is under the finger or no rendered surface is live.
      */
     fun pickMarker(xDp: Float, yDp: Float): Long = markerPick?.invoke(xDp, yDp) ?: 0L
+}
+
+/**
+ * Past this zoom the sphere is sub-pixel from flat, so both the Kotlin
+ * projection and the native renderer use the flat path bit-identically.
+ * Must stay in step with the native `GLOBE_FLAT_THRESHOLD`.
+ *
+ * Public (not internal): the maps body switch reads it to decide when the
+ * chips collapse into the Earth/Moon dropdown.
+ */
+const val GLOBE_DETAIL_ZOOM = 8.0
+
+/** [longitude] wrapped to -180..180. */
+internal fun wrapLongitude(longitude: Double): Double {
+    var lon = (longitude + 180.0) % 360.0
+    if (lon < 0) lon += 360.0
+    return lon - 180.0
+}
+
+/**
+ * 3D unit-sphere point of ([longitude], [latitude]) in the basis facing
+ * ([centerLon], [centerLat]): the centre maps to (0, 0, 1), the far side is
+ * z < 0. Single implementation shared by [Projection]'s forward/inverse —
+ * mirrors the native `globe_point`, which must stay in step.
+ */
+internal fun globePoint(
+    centerLon: Double,
+    centerLat: Double,
+    longitude: Double,
+    latitude: Double,
+): Triple<Double, Double, Double> {
+    // Orthonormal basis at the centre: east, north, up. The centre maps to
+    // (0, 0, 1); east is +x, north is +y, up (toward the viewer) is +z.
+    val latR = Math.toRadians(latitude)
+    val dLon = Math.toRadians(longitude - centerLon)
+    val cLatR = Math.toRadians(centerLat)
+    val cosLat = cos(latR)
+    val sinLat = sin(latR)
+    val sy = sin(cLatR)
+    val cy = cos(cLatR)
+    val x = cosLat * sin(dLon)
+    val y = cy * sinLat - sy * cosLat * cos(dLon)
+    val z = sy * sinLat + cy * cosLat * cos(dLon)
+    return Triple(x, y, z)
+}
+
+/**
+ * Inverse of [globePoint]: lon/lat of a unit-sphere point in the
+ * centre-facing basis. Mirrors the native `globe_lonlat`.
+ */
+internal fun globeLonLat(
+    centerLon: Double,
+    centerLat: Double,
+    x: Double,
+    y: Double,
+    z: Double,
+): GeoPoint {
+    // Invert the east/north/up basis: recover ECEF, then lon/lat.
+    val cLatR = Math.toRadians(centerLat)
+    val sy = sin(cLatR)
+    val cy = cos(cLatR)
+    val ex = x
+    val ey = cy * y + sy * z
+    val ez = -sy * y + cy * z
+    val lat = asin(ey.coerceIn(-1.0, 1.0)) * 180.0 / PI
+    val lon = centerLon + atan2(ex, ez) * 180.0 / PI
+    return GeoPoint(wrapLongitude(lon), lat.coerceIn(-90.0, 90.0))
 }

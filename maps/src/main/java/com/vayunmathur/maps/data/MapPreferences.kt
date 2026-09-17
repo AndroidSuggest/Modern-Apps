@@ -9,6 +9,11 @@ package com.vayunmathur.maps.data
 object MapPreferences {
     const val KEY_VOICE_GUIDANCE = "voice_guidance_enabled"
     const val KEY_THEME_MODE = "theme_mode"
+    /**
+     * True-3D-sphere globe instead of the flat Mercator map. Maps-only: no other
+     * app reads this key or passes `globeEnabled`, so they keep the flat map.
+     */
+    const val KEY_GLOBE = "globe_enabled"
 
     // Layer toggles surfaced in the P6 layers sheet.
     const val KEY_LAYER_TRAFFIC = "layer_traffic"
@@ -17,6 +22,7 @@ object MapPreferences {
     const val KEY_LAYER_TRANSIT = "layer_transit"
 
     const val DEFAULT_VOICE_GUIDANCE = true
+    const val DEFAULT_GLOBE = false
     const val DEFAULT_LAYER_TRAFFIC = true
     const val DEFAULT_LAYER_SATELLITE = false
     const val DEFAULT_LAYER_SAFETY = false

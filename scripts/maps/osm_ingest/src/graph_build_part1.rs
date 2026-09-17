@@ -83,6 +83,13 @@ pub struct Options {
     /// node is sampled from the DEM and its metres written to `elevation.bin`; a node off the DEM's
     /// coverage bakes as 0.
     pub dem: Option<PathBuf>,
+    /// Region bbox filter: keep only ways with at least one node inside.
+    ///
+    /// `None` (world) keeps everything. `Some` (california) drops every routable
+    /// way whose nodes all fall outside — the graph then covers only the region,
+    /// which is what makes a california build fast and small. Stop nodes are
+    /// filtered the same way: a stop outside the region never enters the graph.
+    pub bbox: Option<crate::bbox::BBox>,
 }
 
 impl Options {
@@ -98,6 +105,15 @@ pub fn build(input: &Path, out_dir: &Path) -> Result<Stats> {
 pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> {
     if let Some(n) = opts.threads {
         crate::par::set_threads(n);
+    }
+    // The region filter is validated up front: a later stage reads `graph/`
+    // assuming it covers the same region the tiles do, and a graph built for
+    // the wrong region is a silent layer mismatch, not a loud failure.
+    if let Some(b) = &opts.bbox {
+        println!(
+            "region filter: keeping ways touching {:.3},{:.3} .. {:.3},{:.3}",
+            b.min_lon, b.min_lat, b.max_lon, b.max_lat,
+        );
     }
     std::fs::create_dir_all(out_dir)
         .map_err(|e| Error(format!("cannot create {}: {e}", out_dir.display())))?;
@@ -117,6 +133,13 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     // consumed and freed while later chunks are still decoding. Nothing about a
     // way survives this pass: the ways pass below re-reads the way blobs, which
     // is far cheaper than caching every routable way and every ref it holds.
+    //
+    // The region filter needs way NODE LOCATIONS, but ways arrive before their
+    // nodes in a PBF — so pass 1 cannot filter ways. It marks every routable
+    // way's refs unconditionally; the way passes below (which run after the
+    // coordinates are resolved) apply the filter when they re-read the ways.
+    // Stop nodes ARE filtered here: a node's own coordinates arrive with it.
+    let filter = opts.bbox;
     let blob_kinds = pbf::run_pass_sink(
         input,
         &blobs,
@@ -124,7 +147,7 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
         KIND_NODES | KIND_WAYS,
         "Pass 1: refs + stops",
         Pass1::default,
-        pass1_blob,
+        |state, block| pass1_blob(state, block, filter),
         |chunk| {
             for id in chunk.refs.iter().chain(chunk.stop_nodes.iter()) {
                 if *id >= 0 && (*id as u64) < BITSET_SIZE {
@@ -210,12 +233,12 @@ pub fn build_with(input: &Path, out_dir: &Path, opts: Options) -> Result<Stats> 
     let mut collapsed = if opts.within_way_chains {
         collapse_within_ways(
             input, &spill_dir, &spill_pts_dir, &blobs, &blob_kinds, &index, &coords, &stop,
-            slots, &mut pool,
+            slots, filter, &mut pool,
         )?
     } else {
         collapse_segments(
             input, &spill_dir, &spill_pts_dir, &blobs, &blob_kinds, &index, &coords, &stop,
-            slots, &mut pool,
+            slots, filter, &mut pool,
         )?
     };
 
@@ -387,6 +410,7 @@ fn collapse_segments<W: std::io::Write + Send>(
     coords: &[geom::Pt],
     stop: &Bitset,
     slots: u32,
+    filter: RegionFilter,
     pool: &mut NamePool<W>,
 ) -> Result<Collapsed> {
     // One record per consecutive way-node pair, still carrying both directions'
@@ -402,7 +426,7 @@ fn collapse_segments<W: std::io::Write + Send>(
         KIND_WAYS,
         "Pass 3: segments",
         WayPass::default,
-        |state, block| way_blob(state, block, index, coords),
+        |state, block| way_blob(state, block, index, coords, filter),
         |chunk| {
             let name_map = chunk.names.flush(pool).map_err(io_err)?;
             let lane_base = lane_pool.len() as u32;

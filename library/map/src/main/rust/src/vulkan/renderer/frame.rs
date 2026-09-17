@@ -210,6 +210,12 @@ impl Renderer {
     /// `filter` is the active category filter. It reaches the gate as well as tessellation,
     /// because a chip both narrows which POIs are drawn and pulls its own kinds in earlier than
     /// the ambient map shows them — see [`Layer::draws_at_focused`].
+    ///
+    /// When [`moon_active`](crate::camera::moon_active) holds, everything below is
+    /// skipped and the Moon disc draws instead (see
+    /// [`record_moon`](Self::record_moon)): no tile selection has run for it (the
+    /// frame bridge skips fetch on Moon frames), so there is nothing resident to
+    /// draw and no symbols to place.
     pub fn render(
         &mut self,
         camera: &Camera,
@@ -225,6 +231,13 @@ impl Renderer {
         if self.needs_rebuild {
             self.rebuild()?;
             self.needs_rebuild = false;
+        }
+        // Moon fast path: the textured disc INSTEAD of the vector frame (no tile
+        // draws, no symbols, no overlays). Textures missing (host never pushed)
+        // draws nothing but the clear colour — the frame still presents, so the
+        // globe reads as empty space rather than freezing the loop.
+        if crate::camera::moon_active(camera) {
+            return self.render_moon(camera);
         }
 
         let frame = &self.frames[self.frame_index];

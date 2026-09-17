@@ -13,6 +13,11 @@ import android.os.RemoteException
 import android.util.Log
 import com.vayunmathur.cast.platform.CastController
 import com.vayunmathur.cast.platform.ContentSessionResult
+import com.vayunmathur.cast.platform.playMedia
+import com.vayunmathur.cast.platform.reportPlaybackState
+import com.vayunmathur.cast.platform.sendPlaybackCommand
+import com.vayunmathur.cast.platform.setNowPlaying
+import com.vayunmathur.cast.platform.startContentSession
 import com.vayunmathur.cast.protocol.LyricLine
 import com.vayunmathur.cast.protocol.NowPlaying
 import com.vayunmathur.cast.protocol.PlayMedia

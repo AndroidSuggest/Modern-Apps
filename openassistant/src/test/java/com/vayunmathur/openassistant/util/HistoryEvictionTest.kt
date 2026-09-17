@@ -1,25 +1,6 @@
 package com.vayunmathur.openassistant.util
-import com.vayunmathur.library.ml.GEMMA_BOA_MARKER
-import com.vayunmathur.library.ml.GEMMA_BOI_MARKER
-import com.vayunmathur.library.ml.GEMMA_DEFAULT_REPLY
-import com.vayunmathur.library.ml.GEMMA_EOA_MARKER
-import com.vayunmathur.library.ml.GEMMA_EOI_MARKER
-import com.vayunmathur.library.ml.GEMMA_MARKERS
-import com.vayunmathur.library.ml.GEMMA_MAX_CONTEXT
-import com.vayunmathur.library.ml.GEMMA_SOFT_TOKEN_WIDTH
-import com.vayunmathur.library.ml.GEMMA_STOP
-import com.vayunmathur.library.ml.GemmaPart
-import com.vayunmathur.library.ml.GemmaRole
-import com.vayunmathur.library.ml.GemmaToolCall
-import com.vayunmathur.library.ml.GemmaToolDeclaration
-import com.vayunmathur.library.ml.GemmaTurn
-import com.vayunmathur.library.ml.declareGemmaTools
-import com.vayunmathur.library.ml.fitGemmaAudio
-import com.vayunmathur.library.ml.gemmaPromptCeiling
-import com.vayunmathur.library.ml.parseGemmaToolCall
-import com.vayunmathur.library.ml.renderGemmaPrompt
-import com.vayunmathur.library.ml.renderGemmaToolResponse
 
+import com.vayunmathur.library.ml.Gemma4Handle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
@@ -38,9 +19,9 @@ import kotlin.test.assertTrue
  */
 class HistoryEvictionTest {
 
-    private fun user(text: String) = GemmaTurn(GemmaRole.USER, text)
+    private fun user(text: String) = Gemma4Handle.Turn(Gemma4Handle.Role.USER, text)
 
-    private fun model(text: String) = GemmaTurn(GemmaRole.MODEL, text)
+    private fun model(text: String) = Gemma4Handle.Turn(Gemma4Handle.Role.MODEL, text)
 
     /** An exchange is a user turn and the reply to it. */
     private fun exchange(n: Int) = listOf(user("q$n"), model("a$n"))
@@ -48,7 +29,7 @@ class HistoryEvictionTest {
     private fun conversation(count: Int) = (1..count).flatMap { exchange(it) }
 
     /** Fits when at most [turns] turns remain, which is the shape a position budget has. */
-    private fun roomFor(turns: Int): (List<GemmaTurn>) -> Boolean = { it.size <= turns }
+    private fun roomFor(turns: Int): (List<Gemma4Handle.Turn>) -> Boolean = { it.size <= turns }
 
     @Test
     fun `a conversation that already fits is returned untouched`() {
@@ -153,10 +134,10 @@ class HistoryEvictionTest {
      */
     @Test
     fun `the prompt ceiling leaves the reply exactly its limit`() {
-        assertEquals(2048 - 512, gemmaPromptCeiling(512))
-        assertEquals(2048 - 3, gemmaPromptCeiling(0), "a tiny limit still clears the guard")
+        assertEquals(2048 - 512, Gemma4Handle.promptCeiling(512))
+        assertEquals(2048 - 3, Gemma4Handle.promptCeiling(0), "a tiny limit still clears the guard")
         assertTrue(
-            gemmaPromptCeiling(GEMMA_DEFAULT_REPLY) < GEMMA_MAX_CONTEXT,
+            Gemma4Handle.promptCeiling(Gemma4Handle.DEFAULT_REPLY) < Gemma4Handle.MAX_CONTEXT,
             "the ceiling must be strictly under the window or nothing is reserved",
         )
     }

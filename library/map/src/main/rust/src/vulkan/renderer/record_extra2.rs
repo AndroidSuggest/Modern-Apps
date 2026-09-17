@@ -35,6 +35,9 @@ impl Renderer {
         command_buffer: vk::CommandBuffer,
         camera: &Camera,
         submitted: &mut usize,
+        // This frame's globe flag: globe line pipeline + sphere push below, or
+        // the flat path bit-identically above.
+        globe: bool,
     ) {
         // Gated on the toggle and empty until the host pushes a reading, so the common case —
         // traffic off, or no data yet — is one comparison and out.
@@ -67,19 +70,37 @@ impl Renderer {
                     device.cmd_bind_pipeline(
                         command_buffer,
                         vk::PipelineBindPoint::GRAPHICS,
-                        self.pipelines.line,
+                        if globe {
+                            self.pipelines.line_globe
+                        } else {
+                            self.pipelines.line
+                        },
                     );
                     bound = true;
                 }
+                // Globe push: centre lon/lat + radius/half-viewport, mirroring the
+                // flat layer loop's globe branch. Flat path below is unchanged.
+                let (misc, morph) = if globe {
+                    let r = crate::camera::globe_radius(camera.zoom) as f32;
+                    (
+                        [camera.center_lon as f32, camera.center_lat as f32, 0.0, camera.time_seconds],
+                        [1.0, camera.width_dp / 2.0, r, camera.height_dp / 2.0],
+                    )
+                } else {
+                    (
+                        [tile_span_px, edge_aa, 0.0, camera.time_seconds],
+                        [1.0, 0.0, camera.tile_span_dp(tile.z) as f32, 0.0],
+                    )
+                };
                 let push = Push {
                     tile_to_clip,
                     color: argb_to_rgba(argb),
                     // A solid band. `line.frag` short-circuits on a zero dash gap before it
                     // touches the clock, so this reads no animation at all.
                     line: [half_width_px, 0.0, 0.0, 0.0],
-                    misc: [tile_span_px, edge_aa, 0.0, camera.time_seconds],
+                    misc,
                     // Draped traffic segments scale by the same span as the flat loop.
-                    morph: [1.0, 0.0, camera.tile_span_dp(tile.z) as f32, 0.0],
+                    morph,
                 };
                 device.cmd_push_constants(
                     command_buffer,
@@ -325,6 +346,9 @@ impl Renderer {
         camera: &Camera,
         palette: Palette,
         submitted: &mut usize,
+        // This frame's globe flag: far-side markers/puck culled, positions via
+        // the globe anchor below — or the flat path bit-identically above.
+        globe: bool,
     ) {
         // Copy the overlay state out so no borrow of `self.overlays` lives across the `&mut self`
         // marker draw below (which uploads a transient buffer).
@@ -347,20 +371,40 @@ impl Renderer {
             // vehicle reads in its line's colour: a dot-only pass on the puck
             // pipeline (no cone, no white rim), sized just past the 28 Dp
             // sprite, drawn before the sprites so they cover its middle.
-            self.draw_vehicle_rings(command_buffer, camera, &vehicles, submitted);
-            self.draw_markers(command_buffer, camera, palette, &vehicles, submitted);
+            self.draw_vehicle_rings(command_buffer, camera, &vehicles, submitted, globe);
+            self.draw_markers(command_buffer, camera, palette, &vehicles, submitted, globe);
         }
         if !markers.is_empty() {
-            self.draw_markers(command_buffer, camera, palette, &markers, submitted);
+            self.draw_markers(command_buffer, camera, palette, &markers, submitted, globe);
         }
 
         // The puck last, so it sits on top of any pin at the same spot. The shared unit quad, an
-        // analytic shader, and one push constant — nothing allocated.
+        // analytic shader, and one push constant — nothing allocated. On the globe the
+        // matrix comes from the globe anchor instead of the billboard path; far-side
+        // is culled above.
         let Some(puck) = puck else { return };
+        if globe {
+            let (_, _, z) =
+                crate::camera::globe_point(camera.center_lon, camera.center_lat, puck.lon, puck.lat);
+            if z < 0.0 {
+                return;
+            }
+        }
         let device = &self.context.device;
         let density = camera.density;
+        let puck_matrix = if globe {
+            // `globe_anchor_to_screen` returns `None` far-side, but the cull above
+            // already handled that; `expect` would panic on a race between the two
+            // calls, so re-derive defensively and skip instead.
+            match camera.globe_anchor_to_screen(puck.lon, puck.lat) {
+                Some((sx, sy)) => super::placement::globe_screen_quad(camera, sx, sy, PUCK_QUAD_DP as f64),
+                None => return,
+            }
+        } else {
+            camera.screen_quad_to_clip(puck.lon, puck.lat, PUCK_QUAD_DP as f64)
+        };
         let push = Push {
-            tile_to_clip: camera.screen_quad_to_clip(puck.lon, puck.lat, PUCK_QUAD_DP as f64),
+            tile_to_clip: puck_matrix,
             color: argb_to_rgba(PUCK_COLOR),
             line: [
                 PUCK_RIM_DP * density,

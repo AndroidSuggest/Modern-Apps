@@ -18,6 +18,8 @@ mod tests_tilt {
             bearing_deg: 0.0,
             pitch_deg,
             time_seconds: 0.0,
+            globe: false,
+            moon: false,
         }
     }
 

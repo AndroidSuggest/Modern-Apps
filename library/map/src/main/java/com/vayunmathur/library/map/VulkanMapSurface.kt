@@ -58,6 +58,16 @@ internal fun VulkanMapSurface(
     /** Dim everything outside the administrative region this names. `null` draws no mask. */
     regionMask: RegionMask? = null,
     /**
+     * Mirror of `VectorMap`'s `globeEnabled`: pushed into the native frame as the
+     * per-frame `globe` flag (see `MapNative.render`), so the renderer draws the
+     * orthographic sphere. Default-off; the flat path is untouched.
+     */
+    globeEnabled: Boolean = false,
+    /** Mirror of `VectorMap`'s `body`: the Moon raster path when set. Default Earth. */
+    body: MapBody = MapBody.Earth,
+    /** Moon textures, pushed to the native side on attach/re-attach (default null = no Moon). */
+    moonTextures: MoonTextures? = null,
+    /**
      * The live-traffic colour table. `null` or an empty table clears the overlay; otherwise its
      * `component_id → ARGB` entries are pushed to the renderer. Has no visible effect unless
      * [LayerOptions.traffic] is on.
@@ -159,6 +169,16 @@ internal fun VulkanMapSurface(
     LaunchedEffect(host, cameraState) {
         snapshotFlow { cameraState.position }.collect { renderer.invalidate() }
     }
+    // The globe flag rides the same push channel as the camera: `SurfaceMapRenderer`
+    // pulls it out of the `CameraState` per frame, so flipping the settings toggle
+    // while idle still wakes the loop and redraws.
+    LaunchedEffect(host, cameraState) {
+        snapshotFlow { cameraState.globeEnabled }.collect { renderer.invalidate() }
+    }
+    // The body rides the same channel: switching Earth/Moon while idle still redraws.
+    LaunchedEffect(host, cameraState) {
+        snapshotFlow { cameraState.body }.collect { renderer.invalidate() }
+    }
     // Separately, because a viewport change is rare and a camera change is per-frame: keeping
     // them apart means the hot path compares one reference rather than allocating a pair.
     LaunchedEffect(host, cameraState) {
@@ -212,6 +232,13 @@ internal fun VulkanMapSurface(
     // list's value so an identical recompute does not re-push. An empty list clears them, which is
     // how the ticker stops them when the transit toggle goes off or the surface is hidden.
     LaunchedEffect(vehicles, host) { renderer.setVehicles(vehicles) }
+
+    // The Moon textures: pushed like the route, out of band from the frame loop.
+    // Keyed on value equality so an identical push on recomposition does not
+    // re-upload 36MB. `null` keeps whatever is there (upload-once asset).
+    LaunchedEffect(moonTextures, host) {
+        moonTextures?.let { renderer.setMoonTextures(it.colorRgba, it.width, it.height, it.demRg, it.demWidth, it.demHeight) }
+    }
 
     // Live connectivity, replacing a single sample taken in onSurfaceTextureAvailable.
     // Collected here rather than inside the renderer so every MapNative call stays on the

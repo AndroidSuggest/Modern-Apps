@@ -46,8 +46,12 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
         // change, because a chunk's bytes are written in its key order and read back in file order.
         let mut merged = merge(&chunks, &spill);
         // Merge, encode and append have no total to count against -- the tile count is only known once
-        // the merge has produced it -- so this reports what has been written rather than a
-        // percentage. Still the difference between forty silent minutes and a number that moves.
+        // the merge has produced it -- so the merge bar counts tiles merged and the encode line below
+        // counts tiles written. Two numbers that converge at the end of the zoom. Still the difference
+        // between forty silent minutes and a number that moves: the merge is single-threaded and is
+        // where a zoom's wall clock goes.
+        let mut merged_tiles = 0usize;
+        let mut merge_shown = 0usize;
         let mut written = 0usize;
         let mut shown = 0usize;
         loop {
@@ -66,6 +70,14 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
             stats.merge_ms += merging.elapsed().as_millis() as u64;
             if batch.is_empty() {
                 break;
+            }
+            // The merge did its work when `collect` returned: count the tiles now, so the bar moves
+            // during the serial merge rather than only when the parallel encode drains.
+            merged_tiles += batch.len();
+            if merged_tiles - merge_shown >= 25_000 {
+                merge_shown = merged_tiles;
+                eprint!("\r{:<28} [{merged_tiles:>10} tile(s)]", format!("Merge z{z}"));
+                let _ = std::io::Write::flush(&mut std::io::stderr());
             }
             let encoding = std::time::Instant::now();
             let done = encode_batch(batch, &settings.dem, store.conventions())?;
@@ -90,6 +102,9 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
                 }
             }
             stats.append_ms += appending.elapsed().as_millis() as u64;
+        }
+        if merged_tiles > 0 {
+            eprintln!("\r{:<28} [{merged_tiles:>10} tile(s)]", format!("Merge z{z}"));
         }
         if written > 0 {
             eprintln!("\r{:<28} [{written:>10} tile(s)]", format!("Encode z{z}"));

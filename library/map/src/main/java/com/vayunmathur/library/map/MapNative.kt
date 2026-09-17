@@ -82,7 +82,40 @@ internal object MapNative {
         heightDp: Float,
         density: Float,
         frameTimeNanos: Long,
+        /**
+         * Nonzero draws the orthographic-sphere globe rather than the flat map.
+         * A trailing `Boolean` (not a `create` argument) so toggling it never
+         * rebuilds the renderer — the next frame just takes the other matrix
+         * branch, exactly like `dark`/`muted` ride `setPalette`. Ignored past
+         * the detail threshold, where both sides use the flat path.
+         */
+        globe: Boolean,
+        /**
+         * Nonzero draws the Moon (NASA SVS raster pair) instead of the Earth
+         * vector basemap. Only read while [globe] is active — a zoomed-in Moon
+         * reads as Earth. The textures arrive separately via [setMoonTextures];
+         * unset textures with Moon selected draws the globe clear colour, not a
+         * crash.
+         */
+        moon: Boolean,
     ): Boolean
+
+    /**
+     * Upload the Moon raster pair: [colorRgba] is `width x height` RGBA8 (the
+     * converted LROC color), [demRg] is `demWidth x demHeight` RG8 packed uint16
+     * half-metres + 20000 (the converted LDEM). Called once after attach (and
+     * again after any re-attach, like every other deferred state); the bytes
+     * are copied to the GPU, so the caller retains nothing.
+     */
+    external fun setMoonTextures(
+        handle: Long,
+        colorRgba: ByteArray,
+        width: Int,
+        height: Int,
+        demRg: ByteArray,
+        demWidth: Int,
+        demHeight: Int,
+    )
 
     external fun resize(handle: Long, width: Int, height: Int)
 

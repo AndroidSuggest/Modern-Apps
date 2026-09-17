@@ -12,6 +12,8 @@ fn camera(lon: f64, lat: f64, zoom: f64, w: f32, h: f32) -> Camera {
         bearing_deg: 0.0,
         pitch_deg: 0.0,
         time_seconds: 0.0,
+        globe: false,
+        moon: false,
     }
 }
 

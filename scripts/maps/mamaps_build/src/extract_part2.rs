@@ -53,6 +53,10 @@ fn load_member_ways(
 
 /// Pass 3: id index plus resolved coordinates, with `places`/`poi` label nodes classified and
 /// spilled in the same pass. Grew the sink, select and layers params when pass 4 was folded in.
+///
+/// `region` filters `poi` label NODES to the bbox. `places` nodes are always
+/// kept. Ways and relations are filtered later at materialise time, where the
+/// resolved coordinates are in hand.
 #[allow(clippy::too_many_arguments)]
 fn build_resolved_table(
     input: &Path,
@@ -64,6 +68,7 @@ fn build_resolved_table(
     way_max_ref: i64,
     select: &Select,
     layers: Layers,
+    region: Option<&osm_ingest::bbox::BBox>,
     sink: &mut Sink,
     stats: &mut Stats,
     mark: &dyn Fn(&str),
@@ -93,12 +98,21 @@ fn build_resolved_table(
     //
     // Only label layers are consulted: a node is never a road, a lake or a building, so running the
     // full schema over 2 B nodes would pay the tag scan for nothing.
+    //
+    // The region filter drops `poi` label nodes outside the bbox here. `places`
+    // nodes are always kept — a region build still names its countries. A `poi`
+    // node carries its own coordinates, so no location table is needed.
     let classify = |node: &NodeView| {
         if !select.matches(|k| node.tags.get_str(k)) {
             return None;
         }
         let class = schema::classify(&node.tags, false, layers)?;
         if !is_label(class.layer) {
+            return None;
+        }
+        if class.layer == tilecodec::mamaps::dict::LAYER_POI
+            && !osm_ingest::bbox::keep_e7(region, node.lat_e7, node.lon_e7)
+        {
             return None;
         }
         let name = schema::display_name(&node.tags, class.layer);
@@ -188,11 +202,17 @@ fn inherit_lane_counts(
 }
 
 /// Materialise classified ways off disk, in id order. Moved whole from `extract`.
+///
+/// `region` filters the built layers (`roads`, `poi`, `buildings`): a way in
+/// one of those layers whose resolved line touches no bbox point is dropped.
+/// Every other layer is always kept. Kept whole, never clipped — the tiler
+/// clips per tile later.
 fn materialise_ways(
     ways_path: &Path,
     promoted: &[(i64, u8)],
     inherited_lanes: &[(i64, u8)],
     table: &NodeLocations,
+    region: Option<&osm_ingest::bbox::BBox>,
     sink: &mut Sink,
     stats: &mut Stats,
 ) -> Result<()> {
@@ -292,6 +312,16 @@ fn materialise_ways(
             {
                 match geometry {
                     Some(geometry) => {
+                        // Region filter: roads, pois and buildings outside the
+                        // bbox are dropped. The geometry is resolved by now, so
+                        // this is a direct touches-box test on the line the
+                        // way produced (a centroided point for labels).
+                        if is_region_filtered(class.layer)
+                            && !geometry_touches(&geometry, region)
+                        {
+                            bar.tick("way(s)");
+                            continue;
+                        }
                         // A building carries its S3DB attributes; a road with lane data carries
                         // those; everything else — and a plain road — goes the plain, named way.
                         if let Some(b) = building {

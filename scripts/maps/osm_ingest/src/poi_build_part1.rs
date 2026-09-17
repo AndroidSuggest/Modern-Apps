@@ -135,12 +135,14 @@ pub struct Args {
     pub attrs: PathBuf,
     pub spatial: PathBuf,
     pub name_index: PathBuf,
+    /// Region bbox filter. `None` (world) keeps everything.
+    pub bbox: Option<crate::bbox::BBox>,
     /// `None` leaves the pool at whatever `par::threads()` decides.
     pub threads: Option<usize>,
 }
 
 /// `poi_extract IN.osm.pbf --geojson FILE --names FILE --index FILE [--attrs FILE]`
-/// `[--spatial FILE] [--name-index FILE] [--threads N]`
+/// `[--spatial FILE] [--name-index FILE] [--region california|world] [--threads N]`
 ///
 /// The optional outputs default to their conventional names beside `--index`, so a
 /// caller that predates any of them keeps working and still emits them. Making them
@@ -153,6 +155,7 @@ pub fn parse_args(args: &[String]) -> std::result::Result<Args, String> {
     let mut attrs: Option<PathBuf> = None;
     let mut spatial: Option<PathBuf> = None;
     let mut name_index: Option<PathBuf> = None;
+    let mut region: Option<crate::region::Region> = None;
     let mut threads: Option<usize> = None;
     let mut i = 0;
     while i < args.len() {
@@ -163,6 +166,13 @@ pub fn parse_args(args: &[String]) -> std::result::Result<Args, String> {
                     .get(i)
                     .ok_or_else(|| "--threads needs a value".to_string())?;
                 threads = Some(crate::par::parse_threads(value)?);
+            }
+            "--region" => {
+                i += 1;
+                let value = args
+                    .get(i)
+                    .ok_or_else(|| "--region needs `california` or `world`".to_string())?;
+                region = Some(crate::region::Region::parse(value).map_err(|e| e.0)?);
             }
             flag @ ("--geojson" | "--names" | "--index" | "--attrs" | "--spatial"
             | "--name-index") => {
@@ -208,6 +218,7 @@ pub fn parse_args(args: &[String]) -> std::result::Result<Args, String> {
         attrs,
         spatial,
         name_index,
+        bbox: region.and_then(|r| r.bbox()),
         threads,
     })
 }

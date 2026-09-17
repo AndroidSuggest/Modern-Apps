@@ -10,44 +10,42 @@ import java.io.File
 /**
  * Runtime-download config for the on-device **NLLB-200-distilled-600M** translation model.
  *
- * Two weight-only-quantized LiteRT exports (ladder_v2 ship rungs: enc w8 cos
- * 0.99938, dec w8 cos 0.99809) plus `tokenizer.bin` (SPM1, built by
- * `scripts/ml/nllb_tokenizer.py`). Far too much to ship inside an APK - hence
- * [inDirectory] and no asset path. See `NllbModel` in `:translate` for the
- * mirror pins.
+ * Two files: `nllb600.maml` and `tokenizer.bin`, produced by model-eng's conversion
+ * pipeline (`scripts/ml/fetch_nllb600.py`, pinning `facebook/nllb-200-distilled-600M`).
+ * NLLB distilled to 600M parameters: 12 encoder layers, 12 decoder layers, `d_model`
+ * 1024, 16 heads, a 4096-wide ReLU feed-forward, and a 256,206-entry vocabulary shared
+ * between the input embedding and the output projection.
  *
- * Files are fetched mirror-only from `data.vayunmathur.com/tflite/nllb/` via
+ * The model runs on `:library:ml`'s own Vulkan runtime. Native checks the maml's graph
+ * id (18, `graph::NLLB`), so a wrong file fails at load.
+ *
+ * Files are fetched mirror-only from `data.vayunmathur.com/models/nllb600/` via
  * [downloadModels]. Auto-install via `InitialModelDownloadChecker` in MainActivity.
  */
 object NllbModel {
-    private const val BASE = "https://data.vayunmathur.com/tflite/nllb/"
+    private const val BASE = "https://data.vayunmathur.com/models/nllb600/"
     const val DIR = "nllb600"
 
-    /** The 3 runtime files, SHA-256 pinned. Names and order come from [NllbHandle.FILES]. */
+    /** The 2 runtime files, SHA-256 pinned. Names and order come from [NllbHandle.FILES]. */
     val FILES: List<ModelDownloadItem> = listOf(
         item(
-            NllbHandle.ENCODER_FILE,
-            // 417,156,384 bytes, ladder_v2 w8 ship rung.
-            "e414589adaf6a632787d08cc62748adfd156ff98646baef829e7d7b8e7530d97",
-        ),
-        item(
-            NllbHandle.DECODER_FILE,
-            // 734,258,368 bytes, ladder_v2 w8 ship rung.
-            "1f1f15b335cc67496895534c1f99c4452373b54d658781be19c386c27259c056",
+            NllbHandle.GRAPH,
+            // 617,059,520 bytes, verified against build/nllb600/nllb600.maml.
+            "1f08cebe3cb6e629fc40fbc93c71c82c4e23cd379fe0da798ebc817cc769553c",
         ),
         item(
             NllbHandle.TOKENIZER,
-            // 3,849,114 bytes, built by `scripts/ml/nllb_tokenizer.py`, SHA-verified.
+            // 3,849,114 bytes, verified against build/nllb600/tokenizer.bin.
             "36a6bed003d4a66cb9a513d1056355fe4bc1c73518cff82477671811fd482b57",
         ),
     )
 
     /**
-     * The retired files, deleted from an existing install the first time this runs: the
-     * SMaLL-100 set, the `.maml`-era weights, and the ONNX-era NLLB pair this build's
-     * LiteRT rungs replace.
+     * The retired SMaLL-100 files, deleted from an existing install the first time this
+     * runs: the two maml-era files plus the seven ncnn files an earlier version
+     * downloaded.
      *
-     * Without this an upgrade leaves ~1.1 GB of unreachable weights in the app's
+     * Without this an upgrade leaves ~320 MB of unreachable weights in the app's
      * external files directory, which nothing else will ever remove. Kept as names
      * rather than a wildcard so a future file of ours cannot be caught by it.
      */
@@ -63,9 +61,6 @@ object NllbModel {
         "vocab.txt",
         "pos_weights.f32.bin",
     )
-
-    /** The pre-LiteRT NLLB files this build's .tflite rungs replace, in the live directory. */
-    private val RETIRED_CURRENT = listOf("nllb600.maml", "encoder_model_int8.onnx", "decoder_model_int8.onnx")
 
     private fun item(name: String, sha256: String?) =
         ModelDownloadItem("$BASE$name", "$DIR/$name", "NLLB-200 $name", sha256)
@@ -95,8 +90,8 @@ object NllbModel {
      */
     fun deleteRetired(context: Context): Long {
         val root = context.getExternalFilesDir(null) ?: return 0L
-        var reclaimed = 0L
         val directory = File(root, RETIRED_DIR)
+        var reclaimed = 0L
         for (name in RETIRED) {
             val file = File(directory, name)
             if (!file.isFile) continue
@@ -105,12 +100,6 @@ object NllbModel {
         }
         if (directory.isDirectory && (directory.list()?.isEmpty() == true)) {
             directory.delete()
-        }
-        for (name in RETIRED_CURRENT) {
-            val file = File(root, "$DIR/$name")
-            if (!file.isFile) continue
-            val size = file.length()
-            if (file.delete()) reclaimed += size
         }
         return reclaimed
     }

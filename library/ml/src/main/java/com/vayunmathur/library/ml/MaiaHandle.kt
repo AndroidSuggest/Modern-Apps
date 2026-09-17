@@ -1,32 +1,21 @@
 package com.vayunmathur.library.ml
 
-import android.content.Context
+import android.content.res.AssetManager
+import android.os.ParcelFileDescriptor
 import android.util.Log
-import org.pytorch.executorch.EValue
-import org.pytorch.executorch.Module
-import org.pytorch.executorch.Tensor
 
 /**
- * On-device human-move prediction for chess: Maia3-5M, ExecuTorch Vulkan-only, fail-closed.
+ * On-device human-move prediction for chess: Maia3-5M on the Vulkan compute runtime.
  *
  * An encoder-only transformer over 64 square tokens — width 256, 8 blocks, 8 heads — at 5.23
- * million parameters. It predicts what a player *of a given rating* would play, so a weak
- * setting blunders the way a beginner does. It replaces Stockfish at `Skill Level 0`, which
- * searched eight ply and then threw a move away in ways no human ever does.
- *
- * # One runtime, fail-closed
- *
- * The only path is the Vulkan int8-weight-only `.pte` (`maia3_vulkan_int8wo.pte`,
- * ~6.3 MB, torch-level cos ≥ 0.9990 vs the ship w4 rung) on ExecuTorch: one `forward` call
- * with three inputs — `tokens [1,64,97]` float32 in the caller's square-major layout,
- * `self_elo [1]` and `oppo_elo [1]` float32 — returning the 4352 move logits (from-to pairs
- * plus file promotions) directly. There is no LiteRT fallback: when the `.pte` is absent,
- * the Vulkan delegate is not linked, or the run fails, [logits] returns null and
- * [isAvailable] is false.
+ * million parameters. See `library/ml/src/main/rust/src/nets/maia.rs`.
  *
  * # It predicts, it does not search
  *
  * One forward pass per move and no tree at all, which is the point rather than a compromise.
+ * Maia3 is trained on human games to predict what a player *of a given rating* would play, so
+ * a weak setting blunders the way a beginner does. It replaces Stockfish at `Skill Level 0`,
+ * which searched eight ply and then threw a move away in ways no human ever does.
  *
  * # Strength is an input
  *
@@ -34,11 +23,21 @@ import org.pytorch.executorch.Tensor
  * the model as a blend of two learned embeddings. One weights file therefore covers every
  * difficulty; there is nothing to reload when the player changes it.
  *
- * # One bundled asset
+ * # One bundled asset, 6.8 MiB
  *
- * The graph ships inside the APK, so this has an asset factory and no download. The asset
- * must be stored **uncompressed** (`noCompress += "pte"` in
- * `games/chess/build.gradle.kts`).
+ * `maia3-5m.maml` ships inside the APK, so this has an [inAssets] and no download. Every
+ * convolution is int8, quantised per output channel from the fp32 checkpoint; the norms, the
+ * biases and the two elo embeddings stay fp16 and are 1% of the parameters. It replaces an
+ * 86 MB NNUE, so the APK is about 79 MB smaller.
+ *
+ * int8 rather than fp16 because it was measured: `scripts/ml/maia_quant_eval.py` puts move
+ * agreement against fp32 at 99.0% to 99.5% across the four difficulties, and every
+ * disagreement is a position where the top two legal moves are closer together than fp16
+ * rounding alone would separate them. The same harness rejects int4 at 87% to 91%.
+ *
+ * An asset must be stored **uncompressed** for this to work at all: `AssetManager.openFd`
+ * throws for a deflated entry. That is what `noCompress += "maml"` in
+ * `games/chess/build.gradle.kts` is for.
  *
  * # The caller owns the chess
  *
@@ -49,30 +48,27 @@ import org.pytorch.executorch.Tensor
  *
  * # Availability
  *
- * Construction never throws. [isAvailable] is false when the backend did not come up — the
- * asset is absent or has an operator the runtime cannot execute — and then [logits] returns
- * null. The chess app gates its "play against the AI" option on it rather than offering a
- * mode that cannot move.
+ * Construction never throws. [isAvailable] is false when `libmodelrunner.so` is missing for
+ * this ABI, when the asset is absent, compressed or malformed, or when the device cannot give
+ * us a Vulkan device with fp16 compute — and then [logits] returns null. The chess app gates
+ * its "play against the AI" option on it rather than offering a mode that cannot move.
  *
  * # Threading
  *
  * Not thread-safe. A caller must hold a lock across [logits] and [close].
  */
 class MaiaHandle private constructor(private val source: String) : AutoCloseable {
-    private var etModule: Module? = null
-    private var etAssetPath: String = ET_GRAPH
-    private val lock = Any()
+    private var handle: Long = 0L
 
-    /** True if the ExecuTorch backend came up. */
-    val isAvailable: Boolean get() = etModule != null
+    /** True if the graph came up and is the file this runtime was built against. */
+    val isAvailable: Boolean get() = handle != 0L
 
     /**
      * The [MOVES] move logits for a board, or null on failure.
      *
      * [planes] is `PLANE_COUNT * SQUARES` floats, plane-major, with square `rank * 8 + file`
      * so a1 is 0 and h8 is 63. The planes are white P, N, B, R, Q, K then black P, N, B, R, Q,
-     * K. They are repeated across the 8 history plies here (the model was trained with
-     * `use_uci_history=False`, so all plies hold the current board).
+     * K.
      *
      * **The board must already be from the mover's side.** When black is to move the caller
      * mirrors it vertically and swaps the colours, and un-mirrors the move it picks. Passing
@@ -83,56 +79,16 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
      * are always rank 7 to rank 8, because the board is mirrored for black.
      */
     fun logits(planes: FloatArray, selfElo: Int, oppoElo: Int): FloatArray? {
+        if (handle == 0L) return null
         if (planes.size != PLANE_COUNT * SQUARES) return null
-        // Square-major [64, 97] (8 plies + zero clock column). The ExecuTorch export takes
-        // this layout directly as [1,64,97].
-        val sqMajor = FloatArray(SQUARES * TOKEN_WIDTH)
-        for (square in 0 until SQUARES) {
-            for (ply in 0 until HISTORY) {
-                for (plane in 0 until PLANE_COUNT) {
-                    sqMajor[square * TOKEN_WIDTH + ply * PLANE_COUNT + plane] =
-                        planes[plane * SQUARES + square]
-                }
-            }
-        }
-        val self = selfElo.coerceIn(0, MAX_ELO).toFloat()
-        val oppo = oppoElo.coerceIn(0, MAX_ELO).toFloat()
-        val mod = etModule ?: return null
-        return etLogits(mod, sqMajor, self, oppo)
+        return MlNative.maiaLogits(handle, planes, selfElo, oppoElo)
     }
 
-    /**
-     * One ExecuTorch `forward` invocation: three inputs, first float output.
-     *
-     * `ExecutorchSessions.runFloat` only covers the single-input case, so Maia — tokens plus
-     * two elo scalars — wraps one [Tensor] per input in an [EValue] and goes through [run]
-     * directly. Reads through [floatsAllowingHalf] (not a FLOAT-only check): the Vulkan fp16
-     * fallback rung returns HALF. Returns null (never throws) on any failure — fail-closed,
-     * no fallback backend.
-     */
-    private fun etLogits(mod: Module, sqMajor: FloatArray, self: Float, oppo: Float): FloatArray? {
-        return try {
-            val inputs = listOf(
-                EValue.from(Tensor.fromBlob(sqMajor, longArrayOf(1, SQUARES.toLong(), TOKEN_WIDTH.toLong()))),
-                EValue.from(Tensor.fromBlob(floatArrayOf(self), longArrayOf(1))),
-                EValue.from(Tensor.fromBlob(floatArrayOf(oppo), longArrayOf(1))),
-            )
-            val outputs = synchronized(lock) {
-                ExecutorchSessions.run(mod, inputs)
-            } ?: return null
-            outputs.firstOrNull()?.floatsAllowingHalf(TAG, MOVES)
-        } catch (e: Throwable) {
-            Log.e(TAG, "maia ET inference failed", e)
-            null
-        }
-    }
-
-    /** Free the backend. Idempotent. */
+    /** Free the network and close the weights file. Idempotent. */
     override fun close() {
-        synchronized(lock) {
-            etModule = null
-            ExecutorchSessions.close("asset:$etAssetPath")
-        }
+        val live = handle
+        handle = 0L
+        if (live != 0L) MlNative.destroyMaia(live)
     }
 
     override fun toString(): String = "Maia3-5M from $source"
@@ -140,15 +96,11 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
     companion object {
         private const val TAG = "MaiaHandle"
 
-        /** Board squares. One token per square. */
+        /** Board squares, and so the model's sequence length. One token per square. */
         const val SQUARES = 64
 
         /** Board planes: six piece types for each colour. */
         const val PLANE_COUNT = 12
-
-        /** History plies (all hold the current board) plus the clock column. */
-        const val HISTORY = 8
-        const val TOKEN_WIDTH = 97
 
         /** Entries in the move vocabulary: 64x64 from-to pairs plus 8x8x4 promotions. */
         const val MOVES = 4352
@@ -156,37 +108,63 @@ class MaiaHandle private constructor(private val source: String) : AutoCloseable
         /** The highest rating the model interpolates to. Higher inputs clamp to it. */
         const val MAX_ELO = 5000
 
-        /** The ExecuTorch graph (Vulkan int8-weight-only ship candidate). A wrong file fails at load. */
-        const val ET_GRAPH = "maia3_vulkan_int8wo.pte"
+        /** The one graph. Native checks its graph id, so a wrong file fails at load. */
+        const val GRAPH = "maia3-5m.maml"
 
         /**
-         * The model from the APK's assets: ExecuTorch Vulkan-only, fail-closed.
+         * The model from the APK's assets, which is the only place it lives.
          *
-         * The ExecuTorch attempt is skipped unless the Vulkan delegate is linked into the
-         * runtime (`library/ml/libs/executorch-vulkan-1.4.0.aar`, XNNPACK=OFF), so on
-         * devices without the Vulkan AAR this reports unavailable rather than loading a
-         * fallback. Needs a [Context] (not just an `AssetManager`) because
-         * [ExecutorchSessions] stages the `.pte` under `cacheDir/executorch` before
-         * loading it.
+         * No `inDirectory` counterpart: at 6.8 MiB this is bundled, so there is no download
+         * directory to look in.
          */
-        fun inContext(
-            context: Context,
-            ptePath: String = ET_GRAPH,
-        ): MaiaHandle {
-            val instance = MaiaHandle("the APK's $ptePath")
-            instance.etAssetPath = ptePath
-            instance.etModule = openEt(context, ptePath)
-            if (!instance.isAvailable) Log.e(TAG, "cannot open $ptePath")
+        fun inAssets(assets: AssetManager, path: String = GRAPH): MaiaHandle {
+            val instance = MaiaHandle("the APK's $path")
+            instance.handle = if (!MlNative.isAvailable) {
+                0L
+            } else {
+                try {
+                    create(assets, path)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "cannot open $path", e)
+                    0L
+                }
+            }
             return instance
         }
 
-        private fun openEt(context: Context, ptePath: String): Module? {
-            val backends = ExecutorchSessions.registeredBackends()
-            if (backends?.any { it.contains("Vulkan", ignoreCase = true) } != true) {
-                Log.i(TAG, "Vulkan backend absent, skipping $ptePath")
-                return null
+        /**
+         * Open the asset and hand the descriptor over.
+         *
+         * `use` rather than a bare `close`, and it is load-bearing in both directions — the
+         * same argument [ClipHandle]'s asset path makes. On the happy path the descriptor has
+         * already been detached and `AssetFileDescriptor.close` only releases the wrapper; if
+         * `detachFd` throws instead, the close is the real one, and a leaked descriptor onto
+         * the APK would last the life of the process.
+         *
+         * The inner `finally` covers the remaining window: after the descriptor has been given
+         * up but before native has adopted it.
+         */
+        private fun create(assets: AssetManager, path: String): Long =
+            assets.openFd(path).use { afd ->
+                val fd = afd.parcelFileDescriptor.detachFd()
+                var handed = false
+                try {
+                    val handle = MlNative.createMaia(fd, afd.startOffset, afd.length)
+                    handed = true
+                    handle
+                } finally {
+                    if (!handed) closeFd(fd)
+                }
             }
-            return ExecutorchSessions.openAsset(context, ptePath)
+
+        /**
+         * Close a bare descriptor.
+         *
+         * Adopting it into a [ParcelFileDescriptor] is the only way to reach `close(2)` from
+         * Kotlin. Failures are swallowed because the caller is already on an error path.
+         */
+        private fun closeFd(fd: Int) {
+            runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
         }
     }
 }

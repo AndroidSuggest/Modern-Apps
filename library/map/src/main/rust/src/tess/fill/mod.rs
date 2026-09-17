@@ -39,6 +39,8 @@ mod geom;
 mod grouping;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_part2;
 
 use self::geom::open_length;
 use self::grouping::polygons;

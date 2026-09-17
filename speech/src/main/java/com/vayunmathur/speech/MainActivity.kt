@@ -49,12 +49,8 @@ import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconArrowDropDown
 import com.vayunmathur.library.ui.IconCheck
 import com.vayunmathur.library.ui.rememberPermissionRequest
-import com.vayunmathur.library.downloadservice.InitialModelDownloadChecker
-import com.vayunmathur.library.downloadservice.ModelDownloadWorker
-import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.speech.domain.SupertonicVoices
 import com.vayunmathur.speech.platform.SupertonicBundle
-import com.vayunmathur.speech.platform.SupertonicModel
 import com.vayunmathur.speech.service.WhisperRecognitionService
 import com.vayunmathur.speech.util.SpeechSetupActions
 import com.vayunmathur.speech.util.SpeechSetupUiState
@@ -66,17 +62,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val ds = DataStoreUtils.getInstance(this)
         setContent {
             DynamicTheme {
-                // Both model bundles download on first launch: Supertonic's plans (~110 MB)
-                // and Whisper's export (~77 MB) stay out of the APK to keep it small.
-                // The ExecuTorch twins (WhisperModel.ET_MODELS, SupertonicModel.ET_FILES)
-                // are deliberately NOT gated here: no mirror pins exist yet, and they
-                // resolve opportunistically at inference time with the ladders as fallback.
-                InitialModelDownloadChecker(ds, SupertonicModel.FILES + WhisperModel.FILES) {
-                    SetupScreen()
-                }
+                SetupScreen()
             }
         }
     }
@@ -290,12 +278,13 @@ private fun TestSection(enabled: Boolean) {
             Button(
                 enabled = enabled,
                 onClick = {
+                    if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+                        status = "No recognizer selected yet (finish step 2)."
+                        return@Button
+                    }
                     result = ""
                     status = "Listening…"
-                    val sr = SpeechRecognizer.createSpeechRecognizer(
-                        context,
-                        ComponentName(context, WhisperRecognitionService::class.java),
-                    )
+                    val sr = SpeechRecognizer.createSpeechRecognizer(context)
                     sr.setRecognitionListener(object : RecognitionListener {
                         override fun onReadyForSpeech(params: Bundle?) {}
                         override fun onBeginningOfSpeech() {}

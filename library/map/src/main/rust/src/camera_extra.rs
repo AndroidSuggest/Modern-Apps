@@ -85,6 +85,9 @@ impl Camera {
     /// flip is needed. Adding one anyway mirrors the whole map vertically, which is
     /// easy to miss on a symmetric city and obvious on a coastline.
     pub fn tile_to_clip(&self, z: u8, x: u32, y: u32) -> [f32; 16] {
+        if crate::camera::globe_active(self) {
+            return self.globe_tile_to_clip(z, x, y);
+        }
         let span = self.tile_span_dp(z);
         self.world_quad_to_clip(
             WorldPx {

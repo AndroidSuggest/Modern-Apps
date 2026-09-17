@@ -6,9 +6,11 @@ use super::assemble::build;
 use super::attributes::{fill_attributes, line_attributes, ribbon_attributes};
 use super::push::PUSH_CONSTANT_BYTES;
 use super::shaders::{
-    shader_module, BUILDING_FRAG, BUILDING_VERT, FILL_FRAG, FILL_VERT, LINE_FRAG, LINE_VERT,
-    PUCK_FRAG, PUCK_VERT, RIBBON_FRAG, RIBBON_VERT, SPRITE_FRAG, SYMBOL_BILLBOARD_VERT,
-    SYMBOL_FRAG, SYMBOL_VERT, TERRAIN_FRAG, TERRAIN_VERT,
+    shader_module, BUILDING_FRAG, BUILDING_VERT, FILL_FRAG, FILL_GLOBE_FRAG, FILL_GLOBE_VERT,
+    FILL_VERT, LINE_FRAG, LINE_GLOBE_FRAG, LINE_GLOBE_VERT, LINE_VERT, MOON_FRAG, MOON_VERT,
+    PUCK_FRAG, PUCK_VERT, RIBBON_FRAG, RIBBON_GLOBE_FRAG, RIBBON_GLOBE_VERT, RIBBON_VERT,
+    SPRITE_FRAG, SYMBOL_BILLBOARD_VERT, SYMBOL_FRAG, SYMBOL_GLOBE_VERT, SYMBOL_VERT, TERRAIN_FRAG,
+    TERRAIN_VERT,
 };
 use super::state::{Depth, Stencil};
 
@@ -60,6 +62,15 @@ impl Pipelines {
         let building_frag = shader_module(device, BUILDING_FRAG)?;
         let terrain_vert = shader_module(device, TERRAIN_VERT)?;
         let terrain_frag = shader_module(device, TERRAIN_FRAG)?;
+        let fill_globe_vert = shader_module(device, FILL_GLOBE_VERT)?;
+        let fill_globe_frag = shader_module(device, FILL_GLOBE_FRAG)?;
+        let line_globe_vert = shader_module(device, LINE_GLOBE_VERT)?;
+        let line_globe_frag = shader_module(device, LINE_GLOBE_FRAG)?;
+        let ribbon_globe_vert = shader_module(device, RIBBON_GLOBE_VERT)?;
+        let ribbon_globe_frag = shader_module(device, RIBBON_GLOBE_FRAG)?;
+        let symbol_globe_vert = shader_module(device, SYMBOL_GLOBE_VERT)?;
+        let moon_vert = shader_module(device, MOON_VERT)?;
+        let moon_frag = shader_module(device, MOON_FRAG)?;
 
         let fill_attributes = fill_attributes();
         let line_attributes = line_attributes();
@@ -68,78 +79,20 @@ impl Pipelines {
         // resolve their corners on the CPU and draw through an identity matrix, so there is no
         // tile-local anchor to project and this format must not grow. POI icons no longer use it —
         // they moved to the billboard format below so they face the camera under tilt.
-        let symbol_attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .location(0)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .location(1)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(8),
-        ];
+        // (Attribute tables live in `pipelines_attrs`; same values, file-length split.)
+        let symbol_attributes = super::pipelines_attrs::symbol_attributes();
         // Symbol text and POI icons (billboarded): position (tile-local) + uv (atlas) + ground
         // anchor (tile-local) + the anchor's tile-normalised ground height, 7 floats. The anchor lets `symbol_billboard.vert` keep point labels
         // and their icons upright and pinned to the ground under tilt; at pitch 0 it is ignored and
         // output is unchanged. One format for both is what keeps an icon on top of its label.
-        let symbol_billboard_attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .location(0)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .location(1)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(8),
-            vk::VertexInputAttributeDescription::default()
-                .location(2)
-                .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
-                .offset(16),
-            vk::VertexInputAttributeDescription::default()
-                .location(3)
-                .binding(0)
-                .format(vk::Format::R32_SFLOAT)
-                .offset(24),
-        ];
+        let symbol_billboard_attributes = super::pipelines_attrs::symbol_billboard_attributes();
         // Building (WS-A): position+height (3 floats), face normal (3 floats), then the per-vertex
         // ARGB colour as one `R8G8B8A8_UNORM` word the shader reads as a 0..1 vec4. 28-byte stride.
-        let building_attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .location(0)
-                .binding(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .location(1)
-                .binding(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(12),
-            vk::VertexInputAttributeDescription::default()
-                .location(2)
-                .binding(0)
-                .format(vk::Format::R8G8B8A8_UNORM)
-                .offset(24),
-        ];
+        let building_attributes = super::pipelines_attrs::building_attributes();
 
         // Terrain (WS-G): position+height (3 floats) then the surface normal (3 floats). 24-byte
         // stride, no colour — the ground colour is the pushed `earth` colour, not per-vertex.
-        let terrain_attributes = [
-            vk::VertexInputAttributeDescription::default()
-                .location(0)
-                .binding(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(0),
-            vk::VertexInputAttributeDescription::default()
-                .location(1)
-                .binding(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(12),
-        ];
+        let terrain_attributes = super::pipelines_attrs::terrain_attributes();
 
         let fill = build(
             device,
@@ -236,6 +189,12 @@ impl Pipelines {
         // The symbol pipeline needs the atlas descriptor set, so it gets its own
         // layout: same push-constant range plus set 0. The sprite pipeline reuses this
         // layout with a second set from the same pool.
+        //
+        // The Moon layout (two sampled images) lives in `pipelines_moon`
+        // (`moon_layouts`), built before this match so both branches below can
+        // use it; the descriptor pool + sets stay Moon-owned at upload time.
+        let (moon_ds_layout, moon_layout) =
+            super::pipelines_moon::moon_layouts(device, &push_range)?;
         let symbol_layout = match atlas_layout {
             Some(set_layout) => {
                 let symbol_layout_info = vk::PipelineLayoutCreateInfo::default()
@@ -254,6 +213,9 @@ impl Pipelines {
                 device.destroy_shader_module(ribbon_frag, None);
                 device.destroy_shader_module(symbol_vert, None);
                 device.destroy_shader_module(symbol_billboard_vert, None);
+                device.destroy_shader_module(symbol_globe_vert, None);
+                device.destroy_shader_module(moon_vert, None);
+                device.destroy_shader_module(moon_frag, None);
                 device.destroy_shader_module(symbol_frag, None);
                 device.destroy_shader_module(sprite_frag, None);
                 device.destroy_shader_module(puck_vert, None);
@@ -262,53 +224,82 @@ impl Pipelines {
                 device.destroy_shader_module(building_frag, None);
                 device.destroy_shader_module(terrain_vert, None);
                 device.destroy_shader_module(terrain_frag, None);
+                device.destroy_shader_module(fill_globe_vert, None);
+                device.destroy_shader_module(fill_globe_frag, None);
+                device.destroy_shader_module(line_globe_vert, None);
+                device.destroy_shader_module(line_globe_frag, None);
+                device.destroy_shader_module(ribbon_globe_vert, None);
+                device.destroy_shader_module(ribbon_globe_frag, None);
                 device.destroy_pipeline_layout(layout, None);
                 return Err("symbol pipeline needs an atlas descriptor set layout".into());
             }
         };
-        let symbol = build(
-            device,
-            symbol_layout,
-            render_pass,
-            samples,
-            symbol_billboard_vert,
-            symbol_frag,
-            (symbol::FLOATS_PER_VERTEX * 4) as u32,
-            &symbol_billboard_attributes,
-            Stencil::Ignore,
-            Depth::Off,
-            cache,
-        );
-        // POI icons: the billboard vertex shader (so they face the camera under tilt, exactly as
-        // the text beside them does) paired with the sprite fragment shader (because an icon is a
-        // picture, not a distance field). No new shader — both halves already existed.
-        let icon = build(
-            device,
-            symbol_layout,
-            render_pass,
-            samples,
-            symbol_billboard_vert,
-            sprite_frag,
-            (symbol::ICON_FLOATS_PER_VERTEX * 4) as u32,
-            &symbol_billboard_attributes,
-            Stencil::Ignore,
-            Depth::Off,
-            cache,
-        );
-        let sprite = build(
+        let (symbol, icon, sprite) = super::pipelines_symbols::symbol_pipelines(
             device,
             symbol_layout,
             render_pass,
             samples,
             symbol_vert,
+            symbol_billboard_vert,
+            symbol_frag,
             sprite_frag,
-            (symbol::MARKER_FLOATS_PER_VERTEX * 4) as u32,
             &symbol_attributes,
-            Stencil::Ignore,
-            Depth::Off,
+            &symbol_billboard_attributes,
+            cache,
+        );
+        // Globe labels + icons: the globe vertex shader on the billboard format,
+        // paired with the glyph and sprite fragment shaders respectively, through
+        // the atlas layout. Depth-tested so far-side labels lose to the ball.
+        let (symbol_globe, icon_globe) = super::pipelines_symbols::globe_symbol_pipelines(
+            device,
+            symbol_layout,
+            render_pass,
+            samples,
+            symbol_globe_vert,
+            symbol_frag,
+            sprite_frag,
+            &symbol_billboard_attributes,
             cache,
         );
 
+        // Globe variants: same vertex formats as their flat twins, depth-tested
+        // (TestWrite, LESS) so the near hemisphere occludes the far side and
+        // coarser ancestors lose to finer descendants drawn later. The globe
+        // shaders bend tile-local geometry onto the ball and write depth =
+        // 1 - z (limb 0, sub-camera point ~1); with the pass cleared to 1.0,
+        // nearer (larger z) wins the LESS test.
+        let (fill_globe, line_globe, ribbon_globe) = super::pipelines_globe::globe_pipelines(
+            device,
+            layout,
+            render_pass,
+            samples,
+            fill_globe_vert,
+            fill_globe_frag,
+            line_globe_vert,
+            line_globe_frag,
+            ribbon_globe_vert,
+            ribbon_globe_frag,
+            &fill_attributes,
+            &line_attributes,
+            &ribbon_attributes,
+            cache,
+        );
+        // The Moon disc (see `pipelines_moon::moon_pipeline`): `moon.vert` /
+        // `moon.frag` over the position-only fill format (the shared unit quad:
+        // -1..1 local, the vertex shader bends it onto the disc). Depth-tested
+        // so it participates in the same depth regime as the globe tiles it
+        // replaces. Through `moon_layout` (two sampled images); the sets are
+        // Moon-owned, allocated at upload time.
+        let moon = super::pipelines_moon::moon_pipeline(
+            device,
+            moon_layout,
+            render_pass,
+            samples,
+            moon_vert,
+            moon_frag,
+            &fill_attributes,
+            cache,
+        );
         // The overlay quad is position + draped height in -1..1, so it shares the fill vertex
         // format and its 12-byte stride.
         let puck = build(
@@ -364,6 +355,7 @@ impl Pipelines {
         device.destroy_shader_module(ribbon_frag, None);
         device.destroy_shader_module(symbol_vert, None);
         device.destroy_shader_module(symbol_billboard_vert, None);
+        device.destroy_shader_module(symbol_globe_vert, None);
         device.destroy_shader_module(symbol_frag, None);
         device.destroy_shader_module(sprite_frag, None);
         device.destroy_shader_module(puck_vert, None);
@@ -372,9 +364,18 @@ impl Pipelines {
         device.destroy_shader_module(building_frag, None);
         device.destroy_shader_module(terrain_vert, None);
         device.destroy_shader_module(terrain_frag, None);
+        device.destroy_shader_module(fill_globe_vert, None);
+        device.destroy_shader_module(fill_globe_frag, None);
+        device.destroy_shader_module(line_globe_vert, None);
+        device.destroy_shader_module(line_globe_frag, None);
+        device.destroy_shader_module(ribbon_globe_vert, None);
+        device.destroy_shader_module(ribbon_globe_frag, None);
+        device.destroy_shader_module(moon_vert, None);
+        device.destroy_shader_module(moon_frag, None);
 
         match (
             fill, line, ribbon, depth, building, terrain, symbol, icon, sprite, puck, mask, scrim,
+            fill_globe, line_globe, ribbon_globe, symbol_globe, icon_globe, moon,
         ) {
             (
                 Ok(fill),
@@ -389,9 +390,17 @@ impl Pipelines {
                 Ok(puck),
                 Ok(mask),
                 Ok(scrim),
+                Ok(fill_globe),
+                Ok(line_globe),
+                Ok(ribbon_globe),
+                Ok(symbol_globe),
+                Ok(icon_globe),
+                Ok(moon),
             ) => Ok(Pipelines {
                 layout,
                 symbol_layout,
+                moon_layout,
+                moon_ds_layout,
                 fill,
                 line,
                 ribbon,
@@ -404,6 +413,12 @@ impl Pipelines {
                 puck,
                 mask,
                 scrim,
+                fill_globe,
+                line_globe,
+                ribbon_globe,
+                symbol_globe,
+                icon_globe,
+                moon,
             }),
             (
                 fill,
@@ -418,10 +433,16 @@ impl Pipelines {
                 puck,
                 mask,
                 scrim,
+                fill_globe,
+                line_globe,
+                ribbon_globe,
+                symbol_globe,
+                icon_globe,
+                moon,
             ) => {
                 for created in [
                     fill, line, ribbon, depth, building, terrain, symbol, icon, sprite, puck, mask,
-                    scrim,
+                    scrim, fill_globe, line_globe, ribbon_globe, symbol_globe, icon_globe, moon,
                 ]
                 .into_iter()
                 .flatten()
@@ -429,6 +450,8 @@ impl Pipelines {
                     device.destroy_pipeline(created, None);
                 }
                 device.destroy_pipeline_layout(symbol_layout, None);
+                device.destroy_pipeline_layout(moon_layout, None);
+                device.destroy_descriptor_set_layout(moon_ds_layout, None);
                 device.destroy_pipeline_layout(layout, None);
                 Err("pipeline creation failed".into())
             }
@@ -451,7 +474,15 @@ impl Pipelines {
         device.destroy_pipeline(self.puck, None);
         device.destroy_pipeline(self.mask, None);
         device.destroy_pipeline(self.scrim, None);
+        device.destroy_pipeline(self.fill_globe, None);
+        device.destroy_pipeline(self.line_globe, None);
+        device.destroy_pipeline(self.ribbon_globe, None);
+        device.destroy_pipeline(self.symbol_globe, None);
+        device.destroy_pipeline(self.icon_globe, None);
+        device.destroy_pipeline(self.moon, None);
         device.destroy_pipeline_layout(self.symbol_layout, None);
+        device.destroy_pipeline_layout(self.moon_layout, None);
+        device.destroy_descriptor_set_layout(self.moon_ds_layout, None);
         device.destroy_pipeline_layout(self.layout, None);
     }
 }

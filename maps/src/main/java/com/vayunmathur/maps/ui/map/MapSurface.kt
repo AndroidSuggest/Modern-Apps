@@ -12,7 +12,9 @@ import androidx.compose.ui.unit.DpSize
 import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.map.LayerOptions
+import com.vayunmathur.library.map.MapBody
 import com.vayunmathur.library.map.MapOptions
+import com.vayunmathur.library.map.MoonTextures
 import com.vayunmathur.library.map.RegionLevel
 import com.vayunmathur.library.map.RegionMask
 import com.vayunmathur.library.map.TileSource
@@ -76,6 +78,9 @@ fun MapSurface(
     satelliteEnabled: Boolean,
     safetyEnabled: Boolean,
     transitEnabled: Boolean,
+    globeEnabled: Boolean,
+    body: MapBody,
+    moonTextures: MoonTextures?,
     selectedTransitStop: TransitStop?,
     darkBasemap: Boolean,
     modifier: Modifier = Modifier,
@@ -178,6 +183,9 @@ fun MapSurface(
         cameraState = camera,
         modifier = modifier,
         darkBasemap = darkBasemap,
+        globeEnabled = globeEnabled,
+        body = body,
+        moonTextures = moonTextures,
         options = mapOptions,
         userPuck = userPuck,
         // The selected city/region's outline, dimmed outside. Derived from the sheet's own

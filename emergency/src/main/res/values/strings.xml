@@ -27,8 +27,6 @@
     <!-- View screen: shown when neither medical info nor contacts are set. -->
     <string name="no_info">No emergency information provided.</string>
 
-    <!-- Edit screen: owner's name row. Noun. -->
-    <string name="field_name">Name</string>
     <!-- Edit screen: address row. Noun. -->
     <string name="field_address">Address</string>
     <!-- Edit screen: heading above the owner's picked identity. Noun phrase. -->

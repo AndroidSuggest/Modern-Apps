@@ -57,10 +57,16 @@ fn build_relation(
 }
 
 /// Materialise relations; returns the driving-side conventions.
+///
+/// `region` filters the built layers (`roads`, `poi`, `buildings`) the same
+/// way [`materialise_ways`] does. `boundaries` region shapes are always kept
+/// — the driving-side grid must cover the world even in a region build, or
+/// the tiler mis-marks roads at the region's edge.
 fn materialise_relations(
     relations: &[Relation],
     members: &HashMap<i64, Vec<i64>>,
     table: &NodeLocations,
+    region: Option<&osm_ingest::bbox::BBox>,
     sink: &mut Sink,
     stats: &mut Stats,
 ) -> Result<schema::boundaries::Conventions> {
@@ -92,6 +98,13 @@ fn materialise_relations(
         for (relation, geometry) in batch.iter().zip(built.drain(..)) {
             match geometry {
                 BuiltRelation::Label(Some(point)) => {
+                    // `poi` labels are region-filtered; `places` always kept.
+                    if relation.class.layer == tilecodec::mamaps::dict::LAYER_POI
+                        && !point_touches(&point, region)
+                    {
+                        bar.tick("relation(s)");
+                        continue;
+                    }
                     sink.push_named(
                         &relation.class,
                         &Geometry::Points(vec![point]),
@@ -120,6 +133,14 @@ fn materialise_relations(
                     if polygons.is_empty() {
                         stats.geometry_failed += 1;
                     } else {
+                        // Buildings are region-filtered; every other area
+                        // layer is always kept.
+                        if relation.class.layer == tilecodec::mamaps::dict::LAYER_BUILDINGS
+                            && !polygons_touch(&polygons, region)
+                        {
+                            bar.tick("relation(s)");
+                            continue;
+                        }
                         // The id is what lets the mask gather a region's tile-clipped pieces back
                         // together.
                         let id = if tracks_ids(&relation.class) {

@@ -131,7 +131,7 @@ object CastController {
     internal val _device = MutableStateFlow<CastDevice?>(null)
     val device: StateFlow<CastDevice?> = _device.asStateFlow()
 
-    internal val _sessionState = MutableStateFlow<ClientState>()
+    internal val _sessionState = MutableStateFlow(ClientState())
     val sessionState: StateFlow<ClientState> = _sessionState.asStateFlow()
 
     /** True from the moment a device is tapped until it is paired or refuses. */

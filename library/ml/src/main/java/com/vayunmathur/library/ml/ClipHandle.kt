@@ -1,27 +1,37 @@
 package com.vayunmathur.library.ml
 
-import android.content.Context
+import android.content.res.AssetManager
+import android.os.ParcelFileDescriptor
 import android.util.Log
-import java.io.File
-import org.pytorch.executorch.EValue
-import org.pytorch.executorch.Module
-import org.pytorch.executorch.Tensor
 
 /**
- * On-device image and text embedding in a shared 512-d space: TinyCLIP,
- * ExecuTorch-only (Vulkan fp16 split towers), fail-closed.
+ * On-device image and text embedding in a shared 512-d space: TinyCLIP on the Vulkan compute
+ * runtime.
  *
  * Two transformers of width 256 with 4 heads of 64 — a 10-layer vision tower over 16x16 patches of a
  * 224x224 image, and a 3-layer causal text tower over up to 77 tokens — at 23.4 million parameters.
+ * See `library/ml/src/main/rust/src/nets/tinyclip.rs`.
  *
- * # ET Vulkan-only, no fallback
+ * # One bundled asset, 22.6 MiB
  *
- * The split-tower Vulkan fp16 `.pte` pair on ExecuTorch is the only backend (each call
- * runs only the tower it needs — no dummy feed for the unused side). The pair totals
- * ~167 MB, so it is a runtime download into [etDir] (see `PhotosEtModels` in `:photos`),
- * never a bundled asset. When it is absent, the Vulkan delegate is not linked, or a run
- * fails, [imageEmbedding] and [textEmbedding] return null — fail closed with a log, no
- * LiteRT fallback. There is no `.tflite` in this handle.
+ * `tinyclip.maml` ships inside the APK, so this has an [inAssets] and no download. Everything but
+ * the layer norms, the biases, the class token and the two position tables is int8, quantised per
+ * output channel from the fp32 export; the worst per-tensor correlation against fp32 is 0.99986.
+ *
+ * It replaces `onnxruntime-android` running a 24 MB int8 ONNX export of the same model, and is
+ * *closer* to the fp32 reference than that was — 0.9994 against 0.9829 on a text query, because the
+ * export quantised the 49,408-row token table per tensor with a zero point. The APK loses
+ * 10,466,856 bytes of arm64 `.so` with the runtime, not weights.
+ *
+ * An asset must be stored **uncompressed** for this to work at all: `AssetManager.openFd` throws for
+ * a deflated entry. That is what `noCompress += "maml"` in `photos/build.gradle.kts` is for, and it
+ * costs nothing on download size since int8 weights barely compress.
+ *
+ * # The two towers share one net
+ *
+ * They share no weights, but they do share the file, so both run through one handle and native
+ * re-records between them. Switching costs a `device_wait_idle`; an indexing run is [imageEmbedding]
+ * throughout and pays for one.
  *
  * # Neither vector is normalised
  *
@@ -30,46 +40,31 @@ import org.pytorch.executorch.Tensor
  *
  * # Availability
  *
- * Construction never throws. [isAvailable] is false when the ET pair did not come up — and
- * then both embedding calls return null.
+ * Construction never throws. [isAvailable] is false when `libmodelrunner.so` is missing for this
+ * ABI, when the asset is absent, compressed or malformed, or when the device cannot give us a Vulkan
+ * device with fp16 compute — and then both embedding calls return null.
  *
  * # Threading
  *
- * Not thread-safe. A caller must hold a lock across the embedding calls and [close].
+ * Not thread-safe. A text query re-records the network, so two concurrent calls would interleave
+ * recordings of the same command buffer. A caller must hold a lock across the embedding calls and
+ * [close].
  */
 class ClipHandle private constructor(private val source: String) : AutoCloseable {
-    private val lock = Any()
-    private var etImage: Module? = null
-    private var etText: Module? = null
-    private var etImageKey: String = ""
-    private var etTextKey: String = ""
+    private var handle: Long = 0L
 
-    /** True if the ET pair came up and is the file this runtime was built against. */
-    val isAvailable: Boolean get() = etImage != null && etText != null
-
-    /**
-     * True when the ExecuTorch pair backs BOTH towers.
-     *
-     * The pair is all-or-nothing (see [inDirectory]): a half-open pair would embed images
-     * and queries in two different spaces, so a missing tower takes the other down with it.
-     * [ClipEmbedder] keys its re-index check off this — the ET pair is a different model
-     * (39M) from the old bundled rung (8M), not just a different runtime.
-     */
-    val isEtActive: Boolean get() = etImage != null && etText != null
+    /** True if the graph came up and is the file this runtime was built against. */
+    val isAvailable: Boolean get() = handle != 0L
 
     /**
      * The 512-d embedding of an already-preprocessed image, or null on failure.
      *
      * [pixels] is `3 * 224 * 224` floats, NCHW and RGB, resized to the shortest edge, centre-cropped
      * and normalised by CLIP's mean and standard deviation. Not L2-normalised on return.
-     * Null means the ET image tower is unavailable or the run failed — fail closed, no fallback.
      */
     fun imageEmbedding(pixels: FloatArray): FloatArray? {
-        val mod = etImage ?: run {
-            Log.e(TAG, "clip ET image tower unavailable, failing closed")
-            return null
-        }
-        return etImageEmbedding(pixels, mod)
+        if (handle == 0L) return null
+        return MlNative.tinyclipImage(handle, pixels)
     }
 
     /**
@@ -77,102 +72,18 @@ class ClipHandle private constructor(private val source: String) : AutoCloseable
      *
      * [ids] must end at `<|endoftext|>` with the tokenizer's padding trimmed off, because that is
      * the position CLIP pools. Not L2-normalised on return.
-     * Null means the ET text tower is unavailable or the run failed — fail closed, no fallback.
      */
     fun textEmbedding(ids: IntArray): FloatArray? {
+        if (handle == 0L) return null
         if (ids.isEmpty()) return null
-        val mod = etText ?: run {
-            Log.e(TAG, "clip ET text tower unavailable, failing closed")
-            return null
-        }
-        return etTextEmbedding(ids, mod)
+        return MlNative.tinyclipText(handle, ids)
     }
 
-    /**
-     * One ExecuTorch image-tower `forward`: NCHW `[1,3,224,224]` in, `[1,512]` out.
-     * Null (never a throw) means fail closed — the caller returns null, no fallback.
-     */
-    private fun etImageEmbedding(pixels: FloatArray, mod: Module): FloatArray? {
-        if (pixels.size != 3 * IMAGE_SIZE * IMAGE_SIZE) {
-            Log.w(TAG, "clip ET image wants ${3 * IMAGE_SIZE * IMAGE_SIZE} floats, got ${pixels.size}")
-            return null
-        }
-        return try {
-            val outputs = synchronized(lock) {
-                ExecutorchSessions.run(
-                    mod,
-                    listOf(EValue.from(Tensor.fromBlob(pixels, longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong())))),
-                )
-            } ?: return null
-            etFirstFloats(outputs, "image")
-        } catch (e: Throwable) {
-            Log.e(TAG, "clip ET image embedding failed, failing closed", e)
-            null
-        }
-    }
-
-    /**
-     * One ExecuTorch text-tower `forward`: int64 `input_ids` + `attention_mask`
-     * `[1,77]` in, `[1,512]` out. Null (never a throw) means fail closed.
-     *
-     * The export is fixed-shape `[1,77]`, so a trimmed query is padded back to
-     * [CONTEXT_LENGTH] with zeros and a matching mask (padding positions masked
-     * out). The tower is causal and pools at `<|endoftext|>`, so padding after
-     * the end token does not move the pooled vector.
-     */
-    private fun etTextEmbedding(ids: IntArray, mod: Module): FloatArray? {
-        if (ids.size > CONTEXT_LENGTH) {
-            Log.w(TAG, "clip ET text wants at most $CONTEXT_LENGTH tokens, got ${ids.size}")
-            return null
-        }
-        return try {
-            val padded = IntArray(CONTEXT_LENGTH)
-            ids.copyInto(padded)
-            val longIds = LongArray(CONTEXT_LENGTH) { padded[it].toLong() }
-            val mask = LongArray(CONTEXT_LENGTH) { if (it < ids.size) 1L else 0L }
-            val outputs = synchronized(lock) {
-                ExecutorchSessions.run(
-                    mod,
-                    listOf(
-                        EValue.from(Tensor.fromBlob(longIds, longArrayOf(1, CONTEXT_LENGTH.toLong()))),
-                        EValue.from(Tensor.fromBlob(mask, longArrayOf(1, CONTEXT_LENGTH.toLong()))),
-                    ),
-                )
-            } ?: return null
-            etFirstFloats(outputs, "text")
-        } catch (e: Throwable) {
-            Log.e(TAG, "clip ET text embedding failed, failing closed", e)
-            null
-        }
-    }
-
-    /**
-     * First output as a 512-d vector, accepting fp16-lowered graphs.
-     *
-     * The Vulkan fp16 pair may come back [DType.HALF]; failing closed there would
-     * silently null every ET call, so HALF is upcast loudly
-     * (see `floatsAllowingHalf`). Null means fail closed.
-     */
-    private fun etFirstFloats(outputs: Array<EValue>, tower: String): FloatArray? {
-        val vec = outputs.firstOrNull()?.floatsAllowingHalf("clip ET $tower tower", DIMENSION)
-            ?: return null
-        if (vec.size != DIMENSION) {
-            Log.w(TAG, "clip ET $tower tower produced ${vec.size} floats, want $DIMENSION")
-            return null
-        }
-        return vec
-    }
-
-    /** Free the ET pair. Idempotent. */
+    /** Free the network and close the weights file. Idempotent. */
     override fun close() {
-        synchronized(lock) {
-            etImage = null
-            etText = null
-            if (etImageKey.isNotEmpty()) ExecutorchSessions.close(etImageKey)
-            if (etTextKey.isNotEmpty()) ExecutorchSessions.close(etTextKey)
-            etImageKey = ""
-            etTextKey = ""
-        }
+        val live = handle
+        handle = 0L
+        if (live != 0L) MlNative.destroyTinyclip(live)
     }
 
     override fun toString(): String = "TinyCLIP from $source"
@@ -189,55 +100,63 @@ class ClipHandle private constructor(private val source: String) : AutoCloseable
         /** The longest tokenised query, including both special tokens. */
         const val CONTEXT_LENGTH = 77
 
-        /** Split-tower ET image graph (Vulkan fp16), downloaded — never bundled. */
-        const val IMAGE_ET_FILE = "tinyclip_image_vulkan_fp16.pte"
-
-        /** Split-tower ET text graph (Vulkan fp16), downloaded — never bundled. */
-        const val TEXT_ET_FILE = "tinyclip_text_vulkan_fp16.pte"
+        /** The one graph. Native checks its graph id, so a wrong file fails at load. */
+        const val GRAPH = "clip/tinyclip.maml"
 
         /**
-         * ET-only handle: the split-tower `.pte` pair from [etDir], fail-closed.
+         * The model from the APK's assets, which is the only place it lives.
          *
-         * The pair totals ~167 MB, so it is a runtime download (see `PhotosEtModels`
-         * in `:photos`), never a bundled asset: [etDir] is the app's external files
-         * directory and the files sit at its root under [IMAGE_ET_FILE]/[TEXT_ET_FILE].
-         *
-         * The pair is all-or-nothing: a half-open pair (one tower loaded, the other
-         * missing) would embed images and queries in two different spaces, so the
-         * loaded half is closed again and the handle reports unavailable.
-         * Construction never throws; a handle without the pair reports
-         * [ClipHandle.isAvailable] false and every embedding call returns null.
-         * No LiteRT fallback — failures log and return null.
+         * No `inDirectory` counterpart: at 22.6 MiB this is bundled, so
+         * there is no download directory to look in.
          */
-        fun inDirectory(
-            context: Context,
-            etDir: File,
-        ): ClipHandle {
-            val instance = ClipHandle(etDir.name)
-            context.applicationContext // keep signature for callers; ET path needs no Context
-            val backends = ExecutorchSessions.registeredBackends()
-            if (backends?.any { it.contains("Vulkan", ignoreCase = true) } == true) {
-                instance.etImageKey = "file:${File(etDir, IMAGE_ET_FILE).absolutePath}"
-                instance.etTextKey = "file:${File(etDir, TEXT_ET_FILE).absolutePath}"
-                val image = ExecutorchSessions.openPath(File(etDir, IMAGE_ET_FILE).absolutePath)
-                val text = ExecutorchSessions.openPath(File(etDir, TEXT_ET_FILE).absolutePath)
-                if (image != null && text != null) {
-                    instance.etImage = image
-                    instance.etText = text
-                    Log.i(TAG, "TinyCLIP ET pair open from $etDir")
-                } else {
-                    // Half-open pair: close the loaded half so both towers stay in one space.
-                    ExecutorchSessions.close(instance.etImageKey)
-                    ExecutorchSessions.close(instance.etTextKey)
-                    instance.etImageKey = ""
-                    instance.etTextKey = ""
-                    Log.e(TAG, "TinyCLIP ET pair incomplete in $etDir, failing closed")
-                }
+        fun inAssets(assets: AssetManager, path: String = GRAPH): ClipHandle {
+            val instance = ClipHandle("the APK's $path")
+            instance.handle = if (!MlNative.isAvailable) {
+                0L
             } else {
-                Log.e(TAG, "Vulkan backend absent, TinyCLIP ET pair unavailable, failing closed")
+                try {
+                    create(assets, path)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "cannot open $path", e)
+                    0L
+                }
             }
-            if (!instance.isAvailable) Log.e(TAG, "cannot open TinyCLIP ET pair in $etDir")
             return instance
+        }
+
+        /**
+         * Open the asset and hand the descriptor over.
+         *
+         * `use` rather than a bare `close`, and it is load-bearing in both directions — the same
+         * argument [SupertonicSynthesizer]'s asset path makes. On the happy path the descriptor has
+         * already been detached and `AssetFileDescriptor.close` only releases the wrapper; if
+         * `detachFd` throws instead, the close is the real one, and a leaked descriptor onto the APK
+         * would last the life of the process.
+         *
+         * The inner `finally` covers the remaining window: after the descriptor has been given up
+         * but before native has adopted it.
+         */
+        private fun create(assets: AssetManager, path: String): Long =
+            assets.openFd(path).use { afd ->
+                val fd = afd.parcelFileDescriptor.detachFd()
+                var handed = false
+                try {
+                    val handle = MlNative.createTinyclip(fd, afd.startOffset, afd.length)
+                    handed = true
+                    handle
+                } finally {
+                    if (!handed) closeFd(fd)
+                }
+            }
+
+        /**
+         * Close a bare descriptor.
+         *
+         * Adopting it into a [ParcelFileDescriptor] is the only way to reach `close(2)` from Kotlin.
+         * Failures are swallowed because the caller is already on an error path.
+         */
+        private fun closeFd(fd: Int) {
+            runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
         }
     }
 }

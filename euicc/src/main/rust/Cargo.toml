@@ -19,10 +19,3 @@ serde_json.workspace = true
 # Rust reaches the SM-DP+ over HTTP through the flat-framed JNI bridge in
 # library:network, so no TLS is linked into libeuicc.so.
 jni_http = { path = "../../../../library/jni-http/src/main/rust" }
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
-panic = "abort"

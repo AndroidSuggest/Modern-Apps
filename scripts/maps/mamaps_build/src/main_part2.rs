@@ -5,9 +5,13 @@ fn usage() {
         \x20                   --transit-routes ROUTES.geojsonseq\n\
         \x20                   --graph GRAPH_DIR\n\
         \x20                   --dem HEIGHTMAPS.mdem\n\
+        \x20                   [--region california|world]\n\
+        \x20                   [--build-graph-to DIR] [--build-poi-to DIR]\n\
         \n\
         \x20All six flags are required. Every build carries all 12 layers at\n\
-        \x20z0-14 as FORMAT_VERSION 7."
+        \x20z0-14 as FORMAT_VERSION 7. --region filters roads/pois/buildings\n\
+        \x20to the region (default world = no filter); everything else is\n\
+        \x20always included."
     );
 }
 
@@ -22,6 +26,134 @@ fn usage() {
 fn check_required(path: &std::path::Path, flag: &str) -> Result<(), String> {
     if path.as_os_str().is_empty() {
         return Err(format!("{flag} is required: every build carries all 12 layers"));
+    }
+    Ok(())
+}
+
+/// Validate the routing graph directory BEFORE stage A runs.
+///
+/// This is the failure the world build hit: an empty graph dir (no
+/// `metadata.bin` because `road_graph` never ran or wrote elsewhere), paid
+/// for with 43 minutes of stage A before `traffic` tried to read it. Every
+/// check here fails in seconds with the path in the message.
+///
+/// A region build additionally requires the graph to cover the region: a
+/// world graph beside a california tile build would silently double-cover
+/// traffic, and a california graph beside a world build would silently drop
+/// it outside the state. The graph's own node bbox is compared against the
+/// region's — it must at least touch it.
+fn check_graph_dir(dir: &std::path::Path, region: osm_ingest::region::Region) -> Result<(), String> {
+    let read = |name: &str| -> Result<Vec<u8>, String> {
+        let path = dir.join(name);
+        std::fs::read(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))
+    };
+    // `metadata.bin` first: its absence is THE failure (empty dir), and its
+    // counts size every other check.
+    let meta = read("metadata.bin")?;
+    if meta.len() < 40 {
+        return Err(format!(
+            "metadata.bin is {} bytes, a v6 MARG header is 40 — is {} a graph dir?",
+            meta.len(),
+            dir.display(),
+        ));
+    }
+    let u32_at = |b: &[u8], at: usize| u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]);
+    let u64_at = |b: &[u8], at: usize| {
+        u64::from_le_bytes([
+            b[at], b[at + 1], b[at + 2], b[at + 3], b[at + 4], b[at + 5], b[at + 6], b[at + 7],
+        ])
+    };
+    if u32_at(&meta, 0) != 0x4752_414D {
+        return Err(format!("{} is not a MARG graph header", dir.join("metadata.bin").display()));
+    }
+    let version = u32_at(&meta, 4);
+    if version != 6 {
+        return Err(format!("the graph is version {version}; this build reads v6"));
+    }
+    let node_count = u64_at(&meta, 8);
+    let edge_count = u64_at(&meta, 16);
+    if node_count == 0 {
+        return Err(format!("the graph at {} has 0 nodes — road_graph wrote nothing?", dir.display()));
+    }
+    // The remaining files must exist and match the header's counts.
+    let nodes = read("nodes.bin")?;
+    let want_nodes = (node_count + 1).checked_mul(12).ok_or_else(|| "node table size overflows".to_string())?;
+    if nodes.len() as u64 != want_nodes {
+        return Err(format!(
+            "nodes.bin is {} bytes, expected {want_nodes} for {node_count}+1 records — stale graph dir?",
+            nodes.len(),
+        ));
+    }
+    let edges = read("edges.bin")?;
+    let want_edges_min = ((edge_count * 7 + 7) & !7) as usize;
+    if edges.len() < want_edges_min {
+        return Err(format!(
+            "edges.bin is {} bytes, too short for {edge_count} edges — stale graph dir?",
+            edges.len(),
+        ));
+    }
+    let inter = read("intermediate.bin")?;
+    if inter.len() < 8 {
+        return Err(format!(
+            "intermediate.bin is {} bytes — stale graph dir?",
+            inter.len(),
+        ));
+    }
+    println!("graph ok: {node_count} node(s), {edge_count} edge(s) at {}", dir.display());
+
+    // Region coverage: the graph's live extent must touch the region's. A
+    // region graph covers only the region (world nodes outside it are dropped
+    // at collapse), so the extent is the proof the graph and the region agree.
+    //
+    // Sampled by STRIDE, not by prefix: `nodes.bin` is Morton-ordered, so the
+    // first 1M records are one corner of the spatial curve, not the world.
+    // Stepping across the whole file touches every part of the curve for the
+    // cost of ~1M random 12-byte reads.
+    if let Some(b) = region.bbox() {
+        let (mut min_lon, mut min_lat) = (i32::MAX, i32::MAX);
+        let (mut max_lon, mut max_lat) = (i32::MIN, i32::MIN);
+        let stride = (node_count / 1_000_000).max(1);
+        let mut sampled = 0u64;
+        let mut n = 0u64;
+        while n < node_count {
+            let base = (n as usize) * 12;
+            let (lat, lon) = (
+                i32::from_le_bytes(nodes[base..base + 4].try_into().unwrap()),
+                i32::from_le_bytes(nodes[base + 4..base + 8].try_into().unwrap()),
+            );
+            // The trailing sentinel record is (0, 0); skip it and any node the
+            // build left at the origin.
+            if lat != 0 || lon != 0 {
+                min_lon = min_lon.min(lon);
+                min_lat = min_lat.min(lat);
+                max_lon = max_lon.max(lon);
+                max_lat = max_lat.max(lat);
+                sampled += 1;
+            }
+            n += stride;
+        }
+        if sampled == 0 {
+            return Err(format!(
+                "the graph at {} has no located nodes — road_graph wrote nothing?",
+                dir.display(),
+            ));
+        }
+        let touches = !(max_lon < (b.min_lon * 1e7).round() as i32
+            || min_lon > (b.max_lon * 1e7).round() as i32
+            || max_lat < (b.min_lat * 1e7).round() as i32
+            || min_lat > (b.max_lat * 1e7).round() as i32);
+        if !touches {
+            return Err(format!(
+                "the graph at {} covers lon {:.1}..{:.1}, lat {:.1}..{:.1}, which does not touch the {} region — wrong --graph for --region {}?",
+                dir.display(),
+                min_lon as f64 * 1e-7,
+                max_lon as f64 * 1e-7,
+                min_lat as f64 * 1e-7,
+                max_lat as f64 * 1e-7,
+                region.name(),
+                region.name(),
+            ));
+        }
     }
     Ok(())
 }
@@ -65,11 +197,12 @@ mod tests {
     fn a_build_id_follows_the_inputs_that_decide_the_output() {
         let path = std::path::Path::new("nonexistent.osm.pbf");
         let all = schema::Layers::all();
-        let base = derive_build_id(path, all, 0, 14, 1.0, 100);
-        assert_eq!(base, derive_build_id(path, all, 0, 14, 1.0, 100), "stable");
+        let base = derive_build_id(path, all, 0, 14, 1.0, 100, "world");
+        assert_eq!(base, derive_build_id(path, all, 0, 14, 1.0, 100, "world"), "stable");
         for other in [
-            derive_build_id(path, all, 0, 14, 2.0, 100),
-            derive_build_id(path, all, 0, 14, 1.0, 101),
+            derive_build_id(path, all, 0, 14, 2.0, 100, "world"),
+            derive_build_id(path, all, 0, 14, 1.0, 101, "world"),
+            derive_build_id(path, all, 0, 14, 1.0, 100, "california"),
             derive_build_id(
                 std::path::Path::new("other.osm.pbf"),
                 all,
@@ -77,9 +210,33 @@ mod tests {
                 14,
                 1.0,
                 100,
+                "world",
             ),
         ] {
             assert_ne!(base, other, "a changed input should change the id");
         }
+    }
+
+    /// A missing or stale graph dir fails HERE, in seconds — not 43 minutes
+    /// into stage A when `traffic` first reads it. That is the world-build
+    /// failure this exists for: an empty graph dir with no `metadata.bin`.
+    #[test]
+    fn a_missing_graph_fails_before_stage_a() {
+        use osm_ingest::region::Region;
+        let missing = std::path::Path::new("no_such_graph_dir_xyz");
+        let err = check_graph_dir(missing, Region::World).expect_err("missing dir must fail");
+        assert!(err.contains("cannot read"), "{err}");
+        // An empty dir: no metadata.bin is the reported failure.
+        let dir = std::env::temp_dir()
+            .join(format!("mamaps_graphcheck_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let err = check_graph_dir(&dir, Region::World).expect_err("empty dir must fail");
+        assert!(err.contains("metadata.bin"), "{err}");
+        // A bad magic: not a graph dir at all.
+        std::fs::write(dir.join("metadata.bin"), vec![0u8; 40]).unwrap();
+        let err = check_graph_dir(&dir, Region::World).expect_err("bad magic must fail");
+        assert!(err.contains("MARG"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

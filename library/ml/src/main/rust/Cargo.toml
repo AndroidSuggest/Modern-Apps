@@ -1,51 +1,43 @@
+# The Vulkan compute ML runtime for `:library:ml`.
+#
+# Replaces `com.github.vayun-mathur:ncnn-android` for the two pure-CNN vision models
+# the repo ships: MediaPipe Selfie Segmentation (`:camera` portrait bokeh) and U^2-Net
+# portable (`:photos` auto-select-subject). ncnn stays for the two face models in
+# `:photos` and for `:library:ocr`, `:pdf`, `:translate` and `:speech`.
+#
+# Why this exists: the ncnn fork is built CPU-only (`NCNN_VULKAN=OFF`) and compiles
+# ncnn's entire layer registry into one `libncnn_android.so` for models that use a
+# small fraction of it. This runs on Vulkan compute with our own weights encoding and
+# only the ~11 shaders these two nets need.
+#
+# Why `ash` and not `androidx.webgpu`: the same reasoning as `library/map` — read the
+# header comment there. `features = ["loaded"]` dlopens the platform's Vulkan loader and
+# links nothing, so the only native code shipped is our own — and so the same code runs
+# on a development host, which is where the shaders get exercised before a phone sees
+# them.
+#
+# There is no graph interpreter: each net's forward pass is hardcoded Rust in `nets/`,
+# so a `.maml` file carries ordered tensors and no topology. See `src/weights.rs`.
+
 [package]
-name = "ml_vulkan"
+name = "modelrunner"
 version = "0.1.0"
 edition = "2021"
 publish = false
+license = "GPL-2.0-only"
+description = "Vulkan compute ML runtime: .maml weights in, segmentation mask out"
 
 [lib]
-name = "ml_vulkan"
-crate-type = ["cdylib"]
-doc = false
-
-[features]
-default = []
-vulkan = ["dep:onnx-vulkan", "dep:ash"]
+name = "modelrunner"
+# cdylib for the JNI surface; rlib so the host test binary can link it and exercise
+# the `.maml` reader and the CPU preprocessing without a device.
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 jni.workspace = true
-log.workspace = true
-anyhow = "1.0.75"
-thiserror = "2"
-onnx-vulkan = { git = "https://github.com/automataIA/onnx-vulkan-rs", rev = "c3aa968", optional = true }
-ash = { version = "0.38", optional = true }
 
-[lints]
-workspace = true
-
-# Task 5 (android-vulkan-bringup, owner: vendor-dev): `[patch.crates-io]`
-# template for the Android patches described in VENDORING.md (loader path,
-# OnceLock multi-session, allocator tuning). Commented out until the vendored
-# trees land under `third_party/`: an active `path` override pointing at a
-# missing directory would break every build, and landing the trees is a
-# follow-up that needs an Android build to verify. When the trees land,
-# uncomment, mirror to the workspace root if cargo only honours the root
-# table, refresh the lockfile with `--locked`, and run `cargo deny check`.
-# Never a `git` URL here: `deny.toml` `[sources]` stays `allow-git = []`.
-# [patch.crates-io]
-# onnx-vulkan = { path = "../../../../../third_party/onnx-vulkan" }
-# vk-compute = { path = "../../../../../third_party/vk-compute" }
-# onnx-vulkan-core = { path = "../../../../../third_party/onnx-vulkan-core" }
-
-# c_char fix (ash 0.38 expects *const c_char): vendored vk-compute with the
-# three `as_ptr() as *const c_char` casts in `src/context.rs`.
-# NOTE: cargo only honours [patch] in the workspace root, so this entry is
-# mirrored in the repo-root Cargo.toml; this copy documents the override
-# alongside the vendored tree per VENDORING.md.
-[patch."https://github.com/automataIA/onnx-vulkan-rs"]
-vk-compute = { path = "vendor/vk-compute" }
-onnx-vulkan = { path = "vendor/onnx-vulkan" }
-onnx-vulkan-core = { path = "vendor/onnx-vulkan-core" }
-onnx-vulkan-frontend = { path = "vendor/onnx-vulkan-frontend" }
-onnx-vulkan-tune = { path = "vendor/onnx-vulkan-tune" }
+# `default-features = false` drops the `linked` feature, so nothing links against
+# libvulkan at build time; `loaded` dlopens it, which is what an Android app must do
+# anyway. It is not android-gated: `loaded` finds the platform loader on the host too,
+# which is the only way the shaders ever get executed before they reach a phone.
+ash = { version = "0.38", default-features = false, features = ["loaded"] }

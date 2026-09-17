@@ -59,6 +59,20 @@ data class MapOptions(
 )
 
 /**
+ * Which planetary body the map draws.
+ *
+ * Earth is the vector basemap this library has always drawn. Moon is the NASA
+ * SVS CGI Moon Kit raster pair (LROC color + LOLA elevation) bent onto the same
+ * globe path — maps-only, session-scoped, and only meaningful while the globe
+ * is active (zoomed out). Every other host keeps the default without knowing
+ * this exists.
+ */
+enum class MapBody {
+    Earth,
+    Moon,
+}
+
+/**
  * Where the renderer reads its tiles from.
  */
 enum class TileSource {

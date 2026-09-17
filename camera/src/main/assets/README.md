@@ -16,16 +16,6 @@ Run at 256×256 RGB, rescale 1/255 and **no** mean/std (`do_normalize: false`
 upstream), output a single 256×256 alpha channel through a sigmoid. Consumed by
 `SelfieSegmenter` from `BokehAnalyzer` and `PortraitBokeh.StillBokehRenderer`.
 
-## `selfie_segmentation_vulkan_fp16.pte`
-
-ExecuTorch export of the same MediaPipe family for the Vulkan delegate (fp16, ~275 KB):
-`forward` takes `[1,3,256,256]` NCHW float32 — the planar buffer `stretchPlanar` already
-produces, so there is no CHW→NHWC interleave — and returns `[1,1,256,256]`.
-From https://huggingface.co/software-mansion/react-native-executorch-selfie-segmentation
-(Apache-2.0; staged under `analysis/et-selfie/`, gitignored). This is the only selfie
-runtime: a missing file, an unlinked Vulkan delegate, or a failed run fails closed
-(no mask), with no `.tflite` fallback.
-
 This replaces `erdnet.{param,bin}`, which was added in `72dde80df` with no upstream
 URL, license or conversion recipe. It was Caffe-derived from nihui's ncnn demo
 family, had no obtainable ONNX, and so could not be attributed or rebuilt — see

@@ -48,7 +48,6 @@ class MetadataPreviews {
                     loading = false,
                     health = sampleHealthConnect(),
                 ),
-                ownerName = "Sam Rivera",
             )
         }
     }

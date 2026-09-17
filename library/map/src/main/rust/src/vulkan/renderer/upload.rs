@@ -346,6 +346,7 @@ impl Renderer {
 
     /// Free anything whose grace period has expired.
     pub(super) fn collect_retired(&mut self) {
+        self.collect_moon_retired();
         let device = &self.context.device;
         self.retiring.retain_mut(|(remaining, tile)| {
             if *remaining > 0 {

@@ -55,10 +55,3 @@ der.workspace = true
 # `hayro-jbig2` is a SHARED component (also a normal dependency above), so JBIG2
 # is deliberately outside the differential corpus.
 hayro = "0.7.1"
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-panic = "unwind"
-strip = "debuginfo"

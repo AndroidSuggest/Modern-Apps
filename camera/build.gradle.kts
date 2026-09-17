@@ -15,11 +15,10 @@ android {
         applicationId = "com.vayunmathur.camera"
     }
     androidResources {
-        // The ExecuTorch Vulkan model is staged the same way: ExecutorchSessions
-        // copies it out of the APK before Module.load, so it must not be deflated.
-        // Quantised weights barely deflate, and a compressed asset would have to
-        // be inflated into a heap buffer first.
-        noCompress += "pte"
+        // selfie_segmentation.maml is read straight out of the APK by SelfieSegmenter, so
+        // leave it uncompressed: fp16 weights barely deflate, and a compressed asset would
+        // have to be inflated into a heap buffer before it could be uploaded.
+        noCompress += "maml"
     }
 }
 

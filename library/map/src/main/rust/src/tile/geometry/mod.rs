@@ -27,9 +27,15 @@ mod tests_drape;
 #[cfg(test)]
 mod tests_extra;
 #[cfg(test)]
+mod tests_extra5;
+#[cfg(test)]
 mod tests_extra2;
 #[cfg(test)]
+mod tests_extra6;
+#[cfg(test)]
 mod tests_extra3;
+#[cfg(test)]
+mod tests_extra7;
 #[cfg(test)]
 mod tests_extra4;
 

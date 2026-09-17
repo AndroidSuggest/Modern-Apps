@@ -20,7 +20,11 @@
 mod assemble;
 mod attributes;
 mod pipelines;
+mod pipelines_attrs;
 mod pipelines_extra;
+mod pipelines_globe;
+mod pipelines_moon;
+mod pipelines_symbols;
 mod push;
 mod shaders;
 mod state;

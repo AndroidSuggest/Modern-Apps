@@ -29,13 +29,10 @@ dependencies {
     // display images
     implementation(project(":library:image"))
 
-    // ai: conversational LLM (Gemma) via LiteRT-LM. Vision/OCR/speech models run on
-    // :library:ml's reduced ONNX Runtime build; see library/ml/build.gradle.kts.
-    implementation(libs.litertlm.android)
+    // ai: this repo's own Vulkan runtime, which replaced com.google.ai.edge.litertlm and
+    // its 19.83 MB liblitertlm_jni.so. The weights are the same Gemma 4 E2B, converted to
+    // .maml by scripts/ml/maml_convert.py.
     implementation(project(":library:ml"))
-    // ExecuTorch Module API for the SpinQuant `.pte` path (Gemma4EtEngine). Same catalog
-    // pin as :library:ml, so Gradle dedupes the AAR rather than packaging it twice.
-    implementation(libs.executorch.android)
     // ToolRegistry reflects over AssistantToolSet's @Tool methods. This used to arrive
     // transitively through the litertlm AAR, so removing that dependency took it away.
     implementation(libs.kotlin.reflect)

@@ -44,6 +44,7 @@ import com.vayunmathur.library.util.NavBackStack
 fun MapSettingsPage(backStack: NavBackStack<Route>, viewModel: MapSettingsViewModel) {
     val theme by viewModel.themeMode.collectAsState()
     val voice by viewModel.voiceGuidance.collectAsState()
+    val globe by viewModel.globeEnabled.collectAsState()
 
     // Pre-resolve option labels — the SettingsSelectRow `label` lambda is a plain
     // (non-@Composable) function, so stringResource can't be called inside it.
@@ -72,6 +73,13 @@ fun MapSettingsPage(backStack: NavBackStack<Route>, viewModel: MapSettingsViewMo
                     label = { themeLabels.getValue(it) },
                     onSelect = { viewModel.setThemeMode(it) },
                     leadingContent = { IconClearNight() },
+                )
+                SettingsSwitchRow(
+                    title = stringResource(R.string.settings_globe),
+                    supportingText = stringResource(R.string.settings_globe_desc),
+                    checked = globe,
+                    onCheckedChange = { viewModel.setGlobeEnabled(it) },
+                    leadingContent = { IconStar() },
                 )
             }
 

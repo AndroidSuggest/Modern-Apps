@@ -32,14 +32,6 @@ import kotlinx.serialization.serializer
 import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
-import com.google.ai.edge.litertlm.Tool
-import com.google.ai.edge.litertlm.ToolParam
-import com.google.ai.edge.litertlm.ToolSet as LiteRtToolSet
-import com.vayunmathur.library.ml.GemmaToolDeclaration
-import kotlin.reflect.KFunction
-import kotlin.reflect.KParameter
-import kotlin.reflect.KVisibility
-import kotlin.reflect.full.findAnnotation
 
 object JsonSchemaValidator {
     fun validateJsonAgainstSchema(jsonString: String, schemaString: String): String? {
@@ -142,7 +134,7 @@ class AssistantToolSet(
     private val memoryDao: MemoryDao? = null,
     private val messageDao: MessageDao? = null,
     private val conversationId: Long = -1L
-) : LiteRtToolSet {
+) : ToolSet {
 
     companion object {
         private val APP_NAMES = mapOf(
@@ -347,109 +339,6 @@ class AssistantToolSet(
 
 class MissingAppException(val packageName: String) : Exception("App $packageName is not installed.")
 class StopInferenceException : Exception("STOP")
-
-/**
- * This tool table in [GemmaToolDeclaration] form, for the ExecuTorch engine.
- *
- * litertlm's `tool(this)` reflects over the same `@Tool` methods to build its own table;
- * this mirrors that reflection (snake_case names from [camelToSnake], required from
- * `KParameter.isOptional`, descriptions from `@Tool`/`@ToolParam`) so the prompt the ET
- * engine prefills declares the identical table the `.litertlm` path would. A parameter type
- * outside litertlm's schema map is described as STRING so encoding never fails — the same
- * degraded-but-present choice litertlm's `getTypeJsonSchema` makes for unknown classes.
- */
-fun AssistantToolSet.gemmaDeclarations(): List<GemmaToolDeclaration> =
-    this::class.members
-        .filterIsInstance<KFunction<*>>()
-        .filter { it.visibility == KVisibility.PUBLIC && it.findAnnotation<Tool>() != null }
-        .sortedBy { it.name }
-        .map { fn ->
-            val description = fn.findAnnotation<Tool>()?.description.orEmpty()
-            val params = fn.parameters
-                .filter { it.kind == KParameter.Kind.VALUE }
-                .map { param ->
-                    val paramDescription =
-                        param.findAnnotation<ToolParam>()?.description ?: param.name.orEmpty()
-                    GemmaToolDeclaration.Parameter(
-                        name = camelToSnake(param.name.orEmpty()),
-                        description = paramDescription,
-                        type = gemmaJsonType(param),
-                        required = !param.isOptional,
-                    )
-                }
-            GemmaToolDeclaration(
-                name = camelToSnake(fn.name),
-                description = description,
-                parameters = params,
-            )
-        }
-
-/**
- * litertlm's `camelToSnakeCase` (`ToolKt`, regex `(?<=[a-zA-Z])[A-Z]` → `_` + lowercase,
- * ROOT locale): `create_calendar_event` stays, `set_conversation_title` stays.
- */
-private fun camelToSnake(name: String): String =
-    Regex("(?<=[a-zA-Z])[A-Z]").replace(name) { "_${it.value}" }.lowercase(java.util.Locale.ROOT)
-
-/**
- * litertlm's `javaTypeToJsonTypeString` (`ReflectionTool` static init), uppercased for
- * [GemmaToolDeclaration] (which renders `type.uppercase()`): String→STRING, Int→INTEGER,
- * Boolean→BOOLEAN, Float/Double→NUMBER, anything else→STRING.
- */
-private fun gemmaJsonType(param: KParameter): String {
-    val classifier = param.type.classifier
-    return when (classifier) {
-        String::class -> "STRING"
-        Int::class -> "INTEGER"
-        Boolean::class -> "BOOLEAN"
-        Float::class, Double::class -> "NUMBER"
-        else -> "STRING"
-    }
-}
-
-/**
- * Invoke the `@Tool` method named [snakeName] with string [arguments], for the ET engine's
- * tool loop.
- *
- * The model sees snake_case names ([gemmaDeclarations]); reflection maps them back to the
- * Kotlin members. Doubles parse from strings; a missing optional falls back to `callBy`
- * (which fills defaults); anything unconvertible is dropped so the default applies rather
- * than failing the call. Returns null when no method matches.
- */
-fun AssistantToolSet.invokeGemmaTool(snakeName: String, arguments: Map<String, String>): String? {
-    val fn = this::class.members
-        .filterIsInstance<KFunction<*>>()
-        .firstOrNull { it.findAnnotation<Tool>() != null && camelToSnake(it.name) == snakeName }
-        ?: return null
-    val args = HashMap<KParameter, Any?>()
-    for (param in fn.parameters) {
-        when (param.kind) {
-            KParameter.Kind.INSTANCE -> args[param] = this
-            KParameter.Kind.VALUE -> {
-                val raw = arguments[camelToSnake(param.name.orEmpty())]
-                if (raw == null) {
-                    if (!param.isOptional) return "Error: missing required parameter '${param.name}'"
-                    continue
-                }
-                args[param] = when (param.type.classifier) {
-                    Double::class -> raw.toDoubleOrNull() ?: return "Error: '${param.name}' is not a number"
-                    Float::class -> raw.toFloatOrNull() ?: return "Error: '${param.name}' is not a number"
-                    Int::class -> raw.toDoubleOrNull()?.toInt()
-                        ?: return "Error: '${param.name}' is not a number"
-                    Boolean::class -> raw.toBooleanStrictOrNull()
-                        ?: return "Error: '${param.name}' is not true/false"
-                    else -> raw
-                }
-            }
-            else -> return "Error: unsupported parameter kind for '${param.name}'"
-        }
-    }
-    return try {
-        fn.callBy(args)?.toString() ?: "Success"
-    } catch (e: Exception) {
-        "Error: ${e.message}"
-    }
-}
 
 @kotlinx.serialization.Serializable
 data class WeatherLatLonRequest(val latitude: Double, val longitude: Double)

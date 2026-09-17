@@ -31,6 +31,24 @@ pub struct Renderer {
     /// all.
     pub(crate) sprite_atlas: Option<SampledImage>,
     pub(crate) sprite_set: Option<vk::DescriptorSet>,
+    /// Moon raster pair (maps-only lunar globe): LROC color + LDEM elevation,
+    /// uploaded once via [`Renderer::set_moon_textures`](Self::set_moon_textures)
+    /// from the JNI `setMoonTextures` push. `None` until the host pushes (or on
+    /// a host that never does), in which case a Moon frame draws the clear
+    /// colour rather than failing the frame.
+    pub(crate) moon_color: Option<SampledImage>,
+    pub(crate) moon_dem: Option<SampledImage>,
+    /// Moon-owned descriptor pool + sets (color set 0, DEM set 1) for the Moon
+    /// pipeline's two-image layout. `None` until the first `set_moon_textures`
+    /// push; recreated (old pool destroyed) on every re-push, so a re-attach
+    /// re-uploads rather than leaking.
+    pub(crate) moon_pool: Option<vk::DescriptorPool>,
+    pub(crate) moon_set: Option<vk::DescriptorSet>,
+    /// Retired Moon images + pools waiting out the frames-in-flight grace (see
+    /// `collect_moon_retired`, drained from `collect_retired`).
+    pub(crate) moon_retiring: Vec<(usize, super::upload_moon::MoonRetired)>,
+    /// Per-frame synchronisation and its command buffer.
+    pub(crate) frames: Vec<Frame>,
     pub(crate) command_pool: vk::CommandPool,
     /// Per-frame scratch, reused across frames rather than reallocated per record.
     ///
@@ -58,8 +76,6 @@ pub struct Renderer {
     pub(crate) scratch_tile_alpha: std::collections::HashMap<u64, f32>,
     /// `(tile key, layer index)` symbol draws deferred past the buildings pass.
     pub(crate) scratch_deferred_symbols: Vec<(u64, usize)>,
-    /// Per-frame synchronisation and its command buffer.
-    pub(crate) frames: Vec<Frame>,
     pub(crate) frame_index: usize,
     pub(crate) tiles: HashMap<u64, ResidentTile>,
     /// Retired buffers waiting for the frames that might still reference them.

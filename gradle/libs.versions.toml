@@ -80,7 +80,6 @@ androidxTestCore = "1.7.0"
 androidxTestExtJunit = "1.3.0"
 
 # Google libraries
-# One key for the entire protobuf toolchain
 # One key for the entire protobuf toolchain — protobuf-java, protobuf-javalite and the protoc
 # compiler. Generated sources and the runtime that parses them must come from the same release,
 # so these are deliberately not separable: a bump here moves compiler and runtime together.
@@ -107,15 +106,6 @@ apksig = "8.7.3"
 
 # JavaScript engines & HTML
 quickjs = "1.0.15"
-
-# On-device AI
-onnxruntimeAndroid = "1.27.0"
-onnxruntimeReduced = "1.27.0-r1"
-litertlmAndroid = "0.14.0"
-litert = "2.1.0"
-# ExecuTorch (XNNPACK-lowered .pte models, e.g. selfie segmentation). Maven Central
-# latest stable; verified 1.4.0 on 2026-09-16 (org.pytorch:executorch-android).
-executorch = "1.4.0"
 
 # Git
 jgit = "7.8.0.202609011348-r"
@@ -297,30 +287,6 @@ apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
 
 # JavaScript engines & HTML
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjs" }
-
-# On-device AI: reduced-operator ORT rebuild (arm64-only). Version tracks upstream plus an
-# -rN suffix for the operator-set revision, so a rebuild with different ops gets a new version.
-# CURRENTLY UNUSED: 1.27.0-r1 lacks Conv(11) and other vision ops. Kept pinned so the -r2
-# rebuild has a base to extend. :library:ml uses the full build until then.
-onnxruntime-reduced-android = { module = "io.github.vayun-mathur:onnxruntime-reduced-android", version.ref = "onnxruntimeReduced" }
-# Full ONNX Runtime: every op, ~28 MB native. Temporary until the -r2 reduced rebuild.
-onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntimeAndroid" }
-# Conversational LLM (Gemma) via LiteRT-LM. litertlm 0.14.0 is compiled against coroutines
-# 1.11.0 (close$default moved onto the SendChannel interface via -Xjvm-default=all); older
-# versions crash its JNI callback with NoSuchMethodError, so keep kotlinxCoroutines at 1.11.0.
-litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlmAndroid" }
-# LiteRT (TFLite) runtime for the quantized .tflite ladder (ladder_v2 ship rungs).
-# Google Maven, single self-contained `litert` artifact (CompiledModel API +
-# libLiteRt.so; no litert-api split yet at 2.1.0, so no duplicate-namespace clash).
-litert-android = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
-# ExecuTorch runtime for XNNPACK-lowered .pte models. Single `executorch-android` AAR
-# (org.pytorch.executorch.Module API + libexecutorch.so; fbjni/soloader come transitively).
-executorch-android = { module = "org.pytorch:executorch-android", version.ref = "executorch" }
-# fbjni + soloader: transitive deps of executorch-android above, pinned to the versions in its
-# POM (0.7.0 / 0.10.5). Needed explicitly because :library:ml consumes the custom Vulkan AAR
-# (library/ml/libs/) as a file dep, which carries no POM.
-fbjni = { module = "com.facebook.fbjni:fbjni", version = "0.7.0" }
-soloader-nativeloader = { module = "com.facebook.soloader:nativeloader", version = "0.10.5" }
 
 # Git
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }

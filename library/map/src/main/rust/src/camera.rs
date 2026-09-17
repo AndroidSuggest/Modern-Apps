@@ -43,6 +43,22 @@ pub struct Camera {
     pub height_dp: f32,
     /// Device pixels per Dp. The only place a physical pixel enters.
     pub density: f32,
+    /// Whether this frame draws the Moon instead of the Earth vector basemap.
+    ///
+    /// Only read while [`globe_active`] holds: the Moon path skips tile
+    /// selection/fetch entirely (the raster pair is one uploaded texture, not
+    /// tiles) and draws the textured sphere instead. False on every path but
+    /// the maps body switch.
+    pub moon: bool,
+    /// Whether to draw the orthographic-sphere globe rather than the flat map.
+    ///
+    /// False on every path but the phone globe toggle (and always false past
+    /// [`GLOBE_FLAT_THRESHOLD`], where the sphere is sub-pixel from flat): the
+    /// flat derivation below is then taken bit-for-bit as before. When true,
+    /// [`tile_to_clip`](Self::tile_to_clip) bends each tile onto the sphere and
+    /// [`visible`](crate::tile::select::visible) selects the disc the viewport
+    /// sees.
+    pub globe: bool,
     /// Which compass direction points **up** the screen, in degrees clockwise from
     /// north. Zero is north-up, which is every path but heading-up car navigation.
     ///
@@ -133,6 +149,64 @@ pub fn unproject(x: f64, y: f64, zoom: f64) -> (f64, f64) {
     let n = std::f64::consts::PI - 2.0 * std::f64::consts::PI * y / size;
     let lat = n.sinh().atan() * 180.0 / std::f64::consts::PI;
     (lon, lat)
+}
+
+/// Past this zoom the sphere is sub-pixel from flat, so [`Camera::tile_to_clip`]
+/// and the Kotlin `Projection` both take the flat path bit-identically. Must stay
+/// in step with the Kotlin `GLOBE_DETAIL_ZOOM`.
+pub const GLOBE_FLAT_THRESHOLD: f64 = 8.0;
+
+/// Screen radius of the globe in Dp: half the world width at this zoom, so the
+/// sphere shows half the planet across its diameter. Mirrors the Kotlin
+/// `Projection.globeRadius`.
+pub fn globe_radius(zoom: f64) -> f64 {
+    world_size(zoom) / 2.0
+}
+
+/// Whether this camera draws the globe: the flag on, and close enough out that
+/// the sphere reads as a sphere rather than as the flat map.
+pub fn globe_active(camera: &Camera) -> bool {
+    camera.globe && camera.zoom < GLOBE_FLAT_THRESHOLD
+}
+
+/// Whether this frame draws the Moon: Moon selected *and* the globe active.
+/// Below the threshold the Moon reads as Earth (flat vector path), so a
+/// zoomed-in Moon never shows a stale raster.
+pub fn moon_active(camera: &Camera) -> bool {
+    camera.moon && globe_active(camera)
+}
+
+/// 3D unit-sphere point of (`lon`, `lat`) in the basis facing the camera centre:
+/// the centre maps to (0, 0, 1), east is +x, north is +y, the far side is z < 0.
+/// Mirrors the Kotlin `globePoint`, which must stay in step.
+pub fn globe_point(center_lon: f64, center_lat: f64, lon: f64, lat: f64) -> (f64, f64, f64) {
+    use std::f64::consts::PI;
+    let lat_r = lat * PI / 180.0;
+    let d_lon = (lon - center_lon) * PI / 180.0;
+    let c_lat_r = center_lat * PI / 180.0;
+    let (sy, cy) = (c_lat_r.sin(), c_lat_r.cos());
+    let cos_lat = lat_r.cos();
+    let sin_lat = lat_r.sin();
+    let x = cos_lat * d_lon.sin();
+    let y = cy * sin_lat - sy * cos_lat * d_lon.cos();
+    let z = sy * sin_lat + cy * cos_lat * d_lon.cos();
+    (x, y, z)
+}
+
+/// Inverse of [`globe_point`]: the lon/lat of a unit-sphere point in the
+/// centre-facing basis. Mirrors the Kotlin `globeLonLat`.
+pub fn globe_lonlat(center_lon: f64, center_lat: f64, x: f64, y: f64, z: f64) -> (f64, f64) {
+    use std::f64::consts::PI;
+    let c_lat_r = center_lat * PI / 180.0;
+    let (sy, cy) = (c_lat_r.sin(), c_lat_r.cos());
+    let ex = x;
+    let ey = cy * y + sy * z;
+    let ez = -sy * y + cy * z;
+    let lat = ey.clamp(-1.0, 1.0).asin() * 180.0 / PI;
+    let lon = center_lon + ex.atan2(ez) * 180.0 / PI;
+    // Wrap to -180..180.
+    let lon = ((lon + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
+    (lon, lat.clamp(-90.0, 90.0))
 }
 
 // device-verifier: mtime bump to force cargo recompile (no semantic change)

@@ -12,5 +12,7 @@ pub mod placement;
 pub mod select;
 pub mod source;
 pub mod sprite;
+pub mod sprite_extra;
 pub mod symbol;
 pub mod taper;
+pub mod taper_extra;

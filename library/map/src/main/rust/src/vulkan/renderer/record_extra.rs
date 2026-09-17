@@ -42,6 +42,9 @@ impl Renderer {
         ordered: &[u64],
         fog: u32,
         submitted: &mut usize,
+        // This frame's globe flag: globe ribbon pipeline + sphere push below, or
+        // the flat path bit-identically above.
+        globe: bool,
     ) {
         let device = &self.context.device;
         let floor = camera.zoom.floor().clamp(0.0, 22.0) as u8;
@@ -82,7 +85,11 @@ impl Renderer {
                     device.cmd_bind_pipeline(
                         command_buffer,
                         vk::PipelineBindPoint::GRAPHICS,
-                        self.pipelines.ribbon,
+                        if globe {
+                            self.pipelines.ribbon_globe
+                        } else {
+                            self.pipelines.ribbon
+                        },
                     );
                     bound = true;
                 }
@@ -114,12 +121,23 @@ impl Renderer {
                         centre_t,
                         f32::from(road.oneway),
                     ],
-                    misc: [tile_span_px, edge_aa, yellow, camera.time_seconds],
+                    misc: if globe {
+                        // Globe: centre lon/lat (degrees) for the sphere basis.
+                        [camera.center_lon as f32, camera.center_lat as f32, yellow, camera.time_seconds]
+                    } else {
+                        [tile_span_px, edge_aa, yellow, camera.time_seconds]
+                    },
                     // The markings are static, so unlike the traffic draw there is no phase to
                     // animate and nothing to fade: `MORPH_NONE` is what the ribbon contract asks
                     // for. `morph.z` is the tile's world-px span (Dp) — the draped-`z` scale,
-                    // mirroring the flat layer loop.
-                    morph: [MORPH_NONE[0], 0.0, camera.tile_span_dp(tile.z) as f32, 0.0],
+                    // mirroring the flat layer loop. On the globe it is the globe radius
+                    // (Dp) instead, and morph.xy the half-viewport (Dp).
+                    morph: if globe {
+                        let r = crate::camera::globe_radius(camera.zoom) as f32;
+                        [MORPH_NONE[0], camera.width_dp / 2.0, r, camera.height_dp / 2.0]
+                    } else {
+                        [MORPH_NONE[0], 0.0, camera.tile_span_dp(tile.z) as f32, 0.0]
+                    },
                 };
                 device.cmd_push_constants(
                     command_buffer,

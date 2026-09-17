@@ -1,7 +1,6 @@
 package com.vayunmathur.emergency.ui
 
 import android.os.Bundle
-import android.os.UserManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,7 +22,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.emergency.R
 import com.vayunmathur.emergency.data.AllergyCriticality
 import com.vayunmathur.emergency.data.EmergencyInfo
-import com.vayunmathur.emergency.data.EmergencyKeys
 import com.vayunmathur.emergency.platform.EmergencyUiState
 import com.vayunmathur.emergency.platform.EmergencyViewModel
 import com.vayunmathur.library.ui.Card
@@ -53,10 +51,7 @@ class ViewInfoActivity : ComponentActivity() {
         setContent {
             DynamicTheme {
                 val state by viewModel.state.collectAsStateWithLifecycle()
-                ViewInfoScreen(
-                    state = state,
-                    ownerName = ownerName(),
-                )
+                ViewInfoScreen(state = state)
             }
         }
     }
@@ -65,18 +60,11 @@ class ViewInfoActivity : ComponentActivity() {
         super.onResume()
         viewModel.refresh()
     }
-
-    private fun ownerName(): String =
-        runCatching { getSystemService(UserManager::class.java)?.userName.orEmpty() }
-            .getOrDefault("")
 }
 
 /** The read-only info + contacts view. Stateless; the activity wires the ViewModel. */
 @Composable
-fun ViewInfoScreen(
-    state: EmergencyUiState,
-    ownerName: String,
-) {
+fun ViewInfoScreen(state: EmergencyUiState) {
     // Resolved up front: the LazyListScope content below is not itself @Composable,
     // so stringResource() calls must happen here or inside item {} blocks.
     val ownerLabel = stringResource(R.string.group_owner)
@@ -84,7 +72,9 @@ fun ViewInfoScreen(
     val allergiesLabel = stringResource(R.string.section_allergies)
     val conditionsLabel = stringResource(R.string.section_conditions)
     val medicationsLabel = stringResource(R.string.section_current_medications)
-    val ownerRows = ownerRows(state.info, ownerName)
+    val allergyHigh = stringResource(R.string.allergy_high)
+    val allergyLow = stringResource(R.string.allergy_low)
+    val ownerRows = ownerRows(state.info)
     LazyListScaffold(
         // No title and no actions: the scaffold draws no bar, so the content starts
         // at the top. scrollBehavior is still required for the nested-scroll wiring.
@@ -124,8 +114,8 @@ fun ViewInfoScreen(
                     allergiesLabel,
                     state.health.allergies.map { allergy ->
                         val severity = when (allergy.criticality) {
-                            AllergyCriticality.High -> stringResource(R.string.allergy_high)
-                            AllergyCriticality.Low -> stringResource(R.string.allergy_low)
+                            AllergyCriticality.High -> allergyHigh
+                            AllergyCriticality.Low -> allergyLow
                             AllergyCriticality.Unknown -> null
                         }
                         allergy.displayName to listOfNotNull(allergy.reaction, severity)
@@ -209,15 +199,14 @@ private fun Segment(value: String, detail: String? = null, index: Int, count: In
 }
 
 /**
- * Owner group rows: lock-screen owner name first, then stored name/address when set.
+ * Owner group rows: stored name/address when set. The group title already says
+ * who this is, so rows carry just values (address keeps its detail line).
  * Blood type / organ donor stay out: those live on the medical side, not the identity.
  */
 @Composable
-private fun ownerRows(info: EmergencyInfo, ownerName: String): List<Pair<String, String?>> {
+private fun ownerRows(info: EmergencyInfo): List<Pair<String, String?>> {
     val rows = mutableListOf<Pair<String, String?>>()
-    if (ownerName.isNotBlank()) rows += ownerName to null
-    val nameLabel = stringResource(R.string.field_name)
-    if (info.name.isNotBlank() && info.name != ownerName) rows += info.name to nameLabel
+    if (info.name.isNotBlank()) rows += info.name to null
     val addressLabel = stringResource(R.string.field_address)
     if (info.address.isNotBlank()) rows += info.address to addressLabel
     return rows

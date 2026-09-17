@@ -380,6 +380,14 @@
     <string name="settings_voice_guidance">Voice guidance</string>
     <!-- Settings: voice-guidance toggle description. -->
     <string name="settings_voice_guidance_desc">Speak turn-by-turn directions</string>
+    <!-- Settings: globe toggle title. Noun. -->
+    <string name="settings_globe">Globe view</string>
+    <!-- Settings: globe toggle description. -->
+    <string name="settings_globe_desc">Show the map as a 3D globe</string>
+    <!-- Body switch: Earth option. Noun. -->
+    <string name="body_earth">Earth</string>
+    <!-- Body switch: Moon option. Noun. -->
+    <string name="body_moon">Moon</string>
 
     <!-- SavedPlacesPage: screen title. Noun. -->
     <string name="saved_places_title">Saved places</string>

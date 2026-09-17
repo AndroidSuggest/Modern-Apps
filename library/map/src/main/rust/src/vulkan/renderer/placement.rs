@@ -1,6 +1,6 @@
 use super::{
-    anchors_for, box_inputs, contains, kind_name, tile_local, AcceptSet, Overlay, PlacedHit,
-    PlacementKey, Renderer, QUAD_INDICES,
+    anchors_for, box_inputs, kind_name, AcceptSet, Overlay, PlacedHit, PlacementKey, Renderer,
+    QUAD_INDICES,
 };
 use crate::camera::Camera;
 use crate::marker::Marker;
@@ -407,4 +407,61 @@ impl Renderer {
         placed.sort_by_key(|(order, _)| *order);
         *self.placed.borrow_mut() = placed.into_iter().map(|(_, hit)| hit).collect();
     }
+}
+
+/// Where `lon`/`lat` falls inside tile `z/x/y`, in tile-local 0..1, or `None` if it is outside.
+///
+/// Web Mercator, matching the projection the tiler cut the archive with.
+fn tile_local(lon: f64, lat: f64, z: u8, x: u32, y: u32) -> Option<(f32, f32)> {
+    let n = f64::from(1u32 << z);
+    let sin = lat.to_radians().sin().clamp(-0.9999, 0.9999);
+    let world_x = (lon + 180.0) / 360.0 * n;
+    let world_y = (0.5 - ((1.0 + sin) / (1.0 - sin)).ln() / (4.0 * std::f64::consts::PI)) * n;
+    let u = world_x - f64::from(x);
+    let v = world_y - f64::from(y);
+    (0.0..=1.0).contains(&u).then_some(())?;
+    (0.0..=1.0).contains(&v).then_some(())?;
+    Some((u as f32, v as f32))
+}
+
+/// Even-odd point-in-polygon over a closed ring.
+fn contains(ring: &[(f32, f32)], u: f32, v: f32) -> bool {
+    let mut inside = false;
+    for window in ring.windows(2) {
+        let (x0, y0) = window[0];
+        let (x1, y1) = window[1];
+        if (y0 > v) != (y1 > v) && u < (x1 - x0) * (v - y0) / (y1 - y0) + x0 {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
+/// Screen-space quad matrix for a globe overlay anchor: the lon/lat's screen
+/// point (Dp, via [`Camera::globe_anchor_to_screen`]) centred in a `radius_dp`
+/// quad, in the same shape as [`Camera::screen_quad_to_clip`] so the puck and
+/// vehicle-ring draws share one contract.
+pub(super) fn globe_screen_quad(camera: &Camera, sx_dp: f64, sy_dp: f64, radius_dp: f64) -> [f32; 16] {
+    let kx = 2.0 / camera.width_dp as f64;
+    let ky = 2.0 / camera.height_dp as f64;
+    let cx = sx_dp * kx - 1.0;
+    let cy = sy_dp * ky - 1.0;
+    [
+        (kx * radius_dp) as f32,
+        0.0,
+        0.0,
+        0.0, //
+        0.0,
+        (ky * radius_dp) as f32,
+        0.0,
+        0.0, //
+        0.0,
+        0.0,
+        1.0,
+        0.0, //
+        cx as f32,
+        cy as f32,
+        0.0,
+        1.0,
+    ]
 }

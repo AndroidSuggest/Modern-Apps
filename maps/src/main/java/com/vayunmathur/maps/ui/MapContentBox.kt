@@ -15,6 +15,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.GLOBE_DETAIL_ZOOM
+import com.vayunmathur.library.map.MapBody
 import com.vayunmathur.library.ui.CompassCalibrationHint
 import com.vayunmathur.library.ui.FreeHeightSheetState
 import com.vayunmathur.library.ui.OverlayAction
@@ -49,6 +51,12 @@ internal fun MapPageScope.MapContentBox(
     modifier: Modifier = Modifier,
     sheetState: FreeHeightSheetState? = this.sheetState,
 ) {
+    // The body switch shows when zoomed all the way out on the globe (below the
+    // globe detail threshold, where the sphere reads as a sphere): the category
+    // chips collapse into it. On the Moon itself the row stays a switch (back to
+    // Earth) — there are no POIs to filter up there.
+    val showBodySwitch = globeEnabled && camera.position.zoom < GLOBE_DETAIL_ZOOM ||
+        body == MapBody.Moon
             // No app bar. The map is the whole screen and every piece of chrome floats over it,
             // which is also what keeps the renderer's surface edge-to-edge — a padded parent here
             // is what used to leave a dead strip along the navigation bar.
@@ -73,6 +81,9 @@ internal fun MapPageScope.MapContentBox(
                     satelliteEnabled = satelliteEnabled,
                     safetyEnabled = safetyEnabled,
                     transitEnabled = transitEnabled,
+                    globeEnabled = globeEnabled,
+                    body = body,
+                    moonTextures = moonTextures,
                     selectedTransitStop = selectedTransitStop,
                     darkBasemap = darkMap,
                 )
@@ -112,18 +123,34 @@ internal fun MapPageScope.MapContentBox(
                                     // the same rule the chips followed before they moved. The
                                     // slot stays, so the settings button does not shift.
                                     if (routeFeature == null) {
-                                        CategoryChips(
-                                            onCategory = { chrome.toggleCategory(it) },
-                                            selected = chrome.selectedCategory,
-                                            // Inside the scroll, never as a margin: the chips have
-                                            // to slide past the screen inset rather than clip
-                                            // against it. The bar gives its title no inset of its
-                                            // own precisely so this can be the only one.
-                                            contentPadding = PaddingValues(
-                                                start = Spacing.lg,
-                                                end = Spacing.sm,
-                                            ),
-                                        )
+                                        // Zoomed all the way out on the globe: the category chips
+                                        // go away and the Earth/Moon body switch takes their place.
+                                        // Anywhere else (or off-globe), the chips as before. On
+                                        // the Moon itself there is nothing to filter, so the row
+                                        // stays a body switch back to Earth rather than chips.
+                                        if (showBodySwitch) {
+                                            BodyDropdown(
+                                                selected = body,
+                                                onSelect = { chrome.body = it },
+                                                contentPadding = PaddingValues(
+                                                    start = Spacing.lg,
+                                                    end = Spacing.sm,
+                                                ),
+                                            )
+                                        } else {
+                                            CategoryChips(
+                                                onCategory = { chrome.toggleCategory(it) },
+                                                selected = chrome.selectedCategory,
+                                                // Inside the scroll, never as a margin: the chips have
+                                                // to slide past the screen inset rather than clip
+                                                // against it. The bar gives its title no inset of its
+                                                // own precisely so this can be the only one.
+                                                contentPadding = PaddingValues(
+                                                    start = Spacing.lg,
+                                                    end = Spacing.sm,
+                                                ),
+                                            )
+                                        }
                                     }
                                 },
                             )

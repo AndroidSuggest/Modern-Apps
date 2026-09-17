@@ -14,10 +14,10 @@ android {
         applicationId = "com.vayunmathur.games.chess"
     }
     androidResources {
-        // The ExecuTorch Vulkan model is staged the same way: ExecutorchSessions
-        // copies it out of the APK before Module.load, so it must not be deflated.
-        // Quantised weights barely compress, so this costs nothing on download size.
-        noCompress += "pte"
+        // Maia3's weights are read in place through an `AssetFileDescriptor`, and
+        // `AssetManager.openFd` throws for a deflated entry. Costs nothing on download size:
+        // fp16 weights barely compress.
+        noCompress += "maml"
     }
 }
 

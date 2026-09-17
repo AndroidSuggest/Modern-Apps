@@ -2,8 +2,13 @@ use ash::vk;
 
 pub struct Pipelines {
     pub layout: vk::PipelineLayout,
-    /// Layout with the atlas descriptor set (set 0) for the symbol pipeline.
+    /// The layout with the atlas descriptor set (set 0) for the symbol pipeline.
     pub symbol_layout: vk::PipelineLayout,
+    /// Layout with TWO sampled images (set 0 color, set 1 DEM) for the Moon pipeline.
+    pub moon_layout: vk::PipelineLayout,
+    /// The Moon descriptor-set layout (both bindings). Owned here so `destroy`
+    /// outlives the pool/sets the upload path creates per texture push.
+    pub moon_ds_layout: vk::DescriptorSetLayout,
     pub fill: vk::Pipeline,
     pub line: vk::Pipeline,
     /// Road carriageways: a filled surface with the lane markings painted onto it, from
@@ -32,7 +37,7 @@ pub struct Pipelines {
     /// no atlas, its colour is per-vertex. At pitch 0 its vertex shader collapses to the footprint,
     /// so the flat map is unchanged.
     pub building: vk::Pipeline,
-    /// The 3D terrain pipeline (WS-G): the DEM-displaced ground grid of a tile that carries a
+/// The 3D terrain pipeline (WS-G): the DEM-displaced ground grid of a tile that carries a
     /// heightmap. Its own vertex format — position + height + surface normal (no per-vertex colour;
     /// the ground colour is the pushed `earth` colour) — and its own `terrain.vert`/`terrain.frag`,
     /// depth-tested ([`Depth::TestWrite`]) so hills occlude one another and let buildings on the far
@@ -40,6 +45,30 @@ pub struct Pipelines {
     /// atlas. Drawn *before* the flat layer loop, so the flat layers paint over it; at pitch 0 its
     /// vertex shader collapses the grid to the flat footprint, so the overhead map is unchanged.
     pub terrain: vk::Pipeline,
+    /// Globe fill: `fill_globe.vert`/`fill_globe.frag` on the fill vertex format,
+    /// depth-tested so the near hemisphere wins over the far side and coarser
+    /// ancestors lose to finer descendants. Drawn instead of [`fill`](Self::fill)
+    /// while the globe is active; the flat pipeline is never bound then.
+    pub fill_globe: vk::Pipeline,
+    /// Globe line: `line_globe.vert`/`line_globe.frag` on the stroke vertex format,
+    /// depth-tested like [`fill_globe`](Self::fill_globe). Drawn instead of
+    /// [`line`](Self::line) while the globe is active.
+    pub line_globe: vk::Pipeline,
+    /// Globe ribbon: `road_surface_globe.vert`/`.frag` on the ribbon vertex format,
+    /// depth-tested like [`fill_globe`](Self::fill_globe). Drawn instead of
+    /// [`ribbon`](Self::ribbon) while the globe is active.
+    pub ribbon_globe: vk::Pipeline,
+    /// Globe symbols + icons: `symbol_globe.vert` with the glyph and sprite fragment
+    /// shaders, on the billboard vertex format, depth-tested so far-side labels lose.
+    /// Drawn instead of [`symbol`](Self::symbol)/[`icon`](Self::icon) on the globe.
+    pub symbol_globe: vk::Pipeline,
+    pub icon_globe: vk::Pipeline,
+    /// Moon raster disc: `moon.vert`/`moon.frag` over the position-only fill
+    /// format (the shared unit quad, uploaded once in `Renderer::new`), through
+    /// [`moon_layout`](Self::moon_layout) with the color + DEM sets. Depth-tested
+    /// so far-side fragments lose; drawn INSTEAD of everything else while the
+    /// Moon is active (no vector layers, no overlays, no route).
+    pub moon: vk::Pipeline,
     pub symbol: vk::Pipeline,
     /// POI icons. The billboard vertex shader from [`symbol`](Self::symbol) paired with the sprite
     /// fragment shader, on the same 6-float format and the same

@@ -18,8 +18,13 @@ mod record;
 mod record_extra;
 mod record_extra2;
 mod record_extra3;
+mod record_extra4;
+mod record_markers;
+mod record_moon;
+mod record_symbol;
 mod upload;
 mod upload_extra;
+pub(super) mod upload_moon;
 
 pub use mod_extra::Renderer;
 
@@ -287,34 +292,6 @@ struct RouteBuffers {
     /// Each coloured run's slice of [`indices`](Self::indices) and its fill colour. The
     /// casing draws the whole index buffer once; each fill draws one of these slices.
     segments: Vec<RouteSegmentRange>,
-}
-
-/// Where `lon`/`lat` falls inside tile `z/x/y`, in tile-local 0..1, or `None` if it is outside.
-///
-/// Web Mercator, matching the projection the tiler cut the archive with.
-fn tile_local(lon: f64, lat: f64, z: u8, x: u32, y: u32) -> Option<(f32, f32)> {
-    let n = f64::from(1u32 << z);
-    let sin = lat.to_radians().sin().clamp(-0.9999, 0.9999);
-    let world_x = (lon + 180.0) / 360.0 * n;
-    let world_y = (0.5 - ((1.0 + sin) / (1.0 - sin)).ln() / (4.0 * std::f64::consts::PI)) * n;
-    let u = world_x - f64::from(x);
-    let v = world_y - f64::from(y);
-    (0.0..=1.0).contains(&u).then_some(())?;
-    (0.0..=1.0).contains(&v).then_some(())?;
-    Some((u as f32, v as f32))
-}
-
-/// Even-odd point-in-polygon over a closed ring.
-fn contains(ring: &[(f32, f32)], u: f32, v: f32) -> bool {
-    let mut inside = false;
-    for window in ring.windows(2) {
-        let (x0, y0) = window[0];
-        let (x1, y1) = window[1];
-        if (y0 > v) != (y1 > v) && u < (x1 - x0) * (v - y0) / (y1 - y0) + x0 {
-            inside = !inside;
-        }
-    }
-    inside
 }
 
 /// How dark the world outside the selected region goes. Alpha, not a colour swap, so the map

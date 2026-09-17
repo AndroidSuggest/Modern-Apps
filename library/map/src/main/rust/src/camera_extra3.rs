@@ -1,4 +1,7 @@
 //! Camera tests part 2: bearing, pitch and terrain-unproject tests.
+//!
+//! Globe tests live in `camera_globe_tests` (file-length split); this file holds
+//! the bearing/pitch half.
 #[cfg(test)]
 mod tests {
     use crate::camera::*;

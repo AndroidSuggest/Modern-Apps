@@ -115,58 +115,14 @@ impl Renderer {
         filter: &crate::style::KindFilter,
     ) -> Result<(), String> {
         let device = self.context.device.clone();
-        device
-            .reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::empty())
-            .map_err(|e| format!("reset_command_buffer {e:?}"))?;
-        let begin = vk::CommandBufferBeginInfo::default()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        device
-            .begin_command_buffer(command_buffer, &begin)
-            .map_err(|e| format!("begin_command_buffer {e:?}"))?;
-
-        // One per attachment, in render-pass order, and the layout differs: multisampled is
-        // [colour, resolve, depth-stencil] while single-sampled is [colour, depth-stencil]. The
-        // depth-stencil is therefore at index 2 or index 1 depending on the device, so both
-        // trailing entries carry the same depth+stencil clear — the resolve target is `DONT_CARE`
-        // and ignores its entry, and a trailing extra entry is allowed. Depth clears to the far
-        // plane (1.0) for the 3D layers; stencil clears to zero, which the scrim reads as
-        // "outside the region".
-        let depth_stencil_clear = vk::ClearValue {
-            depth_stencil: vk::ClearDepthStencilValue {
-                depth: 1.0,
-                stencil: 0,
-            },
-        };
-        let clear_values = [
-            vk::ClearValue {
-                color: vk::ClearColorValue {
-                    float32: argb_to_rgba(clear),
-                },
-            },
-            depth_stencil_clear,
-            depth_stencil_clear,
-        ];
-        let pass = vk::RenderPassBeginInfo::default()
-            .render_pass(render_pass)
-            .framebuffer(framebuffer)
-            .render_area(vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent,
-            })
-            .clear_values(&clear_values);
-        device.cmd_begin_render_pass(command_buffer, &pass, vk::SubpassContents::INLINE);
-
-        let viewport = vk::Viewport::default()
-            .width(extent.width as f32)
-            .height(extent.height as f32)
-            .min_depth(0.0)
-            .max_depth(1.0);
-        device.cmd_set_viewport(command_buffer, 0, std::slice::from_ref(&viewport));
-        let scissor = vk::Rect2D {
-            offset: vk::Offset2D { x: 0, y: 0 },
+        Self::begin_frame_pass(
+            &device,
+            command_buffer,
+            render_pass,
+            framebuffer,
             extent,
-        };
-        device.cmd_set_scissor(command_buffer, 0, std::slice::from_ref(&scissor));
+            clear,
+        )?;
 
         let mut bound: Option<LayerKind> = None;
         let mut submitted = 0usize;
@@ -294,6 +250,11 @@ impl Renderer {
         let deferred_symbols: &mut Vec<(u64, usize)> = unsafe { &mut *deferred_symbols };
 
         let camera_z = camera.zoom.floor().clamp(0.0, 22.0) as u8;
+        // The globe flag for this frame: globe matrices + shaders + depth path, or
+        // the flat path bit-identically. Read once (not per tile) so a frame cannot
+        // mix the two. Terrain is skipped on the globe (below): relief at globe
+        // zoom is sub-pixel, and the globe shaders ignore draped height.
+        let globe = crate::camera::globe_active(camera);
         let flat_start = std::time::Instant::now();
         for (index, layer) in layers.iter().enumerate() {
             // `min_zoom`/`max_zoom` are a data-and-cost gate, not paint: they say which zooms
@@ -401,7 +362,9 @@ impl Renderer {
                 {
                     if bound != Some(kind) {
                         let pipeline = match kind {
+                            LayerKind::Fill if globe => self.pipelines.fill_globe,
                             LayerKind::Fill => self.pipelines.fill,
+                            LayerKind::Line if globe => self.pipelines.line_globe,
                             LayerKind::Line => self.pipelines.line,
                             // Symbols never take this path (drawn above); this arm is
                             // unreachable but the match must stay exhaustive.
@@ -453,14 +416,36 @@ impl Renderer {
                         tile_to_clip: camera.tile_to_clip(tz, tx, ty),
                         color: argb_to_rgba(scale_alpha(base, opacity)),
                         line: [half_width_px, half_gap_px, layer.dash.0, layer.dash.1],
-                        misc: [
-                            camera.tile_span_px(tz),
-                            edge_aa,
-                            lateral_px,
-                            camera.time_seconds,
-                        ],
+                        misc: if globe {
+                            // Globe: centre lon/lat (degrees) for the sphere basis.
+                            [
+                                camera.center_lon as f32,
+                                camera.center_lat as f32,
+                                lateral_px,
+                                camera.time_seconds,
+                            ]
+                        } else {
+                            [
+                                camera.tile_span_px(tz),
+                                edge_aa,
+                                lateral_px,
+                                camera.time_seconds,
+                            ]
+                        },
                         // `morph.z` is the tile's world-px span (Dp): the draped-`z` scale.
-                        morph: [tile_fade, 0.0, camera.tile_span_dp(tz) as f32, 0.0],
+                        // On the globe it is the globe radius (Dp) instead, and morph.xy
+                        // the half-viewport (Dp) — see the `*_globe.vert` headers.
+                        morph: if globe {
+                            let r = crate::camera::globe_radius(camera.zoom) as f32;
+                            [
+                                tile_fade,
+                                camera.width_dp / 2.0,
+                                r,
+                                camera.height_dp / 2.0,
+                            ]
+                        } else {
+                            [tile_fade, 0.0, camera.tile_span_dp(tz) as f32, 0.0]
+                        },
                     };
                     let layout = self.pipelines.layout;
                     device.cmd_push_constants(
@@ -482,97 +467,20 @@ impl Renderer {
             }
         }
 
-        // Overlays last, over every tile and inside the same render pass, so they are
-        // presented in the same frame and from the same camera value as the basemap under
-        // them. Binding the overlay pipeline invalidates `bound`, which is why this comes
-        // after the layer loop rather than anywhere inside it.
-        //
-        // The order between the three is the reading order the driver needs. The region
-        // scrim is a property of the basemap, so it goes first and the route is *not*
-        // dimmed by it — a route you are following must not fade because a details sheet
-        // is open. The route then goes under the puck, because the puck is where you are
-        // and it has to stay visible where it sits on top of the line it is following.
-        // Traffic sits on the roads it colours, so it draws after the basemap layer loop but
-        // before the region scrim — it is basemap detail and should dim with everything else
-        // when a region is selected, unlike the route.
-        // Road carriageways: over the flat layer loop, because the surface and its markings
-        // replace the road fills at this zoom, and under the buildings and deferred symbols
-        // below, because a carriageway is flat basemap like every other road layer.
-        self.step_times
-            .borrow_mut()
-            .record(Step::RecordFlat, nanos_since(flat_start));
-        let step_start = std::time::Instant::now();
-        self.record_carriageways(
+        self.record_tail(
             command_buffer,
             camera,
             layers,
             palette,
-            &ordered,
+            ordered,
             fog,
+            deferred_symbols,
+            &accepted,
+            &mut bound,
             &mut submitted,
-        );
-        self.step_times
-            .borrow_mut()
-            .record(Step::RecordCarriageways, nanos_since(step_start));
-        // 3D buildings: after the flat basemap so they paint over it, depth-tested so they occlude
-        // one another. Gated to z14+; at pitch 0 the building matrix collapses height to the
-        // footprint, so the flat overhead map is unchanged. Before the deferred symbols, so POI
-        // icons and labels are not buried behind a tower.
-        let step_start = std::time::Instant::now();
-        self.record_buildings(command_buffer, camera, layers, palette, &mut submitted);
-        self.step_times
-            .borrow_mut()
-            .record(Step::RecordBuildings, nanos_since(step_start));
-        let step_start = std::time::Instant::now();
-        for &(key, index) in deferred_symbols.iter() {
-            self.record_symbol(
-                command_buffer,
-                key,
-                index,
-                &layers[index],
-                camera,
-                palette,
-                &accepted,
-                &mut submitted,
-                &mut bound,
-            );
-        }
-        self.step_times
-            .borrow_mut()
-            .record(Step::RecordSymbols, nanos_since(step_start));
-        let step_start = std::time::Instant::now();
-        self.record_traffic(command_buffer, camera, &mut submitted);
-        self.step_times
-            .borrow_mut()
-            .record(Step::RecordTraffic, nanos_since(step_start));
-        let step_start = std::time::Instant::now();
-        self.record_arrows(command_buffer, camera, layers, &mut submitted);
-        self.step_times
-            .borrow_mut()
-            .record(Step::RecordArrows, nanos_since(step_start));
-        let step_start = std::time::Instant::now();
-        self.record_region_mask(command_buffer, camera, &mut submitted);
-        self.step_times
-            .borrow_mut()
-            .record(Step::RecordRegion, nanos_since(step_start));
-        let rail_start = std::time::Instant::now();
-        self.record_rail_lines(command_buffer, camera, &mut submitted);
-        self.step_times
-            .borrow_mut()
-            .record(Step::RecordRail, nanos_since(rail_start));
-        // No route slot: it shares `record_route_buffers` with the rail lines, so its cost
-        // rides on `RecordRail` rather than a slot that reads zero on route-less frames.
-        self.record_route(command_buffer, camera, &mut submitted);
-        let step_start = std::time::Instant::now();
-        self.record_overlays(command_buffer, camera, palette, &mut submitted);
-        self.step_times
-            .borrow_mut()
-            .record(Step::RecordOverlays, nanos_since(step_start));
-
-        self.submitted_draws.set(submitted);
-        device.cmd_end_render_pass(command_buffer);
-        device
-            .end_command_buffer(command_buffer)
-            .map_err(|e| format!("end_command_buffer {e:?}"))
+            &device,
+            flat_start,
+            globe,
+        )
     }
 }

@@ -8,10 +8,22 @@
 //! mamaps_build --input california.osm.pbf --out california.mamaps
 //!              --coastline LAND.shp --graph GRAPH_DIR
 //!              --transit-routes ROUTES.geojsonseq --dem HEIGHTMAPS.mdem
+//!              [--region california|world]
+//!              [--build-graph-to DIR] [--build-poi-to DIR]
 //!
 //! All six flags are required. Every build carries all 12 layers at z0-14 as
 //! FORMAT_VERSION 7: there is no layer selection, no zoom selection and no
 //! store reuse, so a build is a pure function of its six inputs.
+//!
+//! `--region` filters the built layers (`roads`, `poi`, `buildings`) to the
+//! region's bbox. Everything else is always included regardless. `world` (the
+//! default) disables the filter.
+//!
+//! `--build-graph-to` / `--build-poi-to` fold the routing graph and POI
+//! sidecars into this process instead of running `road_graph` / `poi_extract`
+//! as separate binaries first. Same thread pool, one shared blob scan, and the
+//! graph coverage is validated against the region before stage A runs — which
+//! is what stops a 43-minute tile build dying on a missing `metadata.bin`.
 //! ```
 //!
 //! # Why not through the existing tiler
@@ -98,6 +110,9 @@ fn main() -> ExitCode {
     let mut transit_routes: Option<PathBuf> = None;
     let mut graph: Option<PathBuf> = None;
     let mut dem: Option<PathBuf> = None;
+    let mut region: Option<String> = None;
+    let mut build_graph_to: Option<PathBuf> = None;
+    let mut build_poi_to: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -129,6 +144,18 @@ fn main() -> ExitCode {
                 dem = Some(PathBuf::from(v));
                 2
             }),
+            "--region" => value("--region").map(|v| {
+                region = Some(v);
+                2
+            }),
+            "--build-graph-to" => value("--build-graph-to").map(|v| {
+                build_graph_to = Some(PathBuf::from(v));
+                2
+            }),
+            "--build-poi-to" => value("--build-poi-to").map(|v| {
+                build_poi_to = Some(PathBuf::from(v));
+                2
+            }),
             "-h" | "--help" => {
                 usage();
                 return ExitCode::SUCCESS;
@@ -152,7 +179,28 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
 
-    let settings = RunSettings { coastline, transit_routes, graph, dem };
+    // `--region` defaults to world (no filtering). Parsed here so a bad value
+    // fails in seconds, not after stage A.
+    let region = match region.as_deref().unwrap_or("world") {
+        s => match osm_ingest::region::Region::parse(s) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("mamaps_build: {}", e.0);
+                usage();
+                return ExitCode::from(2);
+            }
+        },
+    };
+
+    let settings = RunSettings {
+        coastline,
+        transit_routes,
+        graph,
+        dem,
+        region,
+        build_graph_to,
+        build_poi_to,
+    };
     match run(&input, &out, &settings) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -176,6 +224,14 @@ struct RunSettings {
     /// The `.mdem` heightmap dataset `dem_ingest` produced.
     /// Every tile carries the DEM grid sampled to its own z/x/y.
     dem: PathBuf,
+    /// Which region's bbox filters roads/pois/buildings. `world` = no filter.
+    region: osm_ingest::region::Region,
+    /// When set, build the routing graph in-process into this dir (shared pool,
+    /// shared blob scan) instead of reading `--graph`.
+    build_graph_to: Option<PathBuf>,
+    /// When set, build the POI sidecars in-process into this dir instead of
+    /// expecting them from a prior `poi_extract` run.
+    build_poi_to: Option<PathBuf>,
 }
 
 include!("main_part1.rs");

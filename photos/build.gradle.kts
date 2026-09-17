@@ -15,14 +15,11 @@ android {
         applicationId = "com.vayunmathur.photos"
     }
     androidResources {
-        // The four .onnx files are read straight out of the APK by :library:ml, which opens
-        // them with `AssetManager.open` and hands the bytes to ORT. Uncompressed entries avoid
-        // an inflate into a heap buffer — and cost nothing on download size, since int8 and
-        // fp16 weights barely deflate.
-        noCompress += "tflite"
-        // The ExecuTorch Vulkan candidates are staged the same way: ExecutorchSessions
-        // copies them out of the APK before Module.load, so they must not be deflated either.
-        noCompress += "pte"
+        // The four .maml files are read straight out of the APK by :library:ml, which opens them
+        // with `AssetManager.openFd` and streams them into the GPU. `openFd` throws outright for a
+        // deflated entry, so this is required rather than an optimisation — and it costs nothing on
+        // download size, since int8 and fp16 weights barely deflate.
+        noCompress += "maml"
     }
 }
 
@@ -63,6 +60,4 @@ dependencies {
     implementation(project(":library:widgets"))
     implementation(project(":library:biometric"))
     implementation(project(":library:ocr"))
-    // Split-tower TinyCLIP ET pair download config (PhotosEtModels).
-    implementation(project(":library:downloadservice"))
 }

@@ -29,10 +29,6 @@ import kotlin.math.sqrt
  *  3. Embedding — **MobileFaceNet** ([FaceEmbedder], insightface `w600k_mbf`,
  *     ArcFace-trained) produces a 512-d embedding from the aligned crop. Pixels
  *     are normalised (px - 127.5)/127.5 natively. The result is L2-normalised here.
- *     The preferred path is the Vulkan fp16 `.pte` (same buffalo_s weights,
- *     torch-vs-ship cosine 0.993956) on ExecuTorch, with the bundled LiteRT rung
- *     as fallback — so the space is unchanged, but ET and LiteRT runs of the same
- *     crop may differ numerically, which is why [EMBEDDER_VERSION] is 8 and not 7.
  *  4. Matching — cosine similarity clusters faces of the same person
  *     (see [CLUSTER_THRESHOLD]).
  *
@@ -53,11 +49,9 @@ object FaceRecognizer {
      * MobileFaceNet embedder on ncnn; v7 = the same two models on `:library:ml`'s
      * Vulkan runtime — fp16 weights, fp32 accumulation and our own letterbox, so the
      * embeddings are close to v6's but not identical, and mixing the two spaces in one
-     * index would cluster badly; v8 = the same weights ET-first on the Vulkan fp16
-     * `.pte` pair with the LiteRT rungs as fallback — same space, re-index because
-     * ET and LiteRT runs of the same crop may differ numerically.)
+     * index would cluster badly.)
      */
-    const val EMBEDDER_VERSION = 8
+    const val EMBEDDER_VERSION = 7
 
     /**
      * Minimum cosine similarity for a face to join an existing cluster. ArcFace

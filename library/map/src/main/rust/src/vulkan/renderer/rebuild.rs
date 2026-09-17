@@ -126,6 +126,27 @@ impl Drop for Renderer {
             if let Some(image) = &self.sprite_atlas {
                 image.destroy(&self.context.device);
             }
+            if let Some(image) = &self.moon_color {
+                image.destroy(&self.context.device);
+            }
+            if let Some(image) = &self.moon_dem {
+                image.destroy(&self.context.device);
+            }
+            if let Some(pool) = &self.moon_pool {
+                self.context.device.destroy_descriptor_pool(*pool, None);
+            }
+            for (_, retired) in &self.moon_retiring {
+                match retired {
+                    super::upload_moon::MoonRetired::Image(image) => {
+                        image.destroy(&self.context.device)
+                    }
+                    super::upload_moon::MoonRetired::Pool(pool) => self
+                        .context
+                        .device
+                        .destroy_descriptor_pool(*pool, None),
+                }
+            }
+            self.moon_retiring.clear();
             self.quad.vertices.destroy(&self.context.device);
             self.quad.indices.destroy(&self.context.device);
             self.pick.destroy(&self.context.device);

@@ -30,16 +30,27 @@
 # as the -Verify spot-check, off by default because it doubles build time).
 #
 # Usage:
-#   .\build_graph.ps1 [-Keep] [-Verify] [-Threads N]
+#   .\build_graph.ps1 [-Region california|world] [-Keep] [-Verify] [-Threads N]
+#
+# -Region filters roads/POIs/buildings to the region's bbox. Everything else
+# (water, earth, boundaries, landuse, transit, traffic, DEM) is always
+# included regardless. The input is ALWAYS the planet: a california build is
+# a world build with only CA roads/POIs/buildings, so borders, coastlines
+# and country names still render everywhere.
 #
 # Inputs are fixed (no file-location options):
-#   inputs/planet.osm.pbf, inputs/world.mamaps (out),
-#   inputs/coastline.shp, inputs/world.transit, inputs/world.mdem.
+#   inputs/planet.osm.pbf -> inputs/california.mamaps | inputs/world.mamaps
+#   plus inputs/coastline.shp, inputs/world.transit, inputs/world.mdem.
 #
 # Requires: cargo (https://rustup.rs). A state-sized extract needs roughly
 # 10 GB of RAM; any build wants ~6x the .pbf in free disk (checked up front).
-[CmdletBinding()]
+#[CmdletBinding()]
 param(
+    # Which region to build: california filters roads/POIs/buildings to the
+    # California bbox, world builds everything. Everything else (water, earth,
+    # boundaries, landuse, transit, traffic, DEM) is always included.
+    [ValidateSet("california", "world")]
+    [string] $Region = "world",
     # Worker threads (via MAPS_THREADS). 0 = the tools' default (max).
     [int] $Threads = 0,
     # Keep the temp workdir (graph bins, routes geojsonseq, logs) for debugging.
@@ -52,9 +63,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Fixed inputs -- no file-location options.
-$Pbf          = Join-Path $PSScriptRoot "inputs/planet.osm.pbf"
-$Out          = Join-Path $PSScriptRoot "inputs/world.mamaps"
+# Fixed inputs -- no file-location options. ALWAYS the planet: a california
+# build keeps only CA roads/POIs/buildings but renders borders, coastlines
+# and country names everywhere, so it needs the whole world as input.
+$Pbf = Join-Path $PSScriptRoot "inputs/planet.osm.pbf"
+if ($Region -eq "california") {
+    $Out = Join-Path $PSScriptRoot "inputs/california.mamaps"
+} else {
+    $Out = Join-Path $PSScriptRoot "inputs/world.mamaps"
+}
 $Coastline    = Join-Path $PSScriptRoot "inputs/coastline.shp"
 $WorldTransit = Join-Path $PSScriptRoot "inputs/world.transit"
 $Dem          = Join-Path $PSScriptRoot "inputs/world.mdem"
@@ -138,7 +155,10 @@ Remove-Item Env:MAPS_TIMING -ErrorAction SilentlyContinue
 Remove-Item Env:MAPS_PREFETCH_LANES -ErrorAction SilentlyContinue
 
 # --- [1/7] build the host tools ------------------------------------------
-Write-Host "[1/7] Building the host tools"
+# One crate builds all three PBF consumers now: road_graph, poi_extract and
+# mamaps_build share osm_ingest, one pool, and one blob scan via the graph's
+# sidecar. transit_shapes stays separate (it reads GTFS, not the PBF).
+Write-Host "[1/7] Building the host tools ($Region)"
 foreach ($crate in @(@("osm_ingest", "road_graph"), @("osm_ingest", "poi_extract"), @("gtfs_ingest", "transit_shapes"), @("mamaps_build", "mamaps_build"))) {
     cargo build --release --manifest-path (Join-Path $PSScriptRoot "$($crate[0])\Cargo.toml") --bin $($crate[1])
     if ($LASTEXITCODE -ne 0) { throw "cargo build $($crate[0])/$($crate[1]) failed with exit code $LASTEXITCODE" }
@@ -155,9 +175,18 @@ $dump       = Find-Built "tile_build" "mamaps_dump"
 $pack       = Find-Built "tile_build" "mamaps_pack"
 
 # --- [2/7] road graph into temp ------------------------------------------
-Write-Host "[2/7] Building the routing graph -> $graphDir"
-& $roadGraph $Pbf --out $graphDir
+# The region filter lives here too: a california graph keeps only ways
+# touching the state bbox, so the traffic/junction layers and the pack agree
+# with the tiles. mamaps_build re-validates the dir before stage A — an empty
+# or stale graph used to cost 43 minutes of stage A before failing.
+Write-Host "[2/7] Building the routing graph ($Region) -> $graphDir"
+& $roadGraph $Pbf --out $graphDir --region $Region
 if ($LASTEXITCODE -ne 0) { throw "road_graph failed with exit code $LASTEXITCODE" }
+# Fail HERE, not 43 minutes into stage A: the world build died on a missing
+# metadata.bin after paying the whole of stage A first.
+if (-not (Test-Path (Join-Path $graphDir "metadata.bin"))) {
+    throw "graph build produced no metadata.bin at $graphDir -- refusing to run stage A against an empty graph"
+}
 
 # --- [3/7] transit routes from the world-transit feeds --------------------
 Write-Host "[3/7] Deriving transit routes from $TransitManifest"
@@ -220,7 +249,8 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
     --coastline $Coastline `
     --graph $graphDir `
     --transit-routes $routes `
-    --dem $Dem | Tee-Object -FilePath $log
+    --dem $Dem `
+    --region $Region | Tee-Object -FilePath $log
 $exit = $LASTEXITCODE
 $sw.Stop()
 
@@ -242,12 +272,13 @@ if ($exit -ne 0) {
 # --spatial and --name-index default to their poi_*.bin names beside it, which
 # is exactly the set mamaps_pack --poi expects. The --geojson output is the
 # baked-vector feed and is not consumed by the pack, but poi_extract requires it.
-Write-Host "[5/7] Extracting POI sidecars -> $poiDir"
+Write-Host "[5/7] Extracting POI sidecars ($Region) -> $poiDir"
 New-Item -ItemType Directory -Force -Path $poiDir | Out-Null
 & $poiExtract $Pbf `
     --geojson (Join-Path $poiDir "poi.geojsonseq") `
     --names (Join-Path $poiDir "poi_names.bin") `
-    --index (Join-Path $poiDir "poi_index.bin")
+    --index (Join-Path $poiDir "poi_index.bin") `
+    --region $Region
 if ($LASTEXITCODE -ne 0) { throw "poi_extract failed with exit code $LASTEXITCODE" }
 
 # --- [6/7] pack the sidecars onto the tiles archive -> FINAL $Out ----------
@@ -304,7 +335,8 @@ if ($Verify) {
         --coastline $Coastline `
         --graph $graphDir `
         --transit-routes $routes `
-        --dem $Dem | Tee-Object -FilePath (Join-Path $tmp "verify.log") | Out-Null
+        --dem $Dem `
+        --region $Region | Tee-Object -FilePath (Join-Path $tmp "verify.log") | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "verify rebuild failed with exit code $LASTEXITCODE" }
     & $pack --tiles $verifyTiles --graph $graphDir --poi $poiDir --transit $WorldTransit --out $verifyOut
     if ($LASTEXITCODE -ne 0) { throw "verify pack failed with exit code $LASTEXITCODE" }

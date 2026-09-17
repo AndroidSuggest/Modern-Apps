@@ -1,0 +1,56 @@
+#version 450
+//! `O[h][d][i] = sum_j S[h][i][j] * V[h][d][j]`, the second half of attention.
+//!
+//! Two uses per transformer block in PP-OCRv5 recognition, and Supertonic's text encoder mixes
+//! 50 style tokens with it.
+//!
+//! # Queries and keys may be different counts
+//!
+//! `S` is `[heads, queries, keys]` from `softmax.comp`, `V` is `[d_model, 1, keys]` and the
+//! output is `[d_model, 1, queries]`. `p.out_w` is the query count and `p.in_w` the key count;
+//! for self-attention they are equal and this is the arithmetic it always was.
+//!
+//! # Back into the layout it started in
+//!
+//! `S` is `[heads, queries, keys]` from `softmax.comp`; `V` and the output share `d_model`,
+//! the layout every projection in this runtime reads and writes. So the head
+//! concatenation that follows attention is not an op: output channel `c` belongs to head
+//! `c / head_dim` and is written in place, which *is* the concatenated result. No
+//! `Reshape` and no `Permute` on this side either.
+//!
+//! One invocation per output element, reducing over the keys. Note that `V` needs no
+//! head arithmetic at all - channel `c` of `V` is exactly channel `c` of the output - so
+//! the head index is used only to pick which of `S`'s planes to read.
+//!
+//! # Precision
+//!
+//! `S` is a distribution, so every product is bounded by the corresponding `V`, and the
+//! sum of a convex combination cannot exceed `V`'s range. Accumulating in `float` like
+//! everywhere else here is more than enough; the fp16 store at the end is the only
+//! rounding.
+
+#include "common.glsl"
+
+void main() {
+    uint index = global_index();
+    if (index >= p.count) {
+        return;
+    }
+    // The output is `[d_model, 1, queries]`, so this is (channel, 0, query).
+    uint channel, unused_row, query;
+    unpack(index, channel, unused_row, query);
+    uint queries = p.out_w;
+    uint keys = p.in_w;
+    uint head_dim = p.out_c / p.group;
+    uint head = channel / head_dim;
+    // `S[head][query][*]`, contiguous in the key index.
+    uint row = p.in0 + (head * queries + query) * keys;
+    // `V`'s channel for this query head, which under multi-query attention is shared.
+    uint values = p.in1 + (kv_head_of(head) * head_dim + (channel % head_dim)) * keys;
+
+    float total = 0.0;
+    for (uint j = 0u; j < keys; j++) {
+        total += float(arena[row + j]) * float(arena[values + j]);
+    }
+    arena[p.out_at + index] = float16_t(total);
+}

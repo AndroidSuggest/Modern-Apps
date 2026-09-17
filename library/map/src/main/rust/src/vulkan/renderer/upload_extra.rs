@@ -157,6 +157,10 @@ impl Renderer {
             glyph_set,
             sprite_atlas,
             sprite_set,
+            moon_color: None,
+            moon_dem: None,
+            moon_pool: None,
+            moon_set: None,
             command_pool,
             frames,
             frame_index: 0,
@@ -190,6 +194,7 @@ impl Renderer {
             traffic_enabled: false,
             pick,
             last_camera: None,
+            moon_retiring: Vec::new(),
         })
     }
 }

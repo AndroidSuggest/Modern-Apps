@@ -41,6 +41,8 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.map.CameraPosition
 import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.library.map.GeoPoint
+import com.vayunmathur.library.map.MapBody
+import com.vayunmathur.library.map.MoonTextures
 import com.vayunmathur.library.map.rememberCameraState
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.ParkingSpot
@@ -62,6 +64,7 @@ import com.vayunmathur.maps.ui.map.MapChromeState
 import com.vayunmathur.maps.util.DeparturesState
 import com.vayunmathur.maps.util.MapSettingsViewModel
 import com.vayunmathur.maps.util.MapsSearchViewModel
+import com.vayunmathur.maps.util.MoonAssetLoader
 import com.vayunmathur.maps.util.NavigationProgress
 import com.vayunmathur.maps.util.NavigationSessionManager
 import com.vayunmathur.maps.data.google.PoiSection
@@ -154,6 +157,17 @@ fun MapPage(
     val satelliteEnabled by settingsViewModel.satelliteLayer.collectAsState()
     val safetyEnabled by settingsViewModel.safetyLayer.collectAsState()
     val transitEnabled by settingsViewModel.transitLayer.collectAsState()
+    val globeEnabled by settingsViewModel.globeEnabled.collectAsState()
+
+    // The Moon raster pair, loaded lazily on first Moon select (never for Earth
+    // sessions): 37MB of assets read once, cached for the session. `body` lives
+    // on the chrome (session-only); the textures ride the scope to the surface.
+    var moonTextures by remember { mutableStateOf<MoonTextures?>(null) }
+    LaunchedEffect(chrome.body) {
+        if (chrome.body == MapBody.Moon && moonTextures == null) {
+            moonTextures = MoonAssetLoader.load(context)
+        }
+    }
 
     // Resolve the P6 map-theme setting against the OS the same way DynamicTheme does, so the map
     // flips light/dark together with the rest of the chrome.
@@ -268,6 +282,9 @@ fun MapPage(
         satelliteEnabled = satelliteEnabled,
         safetyEnabled = safetyEnabled,
         transitEnabled = transitEnabled,
+        globeEnabled = globeEnabled,
+        body = chrome.body,
+        moonTextures = moonTextures,
         darkMap = darkMap,
         navState = navState,
         navSession = navSession,

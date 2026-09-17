@@ -17,9 +17,13 @@ import androidx.core.content.IntentCompat
 import androidx.core.content.getSystemService
 import com.vayunmathur.cast.MainActivity
 import com.vayunmathur.cast.R
+import com.vayunmathur.cast.domain.CastDevice
 import com.vayunmathur.cast.domain.ClientPhase
+import com.vayunmathur.cast.domain.ClientState
 import com.vayunmathur.cast.platform.CastController
 import com.vayunmathur.cast.platform.MirrorPhase
+import com.vayunmathur.cast.platform.disconnect
+import com.vayunmathur.cast.platform.startMirroring
 import com.vayunmathur.library.util.ensureNotificationChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -116,8 +120,12 @@ class CastService : Service() {
             // instead of freezing on whatever was true when it started.
             scope.launch {
                 CastController.device
-                    .combine(CastController.sessionState) { device, state -> device to state }
-                    .combine(CastController.mirrorPhase) { pair, mirror -> Triple(pair.first, pair.second, mirror) }
+                    .combine(CastController.sessionState) { device: CastDevice?, state: ClientState ->
+                        device to state
+                    }
+                    .combine(CastController.mirrorPhase) { pair: Pair<CastDevice?, ClientState>, mirror: MirrorPhase ->
+                        Triple(pair.first, pair.second, mirror)
+                    }
                     .collect { (device, state, mirror) ->
                         if (device == null) return@collect
                         getSystemService<NotificationManager>()

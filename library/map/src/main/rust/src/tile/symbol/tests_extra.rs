@@ -15,6 +15,8 @@ fn camera(pitch_deg: f64) -> Camera {
         bearing_deg: 0.0,
         pitch_deg,
         time_seconds: 0.0,
+        globe: false,
+        moon: false,
     }
 }
 

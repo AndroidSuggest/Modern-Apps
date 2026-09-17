@@ -7,20 +7,62 @@ fn run(
         (schema::Layers::all(), 0u8, DEFAULT_MAX_ZOOM, tiler::DEFAULT_SIMPLIFICATION);
     let started = std::time::Instant::now();
     println!("reading {}", input.display());
+    println!("region: {}", run.region.name());
     // Features are spilled here rather than held: it was 4.9 GB of a measured 10.03 GB California
     // peak, and nothing reads them until the tiler does.
     let spill = out.with_extension("features.tmp");
     check_required(&run.coastline, "--coastline")?;
     check_required(&run.transit_routes, "--transit-routes")?;
-    check_required(&run.graph, "--graph")?;
     check_required(&run.dem, "--dem")?;
+
+    // --- unified pre-stages -------------------------------------------------
+    //
+    // `--build-graph-to` / `--build-poi-to` fold the two sidecar builds into
+    // this process: same thread pool (no oversubscription from two binaries
+    // each claiming the box), one shared blob scan via the graph's sidecar,
+    // and the region filter applied once, consistently, in all three places.
+    // Without them `--graph` must already exist and is validated below.
+    let graph_dir: std::path::PathBuf = if let Some(dir) = run.build_graph_to.as_ref() {
+        println!("building the routing graph in-process -> {}", dir.display());
+        let mut opts = osm_ingest::graph_build::Options::default();
+        opts.within_way_chains = true;
+        opts.bbox = run.region.bbox();
+        osm_ingest::graph_build::build_with(input, dir, opts)
+            .map_err(|e| format!("graph build: {e}"))?;
+        dir.clone()
+    } else {
+        check_required(&run.graph, "--graph")?;
+        run.graph.clone()
+    };
+    if let Some(dir) = run.build_poi_to.as_ref() {
+        println!("building the POI sidecars in-process -> {}", dir.display());
+        let poi_index = dir.join("poi_index.bin");
+        osm_ingest::poi_build::build_with(
+            input,
+            &dir.join("poi.geojsonseq"),
+            &dir.join("poi_names.bin"),
+            &poi_index,
+            &dir.join("poi_attrs.bin"),
+            &dir.join("poi_spatial.bin"),
+            &dir.join("poi_name_index.bin"),
+            run.region.bbox(),
+        )
+        .map_err(|e| format!("poi build: {e}"))?;
+    }
+
+    // The graph is validated HERE, before stage A — not 43 minutes in when
+    // `traffic` tries to read it. This is the failure the world build hit:
+    // an empty graph dir with no `metadata.bin`, paid for in full.
+    check_graph_dir(&graph_dir, run.region)?;
+
     let (store, stats) = extract::extract(
         input,
         layers,
         &run.coastline,
         &run.transit_routes,
-        &run.graph,
+        &graph_dir,
         &spill,
+        run.region.bbox(),
     )
     .map_err(|e| format!("{}: {e}", input.display()))?;
     println!(
@@ -69,8 +111,17 @@ fn run(
 
     // The build id identifies the *data*: change the input and every reader has to drop its
     // cache. Derived rather than asked for, so a forgotten input cannot silently republish
-    // under the old one.
-    let build_id = derive_build_id(input, layers, min_zoom, max_zoom, simplification, stats.features);
+    // under the old one. The region is part of the id: a california and a world
+    // build from the same pbf are different archives.
+    let build_id = derive_build_id(
+        input,
+        layers,
+        min_zoom,
+        max_zoom,
+        simplification,
+        stats.features,
+        run.region.name(),
+    );
 
     // The DEM heightmap dataset. Loaded here (this is where I/O belongs) and
     // handed to the tiler, which samples one grid per output tile into the body's heightmap section.
@@ -215,6 +266,7 @@ fn derive_build_id(
     max_zoom: u8,
     simplification: f64,
     features: u64,
+    region: &str,
 ) -> u64 {
     let mut h = 0xcbf2_9ce4_8422_2325u64;
     let mut eat = |bytes: &[u8]| {
@@ -223,10 +275,11 @@ fn derive_build_id(
             h = h.wrapping_mul(0x100_0000_01b3);
         }
     };
-    // Revision 14: the v7-only purge. No more layer selection, zoom selection, store reuse or
-    // shared-table builds: every archive is all 12 layers at z0-14 as FORMAT_VERSION 7, so a
-    // warm cache from any earlier shape must miss.
-    eat(b"mamaps_build/14");
+    // Revision 15: the region filter. A california and a world build from the
+    // same pbf are different archives, so a warm cache from one must miss the
+    // other. (Revision 14 was the v7-only purge.)
+    eat(b"mamaps_build/15");
+    eat(region.as_bytes());
     eat(input.to_string_lossy().as_bytes());
     if let Ok(meta) = std::fs::metadata(input) {
         eat(&meta.len().to_le_bytes());
