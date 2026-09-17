@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="use_current_location">Cari məkandan istifadə et</string>
+    <string name="today">Bu gün</string>
 </resources>
