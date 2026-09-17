@@ -156,7 +156,7 @@
     <string name="trust_fdroid_check_chained">Həmin siyahıdakı hər bir qeyd imzaya qədər uzanan bir zəncirlə əlaqəlidir.</string>
     <string name="trust_fdroid_check_rebuilt">F-Droid-in ikinci yığma serverində bit-bit eyni şəkildə yenidən yaradılan versiyalar reproduksiya edilə bilən kimi işarələnir.</string>
     <string name="trust_fdroid_check_hash_and_key">Hash və imzalama açarının hər ikisi imzalanmış siyahıdan götürülür.</string>
-    <string name="trust_fdroid_limits">İmzalama açarı tərtibatçıda deyil, F-Droid-də saxlanılır, buna görə də onun yığma serverləri istənilən şeyi imzalaya bilər. Heç kim tətbiqin nə etdiyini yoxlamır, yalnız mənbə koduna uyğun olub-olmadığını yoxlayır. Yeniləmələrin yenidən yığılmasını gözləmək lazım gəlir ki, bu da günlər və ya həftələr çəkə bilər — təhlükəsizlik düzəlişləri də daxil olmaqla. Həmçinin, zərərli tətbiqi artıq telefonlara quraşdırıldıqdan sonra geri götürmək mümkün deyil.</string>
+    <string name="trust_fdroid_limits">İmzalama açarı tərtibatçıda deyil, F-Droid-da saxlanılır, buna görə də onun qurma serverləri istənilən faylı imzalaya bilir. Heç kim tətbiqin nə iş gördüyünü yoxlamır; yalnız onun mənbə kodu ilə uyğunluğu təsdiqlənir. Yeniləmələr yenidən qurulmağı gözləyir – bura təhlükəsizliklə bağlı düzəlişlər də daxildir – və bu proses günlərlə, hətta həftələrlə çəkə bilər; üstəlik, problemli bir tətbiqi istifadəçilərin telefonlarından geri çağırmağın heç bir yolu yoxdur.</string>
     <string name="trust_play_title">Google Mağazası</string>
     <string name="trust_play_summary">Tərtibatçının kimliyini təsdiqləyən və tətbiqi bütün telefonlardan eyni anda silə bilən Google tərəfindən nəzərdən keçirilib, skan edilib və imzalanıb.</string>
     <string name="trust_play_practice_identity">Proqramçılar real ad və ünvanlarını təqdim etməklə kimliklərini təsdiqləməlidirlər.</string>
@@ -205,4 +205,13 @@
         <item quantity="other">%1$d tətbiq yeniləndi</item>
     </plurals>
     <string name="updates_batch_partial">%2$d-dən %1$d yeniləndi. Qalanları uğursuz oldu: %3$s</string>
+    <string name="trust_grapheneos_title">GraphaneOS</string>
+    <string name="trust_grapheneos_summary">GrapheneOS tərəfindən, hər bir faylın heş (hash) dəyərini və imzalama açarını göstərən imzalanmış siyahı əsasında yenidən yerləşdirilən, Google-un öz imzası ilə təmin edilmiş \"Sandboxed Google Play\" komponentləri.</string>
+    <string name="trust_grapheneos_practice_official">Fayllar Google-un özü tərəfindən imzalanmış quruluşlardır (tikir); onlar yenidən yaradılmayıb, əksinə, dəyişdirilmədən başqa bir yerdə yerləşdirilib.</string>
+    <string name="trust_grapheneos_practice_signed_index">GrapheneOS versiyalar siyahısını, fayl heşlərini və gözlənilən imzalama açarlarını öz buraxılış açarı ilə imzalayır.</string>
+    <string name="trust_grapheneos_practice_matched">Yalnız əməliyyat sisteminizin təqdim etdiyi uyğunluq təbəqəsinə uyğun gələn qurğular təklif olunur</string>
+    <string name="trust_grapheneos_check_index_signed">Həmin imzalanmış siyahı bu anbara daxil edilmiş açar vasitəsilə yoxlanılır</string>
+    <string name="trust_grapheneos_check_rollback">Əvvəl görülmüş siyahıdan daha köhnə olan siyahı rədd edilir; buna görə də sizə köhnə bir qurğu (build) təkrar təqdim edilə bilməz</string>
+    <string name="trust_grapheneos_check_hash_and_key">Yüklənən hər bir fayl, onun adlarını ehtiva edən siyahıdakı heş (hash) və imzalama açarı ilə uyğunluq təşkil edir</string>
+    <string name="trust_grapheneos_limits">Bunlar Google-un qapalı kodlu tətbiqləridir. Heç bir şey dərc olunmuş mənbə kodundan hazırlanmayıb və heç birini yenidən yaratmaq mümkün deyil; buna görə də sübut olunan yeganə məqam GrapheneOS tərəfindən siyahıya alınmış faylı əldə etməyinizdir, həmin faylın nə iş gördüyü barədə isə heç nə təsdiqlənmir. Mənbə kodu yalnız \"Sandboxed Google Play\" komponentlərini ehtiva edir və telefonlara yüklənmiş zərərli buraxılışı geri qaytarmağın heç bir yolu yoxdur.</string>
 </resources>
