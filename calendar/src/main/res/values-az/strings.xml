@@ -142,4 +142,31 @@
         <item quantity="other">Hər <xliff:g id="count" example="2">%1$d</xliff:g> həftə</item>
     </plurals>
     <string name="rrule_monthly">Aylıq</string>
+    <plurals name="rrule_every_months">
+        <item quantity="one">Hər &lt;xliff:g id=\"count\" example=\"1\"&gt;%1$d&lt;/xliff:g ayda</item>
+        <item quantity="other">Hər <xliff:g id="count" example="6">%1$d</xliff:g> aydan bir</item>
+    </plurals>
+    <string name="rrule_yearly">İllik</string>
+    <plurals name="rrule_every_years">
+        <item quantity="one">Hər <xliff:g id="count" example="1">%1$d</xliff:g> ildən bir</item>
+        <item quantity="other">Hər <xliff:g id="count" example="2">%1$d</xliff:g> ildən bir</item>
+    </plurals>
+    <string name="rrule_on_days"><xliff:g id="days" example="Mon, Wed">%2$s</xliff:g> günləri <xliff:g id="frequency" example="Weekly">%1$s</xliff:g></string>
+    <plurals name="rrule_count_suffix">
+        <item quantity="one">, <xliff:g id="count" example="1">%1$d</xliff:g> dəfə</item>
+        <item quantity="other">, <xliff:g id="count" example="5">%1$d</xliff:g> dəfə</item>
+    </plurals>
+    <string name="rrule_until_suffix">, %1$s tarixinədək</string>
+    <string name="widget_preview_event_1_title">Komandanın gündəlik iclası</string>
+    <string name="widget_preview_event_1_time">09:00 – 09:30</string>
+    <string name="widget_preview_event_2_title">Semlə nahar</string>
+    <string name="widget_preview_event_2_time">12:30 – 13:30</string>
+    <string name="widget_preview_event_3_title">Layihəyə baxış</string>
+    <string name="widget_preview_event_3_time">15:00 – 16:00</string>
+    <string name="reminder_channel_name">Tədbir xatırlatmaları</string>
+    <string name="reminder_channel_description">Qarşıdakı təqvim tədbirləri üçün xatırlatmalar</string>
+    <string name="reminder_notification_default_title">Tədbir xatırlatması</string>
+    <string name="reminder_notification_text">Saat <xliff:g id="start_time" example="3:00 PM">%1$s</xliff:g>-da başlayır</string>
+    <string name="today">Bu gün</string>
+    <string name="tomorrow">Sabah</string>
 </resources>
