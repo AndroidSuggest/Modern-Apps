@@ -10,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.euicc.R
 import com.vayunmathur.euicc.Route
-import com.vayunmathur.library.ui.IconSim
+import com.vayunmathur.library.ui.IconQrCode
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.SetupAction
 import com.vayunmathur.library.ui.SetupScaffold
@@ -21,10 +21,10 @@ import com.vayunmathur.library.util.NavBackStack
 /**
  * Manual activation-code entry, for when there is no QR code to point a camera at.
  *
- * The code is only sanity-checked, not parsed: an SGP.22 activation code is
- * `LPA:1$<smdp>$<matchingId>`, and the native core does the real parsing. Rejecting
- * anything more aggressively here risks turning a working code into an unexplained
- * refusal.
+ * The code is only sanity-checked ([looksLikeActivationCode] in `QrScannerScreen.kt`),
+ * not parsed: an SGP.22 activation code is `LPA:1$<smdp>$<matchingId>`, and the native
+ * core does the real parsing. Rejecting anything more aggressively here risks turning
+ * a working code into an unexplained refusal.
  */
 @Composable
 fun ActivationCodeScreen(backStack: NavBackStack<Route>) {
@@ -34,7 +34,7 @@ fun ActivationCodeScreen(backStack: NavBackStack<Route>) {
     SetupScaffold(
         title = stringResource(R.string.activation_code_title),
         subtitle = stringResource(R.string.activation_code_text),
-        icon = { IconSim() },
+        icon = { IconQrCode() },
         backStack = backStack,
         primaryAction = SetupAction(
             label = stringResource(R.string.continue_button),
@@ -57,10 +57,3 @@ fun ActivationCodeScreen(backStack: NavBackStack<Route>) {
         )
     }
 }
-
-/**
- * Whether [code] is worth handing to the native parser. Mirrors the scanner's check so a
- * typed code and a scanned one are held to the same standard.
- */
-private fun looksLikeActivationCode(code: String): Boolean =
-    code.startsWith("LPA:", ignoreCase = true) || code.contains('$')

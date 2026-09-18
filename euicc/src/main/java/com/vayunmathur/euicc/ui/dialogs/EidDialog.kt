@@ -26,6 +26,7 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Spacing
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.rememberMessenger
 
 /**
  * Shows the eUICC's EID as both a QR code and readable digits, matching what the platform
@@ -37,6 +38,8 @@ import com.vayunmathur.library.ui.TextButton
 @Composable
 fun EidDialog(eid: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val messenger = rememberMessenger()
+    val copiedMessage = stringResource(R.string.eid_copied)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.eid_qr_code_dialog_title)) },
@@ -57,6 +60,7 @@ fun EidDialog(eid: String, onDismiss: () -> Unit) {
             TextButton(
                 onClick = {
                     ExternalIntents.copyToClipboard(context, eid, "EID")
+                    messenger.show(copiedMessage)
                     onDismiss()
                 },
             ) { Text(stringResource(R.string.copy_action)) }

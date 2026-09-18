@@ -11,9 +11,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -27,8 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import com.vayunmathur.euicc.R
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -37,18 +33,33 @@ import com.google.zxing.MultiFormatReader
 import com.google.zxing.NotFoundException
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
+import com.vayunmathur.euicc.R
+import com.vayunmathur.euicc.Route
+import com.vayunmathur.library.ui.AppScaffold
+import com.vayunmathur.library.ui.IconQrCode
+import com.vayunmathur.library.ui.PermissionWall
+import com.vayunmathur.library.ui.Spacing
+import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.openAppSettings
+import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.library.ui.rememberPermissionRequest
+import com.vayunmathur.library.util.NavBackStack
 import java.util.concurrent.Executors
 
 /**
- * Full-screen QR scanner for eSIM activation codes. Requests the camera
- * permission, shows a CameraX preview, and calls [onResult] with the first
- * decoded activation code (a string containing `$`, optionally `LPA:`-prefixed).
+ * Camera viewfinder for an eSIM activation code QR.
+ *
+ * Granted camera goes straight to the full-bleed preview below; denied camera gets the
+ * shared [PermissionWall] so the layout matches every other gated screen. The preview
+ * itself is a raw `Box` rather than a scaffold body — a viewfinder has no heading or
+ * footer of its own, and the cancel action overlays it the way the platform LPA does.
  */
+// RAW SCAFFOLD EXCEPTION: full-bleed camera viewfinder; AppScaffold hosts the bar only.
 @Composable
-fun QrScannerScreen(onResult: (String) -> Unit, onCancel: () -> Unit) {
+fun QrScannerScreen(backStack: NavBackStack<Route>, onResult: (String) -> Unit) {
     val context = LocalContext.current
     var hasPermission by remember {
         mutableStateOf(
@@ -56,27 +67,43 @@ fun QrScannerScreen(onResult: (String) -> Unit, onCancel: () -> Unit) {
                 PackageManager.PERMISSION_GRANTED,
         )
     }
-    val requestCamera = rememberPermissionRequest(Manifest.permission.CAMERA) {
-        hasPermission = it
+    val messenger = rememberMessenger()
+    val deniedMessage = stringResource(R.string.camera_permission_required)
+    val requestCamera = rememberPermissionRequest(Manifest.permission.CAMERA) { granted ->
+        hasPermission = granted
+        if (!granted) messenger.show(deniedMessage)
     }
     LaunchedEffect(Unit) {
         if (!hasPermission) requestCamera()
     }
 
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        if (hasPermission) {
-            CameraScanner(onResult = onResult)
-        } else {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(stringResource(R.string.camera_permission_required))
+    AppScaffold(
+        title = stringResource(R.string.scan_qr_title),
+        onNavigateBack = { backStack.pop() },
+        scrollBehavior = appBarScrollBehavior(),
+    ) { pad ->
+        Box(Modifier.fillMaxSize().padding(pad)) {
+            if (hasPermission) {
+                CameraScanner(onResult = onResult)
+            } else {
+                Surface(Modifier.fillMaxSize()) {
+                    PermissionWall(
+                        title = stringResource(R.string.camera_permission_required),
+                        actionLabel = stringResource(R.string.camera_permission_grant),
+                        onRequest = requestCamera,
+                        rationale = stringResource(R.string.camera_permission_rationale),
+                        icon = { IconQrCode() },
+                        settingsLabel = stringResource(R.string.camera_permission_settings),
+                        onOpenSettings = { openAppSettings(context) },
+                    )
+                }
             }
-        }
-        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.BottomCenter) {
-            TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+            Box(
+                Modifier.fillMaxSize().padding(Spacing.xl),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                TextButton(onClick = { backStack.pop() }) { Text(stringResource(R.string.cancel)) }
+            }
         }
     }
 }
@@ -119,8 +146,12 @@ private fun CameraScanner(onResult: (String) -> Unit) {
     AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 }
 
-private fun looksLikeActivationCode(text: String): Boolean =
-    text.startsWith("LPA:", ignoreCase = true) || text.contains('$')
+/**
+ * Whether [code] is worth handing to the native parser. Shared with the manual entry
+ * screen so a typed code and a scanned one are held to the same standard.
+ */
+internal fun looksLikeActivationCode(code: String): Boolean =
+    code.startsWith("LPA:", ignoreCase = true) || code.contains('$')
 
 /** ImageAnalysis analyzer that decodes QR codes with ZXing. */
 private class QrCodeAnalyzer(private val onDecoded: (String) -> Unit) : ImageAnalysis.Analyzer {

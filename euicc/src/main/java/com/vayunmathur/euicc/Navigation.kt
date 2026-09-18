@@ -60,8 +60,8 @@ fun Navigation(viewModel: EuiccViewModel) {
         entry<Route.AddSim> { AddSimScreen(backStack = backStack) }
         entry<Route.ScanQr> {
             QrScannerScreen(
+                backStack = backStack,
                 onResult = { backStack.add(Route.Download(it)) },
-                onCancel = { backStack.pop() },
             )
         }
         entry<Route.ActivationCode> { ActivationCodeScreen(backStack = backStack) }

@@ -16,6 +16,7 @@ import com.vayunmathur.library.ui.SettingsSection
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.library.util.NavBackStack
 
 /**
@@ -31,6 +32,8 @@ import com.vayunmathur.library.util.NavBackStack
 fun DeviceInfoScreen(state: EuiccScreenState, backStack: NavBackStack<Route>, onRemoveNotification: (Int) -> Unit) {
     var showEidQr by remember { mutableStateOf(false) }
     val eid = state.eid
+    val messenger = rememberMessenger()
+    val removedMessage = stringResource(R.string.notification_removed)
 
     DetailScaffold(
         title = stringResource(R.string.device_info_title),
@@ -56,11 +59,14 @@ fun DeviceInfoScreen(state: EuiccScreenState, backStack: NavBackStack<Route>, on
             } else {
                 for (note in state.notifications) {
                     SettingsRow(
-                        title = "#${note.seqNumber} \u00b7 ${note.operation}",
+                        title = stringResource(R.string.notification_title, note.seqNumber, note.operation),
                         supportingText = note.address,
                         trailingContent = {
                             TextButton(
-                                onClick = { onRemoveNotification(note.seqNumber) },
+                                onClick = {
+                                    onRemoveNotification(note.seqNumber)
+                                    messenger.show(removedMessage)
+                                },
                                 enabled = !state.loading,
                             ) { Text(stringResource(R.string.remove)) }
                         },

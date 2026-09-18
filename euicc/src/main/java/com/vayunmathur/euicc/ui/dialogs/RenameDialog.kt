@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.euicc.R
 import com.vayunmathur.euicc.data.Profile
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -16,15 +18,15 @@ fun RenameDialog(profile: Profile, onConfirm: (String) -> Unit, onDismiss: () ->
     var name by remember { mutableStateOf(profile.nickname) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename profile") },
+        title = { Text(stringResource(R.string.rename_profile_title)) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Nickname") },
+                label = { Text(stringResource(R.string.rename_profile_label)) },
             )
         },
-        confirmButton = { TextButton(onClick = { onConfirm(name) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onConfirm(name) }) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

@@ -28,7 +28,9 @@
     <string name="enable_profile_title">Enable</string>
     <string name="disable_profile_title">Disable</string>
     <string name="erase_sim_confirm_button">Erase</string>
-    <string name="rename_profile_title">Rename</string>
+    <string name="rename_profile_title">Rename profile</string>
+    <string name="rename_profile_label">Nickname</string>
+    <string name="save">Save</string>
 
     <!-- Confirmations. %1$s is the carrier being switched to, %2$s the one being left. -->
     <string name="enable_carrier_dialog_title">Switch carrier?</string>
@@ -44,10 +46,13 @@
     <string name="eid_title">EID</string>
     <string name="eid_number">EID number</string>
     <string name="eid_qr_code_dialog_title">Your device EID</string>
+    <string name="eid_copied">EID copied to clipboard</string>
     <string name="eid_not_found">Device EID not found</string>
     <string name="euicc_info_title">eUICC info</string>
     <string name="sgp22_version">SGP.22 version</string>
     <string name="notifications_title">Pending notifications</string>
+    <string name="notification_title">%1$d \u00b7 %2$s</string>
+    <string name="notification_removed">Notification removed</string>
     <string name="no_notifications">No pending notifications</string>
     <string name="remove">Remove</string>
     <string name="copy_action">Copy</string>
@@ -66,7 +71,11 @@
     <string name="activation_code_label">Activation code</string>
     <string name="continue_button">Continue</string>
     <string name="cancel">Cancel</string>
+    <string name="scan_qr_title">Scan QR code</string>
     <string name="camera_permission_required">Camera permission is required to scan a QR code.</string>
+    <string name="camera_permission_rationale">Point the camera at the QR code your carrier gave you to read the activation code.</string>
+    <string name="camera_permission_grant">Allow camera</string>
+    <string name="camera_permission_settings">Open settings</string>
     <string name="done">Done</string>
     <string name="try_again">Try again</string>
 
@@ -87,8 +96,8 @@
     <string name="installing_text">This can take a few minutes. Stay connected to the internet.</string>
 
     <!-- Complete -->
-    <string name="download_complete_title">Activate your eSIM</string>
-    <string name="download_complete_text">Go to Settings to turn on this eSIM</string>
+    <string name="download_complete_title">eSIM set up</string>
+    <string name="download_complete_text">Your eSIM is installed and ready to turn on from the profile list.</string>
 
     <!-- Failure -->
     <string name="download_fail_dialog_title">Couldn\'t set up eSIM</string>

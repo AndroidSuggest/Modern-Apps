@@ -10,11 +10,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.vayunmathur.euicc.R
 import com.vayunmathur.library.ui.IconSim
+import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.SetupAction
 import com.vayunmathur.library.ui.SetupScaffold
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.appBarScrollBehavior
+import com.vayunmathur.library.ui.rememberMessenger
 
 /**
  * Some profiles are confirmation-code protected: the carrier issues a second secret
@@ -32,6 +34,8 @@ fun ConfirmationCodeContent(
     onCancel: () -> Unit,
 ) {
     var code by remember { mutableStateOf("") }
+    val messenger = rememberMessenger()
+    val wrongCodeMessage = stringResource(R.string.confirmation_code_wrong)
     SetupScaffold(
         title = stringResource(R.string.confirmation_code_title),
         subtitle = carrier?.let { stringResource(R.string.confirmation_code_text, it) }
@@ -39,7 +43,10 @@ fun ConfirmationCodeContent(
         icon = { IconSim() },
         primaryAction = SetupAction(
             label = stringResource(R.string.continue_button),
-            onClick = { onSubmit(code.trim()) },
+            onClick = {
+                if (error) messenger.show(wrongCodeMessage)
+                onSubmit(code.trim())
+            },
             enabled = code.isNotBlank(),
         ),
         secondaryAction = SetupAction(stringResource(R.string.cancel), onCancel),
