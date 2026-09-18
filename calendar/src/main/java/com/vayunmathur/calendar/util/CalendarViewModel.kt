@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.glance.CalendarGlanceWidget
+import com.vayunmathur.calendar.glance.CalendarMonthGlanceWidget
 import com.vayunmathur.calendar.ui.parseICSFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -278,6 +279,7 @@ class CalendarViewModel(application: Application) :
     fun updateWidgets() {
         viewModelScope.launch {
             CalendarGlanceWidget().updateAll(getApplication())
+            CalendarMonthGlanceWidget().updateAll(getApplication())
         }
     }
 

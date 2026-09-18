@@ -41,7 +41,6 @@ import com.vayunmathur.calendar.data.Instance
 import com.vayunmathur.calendar.MainActivity
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.ui.atEndOfDayIn
-import com.vayunmathur.calendar.ui.computePositionedEventsForDay
 import com.vayunmathur.calendar.ui.dateRangeString
 import com.vayunmathur.library.ui.DateString
 import com.vayunmathur.library.widgets.DynamicThemeGlance
@@ -63,16 +62,16 @@ class CalendarGlanceWidget : GlanceAppWidget() {
         val nextMonth = today + DatePeriod(months = 1)
         val days = today..<nextMonth
 
-        val instances = Instance.getInstances(context, today.atStartOfDayIn(TimeZone.currentSystemDefault()), nextMonth.atEndOfDayIn(
+        val instances = Instance.getVisibleInstances(context, today.atStartOfDayIn(TimeZone.currentSystemDefault()), nextMonth.atEndOfDayIn(
             TimeZone.currentSystemDefault()))
         val (allDay, notAllDay) = instances.partition { it.allDay }
-        val notAllDayById = notAllDay.associateBy { it.id }
 
+        // Grouped straight off spanDays: the widget list needs no day-view columns,
+        // and routing through computePositionedEventsForDay dropped zero-duration
+        // (start == end) events, whose slice has no width.
         val positionedEvents = days.associateWith { day ->
-            computePositionedEventsForDay(
-                notAllDay.filter { day in it.spanDays },
-                day
-            ).mapNotNull { posEvt -> notAllDayById[posEvt.instanceID] } + allDay.filter { day in it.spanDays }
+            (notAllDay.filter { day in it.spanDays }.sortedBy { it.startDateTime }
+                + allDay.filter { day in it.spanDays })
         }
 
         provideContent {

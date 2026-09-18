@@ -51,6 +51,25 @@ data class Instance(
 
 
     companion object {
+        /**
+         * Instances between [startTime] and [endTime] whose event still exists and
+         * whose calendar is visible. [getInstances] reads the provider directly,
+         * which can still return rows for just-deleted events (sync-adapter delete
+         * semantics / sync lag) with no visibility info — the widget must apply
+         * the same live-event + visibility filtering as the in-app views or stale
+         * events linger until their date passes.
+         */
+        fun getVisibleInstances(context: Context, startTime: Instant, endTime: Instant): List<Instance> {
+            val instances = getInstances(context, startTime, endTime)
+            if (instances.isEmpty()) return emptyList()
+            val eventsById = Event.getAllEvents(context).associateBy { it.id }
+            val visibility = Calendar.getAllCalendars(context).associate { it.id to it.visible }
+            return instances.filter { instance ->
+                val event = eventsById[instance.eventID] ?: return@filter false
+                visibility[event.calendarID] ?: true
+            }
+        }
+
         fun getInstances(context: Context, startTime: Instant, endTime: Instant): List<Instance> {
             val instances = mutableListOf<Instance>()
 

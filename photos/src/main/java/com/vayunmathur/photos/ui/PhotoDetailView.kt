@@ -126,6 +126,8 @@ fun PhotoDetailView(
     }
     var size by remember { mutableStateOf(IntSize.Zero) }
     val sizeReader: () -> IntSize = { size }
+    // Laid-out card size; zero while hidden, so taps then restore chrome as usual.
+    var metadataSize by remember(photo.id) { mutableStateOf(IntSize.Zero) }
 
     // The viewer never shows more than screen resolution, so the decode is capped
     // to the screen's longest edge rather than the file's. Constant for the life
@@ -213,6 +215,7 @@ fun PhotoDetailView(
                         containerSize = sizeReader,
                         onZoomUpdate = updatedOnZoomUpdate,
                         onToggleMetadata = updatedOnToggleMetadata,
+                        isChromeTap = { tap -> metadataSize.height <= 0 || tap.y < (sizeReader().height - metadataSize.height).toFloat() },
                     )
                 )
     ) {
@@ -319,6 +322,7 @@ fun PhotoDetailView(
             onEditPhoto = onEditPhoto,
             onDelete = onDelete,
             onShowImmersive = { showImmersive = it },
+            onMetadataLayout = { metadataSize = it },
             onMotionClick = {
                 if (motionPlaying) {
                     motionPlaying = false

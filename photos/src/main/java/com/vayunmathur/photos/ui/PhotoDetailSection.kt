@@ -14,6 +14,7 @@ import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -56,6 +57,12 @@ fun BoxScope.PhotoDetailSection(
     onDelete: (Photo) -> Unit,
     onShowImmersive: (Boolean) -> Unit,
     onMotionClick: () -> Unit,
+    /**
+     * Reports the laid-out size of the metadata card so the viewer can keep
+     * taps on it from toggling the chrome. Zero while the card is hidden, so
+     * taps then toggle (restore) as usual.
+     */
+    onMetadataLayout: (IntSize) -> Unit = {},
 ) {
     ocrLayout?.takeIf { isSettled && size != IntSize.Zero }?.let { layout ->
         key(ocrClearToken) {
@@ -87,6 +94,7 @@ fun BoxScope.PhotoDetailSection(
     FadeVisibility(
         visible = isMetadataVisible,
         modifier = Modifier.align(Alignment.BottomStart)
+            .onGloballyPositioned { onMetadataLayout(it.size) }
     ) {
         PhotoMetadataCard(
             photo = photo,

@@ -78,7 +78,7 @@ class CalendarMonthGlanceWidget : GlanceAppWidget() {
         val startDay = weeks.first().first()
         val endDay = weeks.last().last()
 
-        val instances = Instance.getInstances(
+        val instances = Instance.getVisibleInstances(
             context,
             startDay.atStartOfDayIn(zone),
             endDay.atEndOfDayIn(zone),

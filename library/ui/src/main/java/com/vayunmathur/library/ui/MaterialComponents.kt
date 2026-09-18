@@ -1039,15 +1039,32 @@ fun Tab(
 )
 
 // --- Pull to refresh ---
+/**
+ * Shared pull-to-refresh container using the M3 Expressive contained loading
+ * indicator (the spinner from the M2 era is gone).
+ */
 @Composable
 fun PullToRefreshBox(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
-) = androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-    isRefreshing = isRefreshing, onRefresh = onRefresh, modifier = modifier, content = content,
-)
+) {
+    val state = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        modifier = modifier,
+        state = state,
+        indicator = {
+            androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.LoadingIndicator(
+                state = state,
+                isRefreshing = isRefreshing,
+            )
+        },
+        content = content,
+    )
+}
 
 // --- Tab (content overload) ---
 @Composable

@@ -63,6 +63,10 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
     // MediaStore IntentSender flow the grid uses. MANAGE_MEDIA (enforced at app
     // start) means no per-item confirmation popup. On success we hide it locally
     // (the pager falls through to the next photo) and trash it in the DB.
+    //
+    // Declared before the delete launcher: its result callback resets the chrome
+    // so the photo the pager falls through to keeps its info card.
+    var isMetadataVisible by remember { mutableStateOf(true) }
     var pendingDelete by remember { mutableStateOf<Photo?>(null) }
     val deleteLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -73,6 +77,9 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
                 galleryViewModel.trashPhotoLocally(p)
             }
             galleryViewModel.runSync()
+            // The pager falls through to the next photo: keep its chrome up so
+            // the info card is there regardless of taps on the trashed one.
+            isMetadataVisible = true
         }
         pendingDelete = null
     }
@@ -116,8 +123,6 @@ fun PhotoPage(galleryViewModel: GalleryViewModel, photoMapViewModel: PhotoMapVie
     LaunchedEffect(photosSorted.isEmpty()) {
         if (photosSorted.isEmpty()) backStack?.pop()
     }
-
-    var isMetadataVisible by remember { mutableStateOf(true) }
 
     var refreshKey by remember { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current

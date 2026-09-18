@@ -7,6 +7,8 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -17,6 +19,10 @@ import androidx.compose.ui.unit.IntSize
  * Reads [currentZoom] as a [State] so pinches update without recomposing; writes
  * go through [onZoomUpdate]. [containerSize] is the measured image container used
  * to clamp the pan offset.
+ *
+ * [isChromeTap] decides whether a tap at the given Box-relative offset toggles the
+ * chrome: taps landing on overlay controls (e.g. the metadata card) must not, or
+ * every button press would also flip the chrome for the next photo.
  */
 @Composable
 internal fun photoZoomGestures(
@@ -25,12 +31,16 @@ internal fun photoZoomGestures(
     containerSize: () -> IntSize,
     onZoomUpdate: (ZoomState) -> Unit,
     onToggleMetadata: () -> Unit,
+    isChromeTap: (Offset) -> Boolean = { true },
 ): Modifier {
+    // pointerInput(Unit) never re-keys, so read the latest predicate through state.
+    val latestIsChromeTap by rememberUpdatedState(isChromeTap)
     return Modifier
         .pointerInput(Unit) {
             detectTapGestures(
-                onTap = { onToggleMetadata() },
-                onDoubleTap = {
+                onTap = { offset -> if (latestIsChromeTap(offset)) onToggleMetadata() },
+                onDoubleTap = { offset ->
+                    if (!latestIsChromeTap(offset)) return@detectTapGestures
                     val newScale =
                         if (currentZoom.value.scale > 1f) 1f else 2.5f
                     onZoomUpdate(
