@@ -26,6 +26,7 @@ use tile_build::mamaps::body::{
     BODY_FLAG_ID_TABLE, BODY_FLAG_LANE_TABLE, BODY_FLAG_NAME_TABLE, BODY_FLAG_ROAD_LANES,
     BODY_HEADER_LEN, FEATURE_RECORD_LEN, LAYER_INDEX_LEN,
 };
+use tile_build::mamaps::dict::Dictionary;
 use tile_build::mamaps::header::Header;
 use tile_build::mamaps::index::{parse_leaf, parse_root, LEAF_ENTRY_LEN, ROOT_ENTRY_LEN};
 
@@ -273,6 +274,20 @@ fn run(path: &str, sample_every_arg: u64) -> Result<(), String> {
     f.read_exact(&mut hbuf).map_err(|e| format!("cannot read header: {e}"))?;
     let header = Header::parse(&hbuf).map_err(|e| format!("bad header: {e:?}"))?;
 
+    // Layer names come from the file's own dict, not a hardcoded schema table:
+    // v8 merged the four v7 wash layers (earth/water/landcover/landuse) into
+    // landtype, so any fixed table rots on the next schema change.
+    f.seek(SeekFrom::Start(header.dict_offset)).map_err(|e| format!("cannot seek to dict: {e}"))?;
+    let mut dbuf = vec![0u8; header.dict_len as usize];
+    f.read_exact(&mut dbuf).map_err(|e| format!("cannot read dict: {e}"))?;
+    let dictionary = Dictionary::parse(&dbuf).map_err(|e| format!("bad dict: {e:?}"))?;
+    let layer_names: BTreeMap<u8, String> = dictionary
+        .layers
+        .iter()
+        .enumerate()
+        .map(|(id, nm)| (id as u8, nm.clone()))
+        .collect();
+
     println!("== {path}  ({:.2} GB on disk, header declares {:.2} GB)", gb(size), gb(header.file_len));
     println!(
         "   compression={} layers={} zoom={}..{} leaf_cap={}",
@@ -399,21 +414,10 @@ fn run(path: &str, sample_every_arg: u64) -> Result<(), String> {
     let mut empty_bodies = 0u64;
     let mut empty_stored = 0u64;
     let mut bodies_seen = 0u64;
-    let mut layer_names: BTreeMap<u8, String> = BTreeMap::new();
 
-    // dict layer names for the report. Ids come from the SCHEMA table position
-    // (see dict.rs docs) — but the file's dict order matches it, so resolve by
-    // reading mamaps_dump --mode dict output is overkill: hardcode the v7 schema
-    // order, verified against the dict length (1452B for 12 layers).
-    {
-        const SCHEMA: [&str; 12] = [
-            "earth", "water", "landcover", "landuse", "roads", "boundaries",
-            "buildings", "places", "poi", "transit", "traffic", "junction",
-        ];
-        for (id, nm) in SCHEMA.iter().enumerate() {
-            layer_names.insert(id as u8, nm.to_string());
-        }
-    }
+    // `layer_names` was built from the file's dict above; the dead first-pass
+    // accumulators used to live here but were shadowed by the aggregation block
+    // below, so they are gone and only the dict-derived names survive.
 
     let t0 = std::time::Instant::now();
     // Parallel scan: one task per root entry (313 leaves for this archive), each
@@ -507,7 +511,7 @@ fn run(path: &str, sample_every_arg: u64) -> Result<(), String> {
         let rw = layer_raw.get(lid).copied().unwrap_or(0);
         let nb = layer_bodies.get(lid).copied().unwrap_or(0);
         let nf = layer_features.get(lid).copied().unwrap_or(0);
-        let nm = layer_names.get(lid).cloned().unwrap_or_else(|| format!("id{lid}"));
+        let nm = layer_names.get(lid).cloned().unwrap_or_else(|| format!("layer{lid}"));
         // Scale the sampled attribution to the exact stored total: the sample
         // ratio is uniform, so each layer's share of the sample scales linearly.
         // Raw scales by the same factor (both accumulated on the sample only).
@@ -540,17 +544,18 @@ fn run(path: &str, sample_every_arg: u64) -> Result<(), String> {
     println!("== F. stored GB by (zoom, layer) — sampled attribution scaled to exact totals");
     println!("   rows: zoom 0..14 (+ `all`); columns: layers in schema order. `..` = <0.005GB.");
     let zscale = total_stored as f64 / zoom_layer_stored.values().sum::<u64>().max(1) as f64;
+    let nlayers = header.layer_count;
     print!("   {:>4}", "z");
-    for lid in 0..12u8 {
-        let nm = layer_names.get(&lid).cloned().unwrap_or_else(|| format!("id{lid}"));
+    for lid in 0..nlayers {
+        let nm = layer_names.get(&lid).cloned().unwrap_or_else(|| format!("layer{lid}"));
         print!(" {:>10}", nm.chars().take(10).collect::<String>());
     }
     println!(" {:>10}", "z-total");
-    let mut col_totals = [0u64; 12];
+    let mut col_totals = vec![0u64; nlayers as usize];
     for z in 0..=14u8 {
         let mut row_total = 0u64;
         print!("   {:>4}", z);
-        for lid in 0..12u8 {
+        for lid in 0..nlayers {
             let v = ((zoom_layer_stored.get(&(z, lid)).copied().unwrap_or(0) as f64) * zscale) as u64;
             row_total += v;
             col_totals[lid as usize] += v;
@@ -564,7 +569,7 @@ fn run(path: &str, sample_every_arg: u64) -> Result<(), String> {
     }
     print!("   {:>4}", "all");
     let mut grand = 0u64;
-    for lid in 0..12u8 {
+    for lid in 0..nlayers {
         let v = col_totals[lid as usize];
         grand += v;
         print!(" {:>10.2}", gb(v));

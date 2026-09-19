@@ -39,12 +39,13 @@
 # as the -Verify spot-check, off by default because it doubles build time).
 #
 # Usage:
-#   .\build_graph.ps1 [-Region california|na|world|caonly] [-NoTransit] [-Verify] [-Threads N]
+#   .\build_graph.ps1 [-Region california|na|world|caonly|naonly] [-NoTransit] [-Verify] [-Threads N]
 #
 # -Region filters roads/POIs/buildings to the region's bbox. Everything else
 # (water, earth, boundaries, landuse, transit, traffic, DEM) is always
 # included regardless. The input is ALWAYS the planet -- except caonly, which
-# takes inputs/california.osm.pbf directly with NO coordinate filtering
+# takes inputs/california.osm.pbf directly with NO coordinate filtering, and
+# naonly, which takes inputs/north-america.osm.pbf directly the same way
 # (downstream tools get --region world): a california build is
 # a world build with only CA roads/POIs/buildings, so borders, coastlines
 # and country names still render everywhere.
@@ -52,6 +53,7 @@
 # Inputs are fixed (no file-location options):
 #   inputs/planet.osm.pbf -> inputs/california.mamaps | inputs/na.mamaps | inputs/world.mamaps
 #   inputs/california.osm.pbf -> inputs/caonly.mamaps (only with -Region caonly)
+#   inputs/north-america.osm.pbf -> inputs/naonly.mamaps (only with -Region naonly)
 #   plus inputs/coastline.shp, inputs/world.mdem.
 #   inputs/world.transit + world_transit_work/feeds.manifest are required
 #   unless -NoTransit is passed, which skips GTFS entirely (empty routes +
@@ -67,7 +69,7 @@ param(
     # California bbox, na to the North America bbox, world builds everything.
     # Everything else (water, earth, boundaries, landuse, transit, traffic,
     # DEM) is always included.
-    [ValidateSet("california", "na", "world", "caonly")]
+    [ValidateSet("california", "na", "world", "caonly", "naonly")]
     [string] $Region = "world",
     # Skip every GTFS feed: no transit_shapes run, an empty transit-routes
     # file for mamaps_build, and no --transit sidecar on the pack -- the
@@ -85,7 +87,8 @@ $ErrorActionPreference = "Stop"
 # Fixed inputs -- no file-location options. ALWAYS the planet: a california
 # build keeps only CA roads/POIs/buildings but renders borders, coastlines
 # and country names everywhere, so it needs the whole world as input.
-# `na` is the same with the North America bbox.
+# `na` is the same with the North America bbox. `caonly`/`naonly` are the
+# exception: their extracts ARE the region, so they build unfiltered.
 $Pbf = Join-Path $PSScriptRoot "inputs/planet.osm.pbf"
 if ($Region -eq "california") {
     $Out = Join-Path $PSScriptRoot "inputs/california.mamaps"
@@ -96,12 +99,18 @@ if ($Region -eq "california") {
     # build it as world.
     $Pbf = Join-Path $PSScriptRoot "inputs/california.osm.pbf"
     $Out = Join-Path $PSScriptRoot "inputs/caonly.mamaps"
+} elseif ($Region -eq "naonly") {
+    # No coordinate filtering: the extract IS North America, so downstream
+    # tools build it as world. Distinct from na.mamaps, which filters the
+    # planet to the NA bbox.
+    $Pbf = Join-Path $PSScriptRoot "inputs/north-america.osm.pbf"
+    $Out = Join-Path $PSScriptRoot "inputs/naonly.mamaps"
 } else {
     $Out = Join-Path $PSScriptRoot "inputs/world.mamaps"
 }
-# What --region the tools see. caonly builds unfiltered (world) from the
-# California extract; every other region passes through.
-$BuildRegion = if ($Region -eq "caonly") { "world" } else { $Region }
+# What --region the tools see. caonly/naonly build unfiltered (world) from
+# their extracts; every other region passes through.
+$BuildRegion = if ($Region -eq "caonly" -or $Region -eq "naonly") { "world" } else { $Region }
 $Coastline    = Join-Path $PSScriptRoot "inputs/coastline.shp"
 $WorldTransit = Join-Path $PSScriptRoot "inputs/world.transit"
 $Dem          = Join-Path $PSScriptRoot "inputs/world.mdem"
@@ -224,7 +233,7 @@ $pack       = Find-Built "tile_build" "mamaps_pack"
 # with the tiles. mamaps_build re-validates the dir before stage A — an empty
 # or stale graph used to cost 43 minutes of stage A before failing.
 Write-Host "[2/7] Building the routing graph ($Region) -> $graphDir"
-# caonly passes world: the extract IS California, so no bbox filtering.
+# caonly/naonly pass world: the extract IS the region, so no bbox filtering.
 & $roadGraph $Pbf --out $graphDir --region $BuildRegion
 if ($LASTEXITCODE -ne 0) { throw "road_graph failed with exit code $LASTEXITCODE" }
 # Fail HERE, not 43 minutes into stage A: the world build died on a missing
