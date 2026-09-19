@@ -125,12 +125,14 @@ class CommunicateCarCallScreen(
     }
 
     private fun callAction(title: String, onClick: () -> Unit): Action {
-        val icon = runCatching {
-            CarIcon.Builder(IconCompat.createWithResource(carContext, R.mipmap.ic_launcher)).build()
-        }.getOrNull()
-        val builder = Action.Builder().setOnClickListener(onClick)
-        if (icon != null) builder.setIcon(icon) else builder.setTitle(title)
-        return builder.build()
+        // IN_CALL_CONTENT requires icons and allows zero custom titles, so
+        // actions are icon-only. The launcher icon stands in: music ships no
+        // playback drawables and titles are rejected here.
+        val icon = CarIcon.Builder(IconCompat.createWithResource(carContext, R.mipmap.ic_launcher)).build()
+        return Action.Builder()
+            .setIcon(icon)
+            .setOnClickListener(onClick)
+            .build()
     }
 
     private fun placeCall(number: String) {

@@ -66,6 +66,9 @@ class CommunicateCarConversationScreen(
     @OptIn(ExperimentalCarApi::class)
     private fun conversationTemplate(): Template {
         val title = thread.displayName?.takeIf { it.isNotBlank() } ?: thread.address
+        // ConversationItem requires a non-empty message list — before the
+        // messages load, show the legacy list (which handles loading itself).
+        if (messages.isEmpty()) return legacyListTemplate()
         val self = Person.Builder().setName("You").setKey("self").build()
         val carMessages = messages.map { message ->
             val sender = if (message.outgoing) {
@@ -111,8 +114,9 @@ class CommunicateCarConversationScreen(
             .setGroupConversation(thread.isGroup)
             .build()
         val list = ItemList.Builder().addItem(item).build()
-        return ListTemplate.Builder()
-            .setSingleList(list)
+        // ListTemplate.build() throws when loading==hasList: only set the
+        // list once messages have loaded.
+        val listBuilder = ListTemplate.Builder()
             .setHeader(
                 androidx.car.app.model.Header.Builder()
                     .setStartHeaderAction(Action.BACK)
@@ -120,7 +124,10 @@ class CommunicateCarConversationScreen(
                     .build(),
             )
             .setLoading(loading)
-            .build()
+        if (!loading) {
+            listBuilder.setSingleList(list)
+        }
+        return listBuilder.build()
     }
 
     private fun legacyListTemplate(): Template {

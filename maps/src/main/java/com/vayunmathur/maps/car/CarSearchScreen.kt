@@ -80,14 +80,16 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
         // List|Pane|Grid|Message (+SectionedItem on API 8+), so search is a
         // ListTemplate with the voice action in the action strip. The typed
         // SearchTemplate shape can't nest inside map content.
-        val listTemplate = androidx.car.app.model.ListTemplate.Builder()
+        //
+        // ListTemplate.build() throws when loading==hasList, so the loading
+        // state must NOT set a list.
+        val listBuilder = androidx.car.app.model.ListTemplate.Builder()
             .setHeader(
                 Header.Builder()
                     .setStartHeaderAction(Action.BACK)
                     .setTitle(carContext.getString(R.string.car_search_title))
                     .build()
             )
-            .setSingleList(buildItemList())
             .setActionStrip(
                 ActionStrip.Builder()
                     .addAction(
@@ -99,9 +101,11 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
                     .build()
             )
             .setLoading(loading)
-            .build()
+        if (!loading) {
+            listBuilder.setSingleList(buildItemList())
+        }
         return MapWithContentTemplate.Builder()
-            .setContentTemplate(listTemplate)
+            .setContentTemplate(listBuilder.build())
             .build()
     }
 

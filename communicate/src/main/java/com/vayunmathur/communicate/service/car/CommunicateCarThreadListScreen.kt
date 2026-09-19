@@ -3,15 +3,25 @@ package com.vayunmathur.communicate.service.car
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
+import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
+import androidx.car.app.model.RowSection
+import androidx.car.app.model.SectionedItemTemplate
 import androidx.car.app.model.Template
+import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.SmsThread
 
 /**
  * Merged conversation list: SIM + GoogleVoice + WhatsApp + Signal threads,
  * newest first.
+ *
+ * Component choice (car design guide):
+ * - API 8+: [SectionedItemTemplate] with one [RowSection] per line (SIM,
+ *   Google Voice, WhatsApp, Signal) — section headers label each group, so
+ *   the driver sees where each thread lives without opening it.
+ * - Older hosts: the flat [ListTemplate] fallback.
  *
  * Rows show the display name, snippet, and unread state; tapping opens
  * [CommunicateCarConversationScreen]. GoogleVoice rows carry no reply
@@ -34,22 +44,80 @@ class CommunicateCarThreadListScreen(
     }
 
     override fun onGetTemplate(): Template {
-        val list = ItemList.Builder()
-        for (thread in threads) {
-            val title = thread.displayName?.takeIf { it.isNotBlank() } ?: thread.address
-            val row = Row.Builder()
-                .setTitle(title)
-            thread.snippet.takeIf { it.isNotBlank() }?.let { row.addText(it) }
-            row.setBrowsable(true)
-            row.setOnClickListener {
-                screenManager.push(CommunicateCarConversationScreen(carContext, session, thread))
-            }
-            list.addItem(row.build())
+        // ListTemplate.build() throws when loading==hasList, and an empty
+        // section set is legal — but while loading there is nothing to show,
+        // so both paths branch on it.
+        if (carContext.getCarAppApiLevel() >= 8) {
+            runCatching { return sectionedTemplate() }
         }
-        return ListTemplate.Builder()
-            .setSingleList(list.build())
-            .setTitle(if (loading) "Loading…" else "Messages")
-            .setHeaderAction(Action.APP_ICON)
-            .build()
+        return legacyListTemplate()
+    }
+
+    private fun sectionedTemplate(): Template {
+        val builder = SectionedItemTemplate.Builder()
+            .setHeader(
+                Header.Builder()
+                    .setStartHeaderAction(Action.APP_ICON)
+                    .setTitle(if (loading) "Loading…" else "Messages")
+                    .build(),
+            )
+            .setLoading(loading)
+        if (!loading) {
+            for ((line, label) in LINE_ORDER) {
+                val rows = threads.filter { it.line == line }.map { threadRow(it) }
+                if (rows.isNotEmpty()) {
+                    builder.addSection(
+                        RowSection.Builder()
+                            .setTitle(label)
+                            .setItems(rows)
+                            .build(),
+                    )
+                }
+            }
+        }
+        return builder.build()
+    }
+
+    private fun legacyListTemplate(): Template {
+        val listBuilder = ListTemplate.Builder()
+            .setHeader(
+                Header.Builder()
+                    .setStartHeaderAction(Action.APP_ICON)
+                    .setTitle(if (loading) "Loading…" else "Messages")
+                    .build(),
+            )
+            .setLoading(loading)
+        if (!loading) {
+            val list = ItemList.Builder()
+            for (thread in threads) {
+                list.addItem(threadRow(thread))
+            }
+            listBuilder.setSingleList(list.build())
+        }
+        return listBuilder.build()
+    }
+
+    private fun threadRow(thread: SmsThread): Row {
+        val title = thread.displayName?.takeIf { it.isNotBlank() } ?: thread.address
+        val row = Row.Builder()
+            .setTitle(title)
+        thread.snippet.takeIf { it.isNotBlank() }?.let { row.addText(it) }
+        if (thread.unreadCount > 0) {
+            row.addText("${thread.unreadCount} unread")
+        }
+        row.setBrowsable(true)
+        row.setOnClickListener {
+            screenManager.push(CommunicateCarConversationScreen(carContext, session, thread))
+        }
+        return row.build()
+    }
+
+    private companion object {
+        val LINE_ORDER: List<Pair<CommunicateLine, String>> = listOf(
+            CommunicateLine.Sim to "SIM",
+            CommunicateLine.GoogleVoice to "Google Voice",
+            CommunicateLine.WhatsApp to "WhatsApp",
+            CommunicateLine.Signal to "Signal",
+        )
     }
 }
