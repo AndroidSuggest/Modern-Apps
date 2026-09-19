@@ -138,7 +138,7 @@ fn classify_water(tags: &(impl TagSource + ?Sized), is_way: bool) -> Option<Clas
             "fjord" => Some(Class::area(LAYER_LANDTYPE, kind("fjord"), 6)),
             "reef" => Some(Class::area(LAYER_LANDTYPE, kind("reef"), 10)),
             // The generic one, and by far the most common. A lake if `water` says so.
-            "water" => Some(Class::area(LAYER_LANDTYPE, water_kind(tags), water_min_zoom(tags))),
+            "water" => Some(water_class(tags)),
             _ => None,
         };
         if class.is_some() {
@@ -196,11 +196,16 @@ fn water_kind(tags: &(impl TagSource + ?Sized)) -> u16 {
 /// A named lake is a landmark and an unnamed pond is not, and a name is the only signal in the tags
 /// that separates them. This is the one place the classifier reads `name` at all — for a *decision*,
 /// not to carry it.
-fn water_min_zoom(tags: &(impl TagSource + ?Sized)) -> u8 {
+///
+/// Both ride at the same zoom as the other landtypes (the park tier, z8): the area floor, not the
+/// zoom gate, is what keeps farm ponds out of shallow tiles — a pond smaller than a couple of
+/// pixels is a speck at z8, and `with_area` culls it there instead of hiding every unnamed lake
+/// until z12.
+fn water_class(tags: &(impl TagSource + ?Sized)) -> Class {
     if tags.has("name") {
-        6
+        Class::area(LAYER_LANDTYPE, water_kind(tags), 6)
     } else {
-        12
+        with_area(water_kind(tags), 8, 2.0)
     }
 }
 
@@ -546,14 +551,16 @@ mod tests {
         }
     }
 
-    /// The judgement that matters: a named lake is a landmark from z6, an unnamed pond is street
-    /// detail. Without this a z6 tile carries every farm pond in the state.
+    /// The judgement that matters: a named lake is a landmark from z6, an unnamed pond
+    /// rides at the park tier (z8) with a 2px floor — the floor, not the zoom gate, is
+    /// what keeps farm ponds out of shallow tiles.
     #[test]
     fn a_named_water_body_is_carried_far_shallower_than_an_unnamed_one() {
         let named = classify_tags(&[("natural", "water"), ("name", "Lake Tahoe")], true).expect("named");
         let pond = classify_tags(&[("natural", "water")], true).expect("unnamed");
         assert_eq!(named.min_zoom, 6);
-        assert_eq!(pond.min_zoom, 12);
+        assert_eq!(pond.min_zoom, 8);
+        assert_eq!(pond.min_area_px, 2.0);
         assert!(named.min_zoom < pond.min_zoom);
     }
 
