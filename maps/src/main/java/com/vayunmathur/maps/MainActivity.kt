@@ -298,10 +298,6 @@ fun Navigation(
             MapPage(backStack, viewModel, savedPlacesViewModel, searchViewModel, settingsViewModel, parkingViewModel, transitViewModel)
         }
         entry<Route.SettingsPage>(metadata = ListDetailPage()) {
-        entry<Route.MapPage> {
-            MapPage(backStack, viewModel, savedPlacesViewModel, poiViewModel, searchViewModel, settingsViewModel, parkingViewModel, transitViewModel)
-        }
-        entry<Route.SettingsPage> {
             MapSettingsPage(backStack, settingsViewModel)
         }
         entry<Route.SavedPlacesPage>(metadata = ListDetailPage()) {

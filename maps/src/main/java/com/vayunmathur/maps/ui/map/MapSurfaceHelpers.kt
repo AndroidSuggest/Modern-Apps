@@ -256,3 +256,36 @@ internal suspend fun openVehicleTrip(
     sheetState?.partialExpand()
     return true
 }
+
+/**
+ * The selected city/region's outline, dimmed outside. Derived from the sheet's own
+ * selection rather than the tap, so a region picked from search masks too — and the
+ * label's own kind supplies the admin level, because the point alone is inside every
+ * region above it and would otherwise resolve to the smallest, not the one named.
+ */
+internal fun regionMaskFor(
+    selectedFeature: com.vayunmathur.maps.data.SpecificFeature?,
+): com.vayunmathur.library.map.RegionMask? = when (selectedFeature) {
+    is com.vayunmathur.maps.data.SpecificFeature.Admin0Label ->
+        selectedFeature.position?.let {
+            com.vayunmathur.library.map.RegionMask(
+                it,
+                com.vayunmathur.library.map.RegionLevel.COUNTRY,
+            )
+        }
+    is com.vayunmathur.maps.data.SpecificFeature.Admin1Label ->
+        selectedFeature.position?.let {
+            com.vayunmathur.library.map.RegionMask(
+                it,
+                com.vayunmathur.library.map.RegionLevel.REGION,
+            )
+        }
+    is com.vayunmathur.maps.data.SpecificFeature.Admin2Label ->
+        selectedFeature.position?.let {
+            com.vayunmathur.library.map.RegionMask(
+                it,
+                com.vayunmathur.library.map.RegionLevel.LOCALITY,
+            )
+        }
+    else -> null
+}

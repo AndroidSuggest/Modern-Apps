@@ -57,10 +57,10 @@ internal fun MapPageScope.MapContentBox(
     // Earth) — there are no POIs to filter up there.
     val showBodySwitch = globeEnabled && camera.position.zoom < GLOBE_DETAIL_ZOOM ||
         body == MapBody.Moon
-            // No app bar. The map is the whole screen and every piece of chrome floats over it,
-            // which is also what keeps the renderer's surface edge-to-edge — a padded parent here
-            // is what used to leave a dead strip along the navigation bar.
-            Box(Modifier.fillMaxSize()) {
+    // No app bar. The map is the whole screen and every piece of chrome floats over it,
+    // which is also what keeps the renderer's surface edge-to-edge — a padded parent here
+    // is what used to leave a dead strip along the navigation bar.
+    Box(Modifier.fillMaxSize()) {
                 MapSurface(
                     camera = camera,
                     chrome = chrome,

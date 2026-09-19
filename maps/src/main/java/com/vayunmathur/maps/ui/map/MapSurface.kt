@@ -15,8 +15,6 @@ import com.vayunmathur.library.map.LayerOptions
 import com.vayunmathur.library.map.MapBody
 import com.vayunmathur.library.map.MapOptions
 import com.vayunmathur.library.map.MoonTextures
-import com.vayunmathur.library.map.RegionLevel
-import com.vayunmathur.library.map.RegionMask
 import com.vayunmathur.library.map.TileSource
 import com.vayunmathur.library.map.UserPuck
 import com.vayunmathur.library.map.VectorMap
@@ -188,19 +186,7 @@ fun MapSurface(
         moonTextures = moonTextures,
         options = mapOptions,
         userPuck = userPuck,
-        // The selected city/region's outline, dimmed outside. Derived from the sheet's own
-        // selection rather than the tap, so a region picked from search masks too — and the
-        // label's own kind supplies the admin level, because the point alone is inside every
-        // region above it and would otherwise resolve to the smallest, not the one named.
-        regionMask = when (selectedFeature) {
-            is SpecificFeature.Admin0Label ->
-                selectedFeature.position?.let { RegionMask(it, RegionLevel.COUNTRY) }
-            is SpecificFeature.Admin1Label ->
-                selectedFeature.position?.let { RegionMask(it, RegionLevel.REGION) }
-            is SpecificFeature.Admin2Label ->
-                selectedFeature.position?.let { RegionMask(it, RegionLevel.LOCALITY) }
-            else -> null
-        },
+        regionMask = regionMaskFor(selectedFeature),
         // The live traffic overlay: baked geometry gated by [LayerOptions.traffic] above,
         // coloured by this id->ARGB table. Null clears it (toggle off / nothing to draw).
         trafficColors = trafficColors,
@@ -356,7 +342,3 @@ fun MapSurface(
         )
     }
 }
-
-// STATION_POI_TYPE, TaggedFeature,
-// traffic constants, prefetchTrafficSquares, buildTrafficColorTable, pinFeatures
-// and buildMarkers live in MapSurfaceHelpers.kt.

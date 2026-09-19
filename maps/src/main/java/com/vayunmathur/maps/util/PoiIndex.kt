@@ -296,6 +296,9 @@ object PoiIndex {
     private var mapped: Mapped? = null
     private var tried = false
 
+    /** Read access for the extension queries in PoiIndexSpatial.kt / PoiIndexWords.kt. */
+    internal fun mappedForQuery(): Mapped? = mapped
+
     /** True once both side files were mapped successfully. */
     val available: Boolean get() = mapped != null
 
@@ -667,66 +670,10 @@ object PoiIndex {
         return out.take(limit).map { it.record }
     }
 
-    /**
-     * Nearest POIs to ([lat],[lon]) within [maxMeters], closest first (bbox
-     * pre-filter + squared-distance sort). Names are decoded only for the
-     * returned winners. Empty when the index isn't loaded.
-     */
-    fun nearest(
-        lat: Double,
-        lon: Double,
-        limit: Int = 20,
-        maxMeters: Double = 250.0,
-    ): List<PoiRecord> {
-        val m = mapped ?: return emptyList()
-        val dLat = maxMeters / 111_320.0
-        val cosLat = Math.cos(Math.toRadians(lat)).coerceAtLeast(1e-6)
-        val dLon = maxMeters / (111_320.0 * cosLat)
-        val minLatE7 = ((lat - dLat) * 1e7).toInt()
-        val maxLatE7 = ((lat + dLat) * 1e7).toInt()
-        val minLonE7 = ((lon - dLon) * 1e7).toInt()
-        val maxLonE7 = ((lon + dLon) * 1e7).toInt()
-
-        val hits = ArrayList<Hit>()
-        m.forEachInBbox(minLatE7, maxLatE7, minLonE7, maxLonE7) { i, latE7, lonE7 ->
-            hits.add(Hit(i, distanceSq(latE7 / 1e7, lonE7 / 1e7, lat, lon)))
-            true
-        }
-        // Stable, so records at an equal distance stay in file order — the tie-break the
-        // scan this replaced had, and what the equivalence test pins.
-        hits.sortBy { it.distSq }
-        return hits.take(limit).map { m.record(it.idx) }
-    }
-
-    /**
-     * All POIs whose coordinate falls inside the [west]..[east] × [south]..[north]
-     * bounding box, capped at [cap]. Names are decoded for each returned record.
-     * Empty when the index isn't loaded; used to drive the ambient offline pin
-     * overlay (P29).
-     */
-    fun inViewport(
-        west: Double,
-        south: Double,
-        east: Double,
-        north: Double,
-        cap: Int = 300,
-    ): List<PoiRecord> {
-        val m = mapped ?: return emptyList()
-        if (cap <= 0) return emptyList()
-        val minLatE7 = (south * 1e7).toInt()
-        val maxLatE7 = (north * 1e7).toInt()
-        val minLonE7 = (west * 1e7).toInt()
-        val maxLonE7 = (east * 1e7).toInt()
-        val out = ArrayList<PoiRecord>(minOf(cap, m.count))
-        m.forEachInBbox(minLatE7, maxLatE7, minLonE7, maxLonE7) { i, _, _ ->
-            out.add(m.record(i))
-            out.size < cap
-        }
-        return out
-    }
+    // Spatial queries (nearest/inViewport) live in PoiIndexSpatial.kt as
+    // extensions, alongside the grid they walk.
 
     private class Ranked(val record: PoiRecord, val rank: Int, val distSq: Double)
-    private class Hit(val idx: Int, val distSq: Double)
 
     /**
      * The attributes of the [ordinal]th index record, or null when there are none.

@@ -123,4 +123,72 @@ internal object OfflineRouterTraffic {
         lastPublished = null
         _trafficComponents.value = TrafficComponents.EMPTY
     }
+
+    /**
+     * Loopback-only tile server for `/traffic/{z}/{x}/{y}`, extracted from
+     * [OfflineRouter] to keep that file under the length limit. Started once
+     * from [OfflineRouter]'s init; the tile bytes still come from
+     * [OfflineRouter.getTrafficTileNative].
+     */
+    private var serverPort = 0
+
+    internal fun startLocalTileServer() {
+        Thread {
+            try {
+                // Bind to loopback ONLY. The previous `ServerSocket(0)` defaulted
+                // to 0.0.0.0 which let any app on the device (or anything on the
+                // local network) hit /traffic/{z}/{x}/{y}.
+                val serverSocket = java.net.ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress())
+                serverPort = serverSocket.localPort
+                android.util.Log.d("OFFLINE_ROUTER", "Tile server started on port $serverPort (loopback only)")
+                // Hand each client to a small pool so a slow tile doesn't block
+                // concurrent tile requests behind the global mutex.
+                val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+                while (!serverSocket.isClosed) {
+                    val client = serverSocket.accept()
+                    // Prevent a half-open / hung client from holding a worker forever.
+                    runCatching { client.soTimeout = 5_000 }
+                    pool.execute { handleClient(client) }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("OFFLINE_ROUTER", "Tile server error", e)
+            }
+        }.start()
+    }
+
+    private fun handleClient(client: java.net.Socket) {
+        try {
+            val reader = client.getInputStream().bufferedReader()
+            val firstLine = reader.readLine() ?: return
+
+            // Expected: GET /traffic/{z}/{x}/{y} HTTP/1.1
+            val parts = firstLine.split(" ")
+            if (parts.size >= 2 && parts[0] == "GET") {
+                val pathParts = parts[1].removePrefix("/traffic/").split("/")
+                if (pathParts.size == 3) {
+                    val z = pathParts[0].toIntOrNull() ?: 0
+                    val x = pathParts[1].toIntOrNull() ?: 0
+                    val y = pathParts[2].substringBefore("?").toIntOrNull() ?: 0
+
+                    val bytes = OfflineRouter.getTrafficTileNative(z, x, y)
+                    val output = client.getOutputStream()
+                    if (bytes != null) {
+                        output.write(("HTTP/1.1 200 OK\r\n" +
+                                "Content-Type: application/vnd.mapbox-vector-tile\r\n" +
+                                "Content-Encoding: gzip\r\n" +
+                                "Content-Length: ${bytes.size}\r\n" +
+                                "Access-Control-Allow-Origin: *\r\n\r\n").toByteArray())
+                        output.write(bytes)
+                    } else {
+                        output.write("HTTP/1.1 204 No Content\r\n\r\n".toByteArray())
+                    }
+                    output.flush()
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("OFFLINE_ROUTER", "Error handling client", e)
+        } finally {
+            client.close()
+        }
+    }
 }
