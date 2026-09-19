@@ -477,7 +477,7 @@ lint check would be the wrong way round.
 
 ## Store metadata
 
-Every app module needs a `metadata_data/<module-key>.md`. `release.sh` and the release workflow
+Every app module needs a `metadata_data/<module-key>.md`. `./release` (`release.bat` on Windows) and the release workflow
 take line 1 as the store short description and the whole file as the full description, so the
 format is strict and `./gradlew checkMetadata` enforces it both ways — a missing file and an
 orphaned file are both errors.
@@ -626,7 +626,7 @@ the file's line endings — fix that rather than committing the churn.
 
 Releases are manual: the `🚀 Publish Next Release` workflow is `workflow_dispatch` only.
 `version.txt` holds the version code on line 1 and the version name on line 2, and both are
-injected into every app module at release time. `release.sh` does the same locally and refuses
+injected into every app module at release time. `./release` (`release.bat` on Windows) does the same locally and refuses
 to run on a dirty tree.
 
 Reproducible output is a standing requirement — archives use fixed timestamps and ordering,
