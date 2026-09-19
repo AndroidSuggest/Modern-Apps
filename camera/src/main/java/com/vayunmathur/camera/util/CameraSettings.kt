@@ -25,6 +25,7 @@ internal fun CameraViewModel.loadSettings() {
     ds.getString("camera_audio_source")?.let {
         _audioInputSource.value = try { AudioInputSource.valueOf(it) } catch (_: Exception) { AudioInputSource.CAMCORDER }
     }
+    loadSaveTarget()
     // Guard against a blank persisted value: Uri.parse("") yields a non-null
     ds.getString("camera_last_capture")?.takeIf { it.isNotBlank() }?.let { _lastCaptureUri.value = it.toUri() }
     ds.getString("camera_grid")?.let { _gridEnabled.value = it.toBoolean() }

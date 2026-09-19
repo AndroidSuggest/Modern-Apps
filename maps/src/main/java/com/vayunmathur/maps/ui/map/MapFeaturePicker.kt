@@ -108,7 +108,8 @@ class MapFeaturePicker(
      * The topmost pin under [offset], or null when the tap landed on no pin.
      *
      * Every probe uses the same tolerance box so a tap NEAR a small glyph still counts; see
-     * [MapChromeMetrics.hitSlop].
+     * [MapChromeMetrics.hitSlop]. Ground fills are not probed: a tap on `landtype` (park,
+     * water, farmland, …) returns null here and the caller falls through to reverse-geocode.
      */
     suspend fun pickPin(offset: DpOffset): MapHit? {
         val box = hitBox(offset)

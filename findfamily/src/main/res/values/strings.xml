@@ -120,6 +120,10 @@
     <string name="yesterday">yesterday</string>
     <!-- MainPage: UserCard multiline status block. %1$s = last updated relative time (just now/minutes ago), %2$s = location name, %3$s = since string -->
     <string name="user_card_status">Updated <xliff:g id="last_updated" example="5 minutes ago">%1$s</xliff:g>\nAt <xliff:g id="location_name" example="Home">%2$s</xliff:g>\n<xliff:g id="since_text" example="Since today">%3$s</xliff:g></string>
+    <!-- MainPage: UserCard status block for a phone that sent its parting shutdown report. %1$s = shutdown age (just now/5 minutes ago), %2$s = fix age, %3$s = location name, %4$s = since string -->
+    <string name="user_card_shutdown">Phone switched off <xliff:g id="shutdown_age" example="5 minutes ago">%1$s</xliff:g>\nLast location <xliff:g id="last_updated" example="20 minutes ago">%2$s</xliff:g>\nAt <xliff:g id="location_name" example="Home">%3$s</xliff:g>\n<xliff:g id="since_text" example="Since today">%4$s</xliff:g></string>
+    <!-- MainPage: UserCard status block for a low-battery report (phone still alive, same stale-fix shape as shutdown). Same params as user_card_shutdown -->
+    <string name="user_card_battery_low">Low battery report <xliff:g id="report_age" example="5 minutes ago">%1$s</xliff:g>\nLast location <xliff:g id="last_updated" example="20 minutes ago">%2$s</xliff:g>\nAt <xliff:g id="location_name" example="Home">%3$s</xliff:g>\n<xliff:g id="since_text" example="Since today">%4$s</xliff:g></string>
     <!-- MainPage: BatteryBar percentage label. %1$d = battery level 0-100, e.g. 85 -->
     <string name="battery_percentage"><xliff:g id="battery_level" example="85">%1$d</xliff:g>%%</string>
 

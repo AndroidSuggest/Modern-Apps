@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.net.Uri
-import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.ImageCapture
@@ -20,18 +19,12 @@ import kotlinx.coroutines.withContext
 internal fun CameraViewModel.captureSinglePhoto() {
     val capture = imageCapture ?: return
     _isCapturing.value = true
-    val contentValues = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
-
-    val metadata = ImageCapture.Metadata().apply {
-        if (_locationEnabled.value) location = lastLocation
-        isReversedHorizontal = mirrorCaptures
+    val fileName = "IMG_${MediaStoreSaver.timestamp()}.jpg"
+    val pending = prepareStillSave(fileName) ?: run {
+        _isCapturing.value = false
+        return
     }
-
-    val outputOptions = ImageCapture.OutputFileOptions.Builder(
-        app.contentResolver,
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-        contentValues
-    ).setMetadata(metadata).build()
+    val outputOptions = pending.outputOptions
 
     val stop = CameraViewModel.EXPOSURE_TIME_STOPS[_exposureTimeIndex.value]
     // Manual shutter/ISO are already applied live via applyManualControls(); the only transient
@@ -59,10 +52,11 @@ internal fun CameraViewModel.captureSinglePhoto() {
         if (exposureNanos != null && exposureNanos >= 250_000_000L) {
             startLongExposureCountdown(exposureNanos)
         }
-        fun finishCapture(uri: Uri?) {
+    fun finishCapture(uri: Uri?) {
             _isCapturing.value = false
             stopLongExposureCountdown()
             restoreAfterNight()
+            pending.closeStream()
             if (uri != null) setLastCaptureUri(uri)
         }
 
@@ -108,8 +102,8 @@ internal fun CameraViewModel.captureSinglePhoto() {
                                     stillBokeh.render(decoded, degrees, strength, warmth, shadows, mirror)
                                 } else null)
                                     ?: applyColorAdjustments(decoded, warmth, shadows, mirror)
-                                val values = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
-                                MediaStoreSaver.saveBitmap(app.contentResolver, values, adjusted)
+                                val name = "IMG_${MediaStoreSaver.timestamp()}.jpg"
+                                saveStillBitmap(name, adjusted)
                                     ?.also { writeCaptureExif(it, sourceJpeg, degrees, mirrored = mirror) }
                                     .also { adjusted.recycle() }
                             }
@@ -130,7 +124,7 @@ internal fun CameraViewModel.captureSinglePhoto() {
             ContextCompat.getMainExecutor(app),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                    finishCapture(outputFileResults.savedUri)
+                    finishCapture(pending.resolveUri(outputFileResults))
                 }
                 override fun onError(exception: ImageCaptureException) {
                     finishCapture(null)
@@ -198,7 +192,11 @@ fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: (
             _isCapturing.value = false
             return onError()
         }
-        val metadata = ImageCapture.Metadata().apply { isReversedHorizontal = mirrorCaptures }
+        val metadata = ImageCapture.Metadata().apply {
+            updateLocation()
+            if (_locationEnabled.value) location = lastLocation
+            isReversedHorizontal = mirrorCaptures
+        }
         val outputOptions = ImageCapture.OutputFileOptions.Builder(outputStream)
             .setMetadata(metadata)
             .build()

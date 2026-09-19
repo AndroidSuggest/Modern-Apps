@@ -3,10 +3,9 @@
 //! A transit line is a **GTFS shape**: one polyline out of an agency's own `shapes.txt`, carrying
 //! the official `route_color` out of its `routes.txt`. `scripts/maps/gtfs_ingest`'s `transit_shapes`
 //! binary turns a set of feeds into a `.geojsonseq` of them, and [`stream_routes`] reads that file
-//! the way [`crate::schema::earth::stream_prepared`] reads a prepared land polygon. The rail track
+//! the way [`crate::schema::landtype::stream_prepared`] reads a prepared land polygon. The rail track
 //! itself stays on the `roads` layer as the grey dashed casing from the reference style's
 //! `roads_rail`, so the coloured line draws over neutral track exactly like a metro map.
-//!
 //! # Why not OSM route relations
 //!
 //! It used to be exactly that: a `type=route` relation's member ways, coloured by the relation's
@@ -73,7 +72,7 @@ pub fn transit_class(mode: &str) -> Option<Class> {
 ///
 /// The `.geojsonseq` `transit_shapes` writes: one `LineString` per rail route, with `color`
 /// (`RRGGBB`), `mode`, `ordinal`, `lanes` and `taper` properties. Modelled on
-/// [`crate::schema::earth::stream_prepared`] down to the streaming read and the "this file yielded
+/// [`crate::schema::landtype::stream_prepared`] down to the streaming read and the "this file yielded
 /// nothing, so you passed the wrong one" error at the end.
 ///
 /// Every malformed line is a hard error rather than a skip. The file is written by a tool in this
@@ -86,6 +85,11 @@ pub fn transit_class(mode: &str) -> Option<Class> {
 /// `bbox` is `(min_lon, min_lat, max_lon, max_lat)` in degrees and is an intersection test, not a
 /// clip: a route running out of the extract is drawn to where the tiler cuts it, exactly as an OSM
 /// way straddling the same edge is.
+///
+/// An empty file (no non-blank lines) yields zero routes rather than an
+/// error: that is what a `--notransit` build feeds in, and zero feeds means
+/// an empty transit layer, not a wrong file. A non-empty file with no
+/// meeting route is still an error below.
 pub fn stream_routes(
     path: &Path,
     bbox: (f64, f64, f64, f64),
@@ -93,6 +97,10 @@ pub fn stream_routes(
 ) -> Result<u64> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| osm_ingest::proto::Error(format!("cannot read {}: {e}", path.display())))?;
+    if text.lines().all(|line| line.trim().is_empty()) {
+        println!("  0 transit route(s): empty routes file, the transit layer is empty");
+        return Ok(0);
+    }
     let mut written = 0u64;
     let mut skipped = 0u64;
     for (line_number, line) in text.lines().enumerate() {

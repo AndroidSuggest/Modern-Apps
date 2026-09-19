@@ -7,6 +7,7 @@ import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.navigation.NavigationManager
 import androidx.car.app.navigation.NavigationManagerCallback
+import androidx.car.app.navigation.model.NavigationVoiceAssistantCapabilities
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.vayunmathur.maps.util.NavigationService
@@ -58,6 +59,39 @@ class MapsSession : Session() {
                 stopExistingNavigation()
             }
         })
+
+        // API 9 (experimental, AAOS only): declare voice-assistant capabilities
+        // so the host can route voice actions to us. Guarded — old hosts and
+        // non-automotive hosts throw/ignore.
+        if (carContext.getCarAppApiLevel() >= 9) {
+            runCatching {
+                if (navigationManager.canSetVoiceAssistantCapabilities()) {
+                    navigationManager.setVoiceAssistantCapabilities(
+                        NavigationVoiceAssistantCapabilities.Builder()
+                            .setVoiceAssistantConsentGranted(true)
+                            .addSupportedAction(
+                                NavigationVoiceAssistantCapabilities.ACTION_EXIT_NAVIGATION
+                            )
+                            .addSupportedAction(
+                                NavigationVoiceAssistantCapabilities.ACTION_MUTE_AND_UNMUTE
+                            )
+                            .addSupportedAction(
+                                NavigationVoiceAssistantCapabilities.ACTION_ROUTE_OVERVIEW
+                            )
+                            .addSupportedAction(
+                                NavigationVoiceAssistantCapabilities.ACTION_SHOW_ALTERNATES
+                            )
+                            .addSupportedAction(
+                                NavigationVoiceAssistantCapabilities.ACTION_SHOW_DIRECTIONS_LIST
+                            )
+                            .addSupportedAction(
+                                NavigationVoiceAssistantCapabilities.ACTION_SHOW_TRAFFIC
+                            )
+                            .build()
+                    )
+                }
+            }.onFailure { Log.w(TAG, "setVoiceAssistantCapabilities failed", it) }
+        }
 
         // Mirror the existing session state into the host's NavigationManager.
         scope.launch {

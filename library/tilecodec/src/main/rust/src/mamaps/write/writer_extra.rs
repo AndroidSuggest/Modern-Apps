@@ -71,7 +71,7 @@ impl StreamWriter {
             flags |= crate::mamaps::header::FLAG_LEAF_LEN_64;
         }
         let root_bytes = index::serialize_root(&root);
-        // The dictionary starts where the 128-byte v7 header ends.
+        // The dictionary starts where the 128-byte v8 header ends.
         let dict_offset = HEADER_LEN as u64;
         let root_offset = dict_offset + dictionary.len() as u64;
         let leaf_offset = root_offset + root_bytes.len() as u64;

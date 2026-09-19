@@ -126,6 +126,14 @@ fn the_kind_filter_is_a_whitelist_and_empty_means_everything() {
     // A name the schema has no id for cannot be on a feature at all, so nothing draws it.
     // Interning the whitelist is what turns that from a silent miss into an impossibility.
     assert!(!earth.matches(Some("not_a_kind")));
+
+    // The water arm is whitelisted since v8 (one `landtype` layer now returns everything):
+    // it draws true water and nothing else.
+    let water = find("water");
+    assert!(water.matches(Some("ocean")));
+    assert!(water.matches(Some("river")));
+    assert!(!water.matches(Some("park")), "a park is not water");
+    assert!(!water.matches(None), "the kind-less mainland is not water");
 }
 
 /// The interned whitelist and the authored names must agree, or the render path filters on
@@ -151,7 +159,9 @@ fn the_interned_whitelist_is_the_authored_one() {
     // And every layer reads a source the archive actually carries.
     let roads = find("roads-highway");
     assert_eq!(roads.source_layer_id, dict::LAYER_ROADS);
-    assert_eq!(find("earth").source_layer_id, dict::LAYER_EARTH);
+    assert_eq!(find("earth").source_layer_id, dict::LAYER_LANDTYPE);
+    assert_eq!(find("water").source_layer_id, dict::LAYER_LANDTYPE);
+    assert_eq!(find("landuse_orchard").source_layer_id, dict::LAYER_LANDTYPE);
 }
 
 #[test]

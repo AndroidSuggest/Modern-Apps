@@ -3,12 +3,19 @@ package com.vayunmathur.library.ui
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.Battery1Bar
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.SignalCellular0Bar
+import androidx.compose.material.icons.filled.SignalCellular4Bar
 import androidx.compose.material.icons.filled.HealthAndSafety
+import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Medication
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Flag
@@ -1560,6 +1567,11 @@ fun IconHealth(modifier: Modifier = Modifier, tint: Color = LocalContentColor.cu
 fun IconShield(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.Shield, "Shields", modifier, tint)
 
+/** Medical bag — the Medical tab. */
+@Composable
+fun IconMedicalServices(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.MedicalServices, "Medical", modifier, tint)
+
 /** Pill bottle — prescriptions and pharmacy. */
 @Composable
 fun IconMedication(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
@@ -1622,3 +1634,34 @@ fun IconSim(modifier: Modifier = Modifier, tint: Color = LocalContentColor.curre
 @Composable
 fun IconQrCode(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.QrCodeScanner, "QR code", modifier, tint)
+
+// --- Car status cluster (phone signal, battery, DND) ---
+/** Full signal bars - the phone's cell signal level. */
+@Composable
+fun IconSignalFull(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.SignalCellular4Bar, "Signal", modifier, tint)
+
+/** No signal - the phone has no cell service. */
+@Composable
+fun IconSignalNone(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.SignalCellular0Bar, "No signal", modifier, tint)
+
+/** Full battery - the phone's charge level. */
+@Composable
+fun IconBatteryFull(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.BatteryFull, "Battery", modifier, tint)
+
+/** Low battery - the phone needs charging. */
+@Composable
+fun IconBatteryLow(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.Battery1Bar, "Low battery", modifier, tint)
+
+/** Charging battery - the phone is plugged in. */
+@Composable
+fun IconBatteryCharging(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.BatteryChargingFull, "Charging", modifier, tint)
+
+/** Do-not-disturb - the phone is silenced. */
+@Composable
+fun IconDoNotDisturb(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.DoNotDisturbOn, "Do not disturb", modifier, tint)

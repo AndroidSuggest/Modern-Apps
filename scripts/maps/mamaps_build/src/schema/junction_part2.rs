@@ -159,6 +159,15 @@ pub fn stream_junctions(dir: &Path, conventions: &Conventions, sink: &mut Sink) 
                 let Some((_, _, turn)) = legal.iter().find(|(i, _, _)| *i == exit_index) else {
                     continue;
                 };
+                // Through movements need no connector: the approach lane's own
+                // carriageway ribbon already paints the straight path, and the
+                // connector draws as an exact identity over it (same style entry,
+                // same colour — see the module docs on reading a screenshot).
+                // Dropping them keeps only turns, which is where the markings
+                // actually differ from the road beneath.
+                if *turn == Turn::Through {
+                    continue;
+                };
                 let out_lanes = effective_lanes(exit);
                 // This lane's place among the lanes making the same movement into the same exit.
                 let siblings: Vec<usize> =

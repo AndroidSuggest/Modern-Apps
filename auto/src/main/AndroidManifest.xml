@@ -135,12 +135,36 @@
     <queries>
         <package android:name="com.vayunmathur.maps" />
         <package android:name="com.vayunmathur.music" />
+        <package android:name="com.vayunmathur.communicate" />
         <intent>
             <action android:name="android.media.browse.MediaBrowserService" />
         </intent>
         <intent>
             <action android:name="android.intent.action.DIAL" />
             <data android:scheme="tel" />
+        </intent>
+        <!-- Third-party car apps: the launcher discovers CarAppService
+             implementations per category (navigation, POI, IoT, weather) and
+             hosts their templates generically. -->
+        <intent>
+            <action android:name="androidx.car.app.CarAppService" />
+            <category android:name="androidx.car.app.category.NAVIGATION" />
+        </intent>
+        <intent>
+            <action android:name="androidx.car.app.CarAppService" />
+            <category android:name="androidx.car.app.category.POI" />
+        </intent>
+        <intent>
+            <action android:name="androidx.car.app.CarAppService" />
+            <category android:name="androidx.car.app.category.IOT" />
+        </intent>
+        <intent>
+            <action android:name="androidx.car.app.CarAppService" />
+            <category android:name="androidx.car.app.category.WEATHER" />
+        </intent>
+        <intent>
+            <action android:name="androidx.car.app.CarAppService" />
+            <category android:name="androidx.car.app.category.MESSAGING" />
         </intent>
     </queries>
 

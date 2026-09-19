@@ -43,12 +43,13 @@ use crate::store::Sink;
 
 /// The zoom the traffic overlay first surfaces at.
 ///
-/// Component lines are dense — roughly the whole drivable network as one line per segment — so a
-/// traffic overlay only earns its bytes where a street network reads at all. z12 is the shallowest
-/// zoom a city's arterials are legible; below it the overlay would be a red smear. Raise it to trim
-/// the archive further, lower it to show motorway congestion sooner. The store packs `min_zoom` in
-/// five bits, so anything up to 31 is representable.
-pub const MIN_ZOOM: u8 = 12;
+/// Component lines are dense — roughly the whole drivable network as one line per edge — so a
+/// traffic overlay only earns its bytes where a street network reads at all. z13 is the shallowest
+/// zoom a city's arterials are legible; below it the overlay would be a red smear (and z12 alone
+/// cost 0.38GB on the california build). Raise it to trim the archive further, lower it to show
+/// motorway congestion sooner. The store packs `min_zoom` in five bits, so anything up to 31 is
+/// representable.
+pub const MIN_ZOOM: u8 = 13;
 
 /// Bits reserved for the component-segment index inside a packed component id. Shared on-disk/wire
 /// contract with the server and the device — keep in sync with `graph.rs::COMPONENT_SEG_BITS` and
@@ -389,7 +390,7 @@ impl Graph {
 /// Read the v6 graph at `dir` and push one line feature per drivable component segment into `sink`,
 /// each carrying its packed `component_id`. Returns the number of segments emitted.
 ///
-/// Modelled on [`crate::schema::earth::stream_prepared`] and
+/// Modelled on [`crate::schema::landtype::stream_prepared`] and
 /// [`crate::schema::transit::stream_routes`]: a source of geometry outside the `.osm.pbf`, read
 /// after the OSM passes and streamed straight into the feature sink. Unlike those two it is not
 /// clipped to a bbox here — the graph is already the built region, and the tiler clips each segment

@@ -227,6 +227,24 @@
             android:exported="false"
             android:foregroundServiceType="phoneCall|mediaProjection" />
 
+        <service
+            android:name=".service.car.CommunicateCarAppService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.MESSAGING" />
+                <category android:name="androidx.car.app.category.CALLING" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.mmsfileprovider"

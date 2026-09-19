@@ -7,7 +7,7 @@
 //!
 //! # Why this exists
 //!
-//! The system block and the tool declarations are ~1,100 positions and they never change. On a
+//! The system block and the tool declarations are ~1,870 positions and they never change. On a
 //! Tensor G4 prefilling them costs about **14 seconds**, and every device pays it on every cold
 //! start, forever, to compute numbers that are identical everywhere.
 //!

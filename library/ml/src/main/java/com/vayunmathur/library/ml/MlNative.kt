@@ -224,6 +224,69 @@ internal object MlNative {
     external fun destroyNllb(handle: Long)
 
     /**
+     * Bring up MADLAD400-3B-MT from its one `.maml` and its Unigram tokenizer table.
+     * Returns 0 on failure.
+     *
+     * One graph, not two: the input table and the logits kernel are **untied** — separate
+     * 256,000-row tables — so an encoder file and a decoder file would each carry their
+     * own. Native selects between the encoder pass and a decode step by re-recording one
+     * net, and reads both tables' rows on the host.
+     *
+     * The plan arrives as a **file descriptor** because it is a downloaded file, not a
+     * bundled asset: [offset] is 0 and [length] the file's size; only an asset needs a
+     * real range. Native reads the header and tensor table only, then streams the
+     * weights into the GPU. It also keeps the descriptor open for the life of the
+     * handle, because the input table is gathered a row at a time on the host
+     * rather than uploaded a second time.
+     *
+     * **The descriptor must be detached.** Native takes ownership and closes it, on the
+     * failure paths as much as the successful one, so a caller must not close it
+     * itself.
+     *
+     * [tokenizer] stays a byte array, where streaming saves nothing.
+     *
+     * The maml's graph id is 25 (`graph::MADLAD`) — native rejects any other file at load.
+     *
+     * Freed by [destroyMadlad], not [destroy], [destroyOcr], [destroySupertonic],
+     * [destroyTinyclip] or [destroyNllb].
+     */
+    external fun createMadlad(
+        fd: Int,
+        offset: Long,
+        length: Long,
+        tokenizer: ByteArray,
+    ): Long
+
+    /**
+     * Translate [text] into the language [targetTag] names (e.g. `"<2en>"`),
+     * or null on failure.
+     *
+     * [text] must already have space runs collapsed — use `text.replace(Regex(" {2,}"),
+     * " ")`. The model's normaliser is the identity (unlike NLLB's `nmt_nfkc`), so
+     * NFKC-normalising here would retokenise text the model was trained to see raw.
+     *
+     * ONE tag is required, which is the protocol difference vs NLLB's two flores ids:
+     * the tag leads the **source** (`<2tgt> pieces [EOS]`) and the decoder starts
+     * unforced from `<unk>`. Backwards it produces fluent output in the wrong language
+     * rather than an error. `MadladModel.targetTag` is the table: the `<2xx>` codes,
+     * which native validates against the Unigram table.
+     *
+     * Greedy decoding, capped at 128 tokens. An empty string means the text had
+     * nothing to translate, which is not a failure.
+     */
+    external fun translateMadlad(
+        handle: Long,
+        text: String,
+        targetTag: String,
+    ): String?
+
+    /**
+     * Free MADLAD's network, its open weights file and its tokenizer table.
+     * Exactly once per non-zero handle from [createMadlad].
+     */
+    external fun destroyMadlad(handle: Long)
+
+    /**
      * Bring up TinyCLIP from its one `.maml`. Returns 0 on failure.
      *
      * One graph, not two: the image and text towers
@@ -532,19 +595,11 @@ internal object MlNative {
     /**
      * Bring up Gemma 4 E2B from its two `.maml`s and its tokenizer table. Returns 0 on failure.
      *
-     * # Two descriptors, both consumed
-     *
-     * The text decoder and the embedding are separate files with separate graph ids (20 and 21).
-     * Native adopts **both** and closes them on every path, including failure - so the caller
-     * must detach both and must not close either afterwards. There is no partial-success case:
-     * either the handle is non-zero and owns them, or it is 0 and they are already closed.
-     *
-     * They are separate because nothing on the device reads the embedding. A decode step needs
-     * one row of a 262144-row table, so it is gathered on the host and streamed, exactly as
-     * NLLB's tied embedding is. Splitting also lets the decoder load while the embedding is
-     * still downloading.
-     *
-     * [tokenizer] stays a byte array, where streaming saves nothing.
+     * The decoder and the embedding are separate files (graph ids 20 and 21) because nothing on
+     * the device reads the embedding: a decode step needs one row of a 262144-row table, so it
+     * is gathered on the host and streamed, exactly as NLLB's tied embedding is. Native adopts
+     * **both** descriptors and closes them on every path including failure, so the caller must
+     * detach both and must not close either. [tokenizer] stays a byte array.
      *
      * Freed by [destroyGemma4], not [destroy], [destroyOcr], [destroySupertonic],
      * [destroyTinyclip] or [destroyNllb].
@@ -586,10 +641,24 @@ internal object MlNative {
     /**
      * Feed one token and return the most likely next one. -1 on failure.
      *
-     * Greedy, with no sampling: replies are deterministic. litertlm sampled at `top_k` 64 and
-     * `top_p` 0.95, so this is a real behavioural change and not only an implementation one.
+     * Greedy, with no sampling: replies are deterministic. For sampled decoding see
+     * [logitsGemma4], which runs this same step and returns the logits unreduced.
      */
     external fun stepGemma4(handle: Long, token: Int): Int
+
+    /**
+     * Feed one token and return its 262,144 logits. Null on failure.
+     *
+     * Sampling (top_k, top_p, temperature) happens in Kotlin on top of this. Prefer
+     * [stepGemma4] when the greedy token is all that is wanted: this returns a 1 MB array
+     * per call.
+     *
+     * The head is tied: logits are `hidden @ H^T` over the raw-scale head table
+     * (S10's `embedder.decode` composite), softcapped at 30.0 exactly as the
+     * reference's `decode_softmax` does. The working embedding table's S2
+     * signature gain (x39.25) is gather-side only and never enters the logits.
+     */
+    external fun logitsGemma4(handle: Long, token: Int): FloatArray?
 
     /** Positions currently in the KV cache, or -1. */
     external fun positionGemma4(handle: Long): Int
@@ -650,10 +719,10 @@ internal object MlNative {
      * Grow the cache so [needed] positions fit. Returns the new capacity, or -1 if the device
      * cannot afford it.
      *
-     * **This empties the cache.** A larger arena is a different allocation and nothing is copied
-     * into it, so the caller must feed its whole prompt again and discard any record of what the
-     * cache held. Tiers double, so a long conversation pays this a handful of times rather than
-     * on every message.
+     * **This carries the cache.** A larger arena is a different allocation, so the contents are
+     * copied out and back through a staging buffer - tens of milliseconds against the tens of
+     * seconds a re-prefill would cost. The position is kept with it. Tiers double, so a long
+     * conversation pays this a handful of times rather than on every message.
      */
     external fun growGemma4(handle: Long, needed: Int): Int
 

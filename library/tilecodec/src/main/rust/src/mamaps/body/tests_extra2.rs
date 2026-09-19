@@ -68,7 +68,7 @@ fn the_carriageway_table_round_trips_with_its_convention() {
         "a road nothing is known about is a default record, not an absent one",
     );
     assert_eq!(parsed.feature_carriageway(dict::LAYER_ROADS, 3), None, "past the table");
-    assert_eq!(parsed.feature_carriageway(dict::LAYER_EARTH, 0), None, "a layer with no table");
+    assert_eq!(parsed.feature_carriageway(dict::LAYER_LANDTYPE, 0), None, "a layer with no table");
 }
 
 /// A tile with no carriageway table costs nothing and reports no convention, so every archive
@@ -272,7 +272,7 @@ fn the_heightmap_round_trips_and_ocean_tiles_omit_it() {
     let grid = Heightmap { dim, samples };
     let body = Body {
         extent: DEFAULT_EXTENT,
-        layers: vec![Layer::new(dict::LAYER_EARTH)],
+        layers: vec![Layer::new(dict::LAYER_LANDTYPE)],
         names: Vec::new(),
         ids: Vec::new(),
         turn_lanes: Vec::new(),

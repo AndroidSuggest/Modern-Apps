@@ -138,8 +138,19 @@ impl NormalizedSummary {
 ///
 /// Eight bytes a vertex rather than sixteen: see [`encode_geometry`] for why that is
 /// lossless for OSM coordinates and what it costs a coastline.
+///
+/// Backed by a file ([`create`](Self::create)) or by anonymous pagefile memory
+/// ([`create_anon`](Self::create_anon)): `MAPS_ANON_SPILL=1` takes the anon path,
+/// which stages the same bytes with no directory entry. Same records, same
+/// offsets, same output bytes — the -Verify hash check proves it.
+/// Where a [`NormalizedWriter`] stages its bytes: a file, or anonymous memory.
+enum WriterSink {
+    File(BufWriter<File>),
+    Anon(crate::anon::AnonStore),
+}
+
 pub struct NormalizedWriter {
-    out: BufWriter<File>,
+    out: WriterSink,
     path: PathBuf,
     summary: NormalizedSummary,
     rec: Vec<u8>,
@@ -159,8 +170,22 @@ impl NormalizedWriter {
         let f = File::create(&path)
             .map_err(|e| Error(format!("cannot create {}: {e}", path.display())))?;
         Ok(NormalizedWriter {
-            out: BufWriter::with_capacity(1 << 20, f),
+            out: WriterSink::File(BufWriter::with_capacity(1 << 20, f)),
             path,
+            summary: NormalizedSummary::default(),
+            rec: Vec::new(),
+            at: 0,
+        })
+    }
+
+    /// Anonymous twin of [`create`](Self::create): same records and offsets,
+    /// staged in pagefile-backed memory with no file. `path` names nothing on
+    /// disk — it only rides along for error messages. Pair with
+    /// [`NormalizedChunks::open_anon`] on the way back.
+    pub fn create_anon(path: impl Into<PathBuf>) -> Result<NormalizedWriter> {
+        Ok(NormalizedWriter {
+            out: WriterSink::Anon(crate::anon::AnonStore::new()),
+            path: path.into(),
             summary: NormalizedSummary::default(),
             rec: Vec::new(),
             at: 0,
@@ -189,9 +214,14 @@ impl NormalizedWriter {
         if self.summary.count.is_multiple_of(NORM_CHUNK_FEATURES) {
             self.summary.chunks.push(self.at);
         }
-        self.out
-            .write_all(&self.rec)
-            .map_err(|e| Error(format!("writing {}: {e}", self.path.display())))?;
+        match &mut self.out {
+            WriterSink::File(f) => f
+                .write_all(&self.rec)
+                .map_err(|e| Error(format!("writing {}: {e}", self.path.display())))?,
+            WriterSink::Anon(a) => {
+                a.push(&self.rec)?;
+            }
+        }
         self.at += self.rec.len() as u64;
 
         if self.summary.geom_kind.is_none() {
@@ -204,15 +234,37 @@ impl NormalizedWriter {
 
     /// Flush, and hand back what the pass learned.
     pub fn finish(mut self) -> Result<NormalizedSummary> {
-        self.out
-            .flush()
-            .map_err(|e| Error(format!("flushing {}: {e}", self.path.display())))?;
+        self.flush_out()?;
         // Close the last chunk. Without this the final partial chunk has no end, and
         // `chunk_count` would also over-report by one.
         if !self.summary.chunks.is_empty() {
             self.summary.chunks.push(self.at);
         }
         Ok(self.summary)
+    }
+
+    /// Anonymous twin of [`finish`](Self::finish): flush, hand back the summary
+    /// AND the staged store for [`NormalizedChunks::open_anon`]. Errors when
+    /// this writer is file-backed (a programming bug, not a runtime one).
+    pub fn finish_anon(mut self) -> Result<(NormalizedSummary, crate::anon::AnonStore)> {
+        self.flush_out()?;
+        if !self.summary.chunks.is_empty() {
+            self.summary.chunks.push(self.at);
+        }
+        match self.out {
+            WriterSink::Anon(a) => Ok((self.summary, a)),
+            WriterSink::File(_) => err("finish_anon on a file-backed writer".to_string()),
+        }
+    }
+
+    fn flush_out(&mut self) -> Result<()> {
+        match &mut self.out {
+            WriterSink::File(f) => f
+                .flush()
+                .map_err(|e| Error(format!("flushing {}: {e}", self.path.display())))?,
+            WriterSink::Anon(a) => a.finish(),
+        }
+        Ok(())
     }
 }
 
@@ -257,12 +309,24 @@ fn norm_payload(kind: GeomKind, geom_len: usize, payload: &[u8]) -> Result<Norma
     })
 }
 
-/// Sequential reader over the normalized file, rewindable because every zoom re-reads
-/// it from the front.
+/// Sequential reader over the normalized spill, rewindable because every zoom
+/// re-reads it from the front. File-backed ([`open`](Self::open)) or anonymous
+/// ([`open_anon`](Self::open_anon)): the record format is a sequential stream
+/// either way, so the reader is a cursor over bytes — a file cursor or a store
+/// offset.
 pub struct NormalizedReader {
-    src: BufReader<File>,
+    src: ReaderIn,
     path: PathBuf,
     buf: Vec<u8>,
+}
+
+/// Where a [`NormalizedReader`] reads from.
+enum ReaderIn {
+    File(BufReader<File>),
+    Anon {
+        store: std::sync::Arc<crate::anon::AnonStore>,
+        at: u64,
+    },
 }
 
 impl NormalizedReader {
@@ -271,52 +335,101 @@ impl NormalizedReader {
         let f = File::open(&path)
             .map_err(|e| Error(format!("cannot read {}: {e}", path.display())))?;
         Ok(NormalizedReader {
-            src: BufReader::with_capacity(1 << 20, f),
+            src: ReaderIn::File(BufReader::with_capacity(1 << 20, f)),
             path,
             buf: Vec::new(),
         })
     }
 
+    /// Anonymous twin of [`open`](Self::open): reads the sealed store from
+    /// [`NormalizedWriter::finish_anon`], shared by refcount.
+    pub fn open_anon(
+        path: impl Into<PathBuf>,
+        store: std::sync::Arc<crate::anon::AnonStore>,
+    ) -> Result<NormalizedReader> {
+        Ok(NormalizedReader {
+            src: ReaderIn::Anon { store, at: 0 },
+            path: path.into(),
+            buf: Vec::new(),
+        })
+    }
+
     pub fn rewind(&mut self) -> Result<()> {
-        use std::io::Seek;
-        self.src
-            .rewind()
-            .map_err(|e| Error(format!("rewinding {}: {e}", self.path.display())))?;
+        match &mut self.src {
+            ReaderIn::File(f) => {
+                use std::io::Seek;
+                f.rewind()
+                    .map_err(|e| Error(format!("rewinding {}: {e}", self.path.display())))?;
+            }
+            ReaderIn::Anon { at, .. } => *at = 0,
+        }
         Ok(())
+    }
+
+    /// Fill `buf` with exactly `len` bytes from the cursor, or `Ok(false)` at a
+    /// clean record boundary (start of read).
+    fn read_full(&mut self, buf: &mut [u8]) -> Result<bool> {
+        match &mut self.src {
+            ReaderIn::File(f) => {
+                let mut read = 0usize;
+                while read < buf.len() {
+                    let n = f
+                        .read(&mut buf[read..])
+                        .map_err(|e| Error(format!("reading {}: {e}", self.path.display())))?;
+                    if n == 0 {
+                        break;
+                    }
+                    read += n;
+                }
+                Ok(read > 0)
+            }
+            ReaderIn::Anon { store, at } => {
+                if *at >= store.len() {
+                    return Ok(false);
+                }
+                let remaining = store.len() - *at;
+                let take = (buf.len() as u64).min(remaining) as usize;
+                store.read_at(*at, &mut buf[..take]).map_err(|e| {
+                    Error(format!("reading {}: {e}", self.path.display()))
+                })?;
+                *at += take as u64;
+                Ok(true)
+            }
+        }
     }
 
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Option<NormalizedFeature>> {
         let mut head = [0u8; NORM_HEADER_BYTES];
-        let mut read = 0usize;
-        while read < NORM_HEADER_BYTES {
-            let n = self
-                .src
-                .read(&mut head[read..])
-                .map_err(|e| Error(format!("reading {}: {e}", self.path.display())))?;
-            if n == 0 {
-                break;
-            }
-            read += n;
-        }
-        if read == 0 {
+        if !self.read_full(&mut head)? {
             return Ok(None);
         }
-        if read < NORM_HEADER_BYTES {
-            return err(format!(
-                "{} ends {read} byte(s) into a {NORM_HEADER_BYTES}-byte record header",
-                self.path.display()
-            ));
-        }
+        // A short read mid-header is corruption on both backends: the anon
+        // store's lengths are exact, so a partial header means the store is
+        // not what was written — same as a truncated file.
         let (geom_len, props_len, kind) = norm_header(&head)?;
         self.buf.clear();
         self.buf.resize(geom_len + props_len, 0);
-        self.src.read_exact(&mut self.buf).map_err(|e| {
-            Error(format!(
-                "reading {}'s record payload: {e}",
-                self.path.display()
-            ))
-        })?;
+        // Payload reads are exact-length by construction (header-validated),
+        // so a short payload is corruption, not EOF.
+        let mut read = 0usize;
+        while read < self.buf.len() {
+            let mut chunk = vec![0u8; self.buf.len() - read];
+            if !self.read_full(&mut chunk)? {
+                return err(format!(
+                    "{} ends mid-record payload",
+                    self.path.display()
+                ));
+            }
+            // `read_full` on the file path may return short (EOF splits the
+            // loop); on anon it fills exactly. Copy what arrived.
+            let n = chunk.len();
+            self.buf[read..read + n].copy_from_slice(&chunk);
+            read += n;
+            if n == 0 {
+                break;
+            }
+        }
         Ok(Some(norm_payload(kind, geom_len, &self.buf)?))
     }
 }
@@ -331,8 +444,12 @@ impl NormalizedReader {
 ///
 /// Takes `&self` throughout: see [`crate::pmtiles::read_exact_at`]. One handle serves
 /// every thread.
+///
+/// Anonymous twin: [`open_anon`](Self::open_anon) serves the same chunks from an
+/// [`crate::anon::AnonStore`] instead of a file. Same offsets, same bytes.
 pub struct NormalizedChunks {
-    file: File,
+    file: Option<File>,
+    anon: Option<std::sync::Arc<crate::anon::AnonStore>>,
     path: PathBuf,
     /// Chunk boundaries, `chunk_count() + 1` of them. See [`NormalizedSummary::chunks`].
     chunks: Vec<u64>,
@@ -344,11 +461,33 @@ impl NormalizedChunks {
         let path = path.into();
         let file = File::open(&path)
             .map_err(|e| Error(format!("cannot read {}: {e}", path.display())))?;
-        Ok(NormalizedChunks { file, path, chunks })
+        Ok(NormalizedChunks { file: Some(file), anon: None, path, chunks })
+    }
+
+    /// Anonymous twin of [`open`](Self::open): `store` is the sealed store from
+    /// [`NormalizedWriter::finish_anon`], shared by refcount — the store
+    /// outlives every reader, so this is a refcount bump, never a copy.
+    /// `path` names nothing — it only rides along for error messages.
+    pub fn open_anon(
+        path: impl Into<PathBuf>,
+        chunks: Vec<u64>,
+        store: std::sync::Arc<crate::anon::AnonStore>,
+    ) -> Result<NormalizedChunks> {
+        Ok(NormalizedChunks {
+            file: None,
+            anon: Some(store),
+            path: path.into(),
+            chunks,
+        })
     }
 
     pub fn chunk_count(&self) -> usize {
         self.chunks.len().saturating_sub(1)
+    }
+
+    /// Whether this reader serves from anonymous memory rather than a file.
+    pub fn is_anon(&self) -> bool {
+        self.anon.is_some()
     }
 
     /// Decode chunk `i` into `out`, which is cleared first.
@@ -382,12 +521,23 @@ impl NormalizedChunks {
         let len = (end - start) as usize;
         scratch.clear();
         scratch.resize(len, 0);
-        crate::pmtiles::read_exact_at(&self.file, scratch, start).map_err(|e| {
-            Error(format!(
-                "reading normalized chunk {i} of {}: {e}",
-                self.path.display()
-            ))
-        })?;
+        match (&self.file, &self.anon) {
+            (Some(f), None) => {
+                crate::pmtiles::read_exact_at(f, scratch, start).map_err(|e| {
+                    Error(format!(
+                        "reading normalized chunk {i} of {}: {e}",
+                        self.path.display()
+                    ))
+                })?;
+            }
+            (None, Some(a)) => a.read_at(start, scratch).map_err(|e| {
+                Error(format!(
+                    "reading normalized chunk {i} of {}: {e}",
+                    self.path.display()
+                ))
+            })?,
+            _ => return err("a normalized chunk reader has no backend".to_string()),
+        }
         let mut at = 0usize;
         while at < len {
             if len - at < NORM_HEADER_BYTES {

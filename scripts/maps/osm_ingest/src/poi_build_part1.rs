@@ -142,7 +142,7 @@ pub struct Args {
 }
 
 /// `poi_extract IN.osm.pbf --geojson FILE --names FILE --index FILE [--attrs FILE]`
-/// `[--spatial FILE] [--name-index FILE] [--region california|world] [--threads N]`
+/// `[--spatial FILE] [--name-index FILE] [--region california|na|world] [--threads N]`
 ///
 /// The optional outputs default to their conventional names beside `--index`, so a
 /// caller that predates any of them keeps working and still emits them. Making them
@@ -171,7 +171,7 @@ pub fn parse_args(args: &[String]) -> std::result::Result<Args, String> {
                 i += 1;
                 let value = args
                     .get(i)
-                    .ok_or_else(|| "--region needs `california` or `world`".to_string())?;
+                    .ok_or_else(|| "--region needs `california`, `na` or `world`".to_string())?;
                 region = Some(crate::region::Region::parse(value).map_err(|e| e.0)?);
             }
             flag @ ("--geojson" | "--names" | "--index" | "--attrs" | "--spatial"

@@ -12,6 +12,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.auto.R
+import com.vayunmathur.auto.data.PinnedAppsPrefs
 import com.vayunmathur.auto.platform.AudioSinkStatus
 import com.vayunmathur.auto.platform.AutoConnectionState
 import com.vayunmathur.auto.platform.AutoViewModel
@@ -30,7 +31,7 @@ import com.vayunmathur.library.ui.appBarScrollBehavior
 
 /** Whether a car is attached, and what is running on it. */
 @Composable
-fun AutoScreen(viewModel: AutoViewModel, onPairing: () -> Unit) {
+fun AutoScreen(viewModel: AutoViewModel, onPairing: () -> Unit, onPinnedApps: () -> Unit) {
     val state by viewModel.connection.collectAsStateWithLifecycle()
     val session = SessionSnapshot(
         video = viewModel.video.collectAsStateWithLifecycle().value,
@@ -83,6 +84,17 @@ fun AutoScreen(viewModel: AutoViewModel, onPairing: () -> Unit) {
                     trailingContent = {
                         TextButton(onClick = onPairing) {
                             Text(stringResource(R.string.pairing_open))
+                        }
+                    },
+                )
+            }
+            Card(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.pinned_apps_title)) },
+                    supportingContent = { Text(stringResource(R.string.pinned_apps_body, PinnedAppsPrefs.MAX_PINNED)) },
+                    trailingContent = {
+                        TextButton(onClick = onPinnedApps) {
+                            Text(stringResource(R.string.pinned_apps_open))
                         }
                     },
                 )

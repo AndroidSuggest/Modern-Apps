@@ -9,7 +9,8 @@
 //! # The terrain vertex
 //!
 //! Six floats — position with a height, plus a surface normal. Unlike a building it needs no
-//! per-vertex colour: the whole ground is one style colour (the `earth` layer's), pushed per draw,
+//! per-vertex colour: the whole ground is one style colour (the `earth` arm's, on the
+//! `landtype` source since v8), pushed per draw,
 //! and the relief is conveyed by shading that colour against the normal.
 //!
 //! | offset | floats | meaning                                                        |

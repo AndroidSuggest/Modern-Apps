@@ -62,18 +62,22 @@ enum SensorType {
 }
 
 // 0x8001, phone -> HU: subscribe. `xnu` fields 1-2, from the teardown.
-// Omit the period for the head unit's default rate; -1 unsubscribes (see
+// Field 2 is always written (gearhead's `jcd.s` unconditionally sets it;
+// mined call sites pass 0 = fastest rate); -1 unsubscribes (see
 // GalMessage.Sensor.UNSUBSCRIBE_PERIOD).
 message SensorRequest {
   required SensorType sensor_type = 1;
   optional int64 min_update_period_ms = 2;
 }
 
-// 0x8002, HU -> phone: subscription answer. MA sender-defined: the teardown
-// recovered the id but not the `xnv` layout. Status 0 means subscribed.
+// 0x8002, HU -> phone: subscription answer. Teardown-exact `xnv`/`xow`:
+// a single field, the `xls` status (0 = STATUS_SUCCESS, negative = per-type
+// refusal, e.g. -9 STATUS_INVALID_SENSOR). There is NO sensor-type echo --
+// gearhead's subscribe is synchronous (`jcd.s` waits on a semaphore per
+// call), so the answer needs no attribution. Our batched subscribes match
+// answers FIFO in send order (verified: the DHU answers in subscribe order).
 message SensorResponse {
-  required SensorType sensor_type = 1;
-  optional int32 status = 2;
+  optional int32 status = 1;
 }
 
 // 0x8003, HU -> phone: streamed readings. MA sender-defined, same caveat.

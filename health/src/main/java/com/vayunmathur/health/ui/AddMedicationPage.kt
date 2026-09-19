@@ -182,3 +182,9 @@ fun AddMedicationPage(backStack: NavBackStack<Route>, viewModel: MedicalViewMode
         }
     }
 }
+
+internal fun MedicationStatus.selectorLabelRes() = when (this) {
+    MedicationStatus.Active -> R.string.medication_status_active
+    MedicationStatus.Completed -> R.string.medication_status_completed
+    MedicationStatus.Stopped -> R.string.medication_status_stopped
+}

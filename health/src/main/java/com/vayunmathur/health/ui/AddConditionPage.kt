@@ -118,3 +118,10 @@ fun AddConditionPage(backStack: NavBackStack<Route>, viewModel: MedicalViewModel
         }
     }
 }
+
+internal fun ConditionStatus.labelRes() = when (this) {
+    ConditionStatus.Active -> R.string.condition_status_active
+    ConditionStatus.Recurrence -> R.string.condition_status_recurrence
+    ConditionStatus.Remission -> R.string.condition_status_remission
+    ConditionStatus.Resolved -> R.string.condition_status_resolved
+}

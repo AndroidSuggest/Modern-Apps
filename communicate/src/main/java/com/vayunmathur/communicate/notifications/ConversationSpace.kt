@@ -193,11 +193,32 @@ object ConversationSpace {
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .extend(carExtender(context, target.title ?: target.personName, body, smallIcon))
             .build()
 
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         nm.notify(shortcutId, MESSAGE_NOTIFICATION_ID, notification)
     }
+
+    /**
+     * Car head-unit extension: without a `CarAppExtender` the notification is
+     * never shown on the car. Extends with title/text/small icon so the host
+     * renders a HUN (high importance) or rail badge, and the tap intent
+     * deep-links through the car app service. Max 2 car actions — none here;
+     * reply lives in the car template via `ConversationCallback`.
+     */
+    private fun carExtender(
+        context: Context,
+        title: String,
+        text: String,
+        @DrawableRes smallIcon: Int,
+    ): androidx.car.app.notification.CarAppExtender =
+        androidx.car.app.notification.CarAppExtender.Builder()
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(smallIcon)
+            .setImportance(NotificationManager.IMPORTANCE_HIGH)
+            .build()
 
     private const val BUBBLE_HEIGHT_DP = 600
 }

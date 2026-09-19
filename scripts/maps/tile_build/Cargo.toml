@@ -47,6 +47,9 @@ path = "src/bin/mamaps_pack.rs"
 tilecodec = { path = "../../../library/tilecodec/src/main/rust", features = ["write"] }
 miniz_oxide = "0.8"
 rayon = "1"
+# Anonymous pagefile-backed mappings for the spill backends (see `anon`): already
+# in the tree via osm_ingest, so this adds a name to link, not a crate to fetch.
+memmap2 = "0.9"
 [profile.release]
 opt-level = 3
 # Detach from the repo-root workspace so this host tool builds standalone/offline.

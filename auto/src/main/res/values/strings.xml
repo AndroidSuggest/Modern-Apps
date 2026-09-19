@@ -426,4 +426,15 @@
     <string name="car_call_hold">Hold</string>
     <!-- Shown on the car call card hold button while held. -->
     <string name="car_call_resume">Resume</string>
+
+    <!-- Title of the car dock pin picker. -->
+    <string name="pinned_apps_title">Car dock</string>
+    <!-- Explains the picker: check apps to pin, reorder with the arrows. %1$d is the max pins. -->
+    <string name="pinned_apps_body">Choose up to %1$d car apps for the bottom bar, in order.</string>
+    <!-- Button opening the pin picker from the status card. -->
+    <string name="pinned_apps_open">Car dock</string>
+    <!-- %1$d is the pinned position, 1-based. -->
+    <string name="pinned_apps_rank">Pinned %1$d</string>
+    <!-- Snackbar when pinning while the dock is full. %1$d is the max pins. -->
+    <string name="pinned_apps_full">The dock holds %1$d apps — unpin one first</string>
 </resources>

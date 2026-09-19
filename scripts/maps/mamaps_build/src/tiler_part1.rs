@@ -31,8 +31,10 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
         let buffer = geom::buffer_for(EXTENT);
 
         // Per zoom, so peak scratch is the largest single zoom rather than the sum, and so a build
-        // that dies at z14 leaves one zoom behind rather than fifteen.
-        let spill = ChunkSpill::create(&settings.scratch)?;
+        // that dies at z14 leaves one zoom behind rather than fifteen. Anonymous
+        // pagefile-backed memory (no file); the merge reads through the same
+        // ChunkReader.
+        let spill = ChunkSpill::create_anon(&settings.scratch)?;
         let mapped = std::time::Instant::now();
         let (chunks, tally) = map_zoom(store, z, tolerance, buffer, &spill)?;
         stats.map_ms = mapped.elapsed().as_millis() as u64;

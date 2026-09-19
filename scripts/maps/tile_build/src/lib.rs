@@ -37,6 +37,7 @@
 //! [`pyramid`] for the policy and its consequences.
 
 pub mod boolean;
+pub mod anon;
 pub mod clip;
 pub mod geojson;
 pub mod geojson_extra;

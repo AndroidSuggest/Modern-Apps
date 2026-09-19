@@ -9,14 +9,9 @@ impl Gemma4Handle {
     ///
     /// The per-layer inputs come from the pad token, which is what the reference does - it
     /// rewrites the placeholder id to `pad_token_id` before gathering, then overwrites only the
-    /// hidden state with the encoder's row. So the two halves of a soft token's input come from
-    /// different places, and using the placeholder's own per-layer row instead would be a quiet
-    /// and plausible-looking error.
+    /// hidden state with the encoder's row.
     fn step_soft(&mut self, hidden: &[f32], want_logits: bool) -> Result<Option<Vec<f32>>, String> {
-        if hidden.len() != gemma4::D_MODEL as usize {
-            return Err(format!("a soft token of {} values, not {}", hidden.len(), gemma4::D_MODEL));
-        }
-        let (_, per_layer) = gemma4::gather(&self.embed.reader(), gemma4::embed::PLACEHOLDERS[0])?;
+        let per_layer = gemma4::gather_soft(&self.embed.reader(), hidden, 0)?;
         self.step_hidden(hidden, &per_layer, want_logits)
     }
 
@@ -83,14 +78,46 @@ impl Gemma4Handle {
         if !want_logits {
             return Ok(None);
         }
-        if out.len() != gemma4::HEAD_SPLITS {
-            return Err(format!("a step returned {} tensors, not {}", out.len(), gemma4::HEAD_SPLITS));
+        if out.len() != 1 {
+            return Err(format!("a step returned {} tensors, not 1 hidden state", out.len()));
         }
+        let hidden = &out[0];
+        if hidden.len() != gemma4::D_MODEL as usize {
+            return Err(format!("hidden state of {} values, not {}", hidden.len(), gemma4::D_MODEL));
+        }
+        Ok(Some(self.tied_head_logits(hidden)?))
+    }
+
+    /// Tied-head logits on the host: `hidden @ H^T` over the raw-scale head table.
+    ///
+    /// The head table is int4 `[VOCAB, D_MODEL]` (S10's `embedder.decode`
+    /// composite), dequantised a quarter at a time (see `HEAD_SPLITS`) to
+    /// bound the transient fp32. `LOGIT_CAP` softcapping matches the
+    /// reference's `_post_process_decoding`. A Vulkan tied-head GEMM
+    /// (chunked over vocab, table resident in VRAM) is the follow-up that
+    /// removes this ~0.4 GFLOP host matmul from every step.
+    ///
+    /// The table is raw-scale (see [`gemma4::EMBED_GAIN`]): no division, no
+    /// un-scaling - the dots go straight to the softcap, exactly as the
+    /// reference's `decode_softmax` does.
+    fn tied_head_logits(&self, hidden: &[f32]) -> Result<Vec<f32>, String> {
+        use gemma4::embed;
         let mut logits = Vec::with_capacity(gemma4::VOCAB as usize);
-        for split in out.iter().take(gemma4::HEAD_SPLITS) {
-            logits.extend_from_slice(split);
+        for split in 0..gemma4::HEAD_SPLITS {
+            let start = (split as u32) * gemma4::CLASSES_PER_SPLIT;
+            let block = self.embed.reader().fp16_rows(
+                embed::HEAD_TABLE,
+                &[gemma4::VOCAB, gemma4::D_MODEL],
+                start,
+                gemma4::CLASSES_PER_SPLIT,
+            )?;
+            for row in block.chunks_exact(gemma4::D_MODEL as usize) {
+                let dot: f32 = row.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum();
+                let capped = gemma4::LOGIT_CAP * (dot / gemma4::LOGIT_CAP).tanh();
+                logits.push(capped);
+            }
         }
-        Ok(Some(logits))
+        Ok(logits)
     }
 
     /// Reallocate the caches so at least `needed` positions fit. Returns the new capacity.
@@ -123,8 +150,8 @@ impl Gemma4Handle {
         // A bigger arena is a different allocation, so nothing moves by itself - and the first
         // version of this simply reset to zero and let the caller re-feed. That is very
         // expensive and, worse, silently undoes the precomputed prefix: `loadPrefix` grows to
-        // fit 1,910 positions, then the first turn needs room for a reply, grows again, and the
-        // cache that was just loaded from disk is gone.
+        // fit the ~1,870-position system block and tool declarations, then the first turn needs
+        // room for a reply, grows again, and the cache that was just loaded from disk is gone.
         //
         // Copying it out and back costs one staging round trip - tens of milliseconds against
         // the tens of seconds of prefill it saves.

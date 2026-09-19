@@ -168,6 +168,9 @@ Vela paths below are relative to the clone root (removed after research; never c
 **MA — ADD:** `data/google/StreetViewDataSource.kt` (port StreetViewParser + equirect tile fetch/stitch via :library:network — keyless pano metadata + tiles → one equirect bitmap), `ui/streetview/StreetViewScreen.kt` (full-screen viewer using the PHOTOS APP's image renderer/viewer to pan/zoom the equirect bitmap; shared library/ui scaffold; move between adjacent panos via links).
 **MA — CHANGE:** Street View entry points — from the place-details sheet (P4 `PlaceSheet`) when a pano exists, and optionally a long-press-on-map "Street View here"; nearest-pano lookup by lat/lng.
 **Reuse:** the photos app image viewer (renderer), existing Google scrape infra, library/ui, library/image.
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 - **Defaults applied (no further input needed):** D1 runtime POI-hide (filter in `patchStyleForHybrid`, OTA-swappable); D-arch port as maplibre-compose **declarative** layers; D3/D7 debounced + LRU-cached viewport scrape; D5 pin icons as Compose `SymbolLayer` images/generated bitmaps; D10 road shields derived from road name/ref.
 

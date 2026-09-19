@@ -156,15 +156,20 @@ pub struct ChunkRef {
     pub entries: u64,
 }
 
-/// One zoom's chunks, in one file.
+/// One zoom's chunks, in one file — or in anonymous memory.
 ///
 /// `&self` throughout, so every worker writes through it and every reader reads through it -- the
 /// same discipline as `tile_build::spill::NormalizedChunks`, and for the same reason: one handle,
 /// many threads, positional I/O and no shared cursor.
+///
+/// Anonymous twin: [`create_anon`](Self::create_anon) stages the same chunks in
+/// pagefile-backed memory (`MAPS_ANON_SPILL=1`). Same offsets, same bytes, no
+/// file. The merge reads through the same [`ChunkReader`] either way.
 pub struct ChunkSpill {
     /// `None` only while dropping, where the handle has to close before the file can be unlinked or
-    /// Windows refuses the delete.
+    /// Windows refuses the delete. Always `None` on the anon path (no handle at all).
     file: Option<File>,
+    anon: Option<std::sync::Mutex<tile_build::anon::AnonStore>>,
     path: PathBuf,
     /// The next free byte, and so also the total reserved. Held for one integer add per chunk and
     /// never across I/O: a worker must not queue behind another worker's write with a finished chunk
@@ -193,6 +198,7 @@ impl ChunkSpill {
             .map_err(|e| Error(format!("cannot create {}: {e}", path.display())))?;
         Ok(ChunkSpill {
             file: Some(file),
+            anon: None,
             path,
             at: Mutex::new(0),
             written: AtomicU64::new(0),
@@ -200,6 +206,27 @@ impl ChunkSpill {
             read: AtomicU64::new(0),
             read_entries: AtomicU64::new(0),
         })
+    }
+
+    /// Anonymous twin of [`create`](Self::create): same chunks and offsets in
+    /// pagefile-backed memory, no file. `path` names nothing — it only rides
+    /// along for error messages and the `check_books` accounting.
+    pub fn create_anon(path: impl Into<PathBuf>) -> Result<ChunkSpill> {
+        Ok(ChunkSpill {
+            file: None,
+            anon: Some(std::sync::Mutex::new(tile_build::anon::AnonStore::new())),
+            path: path.into(),
+            at: Mutex::new(0),
+            written: AtomicU64::new(0),
+            written_entries: AtomicU64::new(0),
+            read: AtomicU64::new(0),
+            read_entries: AtomicU64::new(0),
+        })
+    }
+
+    /// Whether this spill stages in anonymous memory rather than a file.
+    pub fn is_anon(&self) -> bool {
+        self.anon.is_some()
     }
 
     fn file(&self) -> &File {
@@ -263,8 +290,20 @@ impl ChunkSpill {
         if buf.is_empty() {
             return Ok(0);
         }
-        write_all_at(self.file(), buf, offset)
-            .map_err(|e| Error(format!("writing {}: {e}", self.path.display())))?;
+        match (&self.file, &self.anon) {
+            (Some(f), None) => write_all_at(f, buf, offset)
+                .map_err(|e| Error(format!("writing {}: {e}", self.path.display())))?,
+            (None, Some(a)) => {
+                let mut store = a.lock().expect("the anon tile chunk spill");
+                // Positional: the cursor reservation above hands each chunk a
+                // back-to-back range, flushed here in pieces. `write_at`
+                // refuses gaps (a lost chunk) but accepts piece-wise fills.
+                store.write_at(offset, buf).map_err(|e| {
+                    Error(format!("staging anon tile chunk: {e}"))
+                })?;
+            }
+            _ => return err("a tile chunk spill has no backend".to_string()),
+        }
         let n = buf.len() as u64;
         buf.clear();
         Ok(n)
@@ -288,7 +327,8 @@ impl ChunkSpill {
     ///
     /// `tile_build::spill::BucketSet::seal`'s triple entry, for the same reason: a chunk that
     /// quietly lost entries would produce an archive with holes in it and nothing downstream could
-    /// tell. Called once the merge has drained every reader.
+    /// tell. Called once the merge has drained every reader. On the anon path "on disk" is the
+    /// store's committed length — same check, no file.
     pub fn check_books(&self) -> Result<()> {
         let reserved = *self.at.lock().expect("the tile chunk spill's cursor");
         let written = self.written.load(Ordering::Relaxed);
@@ -298,12 +338,16 @@ impl ChunkSpill {
                 self.path.display()
             ));
         }
-        let on_disk = std::fs::metadata(&self.path)
-            .map_err(|e| Error(format!("cannot stat {}: {e}", self.path.display())))?
-            .len();
-        if on_disk != written {
+        let staged = match (&self.file, &self.anon) {
+            (Some(_), None) => std::fs::metadata(&self.path)
+                .map_err(|e| Error(format!("cannot stat {}: {e}", self.path.display())))?
+                .len(),
+            (None, Some(a)) => a.lock().expect("the anon tile chunk spill").len(),
+            _ => return err("a tile chunk spill has no backend".to_string()),
+        };
+        if staged != written {
             return err(format!(
-                "{} is {on_disk} byte(s) on disk but {written} were written to it",
+                "{} stages {staged} byte(s) but {written} were written to it",
                 self.path.display()
             ));
         }
@@ -328,9 +372,12 @@ impl ChunkSpill {
 
 impl Drop for ChunkSpill {
     fn drop(&mut self) {
-        // The handle first, or Windows refuses the delete.
+        // The handle first, or Windows refuses the delete. Anon path holds no
+        // handle and no file: nothing to do, the mapping frees with the store.
         self.file = None;
-        let _ = std::fs::remove_file(&self.path);
+        if self.anon.is_none() {
+            let _ = std::fs::remove_file(&self.path);
+        }
     }
 }
 

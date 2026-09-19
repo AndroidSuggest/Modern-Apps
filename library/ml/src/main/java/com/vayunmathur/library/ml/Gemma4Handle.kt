@@ -21,12 +21,15 @@ import java.text.Normalizer
  *
  * # Behavioural differences from litertlm, which are real
  *
- * * **Greedy sampling.** litertlm used `top_k` 64 and `top_p` 0.95. Replies are now deterministic
- *   and a little flatter. Sampling can be added at [generate] without touching native.
- * * **No speculative decoding**, which litertlm had enabled.
+ * * **Sampling is the caller's.** litertlm used `top_k` 64 and `top_p` 0.95. [generate] steps
+ *   greedily by default and samples through [MlNative.logitsGemma4] when a [Sampling] config is
+ *   passed - chat turns use [Sampling.Chat] for the old behaviour, extraction stays greedy.
+ * * **No speculative decoding**, which litertlm had enabled. [Gemma4NgramDraft] is the unwired
+ *   spike: the drafter without the native parallel-scoring pass that would make it a win.
  * * **A hard context limit** of [MAX_CONTEXT] positions, where litertlm's was implicit.
- * * **No audio.** Images work - see [Gemma4VisionHandle] and [Turn.images] - but there is no
- *   audio encoder yet, so callers still refuse sound.
+ * * **Audio is fitted, not refused.** A clip past the reply reserve is trimmed from its end
+ *   rather than failing the turn - see [fitAudio]. At this window a full 30 s clip fits against
+ *   any realistic prefix, so a trim means a very long conversation, not a big prefix.
  *
  * # Threading
  *
@@ -119,6 +122,11 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
      * [onToken] returning false stops generation, which is how cancellation and early-halt
      * work - the JSON-extraction path uses it to stop the moment a complete object has arrived.
      *
+     * [sampling] selects the next token from the logits: null (the default) steps greedily
+     * through [MlNative.stepGemma4], a config samples through [MlNative.logitsGemma4] via
+     * [sampleGemma4Logits]. The default keeps every existing caller deterministic; chat turns
+     * pass [Sampling.Chat] for the top_k 64 / top_p 0.95 behaviour the previous runtime had.
+     *
      * Returns the reply, or null if the model is unavailable or the context is full.
      *
      * # Why the whole prompt is re-fed each turn
@@ -136,6 +144,7 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
         tools: List<ToolDeclaration> = emptyList(),
         limit: Int = DEFAULT_REPLY,
         continuation: String = "",
+        sampling: Sampling? = null,
         onToken: (String) -> Boolean = { true },
     ): String? {
         if (handle == 0L) return null
@@ -163,8 +172,8 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
                 // cleared the record to match; it now copies the contents into the new arena and
                 // keeps the position, so clearing here would throw away a cache that is still
                 // there - which is exactly what made the precomputed prefix look useless: it
-                // loaded, the first turn grew to make room for a reply, and the whole 1,910
-                // positions were then prefilled again anyway.
+                // loaded, the first turn grew to make room for a reply, and the whole prefix
+                // was then prefilled again anyway.
                 capacity = grown
             }
         }
@@ -261,7 +270,12 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
         var next = tail.ids.last()
         val room = minOf(limit, remaining - 1)
         for (step in 0 until room) {
-            val token = MlNative.stepGemma4(handle, next)
+            val token = if (sampling == null) {
+                MlNative.stepGemma4(handle, next)
+            } else {
+                val logits = MlNative.logitsGemma4(handle, next) ?: break
+                sampleGemma4Logits(logits, sampling, step)
+            }
             if (token < 0) break
             if (token in STOP) break
             produced.add(token)

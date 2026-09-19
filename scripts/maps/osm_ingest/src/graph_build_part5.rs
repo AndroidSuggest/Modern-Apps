@@ -188,7 +188,7 @@ pub fn parse_args(
                 i += 1;
                 let value = args
                     .get(i)
-                    .ok_or_else(|| "--region needs `california` or `world`".to_string())?;
+                    .ok_or_else(|| "--region needs `california`, `na` or `world`".to_string())?;
                 let region = crate::region::Region::parse(value).map_err(|e| e.0)?;
                 opts.bbox = region.bbox();
             }

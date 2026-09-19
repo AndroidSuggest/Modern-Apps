@@ -386,10 +386,26 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
         return Pair(jpeg, info)
     }
 
-    fun saveToMediaStore(jpeg: ByteArray, info: PanoInfo): android.net.Uri? {
+    fun saveToMediaStore(
+        jpeg: ByteArray,
+        info: PanoInfo,
+        saveTarget: SaveTarget = SaveTarget.MediaStoreDefault,
+    ): android.net.Uri? {
         val prefix = if (sphereMode) "SPHERE" else "PANO"
-        val contentValues = MediaStoreSaver.imageValues("${prefix}_${MediaStoreSaver.timestamp()}.jpg")
+        val name = "${prefix}_${MediaStoreSaver.timestamp()}.jpg"
         val tagged = PanoXmp.injectXmp(jpeg, PanoXmp.buildGPanoXmp(info))
+        val treeUri = (saveTarget as? SaveTarget.SafTree)?.treeUri
+        if (treeUri != null) {
+            val doc = SafDocuments.createImageDoc(context.contentResolver, treeUri, name)
+            if (doc != null) {
+                MediaStoreSaver.saveJpegBytesToUri(context.contentResolver, doc, tagged)?.let { uri ->
+                    android.util.Log.i("PanoramaEngine", "Saved $prefix to $uri ${tagged.size} bytes")
+                    return uri
+                }
+                android.util.Log.w("PanoramaEngine", "SAF save failed for $prefix; using MediaStore")
+            }
+        }
+        val contentValues = MediaStoreSaver.imageValues(name)
         return MediaStoreSaver.saveJpegBytes(context.contentResolver, contentValues, tagged).also { uri ->
             if (uri == null) {
                 android.util.Log.e("PanoramaEngine", "MediaStore save failed for $prefix")

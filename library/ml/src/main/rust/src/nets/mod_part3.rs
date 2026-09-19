@@ -24,6 +24,16 @@ const CONV_VEC_ROWS: u32 = 2;
 /// int4 vector kinds; `the_int4_gemv_row_count_matches_its_shader` holds it against the shader.
 const CONV_VEC_INT4_ROWS: u32 = 8;
 
+/// `ROWS` in `shaders/conv_vec_q2k.comp`: output channels per workgroup.
+///
+/// Eight like the int4 gemv, for the same stream reason: a Q2_K row's superblocks are
+/// wider than int4's blocks, so fewer rows per workgroup would leave the same
+/// load-ALU overlap on the table. Separate constant for the same reason as
+/// [`CONV_VEC_INT4_ROWS`]: an edit to either shader must not silently dispatch the other
+/// wrong. [`Builder::emit`] uses this for the Q2_K vector kinds;
+/// `the_q2k_gemv_row_count_matches_its_shader` holds it against the shader.
+pub(crate) const CONV_VEC_Q2K_ROWS: u32 = 8;
+
 #[cfg(test)]
 fn gemv_rows_of(shader: &str) -> u32 {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("shaders").join(shader);

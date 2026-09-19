@@ -93,9 +93,11 @@ mod tests {
         };
         assert_eq!(at("2"), 0, "a country border carries a world tile");
         assert!(at("2") < at("4"));
-        assert!(at("4") < at("6"));
-        assert!(at("6") < at("8"));
-        assert_eq!(at("8"), 9, "there are a hundred thousand city limits");
+        assert_eq!(at("4"), 3, "a state border");
+        // County and below start at z12: the diet moved them (boundaries were
+        // 15.3GB retiled from z6/z9 up).
+        assert_eq!(at("6"), 12, "a county line");
+        assert_eq!(at("8"), 12, "there are a hundred thousand city limits");
     }
 
     #[test]

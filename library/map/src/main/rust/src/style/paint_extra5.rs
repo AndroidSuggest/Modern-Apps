@@ -29,7 +29,22 @@ fn the_flat_style_agrees_with_basemap_json() {
         // pinned by its own test (`the_carriageway_is_gated_and_sized_by_the_lane`) rather
         // than cross-checked here. `junction-connector` is the same surface continued through
         // an intersection and has no authored counterpart either.
-        if layer.carriageway {
+        //
+        // The six v8 landtype arms (`landuse_orchard`, …) are app-only the same way: the
+        // reference style has no orchard/vineyard/quarry/pool/residential/commercial arms,
+        // so there is nothing to cross-check their colours or ramps against. Their sources
+        // and kind whitelists are pinned by `the_interned_whitelist_is_the_authored_one`.
+        if layer.carriageway
+            || matches!(
+                layer.id.as_str(),
+                "landuse_orchard"
+                    | "landuse_vineyard"
+                    | "landuse_quarry"
+                    | "landuse_swimming_pool"
+                    | "landuse_residential"
+                    | "landuse_commercial"
+            )
+        {
             continue;
         }
         let authored = authored_layer(&root, &layer.authored);
@@ -43,8 +58,22 @@ fn the_flat_style_agrees_with_basemap_json() {
         //    copies while reading a source only our archives have. Its width is not
         //    cross-checked either; see the width arm below.
         if layer.toggle != Some(Toggle::Transit) {
+            // v8: the archive merges the four wash layers into one `landtype` source, while
+            // the authored reference still names them separately — so a flat arm reading
+            // `landtype` must have its authored counterpart read one of the four.
+            let authored_source = authored.get("source-layer").and_then(Json::as_str);
+            if layer.source_layer == "landtype" {
+                assert!(
+                    matches!(authored_source, Some("earth" | "water" | "landcover" | "landuse")),
+                    "`{}` reads merged source `landtype` but `{}` reads `{authored_source:?}`",
+                    layer.id,
+                    layer.authored,
+                );
+            }
             let expected = if layer.source_layer == "poi" {
                 "pois"
+            } else if layer.source_layer == "landtype" {
+                authored_source.unwrap()
             } else {
                 layer.source_layer.as_str()
             };

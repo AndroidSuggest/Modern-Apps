@@ -1,8 +1,5 @@
 package com.vayunmathur.auto.service
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.app.UiModeManager
 import android.content.Context
@@ -11,7 +8,6 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import com.vayunmathur.auto.R
 import com.vayunmathur.auto.network.HeadUnitServer
 import com.vayunmathur.auto.network.TransportIntake
 import com.vayunmathur.auto.platform.AudioSinkChannel
@@ -69,7 +65,7 @@ class ProjectionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (running) return START_STICKY
         running = true
-        startForeground(NOTIFICATION_ID, notification())
+        startForeground(ProjectionNotification.NOTIFICATION_ID, ProjectionNotification.build(this))
         publishCredentialExpiry()
         // The now-playing feed outlives any one session: the phone card shows it
         // between connections, and the car card picks the latest up on bring-up.
@@ -226,22 +222,21 @@ class ProjectionService : Service() {
                     Log.d(TAG, "ignoring media-browser message on ch${message.channelId}")
                 } else if (message.channelId == GalService.NOTIFICATION.id) {
                     messaging?.onMessage(message.channelId, message.type, message.payload)
-                } else if (message.channelId == GalService.INPUT_SOURCE.id) {
+                } else if (message.channelId == inputChannelId) {
                     if (input == null) {
-                        // ch8 traffic with no owner: the channel was never
-                        // advertised with an input source, or openNext has not
-                        // run yet. Log, don't crash -- the owner binds on its
-                        // grant once advertised.
+                        // Input traffic with no owner: the input entry opened
+                        // but binding has not run yet. Log, don't crash -- the
+                        // owner binds on its grant once advertised.
                         Log.w(
                             TAG,
-                            "ch8 input traffic with no input owner " +
+                            "ch$inputChannelId input traffic with no input owner " +
                                 "(0x${message.type.toString(16)}); dropping",
                         )
                         AutoSessionState.onInputEvent(InputEvent.DroppedNoFocus)
                     } else {
                         input?.onMessage(message.channelId, message.type, message.payload)
                     }
-                } else if (message.channelId == GalService.SENSOR_SOURCE.id) {
+                } else if (message.channelId == sensorChannelId) {
                     sensors?.onMessage(message.channelId, message.type, message.payload)
                 } else if (message.channelId == GalService.AUDIO_SINK_GUIDANCE.id) {
                     guidance?.onMessage(message.channelId, message.type, message.payload)
@@ -251,7 +246,7 @@ class ProjectionService : Service() {
                     audioSys?.onMessage(message.channelId, message.type, message.payload)
                 } else if (message.channelId == AudioSinkRole.MEDIA.serviceId) {
                     audioMedia?.onMessage(message.channelId, message.type, message.payload)
-                } else if (message.channelId == GalService.AUDIO_SOURCE.id) {
+                } else if (message.channelId == micChannelId) {
                     mic?.onMessage(message.channelId, message.type, message.payload)
                 } else if (message.channelId == GalService.VIDEO_SINK.id) {
                     video?.onMessage(message.channelId, message.type, message.payload)
@@ -441,16 +436,18 @@ class ProjectionService : Service() {
                 setupMessaging = true
                 messaging?.onChannelOpen()
             }
-            // ch8 binds on its own grant, like video setup and ch14
+            // The input entry binds on its own grant, like video setup and ch14
             // mirroring wait for theirs: binding before the HU opens the
             // channel earns a bare 0xff.
-            if (!setupInput && GalService.INPUT_SOURCE.id in connection.session.openChannels) {
+            val boundInput = inputChannelId
+            if (!setupInput && boundInput != null && boundInput in connection.session.openChannels) {
                 setupInput = true
                 input?.requestBinding()
             }
-            // ch7 subscribes to the stub set on its own grant: subscribing
+            // The sensor entry subscribes on its own grant: subscribing
             // before the HU opens the channel earns a bare 0xff.
-            if (!setupSensors && GalService.SENSOR_SOURCE.id in connection.session.openChannels) {
+            val boundSensor = sensorChannelId
+            if (!setupSensors && boundSensor != null && boundSensor in connection.session.openChannels) {
                 setupSensors = true
                 sensors?.onChannelOpen()
             }
@@ -477,9 +474,10 @@ class ProjectionService : Service() {
                 setupAudioMedia = true
                 audioMedia?.requestSetup()
             }
-            // ch6 starts acking on its own grant: the head unit opens it and
-            // starts talking, and we ack from the first chunk.
-            if (!setupMic && GalService.AUDIO_SOURCE.id in connection.session.openChannels) {
+            // The mic entry starts acking on its own grant: the head unit opens
+            // it and starts talking, and we ack from the first chunk.
+            val boundMic = micChannelId
+            if (!setupMic && boundMic != null && boundMic in connection.session.openChannels) {
                 setupMic = true
                 mic?.onChannelOpen()
             }
@@ -489,13 +487,17 @@ class ProjectionService : Service() {
     private var video: VideoSinkChannel? = null
 
     /**
-     * The Phase 2 input owner, created when ch8 opens in [openNext] like the
-     * video sink. Outlives nothing: released with the session above. Injection
-     * gates on the arbitrated input flag and scales into the video sink's
-     * display size; the sinks forward into the car UI and count as consumed
-     * when the render pair is up.
+     * The Phase 2 input owner, created when the entry carrying `input_source`
+     * opens in [openNext] like the video sink (DHU 2.0: service 3; gearhead
+     * rro: 8 -- binding is payload-driven, see [openNext]). Outlives nothing:
+     * released with the session above. Injection gates on the arbitrated
+     * input flag and scales into the video sink's display size; the sinks
+     * forward into the car UI and count as consumed when the render pair is
+     * up.
      */
     private var input: InputChannel? = null
+    /** Discovery-bound input channel id; null until the input entry opens. */
+    private var inputChannelId: Int? = null
 
     /**
      * The Phase 7 messaging owner, created when ch14 opens in [openNext] like
@@ -520,12 +522,15 @@ class ProjectionService : Service() {
     private var audioMedia: AudioSinkChannel? = null
 
     /**
-     * The Phase 3 mic owner (ch6, upstream), created when the source channel
-     * opens in [openNext]. Outlives nothing: released with the session above.
-     * Retention is permission-gated ([MicPermission]) -- without the grant
-     * chunks are acked and counted only.
+     * The Phase 3 mic owner (upstream), created when the entry carrying
+     * `media_source` opens in [openNext] (DHU 2.0: service 7; gearhead rro:
+     * 6 -- binding is payload-driven). Outlives nothing: released with the
+     * session above. Retention is permission-gated ([MicPermission]) --
+     * without the grant chunks are acked and counted only.
      */
     private var mic: MicSourceChannel? = null
+    /** Discovery-bound mic channel id; null until the mic entry opens. */
+    private var micChannelId: Int? = null
 
     /**
      * Phone-side TTS feeding the system sink. Outlives nothing: started with
@@ -536,13 +541,17 @@ class ProjectionService : Service() {
     private var tts: CarTts? = null
 
     /**
-     * The Phase 5 sensor owner, created when ch7 opens in [openNext] like the
-     * video sink. Outlives nothing: released with the session above. Subscribes
-     * to the stub set on its grant (parked, night-follows-phone, last-known
-     * location, speed 0); live values land with Phase 6 maps-dev through the
-     * [SensorChannel] seams.
+     * The Phase 5 sensor owner, created when the entry carrying
+     * `sensor_source` opens in [openNext] like the video sink (DHU 2.0:
+     * service 1; gearhead rro: 7 -- binding is payload-driven). Outlives
+     * nothing: released with the session above. Subscribes to the stub set
+     * on its grant (parked, night-follows-phone, last-known location, speed
+     * 0); live values land with Phase 6 maps-dev through the [SensorChannel]
+     * seams.
      */
     private var sensors: SensorChannel? = null
+    /** Discovery-bound sensor channel id; null until the sensor entry opens. */
+    private var sensorChannelId: Int? = null
 
     /**
      * The Phase 5 guidance owner, created when ch3 opens in [openNext] like
@@ -673,9 +682,16 @@ class ProjectionService : Service() {
                 context = { this },
             )
         }
-        // ch8 advertises in the same wire-order pass; the owner binds on its
-        // grant (see InputChannel.requestBinding).
-        if (next.id == GalService.INPUT_SOURCE.id && next.hasInputSource()) {
+        // Binding is payload-driven, not id-driven: the DHU 2.0 discovery
+        // advertises services 1-7 with ids that do NOT match gearhead's `rro`
+        // (sensor on 1, input on 3, mic on 7 -- verified by decoding the 0x6
+        // payload), while gearhead numbers them 7/8/6. Gearhead binds by
+        // payload (`jlf.a(xpa)` reads the sensor config out of the service
+        // entry), and so do we: the entry carrying `input_source` owns input
+        // wherever its id lands. The video/audio-sink ids (2/4/5) happen to
+        // line up, so those keep their id checks as a second factor.
+        if (next.hasInputSource()) {
+            inputChannelId = next.id
             input = InputChannel(
                 service = next,
                 connection = connection,
@@ -687,16 +703,17 @@ class ProjectionService : Service() {
                 scrollSink = { delta -> video?.injectScroll(delta) ?: false },
             )
         }
-        // ch7 advertises in the same wire-order pass; the owner subscribes
-        // to the full 26-type set on its grant (see SensorChannel.onChannelOpen).
-        // Night follows the phone until the first NIGHT_MODE batch; the
-        // UiModeManager seam stays out of the service -- maps-dev owns the
-        // live night source next.
-        if (next.id == GalService.SENSOR_SOURCE.id) {
+        // The entry carrying `sensor_source` owns sensors (DHU 2.0: service
+        // 1; gearhead rro: 7 -- payload-driven, see above). Night follows the
+        // phone until the first NIGHT_MODE batch; the UiModeManager seam stays
+        // out of the service -- maps-dev owns the live night source next.
+        if (next.hasSensorSource()) {
+            sensorChannelId = next.id
             sensors = SensorChannel(
                 connection = connection,
                 night = NightSource { isNightNow() },
                 onEvent = AutoSessionState::onSensorEvent,
+                channelId = next.id,
             )
         }
         // ch3 advertises in the same wire-order pass; the owner claims the
@@ -744,40 +761,24 @@ class ProjectionService : Service() {
             // it now so capture starts flowing once the sink starts.
             MusicCaptureSinkHolder.sink = audioMedia
         }
-        // ch6 advertises in the same wire-order pass; the owner starts
-        // acking on the grant (see MicSourceChannel.onChannelOpen).
+        // The entry carrying `media_source` owns the mic (DHU 2.0: service 7;
+        // gearhead rro: 6 -- payload-driven, see above).
         // Retention needs RECORD_AUDIO; without it chunks are acked and
         // counted only, so the head unit still sees a live endpoint.
-        if (next.id == GalService.AUDIO_SOURCE.id) {
+        if (next.hasMediaSource()) {
+            micChannelId = next.id
             mic = MicSourceChannel(
                 connection = connection,
                 retentionAllowed = { MicPermission.isGranted(this) },
                 onEvent = AutoSessionState::onAudioEvent,
+                channelId = next.id,
             )
         }
         observeUnownedService(next)
     }
 
-    private fun notification(): Notification {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                getString(R.string.projection_channel),
-                NotificationManager.IMPORTANCE_LOW,
-            ),
-        )
-        return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.projection_running))
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setOngoing(true)
-            .build()
-    }
-
     companion object {
         private const val TAG = "MaAuto.Service"
-        private const val CHANNEL_ID = "projection"
-        private const val NOTIFICATION_ID = 1
 
         /**
          * Interim car name until the head unit reports its own. The GAL services the DHU

@@ -56,9 +56,9 @@ pub const MIN_ZOOM: u8 = 14;
 /// The smallest drawn building footprint worth carrying, in square pixels of a 256-unit tile.
 ///
 /// `1.0`: a footprint smaller than one display pixel at z14. Converted by
-/// [`super::land::min_area_units`] to 256 square extent units at extent 4096 (a 16x16-unit
+/// [`super::landtype::min_area_units`] to 256 square extent units at extent 4096 (a 16x16-unit
 /// square, ~9.5 m at z14) — a speck rather than detail, and the same floor the schema already
-/// applies to the smallest z14 `landuse` kinds (`pitch`, `playground`, `platform`). Whole-number
+/// applies to the smallest z14 `landtype` kinds (`pitch`, `playground`, `platform`). Whole-number
 /// because [`crate::store`] packs this field as a `u8` and refuses anything fractional rather
 /// than rounding a threshold silently. Carried through the existing `min_area_px` plumbing so
 /// [`crate::tiler`] needs no building branch for the drop itself.
@@ -365,7 +365,7 @@ mod tests {
             assert_eq!(class.min_area_px, MIN_AREA_PX, "{tags:?}");
         }
         // One display pixel, expressed in a 4096-unit tile: a 16x16-unit square.
-        assert_eq!(crate::schema::land::min_area_units(MIN_AREA_PX, 4096), 256.0);
+        assert_eq!(crate::schema::landtype::min_area_units(MIN_AREA_PX, 4096), 256.0);
     }
 
     fn attrs_of(pairs: &[(&str, &str)]) -> BuildingAttrs {

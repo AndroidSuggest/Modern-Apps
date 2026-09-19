@@ -15,7 +15,7 @@ mod tests_part10 {
         // Every stored body holds the water layer and nothing else.
         for (_, _, body) in &entries {
             let body = Body::parse(body).expect("parse");
-            let layer = body.layer(dict::LAYER_WATER).expect("water");
+            let layer = body.layer(dict::LAYER_LANDTYPE).expect("water");
             assert!(!layer.features.is_empty());
             assert_eq!(layer.features[0].geom_type, GEOM_POLYGON);
             assert!(body.layer(dict::LAYER_BUILDINGS).is_none());
@@ -87,7 +87,7 @@ mod tests_part10 {
         let entries = tilecodec::mamaps::read::read_all(&bytes).expect("read");
         let both = entries.iter().any(|(_, _, body)| {
             let body = Body::parse(body).expect("parse");
-            body.layer(dict::LAYER_WATER).is_some() && body.layer(dict::LAYER_BUILDINGS).is_some()
+            body.layer(dict::LAYER_LANDTYPE).is_some() && body.layer(dict::LAYER_BUILDINGS).is_some()
         });
         assert!(both, "some tile should carry both");
     }
@@ -105,10 +105,10 @@ mod tests_part10 {
     fn a_shallow_zoom_carries_fewer_points_than_a_deep_one() {
         // A wiggly line, so there is something to simplify away.
         let points: Vec<(f64, f64)> = (0..200)
-            .map(|i| (-120.0 + i as f64 * 0.001, 35.0 + (i % 3) as f64 * 0.0005))
+            .map(|i| (-120.0 + i as f64 * 0.001, 35.0 + (i % 3) as f64 * 0.001 * 0.5))
             .collect();
         let features = vec![Feature {
-            class: Class::line(dict::LAYER_WATER, crate::schema::kind("river"), 0),
+            class: Class::line(dict::LAYER_LANDTYPE, crate::schema::kind("river"), 0),
             geometry: Geometry::Lines(vec![points]),
             name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
                     turn_fwd: Vec::new(),
@@ -116,6 +116,7 @@ mod tests_part10 {
             building: None,
             carriageway: tilecodec::mamaps::body::Carriageway::default(),
         }];
+        // v8: the landtype wash tiles to z14, so the deep zoom holds the full shape.
         let (_, stats) = build(&spilled(&features), &settings(6, 14)).expect("build");
         let at = |z: u8| stats.iter().find(|s| s.zoom == z).expect("zoom").points;
         assert!(at(6) < at(14), "z6 has {} points, z14 has {}", at(6), at(14));
@@ -198,7 +199,7 @@ mod tests_part10 {
             .map(|i| Feature {
                 class: Class {
                     kind_detail: i,
-                    ..Class::area(dict::LAYER_WATER, crate::schema::kind("lake"), 0)
+                    ..Class::area(dict::LAYER_LANDTYPE, crate::schema::kind("lake"), 0)
                 },
                 geometry: square(-120.0 + i as f64 * 0.00005, 35.0, 0.004),
                 name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
@@ -219,7 +220,7 @@ mod tests_part10 {
         let mut widest = 0usize;
         for (id, _, body) in &entries {
             let body = Body::parse(body).expect("parse");
-            let Some(layer) = body.layer(dict::LAYER_WATER) else { continue };
+            let Some(layer) = body.layer(dict::LAYER_LANDTYPE) else { continue };
             let order: Vec<u16> = layer.features.iter().map(|f| f.kind_detail).collect();
             let mut ascending = order.clone();
             ascending.sort_unstable();
@@ -235,7 +236,7 @@ mod tests_part10 {
     /// features in one go. Not "the offsets look plausible" but "the layer is the same layer".
     #[test]
     fn concatenating_two_chunks_of_a_layer_is_one_layer() {
-        let class = Class::area(dict::LAYER_WATER, crate::schema::kind("lake"), 0);
+        let class = Class::area(dict::LAYER_LANDTYPE, crate::schema::kind("lake"), 0);
         let feature = Feature { class, geometry: square(0.0, 0.0, 1.0), name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0, turn_fwd: Vec::new(), turn_bwd: Vec::new(), building: None, carriageway: tilecodec::mamaps::body::Carriageway::default() };
         // Tile-local already, so the fixture is about the arenas rather than about projection, and
         // big enough that no minimum-area floor can drop it.
@@ -249,13 +250,13 @@ mod tests_part10 {
             ]]])
         };
 
-        let mut together = ChunkEntry::new(dict::LAYER_WATER);
+        let mut together = ChunkEntry::new(dict::LAYER_LANDTYPE);
         assert_eq!(push(&mut together, &feature, &box_at(0)), (1, 5));
         push(&mut together, &feature, &box_at(1000));
 
-        let mut first = ChunkEntry::new(dict::LAYER_WATER);
+        let mut first = ChunkEntry::new(dict::LAYER_LANDTYPE);
         push(&mut first, &feature, &box_at(0));
-        let mut second = ChunkEntry::new(dict::LAYER_WATER);
+        let mut second = ChunkEntry::new(dict::LAYER_LANDTYPE);
         push(&mut second, &feature, &box_at(1000));
         concatenate(&mut first, &mut second);
 

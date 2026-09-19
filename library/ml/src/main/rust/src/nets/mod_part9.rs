@@ -43,11 +43,12 @@ impl<'a> Builder<'a> {
                 // shader instead. It is the whole of a SMaLL-100 decode step.
                 let vector = tiled && positions == 1;
                 let tiles = so.c.div_ceil(CONV_POINT_TILE) * positions.div_ceil(CONV_POINT_TILE);
-                // One workgroup per row-group: 2 channels for int8, 8 for int4 — the
-                // two gemv shaders diverged, so each kind counts its own rows.
+                // One workgroup per row-group: 2 channels for int8, 8 for int4 and Q2_K —
+                // the three gemv shaders diverged, so each kind counts its own rows.
                 let rows = match quant {
                     Quant::I8 => so.c.div_ceil(CONV_VEC_ROWS),
                     Quant::I4 => so.c.div_ceil(CONV_VEC_INT4_ROWS),
+                    Quant::Q2K => so.c.div_ceil(CONV_VEC_Q2K_ROWS),
                 };
                 let kind = match (quant, tiled, vector) {
                     (Quant::I8, _, true) => Kind::ConvVecInt8,
@@ -63,11 +64,14 @@ impl<'a> Builder<'a> {
                             kernel.0, kernel.1
                         ))
                     }
+                    (Quant::Q2K, _, true) => Kind::ConvVecQ2K,
+                    (Quant::Q2K, true, false) => Kind::ConvPointQ2K,
+                    (Quant::Q2K, false, false) => Kind::ConvQ2K,
                 };
                 // Workgroups for the staged kinds, output elements for the untiled one.
                 let count = match kind {
-                    Kind::ConvVecInt8 | Kind::ConvVecInt4 => rows,
-                    Kind::ConvPointInt8 | Kind::ConvPointInt4 => tiles,
+                    Kind::ConvVecInt8 | Kind::ConvVecInt4 | Kind::ConvVecQ2K => rows,
+                    Kind::ConvPointInt8 | Kind::ConvPointInt4 | Kind::ConvPointQ2K => tiles,
                     _ => so.len(),
                 };
                 ops.push(Op::Dispatch {
@@ -113,7 +117,9 @@ impl<'a> Builder<'a> {
                         Kind::ConvVecInt8
                         | Kind::ConvPointInt8
                         | Kind::ConvVecInt4
-                        | Kind::ConvPointInt4 => count * 64,
+                        | Kind::ConvPointInt4
+                        | Kind::ConvVecQ2K
+                        | Kind::ConvPointQ2K => count * 64,
                         _ => count,
                     },
                 });

@@ -134,6 +134,53 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_stepGemma
     }
 }
 
+/// Feed one token and return its 262,144 logits for Kotlin-side sampling. Null on failure.
+///
+/// The same step [`Java_com_vayunmathur_library_ml_MlNative_stepGemma4`] runs - one token through
+/// all thirty-five layers plus the tied head on the host - but the logits cross the boundary
+/// unreduced so the caller can sample (top_k, top_p, temperature) with a seed it holds. Greedy
+/// decoding keeps calling `stepGemma4`: a 1 MB float array per token is the price of the
+/// flexibility, paid only when sampling is wanted.
+///
+/// # Safety
+///
+/// Called only by the JVM, with a live handle from `createGemma4`.
+#[no_mangle]
+pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_logitsGemma4<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    token: jint,
+) -> jfloatArray {
+    if handle == 0 {
+        return std::ptr::null_mut();
+    }
+    // SAFETY: the caller guarantees the handle came from `createGemma4` and is still live.
+    let handle = unsafe { &mut *(handle as *mut Gemma4Handle) };
+    let token = match u32::try_from(token) {
+        Ok(token) if token < gemma4::VOCAB => token,
+        _ => {
+            log(&format!("gemma4 was given token {token}, which is not in the vocabulary"));
+            return std::ptr::null_mut();
+        }
+    };
+    match handle.step(token, true).and_then(|logits| {
+        logits.ok_or_else(|| "a decode step returned no logits".to_string())
+    }) {
+        Ok(logits) => match new_float_array(&mut env, &logits) {
+            Ok(array) => array,
+            Err(e) => {
+                log(&format!("gemma4 cannot return its logits: {e}"));
+                std::ptr::null_mut()
+            }
+        },
+        Err(e) => {
+            log(&format!("gemma4 logits step failed: {e}"));
+            std::ptr::null_mut()
+        }
+    }
+}
+
 /// Positions currently in the KV cache.
 ///
 /// # Safety

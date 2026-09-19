@@ -124,4 +124,16 @@
     <string name="lens_front">Front</string>
     <!-- LensBar: content description for the physical-lens picker row -->
     <string name="lens_picker_description">Camera lens</string>
+
+    <!-- Save location settings (SettingsPage) -->
+    <!-- SettingsPage: section header for photo/video save location -->
+    <string name="settings_save_location">Save location</string>
+    <!-- SettingsPage: default save location summary, DCIM/Camera via MediaStore -->
+    <string name="settings_save_location_default">DCIM/Camera</string>
+    <!-- SettingsPage: button label opening the SAF folder picker -->
+    <string name="settings_save_location_choose">Choose folder</string>
+    <!-- SettingsPage: button label resetting the save location to the default -->
+    <string name="settings_save_location_reset">Reset to default</string>
+    <!-- SettingsPage: error notice when the chosen folder cannot be used -->
+    <string name="settings_save_location_error">Couldn\'t use that folder</string>
 </resources>

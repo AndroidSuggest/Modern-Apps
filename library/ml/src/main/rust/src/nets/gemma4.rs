@@ -74,11 +74,18 @@ pub const LAYERS: usize = 35;
 /// Layers that own a KV cache. The rest read one of theirs.
 pub const OWNS_CACHE_LAYERS: usize = 15;
 
-/// Inner width of the feed-forward on a layer that owns a cache.
+/// Inner width of the feed-forward, 6144 on the full layers and 12288 on the
+/// slim ones (15+).
+///
+/// The portable graph's slim MLP is a fused 2-bit gate+up pair at 12288-wide
+/// with a 12288-wide down-projection (S10 tensors 1644/1647/1653); the GPU
+/// bundle holds the same geometry in I8-tagged 2-bit storage. `FFN_WIDE` and
+/// the fused `gate_up_proj` belonged to the ONNX export, which is a different
+/// model.
 pub const FFN: u32 = 6144;
 
-/// Inner width on a shared-cache layer, which is double. `use_double_wide_mlp`.
-pub const FFN_WIDE: u32 = 12288;
+/// Slim-layer inner width (see [`ffn`]).
+pub const FFN_SLIM: u32 = 12288;
 
 /// Per-layer input width, `hidden_size_per_layer_input`.
 pub const PER_LAYER: u32 = 256;
@@ -141,14 +148,16 @@ pub fn next_tier(context: u32) -> Option<u32> {
     CONTEXT_TIERS.iter().copied().find(|tier| *tier > context)
 }
 
-/// Splits the logits head is cut into.
+/// Tied-head logit splits for the Vulkan GEMM.
 ///
-/// `[262144, 1536]` int8 is 402 MB, and one descriptor is only guaranteed to reach 128 MiB, so a
-/// single head tensor could not be bound at all on a device reporting the minimum. Four splits of
-/// 65536 classes are 100 MB each. The same reason NLLB's head is split, and the same arithmetic.
+/// litertlm ties embeddings (no head tensor anywhere): logits are hidden @ E^T
+/// with E the working embedding table. One descriptor is only guaranteed to
+/// reach 128 MiB, so the 262144-class GEMM runs in four splits of 65536
+/// classes (100 MB of int4 each at 1536-wide). Same arithmetic NLLB's head
+/// split uses, applied to the tied table instead of a dedicated head.
 pub const HEAD_SPLITS: usize = 4;
 
-/// Classes in each split of the logits head.
+/// Classes in each split of the tied-head GEMM.
 pub const CLASSES_PER_SPLIT: u32 = VOCAB / HEAD_SPLITS as u32;
 
 /// The epsilon in every RMS norm, `rms_norm_eps`.
@@ -156,6 +165,20 @@ pub const EPSILON: f32 = 1e-6;
 
 /// `final_logit_softcapping`: the logits are `tanh(x / CAP) * CAP`.
 pub const LOGIT_CAP: f32 = 30.0;
+
+/// The S2 signature gain the working embedding table carries.
+///
+/// The reference's gather path multiplies the raw decode table by the fp16
+/// constant 39.25 (the `Mul` after `GatherBlockQuantized` in
+/// `embed_tokens_q4f16.onnx`), so every gathered row carries that gain.
+///
+/// The tied head must therefore use the S10 head table (t2698, the raw-scale
+/// `embedder.decode` composite), NOT the working table: the reference scores
+/// its final hidden against the raw-scale table, and the S2 gain does not
+/// belong in the logits. The working table (S2 rows, x39.25) is the gather
+/// side only; the head side is raw. Getting this backwards is invisible -
+/// the shapes agree and every logit merely saturates at `LOGIT_CAP`.
+pub const EMBED_GAIN: f32 = 39.25;
 
 /// Whether `q_norm`'s gamma already carries `1 / sqrt(head_dim)`.
 ///
@@ -202,12 +225,13 @@ pub const fn cache_source(index: usize) -> usize {
     }
 }
 
-/// The inner feed-forward width of layer `index`.
+/// The inner feed-forward width of layer `index`: 6144 on the full (cache-owning)
+/// layers, 12288 on the slim ones (see [`FFN_SLIM`]).
 pub const fn ffn(index: usize) -> u32 {
     if owns_cache(index) {
         FFN
     } else {
-        FFN_WIDE
+        FFN_SLIM
     }
 }
 
@@ -221,18 +245,22 @@ pub const fn ffn(index: usize) -> u32 {
 /// lowering instead of two.
 const PROJECTION_TENSORS: usize = 3;
 
-/// Projections a cache-owning layer has: q, k, v, o, gate-up, down, and the per-layer pair.
-const OWNING_PROJECTIONS: usize = 8;
+/// Projections a cache-owning layer has: q, k, v, o, gate, ff1, linear,
+// and the per-layer gate/projection pair.
+const OWNING_PROJECTIONS: usize = 9;
 
 /// Projections a shared-cache layer has: the same without k and v.
 const SHARED_PROJECTIONS: usize = OWNING_PROJECTIONS - 2;
 
-/// Unquantised tensors a cache-owning layer has: five `d_model` norms, `q_norm`, `k_norm`,
-/// `v_norm`, and the scalar.
-const OWNING_PLAIN: usize = 9;
+/// Unquantised tensors a cache-owning layer has: pre_attn, q_norm, k_norm,
+/// post_attn, pre_ffw, post_ffw, post_per_layer_input, skip. (No v_norm:
+/// litertlm carries none. The all-ones `value_norm` in the portable graph is
+/// a parameter-free RMSNorm the GPU kernel fuses, not a stored tensor.)
+const OWNING_PLAIN: usize = 8;
 
-/// The same without `k_norm` and `v_norm`.
-const SHARED_PLAIN: usize = OWNING_PLAIN - 2;
+/// The same without `k_norm`. (Only one fewer: litertlm has no `v_norm`
+/// to drop, unlike the ONNX export this count was first written against.)
+const SHARED_PLAIN: usize = OWNING_PLAIN - 1;
 
 /// Tensors a cache-owning layer contributes, in file order.
 const OWNING_LAYER_TENSORS: usize = OWNING_PLAIN + OWNING_PROJECTIONS * PROJECTION_TENSORS;
@@ -240,44 +268,42 @@ const OWNING_LAYER_TENSORS: usize = OWNING_PLAIN + OWNING_PROJECTIONS * PROJECTI
 /// Tensors a shared-cache layer contributes.
 const SHARED_LAYER_TENSORS: usize = SHARED_PLAIN + SHARED_PROJECTIONS * PROJECTION_TENSORS;
 
-/// Where the layers start. The shared head and tables come first.
+/// Where the layers start. The trailing norm, the two rotary tables, and the
+/// two shared all-ones vectors come first.
 const LAYER0: usize = SHARED_TENSORS;
 
-/// Tensors before any layer.
+/// Tensors before any layer: the trailing norm, the two rotary tables, and
+/// the all-ones vector.
 ///
-/// The four splits of the logits head, each a projection triple; the per-layer projection and its
-/// norm; the trailing norm; and the two rotary tables.
-const SHARED_TENSORS: usize =
-    HEAD_SPLITS * PROJECTION_TENSORS + PROJECTION_TENSORS + 1 + 1 + 2;
+/// NO shared per-layer projection: it lives in the EMBED file (see
+/// [`embed::SHARED_PROJ`]) and the host applies it in [`gather`], so the
+/// text file is the transformer only. NO logits head either: litertlm ties
+/// embeddings (no head tensor in any section of either bundle), so logits
+/// are computed as hidden @ E^T on the host (see bridge `tied_head_logits`).
+const SHARED_TENSORS: usize = 5;
 
-/// The first split of the logits head.
-pub const HEAD: usize = 0;
-
-/// The projection producing every layer's per-layer input, `[8960, 1536]` in the export.
-pub const PER_LAYER_PROJECTION: usize = HEAD + HEAD_SPLITS * PROJECTION_TENSORS;
-
-/// The norm over one layer's slice of that projection.
-pub const PER_LAYER_NORM: usize = PER_LAYER_PROJECTION + PROJECTION_TENSORS;
-
-/// The trailing norm, before the logits head.
-pub const FINAL_NORM: usize = PER_LAYER_NORM + 1;
+/// The trailing norm.
+pub const FINAL_NORM: usize = 0;
 
 /// The sliding layers' rotary table, `[MAX_CONTEXT, HEAD_DIM]`.
 ///
-/// Row `p` is position `p`'s angles in the layout [`super::Builder::rotary`] takes: the cosines
-/// in the first `head_dim / 2` entries and the sines in the rest. The export ships
-/// `cos_cache_local` and `sin_cache_local` separately at `[131072, 128]` each; the converter
-/// truncates them to [`MAX_CONTEXT`] and interleaves them into this one table, so the host reads
-/// a position's angles as one contiguous row rather than two gathers and a concatenation.
-///
-/// Shipped rather than recomputed because the two layer types use different thetas *and* the
-/// full-attention layers use a `proportional` rope variant whose formula is not worth
-/// re-deriving when the table is in the file.
+/// Standard RoPE, computed by the converter (litertlm stores none). Thetas read
+/// off the base bundle's own Section 10 `maybe_rope` constants: 1e4 sliding /
+/// 1e6 full (freq[1] 0.86596435 at head_dim 256, 0.89768714 at head_dim 512).
+/// `--rope-theta` overrides both for bisect.
 pub const ROTARY_LOCAL: usize = FINAL_NORM + 1;
 
 /// The full-attention layers' rotary table, `[MAX_CONTEXT, GLOBAL_HEAD_DIM]`. See
 /// [`ROTARY_LOCAL`].
 pub const ROTARY_GLOBAL: usize = ROTARY_LOCAL + 1;
+
+/// The shared all-ones vectors: the gamma of S10's parameter-free
+/// `value_norm` (one per owning layer in the graph, all ones over the head
+/// dim: `[256]` sliding, `[512]` full). Two tensors because the norm reads
+/// its gamma at the head width, not `D_MODEL`. `rms_norm` with them is
+/// exactly S10's composite. See the `value_norm` note at [`layer`].
+pub const ONE_SLIDING: usize = ROTARY_GLOBAL + 1;
+pub const ONE_FULL: usize = ROTARY_GLOBAL + 2;
 
 /// Total tensors the `.maml` holds, and the count `maml_convert.py` must write.
 pub const TENSORS: usize = SHARED_TENSORS
@@ -319,25 +345,25 @@ pub fn declare_layer(weights: &dyn WeightSource, index: usize) -> Result<(), Str
         weights.shaped(here, dims).map(|_| ())
     };
 
-    plain(&[D_MODEL], &mut next)?; // input_layernorm
+    plain(&[D_MODEL], &mut next)?; // pre_attention_norm
     plain(&[dim], &mut next)?; // attn.q_norm
-    projection(weights, &mut next, HEADS * dim, D_MODEL)?; // attn.q_proj
+    projection(weights, &mut next, HEADS * dim, D_MODEL)?; // attn.q
     if owns_cache(index) {
         plain(&[dim], &mut next)?; // attn.k_norm
-        projection(weights, &mut next, KV_HEADS * dim, D_MODEL)?; // attn.k_proj
-        projection(weights, &mut next, KV_HEADS * dim, D_MODEL)?; // attn.v_proj
-        plain(&[dim], &mut next)?; // attn.v_norm, an all-ones gamma
+        projection(weights, &mut next, KV_HEADS * dim, D_MODEL)?; // attn.k
+        projection(weights, &mut next, KV_HEADS * dim, D_MODEL)?; // attn.v
     }
-    projection(weights, &mut next, D_MODEL, HEADS * dim)?; // attn.o_proj
-    plain(&[D_MODEL], &mut next)?; // post_attention_layernorm
-    plain(&[D_MODEL], &mut next)?; // pre_feedforward_layernorm
-    projection(weights, &mut next, inner * 2, D_MODEL)?; // mlp.gate_up_proj, fused
-    projection(weights, &mut next, D_MODEL, inner)?; // mlp.down_proj
-    plain(&[D_MODEL], &mut next)?; // post_feedforward_layernorm
-    projection8(weights, &mut next, PER_LAYER, D_MODEL)?; // per_layer.per_layer_input_gate
-    projection8(weights, &mut next, D_MODEL, PER_LAYER)?; // per_layer.per_layer_projection
+    projection(weights, &mut next, D_MODEL, HEADS * dim)?; // attn.o
+    plain(&[D_MODEL], &mut next)?; // post_attention_norm
+    plain(&[D_MODEL], &mut next)?; // pre_ffw_norm
+    projection(weights, &mut next, inner, D_MODEL)?; // mlp.gate
+    projection(weights, &mut next, inner, D_MODEL)?; // mlp.ff1 (up)
+    projection(weights, &mut next, D_MODEL, inner)?; // mlp.linear (down)
+    plain(&[D_MODEL], &mut next)?; // post_ffw_norm
+    projection8(weights, &mut next, PER_LAYER, D_MODEL)?; // per_layer gate
+    projection8(weights, &mut next, D_MODEL, PER_LAYER)?; // per_layer projection
     plain(&[D_MODEL], &mut next)?; // post_per_layer_input_norm
-    plain(&[1], &mut next)?; // layer_scalar
+    plain(&[1], &mut next)?; // skip.scale: whole-residual multiplier after add2
     if next != layer_at(index + 1) {
         return Err(format!(
             "layer {index} declared {} tensors, not the {} its span allows",
@@ -395,54 +421,6 @@ pub fn as_exported(dims: &[u32]) -> Vec<u32> {
         [out, inp, 1, 1] => vec![*inp, *out],
         other => other.to_vec(),
     }
-}
-
-/// The embedding tables, which live in their own `.maml`. See [`crate::weights::graph`].
-///
-/// Two tensors, each a `(kernel, scale, bias)` triple as everything quantised here is. Both are
-/// read a row at a time by [`crate::weights::Reader::int4_row`] and neither is bound to a shader:
-/// a decode step needs 1536 values from a 1.2 GB table.
-pub mod embed {
-    /// `model.embed_tokens.weight`, `[VOCAB, D_MODEL]`. The export's `sqrt(d_model)` is folded in.
-    pub const TOKENS: usize = 0;
-
-    /// `model.embed_tokens_per_layer.weight`, `[VOCAB, PER_LAYER * LAYERS]`, `sqrt(256)` folded.
-    pub const PER_LAYER: usize = 3;
-
-    /// Tensors the embedding `.maml` holds.
-    pub const TENSORS: usize = 6;
-
-    /// Ids the export maps to row 0 of the per-layer table before gathering.
-    ///
-    /// The image and audio placeholders. They have no per-layer input of their own - their
-    /// embedding comes from the vision or audio tower - and the export masks them with a
-    /// `Where` rather than letting them index the table. A gather that skipped this would read a
-    /// real row for a placeholder and quietly perturb every layer.
-    pub const PLACEHOLDERS: [u32; 2] = [258_880, 258_881];
-}
-
-/// One token's embedding and per-layer inputs, gathered on the host.
-///
-/// Returns `(inputs_embeds, per_layer_inputs)`, ready for [`build`]'s first two inputs. Both
-/// scales the export applies are already in the weights, so this is a dequantise and nothing
-/// else - see `collect_gemma4_embed`.
-pub fn gather(
-    embed: &crate::weights::Reader<'_>,
-    token: u32,
-) -> Result<(Vec<f32>, Vec<f32>), String> {
-    if token >= VOCAB {
-        return Err(format!("token {token} is past the {VOCAB}-entry vocabulary"));
-    }
-    let hidden = embed.int4_row(embed::TOKENS, embed::TOKENS + 1, &[VOCAB, D_MODEL], token)?;
-    // The placeholders have no per-layer row of their own; the export masks them to 0.
-    let per_layer_row = if embed::PLACEHOLDERS.contains(&token) { 0 } else { token };
-    let per_layer = embed.int4_row(
-        embed::PER_LAYER,
-        embed::PER_LAYER + 1,
-        &[VOCAB, PER_LAYER * LAYERS as u32],
-        per_layer_row,
-    )?;
-    Ok((hidden, per_layer))
 }
 
 include!("gemma4_part1.rs");

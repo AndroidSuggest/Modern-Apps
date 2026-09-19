@@ -398,8 +398,12 @@ impl Layer {
     /// plainly visible and mutes the detail on top. A host that mutes the basemap wants less
     /// competing detail, not less geography: `weather`'s overlay is meaningless without a
     /// recognisable coastline under it.
+    ///
+    /// Since v8 the wash is one `landtype` layer, so the base is the earth fill arm and the
+    /// water fill arm on it: both read source `landtype` and are told apart by their kind
+    /// whitelists (`earth`'s is empty — it also draws the kind-less mainland).
     fn is_base(&self) -> bool {
-        matches!(self.source_layer.as_str(), "earth" | "water")
+        self.source_layer.as_str() == "landtype" && matches!(self.id.as_str(), "earth" | "water")
     }
 }
 

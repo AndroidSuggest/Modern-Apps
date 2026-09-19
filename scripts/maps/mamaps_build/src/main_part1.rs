@@ -275,10 +275,11 @@ fn derive_build_id(
             h = h.wrapping_mul(0x100_0000_01b3);
         }
     };
-    // Revision 15: the region filter. A california and a world build from the
-    // same pbf are different archives, so a warm cache from one must miss the
-    // other. (Revision 14 was the v7-only purge.)
-    eat(b"mamaps_build/15");
+    // Revision 16: the v8 landtype merge. The four wash layers become one `landtype`
+    // capped at z14, every other layer id shifts, and three kinds are appended — so a warm
+    // cache from a v7 build must miss. (Revision 15 was the region filter, 14 the v7-only
+    // purge.)
+    eat(b"mamaps_build/16");
     eat(region.as_bytes());
     eat(input.to_string_lossy().as_bytes());
     if let Ok(meta) = std::fs::metadata(input) {
@@ -290,13 +291,10 @@ fn derive_build_id(
         }
     }
     eat(&[
-        u8::from(layers.earth),
-        u8::from(layers.water),
+        u8::from(layers.landtype),
         u8::from(layers.buildings),
         u8::from(layers.roads),
         u8::from(layers.boundaries),
-        u8::from(layers.landcover),
-        u8::from(layers.landuse),
         u8::from(layers.places),
         u8::from(layers.poi),
         u8::from(layers.transit),

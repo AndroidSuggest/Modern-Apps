@@ -56,16 +56,15 @@ internal fun Gemma4Handle.loadBakedPrefix(prefix: String): Boolean {
         Log.i(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} is $positions positions, this prefix is ${tokens.size}")
         return false
     }
-    // The digest is reported, not enforced.
-    //
-    // It says whether these keys and values were computed from *these* tokens, and a
-    // mismatch means the model is about to attend over a prompt it was not given. Refusing
-    // is the safe behaviour and what this did first. It is advisory while the prefix is
-    // still being iterated on, because a stale cache should slow the work down rather than
-    // stop it - but a mismatch here is a real defect, not noise, and the loud log is the
-    // only thing standing between it and a plausible wrong answer.
+    // The digest IS enforced: it says whether these keys and values were computed from
+    // *these* tokens, and a mismatch means the model is about to attend over a prompt it was
+    // not given. That failure is silent - a fluent reply to a conversation that never happened -
+    // so a stale cache falls back to prefilling: slow and correct. The loud log stays either
+    // way, because a mismatch means the baked asset and the declared prompt have drifted apart
+    // and someone needs to re-run `bake_gemma4_prefix`.
     if (!Gemma4Handle.digest(tokens).contentEquals(blob.copyOfRange(12, 12 + 32))) {
-        Log.w(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} DIGEST MISMATCH - using it anyway; replies may be wrong")
+        Log.w(Gemma4Handle.TAG, "${Gemma4Handle.PREFIX_CACHE} DIGEST MISMATCH - prefilling instead")
+        return false
     }
     // The cache starts at the smallest tier and this prefix is larger than it. Growing first
     // is not optional: `loadPrefixGemma4` refuses a prefix bigger than the cache rather than

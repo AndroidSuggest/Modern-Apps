@@ -19,7 +19,7 @@
 //! only stores a `206` whose body length equals what was asked for, so a read of the wrong length
 //! does not merely fail, it poisons that range for every later read.
 //!
-//! The reader speaks v7 only: a 128-byte header, 12 layers, full bodies. Anything else is
+//! The reader speaks v8 only: a 128-byte header, 9 layers, full bodies. Anything else is
 //! refused on open rather than reinterpreted.
 
 pub mod archive;

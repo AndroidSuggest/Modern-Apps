@@ -160,7 +160,37 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
         (visible, keep)
     };
     let now = std::time::Instant::now();
-    for tile in &visible {
+    // Wash overzoom: the four fill layers stop at z12 (`MAX_ZOOM_PER_LAYER`),
+    // so past z12 nothing `visible` carries them. Their z12 ancestors are kept
+    // resident by `resident_set` — but kept is not fetched, so a cold start at
+    // z13+ would show no wash until the user zooms through z12. Fetch the z12
+    // covering tiles alongside the visible ones; the draw loop already draws
+    // every resident tile, so the wash shows through where z13+ have none.
+    // Bounded: one z12 tile covers 2^(z-12) visible tiles, so this adds at most
+    // a quarter of the visible count, and the existing has_tile/absent/retry
+    // gates dedup it exactly like a visible fetch.
+    let wash_extra: Vec<select::TileId> = if camera.zoom > 12.0 {
+        let mut seen = std::collections::HashSet::new();
+        let mut extra = Vec::new();
+        for tile in &visible {
+            if tile.z <= 12 {
+                continue;
+            }
+            let shift = tile.z - 12;
+            let ancestor = select::TileId {
+                z: 12,
+                x: tile.x >> shift,
+                y: tile.y >> shift,
+            };
+            if seen.insert(ancestor.key()) {
+                extra.push(ancestor);
+            }
+        }
+        extra
+    } else {
+        Vec::new()
+    };
+    for tile in visible.iter().chain(wash_extra.iter()) {
         let key = tile.key();
         if map.renderer.has_tile(key, generation)
             || map.absent.contains(&key)

@@ -191,15 +191,19 @@ pub enum SoftmaxMode {
 
 /// How wide a quantised convolution's kernel is, and so how its scale is shaped.
 ///
-/// The two are not interchangeable at the same scale layout: eight bits carry a row's dynamic
+/// The three are not interchangeable at the same scale layout: eight bits carry a row's dynamic
 /// range with one scale per output channel, four bits do not, so [`Quant::I4`] takes a rank-2
-/// scale of one per block of [`crate::weights::I4_BLOCK`] taps.
+/// scale of one per block of [`crate::weights::I4_BLOCK`] taps — and two bits need a
+/// superblock `(d, dmin)` pair per 256 taps, so [`Quant::Q2K`] takes a rank-1 scale of two
+/// values per block of [`crate::weights::Q2K_BLOCK`] taps.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Quant {
     /// Signed 8-bit, one scale per output channel.
     I8,
     /// Signed 4-bit, one scale per block of taps.
     I4,
+    /// GGUF Q2_K superblocks, one `(d, dmin)` pair per block of taps.
+    Q2K,
 }
 
 /// One step of a compiled forward pass.
@@ -273,8 +277,10 @@ impl Kind {
                 reads.push(WeightRead { at: elems(push.act_weight), field: "act_weight" });
             }
             // The same three reads: an int4 kernel is addressed through the identical 32-bit
-            // word view, and its scale table is fp16 like an int8 one - only wider.
-            Kind::ConvVecInt4 | Kind::ConvPointInt4 => {
+            // word view, and its scale table is fp16 like an int8 one - only wider. Q2_K
+            // reads identically too: superblocks through the word view, the `(d, dmin)`
+            // table through the fp16 view, bias as usual.
+            Kind::ConvVecInt4 | Kind::ConvPointInt4 | Kind::ConvQ2K | Kind::ConvVecQ2K | Kind::ConvPointQ2K => {
                 reads.push(WeightRead { at: words(push.weight), field: "weight" });
                 reads.push(WeightRead { at: elems(push.bias), field: "bias" });
                 reads.push(WeightRead { at: elems(push.act_weight), field: "act_weight" });
@@ -412,7 +418,10 @@ impl Kind {
             | Kind::ConvPointInt8
             | Kind::ConvVecInt8
             | Kind::ConvPointInt4
-            | Kind::ConvVecInt4 => {
+            | Kind::ConvVecInt4
+            | Kind::ConvQ2K
+            | Kind::ConvPointQ2K
+            | Kind::ConvVecQ2K => {
                 let mut ranges = vec![(push.in0, dense)];
                 if push.res != NO_FUSE {
                     ranges.push((push.res, written));

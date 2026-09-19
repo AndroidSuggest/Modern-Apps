@@ -1,0 +1,195 @@
+warning: unused import: `codec::parse_layer`
+  --> C:\Users\Vayun\Documents\code\Modern-Apps\library\tilecodec\src\main\rust\src\mamaps\body.rs:81:16
+   |
+81 | pub(crate) use codec::parse_layer;
+   |                ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `writer::Pending`
+  --> C:\Users\Vayun\Documents\code\Modern-Apps\library\tilecodec\src\main\rust\src\mamaps\write.rs:64:16
+   |
+64 | pub(crate) use writer::Pending;
+   |                ^^^^^^^^^^^^^^^
+
+warning: unused import: `types::MAX_ROOT_BYTES`
+  --> C:\Users\Vayun\Documents\code\Modern-Apps\library\tilecodec\src\main\rust\src\pmtiles.rs:53:16
+   |
+53 | pub(crate) use types::MAX_ROOT_BYTES;
+   |                ^^^^^^^^^^^^^^^^^^^^^
+
+warning: `tilecodec` (lib) generated 3 warnings (run `cargo fix --lib -p tilecodec` to apply 3 suggestions)
+   Compiling tile_build v0.1.0 (C:\Users\Vayun\Documents\code\Modern-Apps\scripts\maps\tile_build)
+warning: unused imports: `BODY_FLAG_BUILDING_TABLE`, `BODY_FLAG_HEIGHTMAP`, `BODY_FLAG_ID_TABLE`, `BODY_FLAG_LANE_TABLE`, `BODY_FLAG_NAME_TABLE`, `BODY_FLAG_ROAD_LANES`, and `FEATURE_RECORD_LEN`
+  --> src\bin\mamaps_sizes.rs:25:5
+   |
+25 |     BODY_FLAG_BUILDING_TABLE, BODY_FLAG_EXTENDED_COUNTS, BODY_FLAG_HEIGHTMAP,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^                             ^^^^^^^^^^^^^^^^^^^
+26 |     BODY_FLAG_ID_TABLE, BODY_FLAG_LANE_TABLE, BODY_FLAG_NAME_TABLE, BODY_FLAG_ROAD_LANES,
+   |     ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+27 |     BODY_HEADER_LEN, FEATURE_RECORD_LEN, LAYER_INDEX_LEN,
+   |                      ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:391:9
+    |
+391 |     let mut layer_stored: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ----^^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:392:9
+    |
+392 |     let mut layer_raw: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ----^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:393:9
+    |
+393 |     let mut layer_bodies: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ----^^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:394:9
+    |
+394 |     let mut layer_features: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ----^^^^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:395:9
+    |
+395 |     let mut flags_hist: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ----^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:396:9
+    |
+396 |     let mut extended_count = 0u64;
+    |         ----^^^^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:397:9
+    |
+397 |     let mut total_stored = 0u64;
+    |         ----^^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:398:9
+    |
+398 |     let mut total_raw = 0u64;
+    |         ----^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:399:9
+    |
+399 |     let mut empty_bodies = 0u64;
+    |         ----^^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:400:9
+    |
+400 |     let mut empty_stored = 0u64;
+    |         ----^^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src\bin\mamaps_sizes.rs:401:9
+    |
+401 |     let mut bodies_seen = 0u64;
+    |         ----^^^^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: unused variable: `layer_stored`
+   --> src\bin\mamaps_sizes.rs:391:9
+    |
+391 |     let mut layer_stored: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_layer_stored`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `layer_raw`
+   --> src\bin\mamaps_sizes.rs:392:9
+    |
+392 |     let mut layer_raw: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_layer_raw`
+
+warning: unused variable: `layer_bodies`
+   --> src\bin\mamaps_sizes.rs:393:9
+    |
+393 |     let mut layer_bodies: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_layer_bodies`
+
+warning: unused variable: `layer_features`
+   --> src\bin\mamaps_sizes.rs:394:9
+    |
+394 |     let mut layer_features: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_layer_features`
+
+warning: unused variable: `flags_hist`
+   --> src\bin\mamaps_sizes.rs:395:9
+    |
+395 |     let mut flags_hist: BTreeMap<u8, u64> = BTreeMap::new();
+    |         ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_flags_hist`
+
+warning: unused variable: `extended_count`
+   --> src\bin\mamaps_sizes.rs:396:9
+    |
+396 |     let mut extended_count = 0u64;
+    |         ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_extended_count`
+
+warning: unused variable: `total_stored`
+   --> src\bin\mamaps_sizes.rs:397:9
+    |
+397 |     let mut total_stored = 0u64;
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_stored`
+
+warning: unused variable: `total_raw`
+   --> src\bin\mamaps_sizes.rs:398:9
+    |
+398 |     let mut total_raw = 0u64;
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_raw`
+
+warning: unused variable: `empty_bodies`
+   --> src\bin\mamaps_sizes.rs:399:9
+    |
+399 |     let mut empty_bodies = 0u64;
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_empty_bodies`
+
+warning: unused variable: `empty_stored`
+   --> src\bin\mamaps_sizes.rs:400:9
+    |
+400 |     let mut empty_stored = 0u64;
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_empty_stored`
+
+warning: unused variable: `bodies_seen`
+   --> src\bin\mamaps_sizes.rs:401:9
+    |
+401 |     let mut bodies_seen = 0u64;
+    |         ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_bodies_seen`
+
+warning: `tile_build` (bin "mamaps_sizes") generated 23 warnings (run `cargo fix --bin "mamaps_sizes" -p tile_build` to apply 23 suggestions)
+    Finished `release` profile [optimized] target(s) in 4.86s
+     Running `target\release\mamaps_sizes.exe C:\Users\Vayun\Documents\code\Modern-Apps\scripts\maps\inputs\na.mamaps`

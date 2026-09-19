@@ -1,8 +1,8 @@
 //! `mamaps_build` — one `.osm.pbf` in, one `.mamaps` archive out.
 //!
-//! The generator this project exists to build. Today it produces `water` and `buildings`; `roads`,
-//! `boundaries`, `landcover`, `landuse` and `earth` follow, and the shape does not change when they
-//! do because every layer is one module under [`schema`].
+//! The generator this project exists to build. It produces all 9 layers (`landtype`, `roads`,
+//! `boundaries`, `buildings`, `places`, `poi`, `transit`, `traffic`, `junction`), and the shape
+//! does not change when a rule does because every layer is one module under [`schema`].
 //!
 //! ```text
 //! mamaps_build --input california.osm.pbf --out california.mamaps
@@ -11,8 +11,8 @@
 //!              [--region california|world]
 //!              [--build-graph-to DIR] [--build-poi-to DIR]
 //!
-//! All six flags are required. Every build carries all 12 layers at z0-14 as
-//! FORMAT_VERSION 7: there is no layer selection, no zoom selection and no
+//! All six flags are required. Every build carries all 9 layers at z0-14 as
+//! FORMAT_VERSION 8: there is no layer selection, no zoom selection and no
 //! store reuse, so a build is a pure function of its six inputs.
 //!
 //! `--region` filters the built layers (`roads`, `poi`, `buildings`) to the
@@ -212,9 +212,9 @@ fn main() -> ExitCode {
 
 /// Everything a run needs beyond its input and output paths.
 ///
-/// All four side inputs are required: every build carries all 12 layers.
+/// All four side inputs are required: every build carries all 9 layers.
 struct RunSettings {
-    /// A prepared land polygon for `earth`'s mainland — see [`check_required`].
+    /// A prepared land polygon for `landtype`'s mainland — see [`check_required`].
     coastline: PathBuf,
     /// A prepared GTFS export for `transit`'s coloured rail lines.
     transit_routes: PathBuf,

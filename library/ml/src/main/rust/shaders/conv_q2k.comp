@@ -1,0 +1,75 @@
+#version 450
+//! `conv_int8.comp` with GGUF Q2_K weights: the untiled lowering.
+//!
+//! `out[o][p] = act(sum over superblocks of (d_all*(q*lo) - d_min*hi) * x + bias[o])`.
+//!
+//! # When this runs instead of the staged pair
+//!
+//! The lowering sends a convolution here when it is pointwise but neither single-position
+//! (which wants `conv_vec_q2k.comp`) nor multi-position (which wants `conv_point_q2k.comp`).
+//! In practice that is almost nothing in an encoder-decoder translation net — both passes
+//! are one shape or the other — but the kind exists so the lowering is total, exactly as
+//! `conv_int8.comp` backs the int8 pair.
+//!
+//! One invocation per output element, like `conv_int8.comp`. The dequantisation is inline
+//! per tap: `p.weight` is a 32-bit **word** offset to the Q2_K payload, `p.act_weight` the
+//! `(d, dmin)` table as an fp16 element index, `p.bias` the bias. `Act::PRelu` cannot ride
+//! along, for the same reason as the int8 pair.
+
+#include "common.glsl"
+
+/// Taps one Q2_K superblock covers. Mirrors `weights::Q2K_BLOCK`.
+#define Q2K_BLOCK 256u
+
+void main() {
+    uint index = global_index();
+    if (index >= p.count) {
+        return;
+    }
+    // Output element -> (channel, position).
+    uint positions = p.out_h * p.out_w;
+    uint channel = index / positions;
+    uint position = index % positions;
+    // Input position: pointwise, so the same position.
+    float total = 0.0;
+    uint blocks = (p.in_c + Q2K_BLOCK - 1u) / Q2K_BLOCK;
+    for (uint block = 0u; block < blocks; block++) {
+        uint pair = p.act_weight + (channel * blocks + block) * 2u;
+        float d = float(weights[pair]);
+        float m = float(weights[pair + 1u]);
+        float dall = d * d;
+        float dmin = m * d;
+        uint sbo = (p.weight * 4u) + (channel * blocks + block) * 84u;
+        uint last = min(block * Q2K_BLOCK + Q2K_BLOCK, p.in_c) - block * Q2K_BLOCK;
+        for (uint half_idx = 0u; half_idx < 2u; half_idx++) {
+            for (uint pair_idx = 0u; pair_idx < 4u; pair_idx++) {
+                uint sc = q2k_scale(sbo, half_idx, pair_idx * 2u);
+                uint sc2 = q2k_scale(sbo, half_idx, pair_idx * 2u + 1u);
+                float lo = float(sc & 15u);
+                float hi = float(sc >> 4u);
+                float lo2 = float(sc2 & 15u);
+                float hi2 = float(sc2 >> 4u);
+                for (uint l = 0u; l < 16u; l++) {
+                    uint tap = half_idx * 128u + pair_idx * 32u + l;
+                    if (tap >= last) {
+                        break;
+                    }
+                    uint code = q2k_code(sbo, half_idx, tap);
+                    total += (dall * float(code) * lo - dmin * hi)
+                        * float(arena[p.in0 + (block * Q2K_BLOCK + tap) * positions + position]);
+                }
+                for (uint l = 0u; l < 16u; l++) {
+                    uint tap = half_idx * 128u + pair_idx * 32u + 16u + l;
+                    if (tap >= last) {
+                        break;
+                    }
+                    uint code = q2k_code(sbo, half_idx, tap);
+                    total += (dall * float(code) * lo2 - dmin * hi2)
+                        * float(arena[p.in0 + (block * Q2K_BLOCK + tap) * positions + position]);
+                }
+            }
+        }
+    }
+    float offset = float(weights[p.bias + channel]);
+    arena[p.out_at + index] = float16_t(fused_store(total + offset, p.act, channel, index));
+}

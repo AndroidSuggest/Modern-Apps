@@ -90,7 +90,7 @@ fn landcover_is_a_low_zoom_tint_and_stops_before_street_level() {
     // nothing.
     let landcovers: Vec<&Layer> = layers()
         .iter()
-        .filter(|l| l.source_layer == "landcover")
+        .filter(|l| l.source_layer == "landtype" && l.authored == "landcover")
         .collect();
     assert!(
         !landcovers.is_empty(),
@@ -327,7 +327,10 @@ fn every_landcover_kind_has_its_own_colour_in_both_palettes() {
     // single flat tint that follows vegetation polygons and lines up with nothing.
     for palette in [Palette::new(false, false), Palette::new(true, false)] {
         let mut seen: Vec<(u32, &str)> = Vec::new();
-        for l in layers().iter().filter(|l| l.source_layer == "landcover") {
+        for l in layers()
+            .iter()
+            .filter(|l| l.source_layer == "landtype" && l.authored == "landcover")
+        {
             let colour = l.color(palette);
             if let Some((_, other)) = seen.iter().find(|(c, _)| *c == colour) {
                 panic!("{} and {} share {colour:#010X} in {palette:?}", l.id, other);
@@ -347,7 +350,10 @@ fn landcover_kinds_are_lighter_than_the_earth_they_tint() {
     // A tint sits *on* the land, so in light mode it must not be darker than the land
     // itself or it reads as a separate landmass.
     let earth = find("earth");
-    for l in layers().iter().filter(|l| l.source_layer == "landcover") {
+    for l in layers()
+        .iter()
+        .filter(|l| l.source_layer == "landtype" && l.authored == "landcover")
+    {
         assert!(
             luminance(l.light) > luminance(earth.light) - 0.06,
             "{} is darker than earth, so it reads as land rather than a tint",
@@ -364,7 +370,7 @@ fn the_unfiltered_landcover_layer_is_drawn_first_so_specific_kinds_win() {
     let indices: Vec<(usize, &Layer)> = layers()
         .iter()
         .enumerate()
-        .filter(|(_, l)| l.source_layer == "landcover")
+        .filter(|(_, l)| l.source_layer == "landtype" && l.authored == "landcover")
         .collect();
     let fallback = indices
         .iter()

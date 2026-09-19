@@ -204,7 +204,7 @@ fn append_external_and_finish(
                 "reading land polygons within {:.3},{:.3} .. {:.3},{:.3}",
                 bbox.0, bbox.1, bbox.2, bbox.3,
             );
-            stats.land_polygons = schema::earth::stream_prepared(coastline, bbox, &mut sink)?;
+            stats.land_polygons = schema::landtype::stream_prepared(coastline, bbox, &mut sink)?;
             stats.features += stats.land_polygons;
         }
         // Nothing to clip against. Land alone would be an archive of one layer, and the caller
@@ -228,15 +228,15 @@ fn append_external_and_finish(
                 .to_string())
         }
     }
-    // The `traffic` layer, last of the non-OSM sources: its geometry is the v6 routing graph
-    // (see [`schema::traffic`]), read straight off disk rather than classified from the `.pbf`.
-    // Not clipped to the bbox here — the graph is already the built region, and the tiler clips
-    // each component segment per tile like any other line.
-    println!("reading the v6 routing graph at {} for the traffic layer", graph.display());
-    stats.traffic_segments = schema::traffic::stream_graph(graph, &mut sink)?;
-    stats.features += stats.traffic_segments;
-    println!("  {} drivable component segment(s)", stats.traffic_segments);
-    // The `junction` layer rides the same graph: a lane connector is built from the junction
+    // The `traffic` layer is dropped as of the NA diet: its 12.37GB (360M
+    // per-segment features, 5x the roads layer) cost more than the overlay earns,
+    // and the live-traffic display path needs a server contract change before a
+    // cheaper per-edge form can replace it. The layer stays in the format
+    // (layer_count 12, dict entry kept) so readers need no change — with zero
+    // features no body carries it and it costs nothing. `junction` below still
+    // reads the same graph, which is why the graph build and its validation stay.
+    // (Formerly: `stats.traffic_segments = schema::traffic::stream_graph(...)`.)
+    // The `junction` layer rides the graph: a lane connector is built from the junction
     // node's own incident edges, so there is nothing to read that the traffic pass did not
     // already need. `conventions` decides which side of a road the direction of travel sits
     // on, and is borrowed here because it is moved into the store below.
@@ -290,13 +290,14 @@ const MAX_NODE_ID: i64 = 48 << 30;
 /// already know.
 fn collect_needed_in_memory(
     ways_path: &Path,
+    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
     members: &HashMap<i64, Vec<i64>>,
     refs_total: usize,
     mark: &dyn Fn(&str),
 ) -> Result<NodeLocations> {
     let mut needed: Vec<i64> = Vec::with_capacity(refs_total);
     {
-        let mut reader = WayReader::open(ways_path)?;
+        let mut reader = open_ways_reader(ways_path, &ways_anon)?;
         let mut refs: Vec<i64> = Vec::new();
         while reader.next(&mut refs)?.is_some() {
             needed.extend_from_slice(&refs);
@@ -330,13 +331,14 @@ fn collect_needed_in_memory(
 /// of OSM's data rather than a hope about it, and [`MAX_NODE_ID`] is where that property is enforced.
 fn collect_needed_by_bitset(
     ways_path: &Path,
+    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
     members: &HashMap<i64, Vec<i64>>,
     max_ref: i64,
     mark: &dyn Fn(&str),
 ) -> Result<NodeLocations> {
     let mut bits = NeededBits::new(max_ref)?;
     {
-        let mut reader = WayReader::open(ways_path)?;
+        let mut reader = open_ways_reader(ways_path, &ways_anon)?;
         let mut refs: Vec<i64> = Vec::new();
         while reader.next(&mut refs)?.is_some() {
             for &id in &refs {
@@ -420,3 +422,4 @@ impl NeededBits {
         })
     }
 }
+

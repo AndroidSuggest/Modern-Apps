@@ -62,6 +62,48 @@ object MediaStoreSaver {
         return uri
     }
 
+    /** Write a [bitmap] to a caller-supplied [dest] (e.g. a pre-created SAF document). */
+    fun saveBitmapToUri(
+        resolver: ContentResolver,
+        dest: Uri,
+        bitmap: Bitmap,
+        quality: Int = 95,
+    ): Uri? = try {
+        resolver.openOutputStream(dest)?.use { os ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, os)
+        }
+        dest
+    } catch (e: Exception) {
+        android.util.Log.w("MediaStoreSaver", "saveBitmapToUri failed for $dest", e)
+        null
+    }
+
+    /** Write pre-encoded JPEG [bytes] to a caller-supplied [dest]. */
+    fun saveJpegBytesToUri(
+        resolver: ContentResolver,
+        dest: Uri,
+        bytes: ByteArray,
+    ): Uri? = try {
+        resolver.openOutputStream(dest)?.use { os ->
+            os.write(bytes)
+        }
+        dest
+    } catch (e: Exception) {
+        android.util.Log.w("MediaStoreSaver", "saveJpegBytesToUri failed for $dest", e)
+        null
+    }
+
+    /** Copy a staged [file] into a caller-supplied [dest] (e.g. SAF video doc). */
+    fun saveVideoFileToUri(resolver: ContentResolver, dest: Uri, file: File): Uri? = try {
+        resolver.openOutputStream(dest)?.use { os ->
+            file.inputStream().use { input -> input.copyTo(os) }
+        }
+        dest
+    } catch (e: Exception) {
+        android.util.Log.w("MediaStoreSaver", "saveVideoFileToUri failed for $dest", e)
+        null
+    }
+
     fun saveVideoFile(resolver: ContentResolver, values: ContentValues, file: File): Uri? {
         val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: return null
         resolver.openOutputStream(uri)?.use { os ->

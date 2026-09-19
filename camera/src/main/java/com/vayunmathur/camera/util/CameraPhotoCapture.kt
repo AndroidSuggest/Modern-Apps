@@ -2,7 +2,6 @@ package com.vayunmathur.camera.util
 
 import android.graphics.Bitmap
 import android.net.Uri
-import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -67,16 +66,11 @@ fun CameraViewModel.startBurst() {
             _burstActive.value = false
             return
         }
-        val values = MediaStoreSaver.imageValues("IMG_${ts}_BURST${n}.jpg")
-        val metadata = ImageCapture.Metadata().apply {
-            if (_locationEnabled.value) location = lastLocation
-            isReversedHorizontal = mirrorCaptures
+        val pending = prepareStillSave("IMG_${ts}_BURST${n}.jpg") ?: run {
+            shootNext(n + 1)
+            return
         }
-        val outputOptions = ImageCapture.OutputFileOptions.Builder(
-            app.contentResolver,
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            values
-        ).setMetadata(metadata).build()
+        val outputOptions = pending.outputOptions
 
         capture.takePicture(
             outputOptions,
@@ -84,11 +78,13 @@ fun CameraViewModel.startBurst() {
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
                     _burstCount.value = n
-                    outputFileResults.savedUri?.let { setLastCaptureUri(it) }
+                    pending.closeStream()
+                    pending.resolveUri(outputFileResults)?.let { setLastCaptureUri(it) }
                     shootNext(n + 1)
                 }
                 override fun onError(exception: ImageCaptureException) {
                     Log.e("CameraViewModel", "Burst frame $n failed", exception)
+                    pending.closeStream()
                     shootNext(n + 1)
                 }
             }
@@ -171,7 +167,11 @@ internal fun CameraViewModel.assembleAndSaveMotionPhoto(
     frames: List<CameraViewModel.MotionFrame>,
     degrees: Int
 ): Uri? {
-    val values = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
+    val name = "IMG_${MediaStoreSaver.timestamp()}.jpg"
+    // In-memory captures carry no ImageCapture.Metadata, so stamp GPS/orientation into the
+    // still bytes here (issue #731). Must happen BEFORE the MP4 trailer is appended —
+    // ExifInterface only understands a pure JPEG.
+    val stillBytes = stampStillBytes(jpegBytes, degrees)
     // Only frames matching the newest frame's dimensions are encoded (a rebind can change size).
     val sized = frames.takeIf { it.isNotEmpty() }?.let { list ->
         val w = list.last().bitmap.width
@@ -189,15 +189,15 @@ internal fun CameraViewModel.assembleAndSaveMotionPhoto(
         if (ok && tmp.exists()) {
             val mp4 = tmp.readBytes()
             tmp.delete()
-            MotionPhotoWriter.assemble(jpegBytes, mp4)
+            MotionPhotoWriter.assemble(stillBytes, mp4)
         } else {
             tmp.delete()
-            jpegBytes
+            stillBytes
         }
     } else {
-        jpegBytes
+        stillBytes
     }
-    return MediaStoreSaver.saveJpegBytes(app.contentResolver, values, bytes)
+    return saveStillBytes(name, bytes)
 }
 
 /**

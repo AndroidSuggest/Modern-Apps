@@ -4,7 +4,7 @@ mod tests_part9 {
     use super::tests::*;
     use crate::schema::Class;
     use tilecodec::mamaps::dict;
-    /// **Lane C: the widest tile-layer check covers all eleven content layers.**
+    /// **Lane C: the widest tile-layer check covers all eight content layers.**
     /// A tile per layer is built through the real encode path and
     /// [`widest_layers`] reports each one — so a codec that dropped a layer's
     /// accounting would fail here rather than at the 65,535-feature cap on
@@ -14,30 +14,15 @@ mod tests_part9 {
     /// this quotes `left: 0, right: 1` on that layer's widest count; restore
     /// after quoting.
     #[test]
-    fn widest_tile_layer_reports_all_eleven_layers() {
+    fn widest_tile_layer_reports_all_eight_layers() {
         use tilecodec::mamaps::dict::LAYERS;
-        // Eleven content layers: earth..junction minus transit, whose geometry
+        // Eight content layers: landtype..junction minus transit, whose geometry
         // comes from a GTFS export the fixture path does not carry.
-        let layers: [(u8, Class, Geometry); 11] = [
+        let layers: [(u8, Class, Geometry); 8] = [
             (
-                dict::LAYER_EARTH,
-                Class::area(dict::LAYER_EARTH, crate::schema::kind("earth"), 0),
-                square(-120.0, 35.0, 0.5),
-            ),
-            (
-                dict::LAYER_WATER,
-                Class::area(dict::LAYER_WATER, crate::schema::kind("lake"), 0),
+                dict::LAYER_LANDTYPE,
+                Class::area(dict::LAYER_LANDTYPE, crate::schema::kind("lake"), 0),
                 square(-120.0, 35.0, 0.4),
-            ),
-            (
-                dict::LAYER_LANDCOVER,
-                Class::area(dict::LAYER_LANDCOVER, crate::schema::kind("forest"), 0),
-                square(-120.0, 35.0, 0.3),
-            ),
-            (
-                dict::LAYER_LANDUSE,
-                Class::area(dict::LAYER_LANDUSE, crate::schema::kind("park"), 0),
-                square(-120.0, 35.0, 0.25),
             ),
             (
                 dict::LAYER_ROADS,
@@ -75,7 +60,7 @@ mod tests_part9 {
                 Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.9996, 35.0004)]]),
             ),
         ];
-        assert_eq!(LAYERS.len(), 12, "twelve layers in the dictionary, eleven tiled here");
+        assert_eq!(LAYERS.len(), 9, "nine layers in the dictionary, eight tiled here");
         let mut seen = std::collections::BTreeSet::new();
         for (layer_id, class, geometry) in layers {
             let feature = Feature {

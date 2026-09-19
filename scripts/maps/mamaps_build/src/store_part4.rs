@@ -3,7 +3,22 @@ impl WayReader {
         let file = File::open(path)
             .map_err(|e| Error(format!("cannot open {}: {e}", path.display())))?;
         Ok(WayReader {
-            inner: BufReader::with_capacity(1 << 20, file),
+            inner: WayIn::File(BufReader::with_capacity(1 << 20, file)),
+            last_id: 0,
+            seen: 0,
+        })
+    }
+
+    /// Anonymous twin of [`open`](Self::open): reads the sealed store from
+    /// [`WaySink::finish_anon`], shared by refcount. `path` names nothing —
+    /// it only rides along for error messages.
+    pub fn open_anon(
+        path: &Path,
+        store: std::sync::Arc<tile_build::anon::AnonStore>,
+    ) -> Result<WayReader> {
+        let _ = path;
+        Ok(WayReader {
+            inner: WayIn::Anon { store, at: 0, buf: Vec::new(), used: 0 },
             last_id: 0,
             seen: 0,
         })
@@ -67,10 +82,7 @@ impl WayReader {
                 ));
             }
             let mut bytes = vec![0u8; name_len];
-            use std::io::Read;
-            self.inner
-                .read_exact(&mut bytes)
-                .map_err(|e| Error(format!("cannot read the ways spill: {e}")))?;
+            self.read_exact_into(&mut bytes)?;
             Some(
                 String::from_utf8(bytes)
                     .map_err(|_| Error("a ways spill way name is not UTF-8".to_string()))?,
@@ -113,10 +125,7 @@ impl WayReader {
         let mut value: u64 = 0;
         let mut shift: u32 = 0;
         loop {
-            let buf = self
-                .inner
-                .fill_buf()
-                .map_err(|e| Error(format!("cannot read the ways spill: {e}")))?;
+            let buf = self.fill_buf()?;
             if buf.is_empty() {
                 if shift == 0 {
                     return Ok(None);
@@ -134,11 +143,50 @@ impl WayReader {
                 value |= ((byte & 0x7f) as u64) << shift;
                 shift += 7;
                 if byte & 0x80 == 0 {
-                    self.inner.consume(used);
+                    self.consume(used);
                     return Ok(Some(value));
                 }
             }
-            self.inner.consume(used);
+            self.consume(used);
+        }
+    }
+
+    /// Peek at the buffered bytes without consuming, filling from the backend first.
+    fn fill_buf(&mut self) -> Result<&[u8]> {
+        match &mut self.inner {
+            WayIn::File(f) => f
+                .fill_buf()
+                .map_err(|e| Error(format!("cannot read the ways spill: {e}"))),
+            WayIn::Anon { store, at, buf, used } => {
+                if *used >= buf.len() {
+                    // Refill: read the next window from the store. 1MB like the
+                    // file backend's buffer, so the varint loop above behaves
+                    // identically.
+                    const WINDOW: u64 = 1 << 20;
+                    let remaining = store.len().saturating_sub(*at);
+                    if remaining == 0 {
+                        // Empty view: return what's left (nothing).
+                        buf.clear();
+                        *used = 0;
+                        return Ok(&[]);
+                    }
+                    let take = remaining.min(WINDOW) as usize;
+                    buf.resize(take, 0);
+                    store.read_at(*at, &mut buf[..]).map_err(|e| {
+                        Error(format!("cannot read the anon ways spill: {e}"))
+                    })?;
+                    *at += take as u64;
+                    *used = 0;
+                }
+                Ok(&buf[*used..])
+            }
+        }
+    }
+
+    fn consume(&mut self, n: usize) {
+        match &mut self.inner {
+            WayIn::File(f) => f.consume(n),
+            WayIn::Anon { used, .. } => *used += n,
         }
     }
 
@@ -147,6 +195,25 @@ impl WayReader {
             Some(value) => Ok(value),
             None => err(format!("the ways spill ends mid-record after {} way(s)", self.seen)),
         }
+    }
+
+    /// Exactly `bytes.len()` bytes from the cursor, for the name field above.
+    fn read_exact_into(&mut self, bytes: &mut [u8]) -> Result<()> {
+        let mut at = 0usize;
+        while at < bytes.len() {
+            let buf = self.fill_buf()?;
+            if buf.is_empty() {
+                return err(format!(
+                    "the ways spill ends mid-name after {} way(s)",
+                    self.seen
+                ));
+            }
+            let take = (bytes.len() - at).min(buf.len());
+            bytes[at..at + take].copy_from_slice(&buf[..take]);
+            self.consume(take);
+            at += take;
+        }
+        Ok(())
     }
 }
 

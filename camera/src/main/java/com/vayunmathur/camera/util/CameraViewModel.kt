@@ -264,6 +264,9 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     internal val _audioInputSource = MutableStateFlow(AudioInputSource.CAMCORDER)
     val audioInputSource = _audioInputSource.asStateFlow()
 
+    internal val _saveTarget = MutableStateFlow<SaveTarget>(SaveTarget.MediaStoreDefault)
+    val saveTarget = _saveTarget.asStateFlow()
+
     internal val _isRecording = MutableStateFlow(false)
     val isRecording = _isRecording.asStateFlow()
 

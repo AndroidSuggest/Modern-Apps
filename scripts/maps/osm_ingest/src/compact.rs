@@ -250,7 +250,19 @@ fn classify(
 
     let mut interior = vec![false; n];
     for w in 0..n as u32 {
-        if inc.degree(w) != 2 || is_stop(w) {
+        if is_stop(w) {
+            continue;
+        }
+        // Degree 0 is dropped rather than kept: a node with no incident segment
+        // is a way the region filter removed, dead weight in `nodes.bin` with no
+        // edge ever addressing it. Marked interior so the renumber below hands
+        // it REMOVED; no walk can reach a node with no segments, so the mark is
+        // unreachable by construction.
+        if inc.degree(w) == 0 {
+            interior[w as usize] = true;
+            continue;
+        }
+        if inc.degree(w) != 2 {
             continue;
         }
         let mut it = inc.at(w);

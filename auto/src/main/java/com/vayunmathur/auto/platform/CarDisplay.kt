@@ -2,37 +2,20 @@ package com.vayunmathur.auto.platform
 
 import android.app.Presentation
 import android.content.Context
-import android.graphics.Color
-import android.graphics.Outline
-import android.graphics.SurfaceTexture
+import android.content.res.Configuration
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
-import android.view.TextureView
-import android.view.View
-import android.view.ViewConfiguration
-import android.view.ViewGroup
-import android.view.ViewOutlineProvider
-import android.widget.FrameLayout
-import android.widget.GridLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.ScrollView
-import android.widget.Space
-import android.widget.TextView
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.vayunmathur.auto.BuildConfig
-import com.vayunmathur.auto.R
 import com.vayunmathur.auto.protocol.NavSnapshot
-import java.text.DateFormat
-import java.util.Date
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
 
@@ -46,8 +29,10 @@ import java.util.concurrent.FutureTask
  * get pixels onto a head unit and prove the video path end to end — so the DHU
  * loopback path never needs the flag.
  *
- * Views, not Compose: a `Presentation` on a private virtual display has no Compose
- * lifecycle owner, and Views render into the encoder surface with no extra plumbing.
+ * Compose, with its own lifecycle: the private virtual display has no activity
+ * lifecycle, so the display owns a [CarDisplayLifecycle] stepped manually and
+ * sets its three `ViewTree` owners on the decor view before content goes in.
+ * The hierarchy inside is a single `ComposeView` (see [CarPresentation]).
  */
 class CarDisplay(
     private val context: Context,
@@ -64,6 +49,7 @@ class CarDisplay(
 ) {
     private var virtualDisplay: VirtualDisplay? = null
     private var presentation: CarPresentation? = null
+    private var carLifecycle: CarDisplayLifecycle? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     /**
@@ -215,6 +201,7 @@ class CarDisplay(
             initialDrivingRestricted = drivingRestricted,
             initialNight = nightDark,
             initialActiveCall = activeCall,
+            initialHostNav = hostNavState,
             initialPhoneStatusSource = phoneStatusSource,
             onMediaTap = { onMediaTap?.invoke() },
             onPreviousTap = { onPreviousTap?.invoke() },
@@ -254,23 +241,22 @@ class CarDisplay(
             this.width = width
             this.height = height
             this.densityDpi = densityDpi
-            presentation?.dismiss()
-            presentation = null
-            virtualDisplay?.release()
-            virtualDisplay = null
+            tearDownPresentation()
             show(surface)
         }
     }
 
     /**
      * Refreshes the car now-playing card. Safe from any thread: the snapshot is
-     * cached for presentations created later, and the view update hops to main.
+     * pushed into the shared state (cached for presentations created later),
+     * and collection hops to main through the presentation lifecycle.
      *
      * The snapshot is always cached, even when the card hides: a pause still
      * pushes `playing=false`, which is what clears a stale "Playing" label.
      */
     fun setNowPlaying(info: NowPlayingInfo) {
         nowPlaying = info
+        CarLauncherState.setNowPlaying(info)
         mainHandler.post { presentation?.updateNowPlaying(info) }
     }
 
@@ -279,6 +265,7 @@ class CarDisplay(
      * Safe from any thread; the card re-shows on the next visible snapshot.
      */
     fun hideNowPlaying() {
+        CarLauncherState.hideNowPlaying()
         mainHandler.post { presentation?.hideNowPlaying() }
     }
 
@@ -293,6 +280,7 @@ class CarDisplay(
      */
     fun setDrivingRestricted(restricted: Boolean) {
         drivingRestricted = restricted
+        CarLauncherState.setDrivingRestricted(restricted)
         mainHandler.post { presentation?.setDrivingRestricted(restricted) }
     }
 
@@ -329,8 +317,18 @@ class CarDisplay(
      */
     fun setNight(dark: Boolean) {
         nightDark = dark
+        CarLauncherState.setNight(dark)
         mapDarkApplier?.invoke(dark)
         mainHandler.post { presentation?.setNight(dark) }
+    }
+
+    /**
+     * Forwards a night config change into the Compose tree. Called when the
+     * night source changes underneath the virtual display; the presentation
+     * re-reads uiMode into the flow so `DynamicTheme` follows.
+     */
+    fun onNightConfigChanged(newConfig: Configuration) {
+        mainHandler.post { presentation?.onNightConfigChanged(newConfig) }
     }
 
     /**
@@ -339,6 +337,7 @@ class CarDisplay(
      */
     fun setActiveCall(info: ActiveCallInfo?) {
         activeCall = info
+        CarLauncherState.setActiveCall(info)
         mainHandler.post { presentation?.updateCallCard(info) }
     }
 
@@ -350,6 +349,7 @@ class CarDisplay(
      */
     fun setHostNavState(state: HostNavState) {
         hostNavState = state
+        CarLauncherState.setHostNav(state)
         mainHandler.post { presentation?.updateHostNav(state) }
     }
 
@@ -362,6 +362,7 @@ class CarDisplay(
      * itself decides show vs GONE.
      */
     fun setNavSnapshot(snapshot: NavSnapshot) {
+        CarLauncherState.setNavSnapshot(snapshot)
         mainHandler.post { presentation?.updateNavSnapshot(snapshot) }
     }
 
@@ -379,6 +380,7 @@ class CarDisplay(
      */
     fun setMapSurfaceListener(listener: (Surface?, Int, Int) -> Unit) {
         mapSurfaceForwarder = listener
+        CarLauncherState.mapSurfaceListener = { surface, w, h -> listener(surface, w, h) }
         mainHandler.post {
             presentation?.mapSurfaceListener = { surface, w, h ->
                 listener(surface, w, h)
@@ -542,10 +544,42 @@ class CarDisplay(
         val shown = presentation
         presentation = null
         if (shown != null) {
-            if (isMainThread) shown.dismiss() else mainHandler.post { shown.dismiss() }
+            if (isMainThread) {
+                destroyPresentation(shown)
+            } else {
+                mainHandler.post { destroyPresentation(shown) }
+            }
+        } else {
+            mainHandler.post { tearDownLifecycle() }
         }
         virtualDisplay?.release()
         virtualDisplay = null
+    }
+
+    /**
+     * Tears the presentation down through the lifecycle: the Compose tree
+     * moves to DESTROYED first (disposing composition), then the window
+     * dismisses and the owners are cleared. Main thread only.
+     */
+    private fun destroyPresentation(shown: CarPresentation) {
+        shown.dismiss()
+        tearDownPresentation()
+    }
+
+    /** Tears the presentation + virtual display down. Main thread only. */
+    private fun tearDownPresentation() {
+        presentation?.dismiss()
+        presentation = null
+        tearDownLifecycle()
+        virtualDisplay?.release()
+        virtualDisplay = null
+    }
+
+    /** Moves the car lifecycle to DESTROYED and drops it. Main thread only. */
+    private fun tearDownLifecycle() {
+        val lifecycle = carLifecycle
+        carLifecycle = null
+        lifecycle?.moveToDestroyed()
     }
 
     /** Creates and shows the [CarPresentation] for [display] on the main thread. */
@@ -555,6 +589,7 @@ class CarDisplay(
         initialDrivingRestricted: Boolean,
         initialNight: Boolean,
         initialActiveCall: ActiveCallInfo?,
+        initialHostNav: HostNavState?,
         initialPhoneStatusSource: (() -> PhoneStatus?)?,
         onMediaTap: () -> Unit,
         onPreviousTap: () -> Unit,
@@ -566,13 +601,13 @@ class CarDisplay(
         onCardBounds: (Int, Int, Int, Int) -> Unit,
     ): CarPresentation {
         if (isMainThread) {
-            return CarPresentation(
-                context,
+            return buildPresentation(
                 display,
                 initialNowPlaying,
                 initialDrivingRestricted,
                 initialNight,
                 initialActiveCall,
+                initialHostNav,
                 initialPhoneStatusSource,
                 onMediaTap,
                 onPreviousTap,
@@ -582,16 +617,16 @@ class CarDisplay(
                 onHoldToggle,
                 onMuteToggle,
                 onCardBounds,
-            ).also { it.show() }
+            )
         }
         val show = FutureTask<CarPresentation> {
-            CarPresentation(
-                context,
+            buildPresentation(
                 display,
                 initialNowPlaying,
                 initialDrivingRestricted,
                 initialNight,
                 initialActiveCall,
+                initialHostNav,
                 initialPhoneStatusSource,
                 onMediaTap,
                 onPreviousTap,
@@ -601,7 +636,7 @@ class CarDisplay(
                 onHoldToggle,
                 onMuteToggle,
                 onCardBounds,
-            ).also { it.show() }
+            )
         }
         mainHandler.post(show)
         try {
@@ -615,6 +650,63 @@ class CarDisplay(
             virtualDisplay?.release()
             virtualDisplay = null
             throw e.cause ?: e
+        }
+    }
+
+    /**
+     * Builds the presentation: seeds the shared state from the cached
+     * snapshots, wires the late-wired callbacks through the actions, creates
+     * the car lifecycle, sets the three `ViewTree` owners on the decor view,
+     * and steps to RESUMED. Main thread only.
+     */
+    private fun buildPresentation(
+        display: android.view.Display,
+        initialNowPlaying: NowPlayingInfo?,
+        initialDrivingRestricted: Boolean,
+        initialNight: Boolean,
+        initialActiveCall: ActiveCallInfo?,
+        initialHostNav: HostNavState?,
+        initialPhoneStatusSource: (() -> PhoneStatus?)?,
+        onMediaTap: () -> Unit,
+        onPreviousTap: () -> Unit,
+        onNextTap: () -> Unit,
+        onAnswerCall: () -> Unit,
+        onEndCall: () -> Unit,
+        onHoldToggle: () -> Unit,
+        onMuteToggle: () -> Unit,
+        onCardBounds: (Int, Int, Int, Int) -> Unit,
+    ): CarPresentation {
+        initialNowPlaying?.let { CarLauncherState.setNowPlaying(it) }
+        CarLauncherState.setDrivingRestricted(initialDrivingRestricted)
+        CarLauncherState.setNight(initialNight)
+        CarLauncherState.setActiveCall(initialActiveCall)
+        initialHostNav?.let { CarLauncherState.setHostNav(it) }
+        CarLauncherState.updateActions {
+            it.copy(
+                onMediaTap = onMediaTap,
+                onPreviousTap = onPreviousTap,
+                onNextTap = onNextTap,
+                onAnswerCall = onAnswerCall,
+                onEndCall = onEndCall,
+                onHoldToggle = onHoldToggle,
+                onMuteToggle = onMuteToggle,
+            )
+        }
+        val lifecycle = CarDisplayLifecycle()
+        carLifecycle = lifecycle
+        return CarPresentation(
+            context,
+            display,
+            onCardBounds,
+        ).also { shown ->
+            shown.setInnerPhoneStatusSource(initialPhoneStatusSource ?: { phoneStatusSource?.invoke() })
+            shown.show()
+            shown.window?.decorView?.let { decor ->
+                decor.setViewTreeLifecycleOwner(lifecycle)
+                decor.setViewTreeViewModelStoreOwner(lifecycle)
+                decor.setViewTreeSavedStateRegistryOwner(lifecycle)
+            }
+            lifecycle.moveToResumed()
         }
     }
 

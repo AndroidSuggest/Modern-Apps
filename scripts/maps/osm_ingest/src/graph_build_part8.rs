@@ -347,6 +347,45 @@
         }
     }
 
+    #[test]
+    fn a_region_build_drops_the_nodes_of_filtered_ways() {
+        // The 2.47B-node bug: the region filter removed ways but degree-0
+        // leftovers survived via `degree != 2`, so every world road-node landed
+        // in `nodes.bin` with no edge addressing it. Two disjoint line ways, a
+        // bbox covering only the first: the second way's nodes must not survive.
+        let nodes = vec![
+            (1, 370_000_000, -1_220_000_000),
+            (2, 370_010_000, -1_220_000_000),
+            (3, 370_020_000, -1_220_000_000),
+            (11, 400_000_000, -1_000_000_000),
+            (12, 400_010_000, -1_000_000_000),
+            (13, 400_020_000, -1_000_000_000),
+        ];
+        let ways: &[(i64, &[i64])] = &[(100, &[1, 2, 3]), (101, &[11, 12, 13])];
+        let (pbf, dir) = testpbf::write_shape_sample("region_drop", &nodes, ways);
+        let bbox = crate::bbox::BBox {
+            min_lon: -123.0,
+            min_lat: 36.0,
+            max_lon: -121.0,
+            max_lat: 38.0,
+        };
+        for opts in [
+            Options { bbox: Some(bbox), ..Options::default() },
+            Options { bbox: Some(bbox), within_way_chains: true, ..Options::default() },
+        ] {
+            let out = dir.join(format!("w{}", opts.within_way_chains));
+            let stats = build_with(&pbf, &out, opts).unwrap();
+            assert_eq!(stats.node_count, 2, "only the kept way's ends survive");
+            assert_eq!(stats.edge_count, 2);
+            let o = read_outputs(&out);
+            assert_eq!(node_count(&o), 2);
+            for i in 0..2 {
+                let (lat, lon, _) = node_at(&o, i);
+                assert!((370_000_000..=370_020_000).contains(&lat), "stray node at {lat},{lon}");
+            }
+        }
+    }
+
     // ---------------------------------------------------------------------
     // edges.bin narrowing: the boundaries no real extract contains
     // ---------------------------------------------------------------------

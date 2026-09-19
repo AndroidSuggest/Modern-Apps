@@ -8,7 +8,13 @@ import com.vayunmathur.auto.protocol.GalConnection
 import com.vayunmathur.auto.protocol.GalMessage
 
 /**
- * The microphone source channel: the car's microphone, service 6.
+ * The microphone source channel: the car's microphone.
+ *
+ * The channel id comes from discovery, not from [GalService]: the DHU 2.0
+ * discovery advertises the media (mic) source on service 7 (verified by
+ * decoding the 0x6 payload), while gearhead's `rro` numbers it 6. Binding is
+ * payload-driven (`hasMediaSource`), like gearhead -- see
+ * [ProjectionService.openNext].
  *
  * Direction is the reverse of the sinks: the CAR sends bulk PCM (0x0000 with
  * an 8-byte timestamp prefix, or prefix-less 0x0001) plus 0x8006 mic
@@ -40,8 +46,9 @@ class MicSourceChannel(
     private val retentionAllowed: () -> Boolean = { false },
     /** Fire-and-forget observations for the phone status screen; never gates. */
     private val onEvent: (AudioEvent) -> Unit = {},
+    /** Discovery-bound channel id (DHU 2.0: 7; gearhead rro: 6). */
+    val channelId: Int = com.vayunmathur.auto.protocol.GalService.AUDIO_SOURCE.id,
 ) {
-    val channelId: Int get() = com.vayunmathur.auto.protocol.GalService.AUDIO_SOURCE.id
 
     private var open = false
 

@@ -72,6 +72,29 @@ class EmergencyInfoTest {
     }
 
     @Test
+    fun normalizesBloodType() {
+        assertEquals("O+", normalizeBloodType(" o+ "))
+        assertEquals("AB-", normalizeBloodType("ab-"))
+        assertEquals("", normalizeBloodType("unknown"))
+        assertEquals("", normalizeBloodType("  "))
+    }
+
+    @Test
+    fun normalizesOrganDonor() {
+        assertEquals(ORGAN_DONOR_YES, normalizeOrganDonor("Yes"))
+        assertEquals(ORGAN_DONOR_NO, normalizeOrganDonor(" NO "))
+        assertEquals("", normalizeOrganDonor("unknown"))
+        assertEquals("", normalizeOrganDonor(""))
+    }
+
+    @Test
+    fun unknownMedicalFieldsDoNotCountAsSet() {
+        assertFalse(EmergencyInfo(bloodType = "unknown").hasAnythingSet())
+        assertFalse(EmergencyInfo(organDonor = "unknown").hasAnythingSet())
+        assertFalse(EmergencyInfo(bloodType = "", organDonor = "").hasAnythingSet())
+    }
+
+    @Test
     fun blankStringsDoNotCountAsSet() {
         assertFalse(EmergencyInfo(address = "   ").hasAnythingSet())
     }

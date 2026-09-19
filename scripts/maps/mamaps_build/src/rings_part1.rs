@@ -6,7 +6,7 @@ mod tests {
 
     /// A layer holding one polygon feature with the given rings, all labelled by position.
     fn layer_of(rings: &[Vec<(i16, i16)>]) -> Layer {
-        let mut layer = Layer::new(dict::LAYER_WATER);
+        let mut layer = Layer::new(dict::LAYER_LANDTYPE);
         layer.features.push(Feature {
             kind: dict::NONE,
             kind_detail: dict::NONE,
@@ -261,7 +261,7 @@ mod tests {
         };
         let features = vec![
             crate::extract::Feature {
-                class: Class::area(dict::LAYER_WATER, crate::schema::kind("lake"), 0),
+                class: Class::area(dict::LAYER_LANDTYPE, crate::schema::kind("lake"), 0),
                 geometry: tile_build::geom::Geometry::Polygons(vec![vec![
                     ring(-120.5, 35.0, 1.0),
                     // A hole, wound the same way as its exterior, which stage C has to reverse.
@@ -274,7 +274,7 @@ mod tests {
                 building: None,
             },
             crate::extract::Feature {
-                class: Class::area(dict::LAYER_WATER, crate::schema::kind("water"), 0),
+                class: Class::area(dict::LAYER_LANDTYPE, crate::schema::kind("water"), 0),
                 geometry: tile_build::geom::Geometry::Polygons(vec![vec![
                     ring(-119.0, 36.0, 0.5),
                     // A hole nowhere near its exterior, which stage C has to drop.

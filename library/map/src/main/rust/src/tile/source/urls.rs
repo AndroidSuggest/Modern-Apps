@@ -1,12 +1,18 @@
-/// Where this renderer reads its tiles from: the planet-scale v7 single-file
-/// full `.mamaps` archive (12 layers, 128-byte header).
+/// Where this renderer reads its tiles from: the planet-scale v8 single-file
+/// full `.mamaps` archive (9 layers, 128-byte header).
 pub const BASEMAP_ARCHIVE_URL: &str = "https://data.vayunmathur.com/planet.mamaps";
 
 /// Bumped when the on-disk cache layout changes, so old entries are dropped rather than
 /// misread. The URL is in the marker too, because the archive is republished under the
 /// same name and a cached directory chunk addresses the byte offsets of the build it came
 /// from.
-pub const CACHE_FORMAT: &str = "v1";
+///
+/// v2: v8 merges the four wash layers into `landtype` and renumbers every other layer, so
+/// any cached v7 body would decode its features into the wrong layers. The `build_id`
+/// would catch this anyway on a republish, but a sideloaded `basemap.mamaps` copied over
+/// an old cache without a fresh header fetch would not — the layout bump makes the
+/// refusal unconditional.
+pub const CACHE_FORMAT: &str = "v2";
 
 /// The cache's origin marker: the layout version, the URL, and the archive's own `build_id`.
 ///

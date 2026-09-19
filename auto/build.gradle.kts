@@ -20,6 +20,15 @@ dependencies {
     // implements the host binders (ICarHost/IAppHost/INavigationHost/
     // IConstraintHost) so the nav card renders whatever Maps publishes --
     // its own SurfaceContainer surface plus its NavigationTemplate -- instead
-    // of MA Auto re-rendering a second map. Same 1.4.0 the maps app uses.
+    // of MA Auto re-rendering a second map. Tracks the carApp catalog version.
     implementation(libs.androidx.car.app)
+    // Compose-in-Presentation: the car display owns its own LifecycleOwner +
+    // ViewModelStoreOwner + SavedStateRegistryOwner (see CarDisplayLifecycle),
+    // so the Presentation hosts a ComposeView on its private virtual display.
+    // Compose UI itself rides the BOM through :library:ui; these are the only
+    // direct additions, scoped to this module like :library:map's own
+    // lifecycle-runtime-compose (never in the shared convention plugin).
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.savedstate)
+    implementation(libs.androidx.lifecycle.viewmodel.savedstate)
 }

@@ -34,4 +34,9 @@ dependencies {
     implementation(project(":library:map"))
     implementRoom(libs)
     implementation(project(":library:room"))
+
+    // Android Auto (WEATHER): AndroidX Car App Library. `app` provides the
+    // CarAppService/Session/Screen/template model. Only pulled into the car
+    // code path (service/car/) — the phone UI is untouched.
+    implementation(libs.androidx.car.app)
 }

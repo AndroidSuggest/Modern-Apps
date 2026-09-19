@@ -1,4 +1,4 @@
-//! Header wire tests: round-trips and refusals, v7 only.
+//! Header wire tests: round-trips and refusals, v8 only.
 //!
 //! Pure moves out of the former single-file header module; nothing here changed.
 
@@ -66,10 +66,10 @@ fn a_truncated_or_foreign_header_is_refused() {
     assert!(Header::parse(&wrong_magic).is_err(), "PMTiles is not this format");
     let mut wrong_version = bytes.clone();
     wrong_version[7] = FORMAT_VERSION + 1;
-    assert!(Header::parse(&wrong_version).is_err(), "a version past v7");
+    assert!(Header::parse(&wrong_version).is_err(), "a version past v8");
     let mut wrong_len = bytes.clone();
     wrong_len[8..10].copy_from_slice(&160u16.to_le_bytes());
-    assert!(Header::parse(&wrong_len).is_err(), "a v7 version declaring 160");
+    assert!(Header::parse(&wrong_len).is_err(), "a v8 version declaring 160");
 }
 
 /// An unknown flag means the writer said something about the bodies this reader would

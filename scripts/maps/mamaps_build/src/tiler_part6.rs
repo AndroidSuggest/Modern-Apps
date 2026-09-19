@@ -18,11 +18,11 @@ fn push(entry: &mut ChunkEntry, feature: &Feature, geometry: &IntGeometry) -> (u
     // exactly as the id table is — so every building feature pushes an entry (a default one when
     // the building had no S3DB tags), in every branch, so the two vectors cannot drift.
     let track_buildings = class.layer == tilecodec::mamaps::dict::LAYER_BUILDINGS;
-    // `roads` and `water` line features carry a display name for curved labels; it is interned
-    // into the tile's name table like a point label's, at no format cost.
+    // `roads` and `landtype` line features carry a display name for curved labels; it is
+    // interned into the tile's name table like a point label's, at no format cost.
     let name_line_layer = matches!(
         class.layer,
-        tilecodec::mamaps::dict::LAYER_ROADS | tilecodec::mamaps::dict::LAYER_WATER
+        tilecodec::mamaps::dict::LAYER_ROADS | tilecodec::mamaps::dict::LAYER_LANDTYPE
     );
     let mut added = (0u64, 0u64);
     match geometry {
@@ -31,7 +31,7 @@ fn push(entry: &mut ChunkEntry, feature: &Feature, geometry: &IntGeometry) -> (u
             // millions of them. Measured **after** clipping, on the shape that would actually be
             // drawn, so a large park clipped to a sliver of one tile is kept where it is big and
             // dropped where it is not.
-            let floor = crate::schema::land::min_area_units(class.min_area_px, EXTENT);
+            let floor = crate::schema::landtype::min_area_units(class.min_area_px, EXTENT);
             for rings in polygons {
                 // A ring needs three distinct points plus the closing one; anything less bounds no
                 // area. Filtered *before* anything is appended, because a part and its points have

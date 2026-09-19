@@ -326,30 +326,33 @@
         // refs — but no blob ever supplies its coordinates, so it must not reach
         // the graph at all.
         assert_eq!(stats.raw_node_count, 3);
-        assert_eq!(node_count(&o), 3);
+        assert_eq!(node_count(&o), 2);
 
         // Every node in nodes.bin is one the file really defined. A phantom slot
         // would read (0, 0), which is a plausible-looking point in the Atlantic
         // and would corrupt distances and Morton keys without failing anything.
-        let mut written: Vec<(i32, i32)> = (0..3)
+        // Node 3 is defined but has no incident segment (both pairs touching 999
+        // fail to resolve), so it is dropped with the phantom: no edge addresses
+        // it and no route can reach it.
+        let mut written: Vec<(i32, i32)> = (0..2)
             .map(|i| {
                 let (lat, lon, _) = node_at(&o, i);
                 (lat, lon)
             })
             .collect();
         written.sort();
-        let mut want: Vec<(i32, i32)> = testpbf::DANGLING_NODES.iter().map(|n| (n.1, n.2)).collect();
+        let mut want: Vec<(i32, i32)> = testpbf::DANGLING_NODES[..2].iter().map(|n| (n.1, n.2)).collect();
         want.sort();
         assert_eq!(written, want);
 
         // The way is [1, 2, 999, 3], so the 1-2 pair resolves and both pairs
-        // touching 999 do not: one bidirectional edge, and node 3 left isolated.
+        // touching 999 do not: one bidirectional edge.
         assert_eq!(stats.raw_edge_count, 2);
         assert_eq!(stats.edge_count, 2);
         assert_eq!(stats.lcc_size, 2);
         for k in 0..stats.edge_count {
             let (target, _, _, type_, _) = edge_at(&o, k as usize);
-            assert!((target as usize) < 3, "edge {k} targets a node that does not exist");
+            assert!((target as usize) < 2, "edge {k} targets a node that does not exist");
             assert_eq!(type_ & !REVERSE_GEOMETRY_FLAG, 7);
         }
     }

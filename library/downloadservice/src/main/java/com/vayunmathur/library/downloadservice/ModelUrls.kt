@@ -46,23 +46,26 @@ package com.vayunmathur.library.downloadservice
 object ModelUrls {
     const val MIRROR_BASE = "https://data.vayunmathur.com/models/"
 
-    /** The decoder: 35 layers at int4 with per-block scales. */
+    /** The decoder: 35 layers at int4 with per-block scales, converted DIRECTLY
+     * from the litertlm GPU bundle (scripts/ml/litertlm_to_maml.py; the ONNX
+     * export is a different model). Tied head (no head tensors). */
     const val GEMMA_TEXT_FILE = "gemma4_text.maml"
     const val GEMMA_TEXT_URL = "${MIRROR_BASE}gemma4_text.maml"
     const val GEMMA_TEXT_SHA256 =
-        "f9043d69180c209ac57db30179bbca75342991a8a2fa6899916cff05cc155620"
+        "e6b392c9d72f61d490099531edfaa38ac772f9a3fa7cc24be23f13b329ff3da3"
 
     /** The two embedding tables, gathered on the host. */
     const val GEMMA_EMBED_FILE = "gemma4_embed.maml"
     const val GEMMA_EMBED_URL = "${MIRROR_BASE}gemma4_embed.maml"
     const val GEMMA_EMBED_SHA256 =
-        "b1ca4f34c3f2a05a71cb231e8b1e3795267b2550b87dd51d49ea15f84c0ef90a"
+        "ba0171d25feae227fc20f2c6203df7c98b3810c0f814b3be539fb0d3ed5c289f"
 
-    /** The BPE table: 262144 pieces, 514906 merges, byte fallback. */
+    /** The BPE table: 262144 pieces, byte fallback. Built from the SM
+     * tokenizer.json (same Gemma 4 tokenizer) by scripts/ml/gemma4_tokenizer.py. */
     const val GEMMA_TOKENIZER_FILE = "gemma4_tokenizer.spm1"
     const val GEMMA_TOKENIZER_URL = "${MIRROR_BASE}gemma4_tokenizer.spm1"
     const val GEMMA_TOKENIZER_SHA256 =
-        "bfb34775a267c98b4062edbd91848865fdf05583b9df3a49e6eab7a0ee251383"
+        "520d011da5e54c4319a943b636f77e9b2e3ab1eda95a860e40184300bb1c4900"
 
     /**
      * The vision tower: 16 layers at int4, with the patch and output projections left at fp16.
@@ -124,6 +127,7 @@ object ModelUrls {
     val OBSOLETE = listOf(
         "gemma4-2b.litertlm",
         "gemma-4-E2B-it.litertlm",
+        "gemma-4-E2B-it-gpu.litertlm",
         "gemma4.litertlm",
         "gemma4-4b.litertlm",
     )

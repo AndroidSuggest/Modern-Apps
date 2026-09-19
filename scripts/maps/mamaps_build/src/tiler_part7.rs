@@ -24,7 +24,7 @@ mod tests {
 
     pub(super) fn lake(lon: f64, lat: f64, size: f64, min_zoom: u8) -> Feature {
         Feature {
-            class: Class::area(dict::LAYER_WATER, crate::schema::kind("lake"), min_zoom),
+            class: Class::area(dict::LAYER_LANDTYPE, crate::schema::kind("lake"), min_zoom),
             geometry: square(lon, lat, size),
             name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
             turn_fwd: Vec::new(),
@@ -129,7 +129,7 @@ mod tests {
             // A line as well, so the merge has to rebase a `GEOM_LINE` feature's parts too, and a
             // long one so it crosses tiles rather than sitting inside one.
             features.push(Feature {
-                class: Class::line(dict::LAYER_WATER, crate::schema::kind("river"), 0),
+                class: Class::line(dict::LAYER_LANDTYPE, crate::schema::kind("river"), 0),
                 geometry: Geometry::Lines(vec![(0..40)
                     .map(|k| (lon + k as f64 * 0.002, lat + (k % 5) as f64 * 0.001))
                     .collect()]),
@@ -175,16 +175,18 @@ mod tests {
         assert_eq!(tol, BUILDING_TOLERANCE);
         let Geometry::Polygons(out) = simplify::filter(&g, tol) else { panic!() };
         assert_eq!(out[0][0].len(), 5, "the 0.4-unit bump goes: {out:?}");
-        // The same shape on water at a zero tolerance keeps it.
-        let water_tol = tolerance_for_layer(dict::LAYER_WATER, 14, 0.0);
-        assert_eq!(water_tol, 0.0, "other layers keep the policy tolerance");
-        let Geometry::Polygons(kept) = simplify::filter(&g, water_tol) else { panic!() };
+        // The same shape on landtype at a zero tolerance keeps it.
+        let landtype_tol = tolerance_for_layer(dict::LAYER_LANDTYPE, 14, 0.0);
+        assert_eq!(landtype_tol, 0.0, "other layers keep the policy tolerance");
+        let Geometry::Polygons(kept) = simplify::filter(&g, landtype_tol) else { panic!() };
         assert_eq!(kept[0][0].len(), 6, "at zero tolerance nothing moves");
         // A coarser global tolerance still wins over the floor.
         assert_eq!(tolerance_for_layer(dict::LAYER_BUILDINGS, 14, 2.0), 2.0);
         // And below the buildings floor the policy stands: z13 keeps 1.0, not 0.5.
         assert_eq!(tolerance_for_layer(dict::LAYER_BUILDINGS, 13, 1.0), 1.0);
-        assert_eq!(tolerance_for_layer(dict::LAYER_WATER, 13, 1.0), 1.0);
+        assert_eq!(tolerance_for_layer(dict::LAYER_LANDTYPE, 13, 1.0), 1.0, "landtype keeps policy");
+        assert_eq!(tolerance_for_layer(dict::LAYER_ROADS, 13, 1.0), 1.0, "roads keep policy");
+        assert_eq!(tolerance_for_layer(dict::LAYER_BOUNDARIES, 10, 2.0), 3.0, "the boundary wash scales the policy");
     }
 
     /// **The orthogonal snap.** A hand-digitised near-rectangle snaps exactly axis-aligned;
@@ -264,7 +266,7 @@ mod tests {
                 seen = true;
             }
             assert_eq!(
-                body.feature_id(dict::LAYER_WATER, 0),
+                body.feature_id(dict::LAYER_LANDTYPE, 0),
                 None,
                 "the lake's layer carries no id table",
             );

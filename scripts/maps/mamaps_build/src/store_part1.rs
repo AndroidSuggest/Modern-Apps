@@ -1,7 +1,11 @@
 impl Sink {
+    /// The feature spill stages in anonymous pagefile-backed memory (no `.tmp`
+    /// file, nothing stranded on kill). `path` names nothing — it only rides
+    /// along for error messages.
     pub fn create(path: impl AsRef<Path>) -> Result<Sink> {
+        let _ = path;
         Ok(Sink {
-            writer: NormalizedWriter::create(path.as_ref().to_path_buf())
+            writer: NormalizedWriter::create_anon(std::path::PathBuf::from("anon-spill"))
                 .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
             props: vec![(CLASS_KEY.to_string(), Value::Uint(0))],
             chunk_mins: Vec::new(),
@@ -191,7 +195,10 @@ impl Sink {
             self.chunk_mins.push(self.filling);
         }
         let chunk_mins = std::mem::take(&mut self.chunk_mins);
-        let summary = self.writer.finish().map_err(|e| osm_ingest::proto::Error(e.to_string()))?;
+        // The writer is always anonymous (see `create`): seal the store and
+        // carry it on the `Store`, not a file.
+        let (summary, store) =
+            self.writer.finish_anon().map_err(|e| osm_ingest::proto::Error(e.to_string()))?;
         let chunks = summary.chunks;
         // The two indexes must describe the same chunks, or skipping silently drops real features.
         // Cheap to assert and near-impossible to diagnose from the symptom, which would be missing
@@ -205,6 +212,7 @@ impl Sink {
         }
         Ok(Store {
             path: path.into(),
+            anon: std::sync::Arc::new(store),
             count,
             bbox: bbox.unwrap_or((0, 0, 0, 0)),
             chunks,
@@ -228,9 +236,13 @@ impl Sink {
     }
 }
 
-/// Features on disk, re-readable in order as many times as the tiler needs.
+/// Features staged in anonymous memory, re-readable in order as many times as
+/// the tiler needs. `path` names nothing — it only rides along for error
+/// messages. `anon` carries the pagefile-backed store; everything else
+/// (indexes, counts, conventions) is as before.
 pub struct Store {
     path: PathBuf,
+    anon: std::sync::Arc<tile_build::anon::AnonStore>,
     /// Byte offset of every 64th record, plus a sentinel holding the file length, so chunk `i` spans
     /// `chunks[i]..chunks[i + 1]` and reads with no knowledge of any other chunk.
     chunks: Vec<u64>,

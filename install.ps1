@@ -27,6 +27,7 @@ Usage:
   ./install <module> [module...]            # defaults to dev
   ./install [dev|release] all               # installs all app modules
   ./install all                             # same, defaults to dev
+  ./install [dev|release] [8|9] <module>    # Pixel 8 or Pixel 9 (by model)
 
 Description:
   Ergonomic wrapper around ./gradlew :module:assembleDev + adb session install.
@@ -36,6 +37,8 @@ Description:
   - Supports personal shorthand: ./install dooraccess -> personal:dooraccess (auto-prefixed if personal/<name> is a personal app)
   - Supports "all" keyword: ./install all -> installs every app module
   - Supports multiple modules in one call (single gradlew invocation)
+  - 8|9 selects the Pixel 8 or Pixel 9 by model (optional; defaults to the
+    first non-emulator device). Also accepts --device 8|9 / --device=8|9.
   - Installs via adb package sessions with the .idsig sidecar staged, so
     updates to preinstalled MAOS system apps get fs-verity (plain
     installDev/installRelease and `adb install` never stage it and always fail
@@ -56,6 +59,8 @@ Examples:
   ./install contacts calendar               -> :contacts:assembleDev :calendar:assembleDev
   ./install release contacts                -> :contacts:assembleRelease + session install
   ./install contacts dev                    -> :contacts:assembleDev (variant anywhere)
+  ./install 9 maps                        -> :maps:assembleDev + session install to the Pixel 9
+  ./install dev 8 maps                    -> :maps:assembleDev + session install to the Pixel 8
   ./install --help
   ./install --dry-run dev contacts          # prints what would run without executing gradle
   ./install --dry-run all                   # preview all modules
@@ -69,6 +74,7 @@ Notes:
   - NEVER uninstalls an app (no uninstall tasks)
   - Validates modules against app modules (those applying common-conventions-app)
   - Installs to the first connected device whose serial does not start with 'emulator'
+    (unless 8|9 selects the Pixel 8 or Pixel 9)
   - Set INSTALL_DRY_RUN=1 or pass --dry-run for dry-run mode
 '@
 }
@@ -152,8 +158,10 @@ function Invoke-Adb([string]$adbBin, [string[]]$adbArgs) {
     }
 }
 
-function Select-TargetSerial([string]$adb) {
-    $listed = Invoke-Adb $adb @('devices')
+function Select-TargetSerial([string]$adb, [string]$hint) {
+    # $hint is '' (first non-emulator device), '8' (model Pixel_8) or
+    # '9' (model Pixel_9* — covers Pixel_9 and Pixel_9_Pro_XL).
+    $listed = Invoke-Adb $adb @('devices', '-l')
     $out = @($listed.Output)
     foreach ($line in $out) {
         $line = $line.Trim()
@@ -165,7 +173,13 @@ function Select-TargetSerial([string]$adb) {
         $state = $parts[1]
         if ($state -ne 'device') { continue }
         if ($serial -like 'emulator*') { continue }
-        return $serial
+        if ([string]::IsNullOrEmpty($hint)) { return $serial }
+        $model = ''
+        foreach ($p in $parts) {
+            if ($p -like 'model:*') { $model = $p.Substring(6); break }
+        }
+        if ($hint -eq '8' -and $model -eq 'Pixel_8') { return $serial }
+        if ($hint -eq '9' -and $model -like 'Pixel_9*') { return $serial }
     }
     return $null
 }
@@ -207,6 +221,45 @@ if ($filtered.Count -eq 0) {
     Write-Host ''
     Write-Host 'Error: No modules specified (dry-run mode).'
     Print-ValidModules
+    exit 1
+}
+
+# --- Device hint: bare 8|9 anywhere, or --device 8|9 / --device=8|9 (optional) ---
+$DeviceHint = ''
+$prescan = @()
+$i = 0
+while ($i -lt $filtered.Count) {
+    $arg = $filtered[$i]
+    $lc = $arg.ToLower()
+    if ($lc -eq '--device') {
+        if ($i + 1 -ge $filtered.Count) {
+            Write-Host 'Error: --device requires a value: 8 (Pixel 8) or 9 (Pixel 9).'
+            exit 1
+        }
+        $DeviceHint = $filtered[$i + 1].ToLower()
+        $i += 2
+        continue
+    }
+    elseif ($lc -match '^--device=(.+)$') {
+        $DeviceHint = $Matches[1].ToLower()
+        $i += 1
+        continue
+    }
+    elseif ($lc -eq '8' -or $lc -eq '9') {
+        $DeviceHint = $lc
+        $i += 1
+        continue
+    }
+    elseif ($lc -match '^\d+$') {
+        Write-Host "Error: Invalid device '$arg'. Use 8 (Pixel 8) or 9 (Pixel 9)."
+        exit 1
+    }
+    $prescan += $arg
+    $i += 1
+}
+$filtered = $prescan
+if ($DeviceHint -ne '' -and $DeviceHint -ne '8' -and $DeviceHint -ne '9') {
+    Write-Host "Error: Invalid device '$DeviceHint'. Use 8 (Pixel 8) or 9 (Pixel 9)."
     exit 1
 }
 
@@ -373,10 +426,19 @@ if (-not $adb) {
     }
 }
 else {
-    $target = Select-TargetSerial $adb
+    $target = Select-TargetSerial $adb $DeviceHint
     if ($target) {
         $env:ANDROID_SERIAL = $target
-        Write-Host "Target device: $target (first connected device not starting with 'emulator')"
+        if ($DeviceHint -ne '') {
+            Write-Host "Target device: $target (Pixel $DeviceHint)"
+        }
+        else {
+            Write-Host "Target device: $target (first connected device not starting with 'emulator')"
+        }
+    }
+    elseif ($DeviceHint -ne '') {
+        Write-Host "Error: No connected Pixel $DeviceHint found (check 'adb devices')."
+        exit 1
     }
     elseif ($DryRun) {
         Write-Host '[DRY-RUN] Warning: no non-emulator device connected; ANDROID_SERIAL not set.'

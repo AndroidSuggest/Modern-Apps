@@ -124,6 +124,12 @@ pub const EXTENT: u32 = 4096;
 /// How aggressively to simplify, as a multiple of `tile_build`'s per-zoom tolerance.
 pub const DEFAULT_SIMPLIFICATION: f64 = 1.0;
 
+/// Extra simplification for the boundary wash: a multiple of the per-zoom policy tolerance,
+/// applied in `tolerance_for_layer` beside the buildings floor. 1.5x — boundaries are lines,
+/// and lines carry sub-10m wiggles a 2x grid stretch could straighten. `landtype` tiles to z14
+/// at 1.0x like roads — crisp parks and shorelines, not a wash.
+pub const WASH_SIMPLIFICATION: f64 = 1.5;
+
 /// The simplification floor for the `buildings` layer, in extent units.
 ///
 /// Buildings live only at z14 and up, where [`simplify::tolerance_for`] is 0.0 at max zoom

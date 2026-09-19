@@ -238,6 +238,7 @@ impl Graph {
                             match quant {
                                 Quant::I8 => 0,
                                 Quant::I4 => 1,
+                                Quant::Q2K => 2,
                             },
                         ],
                     );

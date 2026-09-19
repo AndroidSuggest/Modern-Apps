@@ -62,7 +62,7 @@ class EmergencyRepository private constructor(private val app: Context) {
     }
 
     /**
-     * Persists the manually-entered medical fields. Writes only those keys so it
+     * Persists the dropdown-selected medical fields. Writes only those keys so it
      * can never clobber the picked owner identity.
      */
     suspend fun saveMedicalInfo(bloodType: String, organDonor: String) =
@@ -114,8 +114,9 @@ class EmergencyRepository private constructor(private val app: Context) {
         return EmergencyInfo(
             name = prefs.getString(EmergencyKeys.NAME, "").orEmpty(),
             address = prefs.getString(EmergencyKeys.ADDRESS, "").orEmpty(),
-            bloodType = prefs.getString(EmergencyKeys.BLOOD_TYPE, "").orEmpty(),
-            organDonor = prefs.getString(EmergencyKeys.ORGAN_DONOR, "").orEmpty(),
+            // Legacy free-text values are normalized to the dropdown's canonical form.
+            bloodType = normalizeBloodType(prefs.getString(EmergencyKeys.BLOOD_TYPE, "").orEmpty()),
+            organDonor = normalizeOrganDonor(prefs.getString(EmergencyKeys.ORGAN_DONOR, "").orEmpty()),
             contacts = contacts,
         )
     }

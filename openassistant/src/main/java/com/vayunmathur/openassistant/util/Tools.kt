@@ -33,7 +33,7 @@ interface ToolSet
 /**
  * The declarations and dispatch table for a [ToolSet], built once by reflection.
  *
- * Reflection happens at construction rather than per turn: `AssistantToolSet` has 24 tools, and
+ * Reflection happens at construction rather than per turn: `AssistantToolSet` has 25 tools, and
  * resolving them on every message would put Kotlin reflection on the latency path of a chat.
  */
 class ToolRegistry(private val target: ToolSet) {
@@ -48,12 +48,11 @@ class ToolRegistry(private val target: ToolSet) {
      *
      * # Fixed on purpose
      *
-     * These were ranked by relevance to the user's last message and trimmed to a token budget,
-     * which spends less context. It also made the prompt prefix **different on every turn**, and
-     * that prefix is the expensive thing: ~780 of the ~1,100 positions before the conversation
-     * even starts. A prefix that changes cannot be reused between turns and cannot be
-     * precomputed at all, so the model paid to rebuild it whenever the topic moved - about seven
-     * seconds on a Tensor G4.
+     * Per-turn relevance ranking was tried and reverted: it spends less context, but it also
+     * makes the prompt prefix **different on every turn**, and that prefix is the expensive
+     * thing - ~1,870 positions before the conversation even starts. A prefix that changes cannot
+     * be reused between turns and cannot be precomputed at all, so the model paid to rebuild it
+     * whenever the topic moved - about seven seconds on a Tensor G4.
      *
      * Declaring the same set every time costs context and buys two things back: the KV cache for
      * the whole prefix survives from turn to turn, and it can be baked once by
@@ -130,68 +129,28 @@ class ToolRegistry(private val target: ToolSet) {
 
     companion object {
         /**
-         * Tokens of tool declarations a prompt may carry.
+         * Why the declared set is fixed rather than selected per turn.
          *
-         * Sized from the measured cost of the alternatives. All twenty-four declarations are 1531
-         * tokens, and with a 319-token system prompt and 21 of scaffolding that is a 1871-token
-         * prompt in a 2048 window - 174 positions for an entire conversation. At this budget a
-         * prompt averages 1021 and peaks at 1053 across a fifteen-phrasing corpus, leaving about
-         * 990 positions for history, the reply and any audio - enough that
-         * `Gemma4Handle.generate`'s `minOf(limit, remaining - 1)` is bounded by `limit` rather
-         * than by what is left, which is the regime where a reply reserve can work at all.
+         * These were once ranked by relevance to the user's last message and trimmed to a token
+         * budget, which spends less context. It also made the prompt prefix **different on every
+         * turn**, and that prefix is the expensive thing: ~1,870 positions before the conversation
+         * even starts. A prefix that changes cannot be reused between turns and cannot be
+         * precomputed at all, so the model paid to rebuild it whenever the topic moved - about
+         * seven seconds on a Tensor G4.
          *
-         * 800 rather than more because 900 scored identically on that corpus and cost 65 tokens a
-         * turn for it. 800 rather than less because the budget is filled, not merely capped, and a
-         * smaller one drops tools a request did not happen to name: 700 and 600 both lose
-         * `send_message` on "text Sarah that I'm running late", where "text" and "message" share
-         * no prefix. A user who is told the assistant cannot send a message is a worse outcome
-         * than a turn that is a few percent slower, and it fails silently - no error, just a
-         * capability that was not there.
+         * Declaring the same set every time costs context and buys two things back: the KV cache
+         * for the whole prefix survives from turn to turn (see [Gemma4Engine.ask]'s seed), and it
+         * can be baked once by `bake_gemma4_prefix` and shipped, so no device ever computes it.
+         * At a 16384 window the cost is affordable: the prefix plus the default 512-position reply
+         * reserve still leaves on the order of 14000 positions for history and audio.
          *
-         * The corpus is fifteen phrasings written by hand, so the SHAPE of that trade is measured
-         * and its precision is not. Treat 800 as "around where the misses stop" rather than a
-         * cliff edge.
+         * The order must be stable too, not merely the membership - two orderings of the same
+         * tools are two different token sequences and share only their common head.
          *
-         * Read this rather than assuming a tool count: per-tool cost ranges from 30 tokens
-         * (`get_notes`) to 137 (`create_calendar_event`), so a fixed count of tools does not
-         * imply a fixed number of tokens.
+         * Per-tool cost ranges from ~30 tokens (`get_notes`) to ~137 (`create_calendar_event`),
+         * so a tool count does not imply a token count: re-measure the prefix through the shipped
+         * tokenizer when the set changes rather than trusting the ~1,870 figure above.
          */
-        const val DECLARATION_TOKEN_BUDGET = 800
-
-        /**
-         * Tools declared on every turn, outside the budget.
-         *
-         * The memory three because the system prompt instructs the model to use memory
-         * aggressively and on every conversation, so a request that does not mention memory is
-         * exactly when they are wanted. The clock because the calendar tools' own descriptions
-         * tell the model to get the current time from it, so declaring those without it offers a
-         * tool whose instructions cannot be followed.
-         */
-        val ALWAYS = setOf(
-            "get_memories",
-            "add_to_memory",
-            "remove_memory",
-            "get_local_current_date_time",
-        )
-
-        /**
-         * Tokens a rendered declaration costs, estimated high.
-         *
-         * Four characters a token against a measured 4.5 across the real declarations, so this
-         * over-counts by about a tenth. That direction is deliberate: over-counting declares
-         * fewer tools and stays inside the budget, while under-counting would overrun a window
-         * that has no room to absorb it.
-         */
-        private fun estimateTokens(rendered: String): Int = (rendered.length + 3) / 4
-
-
-
-        private val STOPWORDS = setOf(
-            "the", "and", "for", "you", "your", "can", "get", "please", "with", "from", "that",
-            "this", "what", "how", "does", "did", "are", "was", "would", "could", "should",
-            "have", "has", "had", "into", "out", "about", "any", "all", "new", "use",
-        )
-
         /** Gemma's type names, which are upper-case and fewer than JSON schema's. */
         fun gemmaType(parameter: KParameter): String = when (parameter.type.classifier) {
             Double::class, Float::class, Long::class, Int::class -> "NUMBER"

@@ -16,18 +16,38 @@ data class CarApp(
 /**
  * Which apps the car launcher shows.
  *
- * The app-inventory pass (Task 10) found no third-party Android Auto targets on the phone,
- * so the launcher resolves Modern Apps siblings plus the platform's own media surfaces:
- * navigation goes to MA Maps, audio to MA Music's media browser service or any declared
- * `MediaBrowserService`, and telephony to the system dialer. Whatever is not installed
- * is skipped rather than shown dead, and an empty grid gets an explicit empty state.
+ * Discovery-first: every `CarAppService` the phone reports (navigation, POI,
+ * IoT, weather) becomes a tile whose tap opens the hosted template screen;
+ * the legacy phone slots (Maps launch intent, media browser, dialer) remain
+ * as open-on-phone fallbacks for apps with no car service. Whatever is not
+ * installed is skipped rather than shown dead, and an empty grid gets an
+ * explicit empty state.
  */
 object CarApps {
-    fun query(context: Context): List<CarApp> {
-        val pm = context.packageManager
+    /**
+     * Queries all car-capable apps, pinned first.
+     *
+     * [pinnedOrder] is flattened component strings (see [DiscoveredApp.id])
+     * in dock order; entries that no longer resolve are filtered as stale.
+     * Unpinned apps follow in label order, then the legacy phone slots.
+     */
+    fun query(context: Context, pinnedOrder: List<String> = emptyList()): List<CarApp> {
+        val discovered = runCatching { CarAppDiscovery.query(context) }.getOrElse {
+            Log.w(TAG, "car discovery failed; legacy slots only", it)
+            emptyList()
+        }
+        val byId = discovered.associateBy { it.id }
         val found = mutableListOf<CarApp>()
+        for (id in pinnedOrder) {
+            val app = byId[id] ?: continue
+            found += app.toCarApp()
+        }
+        val pinnedIds = pinnedOrder.toSet()
+        for (app in discovered) {
+            if (app.id !in pinnedIds) found += app.toCarApp()
+        }
         for (slot in SLOTS) {
-            runCatching { slot.resolve(context, pm) }
+            runCatching { slot.resolve(context, context.packageManager) }
                 .onSuccess { app -> if (app != null) found += app }
                 .onFailure { Log.w(TAG, "could not resolve car slot ${slot.label}", it) }
         }
@@ -35,14 +55,9 @@ object CarApps {
     }
 
     /**
-     * Resolves the assistant slot for the rail's assistant icon, or null when
-     * the phone has no assistant to open.
-     *
-     * Skip-if-missing like every [SLOTS] entry: the rail keeps its 68dp
-     * assistant container (gearhead `assistant_icon_container`) but the icon
-     * itself stays GONE, so the launcher never shows what the phone cannot
-     * open. `ACTION_ASSIST` first (the platform assistant entry point), then
-     * the legacy voice-command intent as a fallback.
+     * Resolves the assistant slot for the launcher's assistant affordance, or
+     * null when the phone has no assistant to open. Skip-if-missing like every
+     * [SLOTS] entry.
      */
     fun assistant(context: Context): CarApp? = runCatching {
         val pm = context.packageManager
@@ -59,6 +74,17 @@ object CarApps {
             launch = launch,
         )
     }.getOrNull()
+
+    private fun DiscoveredApp.toCarApp(): CarApp {
+        // Tapping a discovered tile opens its hosted template screen (Phase C
+        // routes this through the launcher selection); the launch intent opens
+        // the phone app as the pre-host fallback.
+        val component = component
+        val launch = Intent(Intent.ACTION_MAIN)
+            .setClassName(component.packageName, component.className)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return CarApp(label = label, icon = icon, launch = launch)
+    }
 
     private interface Slot {
         val label: String

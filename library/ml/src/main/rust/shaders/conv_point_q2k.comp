@@ -1,0 +1,131 @@
+#version 450
+//! `conv_point_int8.comp` with GGUF Q2_K weights, dequantised by one `(d, dmin)` pair per superblock.
+//!
+//! `out[o][p] = act(sum over superblocks of (d_all*(q*lo) - d_min*hi) * x + bias[o])`,
+//! `p` over positions.
+//!
+//! # What differs from `conv_point_int8.comp`
+//!
+//! The weight tile is staged from Q2_K superblocks rather than int8 bytes, and the scale
+//! cannot hoist out of the inner loop: each 16-tap lane carries its own `(lo, hi)` scale
+//! byte, so the dequantised value is staged (fp32, one tile) rather than the codes. The
+//! `(d, dmin)` pair is per 256-tap superblock and constant across the tile's `k0` step
+//! only when the step stays inside one superblock — at `TILE` 16 it always does, since
+//! 16 taps never span a 256-tap block.
+//!
+//! Everything else — the tiling, the 2 x 2 register blocking, both barriers — is that
+//! shader unchanged; see it for why the tiling is shaped the way it is.
+//!
+//! `p.weight` is a **32-bit word** offset to the Q2_K payload, as in `conv_int8.comp`.
+//! `p.act_weight` holds the `(d, dmin)` table as an fp16 element index: pair `2*b` and
+//! `2*b+1` for superblock `b` of the row. `Act::PRelu` cannot ride along, for the same
+//! reason as the int8 pair.
+
+#include "common.glsl"
+
+/// Output channels and positions per workgroup, and input channels per staging step.
+#define TILE 16u
+
+/// Taps one Q2_K superblock covers. Mirrors `weights::Q2K_BLOCK`.
+#define Q2K_BLOCK 256u
+
+/// The staged blocks. `TILE * TILE` each, so 2 KB of shared memory at fp32.
+shared float weight_tile[TILE][TILE];
+shared float input_tile[TILE][TILE];
+
+void main() {
+    // The tile this workgroup owns. Uniform across the workgroup, so returning early cannot
+    // strand a barrier — every invocation takes the same branch.
+    uint tile = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    if (tile >= p.count) {
+        return;
+    }
+    uint positions = p.out_h * p.out_w;
+    uint tiles_across = (positions + TILE - 1u) / TILE;
+    uint channel_base = (tile / tiles_across) * TILE;
+    uint position_base = (tile % tiles_across) * TILE;
+
+    // This invocation's 2 x 2 corner of the tile.
+    uint lid = gl_LocalInvocationID.x;
+    uint local_row = (lid >> 3u) * 2u;
+    uint local_col = (lid & 7u) * 2u;
+
+    float acc[2][2] = { { 0.0, 0.0 }, { 0.0, 0.0 } };
+
+    uint blocks = (p.in_c + Q2K_BLOCK - 1u) / Q2K_BLOCK;
+    for (uint k0 = 0u; k0 < p.in_c; k0 += TILE) {
+        // Stage both blocks. 256 elements each, 64 invocations, so four apiece. Out-of-range
+        // entries are zeroed rather than skipped, which lets the inner loop run unguarded.
+        //
+        // A 16-tap staging step never spans a 256-tap superblock, so one `(d, dmin)` pair
+        // and 16 lane scales serve the whole step. The dequantised values are staged rather
+        // than the codes: the scale varies per lane, so staging codes would still need the
+        // scales beside them.
+        for (uint n = 0u; n < 4u; n++) {
+            uint slot = lid + n * 64u;
+            uint r = slot >> 4u;
+            uint c = slot & 15u;
+
+            uint channel = channel_base + r;
+            uint k_weight = k0 + c;
+            // This tap's superblock, lane and position inside it.
+            uint block = k_weight / Q2K_BLOCK;
+            uint inblock = k_weight % Q2K_BLOCK;
+            uint half_idx = inblock / 128u;
+            uint pair = (inblock % 128u) / 32u;
+            uint l = inblock % 16u;
+            uint odd = (inblock % 32u) / 16u;
+            // Superblock byte offset of this row's block: rows are contiguous runs of
+            // `blocks` superblocks.
+            uint sbo = (p.weight * 4u) + (channel * blocks + block) * 84u;
+            uint sc = q2k_scale(sbo, half_idx, pair * 2u + odd);
+            uint code = q2k_code(sbo, half_idx, inblock);
+            uint pair_at = p.act_weight + (channel * blocks + block) * 2u;
+            float d = float(weights[pair_at]);
+            float m = float(weights[pair_at + 1u]);
+            weight_tile[r][c] = (channel < p.out_c && k_weight < p.in_c)
+                ? (d * d * float(code) * float(sc & 15u) - m * d * float(sc >> 4u))
+                : 0.0;
+
+            uint k_input = k0 + r;
+            uint position = position_base + c;
+            input_tile[r][c] = (k_input < p.in_c && position < positions)
+                ? float(arena[p.in0 + k_input * positions + position])
+                : 0.0;
+        }
+        barrier();
+
+        for (uint k = 0u; k < TILE; k++) {
+            float a0 = weight_tile[local_row][k];
+            float a1 = weight_tile[local_row + 1u][k];
+            float b0 = input_tile[k][local_col];
+            float b1 = input_tile[k][local_col + 1u];
+            acc[0][0] += a0 * b0;
+            acc[0][1] += a0 * b1;
+            acc[1][0] += a1 * b0;
+            acc[1][1] += a1 * b1;
+        }
+        // Both barriers are needed: the second stops the next step's staging from overwriting
+        // tiles an invocation is still reading.
+        barrier();
+    }
+
+    for (uint i = 0u; i < 2u; i++) {
+        uint channel = channel_base + local_row + i;
+        if (channel >= p.out_c) {
+            continue;
+        }
+        // Already scaled inside the loop (per-lane scales cannot hoist), so only the bias
+        // is left.
+        float offset = float(weights[p.bias + channel]);
+        for (uint j = 0u; j < 2u; j++) {
+            uint position = position_base + local_col + j;
+            if (position >= positions) {
+                continue;
+            }
+            uint index = channel * positions + position;
+            float value = fused_store(acc[i][j] + offset, p.act, channel, index);
+            arena[p.out_at + index] = float16_t(value);
+        }
+    }
+}

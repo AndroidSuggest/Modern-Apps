@@ -73,7 +73,7 @@ pub(crate) fn parse_names(buf: &[u8]) -> Result<(Vec<String>, usize)> {
 /// Names longer than 255 bytes are split into 255-byte continuation chunks (a 0xFF length byte
 /// continues the current name). Byte contents are arbitrary UTF-8, split on byte — never char —
 /// boundaries; the parser only needs the byte count to match.
-pub(crate) fn serialize_names(names: &[String]) -> Vec<u8> {
+pub fn serialize_names(names: &[String]) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(&(names.len() as u16).to_le_bytes());
     for name in names {
@@ -191,7 +191,7 @@ pub(crate) fn parse_ids(buf: &[u8], layers: &[Layer]) -> Result<(Vec<(u8, Vec<u6
 }
 
 /// Serialise a feature id table, 4-byte aligned. The inverse of [`parse_ids`].
-pub(crate) fn serialize_ids(ids: &[(u8, Vec<u64>)], out: &mut Vec<u8>) {
+pub fn serialize_ids(ids: &[(u8, Vec<u64>)], out: &mut Vec<u8>) {
     out.extend_from_slice(&(ids.len() as u32).to_le_bytes());
     for (layer_id, entries) in ids {
         out.push(*layer_id);
@@ -293,7 +293,7 @@ pub(crate) fn parse_lanes(buf: &[u8], layers: &[Layer]) -> Result<(Vec<(u8, Vec<
 }
 
 /// Serialise a turn-lane table, 4-byte aligned. The inverse of [`parse_lanes`].
-pub(crate) fn serialize_lanes(turn_lanes: &[(u8, Vec<LaneTurns>)], out: &mut Vec<u8>) {
+pub fn serialize_lanes(turn_lanes: &[(u8, Vec<LaneTurns>)], out: &mut Vec<u8>) {
     out.extend_from_slice(&(turn_lanes.len() as u32).to_le_bytes());
     for (layer_id, entries) in turn_lanes {
         out.push(*layer_id);
@@ -403,7 +403,7 @@ pub(crate) fn parse_carriageways(
 }
 
 /// Serialise a carriageway table, 4-byte aligned. The inverse of [`parse_carriageways`].
-pub(crate) fn serialize_carriageways(
+pub fn serialize_carriageways(
     carriageways: &[(u8, Vec<Carriageway>)],
     convention: MarkingConvention,
     out: &mut Vec<u8>,
@@ -461,7 +461,7 @@ pub(crate) fn parse_heightmap(buf: &[u8]) -> Result<(Heightmap, usize)> {
 }
 
 /// Serialise a per-tile heightmap, 4-byte aligned. The inverse of [`parse_heightmap`].
-pub(crate) fn serialize_heightmap(grid: &Heightmap, out: &mut Vec<u8>) {
+pub fn serialize_heightmap(grid: &Heightmap, out: &mut Vec<u8>) {
     out.extend_from_slice(&grid.dim.to_le_bytes());
     for &s in &grid.samples {
         out.extend_from_slice(&s.to_le_bytes());

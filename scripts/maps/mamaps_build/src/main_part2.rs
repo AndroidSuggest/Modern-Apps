@@ -8,8 +8,8 @@ fn usage() {
         \x20                   [--region california|world]\n\
         \x20                   [--build-graph-to DIR] [--build-poi-to DIR]\n\
         \n\
-        \x20All six flags are required. Every build carries all 12 layers at\n\
-        \x20z0-14 as FORMAT_VERSION 7. --region filters roads/pois/buildings\n\
+        \x20All six flags are required. Every build carries all 9 layers at\n\
+        \x20z0-14 as FORMAT_VERSION 8. --region filters roads/pois/buildings\n\
         \x20to the region (default world = no filter); everything else is\n\
         \x20always included."
     );
@@ -25,7 +25,7 @@ fn usage() {
 /// DEM — so a build without one is silently missing a layer, not a build with different options.
 fn check_required(path: &std::path::Path, flag: &str) -> Result<(), String> {
     if path.as_os_str().is_empty() {
-        return Err(format!("{flag} is required: every build carries all 12 layers"));
+        return Err(format!("{flag} is required: every build carries all 9 layers"));
     }
     Ok(())
 }

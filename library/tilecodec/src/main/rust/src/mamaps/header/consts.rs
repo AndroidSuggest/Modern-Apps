@@ -7,6 +7,14 @@ pub const MAGIC: &[u8; 7] = b"MAMAPS\0";
 /// Bumped only for a change a reader cannot ignore. The archive carries a
 /// [`build_id`](crate::mamaps::header::Header::build_id) for "same format, different data".
 ///
+/// v8 merges the four wash layers (`earth`, `water`, `landcover`, `landuse`) into one
+/// `landtype` layer (id 0) capped at z14 at 1.0x sharpness, and appends `orchard`,
+/// `vineyard` and `quarry` to [`dict::KINDS`](crate::mamaps::dict::KINDS). Old layer ids
+/// 4..11 shift down by 3. The layer addition alone forces the bump — `read`'s
+/// `check_matches_schema` validates the whole dictionary on open, so an older reader
+/// rejects a v8 archive anyway. Clean break: rebuild and republish
+/// planet.mamaps + basemap.mamaps, force-update apps, no back-compat.
+///
 /// v7 adds what the carriageway renderer needs to paint lane markings onto a road surface rather
 /// than stroke parallel lines over it: a `FLAG_IS_ONEWAY` feature flag (bit 4), and one more
 /// optional trailing body section behind `BODY_FLAG_ROAD_LANES` — a per-road **carriageway table**
@@ -54,8 +62,8 @@ pub const MAGIC: &[u8; 7] = b"MAMAPS\0";
 /// reject a v3 archive anyway. v1 is no longer read — the last v1 archive predates `places`,
 /// `poi` and `transit` entirely.
 ///
-/// The reader speaks v7 only: any other version byte is refused on open.
-pub const FORMAT_VERSION: u8 = 7;
+/// The reader speaks v8 only: any other version byte is refused on open.
+pub const FORMAT_VERSION: u8 = 8;
 
 pub const HEADER_LEN: usize = 128;
 

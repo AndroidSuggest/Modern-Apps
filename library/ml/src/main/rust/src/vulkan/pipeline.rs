@@ -82,9 +82,13 @@ const CONV_VEC_INT4: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/conv_vec_int4.comp.spv"));
 const CONV_POINT_INT4: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/conv_point_int4.comp.spv"));
+const CONV_VEC_Q2K: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/conv_vec_q2k.comp.spv"));
+const CONV_POINT_Q2K: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/conv_point_q2k.comp.spv"));
+const CONV_Q2K: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/conv_q2k.comp.spv"));
 
 /// Every shader, in the order [`Pipelines::create`] destructures them.
-pub(crate) const SPIRV: [&[u8]; 40] = [
+pub(crate) const SPIRV: [&[u8]; 43] = [
     CONV,
     CONV_TRANSPOSE,
     MAXPOOL,
@@ -125,6 +129,9 @@ pub(crate) const SPIRV: [&[u8]; 40] = [
     CONV_POINT_INT4,
     MUL_SCALAR,
     CLAMP,
+    CONV_VEC_Q2K,
+    CONV_POINT_Q2K,
+    CONV_Q2K,
 ];
 
 /// Descriptors in one set: the arena, the weights as fp16, the weights as words, the step params.
@@ -196,6 +203,9 @@ pub struct Shaders {
     pub(crate) gated_activate: vk::Pipeline,
     pub(crate) conv_vec_int4: vk::Pipeline,
     pub(crate) conv_point_int4: vk::Pipeline,
+    pub(crate) conv_vec_q2k: vk::Pipeline,
+    pub(crate) conv_point_q2k: vk::Pipeline,
+    pub(crate) conv_q2k: vk::Pipeline,
     pub(crate) mul_scalar: vk::Pipeline,
     pub(crate) clamp: vk::Pipeline,
     pub(crate) rmsnorm: vk::Pipeline,

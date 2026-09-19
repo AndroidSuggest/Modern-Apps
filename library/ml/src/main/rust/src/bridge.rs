@@ -36,14 +36,16 @@ use jni::sys::{jfloatArray, jint, jintArray, jlong, jstring};
 use jni::JNIEnv;
 
 use crate::nets::{
-    gemma4, gemma4_audio, gemma4_vision, maia, mobilefacenet, nllb, nnfp, ppocr_det, ppocr_rec,
-    scrfd, selfie, supertonic_duration, supertonic_sampler, supertonic_text, supertonic_vocoder,
-    tinyclip, u2netp, whisper, Plan,
+    gemma4, gemma4_audio, gemma4_vision, madlad, madlad_part1, maia, mobilefacenet, nllb, nnfp,
+    ppocr_det, ppocr_rec, scrfd, selfie, supertonic_duration, supertonic_sampler,
+    supertonic_text, supertonic_vocoder, tinyclip, u2netp, whisper, Plan,
 };
 use crate::post::ctc::Dictionary;
+use crate::post::madlad as madlad_post;
 use crate::post::nms::{self, Face, Maps};
 use crate::post::ocr::{self, Line};
-use crate::post::sentencepiece::{Table, GEMMA};
+use crate::post::sentencepiece::Table;
+use crate::post::sentencepiece_flavours::{GEMMA, T5};
 use crate::post::supertonic;
 use crate::post::translate;
 use crate::post::whisper as whisper_post;
@@ -412,3 +414,4 @@ include!("bridge_part6.rs");
 include!("bridge_part7.rs");
 include!("bridge_part8.rs");
 include!("bridge_part9.rs");
+include!("bridge_part10.rs");

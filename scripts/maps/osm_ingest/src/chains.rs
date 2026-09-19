@@ -480,12 +480,22 @@ fn split_runs(path: &[u32], coords: &[geom::Pt]) -> Vec<(usize, usize)> {
 
 /// Does dense node `n` survive as a graph node?
 ///
-/// A chain endpoint always does. So does anything whose incidence count is not
-/// exactly two — including a count of zero, which is how an isolated transit stop
-/// and a node stranded by a dangling reference both look.
+/// A chain endpoint always does. Anything of degree 1 or 3+ is a junction, a
+/// dead end or an anchor the walks must address. Degree 2 is the only
+/// collapsible case and is handled by the walk, not here.
+///
+/// Degree 0 is dropped unless it carries a transit stop: a node with no
+/// incident segment is a way the region filter removed (every road node outside
+/// the region reads degree 0 once its ways are skipped), dead weight in
+/// `nodes.bin` with no edge ever addressing it. An isolated stop is the one
+/// exception — the reconnect pass addresses stop nodes directly.
 #[inline]
-pub(crate) fn survives(endpoints: &Bitset, degree: &[u8], n: u32) -> bool {
-    endpoints.get(u64::from(n)) || degree[n as usize] != 2
+pub(crate) fn survives(endpoints: &Bitset, degree: &[u8], stop: &Bitset, n: u32) -> bool {
+    if endpoints.get(u64::from(n)) {
+        return true;
+    }
+    let d = degree[n as usize];
+    d != 2 && (d != 0 || stop.get(u64::from(n)))
 }
 
 // ---- the spill -----------------------------------------------------------

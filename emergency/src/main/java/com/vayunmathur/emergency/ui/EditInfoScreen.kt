@@ -23,14 +23,17 @@ import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.emergency.R
+import com.vayunmathur.emergency.data.BLOOD_TYPE_OPTIONS
+import com.vayunmathur.emergency.data.ORGAN_DONOR_NO
+import com.vayunmathur.emergency.data.ORGAN_DONOR_YES
 import com.vayunmathur.emergency.platform.EmergencyActions
 import com.vayunmathur.emergency.platform.EmergencyUiState
 import com.vayunmathur.emergency.platform.EmergencyViewModel
 import com.vayunmathur.emergency.platform.HealthConnectMedical
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.FormSection
-import com.vayunmathur.library.ui.LabeledTextField
 import com.vayunmathur.library.ui.LazyListScaffold
+import com.vayunmathur.library.ui.SettingsExposedSelectRow
 import com.vayunmathur.library.ui.SettingsRow
 import com.vayunmathur.library.ui.SettingsSection
 import com.vayunmathur.library.ui.Text
@@ -179,16 +182,26 @@ fun EditInfoScreen(
             }
         }
         item {
-            EditField(
+            MedicalDropdown(
                 label = stringResource(R.string.field_blood_type),
+                unknownLabel = stringResource(R.string.blood_type_unknown),
                 value = bloodType,
+                options = BLOOD_TYPE_OPTIONS,
+                optionLabel = { it },
                 onChange = { bloodType = it; save() },
             )
         }
         item {
-            EditField(
+            // Resolved here (composable scope): optionLabel below is a plain
+            // lambda, so it can only capture strings, not call stringResource.
+            val donorYes = stringResource(R.string.organ_donor_yes)
+            val donorNo = stringResource(R.string.organ_donor_no)
+            MedicalDropdown(
                 label = stringResource(R.string.field_organ_donor),
+                unknownLabel = stringResource(R.string.organ_donor_unknown),
                 value = organDonor,
+                options = listOf(ORGAN_DONOR_YES, ORGAN_DONOR_NO),
+                optionLabel = { if (it == ORGAN_DONOR_YES) donorYes else donorNo },
                 onChange = { organDonor = it; save() },
             )
         }
@@ -263,14 +276,29 @@ fun EditInfoScreen(
     }
 }
 
-/** One medical field: a titled section holding a single text field. */
+/** One medical field: a titled section holding a dropdown with an unknown option. */
 @Composable
-private fun EditField(label: String, value: String, onChange: (String) -> Unit) {
+private fun MedicalDropdown(
+    label: String,
+    unknownLabel: String,
+    value: String,
+    options: List<String>,
+    optionLabel: (String) -> String,
+    onChange: (String) -> Unit,
+) {
+    // A legacy free-text value outside the options is kept as a fallback entry
+    // so switching to dropdowns never silently drops stored data.
+    val allOptions = remember(value, options) {
+        if (value.isBlank() || value in options) listOf("") + options
+        else listOf("") + options + value
+    }
     FormSection(title = label) {
-        LabeledTextField(
-            value = value,
-            onValueChange = onChange,
+        SettingsExposedSelectRow(
             label = label,
+            selected = value,
+            options = allOptions,
+            itemLabel = { if (it.isBlank()) unknownLabel else optionLabel(it) },
+            onSelect = onChange,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
     }

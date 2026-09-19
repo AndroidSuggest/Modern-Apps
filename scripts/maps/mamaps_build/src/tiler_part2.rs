@@ -69,6 +69,7 @@ fn read_chunks(
     let store_path = store.path().to_path_buf();
     let store_chunks = store.raw_chunks().to_vec();
     let store_mins = store.chunk_mins_cloned();
+    let store_anon = store.anon_store();
     // Bounded per-lane channels: each lane streams its features in order.
     // Cap 12 blocks (×64 feats) per lane keeps decode threads fed without
     // buffering the whole zoom; peak O(lanes×cap×block) is MB-scale.
@@ -88,12 +89,14 @@ fn read_chunks(
             let path = store_path.clone();
             let chunks = store_chunks.clone();
             let chunk_mins = store_mins.clone();
+            let anon = std::sync::Arc::clone(&store_anon);
             let first_err = &first_err;
             let send_lane = sends[lane].clone();
             let h = std::thread::Builder::new()
                 .name(format!("mamaps-decode-{lane}"))
                 .spawn_scoped(scope, move || {
-                    let store_view = crate::store::Store::from_parts(path, chunks, chunk_mins);
+                    let store_view =
+                        crate::store::Store::view_over(path, chunks, chunk_mins, anon);
                     let mut r = match store_view.reader_for_wanted(w, z) {
                         Ok(r) => r,
                         Err(e) => {
@@ -340,7 +343,8 @@ fn tile_chunk(features: &[Feature], z: u8, tolerance: f64, buffer: f64) -> (Chun
     (tiles, tally)
 }
 
-/// The tolerance to simplify a layer at: the per-zoom policy, with a floor for buildings.
+/// The tolerance to simplify a layer at: the per-zoom policy, with a floor for buildings
+/// and a multiplier for the boundary wash.
 ///
 /// Buildings live only at z14 and up, where [`simplify::tolerance_for`] returns 0.0 — full
 /// detail. Half an extent unit there is ~0.3 m on the ground, sub-pixel on any screen the style
@@ -349,13 +353,20 @@ fn tile_chunk(features: &[Feature], z: u8, tolerance: f64, buffer: f64) -> (Chun
 /// Every other layer keeps the policy tolerance untouched. A coarser global tolerance still wins
 /// (`max`, not replace), and a zero/negative policy for a non-building layer is unchanged.
 ///
+/// `boundaries` alone keeps the [`WASH_SIMPLIFICATION`] multiplier: a low-zoom line backdrop.
+/// `landtype` tiles to z14 at 1.0x like roads — crisp parks and shorelines, not a wash.
+/// Roads, buildings and the point layers keep 1.0 — navigation geometry and labels, not a wash.
+///
 /// The prototype at `analysis/mamaps_building_savings.py` estimates this plus the snap below at
 /// ~2% + ~4% of building-tile bytes; buildings are z14-only, 9.76M features, ~20% of the archive.
 fn tolerance_for_layer(layer: u8, z: u8, tolerance: f64) -> f64 {
-    if layer == tilecodec::mamaps::dict::LAYER_BUILDINGS
+    use tilecodec::mamaps::dict;
+    if layer == dict::LAYER_BUILDINGS
         && z >= crate::schema::buildings::MIN_ZOOM
     {
         tolerance.max(BUILDING_TOLERANCE)
+    } else if layer == dict::LAYER_BOUNDARIES {
+        tolerance * WASH_SIMPLIFICATION
     } else {
         tolerance
     }

@@ -303,9 +303,17 @@ mod tests {
     }
 
     #[test]
-    fn an_isolated_node_survives_with_no_chain() {
+    fn a_degree_zero_node_is_dropped_unless_it_carries_a_stop() {
+        // Node 2 has no incident segment: a way the region filter removed, dead
+        // weight with no edge ever addressing it.
         let segs = vec![seg(0, 1)];
         let c = run(3, &segs);
+        assert_eq!(c.kept, 2);
+        assert_eq!(c.new_id[2], REMOVED);
+        assert_eq!(c.chains.len(), 1);
+        // An isolated transit stop is the exception: the reconnect pass
+        // addresses stop nodes directly.
+        let c = compact(3, &segs, &[], pt, |n| n == 2);
         assert_eq!(c.kept, 3);
         assert_eq!(c.new_id[2], 2);
         assert_eq!(c.chains.len(), 1);

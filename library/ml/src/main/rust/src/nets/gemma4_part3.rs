@@ -61,15 +61,17 @@ mod tests {
     }
 
     #[test]
-    fn the_shared_layers_trade_key_and_value_for_feed_forward_width() {
-        // The whole shape of the model: no `k_proj`/`v_proj`/`k_norm`, and double the inner width.
+    fn the_shared_layers_trade_key_and_value_for_nothing() {
+        // The whole shape of the model: no `k_proj`/`v_proj`/`k_norm`.
         assert_eq!(ffn(0), 6144);
+        // Slim layers widen the feed-forward to 12288 (fused 2-bit gate+up).
+        assert_eq!(ffn(15), 12288);
         assert_eq!(ffn(34), 12288);
-        // Two fewer projections and two fewer norms (`k_norm` and `v_norm`): eight tensors,
+        // One fewer norm (`k_norm`) and two fewer projections: seven tensors,
         // because a quantised projection is a triple in the file.
-        assert_eq!(OWNING_LAYER_TENSORS - SHARED_LAYER_TENSORS, 8);
-        assert_eq!(OWNING_LAYER_TENSORS, 9 + 8 * 3);
-        assert_eq!(SHARED_LAYER_TENSORS, 7 + 6 * 3);
+        assert_eq!(OWNING_LAYER_TENSORS - SHARED_LAYER_TENSORS, 7);
+        assert_eq!(OWNING_LAYER_TENSORS, 8 + 9 * 3);
+        assert_eq!(SHARED_LAYER_TENSORS, 7 + 7 * 3);
     }
 
     #[test]
@@ -82,11 +84,11 @@ mod tests {
         assert_eq!(plan.inputs.len(), INPUTS);
         assert_eq!(plan.inputs[0].shape, Shape::new(D_MODEL, 1, 1));
         assert_eq!(plan.inputs[1].shape, Shape::new(PER_LAYER * LAYERS as u32, 1, 1));
-        // Four splits of the vocabulary, softcapped, and nothing else: the KV caches stay on the
-        // device.
-        assert_eq!(plan.outputs.len(), HEAD_SPLITS);
-        let classes: u32 = plan.outputs.iter().map(|b| b.shape.c).sum();
-        assert_eq!(classes, VOCAB);
+        // One output: the normed hidden state. The head is tied (no tensor in the
+        // file), so logits are hidden @ E^T on the host - the KV caches and the
+        // embedding table stay off the device.
+        assert_eq!(plan.outputs.len(), 1);
+        assert_eq!(plan.outputs[0].shape, Shape::new(D_MODEL, 1, 1));
         crate::nets::tests::assert_no_aliasing(&plan);
     }
 
@@ -138,14 +140,10 @@ mod tests {
     }
 
     #[test]
-    fn every_layer_gates_its_feed_forward() {
-        // Two gates a layer: the MLP's `gelu(gate) * up`, and the per-layer input's.
-        //
-        // They are different **kinds** because only the MLP's reads a fused `[gate | up]`
-        // projection, which `Kind::GatedActivate` takes whole; the per-layer gate multiplies
-        // against a slice of a separate tensor and stays an `Activate` plus a `Mul`. Counting
-        // both is the point - the property is that every layer gates twice, not that it does so
-        // with any particular op.
+    fn every_layer_gates_its_feed_forward_twice() {
+        // Two gates a layer, both split (litertlm stores gate and up separately,
+        // not fused): the MLP's `gelu(gate) * up` and the per-layer input's
+        // `gelu(x @ gate) * per_layer[layer]`. Each is an `Activate` plus a `Mul`.
         let plan = build(&Shapes::new(TENSORS), Mode::DecodeStep.at(TEST_CONTEXT)).expect("builds");
         let count = |want: Kind| {
             plan.ops
@@ -153,31 +151,19 @@ mod tests {
                 .filter(|op| matches!(op, Op::Dispatch { kind, .. } if *kind == want))
                 .count()
         };
-        assert_eq!(count(Kind::GatedActivate), LAYERS, "the MLP gate, per layer");
-        assert_eq!(count(Kind::Activate), LAYERS, "the per-layer input gate, per layer");
-        // The fused form must not leave its slices behind: they were the reason for it.
-        //
-        // 135 before fusing and 65 after - exactly the two `[gate | up]` slices a layer gone.
-        // The rest are the per-layer input's slice and the head's splits, which are not this
-        // op's to remove.
-        assert_eq!(
-            plan.ops.iter().filter(|op| matches!(op, Op::Copy { .. })).count(),
-            65,
-            "the gated MLP's two slice copies a layer are gone"
-        );
-        let caps = plan
-            .ops
-            .iter()
-            .filter(|op| matches!(op, Op::Dispatch { kind: Kind::Softcap, .. }))
-            .count();
-        assert_eq!(caps, HEAD_SPLITS, "each logits split is capped");
+        assert_eq!(count(Kind::Activate), LAYERS * 2, "two gelu gates per layer");
+        assert_eq!(count(Kind::Mul), LAYERS * 2, "two gated products per layer");
+        // The whole residual is scaled by `skip` after add2, one scalar multiply
+        // a layer (`_maybe_apply_skip_scale/mul` in the portable graph).
+        assert_eq!(count(Kind::MulScalar), LAYERS, "one skip multiply per layer");
+        // No tied head on the device means no softcap either: the host caps.
+        assert_eq!(count(Kind::Softcap), 0, "softcapping moved to the host with the head");
     }
 
     #[test]
-    fn a_prefill_plan_drops_the_logits_head() {
-        // The head is evaluated for every prompt position today and the result is discarded for
-        // all but the last, because `bridge.rs` checks `want_logits` after the pass and the pass
-        // always runs the head. `Mode::Prefill` is the pass that does not.
+    fn a_prefill_plan_drops_the_final_norm() {
+        // The head is tied and lives on the host, so a decode step ends at the final
+        // norm - and a prefill, which only fills caches, stops one op earlier.
         //
         // Asserted as a DIFFERENCE against `DecodeStep` rather than an absolute count, so it
         // survives the rest of the net changing under it.
@@ -190,16 +176,8 @@ mod tests {
             prefill.ops.len(),
             decode.ops.len()
         );
-        // Four int4 splits, four softcaps, one final norm.
-        assert_eq!(decode.ops.len() - prefill.ops.len(), 9, "the head is nine ops");
-        let softcaps = |plan: &Plan| {
-            plan.ops
-                .iter()
-                .filter(|op| matches!(op, Op::Dispatch { kind: Kind::Softcap, .. }))
-                .count()
-        };
-        assert_eq!(softcaps(&decode), HEAD_SPLITS, "a decode step caps every split");
-        assert_eq!(softcaps(&prefill), 0, "a prefill caps nothing, because it computes nothing");
+        // Exactly the final RMS norm.
+        assert_eq!(decode.ops.len() - prefill.ops.len(), 1, "prefill skips only the norm");
         // The caches are the point of a prefill, so it must still write all of them.
         let writes = |plan: &Plan| {
             plan.ops
@@ -372,7 +350,7 @@ mod tests {
         assert_eq!(owning.len(), OWNING_LAYER_TENSORS);
         assert!(owning.contains(&vec![1536, 2048]), "q_proj on a sliding layer: {owning:?}");
         assert!(owning.contains(&vec![2048, 1536]), "o_proj: {owning:?}");
-        assert!(owning.contains(&vec![1536, 12288]), "the fused gate-and-up: {owning:?}");
+        assert!(owning.contains(&vec![1536, 6144]), "split gate/ff1: {owning:?}");
         assert!(owning.contains(&vec![6144, 1536]), "down_proj: {owning:?}");
 
         let full = exported(4);
@@ -381,8 +359,6 @@ mod tests {
 
         let shared = exported(15);
         assert_eq!(shared.len(), SHARED_LAYER_TENSORS);
-        assert!(shared.contains(&vec![1536, 24576]), "the double-wide gate-and-up: {shared:?}");
-        assert!(shared.contains(&vec![12288, 1536]), "the wide down_proj: {shared:?}");
         // `[1536, 256]` is ambiguous by shape alone - it is `k_proj`, `v_proj` *and*
         // `per_layer_input_gate` - so count it rather than test for absence. An owning layer has
         // all three; a shared layer has only the gate.
@@ -477,10 +453,9 @@ mod tests {
             }
             total += u64::from(HEADS) * dim * d; // o_proj
             total += 3 * d; // the three remaining d_model norms
-            total += d * inner * 2 + inner * d; // gate_up and down
+            total += 2 * d * inner + inner * d; // split gate + ff1 + down
             total += d * u64::from(PER_LAYER) + u64::from(PER_LAYER) * d; // per-layer pair
             total += d; // post_per_layer_input_norm
-            total += 1; // layer_scalar
         }
         // The decoder alone, without the 262,144-row embedding or the logits head.
         assert!(

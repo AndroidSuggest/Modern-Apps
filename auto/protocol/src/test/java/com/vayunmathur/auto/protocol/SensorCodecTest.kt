@@ -21,15 +21,17 @@ import kotlin.test.assertTrue
 class SensorCodecTest {
 
     @Test
-    fun `subscribe pins sensor type in field 1 and omits the period`() {
-        // `xnu`: field 1 sensor_type, field 2 min_update_period. A bare
-        // LOCATION subscribe is 08 01.
+    fun `subscribe pins sensor type in field 1 and gearhead's zero period in field 2`() {
+        // `xnu`: field 1 sensor_type, field 2 min_update_period. Gearhead's
+        // `jcd.s` always writes field 2 and the mined call sites pass 0, so
+        // a bare LOCATION subscribe is 08 01 10 00.
         val (type, payload) = SensorCodec.encodeSubscribe(SensorType.LOCATION)
         assertEquals(GalMessage.Sensor.SENSOR_REQUEST, type)
-        assertContentEquals(byteArrayOf(0x08, 0x01), payload)
+        assertContentEquals(byteArrayOf(0x08, 0x01, 0x10, 0x00), payload)
         val parsed = SensorRequest.parseFrom(payload)
         assertEquals(SensorType.LOCATION, parsed.sensorType)
-        assertTrue(!parsed.hasMinUpdatePeriodMs())
+        assertTrue(parsed.hasMinUpdatePeriodMs())
+        assertEquals(0L, parsed.minUpdatePeriodMs)
     }
 
     @Test
@@ -100,15 +102,25 @@ class SensorCodecTest {
     }
 
     @Test
-    fun `a subscription answer classifies with its status`() {
-        val payload = SensorResponse.newBuilder()
-            .setSensorType(SensorType.SPEED)
-            .setStatus(0)
+    fun `a subscription answer classifies with its status and no type`() {
+        // `xnv`/`xow` is status-only (teardown-exact): `08 00` is
+        // STATUS_SUCCESS with no type echo -- owners attribute FIFO.
+        assertEquals(
+            InboundSensor.Subscribed(0),
+            SensorCodec.decodeInbound(
+                GalMessage.Sensor.SENSOR_RESPONSE,
+                byteArrayOf(0x08, 0x00),
+            ),
+        )
+        // A per-type refusal is a negative status (`xls`, e.g. -9
+        // STATUS_INVALID_SENSOR), still a classified answer, still typeless.
+        val refused = SensorResponse.newBuilder()
+            .setStatus(-9)
             .build()
             .toByteArray()
         assertEquals(
-            InboundSensor.Subscribed(SensorType.SPEED, 0),
-            SensorCodec.decodeInbound(GalMessage.Sensor.SENSOR_RESPONSE, payload),
+            InboundSensor.Subscribed(-9),
+            SensorCodec.decodeInbound(GalMessage.Sensor.SENSOR_RESPONSE, refused),
         )
     }
 
@@ -253,8 +265,9 @@ class SensorCodecTest {
 
     @Test
     fun `every subscribed type encodes its own number in field 1`() {
-        // A compass subscribe is 08 02, gear is 08 08, raw EV trip is 08 1A:
-        // off-by-one here subscribes the wrong sensor on a real head unit.
+        // A compass subscribe is 08 02 10 00, gear is 08 08 10 00, raw EV
+        // trip is 08 1A 10 00: off-by-one here subscribes the wrong sensor
+        // on a real head unit.
         for (type in SensorCodec.STUB_SUBSCRIPTIONS) {
             val (wireType, payload) = SensorCodec.encodeSubscribe(type)
             assertEquals(GalMessage.Sensor.SENSOR_REQUEST, wireType)
@@ -265,7 +278,7 @@ class SensorCodecTest {
             )
         }
         val (_, compass) = SensorCodec.encodeSubscribe(SensorType.COMPASS)
-        assertContentEquals(byteArrayOf(0x08, 0x02), compass)
+        assertContentEquals(byteArrayOf(0x08, 0x02, 0x10, 0x00), compass)
     }
 
     @Test

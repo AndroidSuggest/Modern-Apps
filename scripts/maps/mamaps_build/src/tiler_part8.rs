@@ -24,7 +24,7 @@ mod tests_part8 {
             carriageway: tilecodec::mamaps::body::Carriageway::default(),
         };
         let river = Feature {
-            class: Class::line(dict::LAYER_WATER, crate::schema::kind("river"), 12),
+            class: Class::line(dict::LAYER_LANDTYPE, crate::schema::kind("river"), 12),
             geometry: Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.97, 35.004)]]),
             name: Some("Los Gatos Creek".to_string()),
             id: tilecodec::mamaps::body::ID_NONE,
@@ -50,7 +50,7 @@ mod tests_part8 {
                     }
                 }
             }
-            if let Some(layer) = body.layer(dict::LAYER_WATER) {
+            if let Some(layer) = body.layer(dict::LAYER_LANDTYPE) {
                 for f in &layer.features {
                     if f.name(&body) == Some("Los Gatos Creek") {
                         saw_river = true;

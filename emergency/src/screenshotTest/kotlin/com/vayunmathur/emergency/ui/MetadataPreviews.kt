@@ -33,7 +33,7 @@ class MetadataPreviews {
         name = "Sam Rivera",
         address = "1 Main St",
         bloodType = "O+",
-        organDonor = "Yes",
+        organDonor = "yes",
         contacts = listOf(sampleContact()),
     )
 

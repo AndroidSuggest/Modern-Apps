@@ -487,6 +487,90 @@
       }
     },
     {
+      "id": "landuse_orchard",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "landuse",
+      "filter": [
+        "==",
+        "kind",
+        "orchard"
+      ],
+      "paint": {
+        "fill-color": "#c9e4b4"
+      }
+    },
+    {
+      "id": "landuse_vineyard",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "landuse",
+      "filter": [
+        "==",
+        "kind",
+        "vineyard"
+      ],
+      "paint": {
+        "fill-color": "#b8d9a3"
+      }
+    },
+    {
+      "id": "landuse_quarry",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "landuse",
+      "filter": [
+        "==",
+        "kind",
+        "quarry"
+      ],
+      "paint": {
+        "fill-color": "#e8e0d0"
+      }
+    },
+    {
+      "id": "landuse_swimming_pool",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "landuse",
+      "filter": [
+        "==",
+        "kind",
+        "swimming_pool"
+      ],
+      "paint": {
+        "fill-color": "#80deea"
+      }
+    },
+    {
+      "id": "landuse_residential",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "landuse",
+      "filter": [
+        "==",
+        "kind",
+        "residential"
+      ],
+      "paint": {
+        "fill-color": "#e6e2d8"
+      }
+    },
+    {
+      "id": "landuse_commercial",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "landuse",
+      "filter": [
+        "==",
+        "kind",
+        "commercial"
+      ],
+      "paint": {
+        "fill-color": "#dcd6e0"
+      }
+    },
+    {
       "id": "roads_tunnels_other_casing",
       "type": "line",
       "source": "protomaps",

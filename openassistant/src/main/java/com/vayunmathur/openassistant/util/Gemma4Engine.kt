@@ -5,6 +5,7 @@ import android.util.Log
 import com.vayunmathur.library.ml.Gemma4AudioHandle
 import com.vayunmathur.library.ml.Gemma4Handle
 import com.vayunmathur.library.ml.Gemma4VisionHandle
+import com.vayunmathur.library.ml.Sampling
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -157,6 +158,11 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
      * [onPartial] returning false stops generation - cancellation, and the early-halt the
      * structured-extraction path uses.
      *
+     * [sampling] selects the next token: sampled chat turns pass [Sampling.Chat] for the top_k
+     * 64 / top_p 0.95 behaviour the previous runtime had; callers that must reproduce a reply
+     * exactly pass null and stay greedy. Tool hops after the first inherit the same config, so
+     * one turn never mixes two decoding regimes.
+     *
      * Returns the reply with all tool syntax stripped, or null if the model is unavailable.
      *
      * # The loop
@@ -171,12 +177,13 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
         system: String?,
         tools: ToolRegistry?,
         limit: Int = Gemma4Handle.DEFAULT_REPLY,
+        sampling: Sampling? = Sampling.Chat,
         onPartial: (String) -> Boolean = { true },
     ): String? = lock.withLock {
         val live = handle ?: return@withLock null
         if (!live.isAvailable) return@withLock null
         val declarations = tools?.declarations ?: emptyList()
-        // Once per load: seed the caches from the baked prefix so the ~1,900 positions of system
+        // Once per load: seed the caches from the baked prefix so the ~1,870 positions of system
         // block and tool declarations are never prefilled here. `loadPrefix` re-encodes the text
         // and refuses unless its digest matches what was baked, so a prompt that has changed
         // since costs a prefill rather than an answer to a question nobody asked.
@@ -200,7 +207,7 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
             // model turn. Appending it as another `Turn` closed that turn and opened a new one.
             val history = conversation
             var stopped = false
-            val reply = live.generate(history, system, declarations, limit, pending) { partial ->
+            val reply = live.generate(history, system, declarations, limit, pending, sampling) { partial ->
                 // Tool syntax is machine chatter and must not reach the UI, so only the prose
                 // before any call marker is streamed.
                 val shown = visible + strip(partial)
@@ -314,7 +321,7 @@ class Gemma4Engine(private val directory: File) : AutoCloseable {
         /**
          * Tool calls one turn may make before the loop gives up.
          *
-         * Eight is generous for the 24 tools `AssistantToolSet` declares - a realistic turn makes
+         * Eight is generous for the 25 tools `AssistantToolSet` declares - a realistic turn makes
          * one or two - and bounds the pathological case where a tool keeps failing and the model
          * keeps retrying it.
          */

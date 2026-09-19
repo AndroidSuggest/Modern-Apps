@@ -141,10 +141,14 @@ impl ZoomReader {
                                 let mut out = Vec::with_capacity(records.len());
                                 for record in records.drain(..).rev() {
                                     let feature = feature_of(record)?;
-                                    // The zoom floor, applied where the work is spread. See this
+                                    // The zoom window, applied where the work is spread. See this
                                     // function's docs: at a shallow zoom this is nearly the whole
-                                    // chunk.
-                                    if z >= feature.class.min_zoom {
+                                    // Floor is the feature's own `min_zoom`; ceiling is the
+                                    // layer cap (`MAX_ZOOM_PER_LAYER`) — boundaries stop at
+                                    // z13, everything else tiles to the archive max.
+                                    if z >= feature.class.min_zoom
+                                        && z <= crate::schema::max_zoom_for_layer(feature.class.layer)
+                                    {
                                         out.push(feature);
                                     }
                                 }
@@ -268,7 +272,7 @@ impl Reader {
 ///
 /// [`push`]: WaySink::push
 pub struct WaySink {
-    out: BufWriter<File>,
+    out: WayOut,
     /// One record's bytes, reused. Several million records, so a `Vec` per record would be several
     /// million allocations for a buffer that is dead a line later.
     record: Vec<u8>,
@@ -278,13 +282,34 @@ pub struct WaySink {
     max_ref: i64,
 }
 
+/// Where a [`WaySink`] stages its bytes: a file, or anonymous memory.
+enum WayOut {
+    File(BufWriter<File>),
+    Anon(tile_build::anon::AnonStore),
+}
+
 impl WaySink {
     pub fn create(path: &Path) -> Result<WaySink> {
         let file = File::create(path)
             .map_err(|e| Error(format!("cannot create {}: {e}", path.display())))?;
         Ok(WaySink {
             // A megabyte, because the writes are a few dozen bytes each and there are millions.
-            out: BufWriter::with_capacity(1 << 20, file),
+            out: WayOut::File(BufWriter::with_capacity(1 << 20, file)),
+            record: Vec::new(),
+            last_id: 0,
+            count: 0,
+            refs: 0,
+            max_ref: 0,
+        })
+    }
+
+    /// Anonymous twin of [`create`](Self::create): same records in pagefile-backed
+    /// memory (`MAPS_ANON_SPILL=1`), no file. `path` names nothing — it only rides
+    /// along for error messages. Pair with [`WaySink::finish_anon`].
+    pub fn create_anon(path: &Path) -> Result<WaySink> {
+        let _ = path;
+        Ok(WaySink {
+            out: WayOut::Anon(tile_build::anon::AnonStore::new()),
             record: Vec::new(),
             last_id: 0,
             count: 0,
@@ -363,13 +388,24 @@ impl WaySink {
             }
             None => put_uvarint(&mut self.record, 0),
         }
-        self.out
-            .write_all(&self.record)
-            .map_err(|e| Error(format!("cannot write the ways spill: {e}")))?;
+        self.out_write(&self.record.clone()).map_err(|e| {
+            Error(format!("cannot write the ways spill: {e}"))
+        })?;
         self.last_id = id;
         self.count += 1;
         self.refs += refs.len() as u64;
         Ok(())
+    }
+
+    fn out_write(&mut self, bytes: &[u8]) -> Result<()> {
+        match &mut self.out {
+            WayOut::File(f) => f.write_all(bytes).map_err(|e| {
+                Error(format!("cannot write the ways spill: {e}"))
+            }),
+            WayOut::Anon(a) => a.push(bytes).map(|_| ()).map_err(|e| {
+                Error(format!("cannot stage the ways spill: {e}"))
+            }),
+        }
     }
 
     /// Flush, and report how many ways were written, how many node refs they hold between them, and
@@ -382,8 +418,28 @@ impl WaySink {
     /// above it sizes a bitset from `max_ref`. Both numbers are free here, where every ref is already
     /// being walked to encode it, and neither is recoverable later without a second pass.
     pub fn finish(mut self) -> Result<WayCounts> {
-        self.out.flush().map_err(|e| Error(format!("cannot flush the ways spill: {e}")))?;
+        match &mut self.out {
+            WayOut::File(f) => f.flush().map_err(|e| Error(format!("cannot flush the ways spill: {e}")))?,
+            WayOut::Anon(a) => a.finish(),
+        }
         Ok(WayCounts { ways: self.count, refs: self.refs, max_ref: self.max_ref })
+    }
+
+    /// Anonymous twin of [`finish`](Self::finish): seals the pagefile-backed
+    /// spill and hands back the counts plus the staged store. Errors on a
+    /// file-backed sink.
+    pub fn finish_anon(mut self) -> Result<(WayCounts, tile_build::anon::AnonStore)> {
+        match &mut self.out {
+            WayOut::File(_) => {
+                return err("finish_anon on a file-backed ways sink".to_string())
+            }
+            WayOut::Anon(a) => a.finish(),
+        }
+        let counts = WayCounts { ways: self.count, refs: self.refs, max_ref: self.max_ref };
+        match self.out {
+            WayOut::Anon(a) => Ok((counts, a)),
+            WayOut::File(_) => unreachable!("checked above"),
+        }
     }
 }
 
@@ -398,8 +454,23 @@ pub struct WayCounts {
 }
 
 /// Reads back what a [`WaySink`] wrote, in the order it was written.
+///
+/// File-backed ([`open`](Self::open)) or anonymous ([`open_anon`](Self::open_anon)):
+/// the record format is a sequential varint stream either way, so the reader is
+/// a cursor over bytes — a file cursor or a store offset. Same records, same order.
 pub struct WayReader {
-    inner: BufReader<File>,
+    inner: WayIn,
     last_id: i64,
     seen: u64,
+}
+
+/// Where a [`WayReader`] reads from.
+enum WayIn {
+    File(BufReader<File>),
+    Anon {
+        store: std::sync::Arc<tile_build::anon::AnonStore>,
+        at: u64,
+        buf: Vec<u8>,
+        used: usize,
+    },
 }

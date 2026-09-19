@@ -102,7 +102,9 @@ mod tests {
     #[test]
     fn a_connector_starts_and_ends_on_the_painted_carriageway() {
         let (emitted, lines) = stream(&crossroads(&[]));
-        assert_eq!(emitted, 12, "four approaches x three exits, unchanged");
+        // Four approaches x two turns each: through movements carry no
+        // connector (the carriageway ribbon already paints the straight path).
+        assert_eq!(emitted, 8, "four approaches x two turns");
 
         // The fixture's arms run due north, east, south and west, so of a point's two displacements
         // from the node the larger is the along-road setback and the smaller is the lateral offset.
@@ -132,13 +134,14 @@ mod tests {
             }
         }
 
-        // Both ends reading the same count is what lets a straight-through movement keep its lane
-        // and therefore its offset, so it is genuinely straight and samples as two points. One per
-        // approach. With the ends disagreeing the two offsets differed and all twelve came out bent.
+        // Both ends reading the same count is what lets a turning movement
+        // keep its lane and therefore its offset. Through movements carry no
+        // connector at all (dropped in stream_junctions), so no two-point
+        // straight survives: every remaining connector is a sampled curve.
         assert_eq!(
             lines.iter().filter(|l| l.len() == 2).count(),
-            4,
-            "a through movement should leave and arrive in the same lane, so it draws straight",
+            0,
+            "through movements are dropped, so nothing draws straight",
         );
     }
 
@@ -264,15 +267,16 @@ mod tests {
 
     /// The inferred path, which is what the overwhelming majority of roads take.
     ///
-    /// Four approaches, three legal exits each (everything but the U-turn back the way you came),
-    /// one inferred lane per exit: twelve connectors. The four outer nodes are degree one and
-    /// contribute nothing, which is what pins the count to node 0 alone.
+    /// Four approaches, two turns each (through movements carry no connector —
+    /// the carriageway already paints the straight path): eight connectors.
+    /// The four outer nodes are degree one and contribute nothing, which is
+    /// what pins the count to node 0 alone.
     #[test]
     fn a_crossroads_with_no_tagged_lanes_infers_one_connector_per_legal_movement() {
         let fixture = crossroads(&[]);
         let (emitted, lines) = stream(&fixture);
-        assert_eq!(emitted, 12, "four approaches x three exits");
-        assert_eq!(lines.len(), 12);
+        assert_eq!(emitted, 8, "four approaches x two turns");
+        assert_eq!(lines.len(), 8);
         for line in &lines {
             assert!(line.len() >= 2, "a connector needs at least two points");
             assert!(line.len() <= 14, "the sampler is bounded");
@@ -303,9 +307,10 @@ mod tests {
         ];
         let fixture = crossroads(&[(4u32, masks)]);
         let (emitted, _) = stream(&fixture);
-        // The tagged approach: one left, two throughs, one right = 4. The other three approaches
-        // are untagged and infer three each = 9.
-        assert_eq!(emitted, 13, "the tagged approach adds a fourth connector for its shared lane");
+        // The tagged approach: one left + one right (its two throughs are
+        // dropped). The other three approaches are untagged and infer two
+        // turns each = 6.
+        assert_eq!(emitted, 8, "the tagged approach keeps left and right only");
     }
 
     /// Spreading lanes across exits, both ways round. A dual left turn is two ribbons into one
@@ -370,11 +375,12 @@ mod tests {
             "cos 60 is a half",
         );
 
-        // The first three connectors are the north approach's, in `incoming.of(0)` order. They
-        // share a setback and a heading, so the spread between their start points is purely the
-        // lane offset.
+        // The first two connectors are the north approach's turns, in
+        // `incoming.of(0)` order (through is dropped, so left + right remain).
+        // They share a setback and a heading, so the spread between their start
+        // points is purely the lane offset.
         let spread = |lines: &[Vec<(f64, f64)>], project: &dyn Fn((f64, f64)) -> (f64, f64)| {
-            let starts: Vec<(f64, f64)> = lines[..3].iter().map(|l| project(l[0])).collect();
+            let starts: Vec<(f64, f64)> = lines[..2].iter().map(|l| project(l[0])).collect();
             let mut worst: f64 = 0.0;
             for a in &starts {
                 for b in &starts {
@@ -394,8 +400,10 @@ mod tests {
         let tagged = || (4u32, vec![LANE_LEFT, LANE_THROUGH, LANE_RIGHT]);
         let (_, at_equator) = stream(&crossroads_at(0, 9_000, &[tagged()]));
         let (_, at_sixty) = stream(&crossroads_at(600_000_000, 18_000, &[tagged()]));
-        assert_eq!(at_equator.len(), 12);
-        assert_eq!(at_sixty.len(), 12);
+        // The tagged north approach keeps left + right (through dropped); the
+        // three untagged approaches keep two turns each: 2 + 6.
+        assert_eq!(at_equator.len(), 8);
+        assert_eq!(at_sixty.len(), 8);
 
         // In projected units — what the renderer actually draws — the two must agree. z20 is an
         // arbitrary scale; Mercator is self-similar, so any zoom gives the same ratio.

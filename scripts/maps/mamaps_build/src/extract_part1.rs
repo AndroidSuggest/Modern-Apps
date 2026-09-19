@@ -60,13 +60,18 @@ pub fn extract(
     // into it. This sits where pass 4's `Sink::create` used to, moved earlier so those labels reach
     // the sink in the same order -- chunk order, ahead of every way and relation -- they did when
     // classification was its own pass after the coordinate resolve. Nothing else touches
-    // `spill_path` until then; the ways scratch and lane-fill temps hang off `with_extension`.
+    // `spill_path` until then; the lane-fill temps hang off `with_extension`.
+    // Spills stage in anonymous pagefile memory (no `.tmp` files): see `anon`.
     let mut sink = Sink::create(spill_path)?;
+    // The ways spill, shared by refcount with every reader below (collectors,
+    // lanefill scan, materialise).
+    let ways_anon = pass1.ways_anon.clone();
     let table = build_resolved_table(
         input,
         &blobs,
         &pass1.blob_kinds,
         &ways_path,
+        ways_anon.clone(),
         &members,
         pass1.way_refs,
         pass1.way_max_ref,
@@ -77,8 +82,13 @@ pub fn extract(
         &mut stats,
         &mark,
     )?;
-    let inherited_lanes =
-        inherit_lane_counts(spill_path, &ways_path, &table, stats.ways_classified as usize)?;
+    let inherited_lanes = inherit_lane_counts(
+        spill_path,
+        &ways_path,
+        ways_anon.clone(),
+        &table,
+        stats.ways_classified as usize,
+    )?;
     stats.lanes_inherited = inherited_lanes.len() as u64;
     mark("lane counts inherited");
 
@@ -90,6 +100,7 @@ pub fn extract(
     mark("materialising");
     materialise_ways(
         &ways_path,
+        ways_anon.clone(),
         &pass1.promoted,
         &inherited_lanes,
         &table,
@@ -119,13 +130,16 @@ pub fn extract(
 }
 
 /// What pass 1 hands the later phases: relations stay resident, corridors
-/// collapse to (way id, zoom) overrides, and the ways spill stays on disk.
+/// collapse to (way id, zoom) overrides, and the ways spill stages in
+/// anonymous memory, shared by refcount with every later reader.
 struct Pass1Out {
     relations: Vec<Relation>,
     promoted: Vec<(i64, u8)>,
     blob_kinds: Vec<u8>,
     way_refs: u64,
     way_max_ref: i64,
+    /// The sealed ways spill, shared by refcount with every later reader.
+    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
 }
 
 /// Pass 1 (ways + relations) plus the corridor promotion. Moved whole from
@@ -153,7 +167,7 @@ fn run_pass1(
     //
     // `blob_kinds` comes back from this pass and lets the later ones skip whole blobs, which on a
     // planet extract is most of the file.
-    let mut ways = WaySink::create(&ways_path)?;
+    let mut ways = WaySink::create_anon(&ways_path)?;
     let mut relations: Vec<Relation> = Vec::new();
     // Road ways carrying a `ref`, for the corridor pass below. A small minority of ways,
     // and the only thing pass 1 keeps in memory besides the relations.
@@ -336,8 +350,10 @@ fn run_pass1(
             Ok(())
         },
     )?;
-    let WayCounts { ways: ways_classified, refs: way_refs, max_ref: way_max_ref } = ways.finish()?;
-    stats.ways_classified = ways_classified;
+    let (counts, store) = ways.finish_anon()?;
+    stats.ways_classified = counts.ways;
+    let (way_refs, way_max_ref, ways_anon) =
+        (counts.refs, counts.max_ref, std::sync::Arc::new(store));
     stats.relations_classified = relations.len() as u64;
 
     // A numbered road changes class along its length, so deciding `min_zoom` per way chops
@@ -355,5 +371,6 @@ fn run_pass1(
         blob_kinds,
         way_refs,
         way_max_ref,
+        ways_anon,
     })
 }

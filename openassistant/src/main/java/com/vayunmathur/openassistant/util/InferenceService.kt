@@ -365,7 +365,9 @@ class InferenceService : Service() {
         // its closing remarks. Preserved from the litertlm path unchanged.
         var sent = false
         val reply = withContext(Dispatchers.IO) {
-            live.ask(turns, intentSystemPrompt(schema), tools = null) { partial ->
+            // Greedy, not sampled: a structured extraction must reproduce its answer, and a
+            // sampled draw that wanders costs a schema miss rather than buying variety.
+            live.ask(turns, intentSystemPrompt(schema), tools = null, sampling = null) { partial ->
                 val candidate = tryExtractLargestJson(partial)
                 if (candidate != null &&
                     JsonSchemaValidator.validateJsonAgainstSchema(candidate, schema) == null
@@ -480,7 +482,7 @@ class InferenceService : Service() {
 
     /// The system prompt, which is no longer configurable.
     ///
-    /// It is baked into a precomputed KV cache served alongside the weights, so the ~1,100
+    /// It is baked into a precomputed KV cache served alongside the weights, so the ~1,870
     /// positions of system block and tool declarations are never evaluated on device. That only
     /// works if the text is fixed: a prompt the user could edit would invalidate the cache, and
     /// silently - the model would attend over keys for a prompt it was not given.

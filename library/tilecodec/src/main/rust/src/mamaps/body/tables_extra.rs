@@ -108,7 +108,7 @@ pub(crate) fn parse_buildings(buf: &[u8], layers: &[Layer]) -> Result<(Vec<(u8, 
 }
 
 /// Serialise an S3DB building attribute table, 4-byte aligned. The inverse of [`parse_buildings`].
-pub(crate) fn serialize_buildings(buildings: &[(u8, Vec<BuildingAttrs>)], out: &mut Vec<u8>) {
+pub fn serialize_buildings(buildings: &[(u8, Vec<BuildingAttrs>)], out: &mut Vec<u8>) {
     out.extend_from_slice(&(buildings.len() as u32).to_le_bytes());
     for (layer_id, entries) in buildings {
         out.push(*layer_id);

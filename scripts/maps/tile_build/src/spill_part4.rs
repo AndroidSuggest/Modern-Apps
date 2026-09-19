@@ -132,6 +132,64 @@
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The anon backend stages byte-identical chunks: write through
+    /// `create_anon`, read back through `open_anon`, and the records plus the
+    /// chunk index match the file path exactly. This is what lets -Verify hold
+    /// the anon build to the same hash as the file build.
+    #[test]
+    fn the_anon_backend_stages_what_the_file_does() {
+        let n = 2 * NORM_CHUNK_FEATURES as usize + 7;
+        let features: Vec<NormalizedFeature> = (0..n)
+            .map(|i| {
+                let f = i as f64;
+                NormalizedFeature {
+                    geometry: Geometry::Lines(vec![vec![(f * 0.01, 1.0), (f * 0.01, 2.0)]]),
+                    props: vec![("i".to_string(), Value::Uint(i as u64))],
+                }
+            })
+            .collect();
+
+        // File path (reference).
+        let dir = tmp("normanonfile");
+        let path = dir.join("features.bin");
+        let mut w = NormalizedWriter::create(&path).unwrap();
+        for f in &features {
+            w.push(&f.geometry, &f.props).unwrap();
+        }
+        let file_summary = w.finish().unwrap();
+
+        // Anon path.
+        let mut a = NormalizedWriter::create_anon("anon-test").unwrap();
+        for f in &features {
+            a.push(&f.geometry, &f.props).unwrap();
+        }
+        let (anon_summary, store) = a.finish_anon().unwrap();
+
+        assert_eq!(anon_summary, file_summary, "summaries must match");
+        assert_eq!(
+            store.len(),
+            std::fs::metadata(&path).unwrap().len(),
+            "staged bytes must match"
+        );
+
+        let chunks = NormalizedChunks::open_anon(
+            "anon-test",
+            anon_summary.chunks.clone(),
+            std::sync::Arc::new(store),
+        )
+        .unwrap();
+        let mut scratch = Vec::new();
+        let mut out = Vec::new();
+        let mut back = Vec::new();
+        for i in 0..chunks.chunk_count() {
+            chunks.read_into(i, &mut scratch, &mut out).unwrap();
+            back.extend(out.iter().cloned());
+        }
+        assert_eq!(back, snapped_all(&features), "anon reads must match the input");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A corrupt chunk index must be reported, not silently mis-decoded: the offsets are
     /// the one part of the format the records themselves cannot validate.
     #[test]

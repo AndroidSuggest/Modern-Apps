@@ -37,6 +37,10 @@ pub mod gemma4_audio;
 pub mod gemma4_vision;
 pub mod mobilefacenet;
 pub mod maia;
+pub mod madlad;
+pub mod madlad_extra;
+pub mod madlad_extra2;
+pub mod madlad_part1;
 pub mod nllb;
 pub mod nllb_extra;
 pub mod nllb_extra2;
@@ -401,6 +405,15 @@ pub enum Kind {
     /// [`Kind::ConvPointInt8`] with a four-bit kernel and a per-block scale. See
     /// `shaders/conv_point_int4.comp`.
     ConvPointInt4,
+    /// [`Kind::ConvVecInt8`] with a GGUF Q2_K kernel and a per-superblock `(d, dmin)`
+    /// scale. See `shaders/conv_vec_q2k.comp`.
+    ConvVecQ2K,
+    /// [`Kind::ConvPointInt8`] with a GGUF Q2_K kernel and a per-superblock `(d, dmin)`
+    /// scale. See `shaders/conv_point_q2k.comp`.
+    ConvPointQ2K,
+    /// [`Kind::ConvInt8`] with a GGUF Q2_K kernel: the untiled lowering. See
+    /// `shaders/conv_q2k.comp`.
+    ConvQ2K,
     Embed,
     /// `out[i] = weights[i]`, a learned tensor copied into the arena.
     ///

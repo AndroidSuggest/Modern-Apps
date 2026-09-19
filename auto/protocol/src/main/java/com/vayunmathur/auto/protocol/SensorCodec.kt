@@ -211,10 +211,14 @@ data class SensorSnapshot(
     }
 }
 
-/** A classified inbound ch7 message. Anything else on the channel is [Observed]. */
+/** A classified inbound sensor-channel message. Anything else on the channel is [Observed]. */
 sealed interface InboundSensor {
-    /** The head unit answered a subscription (0x8002); [status] 0 means subscribed. */
-    data class Subscribed(val type: SensorType, val status: Int) : InboundSensor
+    /**
+     * The head unit answered a subscription (0x8002); [status] 0 means
+     * subscribed. The wire (`xnv`/`xow`) carries no sensor type -- the owner
+     * attributes answers FIFO in subscribe order (see [SensorCodec]).
+     */
+    data class Subscribed(val status: Int) : InboundSensor
 
     /** Streamed readings (0x8003); empty when the batch carried no events. */
     data class Readings(val events: List<SensorEvent>) : InboundSensor
@@ -245,9 +249,12 @@ sealed interface InboundSensor {
  *
  * Direction ground truth (auto/docs/FINDINGS.md section 2, the `rvb`
  * endpoint): `xnu` request fields are (1 sensor_type, 2 min_update_period).
- * Every other field number here is MA sender-defined -- the teardown never
- * recovered the `xnv`/`xnr`/`xns` layouts -- so exact-bytes tests pin OUR
- * numbering to catch an accidental renumber here, not at a DHU.
+ * The `xnv` response is a bare status (`xow`: field 1 only, no type echo --
+ * gearhead's `jcd.s` waits synchronously per subscribe, so answers need no
+ * attribution; batched senders match FIFO in send order). Every other field
+ * number here is MA sender-defined -- the teardown never recovered the
+ * `xnr`/`xns` layouts -- so exact-bytes tests pin OUR numbering to catch an
+ * accidental renumber here, not at a DHU.
  */
 object SensorCodec {
 
@@ -266,6 +273,15 @@ object SensorCodec {
      * cannot collide with anything the head unit sends.
      */
     const val TIMEOUT_STATUS = -1
+
+    /**
+     * Default subscribe period: gearhead's `jcd.s(xoz, long)` always writes
+     * `xov` field 2, and every mined subscribe call site (`jqs`, `sbl`)
+     * passes 0 (fastest rate; -1 is unsubscribe-only, see `rvp` and
+     * [GalMessage.Sensor.UNSUBSCRIBE_PERIOD]). Omitting field 2 earns
+     * STATUS_UNEXPECTED_MESSAGE on the DHU loopback.
+     */
+    const val DEFAULT_SUBSCRIBE_PERIOD_MS = 0L
 
     /**
      * The subscription set: all 26 `xny` types in dumper order. The name is
@@ -305,12 +321,17 @@ object SensorCodec {
     )
 
     /**
-     * Phone -> HU: subscribe to [type]. The period is omitted for the head
-     * unit's default rate -- only pass one to slow a chatty sensor down.
+     * Phone -> HU: subscribe to [type]. Field 2 is always written (gearhead's
+     * `jcd.s` unconditionally sets it; mined call sites pass 0): omitting it
+     * earns STATUS_UNEXPECTED_MESSAGE. Pass a positive value to slow a chatty
+     * sensor down, [GalMessage.Sensor.UNSUBSCRIBE_PERIOD] to unsubscribe.
      */
-    fun encodeSubscribe(type: SensorType, minPeriodMs: Long? = null): Pair<Int, ByteArray> {
+    fun encodeSubscribe(
+        type: SensorType,
+        minPeriodMs: Long = DEFAULT_SUBSCRIBE_PERIOD_MS,
+    ): Pair<Int, ByteArray> {
         val builder = SensorRequest.newBuilder().setSensorType(type)
-        if (minPeriodMs != null) builder.minUpdatePeriodMs = minPeriodMs
+        builder.minUpdatePeriodMs = minPeriodMs
         return GalMessage.Sensor.SENSOR_REQUEST to builder.build().toByteArray()
     }
 
@@ -338,8 +359,8 @@ object SensorCodec {
     fun decodeInbound(type: Int, payload: ByteArray): InboundSensor = when (type) {
         GalMessage.Sensor.SENSOR_RESPONSE -> runCatching { SensorResponse.parseFrom(payload) }
             .getOrNull()
-            ?.takeIf { it.isInitialized }
-            ?.let { InboundSensor.Subscribed(it.sensorType, if (it.hasStatus()) it.status else 0) }
+            ?.takeIf { it.hasStatus() }
+            ?.let { InboundSensor.Subscribed(it.status) }
             ?: InboundSensor.Observed(type)
         GalMessage.Sensor.SENSOR_BATCH -> runCatching { SensorBatch.parseFrom(payload) }
             .getOrNull()

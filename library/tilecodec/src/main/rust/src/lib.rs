@@ -24,7 +24,7 @@
 //!     and the root/leaf directory split.
 //!   * [`mamaps`] — the container the Vulkan renderer reads: geometry only,
 //!     pre-clipped, attributes interned to integers, flat little-endian structs.
-//!     **v7 only**: a 128-byte header, 12 layers, full bodies. Its writer is
+//!     **v8 only**: a 128-byte header, 9 layers, full bodies. Its writer is
 //!     behind the `write` feature, so Android links only the read half.
 //!
 //! Nothing here allocates a thread, opens a socket or touches a GPU. The reader the

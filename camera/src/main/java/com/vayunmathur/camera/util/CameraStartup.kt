@@ -1,6 +1,7 @@
 package com.vayunmathur.camera.util
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import android.util.Size
@@ -63,8 +64,28 @@ internal suspend fun CameraViewModel.loadThumbnail(uri: Uri?): Bitmap? = uri?.le
         try {
             app.contentResolver.loadThumbnail(it, Size(96, 96), null)
         } catch (e: Exception) {
-            Log.w("CameraViewModel", "Failed to load gallery thumbnail", e)
-            null
+            // SAF document URIs may not support loadThumbnail — decode directly.
+            Log.w("CameraViewModel", "loadThumbnail failed; trying stream decode", e)
+            try {
+                app.contentResolver.openInputStream(it)?.use { stream ->
+                    val bytes = stream.readBytes()
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    val sample = sampleSizeFor(bounds.outWidth, bounds.outHeight, 96)
+                    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                }
+            } catch (e2: Exception) {
+                Log.w("CameraViewModel", "Failed to load gallery thumbnail", e2)
+                null
+            }
         }
     }
+}
+
+private fun sampleSizeFor(width: Int, height: Int, maxSide: Int): Int {
+    if (width <= 0 || height <= 0) return 1
+    var sample = 1
+    while ((width / sample) > maxSide * 2 || (height / sample) > maxSide * 2) sample *= 2
+    return sample
 }

@@ -86,14 +86,32 @@ fun UserCard(user: User, locationValue: LocationValue?, showSupportingContent: B
                     // Home" would imply a precision and a freshness that isn't there, so it gets
                     // its own deliberately vaguer wording.
                     Text(
-                        if (locationValue?.source == LocationSource.NETWORK_SIGHTING) {
-                            stringResource(
+                        when (locationValue?.source) {
+                            LocationSource.NETWORK_SIGHTING -> stringResource(
                                 R.string.user_card_network_sighting,
                                 lastUpdatedTime,
                                 user.locationName
                             )
-                        } else {
-                            stringResource(
+                            // Parting report: timestamp = when the fix was measured, reportedAt =
+                            // the shutdown moment. Showing both keeps "last seen" truthful instead
+                            // of claiming the phone was at the pin when it switched off. Clears
+                            // on its own: the next LIVE heartbeat has a newer reportedAt and wins
+                            // getLatest() again.
+                            LocationSource.SHUTDOWN -> stringResource(
+                                R.string.user_card_shutdown,
+                                timestring(locationValue.reportedAt, false, context),
+                                lastUpdatedTime,
+                                user.locationName,
+                                sinceString
+                            )
+                            LocationSource.BATTERY_LOW -> stringResource(
+                                R.string.user_card_battery_low,
+                                timestring(locationValue.reportedAt, false, context),
+                                lastUpdatedTime,
+                                user.locationName,
+                                sinceString
+                            )
+                            else -> stringResource(
                                 R.string.user_card_status,
                                 lastUpdatedTime,
                                 user.locationName,

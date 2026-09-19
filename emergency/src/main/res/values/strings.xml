@@ -41,8 +41,16 @@
     <string name="fail_pick_owner">Could not read that contact.</string>
     <!-- Edit screen: blood-type row. Noun phrase. -->
     <string name="field_blood_type">Blood type</string>
+    <!-- Edit screen: "unknown" option in the blood-type dropdown. Adjective. -->
+    <string name="blood_type_unknown">Unknown</string>
     <!-- Edit screen: organ-donor row. Noun phrase. -->
     <string name="field_organ_donor">Organ donor</string>
+    <!-- Edit screen: "yes" option in the organ-donor dropdown. -->
+    <string name="organ_donor_yes">Yes</string>
+    <!-- Edit screen: "no" option in the organ-donor dropdown. -->
+    <string name="organ_donor_no">No</string>
+    <!-- Edit screen: "unknown" option in the organ-donor dropdown. Adjective. -->
+    <string name="organ_donor_unknown">Unknown</string>
     <!-- Edit screen: heading above the contact list. Noun phrase. -->
     <string name="section_emergency_contacts">Emergency contacts</string>
     <!-- Edit screen: row that opens the contact picker. Verb phrase. -->

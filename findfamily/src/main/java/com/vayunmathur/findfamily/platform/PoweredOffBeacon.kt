@@ -15,6 +15,7 @@ import com.vayunmathur.findfamily.tracker.PoweredOffRecovery
 import com.vayunmathur.findfamily.tracker.RecoveryDistribution
 import com.vayunmathur.findfamily.tracker.poweredOffGrantSigningBytes
 import com.vayunmathur.findfamily.util.Networking
+import com.vayunmathur.findfamily.util.registerPoweredOffEids
 import com.vayunmathur.findfamily.uwb.PoweredOffGrant
 import com.vayunmathur.findfamily.uwb.UwbEnvelope
 import com.vayunmathur.findfamily.uwb.UwbEnvelopeKind

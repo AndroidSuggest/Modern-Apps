@@ -57,23 +57,17 @@ import com.vayunmathur.health.data.ReferenceCatalog
 import com.vayunmathur.health.platform.MedicalViewModel
 import com.vayunmathur.health.platform.MedicalViewModelFactory
 import com.vayunmathur.health.platform.PersonalHealthRecords
-import com.vayunmathur.health.ui.AboutYouPage
 import com.vayunmathur.health.ui.AddAllergyPage
 import com.vayunmathur.health.ui.AddConditionPage
 import com.vayunmathur.health.ui.AddLabResultPage
 import com.vayunmathur.health.ui.AddMedicationPage
 import com.vayunmathur.health.ui.AddVaccinationPage
-import com.vayunmathur.health.ui.AllergiesPage
 import com.vayunmathur.health.ui.BarChartDetails
 import com.vayunmathur.health.ui.BodyPage
 import com.vayunmathur.health.ui.CatalogPickerPage
-import com.vayunmathur.health.ui.ConditionsPage
 import com.vayunmathur.health.ui.ExerciseDetailsPage
 import com.vayunmathur.health.ui.HealthMetricConfig
-import com.vayunmathur.health.ui.LabResultsPage
-import com.vayunmathur.health.ui.MedicationPage
-import com.vayunmathur.health.ui.RecordsPage
-import com.vayunmathur.health.ui.VaccinationsPage
+import com.vayunmathur.health.ui.MedicalPage
 
 import com.vayunmathur.health.ui.NutritionDetailsPage
 import com.vayunmathur.health.ui.NutritionPage
@@ -86,8 +80,7 @@ import com.vayunmathur.health.util.HealthSyncWorker
 import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.health.util.HealthViewModelFactory
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.IconHistory
-import com.vayunmathur.library.ui.IconMedication
+import com.vayunmathur.library.ui.IconMedicalServices
 import com.vayunmathur.library.ui.PermissionWall
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
@@ -246,25 +239,7 @@ sealed interface Route: NavKey {
     data object ExerciseDetails: Route
 
     @Serializable
-    data object Records: Route
-
-    @Serializable
-    data object Vaccinations: Route
-
-    @Serializable
-    data object Allergies: Route
-
-    @Serializable
-    data object Conditions: Route
-
-    @Serializable
-    data object LabResults: Route
-
-    @Serializable
-    data object AboutYou: Route
-
-    @Serializable
-    data object Medication: Route
+    data object Medical: Route
 
     /** The vaccination form. A null [id] adds a new record; otherwise it edits that one. */
     @Serializable
@@ -339,13 +314,9 @@ fun Navigation(viewModel: HealthViewModel, medicalViewModel: MedicalViewModel) {
                         Route.Body,
                     ) { IconBodySystem() },
                     com.vayunmathur.library.util.BottomBarItem(
-                        stringResource(R.string.nav_medication),
-                        Route.Medication,
-                    ) { IconMedication() },
-                    com.vayunmathur.library.util.BottomBarItem(
-                        stringResource(R.string.nav_records),
-                        Route.Records,
-                    ) { IconHistory() },
+                        stringResource(R.string.nav_medical),
+                        Route.Medical,
+                    ) { IconMedicalServices() },
                 ),
                 currentPage = backStack.last()
             )
@@ -378,30 +349,8 @@ fun Navigation(viewModel: HealthViewModel, medicalViewModel: MedicalViewModel) {
         entry<Route.ExerciseDetails>(metadata = MorphPage()) {
             ExerciseDetailsPage(backStack, viewModel)
         }
-        entry<Route.Records>(metadata = SiblingPage() + ListPage()) {
-            RecordsPage(backStack, medicalViewModel)
-        }
-        // Records is an index, not a tab peer: on a wide window its sub-lists sit in the
-        // detail pane, so the Records row stays put while vaccinations/allergies swap beside it.
-        entry<Route.Vaccinations>(metadata = ListDetailPage()) {
-            VaccinationsPage(backStack, medicalViewModel)
-        }
-        entry<Route.Allergies>(metadata = ListDetailPage()) {
-            AllergiesPage(backStack, medicalViewModel)
-        }
-        entry<Route.Conditions>(metadata = ListDetailPage()) {
-            ConditionsPage(backStack, medicalViewModel)
-        }
-        entry<Route.LabResults>(metadata = ListDetailPage()) {
-            LabResultsPage(backStack, medicalViewModel)
-        }
-        entry<Route.AboutYou>(metadata = ListDetailPage()) {
-            AboutYouPage(backStack, medicalViewModel)
-        }
-        // Medication is a bottom-bar tab, but its editor is a form over the list: detail pane
-        // keeps the two side by side on desktop rather than covering the log.
-        entry<Route.Medication>(metadata = SiblingPage() + ListPage()) {
-            MedicationPage(backStack, medicalViewModel)
+        entry<Route.Medical>(metadata = SiblingPage() + ListPage()) {
+            MedicalPage(backStack, medicalViewModel)
         }
         entry<Route.EditVaccination>(metadata = ListDetailPage()) {
             AddVaccinationPage(backStack, medicalViewModel)

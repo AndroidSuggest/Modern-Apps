@@ -4,7 +4,7 @@ use crate::mamaps::dict;
 /// A tile with one polygon carrying a hole and one road, which between them exercise every
 /// field the format has.
 fn sample() -> Body {
-    let mut water = Layer::new(dict::LAYER_WATER);
+    let mut water = Layer::new(dict::LAYER_LANDTYPE);
     water.features.push(Feature {
         kind: 4,
         kind_detail: dict::NONE,
@@ -61,7 +61,7 @@ fn a_body_round_trips_with_its_layers_in_id_order() {
     // Sorted on the way out, whatever order the caller assembled them in.
     assert_eq!(
         parsed.layers.iter().map(|l| l.layer_id).collect::<Vec<_>>(),
-        vec![dict::LAYER_WATER, dict::LAYER_ROADS],
+        vec![dict::LAYER_LANDTYPE, dict::LAYER_ROADS],
     );
     let expected = {
         let mut body = sample();
@@ -228,7 +228,7 @@ fn a_feature_indexing_parts_it_does_not_have_is_refused_by_the_encoder() {
 fn a_features_geometry_reads_back_through_the_part_table() {
     let bytes = serialize(&sample()).expect("serialize");
     let body = Body::parse(&bytes).expect("parse");
-    let water = body.layer(dict::LAYER_WATER).expect("water");
+    let water = body.layer(dict::LAYER_LANDTYPE).expect("water");
     let feature = &water.features[0];
     let parts = water.parts_of(feature);
     assert_eq!(parts.len(), 2);
@@ -284,7 +284,7 @@ fn an_empty_body_is_valid_and_is_what_an_ocean_tile_costs() {
 
 #[test]
 fn a_layer_with_no_features_still_round_trips() {
-    let body = Body { extent: DEFAULT_EXTENT, layers: vec![Layer::new(dict::LAYER_EARTH)], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None};
+    let body = Body { extent: DEFAULT_EXTENT, layers: vec![Layer::new(dict::LAYER_LANDTYPE)], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None};
     let parsed = Body::parse(&serialize(&body).expect("serialize")).expect("parse");
     assert_eq!(parsed, body);
 }
@@ -293,7 +293,7 @@ fn a_layer_with_no_features_still_round_trips() {
 fn a_body_carrying_two_layers_with_one_id_is_refused() {
     let body = Body {
         extent: DEFAULT_EXTENT,
-        layers: vec![Layer::new(dict::LAYER_WATER), Layer::new(dict::LAYER_WATER)],
+        layers: vec![Layer::new(dict::LAYER_LANDTYPE), Layer::new(dict::LAYER_LANDTYPE)],
         names: Vec::new(),
         ids: Vec::new(),
         turn_lanes: Vec::new(),

@@ -60,7 +60,7 @@ impl Header {
         self.flags & FLAG_RINGS_VALIDATED != 0
     }
 
-    /// This header's wire length: always 128 (v7 only).
+    /// This header's wire length: always 128 (v8 only).
     pub fn wire_len(&self) -> usize {
         HEADER_LEN
     }

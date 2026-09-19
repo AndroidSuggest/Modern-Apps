@@ -22,6 +22,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.emergency.R
 import com.vayunmathur.emergency.data.AllergyCriticality
 import com.vayunmathur.emergency.data.EmergencyInfo
+import com.vayunmathur.emergency.data.ORGAN_DONOR_NO
+import com.vayunmathur.emergency.data.ORGAN_DONOR_YES
+import com.vayunmathur.emergency.data.normalizeBloodType
+import com.vayunmathur.emergency.data.normalizeOrganDonor
 import com.vayunmathur.emergency.platform.EmergencyUiState
 import com.vayunmathur.emergency.platform.EmergencyViewModel
 import com.vayunmathur.library.ui.Card
@@ -201,7 +205,8 @@ private fun Segment(value: String, detail: String? = null, index: Int, count: In
 /**
  * Owner group rows: stored name/address when set. The group title already says
  * who this is, so rows carry just values (address keeps its detail line).
- * Blood type / organ donor stay out: those live on the medical side, not the identity.
+ * Blood type / organ donor join as extra cards under the identity when known;
+ * unknown (blank) stays hidden so a responder never reads a noise row.
  */
 @Composable
 private fun ownerRows(info: EmergencyInfo): List<Pair<String, String?>> {
@@ -209,5 +214,13 @@ private fun ownerRows(info: EmergencyInfo): List<Pair<String, String?>> {
     if (info.name.isNotBlank()) rows += info.name to null
     val addressLabel = stringResource(R.string.field_address)
     if (info.address.isNotBlank()) rows += info.address to addressLabel
+    val bloodLabel = stringResource(R.string.field_blood_type)
+    val blood = normalizeBloodType(info.bloodType)
+    if (blood.isNotBlank()) rows += blood to bloodLabel
+    val donorLabel = stringResource(R.string.field_organ_donor)
+    when (normalizeOrganDonor(info.organDonor)) {
+        ORGAN_DONOR_YES -> rows += stringResource(R.string.organ_donor_yes) to donorLabel
+        ORGAN_DONOR_NO -> rows += stringResource(R.string.organ_donor_no) to donorLabel
+    }
     return rows
 }

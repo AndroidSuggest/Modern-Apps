@@ -191,4 +191,10 @@ dependencies {
 
     // kotlinx.serialization — session/auth data persistence + serviceData blob.
     implementation(libs.kotlinx.serialization.json)
+
+    // Car templates (P-car-dock): AndroidX Car App Library, same pairing as
+    // :maps. Only pulled into the car code path (service/car/) — phone UI,
+    // sync services and crypto paths are untouched.
+    implementation(libs.androidx.car.app)
+    implementation(libs.androidx.car.app.projected)
 }

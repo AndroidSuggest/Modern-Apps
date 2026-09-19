@@ -26,6 +26,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.UserManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -115,6 +116,29 @@ class LocationTrackingService : Service(), SensorEventListener {
     internal var isMoving = false
     internal var lastMovementTime = 0L
     internal var lastKnownLocation: Location? = null
+
+    /**
+     * Monotonic timestamp (elapsedRealtime) of the last fix delivered by
+     * NETWORK_PROVIDER since the current request, or 0 if none has arrived yet.
+     * Stamped on *every* network fix, however coarse — absence of fixes, not bad
+     * accuracy, is what the no-lock watchdog watches for.
+     */
+    @Volatile
+    internal var lastNetworkFixElapsedMs = 0L
+
+    /**
+     * Monotonic timestamp (elapsedRealtime) of the last successful network-provider
+     * request in [setupLocationUpdates]. Reference point for the watchdog when no
+     * fix has ever arrived: without it a fresh request on a device that never had
+     * a fix would look "overdue" immediately.
+     */
+    @Volatile
+    internal var networkRequestElapsedMs = 0L
+
+    /** True while NETWORK_PROVIDER updates are currently requested. */
+    @Volatile
+    internal var networkRequested = false
+    private var networkWatchdogJob: Job? = null
     private var heartbeatJob: Job? = null
     private var trackingInitialized = false
 
@@ -154,6 +178,7 @@ class LocationTrackingService : Service(), SensorEventListener {
     internal var lastPoweredOffPollMs = 0L
 
     private val networkListener = LocationListener { location ->
+        lastNetworkFixElapsedMs = SystemClock.elapsedRealtime()
         recordFix(location)
         if (location.accuracy > 100f) {
             if (!isGpsRunning && isMoving) startGps()
@@ -398,16 +423,67 @@ class LocationTrackingService : Service(), SensorEventListener {
                     0f,
                     networkListener
                 )
+                networkRequested = true
+                // Fresh request, fresh deadline: a fix delivered to an earlier
+                // request must not make this one look overdue on arrival.
+                lastNetworkFixElapsedMs = 0L
+                networkRequestElapsedMs = SystemClock.elapsedRealtime()
             } catch (_: SecurityException) {
+                networkRequested = false
             } catch (_: IllegalArgumentException) {
+                networkRequested = false
             }
+            startNetworkNoLockWatchdog()
         } else {
             LocationProviderStatus.setUsingGpsFallback(true)
+            stopNetworkNoLockWatchdog()
             startGps()
         }
     }
 
+    /**
+     * Start GPS in parallel when NETWORK_PROVIDER is enabled but has not produced
+     * a fix for a while — indoors, in a Faraday-like building, or while the radio
+     * stack stalls, the network listener simply never fires and the old
+     * accuracy-based trigger never gets a chance to start GPS.
+     *
+     * The watchdog polls rather than posting a delayed callback so a stream of
+     * network fixes keeps pushing the deadline out instead of GPS firing once
+     * regardless: while any network fix arrives the assist stays off and costs
+     * nothing. Coarse fixes also reset the deadline — only *silence* triggers
+     * GPS. Once network delivers an accurate fix, the existing listener stops
+     * GPS again through its normal path.
+     */
+    internal fun startNetworkNoLockWatchdog() {
+        if (networkWatchdogJob?.isActive == true) return
+        networkWatchdogJob = serviceScope.launch {
+            while (isActive) {
+                delay(NETWORK_NO_LOCK_TIMEOUT_MS)
+                if (!isActive) break
+                // Stale evaluation guards: the watchdog only means something while
+                // network is still requested and the device is meant to be tracked.
+                if (!isMoving || !networkRequested) break
+                val lastFix = lastNetworkFixElapsedMs
+                val reference = if (lastFix != 0L) lastFix else networkRequestElapsedMs
+                if (reference == 0L) continue
+                if (SystemClock.elapsedRealtime() - reference < NETWORK_NO_LOCK_TIMEOUT_MS) continue
+                if (isGpsRunning) continue
+                Log.i(TAG_NETWORK_ASSIST, "no network fix for ${NETWORK_NO_LOCK_TIMEOUT_MS}ms, starting GPS in parallel")
+                withContext(Dispatchers.Main) {
+                    startGps()
+                }
+            }
+        }
+    }
+
+    internal fun stopNetworkNoLockWatchdog() {
+        networkWatchdogJob?.cancel()
+        networkWatchdogJob = null
+    }
+
     private fun stopTrackingUpdates() {
+        networkRequested = false
+        stopNetworkNoLockWatchdog()
         locationManager.removeUpdates(networkListener)
         stopGps()
     }
@@ -420,6 +496,17 @@ class LocationTrackingService : Service(), SensorEventListener {
         private const val NOTIFICATION_ID = 101
         internal const val TAG_DIRECT_BOOT = "FF-DirectBoot"
         internal const val TAG_POWERED_OFF = "FF-PoweredOff"
+        internal const val TAG_NETWORK_ASSIST = "FF-NetworkAssist"
+
+        /**
+         * How long NETWORK_PROVIDER may go without delivering any fix before GPS
+         * is started in parallel. Must exceed the normal network cadence (10s, 30s
+         * in power-save) with margin for radio stalls, but stay short enough that
+         * a device with no network lock still gets a position promptly. GPS is
+         * stopped again as soon as network produces an accurate fix; a GPS-only
+         * device (no network provider at all) never arms this path.
+         */
+        internal const val NETWORK_NO_LOCK_TIMEOUT_MS = 60_000L
 
         /** How often to drain powered-off sightings. See [LocationTrackingService.pollPoweredOffSightings]. */
         internal const val POWERED_OFF_POLL_INTERVAL_MS = 5 * 60 * 1000L

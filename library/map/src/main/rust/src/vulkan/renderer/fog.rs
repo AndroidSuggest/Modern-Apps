@@ -70,10 +70,13 @@ pub(crate) fn apply_fog(argb: u32, fog: u32, f: f32) -> u32 {
 /// Falls back to the background when the style names no `earth` layer, which keeps the old
 /// behaviour rather than inventing a colour. That never happens with the bundled style; the
 /// fallback is for a future style that drops the layer.
+///
+/// Since v8 the `earth` fill arm reads source `landtype` (matched by style id, because the
+/// source alone no longer names it).
 pub(crate) fn fog_color(layers: &[Layer], palette: Palette, zoom: f64) -> u32 {
     layers
         .iter()
-        .find(|l| l.source_layer_id == tilecodec::mamaps::dict::LAYER_EARTH)
+        .find(|l| l.id == "earth")
         .map(|earth| super::scale_alpha(earth.color(palette), earth.opacity_at(zoom)))
         .unwrap_or_else(|| crate::style::background(palette.variant))
 }

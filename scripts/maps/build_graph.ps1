@@ -18,44 +18,63 @@
 #       the app's router, departure boards and POI tags read)
 #   [7] header check via mamaps_dump on the FINAL $Out (rings_validated, 16 KiB
 #       prefix budget, build_id printed) + TIME/PER-ZOOM/PEAK-MEMORY summary,
-#       then delete every intermediate unless -Keep.
+#   then delete every intermediate (the temp dir is always removed on success).
 #
-# Nothing here is optional content: every input is mandatory and every build is
-# all 12 layers at z0-14. -Threads/-Keep/-Verify are
+# Nothing here is optional content except under -NoTransit: every input is
+# mandatory and every build is all 12 layers at z0-14. -Threads/-Verify are
 # operational (how), not content options -- there is no flag that skips
-# the coastline, the graph, transit, the DEM, a layer, or a zoom.
+# the coastline, the graph, the DEM, a layer, or a zoom. -NoTransit is the
+# one content exception: it skips every GTFS feed (empty transit-routes +
+# no --transit sidecar, as if 0 feeds).
+#
+# Spill backends: by default the feature spill, tile chunks and ways spill
+# stage as temp files beside the output. `MAPS_ANON_SPILL=1` stages them in
+# pagefile-backed anonymous memory instead — same bytes, no `.tmp` files,
+# nothing stranded on kill. The pagefile cap is then the bound, not free disk
+# (system-managed pagefile is what a world build wants); without it the preflight
+# below warns against a larger multiple.
 #
 # This folds in the old measure_build.ps1 (live progress + cost report) and the
 # old harden_mamaps.sh (header checks; its full 1/3/32-thread matrix lives on
 # as the -Verify spot-check, off by default because it doubles build time).
 #
 # Usage:
-#   .\build_graph.ps1 [-Region california|world] [-Keep] [-Verify] [-Threads N]
+#   .\build_graph.ps1 [-Region california|na|world|caonly] [-NoTransit] [-Verify] [-Threads N]
 #
 # -Region filters roads/POIs/buildings to the region's bbox. Everything else
 # (water, earth, boundaries, landuse, transit, traffic, DEM) is always
-# included regardless. The input is ALWAYS the planet: a california build is
+# included regardless. The input is ALWAYS the planet -- except caonly, which
+# takes inputs/california.osm.pbf directly with NO coordinate filtering
+# (downstream tools get --region world): a california build is
 # a world build with only CA roads/POIs/buildings, so borders, coastlines
 # and country names still render everywhere.
 #
 # Inputs are fixed (no file-location options):
-#   inputs/planet.osm.pbf -> inputs/california.mamaps | inputs/world.mamaps
-#   plus inputs/coastline.shp, inputs/world.transit, inputs/world.mdem.
+#   inputs/planet.osm.pbf -> inputs/california.mamaps | inputs/na.mamaps | inputs/world.mamaps
+#   inputs/california.osm.pbf -> inputs/caonly.mamaps (only with -Region caonly)
+#   plus inputs/coastline.shp, inputs/world.mdem.
+#   inputs/world.transit + world_transit_work/feeds.manifest are required
+#   unless -NoTransit is passed, which skips GTFS entirely (empty routes +
+#   no --transit sidecar, as if 0 feeds).
 #
 # Requires: cargo (https://rustup.rs). A state-sized extract needs roughly
-# 10 GB of RAM; any build wants ~6x the .pbf in free disk (checked up front).
+# 10 GB of RAM; any build wants ~6x the .pbf in free disk (checked up front),
+# or ~2x under MAPS_ANON_SPILL=1 (archive + sidecars only — the spills live
+# in the pagefile, so the pagefile cap is the bound instead).
 #[CmdletBinding()]
 param(
     # Which region to build: california filters roads/POIs/buildings to the
-    # California bbox, world builds everything. Everything else (water, earth,
-    # boundaries, landuse, transit, traffic, DEM) is always included.
-    [ValidateSet("california", "world")]
+    # California bbox, na to the North America bbox, world builds everything.
+    # Everything else (water, earth, boundaries, landuse, transit, traffic,
+    # DEM) is always included.
+    [ValidateSet("california", "na", "world", "caonly")]
     [string] $Region = "world",
+    # Skip every GTFS feed: no transit_shapes run, an empty transit-routes
+    # file for mamaps_build, and no --transit sidecar on the pack -- the
+    # archive builds as if 0 feeds existed.
+    [switch] $NoTransit,
     # Worker threads (via MAPS_THREADS). 0 = the tools' default (max).
     [int] $Threads = 0,
-    # Keep the temp workdir (graph bins, routes geojsonseq, logs) for debugging.
-    # By default every intermediate is deleted and only $Out remains.
-    [switch] $Keep,
     # Determinism spot-check: rebuild at 1 thread into temp and require a
     # byte-identical sha256. Off by default; it doubles the build.
     [switch] $Verify
@@ -66,12 +85,23 @@ $ErrorActionPreference = "Stop"
 # Fixed inputs -- no file-location options. ALWAYS the planet: a california
 # build keeps only CA roads/POIs/buildings but renders borders, coastlines
 # and country names everywhere, so it needs the whole world as input.
+# `na` is the same with the North America bbox.
 $Pbf = Join-Path $PSScriptRoot "inputs/planet.osm.pbf"
 if ($Region -eq "california") {
     $Out = Join-Path $PSScriptRoot "inputs/california.mamaps"
+} elseif ($Region -eq "na") {
+    $Out = Join-Path $PSScriptRoot "inputs/na.mamaps"
+} elseif ($Region -eq "caonly") {
+    # No coordinate filtering: the extract IS California, so downstream tools
+    # build it as world.
+    $Pbf = Join-Path $PSScriptRoot "inputs/california.osm.pbf"
+    $Out = Join-Path $PSScriptRoot "inputs/caonly.mamaps"
 } else {
     $Out = Join-Path $PSScriptRoot "inputs/world.mamaps"
 }
+# What --region the tools see. caonly builds unfiltered (world) from the
+# California extract; every other region passes through.
+$BuildRegion = if ($Region -eq "caonly") { "world" } else { $Region }
 $Coastline    = Join-Path $PSScriptRoot "inputs/coastline.shp"
 $WorldTransit = Join-Path $PSScriptRoot "inputs/world.transit"
 $Dem          = Join-Path $PSScriptRoot "inputs/world.mdem"
@@ -98,34 +128,46 @@ function Size([double] $b) {
 }
 
 # --- inputs -------------------------------------------------------------
-foreach ($pair in @(@($Pbf, "pbf"), @($Coastline, "coastline"), @($WorldTransit, "world.transit"), @($Dem, "dem"))) {
+# -NoTransit drops the GTFS inputs entirely (no world.transit, no manifest).
+$pairs = @(@($Pbf, "pbf"), @($Coastline, "coastline"), @($Dem, "dem"))
+if (-not $NoTransit) { $pairs += ,@($WorldTransit, "world.transit") }
+foreach ($pair in $pairs) {
     if (-not (Test-Path $pair[0])) { throw "$($pair[1]) not found: $($pair[0])" }
 }
 $Pbf        = (Resolve-Path $Pbf).Path
 $Coastline  = (Resolve-Path $Coastline).Path
-$WorldTransit = (Resolve-Path $WorldTransit).Path
 $Dem        = (Resolve-Path $Dem).Path
 $Out        = [System.IO.Path]::GetFullPath($Out)
-if (-not (Test-Path $TransitManifest)) { throw "transit manifest not found: $TransitManifest" }
-$TransitManifest = (Resolve-Path $TransitManifest).Path
+if (-not $NoTransit) {
+    $WorldTransit = (Resolve-Path $WorldTransit).Path
+    if (-not (Test-Path $TransitManifest)) { throw "transit manifest not found: $TransitManifest" }
+    $TransitManifest = (Resolve-Path $TransitManifest).Path
+} else {
+    $WorldTransit = $null
+    $TransitManifest = $null
+}
 
-# Three things are on disk at once at the deepest zoom: the feature spill, one
-# zoom's tile chunks and the archive being assembled. On north-america that is
-# about 29 + 23 + 17 GB against a 14 GB .pbf, so six times the source is the
-# rule of thumb -- and running out an hour into z14, after stage A has already
+# Two things are on disk at once at the deepest zoom: one zoom's tile chunks
+# (file backend only) and the archive being assembled — plus the feature spill
+# on the file path. On north-america that was about 29 + 23 + 17 GB against a
+# 14 GB .pbf, so six times the source is the rule of thumb. Under
+# MAPS_ANON_SPILL=1 the spills live in the pagefile, leaving the archive plus
+# sidecars (~2x), and running out an hour into z14, after stage A has already
 # been paid for, is the failure this warning exists to flag.
 #
-# It is a warning, not a hard stop: the 6x figure is a north-america-derived
-# upper estimate, and a build may well fit in less. Proceeding on a smaller disk
+# It is a warning, not a hard stop: the multiples are north-america-derived
+# upper estimates, and a build may well fit in less. Proceeding on a smaller disk
 # is allowed -- you accept the risk of a late z14 out-of-space.
 $pbfBytes = (Get-Item $Pbf).Length
-$wanted = $pbfBytes * 6
+$anon = ($env:MAPS_ANON_SPILL -eq "1") -or ($env:MAPS_ANON_SPILL -ieq "true") -or ($env:MAPS_ANON_SPILL -ieq "yes")
+$wanted = if ($anon) { $pbfBytes * 2 } else { $pbfBytes * 6 }
 $root = [System.IO.Path]::GetPathRoot($Out)
 $free = (New-Object System.IO.DriveInfo $root).AvailableFreeSpace
 if ($free -lt $wanted) {
+    $what = if ($anon) { "(archive + sidecars; spills are in the pagefile - check its cap too)" } else { "(feature spill + one zoom's tile chunks + the archive)" }
     Write-Warning (("{0} has {1:N1} GB free; this build may want up to about {2:N1} GB " -f `
             $root, ($free / 1GB), ($wanted / 1GB)) +
-          "(feature spill + one zoom's tile chunks + the archive). Proceeding anyway -- " +
+          "$what. Proceeding anyway -- " +
           "a large planet run could still hit an out-of-space at z14.")
 }
 
@@ -159,7 +201,9 @@ Remove-Item Env:MAPS_PREFETCH_LANES -ErrorAction SilentlyContinue
 # mamaps_build share osm_ingest, one pool, and one blob scan via the graph's
 # sidecar. transit_shapes stays separate (it reads GTFS, not the PBF).
 Write-Host "[1/7] Building the host tools ($Region)"
-foreach ($crate in @(@("osm_ingest", "road_graph"), @("osm_ingest", "poi_extract"), @("gtfs_ingest", "transit_shapes"), @("mamaps_build", "mamaps_build"))) {
+$crates = @(@("osm_ingest", "road_graph"), @("osm_ingest", "poi_extract"), @("mamaps_build", "mamaps_build"))
+if (-not $NoTransit) { $crates += ,@("gtfs_ingest", "transit_shapes") }
+foreach ($crate in $crates) {
     cargo build --release --manifest-path (Join-Path $PSScriptRoot "$($crate[0])\Cargo.toml") --bin $($crate[1])
     if ($LASTEXITCODE -ne 0) { throw "cargo build $($crate[0])/$($crate[1]) failed with exit code $LASTEXITCODE" }
 }
@@ -169,7 +213,7 @@ foreach ($bin in @("mamaps_dump", "mamaps_pack")) {
 }
 $roadGraph  = Find-Built "osm_ingest" "road_graph"
 $poiExtract = Find-Built "osm_ingest" "poi_extract"
-$shapes     = Find-Built "gtfs_ingest" "transit_shapes"
+if (-not $NoTransit) { $shapes = Find-Built "gtfs_ingest" "transit_shapes" } else { $shapes = $null }
 $build      = Find-Built "mamaps_build" "mamaps_build"
 $dump       = Find-Built "tile_build" "mamaps_dump"
 $pack       = Find-Built "tile_build" "mamaps_pack"
@@ -180,7 +224,8 @@ $pack       = Find-Built "tile_build" "mamaps_pack"
 # with the tiles. mamaps_build re-validates the dir before stage A — an empty
 # or stale graph used to cost 43 minutes of stage A before failing.
 Write-Host "[2/7] Building the routing graph ($Region) -> $graphDir"
-& $roadGraph $Pbf --out $graphDir --region $Region
+# caonly passes world: the extract IS California, so no bbox filtering.
+& $roadGraph $Pbf --out $graphDir --region $BuildRegion
 if ($LASTEXITCODE -ne 0) { throw "road_graph failed with exit code $LASTEXITCODE" }
 # Fail HERE, not 43 minutes into stage A: the world build died on a missing
 # metadata.bin after paying the whole of stage A first.
@@ -189,6 +234,11 @@ if (-not (Test-Path (Join-Path $graphDir "metadata.bin"))) {
 }
 
 # --- [3/7] transit routes from the world-transit feeds --------------------
+# -NoTransit skips every feed: an empty routes file, as if 0 feeds existed.
+if ($NoTransit) {
+    Write-Host "[3/7] NoTransit: skipping all GTFS feeds (empty transit-routes)"
+    [System.IO.File]::WriteAllText($routes, "")
+} else {
 Write-Host "[3/7] Deriving transit routes from $TransitManifest"
 $manifestDir = Split-Path $TransitManifest -Parent
 # build_world_transit.sh runs under WSL and writes absolute /mnt/<drive>/... feed
@@ -219,19 +269,22 @@ if (-not $resolvedLines -or $resolvedLines.Count -eq 0) { throw "no usable feeds
 [System.IO.File]::WriteAllLines((Join-Path $tmp "feeds.resolved.manifest"), $resolvedLines)
 & $shapes $routes --manifest (Join-Path $tmp "feeds.resolved.manifest")
 if ($LASTEXITCODE -ne 0) { throw "transit_shapes failed with exit code $LASTEXITCODE" }
+}
 
 # --- [4/7] the tiles-only archive (temp) ----------------------------------
-# Started before the build, so the first spike cannot be missed.
+# Started before the build, so the first spike cannot be missed. Under
+# MAPS_ANON_SPILL the feature spill has no file: the sampler then tracks only
+# the process high-water (commit charge is visible in the OS, not in a path).
 $spill = [System.IO.Path]::ChangeExtension($tilesTmp, "features.tmp")
-$sampler = Start-Job -ArgumentList "mamaps_build", $spill -ScriptBlock {
-    param($name, $spill)
+$sampler = Start-Job -ArgumentList "mamaps_build", $spill, $anon -ScriptBlock {
+    param($name, $spill, $anon)
     $peakWs = 0L; $peakSpill = 0L
     while ($true) {
         $p = Get-Process -Name $name -ErrorAction SilentlyContinue
         if ($p) {
             $peakWs = [Math]::Max($peakWs, ($p | Measure-Object PeakWorkingSet64 -Maximum).Maximum)
         }
-        if (Test-Path $spill) {
+        if (-not $anon -and (Test-Path $spill)) {
             $len = (Get-Item $spill -ErrorAction SilentlyContinue).Length
             if ($len -gt $peakSpill) { $peakSpill = $len }
         }
@@ -250,7 +303,7 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
     --graph $graphDir `
     --transit-routes $routes `
     --dem $Dem `
-    --region $Region | Tee-Object -FilePath $log
+    --region $BuildRegion | Tee-Object -FilePath $log
 $exit = $LASTEXITCODE
 $sw.Stop()
 
@@ -278,7 +331,7 @@ New-Item -ItemType Directory -Force -Path $poiDir | Out-Null
     --geojson (Join-Path $poiDir "poi.geojsonseq") `
     --names (Join-Path $poiDir "poi_names.bin") `
     --index (Join-Path $poiDir "poi_index.bin") `
-    --region $Region
+    --region $BuildRegion
 if ($LASTEXITCODE -ne 0) { throw "poi_extract failed with exit code $LASTEXITCODE" }
 
 # --- [6/7] pack the sidecars onto the tiles archive -> FINAL $Out ----------
@@ -286,7 +339,11 @@ if ($LASTEXITCODE -ne 0) { throw "poi_extract failed with exit code $LASTEXITCOD
 # sections the app's router, departure boards and POI tags need are appended
 # here. This is the step that turns a tiles-only archive into a complete pack.
 Write-Host "[6/7] Packing graph + POI + transit sidecars -> $(Split-Path $Out -Leaf)"
-& $pack --tiles $tilesTmp --graph $graphDir --poi $poiDir --transit $WorldTransit --out $Out
+if ($NoTransit) {
+    & $pack --tiles $tilesTmp --graph $graphDir --poi $poiDir --out $Out
+} else {
+    & $pack --tiles $tilesTmp --graph $graphDir --poi $poiDir --transit $WorldTransit --out $Out
+}
 if ($LASTEXITCODE -ne 0) { throw "mamaps_pack failed with exit code $LASTEXITCODE" }
 
 # --- [7/7] header check + report ------------------------------------------
@@ -336,9 +393,13 @@ if ($Verify) {
         --graph $graphDir `
         --transit-routes $routes `
         --dem $Dem `
-        --region $Region | Tee-Object -FilePath (Join-Path $tmp "verify.log") | Out-Null
+        --region $BuildRegion | Tee-Object -FilePath (Join-Path $tmp "verify.log") | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "verify rebuild failed with exit code $LASTEXITCODE" }
-    & $pack --tiles $verifyTiles --graph $graphDir --poi $poiDir --transit $WorldTransit --out $verifyOut
+    if ($NoTransit) {
+        & $pack --tiles $verifyTiles --graph $graphDir --poi $poiDir --out $verifyOut
+    } else {
+        & $pack --tiles $verifyTiles --graph $graphDir --poi $poiDir --transit $WorldTransit --out $verifyOut
+    }
     if ($LASTEXITCODE -ne 0) { throw "verify pack failed with exit code $LASTEXITCODE" }
     $vsha = (Get-FileHash $verifyOut -Algorithm SHA256).Hash
     if ($vsha -ne $sha) { throw "determinism FAIL: 1-thread rebuild differs ($vsha vs $sha)" }
@@ -377,16 +438,18 @@ foreach ($z in $zooms) {
 Write-Host ""
 Write-Host "PEAK MEMORY"
 Write-Host ("  {0,-24} {1}   kernel high-water, cannot be missed" -f "resident", (Size $peakWs))
-Write-Host ("  {0,-24} {1}   scratch, deleted" -f "feature spill, peak", (Size $peakSpill))
+if ($anon) {
+    Write-Host ("  {0,-24} {1}   anon spill: no file; commit charge is in the pagefile" -f "feature spill, peak", "n/a")
+} else {
+    Write-Host ("  {0,-24} {1}   scratch, deleted" -f "feature spill, peak", (Size $peakSpill))
+}
 Write-Host ""
 Write-Host ("  archive           {0}   {1}" -f (Size $archive), $Out)
 Write-Host ("  build id          {0,14}" -f $h["build_id"])
 Write-Host ("  sha256            {0}" -f $sha)
 
-if ($Keep) {
-    Write-Host ""
-    Write-Host "  (temp kept at $tmp)"
-} else {
-    Remove-Item $tmp -Recurse -Force
-}
+# Temp is always removed on success now (no -Keep): the graph/POI/routes/tiles
+# intermediates are reproducible from the inputs, and anon spills vanish with
+# the process. A failed build keeps $tmp as evidence (see the FAILED branch).
+Remove-Item $tmp -Recurse -Force
 Write-Host ""

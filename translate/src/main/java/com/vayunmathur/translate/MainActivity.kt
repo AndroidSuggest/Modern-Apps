@@ -11,6 +11,7 @@ import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.util.DataStoreUtils
+import com.vayunmathur.translate.platform.MadladModel
 import com.vayunmathur.translate.platform.NllbModel
 import com.vayunmathur.translate.platform.TranslateViewModel
 
@@ -25,6 +26,9 @@ class MainActivity : ComponentActivity() {
         val ds = DataStoreUtils.getInstance(this)
         setContent {
             DynamicTheme {
+                // NLLB only: MADLAD's files are skipped so the app does not download ~1 GB
+                // it cannot yet use (Q2_K decode is too slow on-device — see the bring-up
+                // notes). Re-add `+ MadladModel.FILES` when the engine selector lands.
                 InitialModelDownloadChecker(ds, NllbModel.FILES) {
                     Navigation(viewModel, initialText)
                 }

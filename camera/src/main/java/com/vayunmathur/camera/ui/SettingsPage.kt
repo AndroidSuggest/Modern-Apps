@@ -1,13 +1,20 @@
 package com.vayunmathur.camera.ui
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.DropdownMenu
@@ -29,16 +36,23 @@ import com.vayunmathur.camera.R
 import com.vayunmathur.camera.util.AudioInputSource
 import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.camera.util.CodecSupport
+import com.vayunmathur.camera.util.SafDocuments
+import com.vayunmathur.camera.util.SaveTarget
 import com.vayunmathur.camera.util.VideoCodec
+import com.vayunmathur.camera.util.clearSaveTreeUri
 import com.vayunmathur.camera.util.setAudioInputSource
 import com.vayunmathur.camera.util.setLocationEnabled
 import com.vayunmathur.camera.util.setMirrorFront
+import com.vayunmathur.camera.util.setSaveTreeUri
 import com.vayunmathur.camera.util.setVideoCodec
 import com.vayunmathur.camera.util.updateLocation
 import com.vayunmathur.library.ui.IconArrowDropDown
 import com.vayunmathur.library.ui.IconCheck
+import com.vayunmathur.library.ui.IconFolder
 import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.SelectableDropdownMenuItem
+import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.library.ui.rememberPermissionRequest
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.NavBackStack
@@ -50,12 +64,36 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
     val videoCodec by viewModel.videoCodec.collectAsState()
     val audioInputSource by viewModel.audioInputSource.collectAsState()
     val mirrorFront by viewModel.mirrorFront.collectAsState()
+    val saveTarget by viewModel.saveTarget.collectAsState()
+    val context = LocalContext.current
+    val messenger = rememberMessenger()
+    val saveLocationError = stringResource(R.string.settings_save_location_error)
 
     val requestLocation = rememberPermissionRequest(
         Manifest.permission.ACCESS_FINE_LOCATION
     ) { granted ->
         viewModel.setLocationEnabled(granted)
         if (granted) viewModel.updateLocation()
+    }
+
+    // ACTION_OPEN_DOCUMENT_TREE via a hand-built intent: the stock
+    // OpenDocumentTree contract doesn't set FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+    // which we need to keep the folder across restarts.
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val treeUri: Uri? = result.data?.data
+        if (result.resultCode == android.app.Activity.RESULT_OK && treeUri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+                viewModel.setSaveTreeUri(treeUri)
+            } catch (e: Exception) {
+                messenger.show(saveLocationError)
+            }
+        }
     }
 
     AppScaffold(
@@ -69,6 +107,23 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
+            SaveLocationSection(
+                saveTarget = saveTarget,
+                onChooseFolder = {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                        addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+                        )
+                    }
+                    runCatching { folderPicker.launch(intent) }
+                        .onFailure {
+                            messenger.show(saveLocationError)
+                        }
+                },
+                onReset = { viewModel.clearSaveTreeUri() },
+            )
             val availableCodecs = remember {
                 buildList {
                     add(VideoCodec.AVC)
@@ -196,6 +251,64 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
                         }
                     },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SaveLocationSection(
+    saveTarget: SaveTarget,
+    onChooseFolder: () -> Unit,
+    onReset: () -> Unit,
+) {
+    val context = LocalContext.current
+    var folderName by remember { mutableStateOf<String?>(null) }
+    val treeUri = (saveTarget as? SaveTarget.SafTree)?.treeUri
+    LaunchedEffect(treeUri) {
+        folderName = treeUri?.let {
+            runCatching {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    SafDocuments.displayName(context.contentResolver, it)
+                }
+            }.getOrNull()
+        }
+    }
+    SettingsSection(title = stringResource(R.string.settings_save_location)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                IconFolder()
+                Text(
+                    folderName ?: stringResource(R.string.settings_save_location_default),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp),
+                    maxLines = 1,
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = onChooseFolder,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 4.dp),
+                ) {
+                    Text(stringResource(R.string.settings_save_location_choose))
+                }
+                TextButton(
+                    onClick = onReset,
+                    enabled = treeUri != null,
+                    modifier = Modifier.padding(start = 4.dp),
+                ) {
+                    Text(stringResource(R.string.settings_save_location_reset))
+                }
             }
         }
     }

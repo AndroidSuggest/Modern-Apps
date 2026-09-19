@@ -32,8 +32,8 @@ import kotlin.math.roundToInt
 /**
  * The vector map.
  *
- * Renders the planet-scale v7 single-file `planet.mamaps` archive
- * (`data.vayunmathur.com/planet.mamaps`: 12 layers, 128-byte header) with our own
+ * Renders the planet-scale v8 single-file `planet.mamaps` archive
+ * (`data.vayunmathur.com/planet.mamaps`: 9 layers, 128-byte header) with our own
  * Vulkan renderer. No third-party tile CDN and no API key, which is the whole point:
  * watermarked, and that broke the basemap in five apps (#615).
  *

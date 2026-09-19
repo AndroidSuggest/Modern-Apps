@@ -144,3 +144,10 @@ private fun AllergyCriticality.selectorLabelRes() = when (this) {
     AllergyCriticality.High -> R.string.allergy_criticality_high
     AllergyCriticality.Unknown -> R.string.allergy_criticality_unknown
 }
+
+internal fun com.vayunmathur.health.data.AllergyCategory.labelRes() = when (this) {
+    com.vayunmathur.health.data.AllergyCategory.Medication -> R.string.allergy_category_medication
+    com.vayunmathur.health.data.AllergyCategory.Food -> R.string.allergy_category_food
+    com.vayunmathur.health.data.AllergyCategory.Environment -> R.string.allergy_category_environment
+    com.vayunmathur.health.data.AllergyCategory.Biologic -> R.string.allergy_category_biologic
+}

@@ -1,11 +1,9 @@
 package com.vayunmathur.camera.util
 
-import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.video.FileOutputOptions
-import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
@@ -51,12 +49,14 @@ fun CameraViewModel.toggleHighSpeedRecording() {
 internal fun CameraViewModel.startHighSpeedRecording() {
     val videoCapture = highSpeedVideoCapture ?: return
 
-    val contentValues = MediaStoreSaver.videoValues("SLOMO_${MediaStoreSaver.timestamp()}")
+    val timestamp = MediaStoreSaver.timestamp()
+    val displayName = "SLOMO_$timestamp"
 
-    val outputOptions = MediaStoreOutputOptions.Builder(
-        app.contentResolver,
-        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-    ).setContentValues(contentValues).build()
+    // Stage in cache so the finalize step can copy to MediaStore or the SAF
+    // folder through one shared path (direct MediaStoreOutputOptions can't
+    // target a SAF tree).
+    val cacheFile = java.io.File(app.cacheDir, "${displayName}.mp4")
+    val outputOptions = FileOutputOptions.Builder(cacheFile).build()
 
     startRecordingTimer()
 
@@ -69,9 +69,15 @@ internal fun CameraViewModel.startHighSpeedRecording() {
                 stopRecordingTimer()
                 if (event.hasError()) {
                     Log.e("SloMo", "Recording error: ${event.error} - ${event.cause?.message}")
+                    cacheFile.delete()
                 } else {
                     Log.d("SloMo", "High-speed recording saved: ${event.outputResults.outputUri}")
-                    setLastCaptureUri(event.outputResults.outputUri)
+                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        if (cacheFile.exists()) {
+                            saveVideoStaged(displayName, cacheFile)?.let { setLastCaptureUri(it) }
+                            cacheFile.delete()
+                        }
+                    }
                 }
             }
         }
@@ -122,7 +128,7 @@ internal fun CameraViewModel.startRecording() {
         CameraMode.CINEMATIC -> "CINE"
         else -> "VID"
     }
-    val contentValues = MediaStoreSaver.videoValues("${prefix}_$timestamp")
+    val displayName = "${prefix}_$timestamp"
 
     val cacheFile = java.io.File(app.cacheDir, "VID_$timestamp.mp4")
     val outputOptions = FileOutputOptions.Builder(cacheFile).build()
@@ -157,7 +163,7 @@ internal fun CameraViewModel.startRecording() {
                     }
                     else -> cacheFile
                 }
-                MediaStoreSaver.saveVideoFile(app.contentResolver, contentValues, fileToSave)?.let {
+                saveVideoStaged(displayName, fileToSave)?.let {
                     setLastCaptureUri(it)
                 }
                 fileToSave.delete()
@@ -207,25 +213,19 @@ fun CameraViewModel.toggleMicMuted() {
  */
 fun CameraViewModel.captureVideoSnapshot() {
     val capture = imageCapture ?: return
-    val contentValues = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
-    val metadata = ImageCapture.Metadata().apply {
-        if (_locationEnabled.value) location = lastLocation
-        isReversedHorizontal = mirrorCaptures
-    }
-    val outputOptions = ImageCapture.OutputFileOptions.Builder(
-        app.contentResolver,
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-        contentValues
-    ).setMetadata(metadata).build()
+    val pending = prepareStillSave("IMG_${MediaStoreSaver.timestamp()}.jpg") ?: return
+    val outputOptions = pending.outputOptions
     capture.takePicture(
         outputOptions,
         ContextCompat.getMainExecutor(app),
         object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                outputFileResults.savedUri?.let { setLastCaptureUri(it) }
+                pending.closeStream()
+                pending.resolveUri(outputFileResults)?.let { setLastCaptureUri(it) }
             }
             override fun onError(exception: ImageCaptureException) {
                 Log.e("CameraViewModel", "Video snapshot failed", exception)
+                pending.closeStream()
             }
         }
     )
@@ -250,9 +250,10 @@ internal fun CameraViewModel.finishPanoramaSweep() {
         } else {
             val (jpeg, info) = result
             android.util.Log.i("CameraViewModel", "Panorama stitched ${jpeg.size} bytes, saving")
-            val uri = panoramaEngine.saveToMediaStore(jpeg, info)
+            val uri = panoramaEngine.saveToMediaStore(jpeg, info, _saveTarget.value)
             if (uri != null) {
                 android.util.Log.i("CameraViewModel", "Panorama saved uri=$uri")
+                scanSafDoc(uri)
                 setLastCaptureUri(uri)
             } else {
                 android.util.Log.e("CameraViewModel", "Panorama MediaStore save returned null")

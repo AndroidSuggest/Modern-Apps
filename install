@@ -11,6 +11,7 @@ Usage:
   ./install <module> [module...]            # defaults to dev
   ./install [dev|release] all               # installs all app modules
   ./install all                             # same, defaults to dev
+  ./install [dev|release] [8|9] <module>    # Pixel 8 or Pixel 9 (by model)
 
 Description:
   Ergonomic wrapper around ./gradlew :module:assembleDev + adb session install.
@@ -20,6 +21,8 @@ Description:
   - Supports personal shorthand: ./install dooraccess -> personal:dooraccess (auto-prefixed if personal/<name> is a personal app)
   - Supports "all" keyword: ./install all -> installs every app module
   - Supports multiple modules in one call (single gradlew invocation)
+  - 8|9 selects the Pixel 8 or Pixel 9 by model (optional; defaults to the
+    first non-emulator device). Also accepts --device 8|9 / --device=8|9.
   - Installs via adb package sessions with the .idsig sidecar staged, so
     updates to preinstalled MAOS system apps get fs-verity (plain
     installDev/installRelease and `adb install` never stage it and always fail
@@ -40,6 +43,8 @@ Examples:
   ./install contacts calendar               -> :contacts:assembleDev :calendar:assembleDev
   ./install release contacts                -> :contacts:assembleRelease + session install
   ./install contacts dev                    -> :contacts:assembleDev (variant anywhere)
+  ./install 9 maps                        -> :maps:assembleDev + session install to the Pixel 9
+  ./install dev 8 maps                    -> :maps:assembleDev + session install to the Pixel 8
   ./install --help
   ./install --dry-run dev contacts          # prints what would run without executing gradle
   ./install --dry-run all                   # preview all modules
@@ -53,6 +58,7 @@ Notes:
   - NEVER uninstalls an app (no uninstall tasks)
   - Validates modules against app modules (those applying common-conventions-app)
   - Installs to the first connected device whose serial does not start with 'emulator'
+    (unless 8|9 selects the Pixel 8 or Pixel 9)
   - Set INSTALL_DRY_RUN=1 or pass --dry-run for dry-run mode
 
 EOF
@@ -167,6 +173,42 @@ if [[ ${#FILTERED_ARGS[@]} -eq 0 ]]; then
   echo ""
   echo "Error: No modules specified (dry-run mode)."
   print_valid_modules
+  exit 1
+fi
+
+# --- Device hint: bare 8|9 anywhere, or --device 8|9 / --device=8|9 (optional) ---
+DEVICE_HINT=""
+PRESCAN_ARGS=()
+idx=0
+while [[ $idx -lt ${#FILTERED_ARGS[@]} ]]; do
+  arg="${FILTERED_ARGS[$idx]}"
+  lc="$(echo "$arg" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$lc" == "--device" ]]; then
+    if [[ $((idx + 1)) -ge ${#FILTERED_ARGS[@]} ]]; then
+      echo "Error: --device requires a value: 8 (Pixel 8) or 9 (Pixel 9)."
+      exit 1
+    fi
+    DEVICE_HINT="$(echo "${FILTERED_ARGS[$((idx + 1))]}" | tr '[:upper:]' '[:lower:]')"
+    idx=$((idx + 2))
+    continue
+  elif [[ "$lc" == --device=* ]]; then
+    DEVICE_HINT="${lc#--device=}"
+    idx=$((idx + 1))
+    continue
+  elif [[ "$lc" == "8" || "$lc" == "9" ]]; then
+    DEVICE_HINT="$lc"
+    idx=$((idx + 1))
+    continue
+  elif [[ "$lc" =~ ^[0-9]+$ ]]; then
+    echo "Error: Invalid device '$arg'. Use 8 (Pixel 8) or 9 (Pixel 9)."
+    exit 1
+  fi
+  PRESCAN_ARGS+=("$arg")
+  idx=$((idx + 1))
+done
+FILTERED_ARGS=("${PRESCAN_ARGS[@]}")
+if [[ -n "$DEVICE_HINT" && "$DEVICE_HINT" != "8" && "$DEVICE_HINT" != "9" ]]; then
+  echo "Error: Invalid device '$DEVICE_HINT'. Use 8 (Pixel 8) or 9 (Pixel 9)."
   exit 1
 fi
 
@@ -393,12 +435,28 @@ fi
 
 TARGET_SERIAL=""
 if [[ -n "$ADB_BIN" ]]; then
-  while read -r dev_serial dev_state _; do
+  # hint '' = first non-emulator device; '8' = model Pixel_8;
+  # '9' = model Pixel_9* (covers Pixel_9 and Pixel_9_Pro_XL).
+  while read -r dev_line; do
+    dev_serial="$(echo "$dev_line" | awk '{print $1}')"
+    dev_state="$(echo "$dev_line" | awk '{print $2}')"
     [[ "$dev_state" == "device" ]] || continue
     case "$dev_serial" in emulator*) continue;; esac
-    TARGET_SERIAL="$dev_serial"
-    break
-  done < <("$ADB_BIN" devices 2>/dev/null)
+    case "$dev_serial" in "List"*) continue;; esac
+    if [[ -z "$DEVICE_HINT" ]]; then
+      TARGET_SERIAL="$dev_serial"
+      break
+    fi
+    dev_model="$(echo "$dev_line" | sed -nE 's/.*model:([^[:space:]]+).*/\1/p')"
+    if [[ "$DEVICE_HINT" == "8" && "$dev_model" == "Pixel_8" ]]; then
+      TARGET_SERIAL="$dev_serial"
+      break
+    fi
+    if [[ "$DEVICE_HINT" == "9" && "$dev_model" == Pixel_9* ]]; then
+      TARGET_SERIAL="$dev_serial"
+      break
+    fi
+  done < <("$ADB_BIN" devices -l 2>/dev/null)
 fi
 
 if [[ -z "$ADB_BIN" ]]; then
@@ -411,7 +469,14 @@ if [[ -z "$ADB_BIN" ]]; then
   fi
 elif [[ -n "$TARGET_SERIAL" ]]; then
   export ANDROID_SERIAL="$TARGET_SERIAL"
-  echo "Target device: $ANDROID_SERIAL (first connected device not starting with 'emulator')"
+  if [[ -n "$DEVICE_HINT" ]]; then
+    echo "Target device: $ANDROID_SERIAL (Pixel $DEVICE_HINT)"
+  else
+    echo "Target device: $ANDROID_SERIAL (first connected device not starting with 'emulator')"
+  fi
+elif [[ -n "$DEVICE_HINT" ]]; then
+  echo "Error: No connected Pixel $DEVICE_HINT found (check 'adb devices')."
+  exit 1
 elif [[ $DRY_RUN -eq 1 ]]; then
   echo "[DRY-RUN] Warning: no non-emulator device connected; ANDROID_SERIAL not set."
 else

@@ -47,8 +47,7 @@ mod tests {
             deep.push(feature.class.kind);
         }
         assert_eq!(deep, full, "at the deepest zoom nothing is skipped");
-        let _ = std::fs::remove_file(&path);
-    }
+            }
 
     use super::*;
     use crate::schema;
@@ -72,7 +71,7 @@ mod tests {
         assert_eq!(unpack(pack(&class).expect("pack")), class);
 
         // And the zero case, which is most features.
-        let plain = Class::line(dict::LAYER_WATER, 1, 0);
+        let plain = Class::line(dict::LAYER_LANDTYPE, 1, 0);
         assert_eq!(unpack(pack(&plain).expect("pack")), plain);
     }
 
@@ -189,7 +188,7 @@ mod tests {
             (-120.0, 36.0),
             (-120.0, 35.0),
         ]];
-        let lake = Class::area(dict::LAYER_WATER, schema::kind("lake"), 6);
+        let lake = Class::area(dict::LAYER_LANDTYPE, schema::kind("lake"), 6);
         let road = Class::line(dict::LAYER_ROADS, schema::kind("highway"), 3);
         sink.push(&lake, &Geometry::Polygons(vec![square.clone()])).expect("push");
         sink.push(&road, &Geometry::Lines(vec![vec![(-120.0, 35.0), (-119.5, 35.5)]]))
@@ -212,15 +211,14 @@ mod tests {
         // Re-readable, because the tiler reads it once per zoom.
         let mut again = store.reader().expect("reader");
         assert_eq!(again.next().expect("read").expect("a feature").class, lake);
-        let _ = std::fs::remove_file(&path);
-    }
+            }
 
     /// Ids, classes and refs all come back exactly, in the order they went in. The one thing the
     /// ways spill has to guarantee, because the archive's feature order is this file's record order.
     #[test]
     fn spilled_ways_come_back_in_the_order_and_with_the_refs_they_went_in_with() {
         let path = temp("ways_roundtrip");
-        let lake = Class::area(dict::LAYER_WATER, schema::kind("lake"), 6);
+        let lake = Class::area(dict::LAYER_LANDTYPE, schema::kind("lake"), 6);
         let road = Class::line(dict::LAYER_ROADS, schema::kind("highway"), 3);
         // Refs chosen to exercise the delta coding: a large first id, a run of neighbours, a jump
         // backwards, and a way with none at all.
@@ -263,8 +261,71 @@ mod tests {
         }
         assert!(reader.next(&mut refs).expect("read").is_none(), "and then the end");
         assert!(refs.is_empty(), "the caller's buffer is cleared even at the end");
-        let _ = std::fs::remove_file(&path);
-    }
+            }
+
+    /// The anon ways spill stages byte-identical records: write through
+    /// `create_anon`, read back through `open_anon`, same ids/classes/refs in
+    /// the same order. This is what lets -Verify hold the anon build to the
+    /// same hash as the file build.
+    #[test]
+    fn spilled_ways_come_back_identical_from_anonymous_memory() {
+        let lake = Class::area(dict::LAYER_LANDTYPE, schema::kind("lake"), 6);
+        let road = Class::line(dict::LAYER_ROADS, schema::kind("highway"), 3);
+        let cases: Vec<(i64, Class, Vec<i64>, u8, Vec<u16>, Vec<u16>, Carriageway)> = vec![
+            (1, lake, vec![10_000_000_001, 10_000_000_002, 9_000_000_000], 0, vec![], vec![], Carriageway::default()),
+            (
+                2,
+                road,
+                vec![],
+                4,
+                vec![4u16, 2],
+                vec![1],
+                Carriageway { forward: 3, backward: 1, solid_dividers: 0b101 },
+            ),
+        ];
+        // File path (reference).
+        let path = temp("ways_anon_file");
+        let mut sink = WaySink::create(&path).expect("create");
+        for (id, class, refs, lanes, fwd, bwd, carriageway) in &cases {
+            sink.push(*id, class, refs, None, *lanes, fwd, bwd, *carriageway, None).expect("push");
+        }
+        let file_counts = sink.finish().expect("finish");
+        // Anon path.
+        let mut asink = WaySink::create_anon(&path).expect("create_anon");
+        for (id, class, refs, lanes, fwd, bwd, carriageway) in &cases {
+            asink.push(*id, class, refs, None, *lanes, fwd, bwd, *carriageway, None).expect("push");
+        }
+        let (anon_counts, store) = asink.finish_anon().expect("finish_anon");
+        assert_eq!(anon_counts.ways, file_counts.ways);
+        assert_eq!(anon_counts.refs, file_counts.refs);
+        assert_eq!(anon_counts.max_ref, file_counts.max_ref);
+        assert_eq!(
+            store.len(),
+            std::fs::metadata(&path).expect("stat").len(),
+            "staged bytes must match"
+        );
+
+        let store = std::sync::Arc::new(store);
+        let mut reader = WayReader::open_anon(&path, std::sync::Arc::clone(&store)).expect("open_anon");
+        let mut refs: Vec<i64> = Vec::new();
+        for (id, class, expected, lanes, fwd, bwd, carriageway) in &cases {
+            let (got_id, got_class, got_name, got_lanes, got_fwd, got_bwd, got_cw, _) =
+                reader.next(&mut refs).expect("read").expect("a way");
+            assert_eq!(got_id, *id);
+            assert_eq!(got_class, *class);
+            assert_eq!(got_name, None);
+            assert_eq!(got_lanes, *lanes);
+            assert_eq!(&got_fwd, fwd);
+            assert_eq!(&got_bwd, bwd);
+            assert_eq!(got_cw, *carriageway);
+            assert_eq!(&refs, expected);
+        }
+        assert!(reader.next(&mut refs).expect("read").is_none(), "and then the end");
+        // A second reader over the same store replays from the front: the four
+        // stage-A readers each open their own.
+        let mut again = WayReader::open_anon(&path, store).expect("open_anon");
+        assert!(again.next(&mut refs).expect("read").is_some());
+            }
 
     /// The spill's whole premise is that a PBF's ways arrive sorted, so materialisation can stream
     /// the file instead of sorting a map's keys. An input that breaks the premise has to say so:
@@ -280,15 +341,14 @@ mod tests {
         assert!(sink.push(99, &class, &[3], None, 0, &[], &[], none, None).is_err(), "an id going backwards");
         assert!(sink.push(100, &class, &[3], None, 0, &[], &[], none, None).is_err(), "and the same id twice");
         sink.push(101, &class, &[3], None, 0, &[], &[], none, None).expect("but forwards is fine");
-        let _ = std::fs::remove_file(&path);
-    }
+            }
 
     /// A truncated spill is a corrupt file, not a short one. It was written by `WaySink` in this
     /// same process moments earlier, so a record that will not parse means the file is not ours.
     #[test]
     fn a_truncated_ways_spill_is_an_error_rather_than_a_silently_short_read() {
         let path = temp("ways_truncated");
-        let class = Class::area(dict::LAYER_WATER, schema::kind("lake"), 6);
+        let class = Class::area(dict::LAYER_LANDTYPE, schema::kind("lake"), 6);
         let mut sink = WaySink::create(&path).expect("create");
         let none = Carriageway::default();
         sink.push(1, &class, &[7, 8, 9], None, 0, &[], &[], none, None).expect("push");
@@ -302,8 +362,7 @@ mod tests {
         let mut refs: Vec<i64> = Vec::new();
         assert!(reader.next(&mut refs).expect("read").is_some(), "the first record survives");
         assert!(reader.next(&mut refs).is_err(), "the cut one does not");
-        let _ = std::fs::remove_file(&path);
-    }
+            }
 
     /// Delta coding is the reason the file can be read twice without the I/O mattering. Worth
     /// pinning: a regression to fixed-width would be invisible except as a slower build.
@@ -318,8 +377,7 @@ mod tests {
         let bytes = std::fs::metadata(&path).expect("metadata").len();
         // The first ref is a full-width id; every one after it is a delta of 1, one byte.
         assert!(bytes < 1100, "{bytes} bytes for 1000 refs, against 8000 fixed-width");
-        let _ = std::fs::remove_file(&path);
-    }
+            }
 
     /// A named way round-trips its label; a truncated name errors like a truncated ref.
     #[test]
@@ -337,6 +395,7 @@ mod tests {
         assert_eq!(name.as_deref(), Some("Café"), "UTF-8 survives the spill");
         let (_, _, name, _, _, _, _, _) = reader.next(&mut refs).expect("read").expect("a way");
         assert_eq!(name, None);
-        let _ = std::fs::remove_file(&path);
-    }
+            }
 }
+
+

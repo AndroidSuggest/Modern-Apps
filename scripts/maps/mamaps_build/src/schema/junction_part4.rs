@@ -161,10 +161,11 @@ mod tests2 {
             "the fixture is only meaningful if nothing leaves the junction northward",
         );
         let (emitted, _) = stream(&fixture);
-        // Three approaches. From the north: east and south are both legal (2). From the east: south
-        // only, since the U-turn back east is excluded and nothing runs north (1). From the south:
-        // east only (1).
-        assert_eq!(emitted, 4, "the one-way approach contributes its two movements");
+        // Three approaches. From the north: east and south are both legal (2).
+        // From the east: south only, since the U-turn back east is excluded and
+        // nothing runs north (1). From the south: east only (1). One of the
+        // four is a through movement and carries no connector.
+        assert_eq!(emitted, 3, "the one-way approach contributes its two turns");
     }
 
     /// Left-hand traffic mirrors the connectors rather than leaving them on the wrong side.

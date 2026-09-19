@@ -5,7 +5,7 @@
     {
       "id": "earth",
       "authored": "earth",
-      "source": "earth",
+      "source": "landtype",
       "type": "fill",
       "light": "#e2dfda",
       "dark": "#24262c"
@@ -13,7 +13,7 @@
     {
       "id": "landcover",
       "authored": "landcover",
-      "source": "landcover",
+      "source": "landtype",
       "type": "fill",
       "light": "#c4e7d2",
       "dark": "#262b2a",
@@ -22,7 +22,7 @@
     {
       "id": "landcover:grassland",
       "authored": "landcover",
-      "source": "landcover",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["grassland"],
       "light": "#d2efcf",
@@ -32,7 +32,7 @@
     {
       "id": "landcover:barren",
       "authored": "landcover",
-      "source": "landcover",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["barren"],
       "light": "#fff3d7",
@@ -42,7 +42,7 @@
     {
       "id": "landcover:urban_area",
       "authored": "landcover",
-      "source": "landcover",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["urban_area"],
       "light": "#e6e6e6",
@@ -52,7 +52,7 @@
     {
       "id": "landcover:farmland",
       "authored": "landcover",
-      "source": "landcover",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["farmland"],
       "light": "#d8efd2",
@@ -62,7 +62,7 @@
     {
       "id": "landcover:glacier",
       "authored": "landcover",
-      "source": "landcover",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["glacier"],
       "light": "#ffffff",
@@ -72,7 +72,7 @@
     {
       "id": "landcover:scrub",
       "authored": "landcover",
-      "source": "landcover",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["scrub"],
       "light": "#eaefd2",
@@ -82,7 +82,7 @@
     {
       "id": "landuse_park:national_park",
       "authored": "landuse_park",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": [
         "national_park",
@@ -98,7 +98,7 @@
     {
       "id": "landuse_park:wood",
       "authored": "landuse_park",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["wood"],
       "light": "#a0d9a0",
@@ -108,7 +108,7 @@
     {
       "id": "landuse_park:scrub",
       "authored": "landuse_park",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["scrub", "grassland", "grass"],
       "light": "#99d2bb",
@@ -118,7 +118,7 @@
     {
       "id": "landuse_park:military",
       "authored": "landuse_park",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["military", "naval_base", "airfield"],
       "light": "#c6dcdc",
@@ -128,7 +128,7 @@
     {
       "id": "landuse_urban_green",
       "authored": "landuse_urban_green",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["allotments", "village_green", "playground"],
       "light": "#9cd3b4",
@@ -138,7 +138,7 @@
     {
       "id": "landuse_hospital",
       "authored": "landuse_hospital",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["hospital"],
       "light": "#e4dad9",
@@ -147,7 +147,7 @@
     {
       "id": "landuse_industrial",
       "authored": "landuse_industrial",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["industrial"],
       "light": "#d1dde1",
@@ -156,7 +156,7 @@
     {
       "id": "landuse_school",
       "authored": "landuse_school",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["school", "university", "college"],
       "light": "#e4ded7",
@@ -165,7 +165,7 @@
     {
       "id": "landuse_beach",
       "authored": "landuse_beach",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["beach"],
       "light": "#e8e4d0",
@@ -174,7 +174,7 @@
     {
       "id": "landuse_zoo",
       "authored": "landuse_zoo",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["zoo"],
       "light": "#c6dcdc",
@@ -183,7 +183,7 @@
     {
       "id": "landuse_aerodrome",
       "authored": "landuse_aerodrome",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["aerodrome"],
       "light": "#dadbdf",
@@ -192,7 +192,7 @@
     {
       "id": "landuse_runway",
       "authored": "landuse_runway",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["runway", "taxiway"],
       "light": "#e9e9ed",
@@ -201,24 +201,81 @@
     {
       "id": "water",
       "authored": "water",
-      "source": "water",
+      "source": "landtype",
       "type": "fill",
+      "kinds": ["ocean", "sea", "lake", "water", "river", "stream", "bay", "strait", "fjord", "reef", "canal", "dock"],
       "light": "#80deea",
       "dark": "#0d1b2a"
     },
     {
       "id": "landuse_pedestrian",
       "authored": "landuse_pedestrian",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["pedestrian", "dam"],
       "light": "#e3e0d4",
       "dark": "#242229"
     },
     {
+      "id": "landuse_orchard",
+      "authored": "landuse_orchard",
+      "source": "landtype",
+      "type": "fill",
+      "kinds": ["orchard"],
+      "light": "#c9e4b4",
+      "dark": "#232b22",
+      "opacity": { "interpolate": "linear", "stops": [[6, 0], [11, 1]] }
+    },
+    {
+      "id": "landuse_vineyard",
+      "authored": "landuse_vineyard",
+      "source": "landtype",
+      "type": "fill",
+      "kinds": ["vineyard"],
+      "light": "#b8d9a3",
+      "dark": "#222a20",
+      "opacity": { "interpolate": "linear", "stops": [[6, 0], [11, 1]] }
+    },
+    {
+      "id": "landuse_quarry",
+      "authored": "landuse_quarry",
+      "source": "landtype",
+      "type": "fill",
+      "kinds": ["quarry"],
+      "light": "#e8e0d0",
+      "dark": "#2a2723"
+    },
+    {
+      "id": "landuse_swimming_pool",
+      "authored": "landuse_swimming_pool",
+      "source": "landtype",
+      "type": "fill",
+      "kinds": ["swimming_pool"],
+      "light": "#80deea",
+      "dark": "#0d1b2a"
+    },
+    {
+      "id": "landuse_residential",
+      "authored": "landuse_residential",
+      "source": "landtype",
+      "type": "fill",
+      "kinds": ["residential"],
+      "light": "#e6e2d8",
+      "dark": "#26252a"
+    },
+    {
+      "id": "landuse_commercial",
+      "authored": "landuse_commercial",
+      "source": "landtype",
+      "type": "fill",
+      "kinds": ["commercial"],
+      "light": "#dcd6e0",
+      "dark": "#27232b"
+    },
+    {
       "id": "landuse_pier",
       "authored": "landuse_pier",
-      "source": "landuse",
+      "source": "landtype",
       "type": "fill",
       "kinds": ["pier"],
       "light": "#e0e0e0",
@@ -824,7 +881,7 @@
     {
       "id": "waterway-label",
       "authored": "water_waterway_label",
-      "source": "water",
+      "source": "landtype",
       "type": "symbol",
       "kinds": ["river", "stream"],
       "minzoom": 13,

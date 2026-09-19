@@ -38,6 +38,13 @@ fun MapScaleBar(zoom: Double, latitude: Double, modifier: Modifier = Modifier) {
     val imperial = isImperialUnits()
     val (barMeters, label) = scaleBar(metersPerDp * MAX_BAR_DP, imperial)
     val barWidth = (barMeters / metersPerDp).toFloat().dp
+    // Ground resolution (meters per screen pixel) at this latitude and zoom.
+    val metersPerPixel = 156543.03392 * cos(latitude * PI / 180.0) / 2.0.pow(zoom)
+    if (!metersPerPixel.isFinite() || metersPerPixel <= 0.0) return
+
+    val imperial = isImperialUnits()
+    val (barMeters, label) = scaleBar(metersPerPixel * maxBarPx, imperial)
+    val barWidth = with(density) { (barMeters / metersPerPixel).toFloat().toDp() }
 
     Surface(
         modifier = modifier,
@@ -99,6 +106,7 @@ private fun niceRoundDistance(maxMeters: Double): Double {
  * in METERS (for bar width) paired with the display label.
  */
 internal fun scaleBar(maxMeters: Double, imperial: Boolean): Pair<Double, String> {
+private fun scaleBar(maxMeters: Double, imperial: Boolean): Pair<Double, String> {
     if (imperial) {
         val maxMiles = maxMeters / 1609.34
         return if (maxMiles < 1.0) {

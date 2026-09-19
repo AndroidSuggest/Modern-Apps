@@ -21,8 +21,9 @@ data class EmergencyInfo(
 ) {
     /** True once anything a first responder could use has been entered. */
     fun hasAnythingSet(): Boolean =
-        name.isNotBlank() || address.isNotBlank() || bloodType.isNotBlank() ||
-            organDonor.isNotBlank() || contacts.isNotEmpty()
+        name.isNotBlank() || address.isNotBlank() ||
+            normalizeBloodType(bloodType).isNotBlank() ||
+            normalizeOrganDonor(organDonor).isNotBlank() || contacts.isNotEmpty()
 }
 
 /** One emergency contact: the phone-table URI plus a snapshot for display. */
@@ -46,6 +47,40 @@ object EmergencyKeys {
 
     val VIEW_ORDER = listOf(ADDRESS, BLOOD_TYPE, ORGAN_DONOR)
 }
+
+/** Canonical stored value for a "yes" organ-donor dropdown selection. */
+const val ORGAN_DONOR_YES = "yes"
+
+/** Canonical stored value for a "no" organ-donor dropdown selection. */
+const val ORGAN_DONOR_NO = "no"
+
+/**
+ * Blood-type dropdown options in display order. Unknown is stored as blank,
+ * so [EmergencyInfo.hasAnythingSet] and the view screen's blank checks hide it.
+ */
+val BLOOD_TYPE_OPTIONS = listOf("A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-")
+
+/**
+ * Normalizes a stored blood type from the old free-text field: trims,
+ * upper-cases, and maps a typed "unknown" to blank.
+ */
+fun normalizeBloodType(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.equals("unknown", ignoreCase = true)) return ""
+    return trimmed.uppercase()
+}
+
+/**
+ * Normalizes a stored organ-donor value from the old free-text field to its
+ * canonical form; unknown (or blank) becomes blank.
+ */
+fun normalizeOrganDonor(raw: String): String =
+    when (raw.trim().lowercase()) {
+        "", "unknown" -> ""
+        "yes" -> ORGAN_DONOR_YES
+        "no" -> ORGAN_DONOR_NO
+        else -> raw.trim()
+    }
 
 /** `|` separator from `EmergencyContactsPreference`; quoted for split. */
 const val CONTACT_SEPARATOR = "|"

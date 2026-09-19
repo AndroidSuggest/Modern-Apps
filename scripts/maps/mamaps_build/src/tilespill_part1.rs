@@ -163,8 +163,24 @@ impl ChunkReader<'_> {
         }
         let base = self.buf.len();
         self.buf.resize(base + take, 0);
-        tilecodec::pmtiles::read_exact_at(self.spill.file(), &mut self.buf[base..], self.at)
-            .map_err(|e| Error(format!("reading {}: {e}", self.spill.path.display())))?;
+        match (&self.spill.file, &self.spill.anon) {
+            (Some(f), None) => {
+                tilecodec::pmtiles::read_exact_at(f, &mut self.buf[base..], self.at)
+                    .map_err(|e| Error(format!("reading {}: {e}", self.spill.path.display())))?;
+            }
+            (None, Some(a)) => {
+                a.lock()
+                    .expect("the anon tile chunk spill")
+                    .read_at(self.at, &mut self.buf[base..])
+                    .map_err(|e| Error(format!("reading {}: {e}", self.spill.path.display())))?;
+            }
+            _ => {
+                return err(format!(
+                    "a tile chunk spill for {} has no backend",
+                    self.spill.path.display()
+                ))
+            }
+        }
         self.at += take as u64;
         Ok(())
     }

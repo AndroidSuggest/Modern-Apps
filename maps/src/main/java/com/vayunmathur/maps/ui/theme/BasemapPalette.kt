@@ -39,6 +39,12 @@ object BasemapPalette {
         Airstrip,
         Pedestrian,
         Pier,
+        Orchard,
+        Vineyard,
+        Quarry,
+        SwimmingPool,
+        Residential,
+        Commercial,
         Buildings,
         Boundaries,
         Rail,
@@ -81,6 +87,12 @@ object BasemapPalette {
         Fill.Airstrip to Color(0xFF2B2D33),
         Fill.Pedestrian to Color(0xFF242229),
         Fill.Pier to Color(0xFF202225),
+        Fill.Orchard to Color(0xFF232B22),
+        Fill.Vineyard to Color(0xFF222A20),
+        Fill.Quarry to Color(0xFF2A2723),
+        Fill.SwimmingPool to Color(0xFF0D1B2A),
+        Fill.Residential to Color(0xFF26252A),
+        Fill.Commercial to Color(0xFF27232B),
         Fill.Buildings to Color(0xFF3C4048),
         Fill.Boundaries to Color(0xFF4A4F57),
         Fill.Rail to Color(0xFF3A3E45),
@@ -138,6 +150,12 @@ object BasemapPalette {
         put("landuse_aerodrome", Fill.Aerodrome)
         put("landuse_pedestrian", Fill.Pedestrian)
         put("landuse_pier", Fill.Pier)
+        put("landuse_orchard", Fill.Orchard)
+        put("landuse_vineyard", Fill.Vineyard)
+        put("landuse_quarry", Fill.Quarry)
+        put("landuse_swimming_pool", Fill.SwimmingPool)
+        put("landuse_residential", Fill.Residential)
+        put("landuse_commercial", Fill.Commercial)
 
         // Runways and taxiways are paved surfaces, not roads: same grey either way.
         put("landuse_runway", Fill.Airstrip)

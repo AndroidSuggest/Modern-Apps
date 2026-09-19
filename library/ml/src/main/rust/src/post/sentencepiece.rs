@@ -64,25 +64,6 @@ pub struct Flavour {
     pub tidy_whitespace: bool,
 }
 
-/// fairseq's layout, which NLLB and SMaLL-100 use.
-pub const FAIRSEQ: Flavour = Flavour {
-    bos: 0,
-    pad: 1,
-    eos: 2,
-    unk: 3,
-    names: ["<s>", "<pad>", "</s>", "<unk>"],
-    tidy_whitespace: true,
-};
-
-/// Gemma's layout. Note `eos` at 1 and `bos` at 2, the reverse of fairseq's ordering.
-pub const GEMMA: Flavour = Flavour {
-    bos: 2,
-    pad: 0,
-    eos: 1,
-    unk: 3,
-    names: ["<pad>", "<eos>", "<bos>", "<unk>"],
-    tidy_whitespace: false,
-};
 
 /// fairseq's specials, which the table is checked against rather than assumed to hold.
 pub const BOS: u32 = 0;
@@ -93,29 +74,46 @@ pub const EOS: u32 = 2;
 /// The id for a character no piece covers.
 pub const UNK: u32 = 3;
 
-/// A borrowed view of the vocabulary: piece bytes, merge ranks and ids.
+/// The longest piece the Viterbi encoder will attempt: longer spans never match.
+///
+/// SentencePiece caps pieces at 32 bytes of UTF-8 in practice; bounding the inner loop
+/// keeps a pathological input linear rather than quadratic. A table holding a longer
+/// piece would need this raised — and `parse` does not check, so overlong pieces would
+/// silently never match. The MADLAD table's longest is under this; see
+/// `tests::the_viterbi_prefers_the_longer_piece`.
+pub const MAX_PIECE_LEN: usize = 64;
+
+/// A borrowed view of the vocabulary: piece bytes, log-probabilities or merge ranks, and ids.
+///
+/// Which of the two the scores are is a property of how the model was trained: BPE pieces
+/// carry negative merge ranks and encode by greedy pairwise merging ([`Table::encode`]),
+/// Unigram pieces carry log-probabilities and encode by Viterbi ([`Table::encode_unigram`]).
+/// Reading one as the other produces plausible pieces and the wrong ones — which is why
+/// [`Table::parse`] records the convention from the caller-chosen [`Flavour`].
 pub struct Table<'a> {
     /// One `(offset, length, score)` per id, so an id indexes directly.
     pieces: Vec<(u32, u16, i32)>,
     blob: &'a [u8],
     /// Piece bytes to `(id, score)`. Empty pieces are absent, and the lowest id wins a duplicate.
-    by_piece: HashMap<&'a [u8], (u32, i32)>,
+    pub(crate) by_piece: HashMap<&'a [u8], (u32, i32)>,
     /// Which ids are reserved, and how [`Table::encode`] spells an unrepresentable byte.
-    specials: Flavour,
+    pub(crate) specials: Flavour,
     /// `<0x00>`..`<0xFF>` as ids, when the table carries byte fallback.
     ///
     /// `None` for a table without it, where an uncoverable piece becomes [`Flavour::unk`] and
     /// the text is simply lost. With it, any byte round-trips - which is what lets Gemma emit
     /// text its vocabulary never saw.
-    byte_fallback: Option<Box<[u32; 256]>>,
+    pub(crate) byte_fallback: Option<Box<[u32; 256]>>,
 }
 
 impl<'a> Table<'a> {
     /// Parse the converter's output. Borrows `bytes`, so nothing is copied.
     ///
     /// [`FAIRSEQ`] specials, for the tables that predate a second convention.
+    ///
+    /// [`FAIRSEQ`]: super::sentencepiece_flavours::FAIRSEQ
     pub fn parse(bytes: &'a [u8]) -> Result<Table<'a>, String> {
-        Table::parse_with(bytes, FAIRSEQ)
+        Table::parse_with(bytes, super::sentencepiece_flavours::FAIRSEQ)
     }
 
     /// [`Table::parse`] for a table whose reserved ids are not fairseq's.
@@ -328,6 +326,28 @@ impl<'a> Table<'a> {
         out
     }
 
+    /// Unigram input spelling: dummy prefix + metaspace, WITHOUT whitespace tidying.
+    ///
+    /// T5's normaliser is the identity (plus HF's collapse of double spaces, which the caller
+    /// applies): runs of spaces are significant, the ends are not trimmed, and every space —
+    /// leading included — becomes the metaspace, with one prefixed (`add_dummy_prefix`) so a
+    /// word at the start of a sentence tokenises like the same word mid-sentence.
+    ///
+    /// `pub(crate)` for the Viterbi encoder in `sentencepiece_unigram`, which owns the only
+    /// other call.
+    pub(crate) fn prepare_unigram(&self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len() + METASPACE.len_utf8());
+        out.push(METASPACE);
+        for c in text.chars() {
+            if c == ' ' {
+                out.push(METASPACE);
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
     /// Text for a run of ids, with the metaspace turned back into spaces.
     ///
     /// Ids past the table are skipped rather than replacing the whole string: a decode loop that
@@ -349,149 +369,5 @@ impl<'a> Table<'a> {
             }
         }
         String::from_utf8_lossy(&out).replace(METASPACE, " ").trim().to_string()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The converter's format, for a handful of pieces.
-    ///
-    /// The scores are merge ranks, so a **higher** number merges first. fairseq's four specials
-    /// have to be at 0..3 for `parse` to accept the table.
-    fn table(extra: &[(&str, i32)]) -> Vec<u8> {
-        let mut out = MAGIC.to_vec();
-        let pieces: Vec<(&str, i32)> = [("<s>", 0), ("<pad>", 0), ("</s>", 0), ("<unk>", 0)]
-            .into_iter()
-            .chain(extra.iter().copied())
-            .collect();
-        out.extend((pieces.len() as u32).to_le_bytes());
-        for (piece, score) in pieces {
-            out.extend(score.to_le_bytes());
-            out.extend((piece.len() as u16).to_le_bytes());
-            out.extend(piece.as_bytes());
-        }
-        out
-    }
-
-    #[test]
-    fn a_table_rejects_one_whose_specials_are_not_fairseqs() {
-        let mut bytes = MAGIC.to_vec();
-        bytes.extend(1u32.to_le_bytes());
-        bytes.extend(0i32.to_le_bytes());
-        bytes.extend(3u16.to_le_bytes());
-        bytes.extend(b"abc");
-        let error = Table::parse(&bytes).err().expect("wrong specials");
-        assert!(error.contains("not <s>"), "{error}");
-    }
-
-    #[test]
-    fn a_table_rejects_a_truncated_record() {
-        let mut bytes = table(&[("a", -1)]);
-        bytes.truncate(bytes.len() - 1);
-        let error = Table::parse(&bytes).err().expect("truncated");
-        assert!(error.contains("past the table") || error.contains("ends inside"), "{error}");
-    }
-
-    #[test]
-    fn the_highest_rank_merges_first() {
-        // "ab" scores above "bc", so `abc` must merge to `ab` + `c` and not `a` + `bc`. Both
-        // give three-then-two symbols, so only the ids tell them apart — which is exactly how a
-        // rank comparison written backwards survives every shape check.
-        let bytes = table(&[
-            ("\u{2581}", -50),
-            ("a", -50),
-            ("b", -50),
-            ("c", -50),
-            ("ab", -1),
-            ("bc", -2),
-        ]);
-        let parsed = Table::parse(&bytes).expect("parses");
-        let ids = parsed.encode("abc");
-        // ids: metaspace 4, a 5, b 6, c 7, ab 8, bc 9. The dummy prefix leads.
-        assert_eq!(ids, vec![4, 8, 7]);
-    }
-
-    #[test]
-    fn equal_ranks_merge_leftmost() {
-        // "aa" matches at two places in "▁aaa" and at the same rank. sentencepiece takes the
-        // left one, giving `▁` + `aa` + `a`; taking the right one would give `▁` + `a` + `aa`,
-        // which is the same three symbols and the same length with two ids transposed.
-        let bytes = table(&[("\u{2581}", -50), ("a", -50), ("aa", -1)]);
-        let parsed = Table::parse(&bytes).expect("parses");
-        // ids: metaspace 4, a 5, aa 6.
-        assert_eq!(parsed.encode("aaa"), vec![4, 6, 5]);
-        assert_ne!(parsed.encode("aaa"), vec![4, 5, 6]);
-    }
-
-    #[test]
-    fn a_character_with_no_piece_becomes_unk() {
-        // There is no piece for 'z', and no unknown-token substitution to fall back on.
-        let bytes = table(&[("\u{2581}", -50), ("a", -50)]);
-        let parsed = Table::parse(&bytes).expect("parses");
-        assert_eq!(parsed.encode("az"), vec![4, 5, UNK]);
-    }
-
-    #[test]
-    fn whitespace_collapses_and_every_word_gets_a_metaspace() {
-        // Tabs, newlines and runs of spaces are one separator, the ends are trimmed, and each
-        // word carries its own leading metaspace — which is why `the` mid-sentence and `The` at
-        // the start tokenise alike.
-        let bytes = table(&[("\u{2581}", -50), ("a", -50), ("b", -50)]);
-        let parsed = Table::parse(&bytes).expect("parses");
-        // Two words: metaspace a, metaspace b.
-        assert_eq!(parsed.encode("  a \t\n b  "), vec![4, 5, 4, 6]);
-        assert_eq!(parsed.encode("   "), Vec::<u32>::new());
-        assert_eq!(parsed.encode(""), Vec::<u32>::new());
-    }
-
-    #[test]
-    fn decode_turns_the_metaspace_back_into_spaces_and_trims() {
-        let bytes = table(&[("\u{2581}the", -1), ("\u{2581}cat", -2), ("s", -3)]);
-        let parsed = Table::parse(&bytes).expect("parses");
-        assert_eq!(parsed.decode(&[4, 5, 6]), "the cats");
-        // An id past the table loses a word rather than the sentence.
-        assert_eq!(parsed.decode(&[4, 999, 5]), "the cat");
-        assert_eq!(parsed.decode(&[]), "");
-    }
-
-    /// The real vocabulary, against model-eng's verified inventory.
-    ///
-    /// Skipped rather than ignored: the table is a runtime download rather than a checked-in
-    /// asset, so `NLLB_TOKENIZER` is how you point at one. `scripts/ml/fetch_nllb600.py`
-    /// builds it, and prints the command.
-    ///
-    /// These assert the *inventory* rather than golden encode ids: golden ids need the reference
-    /// `sentencepiece` run, which is model-eng's parity harness. What this catches is a table
-    /// built from the wrong files — wrong length, wrong specials, missing language range.
-    #[test]
-    fn the_real_vocabulary_agrees_with_sentencepiece() {
-        let Ok(path) = std::env::var("NLLB_TOKENIZER") else {
-            return;
-        };
-        let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-        let parsed = Table::parse(&bytes).expect("the real table parses");
-        // 256,000 BPE pieces, then `<pad>`, the 202 flores codes, `<mask>`, two empty pads.
-        assert_eq!(parsed.len(), 256_206);
-        // fairseq's specials, in fairseq's order — `parse` already checks these, restated here so
-        // the failure names the inventory rather than the parser.
-        for (id, name) in [(0, "<s>"), (1, "<pad>"), (2, "</s>"), (3, "<unk>")] {
-            assert_eq!(parsed.piece(id), Some(name.as_bytes()), "special {id}");
-        }
-        // The language range: 202 flores codes at 256001..256202, then `<mask>`. Their exact text
-        // is model-eng's mapping JSON; what matters here is that they are present, non-empty and
-        // distinct — a missing or duplicated code would mistranslate silently.
-        let mut seen = std::collections::BTreeSet::new();
-        for id in 256_001..=256_202u32 {
-            let piece = parsed.piece(id).unwrap_or_else(|| panic!("language token {id} missing"));
-            assert!(!piece.is_empty(), "language token {id} is empty");
-            assert!(seen.insert(piece.to_vec()), "language token {id} duplicates another");
-        }
-        assert_eq!(parsed.piece(256_203), Some(b"<mask>".as_slice()), "<mask>");
-        // And encoding is non-degenerate on the real table: every id it emits is in range.
-        for id in parsed.encode("Hello, world!") {
-            assert!(id < 256_206, "id {id} past the vocabulary");
-        }
     }
 }

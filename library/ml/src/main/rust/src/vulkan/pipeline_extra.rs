@@ -137,6 +137,9 @@ impl Shaders {
             conv_point_int4,
             mul_scalar,
             clamp,
+            conv_vec_q2k,
+            conv_point_q2k,
+            conv_q2k,
         ] = match <[vk::Pipeline; SPIRV.len()]>::try_from(built) {
             Ok(all) => all,
             Err(built) => {
@@ -191,6 +194,9 @@ impl Shaders {
             conv_point_int4,
             mul_scalar,
             clamp,
+            conv_vec_q2k,
+            conv_point_q2k,
+            conv_q2k,
         })
     }
 
@@ -219,6 +225,9 @@ impl Shaders {
             Kind::GatedActivate => self.gated_activate,
             Kind::ConvVecInt4 => self.conv_vec_int4,
             Kind::ConvPointInt4 => self.conv_point_int4,
+            Kind::ConvVecQ2K => self.conv_vec_q2k,
+            Kind::ConvPointQ2K => self.conv_point_q2k,
+            Kind::ConvQ2K => self.conv_q2k,
             Kind::MulScalar => self.mul_scalar,
             Kind::Clamp => self.clamp,
             Kind::AttnApply => self.attn_apply,
@@ -282,6 +291,9 @@ impl Shaders {
             self.activate,
             self.conv_vec_int4,
             self.conv_point_int4,
+            self.conv_vec_q2k,
+            self.conv_point_q2k,
+            self.conv_q2k,
             self.mul_scalar,
             self.clamp,
         ] {

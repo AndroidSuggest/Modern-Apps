@@ -25,6 +25,14 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
 
+    // Android Auto templates (P-car-dock): AndroidX Car App Library. `app`
+    // provides the CarAppService/Session/Screen/template model;
+    // `app-projected` provides the phone-projected (Android Auto) host
+    // connection. Only pulled into the car code path (service/car/) — the
+    // phone UI and the Media3 playback path are untouched.
+    implementation(libs.androidx.car.app)
+    implementation(libs.androidx.car.app.projected)
+
     implementation(project(":library:image"))
 
     // Casting. `:sdk:cast` owns no sockets and needs no network permission - which is the point,

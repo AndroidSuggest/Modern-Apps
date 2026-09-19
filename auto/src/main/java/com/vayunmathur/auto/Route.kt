@@ -16,4 +16,8 @@ sealed interface Route : NavKey {
     /** USB + wireless bring-up, the winning transport, and the MAOS role. */
     @Serializable
     data object Pairing : Route
+
+    /** The car dock pin picker: which car apps sit in the bottom bar. */
+    @Serializable
+    data object PinnedApps : Route
 }

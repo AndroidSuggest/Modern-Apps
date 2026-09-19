@@ -41,10 +41,13 @@ abstract class PinGatedActivity : ComponentActivity() {
         }
 
     private val setup =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            // Either way the PIN now exists or the user declined; re-run the normal gate.
-            verified = false
-            checkGate()
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK && ParentPin.get(this).isSet()) {
+                verified = false
+                checkGate()
+            } else {
+                finish()
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {

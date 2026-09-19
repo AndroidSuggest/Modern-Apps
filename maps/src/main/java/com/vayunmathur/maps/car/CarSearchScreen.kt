@@ -21,7 +21,7 @@ import androidx.car.app.model.Metadata
 import androidx.car.app.model.Place
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
-import androidx.car.app.navigation.model.PlaceListNavigationTemplate
+import androidx.car.app.navigation.model.MapWithContentTemplate
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -47,10 +47,13 @@ import com.vayunmathur.library.map.GeoPoint
  * (the OS routes it to the user-selected recognition service — the same
  * system-STT path P8 uses on the phone via `VoiceSearchButton`), and the final
  * transcript is fed to the existing keyless [GoogleSearchDataSource] (P3). Hits
- * are shown in a [PlaceListNavigationTemplate] (list + map markers); tapping a
+ * are shown in a [MapWithContentTemplate] (list + map markers); tapping a
  * result routes to it with the existing [OfflineRouter], starts the shared
  * [NavigationSessionManager] + [NavigationService], and returns to the map
  * screen where turn-by-turn takes over.
+ *
+ * On API 9 hosts the content is a [SearchHeader]-driven list; on older hosts
+ * it falls back to the API 7 header + action strip shape.
  */
 class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
 
@@ -72,13 +75,19 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
     }
 
     override fun onGetTemplate(): Template {
-        val builder = PlaceListNavigationTemplate.Builder()
+        // MapWithContentTemplate replaces the deprecated
+        // PlaceListNavigationTemplate (API 7+). Allowed content is
+        // List|Pane|Grid|Message (+SectionedItem on API 8+), so search is a
+        // ListTemplate with the voice action in the action strip. The typed
+        // SearchTemplate shape can't nest inside map content.
+        val listTemplate = androidx.car.app.model.ListTemplate.Builder()
             .setHeader(
                 Header.Builder()
                     .setStartHeaderAction(Action.BACK)
                     .setTitle(carContext.getString(R.string.car_search_title))
                     .build()
             )
+            .setSingleList(buildItemList())
             .setActionStrip(
                 ActionStrip.Builder()
                     .addAction(
@@ -89,12 +98,11 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
                     )
                     .build()
             )
-        if (loading) {
-            builder.setLoading(true)
-        } else {
-            builder.setItemList(buildItemList())
-        }
-        return builder.build()
+            .setLoading(loading)
+            .build()
+        return MapWithContentTemplate.Builder()
+            .setContentTemplate(listTemplate)
+            .build()
     }
 
     private fun buildItemList(): ItemList {

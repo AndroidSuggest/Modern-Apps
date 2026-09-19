@@ -155,6 +155,12 @@ fn trace_run(
 }
 
 /// Feed every token in order and return the last step's logits.
+///
+/// The device returns the normed hidden state; the logits are
+/// `hidden @ H^T` over the raw-scale head table (see
+/// `gemma4::embed::HEAD_TABLE`), softcapped, computed on the host exactly as
+/// the bridge does it. So a parity pass here covers the gather, the whole
+/// transformer, AND the tied-head path the app actually uses.
 fn run(
     context: &Arc<context::Context>,
     weights: &Weights,
@@ -169,13 +175,13 @@ fn run(
     )?;
     let reader = embed.reader();
     let rotary = weights.reader();
-    let mut logits = Vec::new();
+    let mut hidden = Vec::new();
     for (step, &token) in tokens.iter().enumerate() {
         let position = u32::try_from(step).map_err(|_| "a step past u32")?;
         if position >= gemma4::MAX_CONTEXT {
             return Err(format!("position {position} is past MAX_CONTEXT"));
         }
-        let (hidden, per_layer) = gemma4::gather(&reader, token)?;
+        let (hidden_in, per_layer) = gemma4::gather(&reader, token)?;
         let angles_local = rotary_row(&rotary, gemma4::ROTARY_LOCAL, gemma4::HEAD_DIM, position)?;
         let angles_global =
             rotary_row(&rotary, gemma4::ROTARY_GLOBAL, gemma4::GLOBAL_HEAD_DIM, position)?;
@@ -189,10 +195,30 @@ fn run(
             prefix: position,
             window_start: position.saturating_sub(gemma4::WINDOW - 1),
         })?;
-        let out = at.infer_raw_many(&[&hidden, &per_layer, &angles_local, &angles_global])?;
-        logits.clear();
-        for split in out.iter().take(gemma4::HEAD_SPLITS) {
-            logits.extend_from_slice(split);
+        let out = at.infer_raw_many(&[&hidden_in, &per_layer, &angles_local, &angles_global])?;
+        if out.len() != 1 {
+            return Err(format!("a step returned {} tensors, not the hidden state", out.len()));
+        }
+        hidden = out.into_iter().next().unwrap_or_default();
+    }
+    if hidden.len() != gemma4::D_MODEL as usize {
+        return Err(format!("hidden state of {} values, not {}", hidden.len(), gemma4::D_MODEL));
+    }
+    // Tied head on the host, in vocabulary splits (see `gemma4::HEAD_SPLITS`).
+    // Reads the raw-scale head table (`gemma4::embed::HEAD_TABLE`), not the
+    // working table - no gain division (see `gemma4::EMBED_GAIN`).
+    let mut logits = Vec::with_capacity(gemma4::VOCAB as usize);
+    for split in 0..gemma4::HEAD_SPLITS {
+        let start = (split as u32) * gemma4::CLASSES_PER_SPLIT;
+        let block = reader.fp16_rows(
+            gemma4::embed::HEAD_TABLE,
+            &[gemma4::VOCAB, gemma4::D_MODEL],
+            start,
+            gemma4::CLASSES_PER_SPLIT,
+        )?;
+        for row in block.chunks_exact(gemma4::D_MODEL as usize) {
+            let dot: f32 = row.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum();
+            logits.push(gemma4::LOGIT_CAP * (dot / gemma4::LOGIT_CAP).tanh());
         }
     }
     if logits.len() != gemma4::VOCAB as usize {

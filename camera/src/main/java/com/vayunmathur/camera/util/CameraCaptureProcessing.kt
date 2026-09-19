@@ -88,6 +88,9 @@ internal fun applyColorAdjustments(src: Bitmap, warmth: Float, shadows: Float, m
  * so [sourceJpeg] is null and only orientation + GPS are written.
  */
 internal fun CameraViewModel.writeCaptureExif(uri: Uri, sourceJpeg: ByteArray?, rotationDegrees: Int, mirrored: Boolean = false) {
+    // Refresh the fix at capture time (see prepareStillSave) — this runs on Dispatchers.IO
+    // and getLastKnownLocation is a cheap cached lookup, so no main-thread concern.
+    updateLocation()
     try {
         val source = sourceJpeg?.let { ExifInterface(ByteArrayInputStream(it)) }
         app.contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
@@ -116,5 +119,46 @@ internal fun CameraViewModel.writeCaptureExif(uri: Uri, sourceJpeg: ByteArray?, 
         }
     } catch (e: Exception) {
         Log.w("CameraViewModel", "Failed to write EXIF for adjusted capture", e)
+    }
+}
+
+/**
+ * Stamps orientation + GPS into an in-memory still's JPEG [jpeg] and returns the updated
+ * bytes. In-memory captures carry no ImageCapture.Metadata, so unlike the OutputFileOptions
+ * path (see prepareStillSave) nothing stamps location for them — that is why plain PHOTO
+ * shots (Motion Photo path) lost GPS while Portrait (which goes through [writeCaptureExif])
+ * kept it (issue #731).
+ *
+ * Stamping happens BEFORE any Motion Photo trailer is appended so ExifInterface only ever
+ * rewrites a pure JPEG. When there is no location to stamp the bytes are returned untouched
+ * (bit-for-bit, Ultra HDR gain map included).
+ * Must be called off the main thread (file I/O).
+ */
+internal fun CameraViewModel.stampStillBytes(jpeg: ByteArray, rotationDegrees: Int): ByteArray {
+    updateLocation()
+    val loc = if (_locationEnabled.value) lastLocation else null
+        ?: return jpeg
+    var tmp: java.io.File? = null
+    return try {
+        tmp = java.io.File.createTempFile("stamp_", ".jpg", app.cacheDir)
+        tmp.writeBytes(jpeg)
+        val exif = ExifInterface(tmp.absolutePath)
+        exif.setAttribute(
+            ExifInterface.TAG_ORIENTATION,
+            when ((rotationDegrees % 360 + 360) % 360) {
+                90 -> ExifInterface.ORIENTATION_ROTATE_90
+                180 -> ExifInterface.ORIENTATION_ROTATE_180
+                270 -> ExifInterface.ORIENTATION_ROTATE_270
+                else -> ExifInterface.ORIENTATION_NORMAL
+            }.toString()
+        )
+        exif.setGpsInfo(loc)
+        exif.saveAttributes()
+        tmp.readBytes()
+    } catch (e: Exception) {
+        Log.w("CameraViewModel", "Failed to stamp EXIF on still bytes", e)
+        jpeg
+    } finally {
+        try { tmp?.delete() } catch (_: Exception) {}
     }
 }

@@ -31,26 +31,22 @@ fn layer(
     let input_norm = plain(&mut next);
     let q_norm_at = plain(&mut next);
     let q_proj = proj(&mut next);
-    let (k_norm_at, k_proj, v_proj, v_norm_at) = if owns_cache(index) {
-        (
-            Some(plain(&mut next)),
-            Some(proj(&mut next)),
-            Some(proj(&mut next)),
-            Some(plain(&mut next)),
-        )
+    let (k_norm_at, k_proj, v_proj) = if owns_cache(index) {
+        (Some(plain(&mut next)), Some(proj(&mut next)), Some(proj(&mut next)))
     } else {
-        (None, None, None, None)
+        (None, None, None)
     };
     let o_proj = proj(&mut next);
     let post_attention = plain(&mut next);
     let pre_ff = plain(&mut next);
-    let gate_up = proj(&mut next);
+    let gate_proj = proj(&mut next);
+    let ff1_proj = proj(&mut next);
     let down = proj(&mut next);
     let post_ff = plain(&mut next);
     let gate_at = proj(&mut next);
     let projection_at = proj(&mut next);
     let post_per_layer = plain(&mut next);
-    let scalar_at = plain(&mut next);
+    let skip_at = plain(&mut next);
     if next != layer_at(index + 1) {
         return Err(format!("layer {index} read {} tensors", next - at));
     }
@@ -61,17 +57,20 @@ fn layer(
     let q = b.rms_norm_grouped(q, q_norm_at, EPSILON, HEADS);
     let q = b.rotary(q, angles, HEADS);
 
-    if let (Some(k_norm_at), Some(k_proj), Some(v_proj), Some(v_norm_at)) =
-        (k_norm_at, k_proj, v_proj, v_norm_at)
-    {
+    if let (Some(k_norm_at), Some(k_proj), Some(v_proj)) = (k_norm_at, k_proj, v_proj) {
         let k = point(b, k_proj, normed, KV_HEADS * dim);
         let k = b.rms_norm_grouped(k, k_norm_at, EPSILON, KV_HEADS);
         let k = b.rotary(k, angles, KV_HEADS);
         let v = point(b, v_proj, normed, KV_HEADS * dim);
-        // `v_norm`'s gamma is all ones, which is **not** a no-op: an RMS norm still divides by
-        // the root-mean-square. Leaving it out scales every value in the cache by that factor and
-        // produces attention outputs that look entirely reasonable and are wrong.
-        let v = b.rms_norm_grouped(v, v_norm_at, EPSILON, KV_HEADS);
+        // S10's `value_norm`: a parameter-free RMS norm (all-ones gamma) over
+        // the value row before the cache write (composite op23 for layer 0,
+        // one per owning layer). It is not a stored tensor, so it is easy to
+        // read as absent - but skipping it stores raw V (rms ~28) where the
+        // reference stores rms-normalised V (rms ~1), and every layer's
+        // attention mixes the wrong values. The gamma is head-dim-wide
+        // (`[256]` sliding, `[512]` full): see [`ONE_SLIDING`].
+        let ones = if is_full_attention(index) { ONE_FULL } else { ONE_SLIDING };
+        let v = b.rms_norm(v, ones, EPSILON);
         let k_row = b.reshaped(k, Shape::new(1, 1, KV_HEADS * dim));
         let v_row = b.reshaped(v, Shape::new(1, 1, KV_HEADS * dim));
         b.cache_write(k_row, cache_k);
@@ -91,13 +90,12 @@ fn layer(
     let attended = b_rms(b, attended, post_attention);
     let x = b.add(x, attended);
 
-    // Gated feed-forward. One fused projection to `2 * inner`, split, `gelu(gate) * up`.
+    // Gated feed-forward, split gate + up (litertlm stores them separately).
     let ff_in = b.rms_norm(x, pre_ff, EPSILON);
-    let both = point(b, gate_up, ff_in, inner * 2);
-    // One op, not four. The two slices were copies whose only purpose was to hand each half to
-    // the next dispatch, and on a phone that overhead dwarfs the arithmetic - see
-    // `shaders/gated_activate.comp`.
-    let gated = b.gated_activate(both, Act::Gelu);
+    let gate = point(b, gate_proj, ff_in, inner);
+    let up = point(b, ff1_proj, ff_in, inner);
+    let gelu_gate = b.activate(gate, Act::Gelu);
+    let gated = b.mul(gelu_gate, up);
     let ff = point(b, down, gated, D_MODEL);
     let ff = b_rms(b, ff, post_ff);
     let x = b.add(x, ff);
@@ -116,13 +114,13 @@ fn layer(
     let projected = point8(b, projection_at, combined, D_MODEL);
     let branch = b_rms(b, projected, post_per_layer);
     let x = b.add(x, branch);
-    // `layer_scalar` multiplies the layer's **whole output**, not the branch above it: the graph
-    // is `per_layer_residual/Add -> Mul(layer_scalar) -> layers.N+1/input_layernorm`. At 0.0178
-    // on layer 0 that is a fiftyfold shrink of the residual stream, and leaving it out is not a
-    // small error - it is the difference between a model and noise. The next layer's norm is
-    // scale-invariant and would hide it; the next layer's *residual* is not, which is where it
-    // shows.
-    Ok(b.mul_scalar(x, scalar_at))
+    // The whole residual is scaled by `skip` after add2
+    // (`_maybe_apply_skip_scale/mul` in the portable graph). Without it layer 0
+    // leaves min -173.6/max 11.6 against an ideal -4.66/0.32, and every
+    // downstream residual is dominated by the unscaled stream.
+    let x = b.mul_scalar(x, skip_at);
+    // No layer_scalar: litertlm carries none.
+    Ok(x)
 }
 
 /// `rms_norm` with this module's epsilon, which every norm here uses.

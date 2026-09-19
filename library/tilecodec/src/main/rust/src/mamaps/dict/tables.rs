@@ -13,17 +13,20 @@ pub const NONE: u16 = 0;
 
 /// The layers this format carries, in draw order.
 ///
-/// A layer's id **is** its index here. Twelve: the seven the style draws, plus `places`
-/// (labels), `poi` (icons), `transit` (reserved by v2; populated when transit lands),
-/// `traffic` (v4: one line per drivable component segment, recoloured live from a pushed
-/// id→speed table — geometry from the v6 routing graph, not the basemap) and `junction`
-/// (v7: one line per lane connector through an intersection, also from the routing graph).
+/// A layer's id **is** its index here. Nine: the wash (`landtype`, everything the style
+/// draws as a ground fill), then `roads`, `boundaries`, `buildings`, `places` (labels),
+/// `poi` (icons), `transit` (reserved by v2; populated when transit lands), `traffic`
+/// (v4: one line per drivable component segment, recoloured live from a pushed id→speed
+/// table — geometry from the v6 routing graph, not the basemap) and `junction` (v7: one
+/// line per lane connector through an intersection, also from the routing graph).
 /// `u8` ids fit with room to spare.
+///
+/// v8 merges the four v7 wash layers (`earth`, `water`, `landcover`, `landuse`) into one
+/// `landtype` capped at z14, so old ids 4..11 shift down by 3. Draw order comes from the
+/// style file order, not this index; keeping the wash at 0 preserves the chunk-key sort
+/// and the terrain "earth first" assumptions.
 pub const LAYERS: &[&str] = &[
-    "earth",
-    "water",
-    "landcover",
-    "landuse",
+    "landtype",
     "roads",
     "boundaries",
     "buildings",
@@ -34,21 +37,18 @@ pub const LAYERS: &[&str] = &[
     "junction",
 ];
 
-pub const LAYER_EARTH: u8 = 0;
-pub const LAYER_WATER: u8 = 1;
-pub const LAYER_LANDCOVER: u8 = 2;
-pub const LAYER_LANDUSE: u8 = 3;
-pub const LAYER_ROADS: u8 = 4;
-pub const LAYER_BOUNDARIES: u8 = 5;
-pub const LAYER_BUILDINGS: u8 = 6;
-pub const LAYER_PLACES: u8 = 7;
-pub const LAYER_POI: u8 = 8;
-pub const LAYER_TRANSIT: u8 = 9;
+pub const LAYER_LANDTYPE: u8 = 0;
+pub const LAYER_ROADS: u8 = 1;
+pub const LAYER_BOUNDARIES: u8 = 2;
+pub const LAYER_BUILDINGS: u8 = 3;
+pub const LAYER_PLACES: u8 = 4;
+pub const LAYER_POI: u8 = 5;
+pub const LAYER_TRANSIT: u8 = 6;
 /// v4. One `GEOM_LINE` feature per drivable **component** segment of the v6 routing graph,
 /// each carrying its packed `component_id` in the body's id side table so the renderer can
 /// recolour it from a live id→speed push. Excluded from the basemap style: it draws only
 /// when the traffic overlay is enabled.
-pub const LAYER_TRAFFIC: u8 = 10;
+pub const LAYER_TRAFFIC: u8 = 7;
 /// v7. One `GEOM_LINE` feature per **lane connector** through an intersection: the sampled
 /// centreline a single lane follows from an approach to an exit, built from the same v6
 /// routing graph `traffic` reads. Excluded from the basemap style — it draws only where the
@@ -60,7 +60,7 @@ pub const LAYER_TRAFFIC: u8 = 10;
 /// compares the whole table on open, so this is only safe because v7 was committed but never
 /// built or shipped — there is no deployed reader to refuse. Any layer appended after a v7
 /// archive exists must bump the format, the way v4 did for `traffic`.
-pub const LAYER_JUNCTION: u8 = 11;
+pub const LAYER_JUNCTION: u8 = 8;
 
 /// Every `kind` value the schema can emit, id 1 upward. Index 0 is [`NONE`].
 ///
@@ -222,6 +222,12 @@ pub const KINDS: &[&str] = &[
     // and reverted. This kind is excluded from the `boundaries` layer's `kinds` list, so nothing
     // in the basemap draws it — it exists only for the region mask to read.
     "region_area",
+    // v8, append-only. The `landtype` merge carries what the wash used to drop: orchards and
+    // vineyards (`landuse=orchard`/`vineyard`) at z9, quarries (`landuse=quarry`) at z10.
+    // `swimming_pool` (z14) and `residential`/`commercial` already exist above — paint only.
+    "orchard",
+    "vineyard",
+    "quarry",
 ];
 
 /// Every `kind_detail` value, id 1 upward. Index 0 is [`NONE`].

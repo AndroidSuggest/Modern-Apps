@@ -8,6 +8,7 @@ import com.vayunmathur.findfamily.data.RequestStatus
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.UserKind
 import com.vayunmathur.findfamily.util.Networking
+import com.vayunmathur.findfamily.util.registerTracker
 import com.vayunmathur.library.util.DataStoreUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

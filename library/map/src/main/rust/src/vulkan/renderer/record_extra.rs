@@ -316,6 +316,9 @@ impl Renderer {
     /// Distance-fogged per tile toward the earth land colour like the flat layers (buildings keep their
     /// per-vertex colours and are deliberately not fogged — no shader change for a z14+-only
     /// layer whose tiles sit inside the near ramp anyway).
+    ///
+    /// Since v8 the `earth` fill arm reads source `landtype` (matched by style id, because the
+    /// source alone no longer names it).
     pub(super) unsafe fn record_terrain(
         &self,
         command_buffer: vk::CommandBuffer,
@@ -327,7 +330,7 @@ impl Renderer {
     ) {
         let Some(earth) = layers
             .iter()
-            .find(|l| l.source_layer_id == tilecodec::mamaps::dict::LAYER_EARTH)
+            .find(|l| l.id == "earth")
         else {
             return;
         };

@@ -1,0 +1,143 @@
+#version 450
+//! `conv_vec_int8.comp` for a **GGUF Q2_K** kernel: a matrix-vector product over one position.
+//!
+//! `out[o] = act(sum over superblocks of (d_all*(q*lo) - d_min*hi) * x + bias[o])`.
+//!
+//! # What differs from the int4 gemv
+//!
+//! Only where the values come from. An int4 kernel has one scale per 32-tap block;
+//! Q2_K has a `(d, dmin)` fp16 pair per 256-tap superblock plus a scale byte per
+//! 16-tap lane, and the value is affine rather than scaled. The lane pattern is the
+//! int4 shader's whole-block walk: a lane owns whole 256-tap superblocks so each row's
+//! `(d, dmin)` is fetched once per block instead of once per tap.
+//!
+//! The scale table is rank 1, `(out * blocks * 2,)` flat — `(d, dmin)` pairs in
+//! row-major block order — at `p.act_weight`, the same push field the int8/int4
+//! shaders use for their scales. `p.in_c` is the taps; `blocks` is derived as
+//! `ceil(in_c / 256)`.
+//!
+//! # Push fields
+//!
+//! As `conv_vec_int4.comp`: `p.weight` is a 32-bit **word** offset to the Q2_K payload,
+//! `p.act_weight` the `(d, dmin)` table as an fp16 element index, `p.bias` the bias,
+//! `p.in_c` the taps, `p.out_c` the output channels and `p.count` the workgroup count,
+//! one per group of [`ROWS`] channels. The superblock byte offset of a row's block is
+//! derived from the two, since rows are contiguous runs of `blocks` superblocks.
+
+// Reductions happen in registers across a subgroup rather than through shared memory across the
+// whole workgroup. See the tail of `main` for why that is worth an extension requirement.
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#include "common.glsl"
+
+/// Output channels one workgroup owns.
+///
+/// Eight like the int4 gemv, for the same stream reason: a Q2_K superblock is wider than
+/// an int4 block, so fewer rows per workgroup would leave the same load-ALU overlap on
+/// the table. `CONV_VEC_Q2K_ROWS` in `nets/mod_part3.rs` must equal this: Rust dispatches
+/// `out / ROWS` workgroups, and disagreeing leaves channels never written. There is a test
+/// holding that (`the_q2k_gemv_row_count_matches_its_shader`).
+#define ROWS 8u
+
+/// Taps one Q2_K superblock covers. Mirrors `weights::Q2K_BLOCK`.
+#define Q2K_BLOCK 256u
+
+/// Per-lane partial sums, one row of 64 per output channel.
+///
+/// 8 KB at `ROWS` 8, against 16 KB of guaranteed `maxComputeSharedMemorySize`. Half
+/// the guarantee, and the reason `ROWS` stops here rather than at 16: doubling again
+/// would take the whole budget for the partials alone, before the driver accounts
+/// for anything else it stages.
+shared float partial[ROWS][64];
+
+void main() {
+    uint tile = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    if (tile >= p.count) {
+        return;
+    }
+    uint channel_base = tile * ROWS;
+    uint lane = gl_LocalInvocationID.x;
+    uint blocks = (p.in_c + Q2K_BLOCK - 1u) / Q2K_BLOCK;
+    float acc[ROWS];
+    for (uint r = 0u; r < ROWS; r++) {
+        acc[r] = 0.0;
+    }
+    // A lane owns whole superblocks rather than a stride-64 scatter, so each row's
+    // `(d, dmin)` is fetched once per 256 taps instead of once per tap.
+    //
+    // Coalescing survives the change. A lane reads 84 consecutive bytes, and neighbouring
+    // lanes are 84 bytes apart - so a warp still sweeps one contiguous run.
+    for (uint base = lane * Q2K_BLOCK; base < p.in_c; base += 64u * Q2K_BLOCK) {
+        uint block = base / Q2K_BLOCK;
+        float dall[ROWS];
+        float dmin[ROWS];
+        for (uint r = 0u; r < ROWS; r++) {
+            uint pair = p.act_weight + (channel_base + r) * blocks * 2u + block * 2u;
+            float d = float(weights[pair]);
+            float m = float(weights[pair + 1u]);
+            dall[r] = d * d;
+            dmin[r] = m * d;
+        }
+        uint last = min(base + Q2K_BLOCK, p.in_c);
+        for (uint r = 0u; r < ROWS; r++) {
+            // Superblock byte offset of this row's block: rows are contiguous runs of
+            // `blocks` superblocks, 84 bytes each, from the word offset `p.weight`.
+            uint sbo = (p.weight * 4u) + ((channel_base + r) * blocks + block) * 84u;
+            float total = 0.0;
+            uint span = last - base;
+            // The 256 taps are 2 halves of 128; each half is 4 lane-pairs of 16+16 taps
+            // at shifts 0/2/4/6. One scale byte per lane-pair, fetched once per 32 taps.
+            for (uint half_idx = 0u; half_idx < 2u; half_idx++) {
+                for (uint pair = 0u; pair < 4u; pair++) {
+                    uint sc = q2k_scale(sbo, half_idx, pair * 2u);
+                    uint sc2 = q2k_scale(sbo, half_idx, pair * 2u + 1u);
+                    float lo = float(sc & 15u);
+                    float hi = float(sc >> 4u);
+                    float lo2 = float(sc2 & 15u);
+                    float hi2 = float(sc2 >> 4u);
+                    for (uint l = 0u; l < 16u; l++) {
+                        uint tap = half_idx * 128u + pair * 32u + l;
+                        if (tap >= span) {
+                            break;
+                        }
+                        uint code = q2k_code(sbo, half_idx, tap);
+                        total += (dall[r] * float(code) * lo - dmin[r] * hi)
+                            * float(arena[p.in0 + base + tap]);
+                    }
+                    for (uint l = 0u; l < 16u; l++) {
+                        uint tap = half_idx * 128u + pair * 32u + 16u + l;
+                        if (tap >= span) {
+                            break;
+                        }
+                        uint code = q2k_code(sbo, half_idx, tap);
+                        total += (dall[r] * float(code) * lo2 - dmin[r] * hi2)
+                            * float(arena[p.in0 + base + tap]);
+                    }
+                }
+            }
+            acc[r] += total;
+        }
+    }
+    // Reduce inside each subgroup first, then across the few subgroups a workgroup holds.
+    for (uint r = 0u; r < ROWS; r++) {
+        float summed = subgroupAdd(acc[r]);
+        if (subgroupElect()) {
+            partial[r][gl_SubgroupID] = summed;
+        }
+    }
+    barrier();
+    if (lane >= ROWS) {
+        return;
+    }
+    uint channel = channel_base + lane;
+    if (channel >= p.out_c) {
+        return;
+    }
+    float total = 0.0;
+    for (uint i = 0u; i < gl_NumSubgroups; i++) {
+        total += partial[lane][i];
+    }
+    // Already scaled inside the loop, so only the bias is left.
+    float offset = float(weights[p.bias + channel]);
+    arena[p.out_at + channel] = float16_t(fused_store(total + offset, p.act, channel, channel));
+}

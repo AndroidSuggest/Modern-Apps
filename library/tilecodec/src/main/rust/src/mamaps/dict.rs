@@ -22,7 +22,7 @@
 //!
 //! # Size
 //!
-//! Twelve layers, ~108 kinds and 41 details, at a length byte each: under 2 KiB as measured,
+//! Nine layers, ~112 kinds and 41 details, at a length byte each: under 2 KiB as measured,
 //! which is what lets the header, the dictionary and the root index share one 16 KiB opening
 //! read.
 //!
@@ -39,8 +39,7 @@ mod types;
 mod tests;
 
 pub use tables::{
-    DETAILS, KINDS, LAYERS, LAYER_BOUNDARIES, LAYER_BUILDINGS, LAYER_EARTH, LAYER_JUNCTION,
-    LAYER_LANDCOVER, LAYER_LANDUSE, LAYER_PLACES, LAYER_POI, LAYER_ROADS, LAYER_TRAFFIC,
-    LAYER_TRANSIT, LAYER_WATER, NONE,
+    DETAILS, KINDS, LAYERS, LAYER_BOUNDARIES, LAYER_BUILDINGS, LAYER_JUNCTION, LAYER_LANDTYPE,
+    LAYER_PLACES, LAYER_POI, LAYER_ROADS, LAYER_TRAFFIC, LAYER_TRANSIT, NONE,
 };
 pub use types::Dictionary;

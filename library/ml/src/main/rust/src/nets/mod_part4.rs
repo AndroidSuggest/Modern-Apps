@@ -244,11 +244,28 @@ impl<'a> Builder<'a> {
         )
     }
 
-    /// The body behind [`Builder::conv_int8`] and [`Builder::conv_int4`].
+    /// [`Builder::conv_int8`] with a **GGUF Q2_K** kernel and a per-superblock scale.
     ///
-    /// The two differ only in the scale tensor's rank and in which shaders the plan lowers to, so
-    /// everything else - the group check, the word-addressed kernel, the refusal of `PRelu` - is
-    /// stated once here.
+    /// The scale tensor is `(m * blocks * 2,)` flat — one `(d, dmin)` fp16 pair per 256
+    /// taps. Only `1 x 1` is offered, like int4.
+    pub fn conv_q2k(&mut self, input: Id, weight_index: usize, m: u32, act: Act) -> Id {
+        self.conv_quantised(
+            input,
+            weight_index,
+            m,
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (0, 0, 0, 0),
+            1,
+            act,
+            Quant::Q2K,
+        )
+    }
+
+    /// The body behind [`Builder::conv_int8`], [`Builder::conv_int4`] and
+    /// [`Builder::conv_q2k`]. The three differ only in the scale tensor's rank and in
+    /// which shaders the plan lowers to.
     #[allow(clippy::too_many_arguments)]
     fn conv_quantised(
         &mut self,
@@ -281,17 +298,34 @@ impl<'a> Builder<'a> {
             ));
         }
         let per_group = in_shape.c.checked_div(group).unwrap_or(0);
-        let weight = match self.weights.shaped_words(weight_index, &[m, per_group, kh, kw]) {
-            Ok(offset) => {
-                if let Some(slot) = self.read.get_mut(weight_index) {
-                    *slot = true;
+        // Q2_K kernels are rank 2 `[out, taps]` in the table (superblocks have no kernel
+        // axes to restate); int8/int4 kernels are rank 4 `[out, in, kh, kw]`. The shape
+        // check is what stops one being read as the other.
+        let weight = match quant {
+            Quant::Q2K => match self.weights.shaped_words(weight_index, &[m, per_group]) {
+                Ok(offset) => {
+                    if let Some(slot) = self.read.get_mut(weight_index) {
+                        *slot = true;
+                    }
+                    offset
                 }
-                offset
-            }
-            Err(e) => {
-                self.fail(e);
-                0
-            }
+                Err(e) => {
+                    self.fail(e);
+                    0
+                }
+            },
+            _ => match self.weights.shaped_words(weight_index, &[m, per_group, kh, kw]) {
+                Ok(offset) => {
+                    if let Some(slot) = self.read.get_mut(weight_index) {
+                        *slot = true;
+                    }
+                    offset
+                }
+                Err(e) => {
+                    self.fail(e);
+                    0
+                }
+            },
         };
         let scale = match quant {
             Quant::I8 => self.weight(weight_index + 1, &[m]),
@@ -300,6 +334,13 @@ impl<'a> Builder<'a> {
             Quant::I4 => {
                 let blocks = (per_group * kh * kw).div_ceil(crate::weights::I4_BLOCK);
                 self.weight(weight_index + 1, &[m, blocks])
+            }
+            // One `(d, dmin)` pair per superblock, so the table is `(out, blocks, 2)` —
+            // flat `(out * blocks * 2,)`. Resolved by shape, which is what stops an int4
+            // scale being read as a Q2_K one.
+            Quant::Q2K => {
+                let blocks = (per_group * kh * kw).div_ceil(crate::weights::Q2K_BLOCK);
+                self.weight(weight_index + 1, &[m * blocks * 2])
             }
         };
         let bias = self.weight(weight_index + 2, &[m]);
@@ -413,7 +454,6 @@ impl<'a> Builder<'a> {
             act,
         )
     }
-
     /// A transposed convolution: weights `[in_c, m/group, kh, kw]`, output
     /// `(in - 1) * stride + dilation * (k - 1) + 1 - pads`.
     #[allow(clippy::too_many_arguments)]

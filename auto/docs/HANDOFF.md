@@ -368,11 +368,16 @@ gearhead pull plus `jadx` and the `openssl` CLI, none of which this environment 
 
 1. **Confirm the render path** — frames stream and are acked, but nobody has
    confirmed they decode and display on the DHU surface yet.
-2. **Input**, so the DHU's touch does something. Channel messages are mapped in FINDINGS.md.
+2. **Input tap E2E** — the channel is up (binds on the DHU's service 3,
+   key-binding round-trips with status 0); what remains is a real tap with
+   the DHU window focused, confirming `InputEvent.Touch` increments.
 3. **MAOS integration** (plan Phase 3) — the role move is the risky part. Both the
    privapp-permissions entry and the `roles.xml` patch are boot-fatal if wrong, so change one
    at a time and flash between.
-4. Audio, sensors, then the real car UI.
+4. Audio (sinks on 4/5 carry `media_sink` payloads and should work; mic moved
+   to the DHU's service 7 — needs a live chunk check), then the real car UI.
+   Sensors are DONE against the DHU (LOCATION/NIGHT/DRIVING subscribed,
+   batches flow; other types get per-type -9, types 23-26 get bare 0xff).
 
 Phase 3 in the plan has the full role strategy: MA Auto takes
 `SYSTEM_AUTOMOTIVE_PROJECTION`, MA Cast moves to `COMPANION_DEVICE_APP_STREAMING` (which
@@ -410,3 +415,18 @@ Two more found from live wire capture, not decompilation:
   0xff'd. And the 0x7 must be framed on the TARGET channel, not channel 0
   (ch0-framed opens draw STATUS_INVALID_CHANNEL, -5).
 - The head unit speaks first. The phone answers a version request, it does not send one.
+- **DHU 2.0 service ids do NOT match gearhead's `rro`** (verified by decoding
+  the 569B 0x6 discovery payload, 2026-09-18). The DHU advertises 1-7 as:
+  1=sensor (`Sensor{1,10,13}`, exactly `default.ini [sensors]`), 2=video,
+  3=input (keycodes + 800x480 TouchConfig), 4/5=audio sinks, 6=vendor,
+  7=mic (`MediaSourceService`). There is NO service 8. Owners bind by
+  **payload type** (`hasSensorSource`/`hasInputSource`/`hasMediaSource`),
+  like gearhead (`jlf.a(xpa)` reads the sensor config out of the entry) --
+  never by hardcoded id. Sending sensor subscribes to the mic channel earns
+  `0xff` "unexpected message", which is what the ch7 failures were.
+- **`xnv` SensorResponse is status-only** (`xow`: field 1 = `xls` status, no
+  type echo -- gearhead's `jcd.s` waits synchronously per subscribe). `08 00`
+  = SUCCESS; `08 f7 ff..` (10-byte varint) = -9 STATUS_INVALID_SENSOR.
+  Owners attribute answers FIFO in subscribe order. Our old
+  `{sensor_type=1, status=2}` layout parsed every real answer as
+  uninitialized → Observed.

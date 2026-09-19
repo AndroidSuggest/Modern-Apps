@@ -23,12 +23,7 @@ impl Store {
             .filter(|(_, min)| **min <= z)
             .map(|(i, _)| i)
             .collect();
-        ZoomReader::spawn(
-            NormalizedChunks::open(self.path.clone(), self.chunks.clone())
-                .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
-            wanted,
-            z,
-        )
+        self.reader_for_wanted(wanted, z)
     }
 
     pub fn wanted_chunks_for_zoom(&self, z: u8) -> Vec<usize> {
@@ -48,6 +43,12 @@ impl Store {
         &self.path
     }
 
+    /// The shared anonymous spill store. Cloned (refcount bump, never bytes)
+    /// into per-lane store views so decode threads read the same memory.
+    pub fn anon_store(&self) -> std::sync::Arc<tile_build::anon::AnonStore> {
+        std::sync::Arc::clone(&self.anon)
+    }
+
     pub fn raw_chunks(&self) -> &[u64] {
         &self.chunks
     }
@@ -59,12 +60,45 @@ impl Store {
     pub fn from_parts(path: PathBuf, chunks: Vec<u64>, chunk_mins: Vec<u8>) -> Self {
         Self {
             path,
+            anon: std::sync::Arc::new(tile_build::anon::AnonStore::new()),
             chunks,
             chunk_mins,
             count: 0,
             bbox: (0, 0, 0, 0),
             conventions: crate::schema::boundaries::Conventions::default(),
         }
+    }
+
+    /// A view over the same staged bytes: `store` is the shared anonymous
+    /// spill (cloned Arc, never bytes), `chunks`/`chunk_mins` the same index.
+    /// Used by per-lane decode threads, which need a `Store` to open readers
+    /// from but must not copy the spill.
+    pub fn view_over(
+        path: PathBuf,
+        chunks: Vec<u64>,
+        chunk_mins: Vec<u8>,
+        store: std::sync::Arc<tile_build::anon::AnonStore>,
+    ) -> Self {
+        Self {
+            path,
+            anon: store,
+            chunks,
+            chunk_mins,
+            count: 0,
+            bbox: (0, 0, 0, 0),
+            conventions: crate::schema::boundaries::Conventions::default(),
+        }
+    }
+
+    /// Attach the anonymous store after construction. Used by tests that build
+    /// a `Store` from parts and then read it back without a file.
+    #[cfg(test)]
+    pub fn with_anon(
+        mut self,
+        store: std::sync::Arc<tile_build::anon::AnonStore>,
+    ) -> Self {
+        self.anon = store;
+        self
     }
 
     /// Take the marking-convention grid stage A resolved from the country relations.
@@ -82,12 +116,13 @@ impl Store {
     }
 
     pub fn reader_for_wanted(&self, wanted: Vec<usize>, z: u8) -> Result<ZoomReader> {
-        ZoomReader::spawn(
-            NormalizedChunks::open(self.path.clone(), self.chunks.clone())
-                .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
-            wanted,
-            z,
+        let chunks = NormalizedChunks::open_anon(
+            self.path.clone(),
+            self.chunks.clone(),
+            std::sync::Arc::clone(&self.anon),
         )
+        .map_err(|e| osm_ingest::proto::Error(e.to_string()))?;
+        ZoomReader::spawn(chunks, wanted, z)
     }
 
     /// Read every feature, in the order they were written.
@@ -97,8 +132,11 @@ impl Store {
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn reader(&self) -> Result<Reader> {
         Ok(Reader {
-            inner: NormalizedReader::open(self.path.clone())
-                .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
+            inner: NormalizedReader::open_anon(
+                self.path.clone(),
+                std::sync::Arc::clone(&self.anon),
+            )
+            .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
         })
     }
 }

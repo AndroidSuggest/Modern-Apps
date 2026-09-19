@@ -24,7 +24,7 @@ fn collapse_within_ways<W: std::io::Write + Send>(
     let mut kept = Bitset::new(u64::from(slots));
     let mut prog = crate::progress::Progress::new("Selecting kept nodes", u64::from(slots));
     for i in 0..slots {
-        if index.present.get(u64::from(i)) && chains::survives(&built.endpoints, &degree, i) {
+        if index.present.get(u64::from(i)) && chains::survives(&built.endpoints, &degree, stop, i) {
             kept.set(u64::from(i));
         }
         prog.inc();

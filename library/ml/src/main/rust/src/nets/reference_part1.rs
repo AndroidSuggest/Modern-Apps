@@ -87,6 +87,7 @@
                         self.conv_int8(push)
                     }
                     Kind::ConvVecInt4 | Kind::ConvPointInt4 => self.conv_int4(push),
+                    Kind::ConvQ2K | Kind::ConvPointQ2K | Kind::ConvVecQ2K => self.conv_q2k(push),
                 },
             };
             result.map_err(|e| format!("step {step} ({op:?}): {e}"))?;
@@ -272,6 +273,67 @@
             }
         }
         Ok(())
+    }
+
+    /// A `1 x 1` Q2_K convolution with a per-superblock `(d, dmin)` scale.
+    /// See `shaders/conv_vec_q2k.comp`.
+    ///
+    /// Only pointwise, which is what [`crate::nets::Builder::conv_q2k`] offers, so there is no
+    /// kernel or padding loop: `taps` is the contraction axis and the affine pair changes
+    /// every [`crate::weights::Q2K_BLOCK`] of it. The exact `to_float` transcription —
+    /// `y = d*d*(q*lo) - dmin*d*hi` per 16-tap lane — so the oracle and the shader are the
+    /// same function by construction rather than by coincidence.
+    fn conv_q2k(&mut self, p: &Push) -> Result<(), String> {
+        use crate::weights::{Q2K_BLOCK, Q2K_BYTES};
+        let taps = p.in_c;
+        let blocks = taps.div_ceil(Q2K_BLOCK);
+        let positions = p.out_h * p.out_w;
+        for oc in 0..p.out_c {
+            let shift = self.fused_shift(p, oc)?;
+            for position in 0..positions {
+                let mut acc = 0.0f32;
+                for k in 0..taps {
+                    let block = k / Q2K_BLOCK;
+                    let inblock = k % Q2K_BLOCK;
+                    let half = inblock / 128;
+                    let pair = (inblock % 128) / 32;
+                    let l = inblock % 16;
+                    let odd = (inblock % 32) / 16;
+                    // Superblock byte offset of this row's block: rows are contiguous runs
+                    // of `blocks` superblocks from the word offset `p.weight`.
+                    let sbo = p.weight * 4 + (oc * blocks + block) * Q2K_BYTES;
+                    let sc = self.byte(sbo + half * 8 + pair * 2 + odd)?;
+                    let lo = f32::from(sc & 15);
+                    let hi = f32::from(sc >> 4);
+                    // Quant byte: 64 per superblock after the 16 scale bytes; halves are
+                    // separate 32-byte chunks, odd lanes in the second 16.
+                    let qb = self.byte(sbo + 16 + half * 32 + odd * 16 + l)?;
+                    let lane = pair % 4;
+                    let q = f32::from((qb >> (lane * 2)) & 3);
+                    let dm = self.weight(p.act_weight, (oc * blocks + block) * 2)?;
+                    let dn = self.weight(p.act_weight, (oc * blocks + block) * 2 + 1)?;
+                    acc += self.load(p.in0, k * positions + position)?
+                        * (dm * dm * q * lo - dn * dm * hi);
+                }
+                let biased = acc + self.weight(p.bias, oc)?;
+                let index = oc * positions + position;
+                let folded =
+                    activate(biased, p.act, 0.0) + self.fused_res(p, index)? + shift;
+                self.store(p.out, index, folded)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// One byte of the weights blob, for the quantised unpack helpers below.
+    ///
+    /// The shader reads quantised payloads through a `uint` view; here the same address
+    /// arithmetic is done on the undecoded blob, so the two agree by construction.
+    fn byte(&self, at: u32) -> Result<u8, String> {
+        self.bytes
+            .get(at as usize)
+            .copied()
+            .ok_or_else(|| format!("weight byte {at} of {}", self.bytes.len()))
     }
 
     /// Element `index` of the int8 tensor whose **32-bit word** offset is `word`.

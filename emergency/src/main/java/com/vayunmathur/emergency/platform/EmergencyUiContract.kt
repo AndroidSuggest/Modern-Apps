@@ -57,7 +57,7 @@ data class OwnerPickCandidates(
 )
 
 interface EmergencyActions {
-    /** Persists the manually-entered medical fields (identity comes from a pick). */
+    /** Persists the dropdown-selected medical fields (identity comes from a pick). */
     fun saveMedicalInfo(bloodType: String, organDonor: String) {}
 
     /**

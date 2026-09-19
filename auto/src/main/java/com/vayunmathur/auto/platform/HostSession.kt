@@ -1,0 +1,439 @@
+package com.vayunmathur.auto.platform
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.content.res.Configuration
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.RemoteException
+import android.util.Log
+import android.view.MotionEvent
+import android.view.Surface
+import androidx.car.app.CarAppService
+import androidx.car.app.CarContext
+import androidx.car.app.HandshakeInfo
+import androidx.car.app.IAppHost
+import androidx.car.app.ICarApp
+import androidx.car.app.ICarHost
+import androidx.car.app.IOnDoneCallback
+import androidx.car.app.ISurfaceCallback
+import androidx.car.app.SessionInfo
+import androidx.car.app.SessionInfoIntentEncoder
+import androidx.car.app.SurfaceContainer
+import androidx.car.app.constraints.IConstraintHost
+import androidx.car.app.navigation.INavigationHost
+import androidx.car.app.serialization.Bundleable
+import java.security.InvalidParameterException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
+
+/**
+ * One hosted car-app session: binds a single `CarAppService` component and
+ * implements the host binders so the launcher renders whatever it publishes.
+ *
+ * Extracted from the old Maps-only `CarAppHost` with no behavior change: the
+ * handshake (`HOST_API_LEVEL` 1, onHandshakeCompleted -> onAppCreate/Start/
+ * Resume, 5s latch), the `SurfaceContainer` push/clear, night via
+ * `onConfigurationChanged`, and map touches via `onScroll`/`onClick` are all
+ * identical. What changed is the shape: the component + category are
+ * parameters (not Maps constants), and templates parse through
+ * [HostTemplateParsers] into [HostTemplate] instead of the
+ * NavigationTemplate-only `HostNavState`.
+ *
+ * Threading: `bind()` may be called from any thread; every blocking binder
+ * round-trip runs on a background thread, never main. `setSurface` hops off
+ * the caller (the `TextureView` callback is main, and the app's answer may
+ * block); `clearSurface` stays synchronous so the service can release the
+ * surface on return. Template callbacks post to main.
+ */
+class HostSession(
+    context: Context,
+    private val component: ComponentName,
+    private val category: String,
+    private val onTemplate: (HostTemplate) -> Unit = {},
+) {
+    private val appContext = context.applicationContext
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    @Volatile private var carApp: ICarApp? = null
+    @Volatile private var surfaceCallback: ISurfaceCallback? = null
+    @Volatile private var bound = false
+    @Volatile private var handshakeDone = false
+
+    private var localSurface: Surface? = null
+    private var localWidth = 0
+    private var localHeight = 0
+    private var localDpi = DEFAULT_DPI
+
+    private var connection: ServiceConnection? = null
+
+    /** The component this session hosts. */
+    fun componentName(): ComponentName = component
+
+    /** Whether the car-app service resolves. */
+    fun hasService(): Boolean = runCatching {
+        val info = appContext.packageManager.getServiceInfo(component, 0)
+        info.enabled
+    }.getOrDefault(false)
+
+    /** Binds the service; no-op when already bound or when the service is missing. */
+    fun bind() {
+        if (bound) return
+        if (!hasService()) {
+            Log.i(TAG, "$component missing; stays unhosted")
+            return
+        }
+        val intent = Intent(CarAppService.SERVICE_INTERFACE).apply {
+            this.component = this@HostSession.component
+            addCategory(category)
+            SessionInfoIntentEncoder.encode(SessionInfo(SessionInfo.DISPLAY_TYPE_MAIN, SESSION_ID), this)
+        }
+        val conn = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                Log.i(TAG, "$component connected; starting handshake")
+                if (binder == null) {
+                    Log.w(TAG, "$component connected with null binder")
+                    return
+                }
+                thread(name = "ma-auto-carhost", isDaemon = true) {
+                    runHandshake(ICarApp.Stub.asInterface(binder))
+                }
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                Log.w(TAG, "$component disconnected")
+                carApp = null
+                bound = false
+                handshakeDone = false
+                mainHandler.post { onTemplate(HostTemplate.Pane(title = null)) }
+            }
+
+            override fun onBindingDied(name: ComponentName?) {
+                Log.w(TAG, "$component binding died")
+            }
+
+            override fun onNullBinding(name: ComponentName?) {
+                Log.w(TAG, "$component returned null binding")
+                mainHandler.post { onTemplate(HostTemplate.Pane(title = null)) }
+            }
+        }
+        connection = conn
+        Log.i(TAG, "binding car service $component")
+        val ok = runCatching {
+            appContext.bindService(intent, conn, Context.BIND_AUTO_CREATE)
+        }.getOrDefault(false)
+        bound = ok
+        Log.i(TAG, "bindService returned $ok")
+    }
+
+    /**
+     * Hands a surface to the app.
+     * Safe from any thread; the binder answer hops off the caller.
+     */
+    fun setSurface(surface: Surface, widthPx: Int, heightPx: Int) {
+        localSurface = surface
+        localWidth = widthPx
+        localHeight = heightPx
+        localDpi = appContext.resources.displayMetrics.densityDpi
+        thread(name = "ma-auto-carhost-surface", isDaemon = true) { pushSurface() }
+    }
+
+    /**
+     * The surface went away; tells the app synchronously so the service
+     * can release the surface on return (same contract as `CarMapRenderer`:
+     * the host releases the `Surface` as soon as this returns).
+     */
+    fun clearSurface() {
+        val cb = surfaceCallback
+        val last = localSurface
+        localSurface = null
+        if (cb != null && last != null) {
+            runCatching {
+                val container = SurfaceContainer(last, localWidth, localHeight, localDpi)
+                bundleOf(container)?.let { cb.onSurfaceDestroyed(it, doneCallback()) }
+            }.onFailure { Log.w(TAG, "onSurfaceDestroyed failed", it) }
+        }
+    }
+
+    /** Pushes night as a configuration change; the app restyles its own map. */
+    fun setNight(dark: Boolean) {
+        val app = carApp ?: return
+        if (!handshakeDone) return
+        thread(name = "ma-auto-carhost-night", isDaemon = true) {
+            runCatching {
+                val config = Configuration(appContext.resources.configuration).apply {
+                    uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                        if (dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
+                }
+                app.onConfigurationChanged(config, doneCallback())
+            }.onFailure { Log.w(TAG, "onConfigurationChanged failed", it) }
+        }
+    }
+
+    /**
+     * Forwards one touch frame on the map surface to the app.
+     * Main thread only (called from the nav renderer's touch listener).
+     */
+    fun injectMapTouch(action: Int, xPx: Float, yPx: Float): Boolean {
+        val cb = surfaceCallback ?: return false
+        return runCatching {
+            when (action) {
+                MotionEvent.ACTION_DOWN -> {
+                    lastTouchX = xPx
+                    lastTouchY = yPx
+                    touchMoved = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = xPx - lastTouchX
+                    val dy = yPx - lastTouchY
+                    if (!touchMoved && (dx * dx + dy * dy) < TOUCH_SLOP_PX_SQ) {
+                        return true
+                    }
+                    touchMoved = true
+                    lastTouchX = xPx
+                    lastTouchY = yPx
+                    cb.onScroll(dx, dy)
+                }
+                MotionEvent.ACTION_UP -> {
+                    lastTouchX = xPx
+                    lastTouchY = yPx
+                    if (!touchMoved) cb.onClick(xPx, yPx)
+                    touchMoved = false
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    touchMoved = false
+                }
+                else -> return false
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    @Volatile private var lastTouchX = 0f
+    @Volatile private var lastTouchY = 0f
+    @Volatile private var touchMoved = false
+
+    /** Tears the session down; the service still owns the `Surface`. */
+    fun unbind() {
+        clearSurface()
+        val app = carApp
+        carApp = null
+        handshakeDone = false
+        if (app != null) {
+            runCatching { app.onAppPause(doneCallback()) }
+            runCatching { app.onAppStop(doneCallback()) }
+        }
+        connection?.let { runCatching { appContext.unbindService(it) } }
+        connection = null
+        bound = false
+        surfaceCallback = null
+    }
+
+    // ----------------------------------------------------------------
+    // Handshake (background thread only)
+    // ----------------------------------------------------------------
+
+    private fun runHandshake(app: ICarApp) {
+        carApp = app
+        Log.i(TAG, "starting car-app handshake for $component")
+        val handshake = bundleOf(HandshakeInfo(appContext.packageName, HOST_API_LEVEL)) ?: return
+        if (!roundTrip("onHandshakeCompleted") { cb -> app.onHandshakeCompleted(handshake, cb) }) return
+        val config = Configuration(appContext.resources.configuration)
+        val intent = Intent(Intent.ACTION_MAIN)
+        if (!roundTrip("onAppCreate") { cb -> app.onAppCreate(carHostBinder, intent, config, cb) }) return
+        if (!roundTrip("onAppStart") { cb -> app.onAppStart(cb) }) return
+        if (!roundTrip("onAppResume") { cb -> app.onAppResume(cb) }) return
+        handshakeDone = true
+        mainHandler.post { onTemplate(HostTemplate.Pane(loading = true)) }
+        fetchTemplate()
+        pushSurface()
+    }
+
+    /** Serializes one host object; null when the Bundler refuses it. */
+    private fun bundleOf(value: Any): Bundleable? = runCatching {
+        Bundleable.create(value)
+    }.getOrNull()
+
+    /** One blocking binder call with a 5s cap; false means the session is dead. */
+    private fun roundTrip(name: String, call: (IOnDoneCallback) -> Unit): Boolean {
+        Log.i(TAG, "$name: calling for $component")
+        val latch = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>(null)
+        val cb = object : IOnDoneCallback.Stub() {
+            override fun onSuccess(response: Bundleable?) {
+                Log.i(TAG, "$name: success")
+                latch.countDown()
+            }
+
+            override fun onFailure(response: Bundleable?) {
+                Log.w(TAG, "$name: failure $response")
+                failure.set(RuntimeException("$name failed: $response"))
+                latch.countDown()
+            }
+        }
+        runCatching { call(cb) }.onFailure {
+            Log.w(TAG, "$name binder call threw", it)
+            return false
+        }
+        val done = runCatching { latch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS) }.getOrDefault(false)
+        if (!done) Log.w(TAG, "$name timed out")
+        failure.get()?.let { Log.w(TAG, "$name rejected", it) }
+        return done && failure.get() == null
+    }
+
+    /** Pulls the current template and forwards it. Background thread. */
+    private fun fetchTemplate() {
+        val app = carApp ?: return
+        val managerRef = AtomicReference<androidx.car.app.IAppManager?>(null)
+        val latch = CountDownLatch(1)
+        val managerCb = object : IOnDoneCallback.Stub() {
+            override fun onSuccess(response: Bundleable?) {
+                managerRef.set(runCatching { response?.get() as? androidx.car.app.IAppManager }.getOrNull())
+                latch.countDown()
+            }
+
+            override fun onFailure(response: Bundleable?) {
+                Log.w(TAG, "fetchTemplate: getManager failure $response")
+                latch.countDown()
+            }
+        }
+        runCatching { app.getManager(CarContext.APP_SERVICE, managerCb) }
+            .onFailure { Log.w(TAG, "getManager threw", it); return }
+        latch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        val manager = managerRef.get() ?: run {
+            Log.w(TAG, "getManager returned no manager")
+            return
+        }
+        val templateRef = AtomicReference<Any?>(null)
+        val templateLatch = CountDownLatch(1)
+        val templateCb = object : IOnDoneCallback.Stub() {
+            override fun onSuccess(response: Bundleable?) {
+                templateRef.set(runCatching { response?.get() }.getOrNull())
+                templateLatch.countDown()
+            }
+
+            override fun onFailure(response: Bundleable?) {
+                Log.w(TAG, "fetchTemplate: getTemplate failure $response")
+                templateLatch.countDown()
+            }
+        }
+        runCatching { manager.getTemplate(templateCb) }
+            .onFailure { Log.w(TAG, "getTemplate threw", it); return }
+        templateLatch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        val wrapper = templateRef.get() as? androidx.car.app.model.TemplateWrapper
+        val parsed = HostTemplateParsers.parse(wrapper)
+        mainHandler.post { onTemplate(parsed) }
+    }
+
+    private fun pushSurface() {
+        val cb = surfaceCallback ?: return
+        val surface = localSurface ?: return
+        if (localWidth <= 0 || localHeight <= 0) return
+        runCatching {
+            bundleOf(SurfaceContainer(surface, localWidth, localHeight, localDpi))
+                ?.let { cb.onSurfaceAvailable(it, doneCallback()) }
+        }.onFailure { Log.w(TAG, "onSurfaceAvailable failed", it) }
+    }
+
+    private fun doneCallback(): IOnDoneCallback = object : IOnDoneCallback.Stub() {
+        override fun onSuccess(response: Bundleable?) = Unit
+        override fun onFailure(response: Bundleable?) {
+            Log.w(TAG, "host call rejected: $response")
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Host binders (these ARE the host the app talks to)
+    // ----------------------------------------------------------------
+
+    private val carHostBinder = object : ICarHost.Stub() {
+        override fun startCarApp(intent: Intent?) {
+            if (intent == null) return
+            runCatching {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                appContext.startActivity(intent)
+            }.onFailure { Log.w(TAG, "startCarApp failed", it) }
+        }
+
+        override fun getHost(hostType: String?): IBinder {
+            return when (hostType) {
+                CarContext.APP_SERVICE -> appHostBinder.asBinder()
+                CarContext.NAVIGATION_SERVICE -> navHostBinder.asBinder()
+                CarContext.CONSTRAINT_SERVICE -> constraintHostBinder.asBinder()
+                else -> throw InvalidParameterException("Invalid host type: $hostType")
+            }
+        }
+
+        override fun finish() = Unit
+    }
+
+    private val appHostBinder = object : IAppHost.Stub() {
+        override fun invalidate() {
+            thread(name = "ma-auto-carhost-invalidate", isDaemon = true) { fetchTemplate() }
+        }
+
+        override fun showToast(text: CharSequence?, duration: Int) {
+            Log.i(TAG, "car toast: $text")
+        }
+
+        override fun setSurfaceCallback(callback: ISurfaceCallback?) {
+            surfaceCallback = callback
+            thread(name = "ma-auto-carhost-surface", isDaemon = true) { pushSurface() }
+        }
+
+        override fun sendLocation(location: android.location.Location?) = Unit
+
+        override fun showAlert(alert: Bundleable?) {
+            Log.i(TAG, "car alert shown (not rendered)")
+        }
+
+        override fun dismissAlert(alertId: Int) = Unit
+
+        override fun openMicrophone(request: Bundleable?): Bundleable {
+            throw RemoteException("openMicrophone not supported")
+        }
+    }
+
+    private val navHostBinder = object : INavigationHost.Stub() {
+        override fun navigationStarted() {
+            Log.i(TAG, "$component navigation started")
+        }
+
+        override fun navigationEnded() {
+            Log.i(TAG, "$component navigation ended")
+            mainHandler.post { onTemplate(HostTemplate.Pane(title = null)) }
+        }
+
+        override fun updateTrip(trip: Bundleable?) = Unit
+    }
+
+    private val constraintHostBinder = object : IConstraintHost.Stub() {
+        override fun getContentLimit(contentLimitType: Int): Int = CONTENT_LIMIT_DEFAULT
+
+        override fun isAppDrivenRefreshEnabled(): Boolean = false
+    }
+
+    private companion object {
+        const val TAG = "MaAuto.HostSession"
+        const val SESSION_ID = "main"
+        const val DEFAULT_DPI = 160
+
+        /**
+         * Host API level 9 (car-app 1.9.0-alpha02): negotiate full surface.
+         * Apps declaring an older `minCarApiLevel` still bind — the range gate
+         * in `CarAppBinder` passes when our level is within the app's
+         * [min, max] — and gate their own API 6/7/8/9 calls on the negotiated
+         * level, so old apps keep working unchanged.
+         */
+        const val HOST_API_LEVEL = 9
+
+        const val CALL_TIMEOUT_MS = 5_000L
+        const val CONTENT_LIMIT_DEFAULT = 6
+        const val TOUCH_SLOP_PX_SQ = 64f
+    }
+}

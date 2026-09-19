@@ -3,7 +3,6 @@ package com.vayunmathur.camera.util
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.net.Uri
-import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.ImageCapture
@@ -65,16 +64,12 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
         imageCapture = capture
         boundCamera = bindSession(provider, owner, nightSelector, preview, capture)
 
-        val contentValues = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
-        val metadata = ImageCapture.Metadata().apply {
-            if (_locationEnabled.value) location = lastLocation
-            isReversedHorizontal = mirrorCaptures
+        val pending = prepareStillSave("IMG_${MediaStoreSaver.timestamp()}.jpg")
+        if (pending == null) {
+            Log.w("CameraViewModel", "Night extension capture skipped: no save target")
+            return
         }
-        val outputOptions = ImageCapture.OutputFileOptions.Builder(
-            app.contentResolver,
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            contentValues
-        ).setMetadata(metadata).build()
+        val outputOptions = pending.outputOptions
 
         val savedUri = suspendCancellableCoroutine<Uri?> { cont ->
             capture.takePicture(
@@ -82,10 +77,12 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
                 ContextCompat.getMainExecutor(app),
                 object : ImageCapture.OnImageSavedCallback {
                     override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                        cont.resume(outputFileResults.savedUri)
+                        pending.closeStream()
+                        cont.resume(pending.resolveUri(outputFileResults))
                     }
                     override fun onError(exception: ImageCaptureException) {
                         Log.e("CameraViewModel", "Night extension capture failed", exception)
+                        pending.closeStream()
                         cont.resume(null)
                     }
                 }
@@ -126,8 +123,7 @@ internal fun CameraViewModel.captureNightPhotoCustom() {
                 val merged = NightCaptureEngine.merge(frames)
                 frames.forEach { it.recycle() }
                 merged?.let { bmp ->
-                    val values = MediaStoreSaver.imageValues("IMG_${MediaStoreSaver.timestamp()}.jpg")
-                    MediaStoreSaver.saveBitmap(app.contentResolver, values, bmp)
+                    saveStillBitmap("IMG_${MediaStoreSaver.timestamp()}.jpg", bmp)
                         .also { bmp.recycle() }
                 }
             }

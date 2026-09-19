@@ -74,6 +74,26 @@ const DTYPE_I4: u32 = 2;
 /// and `MIN_INT8_COSINE` is a strict gate that the wider block is more likely to miss.
 pub const I4_BLOCK: u32 = 32;
 
+/// GGUF Q2_K superblocks, carried verbatim: 256 taps per 84-byte block (16 scale bytes +
+/// 64 quant bytes + `d` + `dmin` as fp16). The per-superblock `(d, dmin)` pair lives in
+/// the fp16 tensor beside it, two values per block, in the slot a per-channel scale would
+/// occupy — so a Q2_K layer is the same kernel + scale + bias triple as int8, with a
+/// rank-1 scale of `2` values per block.
+///
+/// A tensor's byte length is `len.div_ceil(256) * 84` — the second fractional-stride
+/// dtype after [`DTYPE_I4`]. Reader and writer must agree on that rounding.
+const DTYPE_Q2K: u32 = 3;
+
+/// Taps one [`DTYPE_Q2K`] superblock covers. Fixed by the GGUF format, not a tuning choice.
+pub const Q2K_BLOCK: u32 = 256;
+
+/// Bytes one [`DTYPE_Q2K`] superblock occupies.
+pub const Q2K_BYTES: u32 = 84;
+
+/// Taps one [`DTYPE_Q2K`] lane covers: a superblock is 16 lanes of 16 taps sharing one
+/// `(d, dmin)` pair and one scale byte each.
+pub const Q2K_LANE: u32 = 16;
+
 /// How a tensor's payload is encoded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Dtype {
@@ -83,18 +103,22 @@ pub enum Dtype {
     I8,
     /// Signed 4-bit with a per-block scale. See [`DTYPE_I4`].
     I4,
+    /// GGUF Q2_K superblocks with a per-block `(d, dmin)` scale. See [`DTYPE_Q2K`].
+    Q2K,
 }
 
 impl Dtype {
     /// Bytes `len` elements of this dtype occupy.
     ///
     /// Not a stride: four-bit elements are half a byte each, so an odd length rounds up and the
-    /// final nibble is padding.
+    /// final nibble is padding; Q2_K elements are 84 bytes per 256 taps, so a short final
+    /// block rounds up to the whole superblock.
     pub const fn bytes(self, len: u64) -> u64 {
         match self {
             Dtype::F16 => len * 2,
             Dtype::I8 => len,
             Dtype::I4 => len.div_ceil(2),
+            Dtype::Q2K => len.div_ceil(Q2K_BLOCK as u64) * Q2K_BYTES as u64,
         }
     }
 
@@ -206,11 +230,16 @@ pub mod graph {
     ///
     /// The next free id after the fingerprinter at 23, with 7..10 and 15 staying retired.
     /// `maml_convert.py` has `GRAPHS["gemma4_audio"]` at the same number.
-    ///
-    /// Its own file for the reason the vision tower has one, and more so: it is 165 MB at int4,
-    /// larger than the vision tower's 98 MB, and a device that never sends audio should not
-    /// download it.
     pub const GEMMA4_AUDIO: u32 = 24;
+
+    /// MADLAD400-3B-MT translation, encoder and decoder in one file. See
+    /// [`crate::nets::madlad`].
+    ///
+    /// Two untied tables rather than one tied embedding: the input table and the logits
+    /// kernel are separate 256,000-row tables, each split four ways. The next free id
+    /// after Gemma 4's audio tower at 24, with 7..10 and 15 staying retired.
+    /// `maml_convert.py` has `GRAPHS["madlad400"]` at the same number.
+    pub const MADLAD: u32 = 25;
 }
 
 /// One tensor's entry in the table: where it is and what shape it is.
@@ -377,8 +406,11 @@ fn parse_header(bytes: &[u8], expect_graph: u32) -> Result<Header, String> {
             DTYPE_F16 => Dtype::F16,
             DTYPE_I8 => Dtype::I8,
             DTYPE_I4 => Dtype::I4,
+            DTYPE_Q2K => Dtype::Q2K,
             other => {
-                return Err(format!("tensor {i} has dtype {other}, expected fp16, int8 or int4"))
+                return Err(format!(
+                    "tensor {i} has dtype {other}, expected fp16, int8, int4 or q2k"
+                ))
             }
         };
         let offset = u32(bytes, at + 24);

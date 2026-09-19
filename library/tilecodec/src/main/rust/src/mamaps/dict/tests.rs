@@ -31,13 +31,14 @@ fn kind_ids_are_positions_in_a_constant_table() {
     assert_eq!(d.kind_name(u16::MAX), None, "past the table");
     assert_eq!(d.detail_name(4), Some("service"));
     assert_eq!(d.detail_name(5), Some("motorway"), "the road classes follow");
+    assert_eq!(d.layer_name(LAYER_LANDTYPE), Some("landtype"), "v8's merged wash");
     assert_eq!(d.layer_name(LAYER_ROADS), Some("roads"));
     assert_eq!(d.layer_name(LAYER_PLACES), Some("places"), "v2's label layer");
     assert_eq!(d.layer_name(LAYER_POI), Some("poi"), "v2's icon layer");
     assert_eq!(d.layer_name(LAYER_TRANSIT), Some("transit"), "v2 reserves transit");
     assert_eq!(d.layer_name(LAYER_TRAFFIC), Some("traffic"), "v4's live traffic layer");
     assert_eq!(d.layer_name(LAYER_JUNCTION), Some("junction"), "v7's lane connectors");
-    assert_eq!(d.layer_name(12), None, "past the table");
+    assert_eq!(d.layer_name(9), None, "past the table");
 }
 
 /// A duplicate would give one value two ids, so half the features carrying it would filter
@@ -72,7 +73,7 @@ fn an_archive_whose_tables_differ_is_refused() {
     renamed.kinds[16] = "national_parks".to_string();
     let message = renamed.check_matches_schema().expect_err("should be refused").0;
     assert!(message.contains("from id 16"), "{message}");
-    // Renaming a layer is equally refused: id 0 must mean `earth` everywhere.
+    // Renaming a layer is equally refused: id 0 must mean `landtype` everywhere.
     let mut renamed_layer = Dictionary::schema();
     renamed_layer.layers[0] = "ground".to_string();
     assert!(renamed_layer.check_matches_schema().is_err());
@@ -80,8 +81,8 @@ fn an_archive_whose_tables_differ_is_refused() {
     // archive built from anything but this tree is a different contract, not an older one.
     // (No backward-compat requirement: rebuild the archive instead.)
     let mut short = Dictionary::schema();
-    short.layers.truncate(7);
-    assert!(short.check_matches_schema().is_err(), "a 7-layer table opened");
+    short.layers.truncate(4);
+    assert!(short.check_matches_schema().is_err(), "a 4-layer table opened");
     let mut short_details = Dictionary::schema();
     short_details.details.truncate(40);
     assert!(short_details.check_matches_schema().is_err(), "a 40-detail table opened");

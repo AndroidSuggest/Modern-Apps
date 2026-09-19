@@ -26,9 +26,8 @@ use tilecodec::mamaps::dict;
 pub mod boundaries;
 pub mod buildings;
 pub mod buildings_extra;
-pub mod earth;
 pub mod junction;
-pub mod land;
+pub mod landtype;
 pub mod places;
 pub mod poi;
 pub mod roads;
@@ -36,7 +35,6 @@ pub mod roads_extra;
 pub mod traffic;
 pub mod traffic_extra;
 pub mod transit;
-pub mod water;
 
 /// Tag lookup, so a rule is a pure function of its tags.
 ///
@@ -100,7 +98,7 @@ pub struct Class {
     ///
     /// Zero for a line and for anything a zoom gate alone separates. What it is for is the case a
     /// zoom cannot fix: a national park and a back garden are both `leisure=park`, and only a size
-    /// tells them apart. Converted to the tile's own units by [`land::min_area_units`].
+    /// Converted to the tile's own units by [`landtype::min_area_units`].
     pub min_area_px: f64,
 }
 
@@ -154,16 +152,38 @@ pub fn detail(name: &str) -> u16 {
     }
 }
 
+/// The deepest zoom a layer is worth carrying at, by layer id.
+///
+/// The `landtype` wash is no longer a low-zoom backdrop: it tiles to z14 at 1.0x sharpness, so
+/// parks, shorelines and desert stay crisp under z14 roads and buildings. Boundaries keep
+/// z13: lines carry sub-10m wiggles a 2x grid stretch could straighten, and 3GB buys keeping
+/// them crisp. Every other layer tiles to the archive max (14). Enforced in the spill lane
+/// filter beside `min_zoom`, so no spill format change: a per-layer table, not a per-feature
+/// field.
+pub const MAX_ZOOM_PER_LAYER: [u8; 9] = [
+    14, // landtype
+    14, // roads
+    13, // boundaries
+    14, // buildings
+    14, // places
+    14, // poi
+    14, // transit
+    14, // traffic
+    14, // junction
+];
+
+/// The cap for `layer`, or 14 (no cap) for an id outside the table.
+pub fn max_zoom_for_layer(layer: u8) -> u8 {
+    MAX_ZOOM_PER_LAYER.get(layer as usize).copied().unwrap_or(14)
+}
+
 /// Which layers a build is producing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Layers {
-    pub earth: bool,
-    pub water: bool,
+    pub landtype: bool,
     pub buildings: bool,
     pub roads: bool,
     pub boundaries: bool,
-    pub landcover: bool,
-    pub landuse: bool,
     pub places: bool,
     pub poi: bool,
     pub transit: bool,
@@ -174,13 +194,10 @@ pub struct Layers {
 impl Layers {
     pub fn all() -> Layers {
         Layers {
-            earth: true,
-            water: true,
+            landtype: true,
             buildings: true,
             roads: true,
             boundaries: true,
-            landcover: true,
-            landuse: true,
             places: true,
             poi: true,
             transit: true,
@@ -196,17 +213,17 @@ impl Layers {
 /// because a closed way's area-ness is a tag question while a multipolygon relation is always an
 /// area.
 ///
-/// Every build carries all 12 layers, so there is no layer selection to gate on.
+/// Every build carries all 9 layers, so there is no layer selection to gate on.
 pub fn classify(
     tags: &(impl TagSource + ?Sized),
     is_way: bool,
     layers: Layers,
 ) -> Option<Class> {
-    debug_assert_eq!(layers, Layers::all(), "every build carries all 12 layers");
-    if let Some(class) = earth::classify(tags) {
-        return Some(class);
-    }
-    if let Some(class) = water::classify(tags, is_way) {
+    debug_assert_eq!(layers, Layers::all(), "every build carries all 9 layers");
+    // The early half of `landtype` (islands, cliffs, water) at the old earth+water position:
+    // a `natural=water` way that also carries `building=yes` is water, because water is
+    // asked first.
+    if let Some(class) = landtype::classify_early(tags, is_way) {
         return Some(class);
     }
     // Before buildings, because a road bridge over a building passage is a road.
@@ -219,9 +236,9 @@ pub fn classify(
     if let Some(class) = boundaries::classify(tags) {
         return Some(class);
     }
-    // Last among geometry, because it is the layer everything else is drawn on top of. One
-    // classifier produces both `landcover` and `landuse`.
-    if let Some(class) = land::classify(tags) {
+    // The late half of `landtype` (surfaces, human use) at the old land position: last among
+    // geometry, because it is the layer everything else is drawn on top of.
+    if let Some(class) = landtype::classify_late(tags) {
         return Some(class);
     }
     // Labels last of all: an area-mapped feature keeps its fill (a park stays a `landuse`
@@ -248,7 +265,7 @@ pub fn display_name(tags: &(impl TagSource + ?Sized), layer: u8) -> Option<Strin
     match layer {
         dict::LAYER_PLACES => places::display_name(tags),
         dict::LAYER_POI => poi::display_name(tags),
-        dict::LAYER_ROADS | dict::LAYER_WATER => line_name(tags),
+        dict::LAYER_ROADS | dict::LAYER_LANDTYPE => line_name(tags),
         _ => None,
     }
 }
@@ -271,11 +288,10 @@ fn line_name(tags: &(impl TagSource + ?Sized)) -> Option<String> {
 /// A superset of what the rules accept, so a screen that lets something through is harmless and one
 /// that rejects something is a bug.
 ///
-/// Every build carries all 12 layers, so the screen is unconditional.
+/// Every build carries all 9 layers, so the screen is unconditional.
 pub fn filters() -> Vec<&'static str> {
     let mut out = Vec::new();
-    out.extend_from_slice(earth::FILTERS);
-    out.extend_from_slice(water::FILTERS);
+    out.extend_from_slice(landtype::FILTERS);
     out.extend_from_slice(roads::FILTERS);
     out.extend_from_slice(buildings::FILTERS);
     out.extend_from_slice(boundaries::FILTERS);
@@ -284,7 +300,6 @@ pub fn filters() -> Vec<&'static str> {
     // No `transit` entry: the layer's geometry comes from a GTFS export rather than the `.osm.pbf`,
     // and the one tag it still reads — `station`, for a station POI's `kind_detail` — is screened by
     // `poi::FILTERS`.
-    out.extend_from_slice(land::FILTERS);
     out
 }
 
@@ -296,13 +311,11 @@ mod tests {
     /// at runtime on whichever feature happens to hit that rule first.
     #[test]
     fn every_name_this_schema_uses_is_in_the_dictionary() {
-        for name in water::KINDS
+        for name in landtype::KINDS
             .iter()
             .chain(buildings::KINDS)
             .chain(roads::KINDS)
             .chain(boundaries::KINDS)
-            .chain(land::KINDS)
-            .chain(earth::KINDS)
             .chain(places::KINDS)
             .chain(poi::KINDS)
         {
@@ -322,23 +335,20 @@ mod tests {
     }
 
     #[test]
-    fn every_build_carries_all_twelve_layers() {
+    fn every_build_carries_all_nine_layers() {
         let all = Layers::all();
         for layer in [
-            all.earth,
-            all.water,
+            all.landtype,
             all.buildings,
             all.roads,
             all.boundaries,
-            all.landcover,
-            all.landuse,
             all.places,
             all.poi,
             all.transit,
             all.traffic,
             all.junction,
         ] {
-            assert!(layer, "every build carries all 12 layers");
+            assert!(layer, "every build carries all 9 layers");
         }
     }
 
@@ -352,7 +362,7 @@ mod tests {
         // And water is asked before either.
         let water: &[(&str, &str)] =
             &[("natural", "water"), ("highway", "residential"), ("building", "yes")];
-        assert_eq!(classify(water, true, Layers::all()).expect("water").layer, dict::LAYER_WATER);
+        assert_eq!(classify(water, true, Layers::all()).expect("water").layer, dict::LAYER_LANDTYPE);
     }
 
     #[test]
@@ -367,15 +377,39 @@ mod tests {
             assert!(!filter.contains(' '), "`{filter}` is not a bare tag key");
         }
         // Every key a rule reads for a *decision* has to be in the screen, or the rule never runs.
+        // `water` is what `landtype`'s reservoir rule reads alongside `landuse`; `man_made` is
+        // the pier rule; `public_transport` the platform rule.
         for key in [
-            "natural", "waterway", "landuse", "building", "highway", "railway", "boundary",
-            "leisure", "amenity", "place", "shop", "tourism", "aeroway", "name",
-            "route", "station",
+            "natural", "waterway", "landuse", "water", "building", "highway", "railway",
+            "boundary", "place", "leisure", "amenity", "shop", "tourism", "aeroway", "man_made",
+            "public_transport", "name", "route", "station",
         ] {
             assert!(all.contains(&key), "the screen omits `{key}`");
         }
         // `station` is what `transit::station_detail` reads, and it is screened by
         // `poi::FILTERS` — otherwise every station silently loses its mode.
         assert!(all.contains(&"station"), "the screen omits `station`");
+    }
+
+    #[test]
+    fn the_landtype_wash_tiles_to_z14_and_boundaries_keep_z13() {
+        use tilecodec::mamaps::dict;
+        // The merged wash tiles to the archive max (crisp parks and shorelines under z14
+        // streets); boundaries keep z13 (lines carry sub-10m wiggles a 2x stretch could
+        // straighten).
+        assert_eq!(max_zoom_for_layer(dict::LAYER_LANDTYPE), 14, "the wash is street detail");
+        assert_eq!(max_zoom_for_layer(dict::LAYER_BOUNDARIES), 13, "lines keep z13");
+        for layer in [
+            dict::LAYER_ROADS,
+            dict::LAYER_BUILDINGS,
+            dict::LAYER_PLACES,
+            dict::LAYER_POI,
+            dict::LAYER_TRANSIT,
+            dict::LAYER_TRAFFIC,
+            dict::LAYER_JUNCTION,
+        ] {
+            assert_eq!(max_zoom_for_layer(layer), 14, "layer {layer} is street detail");
+        }
+        assert_eq!(max_zoom_for_layer(99), 14, "unknown layer is uncapped");
     }
 }

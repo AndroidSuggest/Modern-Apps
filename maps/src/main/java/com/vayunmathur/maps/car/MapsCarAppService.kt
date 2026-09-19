@@ -2,6 +2,9 @@ package com.vayunmathur.maps.car
 
 import androidx.car.app.CarAppService
 import androidx.car.app.Session
+import androidx.car.app.SessionInfo
+import androidx.car.app.annotations.ExperimentalCarApi
+import androidx.car.app.annotations.RequiresCarApi
 import androidx.car.app.validation.HostValidator
 
 /**
@@ -23,4 +26,17 @@ class MapsCarAppService : CarAppService() {
         HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
 
     override fun onCreateSession(): Session = MapsSession()
+
+    // API 6+: per-display sessions (MAIN + CLUSTER). Cluster sessions still get
+    // a MapsSession — NavMapScreen renders NavigationTemplate, the only
+    // template the cluster allows.
+    @RequiresCarApi(6)
+    override fun onCreateSession(sessionInfo: SessionInfo): Session = MapsSession()
+
+    // API 9 (experimental): keep MA brand styling instead of adopting OEM
+    // system styling. Only honored by hosts negotiating API 9+.
+    @RequiresCarApi(9)
+    @ExperimentalCarApi
+    override fun getCarAppThemeSource(): Int =
+        CarAppService.THEME_SOURCE_APP
 }

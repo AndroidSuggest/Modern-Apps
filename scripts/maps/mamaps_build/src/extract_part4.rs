@@ -208,18 +208,19 @@ mod tests {
             std::thread::current().id(),
         ));
         let class = schema::Class::area(
-            tilecodec::mamaps::dict::LAYER_WATER,
+            tilecodec::mamaps::dict::LAYER_LANDTYPE,
             schema::kind("lake"),
             0,
         );
-        let mut sink = WaySink::create(&path).expect("create the ways spill");
+        let mut sink = WaySink::create_anon(&path).expect("create the ways spill");
         // Ascending way ids, as pass 1 produces; overlapping refs, as real ways have.
         for way in 0..64i64 {
             let refs: Vec<i64> = (0..8).map(|i| way * 5 + i).collect();
             sink.push(way + 1, &class, &refs, None, 0, &[], &[], Carriageway::default(), None)
                 .expect("push");
         }
-        let counts = sink.finish().expect("finish");
+        let (counts, store) = sink.finish_anon().expect("finish");
+        let store = std::sync::Arc::new(store);
 
         let mut members: HashMap<i64, Vec<i64>> = HashMap::new();
         // One member whose refs overlap the spill's, and one that is entirely new.
@@ -233,10 +234,10 @@ mod tests {
 
         let quiet = |_: &str| {};
         let in_memory =
-            collect_needed_in_memory(&path, &members, counts.refs as usize + member_refs, &quiet)
+            collect_needed_in_memory(&path, std::sync::Arc::clone(&store), &members, counts.refs as usize + member_refs, &quiet)
                 .expect("the in-memory path");
         let by_bitset =
-            collect_needed_by_bitset(&path, &members, max_ref, &quiet).expect("the bitset path");
+            collect_needed_by_bitset(&path, std::sync::Arc::clone(&store), &members, max_ref, &quiet).expect("the bitset path");
 
         assert_eq!(
             in_memory.len(),

@@ -4,7 +4,7 @@ use crate::mamaps::dict;
 /// A tile with one polygon carrying a hole and one road, which between them exercise every
 /// field the format has.
 fn sample() -> Body {
-    let mut water = Layer::new(dict::LAYER_WATER);
+    let mut water = Layer::new(dict::LAYER_LANDTYPE);
     water.features.push(Feature {
         kind: 4,
         kind_detail: dict::NONE,
@@ -178,7 +178,7 @@ fn an_id_table_parses_without_a_name_table() {
 fn an_id_table_that_does_not_match_its_layer_is_refused() {
     let body = |ids| Body {
         extent: DEFAULT_EXTENT,
-        layers: vec![Layer::new(dict::LAYER_EARTH)],
+        layers: vec![Layer::new(dict::LAYER_LANDTYPE)],
         names: Vec::new(),
         ids,
         turn_lanes: Vec::new(),
@@ -186,7 +186,7 @@ fn an_id_table_that_does_not_match_its_layer_is_refused() {
         heightmap: None, carriageways: Vec::new(), convention: None,
     };
     assert!(
-        serialize(&body(vec![(dict::LAYER_EARTH, vec![1])])).is_err(),
+        serialize(&body(vec![(dict::LAYER_LANDTYPE, vec![1])])).is_err(),
         "one id for a layer with no features"
     );
     assert!(
@@ -194,7 +194,7 @@ fn an_id_table_that_does_not_match_its_layer_is_refused() {
         "an entry for a layer the body does not carry"
     );
     assert!(
-        serialize(&body(vec![(dict::LAYER_EARTH, Vec::new()), (dict::LAYER_EARTH, Vec::new())]))
+        serialize(&body(vec![(dict::LAYER_LANDTYPE, Vec::new()), (dict::LAYER_LANDTYPE, Vec::new())]))
             .is_err(),
         "two entries for one layer"
     );

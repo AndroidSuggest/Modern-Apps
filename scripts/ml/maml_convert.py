@@ -114,6 +114,18 @@ DTYPE_I8 = 1
 # fractional. Reader and writer must agree on that rounding or an odd-length tensor's last
 # element reads as whatever follows it.
 DTYPE_I4 = 2
+# GGUF Q2_K superblocks, carried verbatim: 256 taps per 84-byte block (16 scale bytes +
+# 64 quant bytes + d + dmin as fp16). The per-superblock `(d, dmin)` pair lives in the
+# fp16 tensor that follows it, one row per block, in the slot a per-channel scale would
+# occupy — so a Q2_K layer is the same kernel + scale + bias triple as int8, with a
+# rank-2 scale. A tensor's byte length is `ceil(len / 256) * 84`.
+DTYPE_Q2K = 3
+# Taps one Q2_K superblock covers. Fixed by the GGUF format, not a tuning choice.
+Q2K_BLOCK = 256
+# Bytes one Q2_K superblock occupies: 16 scales + 64 quants + d + dmin.
+Q2K_BYTES = 84
+# Taps one Q2_K lane covers: a superblock is 16 lanes of 16 taps sharing one `(d, dmin)`.
+Q2K_LANE = 16
 # 16 bytes is the largest scalar/vector alignment the shaders index with, and a
 # multiple of 2, so an aligned tensor offset is also an aligned fp16 index.
 ALIGNMENT = 16
@@ -195,11 +207,31 @@ GRAPHS = {
     # The first graph read from a **TFLite** flatbuffer rather than ONNX or a checkpoint;
     # see [`TFLITE`] for why not via ONNX.
     "nnfp": 23,
-    # The audio tower, 12 conformer layers over log-mel frames. Next free id after the
+    # Gemma 4's audio tower, 12 conformer layers over log-mel frames. Next free id after the
     # fingerprinter at 23, with 7..10 and 15 staying retired. `weights.rs` has
     # `graph::GEMMA4_AUDIO` at the same number. Its own file at ~165 MB: bigger than the vision
     # tower, and a device that never sends audio should not download it.
     "gemma4_audio": 24,
+    # MADLAD400-3b-mt translation, encoder and decoder in one file. See
+    # [`CHECKPOINTS`].
+    #
+    # Two graphs rather than one file would upload the untied head twice over: the
+    # input table and the logits kernel are separate 256,000-row tables. Next free
+    # id after Gemma 4's audio tower at 24, with 7..10 and 15 staying retired.
+    # `weights.rs` has `graph::MADLAD` at the same number.
+    "madlad400": 25,
+    # The Q2_K port of the same net, from `model-q2k.gguf`. SAME graph id: the tensor
+    # order is identical (684 layers, 1724 tensors, same names) and only the payloads
+    # differ (Q2_K verbatim vs int8 requantised), so the Rust forward pass reads either
+    # file. A separate id would fork the runtime for no reason; the digest tells them apart.
+    "madlad400-q2k": 25,
+}
+
+# Graphs read from a GGUF file rather than safetensors/ONNX/TFLite. The Q2_K port reads
+# the quantised export directly (see `open_gguf`); the safetensors path stays for the
+# int8 fallback.
+GGUF_GRAPHS = {
+    "madlad400-q2k",
 }
 
 # SHA-256 over the ordered layer table (see `layer_table_digest`). Regenerate with
@@ -226,6 +258,17 @@ EXPECTED_DIGEST = {
     # Gemma 4's vision tower. Mixed precision: int4 through the sixteen layers, fp16 for the
     # patch and output projections at the ends. See `collect_gemma4_vision.dense`.
     "gemma4_vision": "a942080007f7ca9d8fa38a0812a4f858ff1c31afb7c4e94d105428da5fa56f19",
+    # Gemma 4 E2B text decoder converted DIRECTLY from the litertlm GPU bundle
+    # (scripts/ml/litertlm_to_maml.py; the ONNX export is a different model).
+    # 538 layers, 1088 tensors (rotary thetas read off the base bundle's own
+    # Section 10 `maybe_rope` constants: 1e4 sliding / 1e6 full;
+    # --rope-theta overrides both; per-layer `skip` whole-residual scalars),
+    # fidelity worst 0.9988. Pinned 2026-09-17.
+    "gemma4_text": "20262c74605b0c121220cdb25f4c92d8f26607b4d548781035dcdc91209a2c26",
+    # Gemma 4 E2B embedder from the same bundle: 2-bit working table + shared
+    # [8960,1536] INT8 + 35xINT4 mmap tables. 38 layers, 112 tensors,
+    # fidelity worst 0.9985. Pinned 2026-09-17.
+    "gemma4_embed": "a1c7d7f31c2041e2b1faedb3d2792a0c7048f6f59a8cc3657bfa95c79482dff2",
     # `music_detector.sound_model_2`, pinned with --print-digest against the file recovered
     # from the APK (SHA-256 7A86281A6DEED410..., 216,320 bytes). The key records the strides,
     # padding and depth multiplier the export stores, so a re-export that resolved the
@@ -238,6 +281,16 @@ EXPECTED_DIGEST = {
     # the two subsampling convolutions, the relative tables, the norms, the clips and the three
     # end projections. See `collect_gemma4_audio.dense`.
     "gemma4_audio": "f3c0be0ca09c5ed6882766eabaa6ebb147dc09cd45ab6d881dec12da41b9783d",
+    # MADLAD400-3B-MT, pinned with --print-digest after the .maml was checked against
+    # `nets::madlad`'s layout constants over all 1724 tensors (684 layers). int8
+    # linears throughout (488, all with synthesised zero bias — T5 is bias-free),
+    # fp16 RMSNorm gains, fp16 host-read relative tables. See `collect_madlad`.
+    "madlad400": "36c2c8845d36b33a37dc12ad8255e38deb7664b72aa1e2a2f7b2467a9f05ea2a",
+    # The Q2_K port of the same net, from `model-q2k.gguf`. Same order (684 layers,
+    # 1724 tensors, same names — the Rust walks positionally, so both collectors must
+    # agree); only the payloads differ (Q2_K verbatim vs int8 requantised), hence a
+    # separate digest on the same graph id. See `collect_madlad_q2k`.
+    "madlad400-q2k": "f17cbb4fb9f44eb8a4d94d93f5a00e7ec868d11628a12ea1b2078fbc700124b7",
 }
 
 # Graphs that are one **module** of a larger export, keyed by the node-name prefix that
@@ -543,6 +596,44 @@ CHECKPOINTS = {
         # last two 64,051.
         "head_splits": 4,
         "head_rows": [64_052, 64_052, 64_051, 64_051],
+    },
+    # MADLAD400-3B-MT, from `google/madlad400-3b-mt`. A checkpoint for the same reason
+    # NLLB is one: the repo ships `model.safetensors` (fp32) plus `spiece.model` and
+    # `tokenizer.json` — there is no ONNX export at all.
+    #
+    # The architecture is `T5ForConditionalGeneration` (`model_type: t5`,
+    # `feed_forward_proj: gated-gelu`, `tie_word_embeddings: false`), so the forward
+    # pass is an encoder-decoder with 32 pre-norm RMSNorm layers a side, GEGLU
+    # feed-forwards, untied embeddings, and T5 relative position biases — all asserted
+    # by [`madlad_inventory`] and [`collect_madlad`]:
+    #
+    # * **32 encoder + 32 decoder layers**, `d_model` 1024, 16 heads of `d_kv` 128
+    #   (`inner_dim` 2048), `d_ff` 8192.
+    # * **Untied embeddings.** `decoder.embed_tokens.weight` is the encoder/decoder
+    #   input table and `lm_head.weight` the logits kernel, and they differ —
+    #   refuses a checkpoint where they match. Both are emitted, each as four
+    #   64,000-class splits (256,000 divides evenly: no uneven tail as in NLLB).
+    # * **No projection biases anywhere.** Every `q/k/v/o`, `wi_0/wi_1/wo` is
+    #   `bias=False`, so each gets a synthesised zero recorded in the digest key —
+    #   a checkpoint that grows one must not be read as this table.
+    # * **No learned positions.** T5's position signal is the relative bias, computed
+    #   on the host by `nets::madlad::relative_bias` and added as a plan input —
+    #   so the bias tables are emitted fp16 for the host to read, not for a shader.
+    # * **Bias tables on block 0 only.** `has_relative_attention_bias=bool(i == 0)`,
+    #   so only the two block-0 self-attentions hold a `[32, 16]` table; deeper
+    #   layers reuse the computed bias. Both tables are emitted once, at the end.
+    "madlad400": {
+        "d_model": 1024,
+        "heads": 16,
+        "head_dim": 128,
+        "encoder_layers": 32,
+        "decoder_layers": 32,
+        "d_ff": 8192,
+        "vocab": 256_000,
+        # Four even head splits: 256,000 = 4 x 64,000.
+        "head_splits": 4,
+        "head_rows": [64_000, 64_000, 64_000, 64_000],
+        "buckets": 32,
     },
     # Maia3-5M, from `UofTCSSLab/Maia3-5M`. A checkpoint because the repo ships a single
     # `maia3-5m.pt` pickle and nothing else — no ONNX, no safetensors. `fetch_maia.py`
@@ -1027,6 +1118,118 @@ def open_checkpoint(path):
     return handle.get_tensor, shapes
 
 
+# GGUF tensor types this reads. Only the two MADLAD's file holds: Q2_K linears and F32
+# norms/tables. Anything else is a file this has not been read against, and should fail
+# rather than be silently mis-carried.
+GGUF_F32 = 0
+GGUF_Q2_K = 10
+
+
+def open_gguf(path):
+    """`(get, shapes)` for a GGUF file, mirroring [`open_checkpoint`].
+
+    `get(name)` returns `(dtype_code, raw_bytes, gguf_shape)` — the payload untouched,
+    because Q2_K blocks are carried verbatim (transposed at the block level by the
+    collector, never dequantised). `shapes` maps names to the GGUF `[cols, rows]` shape
+    as stored; the collector compares against the transposed expectation.
+
+    The reader is hand-rolled (magic, version, counts, KV skip, tensor infos) rather than
+    via the `gguf` package, because the converter needs file offsets for lazy reads and
+    the package materialises every tensor. Only versions and tensor layouts verified
+    against `model-q2k.gguf` are accepted.
+    """
+    import struct as struct_
+
+    with open(path, "rb") as handle:
+        blob = handle.read()
+
+    if blob[:4] != b"GGUF":
+        raise SystemExit(f"{path} holds no GGUF flatbuffer")
+    version = struct_.unpack("<I", blob[4:8])[0]
+    if version != 2:
+        raise SystemExit(f"{path} is GGUF version {version}, not the version 2 read here")
+    n_tensors = struct_.unpack("<Q", blob[8:16])[0]
+    n_kv = struct_.unpack("<Q", blob[16:24])[0]
+
+    at = 24
+
+    def read_string():
+        nonlocal at
+        (length,) = struct_.unpack("<Q", blob[at : at + 8])
+        at += 8
+        value = blob[at : at + length].decode("utf-8")
+        at += length
+        return value
+
+    def skip_value(type_):
+        nonlocal at
+        # GGUF metadata types: u8/i8/u16/i16/u32/i32/f32/bool/string/array/u64/i64/f64.
+        if type_ == 8:  # string
+            (length,) = struct_.unpack("<Q", blob[at : at + 8])
+            at += 8 + length
+        elif type_ == 9:  # array
+            (inner, count) = struct_.unpack("<IQ", blob[at : at + 12])
+            at += 12
+            for _ in range(count):
+                skip_value(inner)
+        elif type_ in (0, 1, 6):
+            at += 1
+        elif type_ in (2, 3, 4, 5):
+            at += 2 if type_ in (2, 3) else 4
+        elif type_ in (10, 11, 12):
+            at += 8
+        else:
+            raise SystemExit(f"{path}: unhandled GGUF metadata type {type_}")
+
+    for _ in range(n_kv):
+        read_string()
+        (type_,) = struct_.unpack("<I", blob[at : at + 4])
+        at += 4
+        skip_value(type_)
+
+    infos = {}
+    for _ in range(n_tensors):
+        name = read_string()
+        (ndims,) = struct_.unpack("<I", blob[at : at + 4])
+        at += 4
+        dims = [struct_.unpack("<Q", blob[at + 8 * i : at + 8 * (i + 1)])[0] for i in range(ndims)]
+        at += 8 * ndims
+        (dtype,) = struct_.unpack("<I", blob[at : at + 4])
+        at += 4
+        (offset,) = struct_.unpack("<Q", blob[at : at + 8])
+        at += 8
+        infos[name] = (dtype, dims, offset)
+
+    # Tensor data starts at the first 32-byte-aligned offset past the header.
+    data_start = (at + 31) & ~31
+
+    def get(name):
+        try:
+            dtype, dims, offset = infos[name]
+        except KeyError:
+            raise SystemExit(f"{path} holds no tensor named {name}")
+        if dtype == GGUF_Q2_K:
+            # Q2_K payload size is exact: rows are 256-tap superblocks at 84 bytes.
+            elems = 1
+            for d in dims:
+                elems *= d
+            size = elems // Q2K_BLOCK * Q2K_BYTES
+        elif dtype == GGUF_F32:
+            size = 1
+            for d in dims:
+                size *= d
+            size *= 4
+        else:
+            raise SystemExit(f"{name} is GGUF type {dtype}, which is not read")
+        payload = blob[data_start + offset : data_start + offset + size]
+        if len(payload) != size:
+            raise SystemExit(f"{name} runs past the file ({len(payload)} of {size} bytes)")
+        return dtype, payload, dims
+
+    shapes = {name: list(dims) for name, (_, dims, _) in infos.items()}
+    return get, shapes
+
+
 def small100_inventory(spec):
     """`{name: shape}` the checkpoint must hold exactly, derived from [`CHECKPOINTS`].
 
@@ -1322,6 +1525,212 @@ def collect_small100(get, spec):
         layer_norm(f"model.{side}.layer_norm")
 
     fidelity.report()
+    return layers, tensors
+
+
+def check_gguf(shapes, graph_id_name):
+    """Refuse a GGUF that is not the architecture the Rust forward pass hardcodes.
+
+    The mirror of [`check_checkpoint`] for GGUF sources: same parameter NAMES as
+    [`madlad_inventory`] (so the two registries cannot drift — the names are derived
+    from one spec), but GGUF `[in, out]` shapes and Q2_K/F32 dtype assertions instead
+    of torch shapes. A transposed or resized file fails here rather than on the device.
+    """
+    want_names = madlad_inventory(CHECKPOINTS[graph_id_name])
+    # GGUF shape is the torch shape reversed: q/k/v `[2048, 1024]` read as `[1024, 2048]`.
+    want = {name: list(reversed(shape)) for name, shape in want_names.items()}
+    missing = sorted(set(want) - set(shapes))
+    extra = sorted(set(shapes) - set(want))
+    shared = sorted(set(want) & set(shapes))
+    wrong = {n: (shapes[n], want[n]) for n in shared if shapes[n] != want[n]}
+    if missing or extra or wrong:
+        lines = []
+        if missing:
+            lines.append(f"  absent: {missing[:6]}{' ...' if len(missing) > 6 else ''}")
+        if extra:
+            lines.append(f"  unexpected: {extra[:6]}{' ...' if len(extra) > 6 else ''}")
+        for name, (got, expect) in list(wrong.items())[:6]:
+            lines.append(f"  {name}: {got} against {expect}")
+        raise SystemExit(
+            f"{graph_id_name}: the GGUF is not the architecture nets/{graph_id_name}.rs\n"
+            "hardcodes. A wrong shape here is a wrong forward pass, not a load failure:\n"
+            + "\n".join(lines)
+        )
+
+
+class Q2K:
+    """A tensor to serialise as [`DTYPE_Q2K`].
+
+    Carries the raw Q2_K superblocks (84 bytes per 256 taps, in flat order) plus the
+    `(rows, blocks)` count the reader needs. Like [`Int4`]: numpy has no two-bit dtype,
+    so `build` cannot infer this from values — wrapping says so explicitly.
+
+    Quacks like an array for the attributes `build` needs (`shape`, `ndim`, `size`).
+    """
+
+    def __init__(self, blocks, rows, taps):
+        self.blocks = blocks
+        self.shape = (rows, taps)
+        self.ndim = 2
+        self.size = rows * taps
+
+
+def _q2k_checked(get, name, torch_shape):
+    """The GGUF payload for `name`, checked against `torch_shape` ([outputs, inputs]).
+
+    Verifies dtype, block-divisibility and byte size. GGUF flat order == torch flat order
+    (candle's dim reversal), so no transpose — the payload goes into the file unchanged.
+    """
+    dtype, payload, _ = get(f"{name}.weight")
+    if dtype != GGUF_Q2_K:
+        raise SystemExit(f"{name}.weight is GGUF type {dtype}, not Q2_K")
+    outputs, inputs = torch_shape
+    if inputs % Q2K_BLOCK:
+        raise SystemExit(f"{name}: {inputs} taps is not block-divisible by {Q2K_BLOCK}")
+    blocks = inputs // Q2K_BLOCK
+    if len(payload) != outputs * blocks * Q2K_BYTES:
+        raise SystemExit(f"{name}: {len(payload)} bytes, not {outputs * blocks * Q2K_BYTES}")
+    return payload
+
+
+def _emit_q2k(layers, tensors, emit, name, payload, outputs, inputs, op="LinearQ2K",
+              extra=""):
+    """A Q2_K kernel + its `(d, dmin)` fp16 table + a synthesised zero bias (3 tensors).
+
+    The `(d, dmin)` table is re-derived from the superblocks rather than sliced, so the
+    file stays self-describing; the shader reads this table, not the superblocks'
+    embedded fp16 (same values, one fetch instead of two).
+    """
+    import numpy as _np
+
+    blocks = inputs // Q2K_BLOCK
+    tensors.append(Q2K(payload, outputs, inputs))
+    raw = _np.frombuffer(payload, dtype=_np.uint8).reshape(outputs * blocks, Q2K_BYTES)
+    table = _np.empty((outputs * blocks, 2), dtype=_np.float32)
+    for b in range(outputs * blocks):
+        table[b, 0] = _np.frombuffer(raw[b, 80:82].tobytes(), dtype=_np.float16)[0]
+        table[b, 1] = _np.frombuffer(raw[b, 82:84].tobytes(), dtype=_np.float16)[0]
+    tensors.append(_np.ascontiguousarray(table.reshape(outputs * blocks * 2)))
+    tensors.append(_np.zeros(outputs, dtype=_np.float32))
+    emit(
+        op,
+        name,
+        f"{op} w={[outputs, inputs]} blocks={blocks} "
+        f"scale={[outputs, blocks, 2]} b={[outputs]} zp=0 dtype=q2k b0=synthesised"
+        f"{extra}",
+        3,
+    )
+
+
+def collect_madlad_q2k(get, spec):
+    """MADLAD400-3B-MT's GGUF as the ordered tensor table `nets::madlad` indexes.
+
+    Same emission ORDER as [`collect_madlad`] (8 Head + 256 enc + 1 + 416 dec + 1 +
+    2 Relative = 684 layers, 1724 tensors, same names) — the Rust walks positionally,
+    so the two collectors must agree exactly. What differs is the source and the
+    payload: Q2_K superblocks carried verbatim from `model-q2k.gguf` (dequantised only
+    to verify orientation at development time, never in the pipeline), fp16 norms and
+    tables read straight from the GGUF's F32 tensors.
+
+    Per linear: the GGUF payload reshaped to torch rows via the flat rule
+    (`torch_flat == gguf_flat`), requantised NOT AT ALL — the 84-byte superblocks go
+    into the file unchanged, with the per-superblock `(d, dmin)` fp16 table beside them
+    (in the slot a per-channel scale would occupy) and a synthesised zero bias after
+    that. No fidelity gate on these tensors: their error is the file's own, already
+    validated (cosine ~0.96 vs fp32, the Q2_K band).
+    """
+    layers = []
+    tensors = []
+
+    def emit(op, name, key, added):
+        layers.append(Layer(len(layers), op, name, key, len(tensors) - added, added))
+
+    def linear_q2k(name, torch_shape):
+        """A Q2_K kernel verbatim, its `(d, dmin)` table, and a synthesised zero bias."""
+        payload = _q2k_checked(get, name, torch_shape)
+        _emit_q2k(layers, tensors, emit, name, payload, *torch_shape)
+
+    def rms_norm(name):
+        """An RMS norm's gain, fp16 from the GGUF's F32. One tensor: no beta."""
+        dtype, payload, gguf_shape = get(f"{name}.weight")
+        if dtype != GGUF_F32:
+            raise SystemExit(f"{name}.weight is GGUF type {dtype}, not F32")
+        import numpy as _np
+
+        gamma = _np.frombuffer(payload, dtype=_np.float32)
+        tensors.append(gamma)
+        emit("RmsNorm", name, f"RmsNorm g={list(gamma.shape)}", 1)
+
+    def head_q2k(table, rows_spec, torch_taps):
+        dtype, payload, _ = get(f"{table}.weight")
+        if dtype != GGUF_Q2_K:
+            raise SystemExit(f"{table}.weight is GGUF type {dtype}, not Q2_K")
+        # Whole-table payload, split by class range into per-split kernels. A split
+        # boundary falls on a superblock boundary (every split row count divides by 256).
+        # Torch rows: flat payload reshaped. GGUF flat == torch flat.
+        for rows in rows_spec:
+            if rows % Q2K_BLOCK:
+                raise SystemExit(f"{table} split of {rows} classes straddles superblocks")
+        lo = 0
+        blocks = torch_taps // Q2K_BLOCK
+        for rows in rows_spec:
+            name = f"{table}.weight[{lo}:{lo + rows}]"
+            chunk = payload[lo * blocks * Q2K_BYTES : (lo + rows) * blocks * Q2K_BYTES]
+            _emit_q2k(layers, tensors, emit, name, chunk, rows, torch_taps, op="Head",
+                      extra=f" classes={lo}..{lo + rows}")
+            lo += rows
+
+    d, ffn = spec["d_model"], spec["d_ff"]
+    inner = spec["heads"] * spec["head_dim"]
+    rows_spec = spec["head_rows"]
+    head_q2k("decoder.embed_tokens", rows_spec, d)
+    head_q2k("lm_head", rows_spec, d)
+
+    for side, count in (("encoder", spec["encoder_layers"]), ("decoder", spec["decoder_layers"])):
+        for index in range(count):
+            at = f"{side}.block.{index}"
+            attentions = ["SelfAttention"] + (["EncDecAttention"] if side == "decoder" else [])
+            for layer, attention in enumerate(attentions):
+                rms_norm(f"{at}.layer.{layer}.layer_norm")
+                linear_q2k(f"{at}.layer.{layer}.{attention}.q", [inner, d])
+                linear_q2k(f"{at}.layer.{layer}.{attention}.k", [inner, d])
+                linear_q2k(f"{at}.layer.{layer}.{attention}.v", [inner, d])
+                linear_q2k(f"{at}.layer.{layer}.{attention}.o", [d, inner])
+            ff = len(attentions)
+            rms_norm(f"{at}.layer.{ff}.layer_norm")
+            # Fused `[gate | up]`, the layout `GatedActivate` halves: row-concatenation of
+            # the two payloads (each row keeps its own blocks, so no block ever splits and
+            # the concat is exact). Same fused table the int8 port builds by concatenating
+            # fp32 rows, but with zero requantisation.
+            wi_0 = _q2k_checked(get, f"{at}.layer.{ff}.DenseReluDense.wi_0", [ffn, d])
+            wi_1 = _q2k_checked(get, f"{at}.layer.{ff}.DenseReluDense.wi_1", [ffn, d])
+            _emit_q2k(layers, tensors, emit,
+                      f"{at}.layer.{ff}.DenseReluDense.wi_01", wi_0 + wi_1, 2 * ffn, d)
+            linear_q2k(f"{at}.layer.{ff}.DenseReluDense.wo", [d, ffn])
+        rms_norm(f"{side}.final_layer_norm")
+
+    for side in ("encoder", "decoder"):
+        dtype, payload, gguf_shape = get(
+            f"{side}.block.0.layer.0.SelfAttention.relative_attention_bias.weight"
+        )
+        if dtype != GGUF_F32:
+            raise SystemExit(f"{side} relative table is GGUF type {dtype}, not F32")
+        import numpy as _np
+
+        # GGUF [16, 32] is torch [32, 16] transposed (reversed dims, same flat bytes).
+        table = _np.frombuffer(payload, dtype=_np.float32).reshape(
+            spec["heads"], spec["buckets"]
+        ).T.copy()
+        if list(table.shape) != [spec["buckets"], spec["heads"]]:
+            raise SystemExit(f"{side} block-0 relative table is {list(table.shape)}")
+        tensors.append(_np.ascontiguousarray(table, dtype=_np.float32))
+        emit(
+            "Relative",
+            f"{side}.block.0.relative_attention_bias",
+            f"Relative t={list(table.shape)} host-read fp16",
+            1,
+        )
+
     return layers, tensors
 
 
@@ -1724,8 +2133,15 @@ def collect_gemma4_vision(model, spec):
     position = {n.name: at for at, n in enumerate(g.node)}
 
     def numbered(node, prefix):
-        """The index in `prefix`, `prefix_1`, `prefix_2`, ... or None."""
+        """The index in `prefix`, `prefix_1`, `prefix_2`, ... or None.
+
+        The q4f16 exports append `_Quant` to every quantised linear
+        (`node_linear_7_Quant`); the suffix is stripped before matching so both
+        exports walk the same numbering.
+        """
         name = (node.name or "").replace("_fused_rms_norm/node_mean", "node_mean")
+        if name.endswith("_Quant"):
+            name = name[: -len("_Quant")]
         if not name.startswith(prefix):
             return None
         tail = name[len(prefix):]
@@ -1733,7 +2149,20 @@ def collect_gemma4_vision(model, spec):
             return 0
         return int(tail[1:]) if tail.startswith("_") and tail[1:].isdigit() else None
 
+    def weight(index):
+        """Linear `index` as fp32 `[in, out]`, from either export.
+
+        The fp16 walk stores protos in `linears`; the q4f16 walk stores `None`
+        there and the dequantised matrix in `decoded`. Both flow into the same
+        `dense`/`projection` calls below, which is what keeps the file format
+        identical across sources.
+        """
+        if index in decoded:
+            return decoded[index].astype(np.float32)
+        return array(linears[index])
+
     linears, norms, clips = {}, {}, []
+    decoded = {}
     # A `Clip`'s bounds can be an initializer or a folded `Constant` node, and the vision export
     # uses both - the patch projection's is a Constant while every layer's is an initializer.
     constants = {}
@@ -1757,6 +2186,15 @@ def collect_gemma4_vision(model, spec):
                 held = [inits[i] for i in node.input if i in inits]
                 if held:
                     linears[index] = held[0]
+        elif node.op_type == "MatMulNBits":
+            # The q4f16 exports: every linear quantised in place. Decoded to
+            # fp32 [K, N] here so the shared dense/projection path - and its
+            # fidelity gate - treats both exports identically. Verified against
+            # onnxruntime's own MatMulNBits to 3.7e-3 (analysis/prove_sign/).
+            index = numbered(node, "node_linear")
+            if index is not None:
+                linears[index] = None
+                decoded[index] = dequant_matmul_nbits(node, inits)
         elif node.op_type == "SimplifiedLayerNormalization":
             index = numbered(node, "node_mean")
             if index is not None:
@@ -1805,7 +2243,23 @@ def collect_gemma4_vision(model, spec):
         layers.append(Layer(len(layers), op, name, key, len(tensors) - added, added))
 
     def array(tensor):
+        # A raw numpy array passes through: the q4f16 walk decodes MatMulNBits
+        # to fp32 itself (see `weight`), so both exports meet here as matrices.
+        if isinstance(tensor, np.ndarray):
+            return tensor.astype(np.float32)
         return numpy_helper.to_array(tensor).astype(np.float32)
+
+    def weight(index):
+        """Linear `index` as fp32 `[in, out]`, from either export.
+
+        The fp16 walk stores protos in `linears`; the q4f16 walk stores `None`
+        there and the dequantised matrix in `decoded`. Both flow into the same
+        `dense`/`projection` calls below, which is what keeps the file format
+        identical across sources.
+        """
+        if index in decoded:
+            return decoded[index].astype(np.float32)
+        return array(linears[index])
 
     def dense(name, tensor, transposed=False):
         """A linear's weight as an **fp16** `[out, in, 1, 1]` kernel and a zero bias.
@@ -1881,9 +2335,9 @@ def collect_gemma4_vision(model, spec):
     d_model = spec["d_model"]
     heads, head_dim, ffn = spec["heads"], spec["head_dim"], spec["ffn"]
 
-    dense("patch_projection", linears[0])
+    dense("patch_projection", weight(0))
     vector("final_norm", norms[layers_count * 7], d_model)
-    dense("output_projection", linears[layers_count * 7 + 1], transposed=True)
+    dense("output_projection", weight(layers_count * 7 + 1), transposed=True)
     # The two learned position tables, `[10240, 768]` each, which the host gathers a row at a
     # time. Emitted in the same `[out, in, 1, 1]` triple form as everything else so that
     # `Reader::int4_row` can read them, even though nothing binds them to a shader.
@@ -1898,6 +2352,22 @@ def collect_gemma4_vision(model, spec):
         for i in node.input
         if i in inits and list(inits[i].dims) == [spec["positions"], d_model]
     ]
+    # The q4f16 exports quantise the tables in place (`GatherBlockQuantized`,
+    # same block packing as MatMulNBits): decode both to fp32 here so the
+    # shared `table` path - and its fidelity gate - treats both exports alike.
+    if not gathers:
+        for node in g.node:
+            if node.op_type != "GatherBlockQuantized" or not (
+                node.name or ""
+            ).startswith("node_embedding"):
+                continue
+            attrs = {a.name: a for a in node.attribute}
+            bits = attrs["bits"].i if "bits" in attrs else 4
+            if bits != 4:
+                raise SystemExit(node.name + ": block-quantised gather with " +
+                                 str(bits) + " bits, not 4")
+            gathers.append(dequant_block_quantized(
+                inits[node.input[0]], inits[node.input[2]], inits[node.input[3]]))
     if len(gathers) != 2:
         raise SystemExit(f"{len(gathers)} position tables, not 2 - the head has changed")
     table("column_positions", gathers[0])
@@ -1910,9 +2380,9 @@ def collect_gemma4_vision(model, spec):
         at = f"vision.layers.{i}"
         vector(f"{at}.pre_attention_norm", norms[norm_base], d_model)
         clip(f"{at}.clip_in", marks[0])
-        projection(f"{at}.q_proj", linears[base])
-        projection(f"{at}.k_proj", linears[base + 1])
-        projection(f"{at}.v_proj", linears[base + 2])
+        projection(f"{at}.q_proj", weight(base))
+        projection(f"{at}.k_proj", weight(base + 1))
+        projection(f"{at}.v_proj", weight(base + 2))
         clip(f"{at}.clip_q", marks[1])
         clip(f"{at}.clip_k", marks[2])
         clip(f"{at}.clip_v", marks[3])
@@ -1920,17 +2390,17 @@ def collect_gemma4_vision(model, spec):
         vector(f"{at}.k_norm", norms[norm_base + 2], head_dim)
         vector(f"{at}.v_norm", norms[norm_base + 3], head_dim)
         clip(f"{at}.clip_mixed", marks[4])
-        projection(f"{at}.o_proj", linears[base + 3])
+        projection(f"{at}.o_proj", weight(base + 3))
         clip(f"{at}.clip_o", marks[5])
         vector(f"{at}.post_attention_norm", norms[norm_base + 4], d_model)
         vector(f"{at}.pre_feedforward_norm", norms[norm_base + 5], d_model)
         clip(f"{at}.clip_ff_in", marks[6])
-        projection(f"{at}.gate_proj", linears[base + 4])
-        projection(f"{at}.up_proj", linears[base + 5])
+        projection(f"{at}.gate_proj", weight(base + 4))
+        projection(f"{at}.up_proj", weight(base + 5))
         clip(f"{at}.clip_gate", marks[7])
         clip(f"{at}.clip_up", marks[8])
         clip(f"{at}.clip_gated", marks[9])
-        projection(f"{at}.down_proj", linears[base + 6])
+        projection(f"{at}.down_proj", weight(base + 6))
         clip(f"{at}.clip_down", marks[10])
         vector(f"{at}.post_feedforward_norm", norms[norm_base + 6], d_model)
         del heads, ffn
@@ -2021,8 +2491,13 @@ def collect_gemma4_audio(model, spec):
     produced = {out: n for n in g.node for out in n.output}
 
     def numbered(node, prefix):
-        """The index in `prefix`, `prefix_1`, `prefix_2`, ... or None."""
+        """The index in `prefix`, `prefix_1`, `prefix_2`, ... or None.
+
+        Strips the q4f16 `_Quant` suffix, as the vision walk does.
+        """
         name = (node.name or "").replace("_fused_rms_norm/node_mean", "node_mean")
+        if name.endswith("_Quant"):
+            name = name[: -len("_Quant")]
         if not name.startswith(prefix):
             return None
         tail = name[len(prefix):]
@@ -2074,6 +2549,15 @@ def collect_gemma4_audio(model, spec):
                     linears[index] = tensor
             for tensor in held(node, [heads, head_dim, offsets]):
                 relative.append((position[node.name], tensor))
+        elif node.op_type == "MatMulNBits":
+            # The q4f16 exports: decode via the shared block helper (verified
+            # against onnxruntime to 3.7e-3) and store the fp32 matrix the same
+            # way the fp16 walk stores its proto.
+            index = numbered(node, "node_linear")
+            if index is not None:
+                linears[index] = numpy_helper.from_array(
+                    dequant_matmul_nbits(node, inits).astype(np.float32),
+                    name=node.name + "_dequant")
         elif node.op_type == "SimplifiedLayerNormalization":
             index = numbered(node, "node_mean")
             if index is not None:
@@ -2367,6 +2851,15 @@ def collect_gemma4_audio(model, spec):
     bias = held(adds[0], [out_dim])
     matmuls = [produced[i] for i in adds[0].input if i in produced and produced[i].op_type == "MatMul"]
     weight = [t for n in matmuls for t in held(n, [d_model, out_dim])]
+    if not weight:
+        # The q4f16 exports: output_proj's MatMul is a MatMulNBits. Decoded to
+        # the fp32 [d_model, out_dim] the fp16 walk reads off its MatMul.
+        qnodes = [produced[i] for i in adds[0].input
+                  if i in produced and produced[i].op_type == "MatMulNBits"]
+        weight = [numpy_helper.from_array(dequant_matmul_nbits(n, inits).astype(np.float32),
+                                          name=n.name + "_dequant")
+                  for n in qnodes
+                  if dequant_matmul_nbits(n, inits).shape == (d_model, out_dim)]
     if len(bias) != 1 or len(weight) != 1:
         raise SystemExit(
             f"output_proj resolved to {len(weight)} weights and {len(bias)} biases, not one each"
@@ -2890,12 +3383,307 @@ def collect_maia(get, spec):
     return layers, tensors
 
 
+def madlad_inventory(spec):
+    """`{name: shape}` MADLAD400-3B-MT's checkpoint must hold exactly.
+
+    Derived rather than transcribed: a list of ~580 names would be checked against itself.
+
+    The names are transformers' `T5ForConditionalGeneration` state-dict names
+    (`T5LayerSelfAttention.SelfAttention.q`, `T5LayerFF.DenseReluDense.wi_0`, ...).
+    Three absences are as load-bearing as the presences, so all three are stated by
+    *not* appearing:
+
+    * **No projection biases.** Every `q/k/v/o` and `wi_0/wi_1/wo` is `bias=False`
+      (all 192 attentions, all 64 feed-forwards). A checkpoint that grew one would
+      have unexpected names and fail, rather than being read as this table with the
+      bias ignored.
+    * **No `layer_norm.bias`.** They are `T5LayerNorm` (RMSNorm), which has a gain
+      and nothing else. A checkpoint that grew either would be a layer norm, and the
+      Rust would silently ignore the beta.
+    * **No relative tables past block 0.** Only the two block-0 self-attentions hold
+      `relative_attention_bias.weight` (`has_relative_attention_bias=bool(i == 0)`);
+      deeper layers reuse the computed bias. A checkpoint that grew more would be a
+      different forward pass.
+
+    The input table is `decoder.embed_tokens.weight`, not `shared.weight`: T5's
+    `_tie_or_clone_weights` clones shared into the decoder embeddings at load, and
+    this export materialised only that clone. `lm_head.weight` is the separate
+    logits kernel, and the two differ (checked by `fetch_madlad400.check_untied`).
+
+    The shapes are `torch.nn.Linear`'s **`[out, in]`**, so a kernel is a reshape and
+    not a transpose; `wi_0 [8192, 1024]` against `wo [1024, 8192]` is the asymmetric
+    set that makes a transposed checkpoint fail here rather than on the device.
+    """
+    d, ffn = spec["d_model"], spec["d_ff"]
+    inner = spec["heads"] * spec["head_dim"]
+    want = {
+        "decoder.embed_tokens.weight": [spec["vocab"], d],
+        "lm_head.weight": [spec["vocab"], d],
+    }
+    for side, count in (("encoder", spec["encoder_layers"]), ("decoder", spec["decoder_layers"])):
+        for index in range(count):
+            at = f"{side}.block.{index}"
+            attentions = ["SelfAttention"] + (["EncDecAttention"] if side == "decoder" else [])
+            for layer, attention in enumerate(attentions):
+                want[f"{at}.layer.{layer}.{attention}.q.weight"] = [inner, d]
+                want[f"{at}.layer.{layer}.{attention}.k.weight"] = [inner, d]
+                want[f"{at}.layer.{layer}.{attention}.v.weight"] = [inner, d]
+                want[f"{at}.layer.{layer}.{attention}.o.weight"] = [d, inner]
+                want[f"{at}.layer.{layer}.layer_norm.weight"] = [d]
+            if index == 0:
+                want[f"{at}.layer.0.SelfAttention.relative_attention_bias.weight"] = [
+                    spec["buckets"],
+                    spec["heads"],
+                ]
+            ff = len(attentions)
+            want[f"{at}.layer.{ff}.DenseReluDense.wi_0.weight"] = [ffn, d]
+            want[f"{at}.layer.{ff}.DenseReluDense.wi_1.weight"] = [ffn, d]
+            want[f"{at}.layer.{ff}.DenseReluDense.wo.weight"] = [d, ffn]
+            want[f"{at}.layer.{ff}.layer_norm.weight"] = [d]
+        want[f"{side}.final_layer_norm.weight"] = [d]
+    return want
+
+
+def collect_madlad(get, spec):
+    """MADLAD400-3B-MT's checkpoint as the ordered tensor table `nets::madlad` indexes.
+
+    THE TENSOR ORDER (the contract with the Rust net — positional indexing, no names):
+
+        1. the input table (`decoder.embed_tokens.weight` ONLY), as `head_splits`
+           disjoint class ranges: [0:64000], [64000:128000], [128000:192000],
+           Each range emits 3 tensors: int8 kernel [rows, 1024, 1, 1], fp16 scale
+           [rows], synthesised zero bias [rows]. Op "Head". Tensors 0..11.
+        2. the logits kernel (`lm_head.weight` ONLY), same four ranges. Op "Head".
+           Tensors 12..23.
+        3. each encoder layer 0..31 in forward order. Per layer, in this exact order:
+           self norm (RmsNorm, 1 tensor: gamma),
+           self q/k/v/o (Linear8, 3 tensors each: kernel, scale, synthesised bias),
+           ff norm (RmsNorm, 1),
+           fused wi_01 (Linear8, 3: `[2 * d_ff, d_model, 1, 1]` kernel over
+           `[wi_0 rows | wi_1 rows]`, scale, synthesised bias), wo (Linear8, 3).
+           20 tensors per encoder layer.
+        4. the encoder's final norm (RmsNorm, 1 tensor).
+        5. each decoder layer 0..31 in forward order. Per layer: self block as in
+           the encoder (1 + 4*3 = 13 tensors), then cross norm (1) +
+           cross q/k/v/o (4*3 = 12), then ff norm (1) + fused wi_01/wo (2*3 = 6).
+           33 tensors per decoder layer.
+        6. the decoder's final norm (RmsNorm, 1 tensor).
+        7. the two block-0 relative tables, fp16 verbatim for the host to read:
+           encoder self `[32, 16]`, decoder self `[32, 16]`. Op "Relative". Last.
+
+    Totals: 24 head tensors + 32*20 encoder + 1 + 32*33 decoder + 1 + 2 tables =
+    1724 tensors in 684 layers (8 Head + 256 enc + 1 + 416 dec + 1 + 2 Relative).
+    488 int8 convolutions (8 head + 32*6 enc + 32*9 dec); everything else fp16
+    norms, biases and the two tables.
+
+    # What is folded, and what is not
+
+    * `sqrt(d_model)` is **not** folded into the embedding — T5 has no embedding
+      scale at all (no `scale_embedding`). The host gather dequantises the row.
+    * The attention query scale is **not** folded into `q`. T5 applies none (Mesh
+      TensorFlow init), and `attn_scores_prescaled` applies exactly 1.0.
+    * The relative bias is **not** folded into any projection. It is position-
+      dependent, so it cannot be; the host computes it per shape and hands it in
+      as a plan input the net adds with a plain `Add`.
+    * `wi_0` and `wi_1` **are** fused into one `[16384, 1024]` projection. GEGLU
+      needs `GELU(wi_0(x)) * wi_1(x)`, and `GatedActivate` reads a fused
+      `[gate | up]` tensor — so the converter concatenates the rows and the Rust
+      emits one convolution instead of two plus a slice pair.
+    * FFN activation is **gated-gelu** (`feed_forward_proj: gated-gelu`), so the
+      Rust uses `Act::Gelu` on the fused projection. T5's is the sigmoid
+      approximation and the shader is exact-erf; the difference is below fp16
+      resolution (see `nets::madlad`).
+    * The two untied tables are each emitted whole-range: `fetch_madlad400.py`
+      asserts they differ before conversion, so emitting both is exact.
+    """
+    layers = []
+    tensors = []
+    fidelity = Fidelity()
+
+    def emit(op, name, key, added):
+        layers.append(Layer(len(layers), op, name, key, len(tensors) - added, added))
+
+    def linear(name, weight=None):
+        """An int8 kernel as `[out, in, 1, 1]`, its per-output-channel scale, and a bias.
+
+        T5 carries no projection biases, so the bias is always synthesised zeros —
+        recorded in the key so a checkpoint that grows one is not mistaken for
+        this table.
+        """
+        weight = get(f"{name}.weight") if weight is None else weight
+        outputs, inputs = weight.shape
+        kernel, scale = fidelity.quantise(name, weight.reshape(outputs, inputs, 1, 1))
+        tensors.extend([kernel, scale, np.zeros(outputs, dtype=np.float32)])
+        emit(
+            "Linear8",
+            name,
+            f"Linear8 w={list(kernel.shape)} scale={[outputs]} b={[outputs]} "
+            "zp=0 dtype=int8 b0=synthesised",
+            3,
+        )
+
+    def rms_norm(name):
+        """An RMS norm's gain. One tensor: there is no beta to follow it."""
+        gamma = get(f"{name}.weight")
+        tensors.append(gamma)
+        emit("RmsNorm", name, f"RmsNorm g={list(gamma.shape)}", 1)
+
+    def head(table, rows_spec):
+        embedding = get(f"{table}.weight")
+        if sum(rows_spec) != embedding.shape[0]:
+            raise SystemExit(f"{embedding.shape[0]} classes do not split as {rows_spec}")
+        lo = 0
+        for rows in rows_spec:
+            chunk = embedding[lo : lo + rows]
+            name = f"{table}.weight[{lo}:{lo + rows}]"
+            kernel, scale = fidelity.quantise(
+                name, chunk.reshape(rows, embedding.shape[1], 1, 1)
+            )
+            # `Builder::conv_int8` reads a bias after the scale, and an embedding
+            # table has none. Zeros are exact, and recording it in the key means a
+            # checkpoint that grows one is not mistaken for this table.
+            tensors.extend([kernel, scale, np.zeros(rows, dtype=np.float32)])
+            emit(
+                "Head",
+                name,
+                f"Head w={list(kernel.shape)} scale={[rows]} b={[rows]} "
+                f"classes={lo}..{lo + rows} zp=0 dtype=int8 b0=synthesised",
+                3,
+            )
+            lo += rows
+
+    d, ffn = spec["d_model"], spec["d_ff"]
+    rows_spec = spec["head_rows"]
+    head("decoder.embed_tokens", rows_spec)
+    head("lm_head", rows_spec)
+
+    for side, count in (("encoder", spec["encoder_layers"]), ("decoder", spec["decoder_layers"])):
+        for index in range(count):
+            at = f"{side}.block.{index}"
+            # Pre-norm, as `T5Block` is: the norm comes before the sublayer it feeds
+            # and the residual skips both. Emitting in forward order is what lets the
+            # Rust walk the table without an index table.
+            attentions = ["SelfAttention"] + (["EncDecAttention"] if side == "decoder" else [])
+            for layer, attention in enumerate(attentions):
+                rms_norm(f"{at}.layer.{layer}.layer_norm")
+                for projection in ("q", "k", "v", "o"):
+                    linear(f"{at}.layer.{layer}.{attention}.{projection}")
+            ff = len(attentions)
+            rms_norm(f"{at}.layer.{ff}.layer_norm")
+            wi_0 = get(f"{at}.layer.{ff}.DenseReluDense.wi_0.weight")
+            wi_1 = get(f"{at}.layer.{ff}.DenseReluDense.wi_1.weight")
+            if list(wi_0.shape) != [ffn, d] or list(wi_1.shape) != [ffn, d]:
+                raise SystemExit(
+                    f"{at} wi_0 {list(wi_0.shape)} wi_1 {list(wi_1.shape)}, not "
+                    f"[{ffn}, {d}] each"
+                )
+            # Fused `[gate | up]`, the layout `GatedActivate` halves. Quantise the
+            # concatenation (identical rows quantise identically either way) so the
+            # fidelity line reports the tensor the file actually holds.
+            fused = np.concatenate([wi_0, wi_1], axis=0)
+            linear(f"{at}.layer.{ff}.DenseReluDense.wi_01", weight=fused)
+            linear(f"{at}.layer.{ff}.DenseReluDense.wo")
+        rms_norm(f"{side}.final_layer_norm")
+
+    for side in ("encoder", "decoder"):
+        table = get(f"{side}.block.0.layer.0.SelfAttention.relative_attention_bias.weight")
+        if list(table.shape) != [spec["buckets"], spec["heads"]]:
+            raise SystemExit(
+                f"{side} block-0 relative table is {list(table.shape)}, not "
+                f"[{spec['buckets']}, {spec['heads']}]"
+            )
+        tensors.append(np.ascontiguousarray(table, dtype=np.float32))
+        emit(
+            "Relative",
+            f"{side}.block.0.relative_attention_bias",
+            f"Relative t={list(table.shape)} host-read fp16",
+            1,
+        )
+
+    fidelity.report()
+    return layers, tensors
+
+
+def q2k_to_float(payload, gguf_shape, torch_shape):
+    """GGUF Q2_K payload dequantised to fp32 in torch `torch_shape` row order.
+
+    Exact transcription of candle's `BlockQ2K::to_float` (k_quants.rs:1016), composed
+    with candle's GGUF dim reversal. The physical bytes are the torch matrix in
+    row-major FLAT order: `torch_flat = gguf_flat`, reshaped to `torch_shape`. The
+    per-block loop below dequantises physical row by row into the flat order; the
+    reshape to torch rows happens once at the end.
+
+    (Two earlier revisions failed: (1) scattering each block's 256 taps across 256 torch
+    rows — passed every byte-level check, cosine ~0.0 vs fp32; (2) physical-row-is-torch-row
+    — row counts differ (1024 vs 2048), impossible. The flat-reshape rule was derived from
+    candle's shape reversal + `matmul_t` layout and verified at cosine 0.96 on q row 0.)
+
+    Per 16-elem lane: `y = dl*(q) - ml`, `dl = d*(sc&0xF)`, `ml = dmin*(sc>>4)`
+    (superblock `d`/`dmin` straight, NO extra product — `to_float` has no activation
+    scale to fold, unlike `vec_dot`'s `dall = y.d*x.d`). `q` 2 bits at shift 0/2/4/6
+    cycling per 32-elem half; halves read separate 32-byte `qs` chunks (`qs[0:32]` then
+    `qs[32:64]`), `is` stepping by 2 per lane-pair across the whole block. `d`/`dmin`
+    are fp16.
+
+    All GGUF shapes here divide evenly by 256 — a remainder fails loudly in `open_gguf`'s
+    size computation rather than silently misaligning here.
+    """
+    import numpy as _np
+
+    gguf_rows, gguf_cols = gguf_shape
+    n_blocks = gguf_cols // Q2K_BLOCK
+    # Physical row i holds gguf_cols taps = n_blocks superblocks of 84 bytes.
+    raw = _np.frombuffer(payload, dtype=_np.uint8).reshape(gguf_rows, n_blocks * Q2K_BYTES)
+    flat = _np.empty((gguf_rows * gguf_cols,), dtype=_np.float32)
+    for i in range(gguf_rows):
+        at = 0
+        for k in range(n_blocks):
+            block = raw[i, at : at + Q2K_BYTES]
+            at += Q2K_BYTES
+            scales = block[:16]
+            qs = block[16:80]
+            d = _np.frombuffer(block[80:82].tobytes(), dtype=_np.float16)[0].astype(_np.float32)
+            dmin = _np.frombuffer(block[82:84].tobytes(), dtype=_np.float16)[0].astype(_np.float32)
+            is_ = 0
+            # 256 taps = 2 halves of 128 (`y_chunks` zipped with 32-byte `qs_chunks`); each
+            # half consumes 8 scale bytes in 4 lane-pairs. Lane-pair `j` at shift 2*j: the
+            # even scale covers 16 taps from the half-chunk's `qs[..16]`, the odd scale 16
+            # taps from `qs[16..]` — both at the SAME shift. Half 1 reads qs[32:64], NOT
+            # qs[0:32]: the halves are separate 32-byte chunks.
+            base = (i * n_blocks + k) * Q2K_BLOCK
+            for half in range(2):
+                hqs = qs[half * 32 : half * 32 + 32]
+                shift = 0
+                for lane in range(4):
+                    sc = scales[is_]
+                    is_ += 1
+                    lo, hi = sc & 0xF, sc >> 4
+                    for l in range(16):
+                        q = (int(hqs[l]) >> shift) & 3
+                        flat[base + half * 128 + lane * 32 + l] = d * (q * lo) - dmin * hi
+                    sc = scales[is_]
+                    is_ += 1
+                    lo, hi = sc & 0xF, sc >> 4
+                    for l in range(16):
+                        q = (int(hqs[16 + l]) >> shift) & 3
+                        flat[base + half * 128 + lane * 32 + 16 + l] = (
+                            d * (q * lo) - dmin * hi
+                        )
+                    shift += 2
+    rows, taps = torch_shape
+    if rows * taps != gguf_rows * gguf_cols:
+        raise SystemExit(f"torch shape {torch_shape} does not tile GGUF shape {gguf_shape}")
+    return flat.reshape(rows, taps)
+
+
 INVENTORIES.update({"small100": small100_inventory, "whisper": whisper_inventory})
 COLLECTORS.update({"small100": collect_small100, "whisper": collect_whisper})
 INVENTORIES.update({"nllb600": nllb_inventory})
 COLLECTORS.update({"nllb600": collect_nllb})
 INVENTORIES.update({"maia": maia_inventory})
 COLLECTORS.update({"maia": collect_maia})
+INVENTORIES.update({"madlad400": madlad_inventory})
+COLLECTORS.update({"madlad400": collect_madlad})
 
 
 # The vision position table, after TinyCLIP's export constant-folds it: `position_ids` is a
@@ -3241,6 +4029,74 @@ def collect_tinyclip(model, spec):
     return layers, tensors
 
 
+def dequant_block_quantized(quant_t, scales_t, zp_t):
+    """4-bit block-quantised `[rows, cols]` as fp32, low nibble first.
+
+    Shared by `MatMulNBits` linears (stored transposed `[N, K/block, 16]`,
+    decoded to `[N, K]`) and `GatherBlockQuantized` position tables (stored
+    flat `[rows, cols/2]`, decoded to `[rows, cols]`). The block count always
+    comes from the scales table (`[rows, blocks]`), so both layouts meet here.
+    Packing verified against onnxruntime's own MatMulNBits to 3.7e-3
+    (analysis/prove_sign/).
+    """
+    dims = [int(d) for d in quant_t.dims]
+    scales_dims = [int(d) for d in scales_t.dims]
+    if len(scales_dims) != 2:
+        raise SystemExit("block scales of rank " + str(len(scales_dims)))
+    out_dim, per_col_blocks = scales_dims
+    quant = numpy_helper.to_array(quant_t).reshape(-1)
+    if len(dims) == 3:
+        rows, _, bpb = dims
+        assert rows == out_dim, (dims, scales_dims)
+        block = bpb * 2
+        raw = quant.reshape(out_dim, per_col_blocks, bpb)
+    elif len(dims) == 2:
+        rows, packed = dims
+        assert rows == out_dim, (dims, scales_dims)
+        raw = quant.reshape(out_dim, per_col_blocks, packed // per_col_blocks)
+        block = (packed // per_col_blocks) * 2
+    else:
+        raise SystemExit("block-quantised tensor of rank " + str(len(dims)))
+    in_dim = per_col_blocks * block
+    scales = numpy_helper.to_array(scales_t).astype(np.float32)
+    zp = numpy_helper.to_array(zp_t).reshape(-1).astype(np.uint8)
+    vals = np.empty((out_dim, per_col_blocks, block), dtype=np.float32)
+    vals[:, :, 0::2] = (raw & 0xF).astype(np.float32)
+    vals[:, :, 1::2] = ((raw >> 4) & 0xF).astype(np.float32)
+    zb = zp.reshape(out_dim, (per_col_blocks + 1) // 2)
+    zf = np.empty((out_dim, per_col_blocks), dtype=np.float32)
+    zf[:, 0::2] = (zb & 0xF).astype(np.float32)[:, : (per_col_blocks + 1) // 2]
+    if per_col_blocks > 1:
+        zf[:, 1::2] = ((zb >> 4) & 0xF).astype(np.float32)[:, : per_col_blocks // 2]
+    if scales.shape != (out_dim, per_col_blocks):
+        raise SystemExit(
+            "scales " + str(list(scales.shape)) + ", not [" + str(out_dim) + ", " +
+            str(per_col_blocks) + "]")
+    return ((vals.reshape(out_dim, in_dim) - zf.repeat(block, axis=1)) *
+            scales.repeat(block, axis=1))
+
+
+def dequant_matmul_nbits(node, inits):
+    """An ONNX `MatMulNBits` weight as fp32 `[K, N]`, matching a MatMul's `[in, out]`.
+
+    The quant tensor is stored TRANSPOSED as `[N, K/block, 16]` (verified: a
+    K=768 N=3072 node holds `[3072, 24, 16]`), decoded to `[N, K]` natively and
+    transposed back.
+    """
+    attrs = {a.name: a for a in node.attribute}
+    bits = attrs["bits"].i if "bits" in attrs else 4
+    if bits != 4:
+        raise SystemExit(node.name + ": MatMulNBits with " + str(bits) + " bits, not 4")
+    native = dequant_block_quantized(inits[node.input[1]], inits[node.input[2]],
+                                     inits[node.input[3]])
+    k = attrs["K"].i if "K" in attrs else native.shape[1]
+    n = attrs["N"].i if "N" in attrs else native.shape[0]
+    if native.shape != (n, k):
+        raise SystemExit(node.name + ": decoded " + str(list(native.shape)) + ", not [" +
+                         str(n) + ", " + str(k) + "]")
+    return native.T
+
+
 def quantise_per_channel(kernel):
     """An fp32 kernel as `(int8, scale)`, symmetric and absmax, one scale per output channel.
 
@@ -3402,8 +4258,9 @@ class Int4:
 def build(layers, tensors, graph_id, onnx_sha256):
     """Serialise the tensor table and the data section.
 
-    A tensor is fp16 unless it arrives as `int8`, in which case its bytes go through
-    unchanged and the entry records [`DTYPE_I8`]. Its scale is a separate fp16 tensor that the
+    A tensor is fp16 unless it arrives as `int8` (bytes go through unchanged as
+    [`DTYPE_I8`]) or as [`Int4`]/[`Q2K`] (packed/verbatim payloads as [`DTYPE_I4`]/
+    [`DTYPE_Q2K`]). A quantised kernel's scale is a separate fp16 tensor that the
     caller has already placed after it.
     """
     table = bytearray()
@@ -3417,6 +4274,19 @@ def build(layers, tensors, graph_id, onnx_sha256):
         if isinstance(tensor, Int4):
             dtype = DTYPE_I4
             data.extend(pack_int4(tensor.codes))
+        elif isinstance(tensor, Q2K):
+            # Verbatim superblocks: 84 bytes per 256 taps. The reader's `Dtype::bytes`
+            # must agree on `len.div_ceil(256) * 84` or the last block reads neighbour
+            # bytes at the right shape.
+            dtype = DTYPE_Q2K
+            payload = bytes(tensor.blocks)
+            expect = tensor.size // Q2K_BLOCK * Q2K_BYTES
+            if len(payload) != expect:
+                raise SystemExit(
+                    f"a Q2_K payload of {len(payload)} bytes for {tensor.size} taps, "
+                    f"not {expect}"
+                )
+            data.extend(payload)
         elif tensor.dtype == np.int8:
             # Already quantised, so nothing to round: the bytes are the payload.
             dtype = DTYPE_I8
@@ -3731,6 +4601,10 @@ def main():
         model, names = open_tflite(args.model)
         check_tflite(model, names, args.graph)
         layers, tensors = collect_tflite(model, names, TFLITE[args.graph])
+    elif args.graph in GGUF_GRAPHS:
+        get, shapes = open_gguf(args.model)
+        check_gguf(shapes, "madlad400")
+        layers, tensors = collect_madlad_q2k(get, CHECKPOINTS["madlad400"])
     elif args.graph in CHECKPOINTS:
         get, shapes = open_checkpoint(args.model)
         check_checkpoint(shapes, args.graph)

@@ -259,6 +259,43 @@ int int8_at(uint base, uint index) {
     return bitfieldExtract(int(word), int((index & 3u) << 3u), 8);
 }
 
+/// Taps one Q2_K superblock covers. Mirrors `weights::Q2K_BLOCK`.
+#define Q2K_BLOCK 256u
+
+/// Bytes one Q2_K superblock occupies. Mirrors `weights::Q2K_BYTES`.
+#define Q2K_BYTES 84u
+
+/// One scale byte of a Q2_K superblock.
+///
+/// `sbo` is the superblock's byte offset in the weights buffer; `half` selects the 128-tap
+/// half (32-byte `qs` chunk) and `scale` the byte within the half's 8 scale bytes. The low
+/// nibble is the lane's `lo`, the high nibble its `hi`.
+uint q2k_scale(uint sbo, uint half_idx, uint scale) {
+    // Scales are the first 16 bytes of the superblock; halves are consumed in order, so
+    // half 1's scales start 8 bytes in.
+    uint at = sbo + half_idx * 8u + scale;
+    // Byte loads go through the 32-bit view: the cheapest aligned read containing `at`.
+    uint word = weights32[at >> 2u];
+    return (word >> ((at & 3u) << 3u)) & 255u;
+}
+
+/// One 2-bit code of a Q2_K superblock.
+///
+/// `tap` is the tap within the 256-tap superblock (0..255). Halves are 128 taps of separate
+/// 32-byte `qs` chunks; within a half, lane-pair `tap / 32` packs 16+16 taps at shift
+/// `2 * ((tap / 16) % 2)`... precisely: even lanes read `qs[..16]` of the half-chunk, odd
+/// lanes `qs[16..]`, both at shift `2 * lane` where `lane = (tap / 32) % 4`.
+uint q2k_code(uint sbo, uint half_idx, uint tap) {
+    uint chunk = sbo + 16u + half_idx * 32u;
+    uint lane = (tap / 32u) % 4u;
+    uint odd = (tap / 16u) % 2u;
+    uint l = tap % 16u;
+    uint at = chunk + odd * 16u + l;
+    uint word = weights32[at >> 2u];
+    uint byte = (word >> ((at & 3u) << 3u)) & 255u;
+    return (byte >> (lane * 2u)) & 3u;
+}
+
 float activate(float x, uint kind, uint channel) {
     if (kind == ACT_RELU) {
         return max(x, 0.0);

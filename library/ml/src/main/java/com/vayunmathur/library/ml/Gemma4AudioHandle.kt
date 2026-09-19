@@ -94,28 +94,29 @@ class Gemma4AudioHandle private constructor(private val file: File) : AutoClosea
          * Mirrors `nets::gemma4_audio::MAX_SAMPLES`. A longer clip is not an error; native keeps
          * the first this many samples.
          *
-         * # Thirty seconds does not fit the decoder's context today
+         * # Thirty seconds fits the decoder's context
          *
          * This is the TOWER's limit and it knows nothing about the prompt it will be spliced
          * into. At 25 soft tokens a second a full clip is 750 positions, against a
-         * [Gemma4Handle.MAX_CONTEXT] of 2048 that the system prompt and tool declarations have
-         * already largely spent. Measured through the shipped tokenizer, reconciled between two
-         * independent implementations: a minimal turn is 1871 tokens, of which 1531 is the
-         * twenty-four tool declarations and 319 the system prompt.
+         * [Gemma4Handle.MAX_CONTEXT] of 16384. The fixed prefix was last measured at ~1871
+         * positions (twenty-four tool declarations plus the system prompt); with twenty-five
+         * tools today that figure has moved, so re-measure rather than trusting it. Even at a
+         * rounded-up 2000, the room for audio under the default 512-position reply reserve is
+         * `16384 - 512 - 2000 = 13872` positions - a full 30 s clip with an order of magnitude
+         * to spare.
          *
-         * That leaves 174 positions, and the reply competes for the same window:
+         * (An earlier revision of this docstring did the same arithmetic against a 2048 window,
+         * where the prefix left 174 positions and no clip worth sending fit. That window is
+         * gone: both the Kotlin [Gemma4Handle.MAX_CONTEXT] and native `nets::gemma4::MAX_CONTEXT`
+         * are 16384.)
          *
-         *     reply room    0 tokens -> 7.0 s of audio, and a reply of nothing
-         *     reply room  256 tokens -> impossible
-         *     reply room  512 tokens -> impossible, and 512 is `generate`'s default limit
-         *
-         * So no clip worth sending fits. Over budget, [Gemma4Handle.generate] now trims audio
-         * rather than returning null, so the turn survives - but the clip may be trimmed to
-         * nothing.
+         * Over budget, [Gemma4Handle.generate] still trims audio rather than returning null, so
+         * the turn survives - but with this much headroom a trim means the conversation has grown
+         * very long, not that the prefix is too big.
          *
          * P moves whenever a tool is added or removed; re-measure rather than trusting the
          * figure above. The lever is the NUMBER OF TOOLS declared rather than the length of
-         * their prose - declaring three tools instead of twenty-four frees far more than
+         * their prose - declaring three tools instead of twenty-five frees far more than
          * deleting every description.
          *
          * **The caller must budget.** Shortening this constant would be the wrong fix: the
@@ -124,7 +125,7 @@ class Gemma4AudioHandle private constructor(private val file: File) : AutoClosea
          * Reclaiming the prefix means **emitting fewer tokens**, not prefilling the same ones
          * faster. Caching the declaration prefix's KV would make turn two cheap and would free
          * no context at all - the positions are still occupied, so the budget above is
-         * unchanged and audio is still impossible. Only shrinking the prefix moves it.
+         * unchanged. Only shrinking the prefix moves it.
          */
         const val MAX_SAMPLES = 480_000
 

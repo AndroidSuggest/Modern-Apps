@@ -63,6 +63,7 @@ fn build_resolved_table(
     blobs: &[pbf::BlobLoc],
     blob_kinds: &[u8],
     ways_path: &Path,
+    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
     members: &HashMap<i64, Vec<i64>>,
     way_refs: u64,
     way_max_ref: i64,
@@ -84,9 +85,9 @@ fn build_resolved_table(
         .flat_map(|refs| refs.iter().copied())
         .fold(way_max_ref, i64::max);
     let table = if refs_total <= REFS_IN_MEMORY {
-        collect_needed_in_memory(&ways_path, &members, refs_total, &mark)?
+        collect_needed_in_memory(&ways_path, ways_anon.clone(), &members, refs_total, &mark)?
     } else {
-        collect_needed_by_bitset(&ways_path, &members, max_ref, &mark)?
+        collect_needed_by_bitset(&ways_path, ways_anon.clone(), &members, max_ref, &mark)?
     };
     mark("id index built, refs freed");
     stats.nodes_needed = table.len() as u64;
@@ -148,10 +149,21 @@ fn build_resolved_table(
     Ok(table)
 }
 
+/// Open the ways spill for sequential reading, from the shared anonymous
+/// store. One helper so the four readers (two ref collectors, lanefill scan,
+/// materialise) share one backend.
+fn open_ways_reader(
+    ways_path: &Path,
+    ways_anon: &std::sync::Arc<tile_build::anon::AnonStore>,
+) -> Result<WayReader> {
+    WayReader::open_anon(ways_path, std::sync::Arc::clone(ways_anon))
+}
+
 /// Lane inheritance over the ways spill. Moved whole from `extract`.
 fn inherit_lane_counts(
     spill_path: &Path,
     ways_path: &Path,
+    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
     table: &NodeLocations,
     ways_classified: usize,
 ) -> Result<Vec<(i64, u8)>> {
@@ -163,7 +175,7 @@ fn inherit_lane_counts(
     // are geometric — a length and a turn angle — and coordinates are only resolved above.
     let inherited_lanes = {
         let mut collector = crate::lanefill::Collector::create(spill_path)?;
-        let mut reader = WayReader::open(&ways_path)?;
+        let mut reader = open_ways_reader(ways_path, &ways_anon)?;
         let mut refs: Vec<i64> = Vec::new();
         let mut bar = Progress::new(
             "Lane inheritance: scan".to_string(),
@@ -209,6 +221,7 @@ fn inherit_lane_counts(
 /// clips per tile later.
 fn materialise_ways(
     ways_path: &Path,
+    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
     promoted: &[(i64, u8)],
     inherited_lanes: &[(i64, u8)],
     table: &NodeLocations,
@@ -216,7 +229,7 @@ fn materialise_ways(
     sink: &mut Sink,
     stats: &mut Stats,
 ) -> Result<()> {
-    let mut reader = WayReader::open(&ways_path)?;
+    let mut reader = open_ways_reader(ways_path, &ways_anon)?;
     let mut refs: Vec<i64> = Vec::new();
     // Silent until now, and it is not a short step: on a north-america extract this loop ran 623
     // seconds on one thread with nothing on stdout, which is indistinguishable from a hang.

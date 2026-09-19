@@ -36,6 +36,21 @@ pub(crate) mod tests {
             "the int4 gemv shader and Rust disagree on channels per workgroup"
         );
     }
+
+    /// `CONV_VEC_Q2K_ROWS` must equal `ROWS` in the Q2_K gemv shader.
+    ///
+    /// The same agreement as the int4 test above, for the shader that clones its lane
+    /// pattern: Rust dispatches `out / 8` workgroups and the shader owns 8 channels each.
+    /// Disagreeing dispatches too few workgroups and leaves most output channels never
+    /// written, which reads as a plausible wrong answer rather than an error.
+    #[test]
+    fn the_q2k_gemv_row_count_matches_its_shader() {
+        assert_eq!(
+            gemv_rows_of("conv_vec_q2k.comp"),
+            CONV_VEC_Q2K_ROWS,
+            "the Q2_K gemv shader and Rust disagree on channels per workgroup"
+        );
+    }
     use super::*;
 
     /// A [`WeightSource`] that knows only shapes.
@@ -81,7 +96,12 @@ pub(crate) mod tests {
             super::Kind::ConvPoint => "Conv".to_string(),
             // Both staged int8 lowerings are the same graph op as the untiled one. Which shader
             // serves a `1 x 1` is a lowering decision the op-inventory tests should not see.
+            // The int4 and Q2_K triples fold the same way.
             super::Kind::ConvPointInt8 | super::Kind::ConvVecInt8 => "ConvInt8".to_string(),
+            super::Kind::ConvPointInt4 | super::Kind::ConvVecInt4 => "ConvInt4".to_string(),
+            super::Kind::ConvQ2K | super::Kind::ConvPointQ2K | super::Kind::ConvVecQ2K => {
+                "ConvQ2K".to_string()
+            }
             other => format!("{other:?}"),
         }
     }
