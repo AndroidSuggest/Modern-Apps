@@ -25,9 +25,14 @@ import com.vayunmathur.communicate.data.SmsMessage
 import com.vayunmathur.communicate.data.SmsThread
 import com.vayunmathur.communicate.data.canSendPoll
 import com.vayunmathur.communicate.data.canShareContact
+import com.vayunmathur.communicate.data.findContactName
+import com.vayunmathur.communicate.data.isUnknownContact
+import com.vayunmathur.communicate.data.loadSmsMessagesMerged
+import com.vayunmathur.communicate.data.acceptSignalIdentity
+import com.vayunmathur.communicate.data.sendMessage
 import com.vayunmathur.communicate.data.sendPoll
 import com.vayunmathur.communicate.data.shareContact
-import com.vayunmathur.communicate.data.updateGoogleVoiceThread
+import com.vayunmathur.communicate.data.signalPendingIdentityChange
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.library.util.AppMessages
@@ -140,69 +145,16 @@ fun ConversationScreen(
         }
     }
 
-    // Opening a SIM thread clears the provider's unread flags. Nothing else writes them back, and
-    // the badge is recomputed from the provider, so imported rows would stay unread forever (#562).
-    androidx.compose.runtime.LaunchedEffect(threadId, line) {
-        if (line == CommunicateLine.Sim) {
-            CommunicateRepository.markSimThreadRead(context, threadId)
-        }
-    }
-    // Opening a Google Voice thread marks it read server-side via batchupdateattributes.
-    androidx.compose.runtime.LaunchedEffect(remoteId, line) {
-        if (line == CommunicateLine.GoogleVoice && remoteId != null) {
-            CommunicateRepository.updateGoogleVoiceThread(
-                context, remoteId, com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser.ThreadAction.MarkRead,
-            )
-        }
-    }
-    // Foreground polling for the open GV thread (no realtime channel yet).
-    androidx.compose.runtime.LaunchedEffect(remoteId, line) {
-        if (line == CommunicateLine.GoogleVoice && remoteId != null) {
-            while (true) {
-                kotlinx.coroutines.delay(10_000)
-                refresh++
-            }
-        }
-    }
-    // WhatsApp messages land in local Room via the socket→event-processor; poll the cache so inbound
-    // (and our own outgoing echo) appear live while the conversation is open. Cheap local reads.
-    androidx.compose.runtime.LaunchedEffect(line) {
-        if (line == CommunicateLine.WhatsApp) {
-            while (true) {
-                kotlinx.coroutines.delay(2_000)
-                refresh++
-            }
-        }
-    }
-    // Send WhatsApp read receipts (and clear the unread badge) for the open conversation. Re-runs on
-    // each poll tick; the repository guards against re-sending for an already-read message.
-    var waLastReadId by remember(remoteId, address) { mutableStateOf<String?>(null) }
-    androidx.compose.runtime.LaunchedEffect(line, remoteId, refresh) {
-        if (line == CommunicateLine.WhatsApp) {
-            waLastReadId = CommunicateRepository.markWhatsAppRead(context, remoteId, address, waLastReadId)
-        }
-    }
-    // Signal messages land in local Room via the socket→event-processor; poll so inbound
-    // (and our own outgoing echo) appear live while the conversation is open.
-    androidx.compose.runtime.LaunchedEffect(line) {
-        if (line == CommunicateLine.Signal) {
-            while (true) {
-                kotlinx.coroutines.delay(2_000)
-                refresh++
-            }
-        }
-    }
-    // Send Signal read receipts for the open conversation (mirrors WhatsApp).
-    var sigLastReadId by remember(remoteId, address) { mutableStateOf<String?>(null) }
-    androidx.compose.runtime.LaunchedEffect(line, remoteId, refresh) {
-        if (line == CommunicateLine.Signal) {
-            sigLastReadId = try {
-                CommunicateRepository.markSignalRead(context, remoteId, address, sigLastReadId)
-            } catch (_: Throwable) {
-                sigLastReadId
-            }
-        }
-    }
+    // Per-line mark-read dispatch + foreground polling (no realtime channel
+    // yet on GV/WhatsApp/Signal). Extracted to keep this file under the limit.
+    ConversationReadEffects(
+        context = context,
+        line = line,
+        threadId = threadId,
+        remoteId = remoteId,
+        address = address,
+        onRefreshTick = { refresh++ },
+    )
 
     AppScaffold(
         title = {

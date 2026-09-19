@@ -20,7 +20,11 @@ import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.SmsThread
+import com.vayunmathur.communicate.data.canPlaceCall
+import com.vayunmathur.communicate.data.canPlaceGroupCall
+import com.vayunmathur.communicate.data.canPlaceVideoCall
 import com.vayunmathur.communicate.data.deleteConversation
+import com.vayunmathur.communicate.data.placeCallForLine
 import com.vayunmathur.communicate.data.updateGoogleVoiceThread
 import com.vayunmathur.library.ui.IconArchive
 import com.vayunmathur.library.ui.IconButton

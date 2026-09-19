@@ -48,7 +48,11 @@ pub type Result<T> = core::result::Result<T, CryptoError>;
 // ---------------------------------------------------------------------------
 
 pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key).expect("hmac accepts any key length");
+    // Fully qualified: hmac 0.13 re-exports digest 0.11's KeyInit (matching the
+    // workspace sha2 0.11 pin). The bare `KeyInit` name resolves to aes's
+    // cipher-0.4 copy — a different trait version that Hmac<Sha256> cannot satisfy.
+    let mut mac =
+        <Hmac<Sha256> as hmac::KeyInit>::new_from_slice(key).expect("hmac accepts any key length");
     mac.update(data);
     mac.finalize().into_bytes().into()
 }
@@ -65,7 +69,7 @@ pub fn hkdf(ikm: &[u8], salt: &[u8], info: &[u8], out_len: usize) -> Vec<u8> {
     let mut counter: u8 = 1;
     while out.len() < out_len {
         let mut mac =
-            <Hmac<Sha256> as Mac>::new_from_slice(&prk).expect("hmac accepts any key length");
+            <Hmac<Sha256> as hmac::KeyInit>::new_from_slice(&prk).expect("hmac accepts any key length");
         mac.update(&t);
         mac.update(info);
         mac.update(&[counter]);

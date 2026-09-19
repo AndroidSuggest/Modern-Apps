@@ -34,6 +34,7 @@ import com.vayunmathur.communicate.data.CommunicateContact
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.LineChoice
+import com.vayunmathur.communicate.data.loadContacts
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.Checkbox
 import com.vayunmathur.library.ui.FilterChip

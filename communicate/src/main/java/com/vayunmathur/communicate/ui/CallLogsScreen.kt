@@ -40,6 +40,7 @@ import com.vayunmathur.communicate.data.CommunicateCallType
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.deleteCallLog
 import com.vayunmathur.communicate.data.loadCallLogsMerged
+import com.vayunmathur.communicate.data.placeCall
 import com.vayunmathur.communicate.domain.callDurationParts
 import com.vayunmathur.library.util.AppMessages
 import kotlinx.coroutines.Dispatchers

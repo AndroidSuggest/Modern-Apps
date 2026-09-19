@@ -11,6 +11,7 @@ import android.telecom.VideoProfile
 import com.vayunmathur.communicate.MainActivity
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateRepository
+import com.vayunmathur.communicate.data.findContactName
 import com.vayunmathur.library.util.ensureNotificationChannel
 
 /** In-call bridge for carrier/SIM calls that lets Communicate expose notification controls. */

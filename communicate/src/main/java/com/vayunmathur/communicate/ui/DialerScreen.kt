@@ -41,6 +41,8 @@ import com.vayunmathur.communicate.data.CommunicateContact
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.LineChoice
 import com.vayunmathur.communicate.data.T9
+import com.vayunmathur.communicate.data.loadContacts
+import com.vayunmathur.communicate.data.placeCall
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceSession
 import com.vayunmathur.communicate.data.googlevoice.call.GoogleVoiceCallManager
 import com.vayunmathur.communicate.telephony.GoogleVoiceTelecom

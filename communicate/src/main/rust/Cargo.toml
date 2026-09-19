@@ -13,7 +13,10 @@ crate-type = ["cdylib", "rlib"]
 curve25519-dalek.workspace = true
 x25519-dalek.workspace = true
 sha2.workspace = true
-hmac.workspace = true
+# hmac 0.13 (digest 0.11 stack) to match the workspace sha2 0.11 pin: Hmac<Sha256>
+# mixes both crates' traits, so they must share one digest major. The workspace
+# hmac stays 0.12.1 (digest 0.10) for hkdf/rfc6979; only this crate overrides.
+hmac = "0.13"
 aes.workspace = true
 subtle.workspace = true
 rand_core.workspace = true

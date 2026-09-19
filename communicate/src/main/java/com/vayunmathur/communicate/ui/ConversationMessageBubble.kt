@@ -23,6 +23,7 @@ import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.MessageStatus
 import com.vayunmathur.communicate.data.SmsMessage
+import com.vayunmathur.communicate.data.findContactName
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
