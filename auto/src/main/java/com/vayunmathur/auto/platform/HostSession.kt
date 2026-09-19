@@ -65,12 +65,21 @@ class HostSession(
     @Volatile private var bound = false
     @Volatile private var handshakeDone = false
 
+    /** Whether the app declared API 9 voice-assistant capabilities. */
+    private val voiceCapabilities = AtomicReference(false)
+
+    /** Whether the app registered an API 8 media playback token. */
+    private val mediaToken = AtomicReference(false)
+
     private var localSurface: Surface? = null
     private var localWidth = 0
     private var localHeight = 0
     private var localDpi = DEFAULT_DPI
 
     private var connection: ServiceConnection? = null
+
+    /** Host-side mirror of the app's 5-template task stack (SPEC §2.2). */
+    private val taskStack = HostTaskStack()
 
     /** The component this session hosts. */
     fun componentName(): ComponentName = component
@@ -275,6 +284,8 @@ class HostSession(
                 failure.set(RuntimeException("$name failed: $response"))
                 latch.countDown()
             }
+
+            override fun getInterfaceVersion(): Int = IOnDoneCallback.VERSION
         }
         runCatching { call(cb) }.onFailure {
             Log.w(TAG, "$name binder call threw", it)
@@ -287,7 +298,7 @@ class HostSession(
     }
 
     /** Pulls the current template and forwards it. Background thread. */
-    private fun fetchTemplate() {
+    fun fetchTemplate() {
         val app = carApp ?: return
         val managerRef = AtomicReference<androidx.car.app.IAppManager?>(null)
         val latch = CountDownLatch(1)
@@ -301,6 +312,8 @@ class HostSession(
                 Log.w(TAG, "fetchTemplate: getManager failure $response")
                 latch.countDown()
             }
+
+            override fun getInterfaceVersion(): Int = IOnDoneCallback.VERSION
         }
         runCatching { app.getManager(CarContext.APP_SERVICE, managerCb) }
             .onFailure { Log.w(TAG, "getManager threw", it); return }
@@ -321,12 +334,20 @@ class HostSession(
                 Log.w(TAG, "fetchTemplate: getTemplate failure $response")
                 templateLatch.countDown()
             }
+
+            override fun getInterfaceVersion(): Int = IOnDoneCallback.VERSION
         }
         runCatching { manager.getTemplate(templateCb) }
             .onFailure { Log.w(TAG, "getTemplate threw", it); return }
         templateLatch.await(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         val wrapper = templateRef.get() as? androidx.car.app.model.TemplateWrapper
         val parsed = HostTemplateParsers.parse(wrapper)
+        taskStack.record(parsed)
+        if (!taskStack.isAllowed(parsed)) {
+            Log.w(TAG, "task quota exceeded for $component; showing error pane")
+            mainHandler.post { onTemplate(HostTemplate.Pane(title = "Too many screens")) }
+            return
+        }
         mainHandler.post { onTemplate(parsed) }
     }
 
@@ -345,6 +366,8 @@ class HostSession(
         override fun onFailure(response: Bundleable?) {
             Log.w(TAG, "host call rejected: $response")
         }
+
+        override fun getInterfaceVersion(): Int = IOnDoneCallback.VERSION
     }
 
     // ----------------------------------------------------------------
@@ -365,11 +388,15 @@ class HostSession(
                 CarContext.APP_SERVICE -> appHostBinder.asBinder()
                 CarContext.NAVIGATION_SERVICE -> navHostBinder.asBinder()
                 CarContext.CONSTRAINT_SERVICE -> constraintHostBinder.asBinder()
+                CarContext.MEDIA_PLAYBACK_SERVICE -> mediaHostBinder.asBinder()
+                CarContext.SUGGESTION_SERVICE -> suggestionHostBinder.asBinder()
                 else -> throw InvalidParameterException("Invalid host type: $hostType")
             }
         }
 
         override fun finish() = Unit
+
+        override fun getInterfaceVersion(): Int = ICarHost.VERSION
     }
 
     private val appHostBinder = object : IAppHost.Stub() {
@@ -397,11 +424,14 @@ class HostSession(
         override fun openMicrophone(request: Bundleable?): Bundleable {
             throw RemoteException("openMicrophone not supported")
         }
+
+        override fun getInterfaceVersion(): Int = IAppHost.VERSION
     }
 
     private val navHostBinder = object : INavigationHost.Stub() {
         override fun navigationStarted() {
             Log.i(TAG, "$component navigation started")
+            taskStack.reset() // NavigationTemplate resets the task quota
         }
 
         override fun navigationEnded() {
@@ -410,12 +440,71 @@ class HostSession(
         }
 
         override fun updateTrip(trip: Bundleable?) = Unit
+
+        override fun setVoiceAssistantCapabilities(capabilities: Bundleable?) {
+            // API 9: nav apps declare voice actions/disruptions/consent.
+            // This host has no voice pipeline of its own — GAL carries mic
+            // audio on ch6 (MicSourceChannel) and the phone resolves intents.
+            // Record receipt so a future voice route can consume it.
+            Log.i(TAG, "$component voice-assistant capabilities received")
+            voiceCapabilities.set(capabilities != null)
+        }
+
+        override fun getInterfaceVersion(): Int =
+            androidx.car.app.navigation.INavigationHost.VERSION
     }
 
     private val constraintHostBinder = object : IConstraintHost.Stub() {
         override fun getContentLimit(contentLimitType: Int): Int = CONTENT_LIMIT_DEFAULT
 
         override fun isAppDrivenRefreshEnabled(): Boolean = false
+
+        override fun getInterfaceVersion(): Int = IConstraintHost.VERSION
+    }
+
+    /**
+     * API 3: vehicle hardware is NOT dispatched through car-app IPC on this
+     * host — and deliberately so (GAL-vs-car-app decision, recorded):
+     * `SensorChannel` already streams GPS/sensors over the GAL sensor proto,
+     * and car climate has no GAL counterpart at all. Apps calling
+     * `CarHardwareManager` against this host get `UNIMPLEMENTED`/`UNAVAILABLE`
+     * `CarValue`s (the library default when no hardware host answers), and
+     * should read location through the platform `LocationManager` path they
+     * already use. A `CarHardwareManager`→GAL bridge is a follow-up, not part
+     * of this template rollout.
+     */
+
+    /**
+     * API 8: receives the app's `MediaSessionCompat.Token` bundle.
+     *
+     * GAL-vs-car-app decision (recorded): the token is bridged, not forked.
+     * `MusicCaptureService` keeps owning phone-side capture; this stub logs
+     * receipt so a future host media UI can read playback state from the
+     * token. No new GAL proto — media browse/playback stays on the car-app
+     * channel, GAL ch5/ch6 carry the audio bytes as before.
+     */
+    private val mediaHostBinder = object : androidx.car.app.media.IMediaPlaybackHost.Stub() {
+        override fun registerMediaSessionToken(token: Bundleable?) {
+            Log.i(TAG, "$component media playback token registered")
+            mediaToken.set(token != null)
+        }
+
+        override fun getInterfaceVersion(): Int =
+            androidx.car.app.media.IMediaPlaybackHost.VERSION
+    }
+
+    /**
+     * API 5: receives nav suggestion bundles. Same bridge policy as media:
+     * logged, not re-transported — GAL `navigation.proto` stays a stub and
+     * `NavStatusChannel` keeps carrying guidance bytes.
+     */
+    private val suggestionHostBinder = object : androidx.car.app.suggestion.ISuggestionHost.Stub() {
+        override fun updateSuggestions(suggestions: Bundleable?) {
+            Log.i(TAG, "$component suggestions updated")
+        }
+
+        override fun getInterfaceVersion(): Int =
+            androidx.car.app.suggestion.ISuggestionHost.VERSION
     }
 
     private companion object {
@@ -435,5 +524,48 @@ class HostSession(
         const val CALL_TIMEOUT_MS = 5_000L
         const val CONTENT_LIMIT_DEFAULT = 6
         const val TOUCH_SLOP_PX_SQ = 64f
+    }
+}
+
+/**
+ * Host-side mirror of the car-app 5-template task quota (SPEC §2.2).
+ *
+ * The host cannot see pushes/pops directly — only successive `getTemplate`
+ * results. Heuristic: a Navigation template resets the count (quota-reset
+ * view); an identical-kind repeat is a refresh (not counted); anything else
+ * pushes. Over-counting only risks a false error pane, never a crash — the
+ * app's own stack stays authoritative. `resetApp` (rebind) clears the mirror.
+ */
+internal class HostTaskStack {
+    private var depth = 0
+    private var lastKind: String? = null
+
+    fun record(template: HostTemplate) {
+        val kind = template.javaClass.simpleName
+        if (template is HostTemplate.Navigation) {
+            depth = 1
+            lastKind = kind
+            return
+        }
+        if (kind == lastKind) return // refresh: same type + same content shape
+        lastKind = kind
+        depth += 1
+    }
+
+    fun isAllowed(template: HostTemplate): Boolean {
+        if (depth <= MAX_TASK_TEMPLATES) return true
+        // Task enders are always allowed — the stack unwinds from here.
+        return template is HostTemplate.Navigation ||
+            template is HostTemplate.Pane ||
+            template is HostTemplate.Message
+    }
+
+    fun reset() {
+        depth = 0
+        lastKind = null
+    }
+
+    private companion object {
+        const val MAX_TASK_TEMPLATES = 5
     }
 }

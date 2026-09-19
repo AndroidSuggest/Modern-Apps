@@ -24,6 +24,9 @@ import androidx.car.app.navigation.model.LaneDirection
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.car.app.navigation.model.RoutingInfo
 import androidx.car.app.navigation.model.TravelEstimate
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
 /** One template action: title plus the app's own click delegate. */
@@ -247,25 +250,56 @@ object HostTemplateParsers {
     private fun parseSectionedItem(template: androidx.car.app.model.SectionedItemTemplate): HostTemplate.TemplateList {
         val sections = mutableListOf<HostUiSection>()
         runCatching { template.sections }.getOrNull().orEmpty().forEach { section ->
-            val items = runCatching { section.items }.getOrNull().orEmpty()
+            val items = fetchSectionItems(section)
             val rows = items.mapNotNull { item ->
                 when (item) {
                     is Row -> parseRow(item)
                     is androidx.car.app.messaging.model.ConversationItem -> parseConversation(item)
-                    is androidx.car.app.model.GridItem -> null // grid-in-section: title row
-                    else -> null
+                    is androidx.car.app.model.GridItem ->
+                        HostUiRow(
+                            title = carText(runCatching { item.title }.getOrNull()) ?: return@mapNotNull null,
+                            texts = listOfNotNull(carText(runCatching { item.text }.getOrNull())),
+                            browse = false,
+                            onClick = runCatching { item.onClickDelegate }.getOrNull()?.let { d ->
+                                {
+                                    thread(name = "ma-auto-carhost-click", isDaemon = true) {
+                                        runCatching { d.sendClick(HostClickCallback) }
+                                    }
+                                }
+                            },
+                        )
+                    is androidx.car.app.model.CondensedItem ->
+                        HostUiRow(
+                            title = carText(runCatching { item.title }.getOrNull()) ?: return@mapNotNull null,
+                            texts = emptyList(),
+                            browse = false,
+                            onClick = runCatching { item.onClickDelegate }.getOrNull()?.let { d ->
+                                {
+                                    thread(name = "ma-auto-carhost-click", isDaemon = true) {
+                                        runCatching { d.sendClick(HostClickCallback) }
+                                    }
+                                }
+                            },
+                        )
+                    is androidx.car.app.model.Chip ->
+                        HostUiRow(
+                            title = carText(runCatching { item.title }.getOrNull()) ?: return@mapNotNull null,
+                            texts = emptyList(),
+                            browse = false,
+                            onClick = runCatching { item.onClickDelegate }.getOrNull()?.let { d ->
+                                {
+                                    thread(name = "ma-auto-carhost-click", isDaemon = true) {
+                                        runCatching { d.sendClick(HostClickCallback) }
+                                    }
+                                }
+                            },
+                        )
+                    else -> null // Banner/BannerElement: visual only, no host row
                 }
             }
-            val header = when (section) {
-                is androidx.car.app.model.RowSection ->
-                    carText(runCatching { section.header }.getOrNull()?.title)
-                is androidx.car.app.model.GridSection ->
-                    carText(runCatching { section.header }.getOrNull()?.title)
-                else -> carText(runCatching {
-                    section.javaClass.getMethod("getHeader").invoke(section)
-                        as? androidx.car.app.model.CarText
-                }.getOrNull())
-            } ?: section.javaClass.simpleName.removeSuffix("Section")
+            val header = carText(runCatching { section.title }.getOrNull())
+                ?: carText(runCatching { section.sectionHeader }.getOrNull()?.title)
+                ?: section.javaClass.simpleName.removeSuffix("Section")
             sections += HostUiSection(header = header, rows = rows)
         }
         return HostTemplate.TemplateList(
@@ -274,6 +308,25 @@ object HostTemplateParsers {
             loading = runCatching { template.isLoading }.getOrDefault(false),
             actions = listActions(runCatching { template.actions }.getOrNull().orEmpty()),
         )
+    }
+
+    /** Synchronously fetches a section's items via its range delegate (5s cap). */
+    private fun fetchSectionItems(section: androidx.car.app.model.Section<*>): List<androidx.car.app.model.Item> {
+        val delegate = runCatching { section.itemsDelegate }.getOrNull() ?: return emptyList()
+        val size = runCatching { delegate.size }.getOrDefault(0)
+        if (size <= 0) return emptyList()
+        val ref = AtomicReference<List<androidx.car.app.model.Item>?>(null)
+        val latch = CountDownLatch(1)
+        val cb = object : OnDoneCallback {
+            override fun onSuccess(response: androidx.car.app.serialization.Bundleable?) {
+                ref.set(runCatching { response?.get() as? List<*> }.getOrNull()?.filterIsInstance<androidx.car.app.model.Item>())
+                latch.countDown()
+            }
+        }
+        runCatching { delegate.requestItemRange(0, size - 1, cb) }
+            .onFailure { Log.w(TAG, "section range fetch failed", it); return emptyList() }
+        latch.await(5, TimeUnit.SECONDS)
+        return ref.get().orEmpty()
     }
 
     private fun parseConversation(item: androidx.car.app.messaging.model.ConversationItem): HostUiRow? {
