@@ -129,7 +129,7 @@ fun LazyGridItemScope.itemMotion(placementSpec: FiniteAnimationSpec<IntOffset>? 
 }
 
 /** How far apart consecutive sections start their entrance. */
-private const val StaggerStepMillis = 45L
+private const val STAGGER_STEP_MILLIS = 45L
 
 /** How far a section rises through as it arrives. */
 private val StaggerLift = 12.dp
@@ -146,7 +146,7 @@ fun Modifier.staggeredEntrance(index: Int, arriving: Boolean): Modifier {
     var shown by remember { mutableStateOf(!arriving) }
     LaunchedEffect(Unit) {
         if (!shown) {
-            delay(index * StaggerStepMillis)
+            delay(index * STAGGER_STEP_MILLIS)
             shown = true
         }
     }

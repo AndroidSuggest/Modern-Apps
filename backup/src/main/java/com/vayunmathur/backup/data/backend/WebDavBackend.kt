@@ -48,8 +48,8 @@ class WebDavBackend(
             current = if (current.isEmpty()) seg else "$current/$seg"
             val resp = NetworkClient.execute(url(current), method = "MKCOL", headers = headers())
             // 201 created; 405/301/409-after-parent are tolerated as "already exists".
-            if (resp.status !in intArrayOf(201, 405, 301, 200)) {
-                if (resp.status == 409) continue // parent race; keep going
+            if (resp.status !in intArrayOf(HTTP_CREATED, HTTP_METHOD_NOT_ALLOWED, HTTP_MOVED, HTTP_OK)) {
+                if (resp.status == HTTP_CONFLICT) continue // parent race; keep going
             }
         }
     }
@@ -70,7 +70,7 @@ class WebDavBackend(
 
     override suspend fun <T> read(path: String, reader: suspend (InputStream) -> T): T {
         val resp = NetworkClient.execute(url(path), method = "GET", headers = headers())
-        if (resp.status == 404) throw FileNotFoundException(path)
+        if (resp.status == HTTP_NOT_FOUND) throw FileNotFoundException(path)
         if (!resp.isSuccess) throw IOException("WebDAV GET $path failed: ${resp.status}")
         return ByteArrayInputStream(resp.bytes).use { reader(it) }
     }
@@ -82,8 +82,8 @@ class WebDavBackend(
             headers = headers("Depth" to "1", "Content-Type" to "application/xml"),
             body = PROPFIND_BODY,
         )
-        if (resp.status == 404) return emptyList()
-        if (!resp.isSuccess && resp.status != 207) {
+        if (resp.status == HTTP_NOT_FOUND) return emptyList()
+        if (!resp.isSuccess && resp.status != HTTP_MULTI_STATUS) {
             throw IOException("WebDAV PROPFIND $dir failed: ${resp.status}")
         }
         val selfPath = Uri.parse(url(dir)).path?.trimEnd('/') ?: ""
@@ -98,7 +98,7 @@ class WebDavBackend(
 
     override suspend fun delete(path: String) {
         val resp = NetworkClient.execute(url(path), method = "DELETE", headers = headers())
-        if (!resp.isSuccess && resp.status != 404) {
+        if (!resp.isSuccess && resp.status != HTTP_NOT_FOUND) {
             throw IOException("WebDAV DELETE $path failed: ${resp.status}")
         }
     }
@@ -109,11 +109,19 @@ class WebDavBackend(
             method = "PROPFIND",
             headers = headers("Depth" to "0"),
         )
-        return resp.status == 207 || resp.isSuccess
+        return resp.status == HTTP_MULTI_STATUS || resp.isSuccess
     }
 
     companion object {
-        private val PROPFIND_BODY =
+        private const val HTTP_OK = 200
+        private const val HTTP_CREATED = 201
+        private const val HTTP_MOVED = 301
+        private const val HTTP_NOT_FOUND = 404
+        private const val HTTP_CONFLICT = 409
+        private const val HTTP_METHOD_NOT_ALLOWED = 405
+        private const val HTTP_MULTI_STATUS = 207
+
+        private const val PROPFIND_BODY =
             """<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>"""
         private val HREF_REGEX = Regex("<[^>]*href[^>]*>([^<]+)</[^>]*href>", RegexOption.IGNORE_CASE)
     }

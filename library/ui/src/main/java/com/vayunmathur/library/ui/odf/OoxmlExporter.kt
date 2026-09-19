@@ -141,7 +141,7 @@ object OoxmlExporter {
         // Footnotes: emit part + reference at matching citation spans.
         val footnotesPart = if (doc.footnotes.isNotEmpty()) buildFootnotes(doc.footnotes, assets, numbering) else null
 
-        body.append(sectPrXml(doc.pageSetup, hasHeader = doc.headerParagraphs.isNotEmpty(), hasFooter = doc.footerParagraphs.isNotEmpty(), assets))
+        body.append(sectPrXml(doc.pageSetup, hasHeader = doc.headerParagraphs.isNotEmpty(), hasFooter = doc.footerParagraphs.isNotEmpty()))
 
         val nsDecl = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"" +
             " xmlns:r=\"$NS_R\"" +
@@ -200,7 +200,7 @@ object OoxmlExporter {
         return pkg.zip()
     }
 
-    private fun sectPrXml(page: OdfPageSetup?, hasHeader: Boolean, hasFooter: Boolean, assets: DocxAssets): String {
+    private fun sectPrXml(page: OdfPageSetup?, hasHeader: Boolean, hasFooter: Boolean): String {
         val sb = StringBuilder("<w:sectPr>")
         if (hasHeader) sb.append("<w:headerReference w:type=\"default\" r:id=\"rIdHeader\"/>")
         if (hasFooter) sb.append("<w:footerReference w:type=\"default\" r:id=\"rIdFooter\"/>")
@@ -1152,7 +1152,7 @@ object OoxmlExporter {
         return sb.toString()
     }
 
-    private val PPTX_THEME = XMLDECL +
+    private const val PPTX_THEME = XMLDECL +
         "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"Office\">" +
         "<a:themeElements><a:clrScheme name=\"Office\">" +
         "<a:dk1><a:sysClr val=\"windowText\" lastClr=\"000000\"/></a:dk1><a:lt1><a:sysClr val=\"window\" lastClr=\"FFFFFF\"/></a:lt1>" +

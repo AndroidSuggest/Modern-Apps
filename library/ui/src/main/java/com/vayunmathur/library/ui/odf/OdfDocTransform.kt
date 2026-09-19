@@ -63,7 +63,7 @@ internal fun runTransStarts(lens: List<Int>, prefixes: List<String>): IntArray {
 
 internal fun buildDocTransformed(
     text: String, paras: List<OdfParagraph>, lens: List<Int>, prefixes: List<String>,
-    baseColor: Color, prefixColor: Color, mult: Float
+    prefixColor: Color, mult: Float
 ): TransformedText {
     val n = paras.size
     val origStarts = IntArray(n)

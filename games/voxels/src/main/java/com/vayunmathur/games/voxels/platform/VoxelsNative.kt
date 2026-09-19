@@ -1,10 +1,14 @@
 // PACKAGE STRUCTURE EXCEPTION (JNI): FQN frozen for native RegisterNatives/symbol mangling
 // NOTE: file lives under platform/ but package is ...voxels.util to match the native symbol
+@file:Suppress("InvalidPackageDeclaration")
 package com.vayunmathur.games.voxels.util
 
 import android.util.Log
 import android.view.Surface
 
+// JNI bridge: one extern fun per native entry point (count is inherent to the
+// engine surface), and loadLibrary must catch Throwable (UnsatisfiedLinkError).
+@Suppress("TooManyFunctions", "TooGenericExceptionCaught")
 object VoxelsNative {
     val isAvailable: Boolean = try {
         System.loadLibrary("voxels_engine")

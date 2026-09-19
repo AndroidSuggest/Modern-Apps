@@ -195,7 +195,7 @@ if build availability matters.
 
 ## 3. JVM / Android dependency surface
 
-Dependencies are centralised in `gradle/libs.versions.toml`: 60 versions, 105 libraries, 7 plugins,
+Dependencies are centralised in `gradle/libs.versions.toml`: 61 versions, 106 libraries, 8 plugins,
 all exactly pinned. Every dependency coordinate in the tree takes its group, name and version from
 the catalog. Two are still finished off as strings in module build files because they append a
 classifier the catalog cannot express: the OS-classified `protoc` executable in `:communicate` and
@@ -203,12 +203,14 @@ classifier the catalog cannot express: the OS-classified `protoc` executable in 
 
 ### 3.1 Prerelease toolchain and libraries — Medium
 
-Eighteen catalog version entries resolve to alpha or beta releases, among them the Android Gradle
+Nineteen catalog version entries resolve to alpha or beta releases, among them the Android Gradle
 Plugin at `9.4.0-alpha04` (with `lint` tracking it at `32.4.0-alpha04`), `material3`
 `1.5.0-alpha27`, `camerax` `1.7.0-alpha02`, `credentials` `1.7.0-alpha02`, `biometric`
-`1.4.0-alpha07`, `webkit` `1.17.0-alpha03`, and `media3` `1.11.0-beta01`. Prerelease artifacts can be
-withdrawn or republished, receive no stability guarantee, and are generally not covered by upstream
-security backports.
+`1.4.0-alpha07`, `webkit` `1.17.0-alpha03`, `media3` `1.11.0-beta01`, and detekt
+`2.0.0-alpha.6` (build-time only: static analysis via `./check`, never shipped in APKs).
+Prerelease artifacts can be withdrawn or republished, receive no stability guarantee, and are
+generally not covered by upstream security backports. detekt is on the 2.x line because 1.x
+supports Kotlin <= 2.0 only and this repo is on Kotlin 2.4.20; revisit on detekt 2.0.0 stable.
 
 AGP is the one that matters most, because it is the build tool rather than a library: an alpha AGP
 is the component with the widest reach over what gets produced.

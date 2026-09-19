@@ -34,6 +34,8 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.vayunmathur.library.ui.R
 
 /** The base formatting actions every editor toolbar can offer. */
@@ -126,10 +128,14 @@ fun FormatIconButton(
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
 ) {
+    // The slot renders an app IconXxx with no contentDescription parameter of its
+    // own, so expose this button's description to accessibility services here.
+    val description = contentDescription
     IconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.focusProperties { canFocus = false }.size(40.dp),
+        modifier = Modifier.focusProperties { canFocus = false }.size(40.dp)
+            .semantics { this.contentDescription = description },
     ) {
         androidx.compose.runtime.CompositionLocalProvider(
             LocalContentColor provides

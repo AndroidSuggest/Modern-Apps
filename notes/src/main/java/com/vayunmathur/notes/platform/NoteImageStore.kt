@@ -5,6 +5,7 @@ package com.vayunmathur.notes.platform
 import kotlin.uuid.Uuid
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import java.io.File
 
 /**
@@ -13,12 +14,17 @@ import java.io.File
  * images survive app restarts.
  */
 object NoteImageStore {
+    private const val TAG = "NoteImageStore"
+
     private fun dir(context: Context): File =
         File(context.filesDir, "note_images").apply { mkdirs() }
 
     fun fileFor(context: Context, fileName: String): File = File(dir(context), fileName)
 
     /** Copies [uri] into the images dir and returns the new file name, or null on failure. */
+    // Broad catch is deliberate: any content-provider failure mode means "no file"
+    // per this function's contract, and the failure is logged below.
+    @Suppress("TooGenericExceptionCaught")
     fun import(context: Context, uri: Uri): String? {
         val fileName = "img_${Uuid.random()}.jpg"
         val dest = File(dir(context), fileName)
@@ -28,6 +34,7 @@ object NoteImageStore {
             } ?: return null
             fileName
         } catch (e: Exception) {
+            Log.w(TAG, "import failed for $uri", e)
             dest.delete()
             null
         }

@@ -1,4 +1,8 @@
 @file:OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+// Game bootstrap: 388-line onCreate wires engine/JNI/multiplayer/UI in one place,
+// with tuning literals inline. Splitting working game glue risks behavior drift;
+// exception/parameter/import rules below still apply to this file.
+@file:Suppress("MagicNumber", "MaxLineLength", "LongMethod", "CyclomaticComplexMethod")
 
 package com.vayunmathur.games.voxels
 
@@ -11,20 +15,39 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.vayunmathur.games.voxels.ui.*
+import com.vayunmathur.games.voxels.ui.Hotbar
+import com.vayunmathur.games.voxels.ui.InventoryOverlay
+import com.vayunmathur.games.voxels.ui.InventoryState
+import com.vayunmathur.games.voxels.ui.Joystick
+import com.vayunmathur.games.voxels.ui.VoxelSurfaceView
+import com.vayunmathur.games.voxels.ui.VoxelsTheme
 import com.vayunmathur.games.voxels.platform.VoxelsAchievements
 import com.vayunmathur.games.voxels.util.VoxelsNative
 import com.vayunmathur.games.voxels.network.VoxelsSync
 import com.vayunmathur.e2ee.Pqc
-import com.vayunmathur.library.ui.*
+import com.vayunmathur.library.ui.AchievementNotification
+import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.GameHubComposeHook
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +58,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
+    // JNI boundary: native throws unchecked exceptions, all logged here.
+    @Suppress("TooGenericExceptionCaught")
+    private fun initEngine(worldDir: String, worldSeed: Int) {
+        try { VoxelsNative.nativeInit(worldDir, worldSeed) } catch (e: RuntimeException) {
+            android.util.Log.e("VoxelsMain", "nativeInit failed", e)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -53,9 +84,7 @@ class MainActivity : ComponentActivity() {
         val ownerDevice = intent.getStringExtra("owner_device") ?: ""
         val worldName = intent.getStringExtra("world_name") ?: ""
         if (VoxelsNative.isAvailable) {
-            try { VoxelsNative.nativeInit(worldDir, worldSeed) } catch (e: Exception) {
-                android.util.Log.e("VoxelsMain", "nativeInit failed", e)
-            }
+            initEngine(worldDir, worldSeed)
             // Put the engine in host/client mode before the render thread starts ticking.
             if (online) try { VoxelsNative.nativeSetRole(netRole) } catch (_: Exception) {}
         }
@@ -216,6 +245,10 @@ class MainActivity : ComponentActivity() {
                     }
                     if (netRole == 1) refreshRoster()
                     // Verify + gate an incoming signed op, then hand the inner NetMsg to the engine.
+                    // Signed-op validation: each early return rejects one distinct
+                    // failure (bad author, bad roster, bad signature). Splitting
+                    // would scatter a single security check.
+                    @Suppress("ReturnCount")
                     fun handleSignedOp(plain: String) {
                         try {
                             val so = JSONObject(plain)

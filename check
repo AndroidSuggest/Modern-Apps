@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Static verification without building or installing:
+#   ./gradlew :<mod>:detekt [...] + cargo check --locked -p <crate> [...] (rust modules only)
+#
+# Usage:
+#   ./check <module> [module...]     # detekt (config/detekt/detekt.yml) + cargo check
+#   ./check games/voxels maps        # multi-module, one gradlew invocation
+#   ./check voxels                    # shorthand -> games:voxels (same as ./install)
+#   ./check all                       # every app + library module
+#
+# Module notation mirrors ./install: slash == colon, games:/personal: shorthand,
+# 'all' keyword, deduped. Tasks run with --continue so one broken module does not
+# block the rest; exit code is nonzero if anything failed.
+#
+# Rust: a module with src/main/rust/Cargo.toml is checked with `cargo check
+# --locked`: workspace members together via `-p` from the repo root, standalone
+# crates (own [workspace]) individually in their own dir (host target: fast smoke
+# check; the real aarch64 cross-build runs inside the Gradle build via
+# cargoNdkBuild). No rust modules -> cargo step skipped.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$SCRIPT_DIR"
+
+print_help() {
+  sed -n '2,/^set -euo/p' "$SCRIPT_DIR/check" | sed 's/^# \{0,1\}//' | head -n -1
+}
+
+normalize_module() {
+  local m="$1"
+  m="$(echo "$m" | xargs)"
+  m="$(echo "$m" | sed -e 's|^[/:]*||' -e 's|[/:]*$||')"
+  m="$(echo "$m" | tr '/' ':')"
+  while echo "$m" | grep -q "::"; do m="$(echo "$m" | sed 's/::/:/g')"; done
+  echo "$m" | tr '[:upper:]' '[:lower:]'
+}
+
+# all = app + library convention modules (both apply dev.detekt; pure-JVM
+# modules like youpipe:extractor do not, so they are excluded here but still
+# accepted when named explicitly and left for Gradle to report on).
+all_module_dirs() {
+  grep -E 'include\(":[^"]+"\)' "$ROOT/settings.gradle.kts" 2>/dev/null \
+    | sed -E 's/.*include\(":([^"]+)"\).*/\1/' \
+    | tr ':' '/' \
+    | while IFS= read -r p; do
+        case "$p" in "" ) continue;; esac
+        if [[ -f "$ROOT/$p/build.gradle.kts" ]] \
+          && grep -qE 'common-conventions-(app|library)' "$ROOT/$p/build.gradle.kts" 2>/dev/null; then
+          echo "$p"
+        fi
+      done | sort -u
+}
+
+if [[ $# -eq 0 ]]; then print_help; echo ""; echo "Error: no modules specified."; exit 1; fi
+for arg in "$@"; do case "$arg" in --help|-h|help) print_help; exit 0;; esac; done
+
+MODS=(); ALL_EXP=0
+for raw in "$@"; do
+  norm="$(normalize_module "$raw")"
+  [[ -z "$norm" ]] && continue
+  if [[ "$norm" == "all" ]]; then
+    if [[ $ALL_EXP -eq 0 ]]; then
+      while IFS= read -r sm; do
+        case "$sm" in "" ) continue;; esac
+        MODS+=("$sm")
+      done < <(all_module_dirs)
+      ALL_EXP=1
+    fi
+    continue
+  fi
+  if [[ "$norm" != *":"* ]]; then
+    for pfx in games personal; do
+      [[ -f "$ROOT/$pfx/$norm/build.gradle.kts" ]] && { norm="$pfx:$norm"; break; }
+    done
+  fi
+  fs="$(echo "$norm" | tr ':' '/')"
+  if [[ ! -f "$ROOT/$fs/build.gradle.kts" ]]; then
+    echo "Error: unknown module '$raw' (-> $fs/, no build.gradle.kts)." >&2; exit 1
+  fi
+  dup=0; for m in ${MODS[@]:-}; do [[ "$m" == "$fs" ]] && dup=1; done
+  [[ $dup -eq 0 ]] && MODS+=("$fs")
+done
+[[ ${#MODS[@]} -gt 0 ]] || { echo "Error: no valid modules." >&2; exit 1; }
+
+TASKS=()
+for mod in "${MODS[@]}"; do TASKS+=(":$(echo "$mod" | tr '/' ':'):detekt"); done
+echo "Modules (${#MODS[@]}): ${MODS[*]}"
+echo "Gradle tasks: ${TASKS[*]}"
+echo ""
+
+DETEKT_RC=0
+"$SCRIPT_DIR/gradlew" "${TASKS[@]}" --continue --console=plain || DETEKT_RC=$?
+echo ""
+[[ $DETEKT_RC -ne 0 ]] && echo "Warning: detekt reported failures (exit $DETEKT_RC)."
+
+# --- cargo check (rust modules only) ---
+# Workspace members share one root `cargo check -p ...` invocation; standalone
+# crates (own [workspace] table + lockfile, e.g. games:voxels, code) are checked
+# individually with cwd set to the crate dir.
+ROOT_CRATES=()
+STANDALONE_DIRS=()
+for mod in "${MODS[@]}"; do
+  rdir="$ROOT/$mod/src/main/rust"
+  ct="$rdir/Cargo.toml"
+  if [[ -f "$ct" ]]; then
+    if grep -qE '^\[workspace\][[:space:]]*$' "$ct"; then
+      STANDALONE_DIRS+=("$rdir")
+      echo "Rust: $mod -> standalone crate ($rdir)"
+    else
+      name="$(sed -nE 's/^name *= *"([^"]+)".*/\1/p' "$ct" | head -1)"
+      [[ -n "$name" ]] && ROOT_CRATES+=("$name") && echo "Rust: $mod -> workspace crate $name"
+    fi
+  fi
+done
+CARGO_RC=0
+if command -v cargo >/dev/null 2>&1; then
+  CARGO_BIN="cargo"
+else
+  CARGO_BIN="${CARGO_HOME:-$HOME/.cargo}/bin/cargo"
+  [[ -x "$CARGO_BIN" ]] || { echo "Error: cargo not found ($CARGO_BIN)." >&2; exit 1; }
+fi
+if [[ ${#ROOT_CRATES[@]} -gt 0 ]]; then
+  echo ""
+  CARGO_ARGS=()
+  for c in "${ROOT_CRATES[@]}"; do CARGO_ARGS+=(-p "$c"); done
+  echo "Running: cargo check --locked ${CARGO_ARGS[*]}"
+  ( cd "$ROOT" && "$CARGO_BIN" check --locked "${CARGO_ARGS[@]}" ) || CARGO_RC=$?
+  [[ $CARGO_RC -ne 0 ]] && echo "Warning: cargo check (workspace) reported failures (exit $CARGO_RC)."
+fi
+for rdir in ${STANDALONE_DIRS[@]:-}; do
+  echo ""
+  echo "Running: cargo check --locked (in $rdir)"
+  ( cd "$rdir" && "$CARGO_BIN" check --locked ) || CARGO_RC=$?
+  [[ $CARGO_RC -ne 0 ]] && echo "Warning: cargo check ($rdir) reported failures (exit $CARGO_RC)."
+done
+if [[ ${#ROOT_CRATES[@]} -eq 0 && ${#STANDALONE_DIRS[@]} -eq 0 ]]; then
+  echo "No Rust crates in scope; cargo step skipped."
+fi
+
+if [[ $DETEKT_RC -ne 0 || $CARGO_RC -ne 0 ]]; then exit 1; fi
+exit 0

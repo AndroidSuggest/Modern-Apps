@@ -12,27 +12,32 @@ class VoxelSurfaceView @JvmOverloads constructor(
 ) : SurfaceView(context, attrs), SurfaceHolder.Callback {
     private var ready = false
     init { holder.addCallback(this) }
+    // JNI boundary: native throws unchecked exceptions, all logged here.
+    @Suppress("TooGenericExceptionCaught")
     override fun surfaceCreated(holder: SurfaceHolder) {
         if (!VoxelsNative.isAvailable) return
+        // JNI boundary: native throws unchecked exceptions, all logged here.
         try {
             VoxelsNative.surfaceCreated(holder.surface)
             ready = true
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             android.util.Log.e("VoxelSurface", "surfaceCreated failed", e)
         }
     }
+    @Suppress("TooGenericExceptionCaught")
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         if (!VoxelsNative.isAvailable || !ready) return
-        try { VoxelsNative.surfaceChanged(width, height) } catch (e: Exception) {
+        try { VoxelsNative.surfaceChanged(width, height) } catch (e: RuntimeException) {
             android.util.Log.e("VoxelSurface", "surfaceChanged failed", e)
         }
     }
+    @Suppress("TooGenericExceptionCaught")
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         if (!VoxelsNative.isAvailable) return
         try {
             VoxelsNative.surfaceDestroyed()
             ready = false
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             android.util.Log.e("VoxelSurface", "surfaceDestroyed failed", e)
         }
     }

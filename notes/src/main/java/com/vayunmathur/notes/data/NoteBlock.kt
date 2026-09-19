@@ -3,9 +3,11 @@
 package com.vayunmathur.notes.data
 
 import kotlin.uuid.Uuid
+import android.util.Log
 import com.vayunmathur.library.ink.SerializedStroke
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -62,13 +64,16 @@ data class NoteBody(
 // from earlier builds) so older notes still parse instead of crashing.
 private val blockJson = Json { ignoreUnknownKeys = true }
 
+private const val TAG = "NoteBody"
+
 /** The note body: parses stored [Note.blocks], or falls back to a single text block. */
 fun Note.body(): NoteBody {
     val json = blocks
     if (json.isNullOrBlank()) return NoteBody(blocks = listOf(NoteBlock.Text(content)))
     return try {
         blockJson.decodeFromString<NoteBody>(json)
-    } catch (e: Exception) {
+    } catch (e: SerializationException) {
+        Log.w(TAG, "unparseable blocks JSON, falling back to plain text", e)
         NoteBody(blocks = listOf(NoteBlock.Text(content)))
     }
 }

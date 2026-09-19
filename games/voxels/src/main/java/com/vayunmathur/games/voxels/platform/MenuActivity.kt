@@ -1,4 +1,7 @@
 @file:OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+// Game menu bootstrap: UI wiring lives here rather than ui/ for legacy reasons;
+// same rationale as MainActivity's file-level suppressions above.
+@file:Suppress("MagicNumber", "MaxLineLength", "LongMethod", "CyclomaticComplexMethod")
 
 package com.vayunmathur.games.voxels.platform
 

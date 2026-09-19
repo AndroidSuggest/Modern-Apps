@@ -41,9 +41,14 @@ import kotlin.io.encoding.Base64
  *
  * Player transforms ride the ephemeral WebSocket `presence` channel and are never persisted.
  */
+// Sync protocol surface: one function per endpoint/operation by design.
+@Suppress("TooManyFunctions")
 object VoxelsSync {
     private const val URL = "https://findfamily.cc/voxels"
     private const val WS_URL = "wss://findfamily.cc/voxels/ws"
+    private const val HTTP_OK = 200
+    private const val RECONNECT_INITIAL_MS = 1000L
+    private const val RECONNECT_MAX_MS = 15_000
     private val json = Json { ignoreUnknownKeys = true }
 
     private lateinit var identity: PqcIdentity
@@ -83,7 +88,7 @@ object VoxelsSync {
     /** Fetches a peer's public bundle by device id (needed to seal invites / verify their signatures). */
     suspend fun getKey(id: String): ByteArray? {
         val r = raw("/getkey", IdReq(id)) ?: return null
-        return if (r.status == 200) Base64.decode(r.body) else null
+        return if (r.status == HTTP_OK) Base64.decode(r.body) else null
     }
 
     fun newWorldKey(): ByteArray = E2ee.newContentKey()
@@ -241,13 +246,13 @@ object VoxelsSync {
         stopLive()
         liveChannel = channel
         liveJob = scope.launch(Dispatchers.IO) {
-            var backoff = 1000L
+            var backoff = RECONNECT_INITIAL_MS
             while (isActive) {
                 runCatching {
                     webSocket(WS_URL) {
                         wsSession = this
                         send(json.encodeToString(SubMsg("sub", channel)))
-                        backoff = 1000L
+                        backoff = RECONNECT_INITIAL_MS
                         runCatching { onConnected() }
                         incoming.collect { frame ->
                             when (frame) {
@@ -260,7 +265,7 @@ object VoxelsSync {
                 wsSession = null
                 if (!isActive) break
                 delay(backoff)
-                backoff = (backoff * 2).coerceAtMost(15_000)
+                backoff = (backoff * 2).coerceAtMost(RECONNECT_MAX_MS)
             }
         }
     }
@@ -296,21 +301,24 @@ object VoxelsSync {
 
     private suspend fun append(channel: String, blobs: List<String>): Int? {
         val r = raw("/append", AppendReq(channel, blobs)) ?: return null
-        if (r.status != 200) return null
+        if (r.status != HTTP_OK) return null
         return runCatching { json.decodeFromString<SeqResp>(r.body).seq }.getOrNull()
     }
 
     private suspend fun pull(channel: String, since: Int): PullResp? {
         val r = raw("/pull", PullReq(channel, since)) ?: return null
-        if (r.status != 200) return null
+        if (r.status != HTTP_OK) return null
         return runCatching { json.decodeFromString<PullResp>(r.body) }.getOrNull()
     }
 
     private suspend inline fun <reified T> post(path: String, body: T): Boolean {
         val r = raw(path, body) ?: return false
-        return r.status in 200..299
+        return r.isSuccess
     }
 
+    // Broad catch is deliberate: any transport/serialization failure mode means
+    // "no response" per this function's contract (see comment in the catch below).
+    @Suppress("TooGenericExceptionCaught")
     private suspend inline fun <reified T> raw(path: String, body: T) =
         try {
             NetworkClient.performRequest(
@@ -322,6 +330,10 @@ object VoxelsSync {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            // Best-effort poll: any failure mode means "no response" and the
+            // next tick retries. Cancellation is rethrown above so this never
+            // swallows structured-concurrency signals.
+            android.util.Log.w("VoxelsSync", "request failed: $path", e)
             null
         }
 

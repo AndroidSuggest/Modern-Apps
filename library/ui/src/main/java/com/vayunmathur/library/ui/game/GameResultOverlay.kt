@@ -47,7 +47,7 @@ fun GameResultOverlay(
     Box(
         modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = ScrimAlpha))
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM_ALPHA))
             .padding(Spacing.lg),
         contentAlignment = Alignment.Center,
     ) {
@@ -77,4 +77,4 @@ fun GameResultOverlay(
 }
 
 /** Dark enough to mute the board behind, light enough to keep it recognisable. */
-private const val ScrimAlpha = 0.7f
+private const val SCRIM_ALPHA = 0.7f

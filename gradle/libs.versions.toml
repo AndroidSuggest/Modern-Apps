@@ -17,6 +17,10 @@ ksp = "2.3.11"
 protobufPlugin = "0.10.0"
 desugarJdkLibs = "2.1.5"
 
+# Static analysis (detekt 2.x line: 1.x supports Kotlin <= 2.0 only).
+# Alpha because no stable detekt supports Kotlin 2.4 yet; revisit on 2.0.0 stable.
+detekt = "2.0.0-alpha.6"
+
 # Kotlin stdlib ecosystem (JetBrains)
 kotlinxCoroutines = "1.11.0"
 kotlinxSerializationJson = "1.11.0"
@@ -151,6 +155,11 @@ kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", v
 kotlin-compose-gradle = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 kotlin-serialization-gradle = { module = "org.jetbrains.kotlin:kotlin-serialization", version.ref = "kotlin" }
 symbol-processing-gradle-plugin = { module = "com.google.devtools.ksp:symbol-processing-gradle-plugin", version.ref = "ksp" }
+# Plugin jar so build-logic can put detekt on its classpath; convention plugins
+# then apply it versionless as id("io.gitlab.arturbosch.detekt") (same as ksp).
+# NB: 2.x lives under the dev.detekt group; the old
+# io.gitlab.arturbosch.detekt marker has no 2.x alpha on Maven Central.
+detekt-gradle-plugin = { module = "dev.detekt:detekt-gradle-plugin", version.ref = "detekt" }
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 
 # Kotlin stdlib ecosystem (JetBrains)
@@ -329,3 +338,11 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
+
+# =============================================================================
+# THIRD PARTY
+# =============================================================================
+
+# Static code analysis for Kotlin (applied in common-conventions-app/library;
+# 2.x plugin id is dev.detekt).
+detekt = { id = "dev.detekt", version.ref = "detekt" }

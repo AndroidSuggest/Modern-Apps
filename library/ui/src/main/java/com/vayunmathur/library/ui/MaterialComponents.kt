@@ -840,8 +840,10 @@ fun ListItem(
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
     colors: ListItemColors = ListItemDefaults.colors(),
-    tonalElevation: Dp = 0.dp,
-    shadowElevation: Dp = 0.dp,
+    // Accepted for source compatibility with material3 ListItem; nothing sets
+    // either away from zero (SafeListItemLayout takes no elevation).
+    @Suppress("UnusedParameter") tonalElevation: Dp = 0.dp,
+    @Suppress("UnusedParameter") shadowElevation: Dp = 0.dp,
 ) = SafeListItemLayout(
     // See the overload above; elevation is accepted for source compatibility
     // but nothing sets it away from zero.

@@ -103,13 +103,15 @@ pkg_dirs_for() { # mod, pkg... -> prints existing package-root dirs (deduped)
   done
   # drop dirs subsumed by another match (e.g. data/ inside data/)
   local a b skip
-  for a in "${found[@]:-}"; do
-    skip=0
-    for b in "${found[@]:-}"; do
-      [[ "$a" != "$b" && "$a" == "$b"/* ]] && { skip=1; break; }
-    done
-    [[ $skip -eq 0 ]] && echo "$a"
-  done | sort -u
+  if [[ ${#found[@]} -gt 0 ]]; then
+    for a in "${found[@]}"; do
+      skip=0
+      for b in "${found[@]}"; do
+        [[ "$a" != "$b" && "$a" == "$b"/* ]] && { skip=1; break; }
+      done
+      [[ $skip -eq 0 ]] && echo "$a"
+    done | sort -u
+  fi
 }
 
 # --- arg parsing ---

@@ -151,6 +151,9 @@ private fun relaunch(context: android.content.Context) {
     Runtime.getRuntime().exit(0)
 }
 
+// Broad catch is deliberate: export/import cross arbitrary content providers and
+// format plugins, and every failure mode is logged and messaged below.
+@Suppress("TooGenericExceptionCaught")
 private suspend fun runExport(
     context: android.content.Context,
     format: BackupFormat,
@@ -172,6 +175,7 @@ private suspend fun runExport(
     }
 }
 
+@Suppress("TooGenericExceptionCaught")
 private suspend fun runImport(
     context: android.content.Context,
     format: BackupFormat,

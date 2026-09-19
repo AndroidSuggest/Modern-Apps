@@ -4,6 +4,14 @@ plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("dev.detekt")
+}
+
+// Static analysis (./check runs `:module:detekt`). Rules live in the committed
+// root config/detekt/detekt.yml; findings fail the task (no ignoreFailures).
+// Config-cache compatible: the config file is resolved here, never a Project.
+detekt {
+    config.setFrom(files(rootDir.resolve("config/detekt/detekt.yml")))
 }
 
 val libs = the<org.gradle.accessors.dm.LibrariesForLibs>()

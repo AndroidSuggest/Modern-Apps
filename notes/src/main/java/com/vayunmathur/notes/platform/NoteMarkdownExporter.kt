@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
+import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.core.graphics.scale
 import com.vayunmathur.library.ink.SerializedStroke
@@ -14,6 +15,15 @@ import com.vayunmathur.notes.data.body
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.roundToInt
+
+private const val TAG = "NoteMarkdownExporter"
+
+/** Bit layout of an ARGB color int for [cssColor]. */
+private const val ARGB_BYTE_MASK = 0xFF
+private const val ALPHA_SHIFT = 24
+private const val RED_SHIFT = 16
+private const val GREEN_SHIFT = 8
+private const val MAX_COLOR_COMPONENT = 255f
 
 /**
  * Exports a note as a SINGLE self-contained Markdown document:
@@ -56,10 +66,14 @@ private const val MAX_IMAGE_DIMENSION = 1024
 private const val JPEG_QUALITY = 60
 
 /** An image inlined as an HTML `<img>` with a base64 data URI, honoring [NoteBlock.Image.widthFraction]. */
+// Broad catch is deliberate: an undecodable image is omitted from the export
+// per this function's contract (blank strings are filtered by the caller).
+@Suppress("TooGenericExceptionCaught")
 private fun imageMarkdown(context: Context, block: NoteBlock.Image): String {
     val bytes = try {
         downscaledJpegBytes(NoteImageStore.fileFor(context, block.fileName))
     } catch (e: Exception) {
+        Log.w(TAG, "omitting undecodable image ${block.fileName}", e)
         return ""
     } ?: return ""
     val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
@@ -148,11 +162,11 @@ private fun strokePath(stroke: SerializedStroke): String? {
 
 /** An ARGB color int as a CSS `rgba(...)`, preserving alpha (e.g. highlighter transparency). */
 private fun cssColor(argb: Int): String {
-    val a = (argb ushr 24) and 0xFF
-    val r = (argb ushr 16) and 0xFF
-    val g = (argb ushr 8) and 0xFF
-    val b = argb and 0xFF
-    return "rgba($r,$g,$b,${num(a / 255f)})"
+    val a = (argb ushr ALPHA_SHIFT) and ARGB_BYTE_MASK
+    val r = (argb ushr RED_SHIFT) and ARGB_BYTE_MASK
+    val g = (argb ushr GREEN_SHIFT) and ARGB_BYTE_MASK
+    val b = argb and ARGB_BYTE_MASK
+    return "rgba($r,$g,$b,${num(a / MAX_COLOR_COMPONENT)})"
 }
 
 /** Formats a float compactly (drops the ".0" for whole numbers) to keep the output small. */

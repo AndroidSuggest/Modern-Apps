@@ -72,7 +72,7 @@ class NotesViewModel(
 
         val pendingWrites = remember { MutableStateFlow<Note?>(null) }
         LaunchedEffect(Unit) {
-            pendingWrites.filterNotNull().debounce(300).collectLatest { newValue ->
+            pendingWrites.filterNotNull().debounce(SAVE_DEBOUNCE_MS).collectLatest { newValue ->
                 val newId = withContext(Dispatchers.IO) { repository.upsert(newValue) }
                 if (currentId == 0L) currentId = newId
             }
@@ -136,6 +136,9 @@ class NotesViewModel(
     private val _shareRequests = MutableSharedFlow<NoteShare>(extraBufferCapacity = 1)
     val shareRequests: SharedFlow<NoteShare> = _shareRequests.asSharedFlow()
 
+    // Best-effort import of external files: any failure mode means "skip this
+    // file" per this function's contract, and each failure is logged below.
+    @Suppress("TooGenericExceptionCaught")
     fun importFiles(uris: List<Uri>) {
         if (uris.isEmpty()) return
         val ctx = getApplication<Application>()
@@ -189,6 +192,9 @@ class NotesViewModel(
 
     data class ExternalNoteContent(val title: String, val content: String)
 
+    // Best-effort read of an external note: any failure mode means null per
+    // this function's contract, and the failure is logged below.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun readExternal(uriString: String): ExternalNoteContent? = withContext(Dispatchers.IO) {
         val ctx = getApplication<Application>()
         try {
@@ -203,6 +209,9 @@ class NotesViewModel(
         }
     }
 
+    // Best-effort save to an external note: any failure mode means false per
+    // this function's contract, and the failure is logged below.
+    @Suppress("TooGenericExceptionCaught")
     fun saveExternal(uriString: String, content: String, onResult: (Boolean) -> Unit) {
         val ctx = getApplication<Application>()
         viewModelScope.launch {
@@ -230,6 +239,7 @@ class NotesViewModel(
 
     companion object {
         private const val TAG = "NotesViewModel"
+        private const val SAVE_DEBOUNCE_MS = 300L
     }
 }
 

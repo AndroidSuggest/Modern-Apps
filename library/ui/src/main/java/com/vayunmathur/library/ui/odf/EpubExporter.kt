@@ -28,7 +28,7 @@ object EpubExporter {
             zos.putNextEntry(mimeEntry); zos.write(mime); zos.closeEntry()
             put(zos, "META-INF/container.xml", CONTAINER)
             put(zos, "OEBPS/content.opf", contentOpf(title, images.keys))
-            put(zos, "OEBPS/toc.ncx", tocNcx(title, doc))
+            put(zos, "OEBPS/toc.ncx", tocNcx(title))
             put(zos, "OEBPS/content.xhtml", bodyXhtml)
             for ((name, bytes) in images) { zos.putNextEntry(ZipEntry("OEBPS/$name")); zos.write(bytes); zos.closeEntry() }
         }
@@ -79,7 +79,7 @@ object EpubExporter {
         return sb.toString()
     }
 
-    private fun tocNcx(title: String, doc: OdfDocument.TextDocument): String {
+    private fun tocNcx(title: String): String {
         val sb = StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
         sb.append("<ncx xmlns=\"http://www.daisy.org/z3986/2005/ncx/\" version=\"2005-1\">\n")
         sb.append("<head><meta name=\"dtb:uid\" content=\"urn:uuid:${title.hashCode().toUInt()}\"/></head>\n")

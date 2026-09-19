@@ -123,7 +123,7 @@ fun ContinuousParagraphEditor(
     // Recomputed every composition so list prefixes (e.g. renumbered ordered lists, checkbox state)
     // are always reflected immediately, even when the underlying text is unchanged.
     val transformation = VisualTransformation {
-        buildDocTransformed(it.text, paras, lens, prefixes, onSurface, prefixColor, fontSizeMultiplier)
+        buildDocTransformed(it.text, paras, lens, prefixes, prefixColor, fontSizeMultiplier)
     }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     // When the run's shape changes (a paragraph added/removed by Enter/Backspace), the caller's

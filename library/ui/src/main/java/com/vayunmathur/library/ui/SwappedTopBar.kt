@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.IntOffset
  * How far the two bars travel as they swap, as a fraction of the bar's height. A third: enough to
  * read as a push, short enough that neither bar is ever mostly off its own strip.
  */
-private const val SwapTravel = 3
+private const val SWAP_TRAVEL = 3
 
 /**
  * Swaps a top bar for another one that slides down over it, and lets the first slide back down into
@@ -43,8 +43,8 @@ fun SwappedTopBar(
         modifier = modifier,
         transitionSpec = {
             val towards = if (targetState) -1 else 1
-            (fadeIn(fade) + slideInVertically(offset) { towards * it / SwapTravel })
-                .togetherWith(fadeOut(fade) + slideOutVertically(offset) { -towards * it / SwapTravel })
+            (fadeIn(fade) + slideInVertically(offset) { towards * it / SWAP_TRAVEL })
+                .togetherWith(fadeOut(fade) + slideOutVertically(offset) { -towards * it / SWAP_TRAVEL })
         },
     ) { overlay ->
         content(overlay)

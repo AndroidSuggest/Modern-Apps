@@ -37,7 +37,6 @@ fun DashboardScreen(
     onFileBackupToggle: (Boolean) -> Unit,
     onBackupNow: () -> Unit,
     onRestoreNow: () -> Unit,
-    onDismissMessages: () -> Unit,
 ) {
     AppScaffold(title = "Backup", scrollBehavior = appBarScrollBehavior()) { padding ->
         // Letterboxed on expanded windows so the form keeps a readable measure.

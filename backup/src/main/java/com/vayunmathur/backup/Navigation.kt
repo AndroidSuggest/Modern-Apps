@@ -76,7 +76,6 @@ fun Navigation(viewModel: BackupViewModel) {
                 onFileBackupToggle = viewModel::setFileBackupEnabled,
                 onBackupNow = { mediaPermissions.launch(mediaPermissionList) },
                 onRestoreNow = viewModel::restoreFilesNow,
-                onDismissMessages = viewModel::dismissMessages,
             )
         }
     }

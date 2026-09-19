@@ -1,3 +1,7 @@
+// Procedural-audio tuning table: frequencies, durations and gains are the
+// instrument design, not unexplained literals. Other rules still apply here.
+@file:Suppress("MagicNumber")
+
 package com.vayunmathur.games.voxels.platform
 
 import android.content.Context
@@ -55,8 +59,12 @@ object SoundFx {
         val rate = 0.92f + Random.nextFloat() * 0.16f
         try { pool?.play(id, 0.22f, 0.22f, 0, 0, rate) } catch (_: Throwable) {}
     }
-    fun playCave() { try { pool?.play(caveId, 0.35f, 0.35f, 0, 0, 0.9f + Random.nextFloat() * 0.2f) } catch (_: Throwable) {} }
-    fun playStalk() { try { pool?.play(stalkId, 0.5f, 0.5f, 0, 0, 0.85f + Random.nextFloat() * 0.3f) } catch (_: Throwable) {} }
+    fun playCave() {
+        try { pool?.play(caveId, 0.35f, 0.35f, 0, 0, 0.9f + Random.nextFloat() * 0.2f) } catch (_: Throwable) {}
+    }
+    fun playStalk() {
+        try { pool?.play(stalkId, 0.5f, 0.5f, 0, 0, 0.85f + Random.nextFloat() * 0.3f) } catch (_: Throwable) {}
+    }
 
     // Per-surface footstep timbre: (base frequency, duration, amplitude, envelope decay). Hard
     // surfaces are short and bright; soft ones are duller and longer.
@@ -123,8 +131,16 @@ object SoundFx {
         val f = File(ctx.cacheDir, name)
         val dataLen = pcm.size * 2
         val bytes = ByteArray(44 + dataLen)
-        fun le32(off: Int, v: Int) { bytes[off]=(v and 0xff).toByte(); bytes[off+1]=((v shr 8) and 0xff).toByte(); bytes[off+2]=((v shr 16) and 0xff).toByte(); bytes[off+3]=((v shr 24) and 0xff).toByte() }
-        fun le16(off: Int, v: Int) { bytes[off]=(v and 0xff).toByte(); bytes[off+1]=((v shr 8) and 0xff).toByte() }
+        fun le32(off: Int, v: Int) {
+            bytes[off] = (v and 0xff).toByte()
+            bytes[off + 1] = ((v shr 8) and 0xff).toByte()
+            bytes[off + 2] = ((v shr 16) and 0xff).toByte()
+            bytes[off + 3] = ((v shr 24) and 0xff).toByte()
+        }
+        fun le16(off: Int, v: Int) {
+            bytes[off] = (v and 0xff).toByte()
+            bytes[off + 1] = ((v shr 8) and 0xff).toByte()
+        }
         "RIFF".toByteArray().copyInto(bytes, 0)
         le32(4, 36 + dataLen)
         "WAVE".toByteArray().copyInto(bytes, 8)

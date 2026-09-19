@@ -17,7 +17,13 @@ object MusicFx {
         "golden.ogg", "mcl_mining.ogg", "lullaby.ogg"
     )
 
-    private fun make(assets: AssetManager, asset: String, loop: Boolean, vol: Float, onDone: (() -> Unit)?): MediaPlayer? {
+    private fun make(
+        assets: AssetManager,
+        asset: String,
+        loop: Boolean,
+        vol: Float,
+        onDone: (() -> Unit)?,
+    ): MediaPlayer? {
         return try {
             val afd = assets.openFd("music/$asset")
             val p = MediaPlayer()

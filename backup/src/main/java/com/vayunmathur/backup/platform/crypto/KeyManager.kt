@@ -33,9 +33,10 @@ class KeyManager(context: Context) : DatabaseHelper(context) {
     companion object {
         private val MASTER_KEY_INFO =
             "com.vayunmathur.backup/master-key".toByteArray(Charsets.UTF_8)
+        private const val MASTER_KEY_SIZE_BYTES = 32
 
         /** Derives the 32-byte AES-256 master key from a BIP-0039 seed. */
         fun deriveMasterKey(seed: ByteArray): ByteArray =
-            Hkdf.derive(seed, MASTER_KEY_INFO, 32)
+            Hkdf.derive(seed, MASTER_KEY_INFO, MASTER_KEY_SIZE_BYTES)
     }
 }

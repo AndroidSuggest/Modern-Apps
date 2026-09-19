@@ -149,7 +149,7 @@ fun MarkdownFormatToolbar(
                 active = getActiveHeadingLevel(value.text, value.selection.start) != null,
             ) { showHeadingMenu = true }
             DropdownMenu(expanded = showHeadingMenu, onDismissRequest = { showHeadingMenu = false }) {
-                (1..3).forEach { level ->
+                for (level in 1..3) {
                     DropdownMenuItem(text = { Text(stringResource(R.string.heading, level)) }, onClick = {
                         apply { insertHeading(it, level) }
                         showHeadingMenu = false
