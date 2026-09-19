@@ -11,7 +11,9 @@
 //! extent (the same slippy walk `dem_ingest` does over the terrarium grid), each bilinearly
 //! interpolated from the covering dataset grid. A tile with no data under it at all — off the fetch
 //! coverage, or open ocean the ingest dropped with `--skip-flat` — yields `None`, so that tile omits
-//! the section and stays 16-byte, matching the format's rule.
+//! the section and stays 16-byte, matching the format's rule. A tile whose grid is entirely sea
+//! level yields `None` the same way, whatever the zoom: it carries no relief, and a flat sea-level
+//! grid would make the renderer draw earth-coloured terrain over open water (see [`Dem::heightmap_for`]).
 
 use std::collections::HashMap;
 use std::f64::consts::PI;
@@ -28,6 +30,12 @@ const VERSION: u8 = 1;
 /// The biased `u16` for zero metres: sea level, and what a sample with no DEM under it reads as.
 /// The same bias [`Heightmap`] and the terrarium source use.
 const SEA_LEVEL: u16 = 32768;
+
+/// Whether every sample in a grid is sea level, i.e. the tile is all ocean / flat coast at 0 m and
+/// carries no relief worth a terrain grid. See [`Dem::heightmap_for`] for why such tiles drop it.
+fn all_sea_level(samples: &[u16]) -> bool {
+    samples.iter().all(|&s| s == SEA_LEVEL)
+}
 
 /// A loaded `.mdem` dataset: one `u16` grid per output tile, keyed by pmtiles tile id at the
 /// dataset's own zoom.
@@ -94,9 +102,20 @@ impl Dem {
     /// A tile at the dataset's own zoom is a verbatim copy of its grid — byte for byte what the
     /// ingest sampled, independent of neighbour coverage. Any other zoom is resampled onto this
     /// tile's grid.
+    ///
+    /// A grid that is **entirely sea level** yields `None` whatever the zoom: an all-ocean tile
+    /// carries no relief, and emitting a flat sea-level heightmap makes the renderer draw its
+    /// earth-coloured terrain grid over what should be open water (the renderer's contract is
+    /// "no heightmap over ocean" — see `library/map`'s `terrain.rs`). Dropping it here is the
+    /// backstop for a `.mdem` built without `dem_ingest --skip-flat`. A flat *land* tile at exactly
+    /// sea level loses nothing visible: its flat `earth` fill draws the same ground the flat grid
+    /// would have, and its features sit at 0 m either way.
     pub fn heightmap_for(&self, z: u8, x: u64, y: u64) -> Option<Heightmap> {
         if z == self.out_zoom {
             let samples = self.grids.get(&tile_id(z, x, y))?;
+            if all_sea_level(samples) {
+                return None;
+            }
             return Some(Heightmap { dim: self.dim, samples: samples.clone() });
         }
         self.resample(z, x, y)
@@ -126,7 +145,12 @@ impl Dem {
                 }
             }
         }
-        any.then_some(Heightmap { dim: self.dim, samples })
+        // A tile whose every sample is sea level carries no relief: drop it so the renderer paints
+        // open water rather than a flat earth-coloured terrain grid (see `heightmap_for`).
+        if !any || all_sea_level(&samples) {
+            return None;
+        }
+        Some(Heightmap { dim: self.dim, samples })
     }
 
     /// Build a dataset directly from grids, for tests that inject a synthetic DEM into the tiler
@@ -243,6 +267,36 @@ mod tests {
         let (z, dim) = (14u8, 17u16);
         let dem = Dem::parse(&dataset(z, dim, &[(tile_id(z, 10, 10), ramp(dim))])).expect("parse");
         assert!(dem.heightmap_for(z, 999, 999).is_none(), "an uncovered tile omits the section");
+    }
+
+    #[test]
+    fn an_all_sea_level_tile_has_no_heightmap() {
+        let (z, dim) = (14u8, 17u16);
+        let (x, y) = (2730u64, 6335u64);
+        let sea = vec![SEA_LEVEL; dim as usize * dim as usize];
+        let dem = Dem::parse(&dataset(z, dim, &[(tile_id(z, x, y), sea)])).expect("parse");
+        assert!(
+            dem.heightmap_for(z, x, y).is_none(),
+            "an all-ocean tile drops its heightmap so the renderer paints open water",
+        );
+    }
+
+    #[test]
+    fn a_resampled_all_sea_level_tile_has_no_heightmap() {
+        let (oz, dim) = (14u8, 17u16);
+        // Cover the whole z13 block so every resample point hits coverage, yet all at sea level.
+        let sea: Vec<u16> = vec![SEA_LEVEL; dim as usize * dim as usize];
+        let mut tiles = Vec::new();
+        for cx in 2730..=2732u64 {
+            for cy in 6334..=6336u64 {
+                tiles.push((tile_id(oz, cx, cy), sea.clone()));
+            }
+        }
+        let dem = Dem::parse(&dataset(oz, dim, &tiles)).expect("parse");
+        assert!(
+            dem.heightmap_for(13, 1365, 3167).is_none(),
+            "a resampled all-sea-level tile drops its heightmap too",
+        );
     }
 
     /// A coarser tile resamples from the covering grids. Sampled over a tile whose whole extent is
