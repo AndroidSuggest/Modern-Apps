@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Codebase metrics for Modern-Apps. Bash only.
+#
+# Usage:
+#   ./analyze package [-m MODULE] [--nolib]    # .kt lines grouped by package (directory)
+#   ./analyze module [-m MODULE] [--nolib]     # .kt lines grouped by module
+#   ./analyze structure [-m MODULE] [--nolib]  # root packages x modules using them
+#   ./analyze ram                               # live device RAM via adb dumpsys meminfo
+#
+#   -m MODULE filters to one module directory name. --nolib skips top-level library/.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TYPE=""; MODULE=""; NOLIB=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help|help)
+      sed -n '2,/^set -euo/p' "$SCRIPT_DIR/analyze" | sed 's/^# \{0,1\}//' | head -n -1; exit 0;;
+    package|module|ram|structure) TYPE="$1"; shift;;
+    -m|--module) MODULE="${2:?--module needs a value}"; shift 2;;
+    --nolib|-nolib) NOLIB=1; shift;;
+    *) echo "Error: unknown arg '$1'." >&2; exit 1;;
+  esac
+done
+[[ -n "$TYPE" ]] || { echo "Error: give a type: package, module, ram, structure." >&2; exit 1; }
+
+if [[ "$TYPE" == "ram" ]]; then
+  command -v adb >/dev/null 2>&1 || { echo "Error: adb not found." >&2; exit 1; }
+  adb devices | grep -q $'\tdevice$' || { echo "Error: no authorized device (adb devices)." >&2; exit 1; }
+  echo "Fetching RAM metrics via adb..."
+  adb shell dumpsys meminfo 2>/dev/null \
+    | grep -Eo '^[[:space:]]*[0-9,]+[[:space:]]+(K|kB|KB|K:):?[[:space:]]*[A-Za-z0-9_.\-:+]+ \(pid [0-9]+' \
+    | awk '{
+        kb=$1; gsub(/,/,"",kb)
+        # $2 is unit (maybe "K:"), name is $(NF-2), pid is $NF
+        pid=$NF; name=$(NF-2)
+        bytes=kb*1024
+        # keep max per pid (dumpsys repeats processes across sections)
+        if (!(pid in max) || bytes > max[pid]) { max[pid]=bytes; pname[pid]=name }
+      } END {
+        total=0
+        for (p in max) { total+=max[p]; printf "%s\t%s\t%d\n", p, pname[p], max[p] }
+        printf "TOTAL\tTOTAL RUNNING PROCESS RAM\t%d\n", total | "sort -t \"\t\" -k3 -nr"
+      }' \
+    | awk -F'\t' '{
+        b=$3
+        if (b>=1073741824) m=sprintf("%.2f GB", b/1073741824); else m=sprintf("%.2f MB", b/1048576)
+        printf "%-8s %-60s %s\n", $1, $2, m
+      }'
+  exit 0
+fi
+
+# file list: all .kt under a src/ dir, optionally one module, optionally no library/
+mapfile -t FILES < <(
+  find "$SCRIPT_DIR" -path '*/src/*' -name '*.kt' \
+    -not -path '*/build/*' -not -path '*/target/*' -not -path '*/.git/*' 2>/dev/null \
+  | { if [[ $NOLIB -eq 1 ]]; then grep -v '/library/'; else cat; fi; } \
+  | { if [[ -n "$MODULE" ]]; then grep -E "/${MODULE}/src/"; else cat; fi; }
+)
+[[ ${#FILES[@]} -gt 0 ]] || { echo "No Kotlin files found${MODULE:+ in module: $MODULE}." >&2; exit 1; }
+
+case "$TYPE" in
+  package)
+    # group by containing directory name
+    printf '%-50s %s\n' "PACKAGE(dir)" "LINES"
+    for d in $(for f in "${FILES[@]}"; do dirname "$f"; done | sort -u); do
+      n=0; for f in "${FILES[@]}"; do [[ "$(dirname "$f")" == "$d" ]] && n=$((n + $(wc -l <"$f"))); done
+      printf '%-50s %s\n' "$(basename "$d")" "$n"
+    done | sort -k2 -rn
+    ;;
+  module)
+    # group by module = directory holding src/
+    printf '%-30s %s\n' "MODULE" "LINES"
+    declare -A ML
+    for f in "${FILES[@]}"; do
+      rest="${f#"$SCRIPT_DIR"/}"; mod="${rest%%/src/*}"
+      n=$(wc -l <"$f"); ML["$mod"]=$(( ${ML["$mod"]:-0} + n ))
+    done
+    total=0; out=""
+    for m in "${!ML[@]}"; do
+      out+="$(printf '%-30s %s\n' "$m" "${ML[$m]}")"
+      total=$((total + ML[$m]))
+    done
+    printf '%s\n' "$out" | sort -k2 -rn
+    echo ""; printf '%-30s %s\n' "TOTAL" "$total"
+    ;;
+  structure)
+    # root package = path segment right after the module-name segment under src/
+    printf '%-20s %-8s %s\n' "PACKAGE" "MODULES" "MODULENAMES"
+    declare -A PKGMODS
+    for f in "${FILES[@]}"; do
+      rel="${f#"$SCRIPT_DIR"/}"
+      pre="${rel%%/src/*}"; mod="$(basename "$pre")"           # module dir name
+      post="${rel#*/src/}"; IFS='/' read -ra segs <<< "$post"  # path under src/
+      idx=-1; for i in "${!segs[@]}"; do [[ "${segs[$i]}" == "$mod" ]] && { idx=$i; break; }; done
+      if [[ $idx -ge 0 && $((idx+1)) -lt ${#segs[@]} ]]; then pkg="${segs[$((idx+1))]}"; else pkg="$(basename "$f")"; fi
+      key="$pkg"
+      [[ " ${PKGMODS[$key]:-} " != *" $mod "* ]] && PKGMODS[$key]="${PKGMODS[$key]:-} $mod"
+    done
+    for p in "${!PKGMODS[@]}"; do
+      mods="$(echo "${PKGMODS[$p]}" | xargs)"; n=$(echo "$mods" | wc -w)
+      printf '%-20s %-8s %s\n' "$p" "$n" "$(echo "$mods" | tr ' ' ',')"
+    done | sort -k2 -rn -k1
+    ;;
+esac

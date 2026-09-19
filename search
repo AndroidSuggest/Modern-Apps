@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+# Scoped string search for the Modern-Apps monorepo. Bash only, no dependencies
+# beyond rg (falls back to grep).
+#
+# Usage:
+#   ./search PATTERN [-m MODULE ...] [-p PACKAGE ...] [-i] [--max N] [--files-only]
+#
+# A string (regex) search with two optional filters that compose:
+#   ./search DB_NAME -m notes -p data      # both: data/ package of notes/ only
+#   ./search RoomRepository -m notes       # module only
+#   ./search TrustBundle -m web -p network # module + package combined
+#   ./search "foo" -m voxels               # shorthand -> games:voxels
+#   ./search "bar" -m notes --files-only --max 20
+#   ./search TrustBundle                    # no filter: repo-wide (junk dirs excluded)
+#
+#   -m/--module   Repeatable, comma-separated. Slash == colon
+#                 (games/voxels == games:voxels), shorthand (voxels -> games:voxels),
+#                 or 'all' (every dir with build.gradle.kts).
+#   -p/--package  Repeatable, comma-separated root package (ui data domain platform
+#                 network intents service provider widget notifications auth sync
+#                 telephony). Searches only <module>/src/main/{java,kotlin}/**/<pkg>/.
+#                 Needs -m; without it a warning is printed and it is ignored.
+#   -i            Case-insensitive. --max N caps output lines (default 200).
+#   --files-only  Print matching file paths, no contents.
+#
+# Always excluded: target/ build/ .gradle/ .kotlin/ .git/ .llms/ analysis/
+# *.log *.onnx metadata_data/photos/. Exit code is 0 on success even with no
+# matches; 1 when every -m value is unknown; 2 on bad regex.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$SCRIPT_DIR"
+MAX_COLS=220
+DEFAULT_MAX=200
+KNOWN_PACKAGES="ui data domain platform network intents service provider widget notifications auth sync telephony"
+
+print_help() {
+  sed -n '2,/^set -euo/p' "$SCRIPT_DIR/search" | sed 's/^# \{0,1\}//' | head -n -1
+}
+
+normalize_module() {
+  local m="$1"
+  m="$(echo "$m" | xargs)"
+  m="$(echo "$m" | sed -e 's|^[/:]*||' -e 's|[/:]*$||')"
+  m="$(echo "$m" | tr '/' ':')"
+  while echo "$m" | grep -q "::"; do m="$(echo "$m" | sed 's/::/:/g')"; done
+  echo "$m" | tr '[:upper:]' '[:lower:]'
+}
+
+all_module_dirs() {
+  grep -E 'include\(":[^"]+"\)' "$ROOT/settings.gradle.kts" 2>/dev/null \
+    | sed -E 's/.*include\(":([^"]+)"\).*/\1/' \
+    | sed -E 's/^://; s/:/\//g' \
+    | while IFS= read -r p; do
+        case "$p" in "" ) continue;; esac
+        [[ -f "$ROOT/$p/build.gradle.kts" ]] && echo "$p"
+      done | sort -u
+}
+
+HAS_RG=0
+command -v rg >/dev/null 2>&1 && HAS_RG=1
+
+run_rg() { # pattern, then dirs; prints matches, returns 0 (none) or 2 (bad regex)
+  local pat="$1"; shift
+  # NB: '//' not '/': MSYS2/git-bash expands a lone '/' to the install root.
+  # rg itself suggests this (see: rg error for --path-separator on Windows).
+  local -a args=(--no-heading --line-number --color never --hidden --path-separator=//
+    -g '!target/**' -g '!build/**' -g '!.gradle/**' -g '!.kotlin/**'
+    -g '!.git/**' -g '!.llms/**' -g '!analysis/**'
+    -g '!*.log' -g '!*.onnx' -g '!metadata_data/photos/**'
+    --max-columns "$MAX_COLS")
+  [[ "$IGNORE_CASE" -eq 1 ]] && args+=(-i)
+  local out rc=0
+  out=$(rg "${args[@]}" -e "$pat" -- "$@" 2>/dev/null) || rc=$?
+  if [[ $rc -eq 2 ]]; then echo "error: bad regex: $pat" >&2; return 2; fi
+  [[ -n "$out" ]] && printf '%s\n' "$out"
+  return 0
+}
+
+run_grep() { # pattern, then dirs (fallback when rg is missing)
+  local pat="$1"; shift
+  local -a gopts=(-rn)
+  [[ "$IGNORE_CASE" -eq 1 ]] && gopts+=(-i)
+  grep "${gopts[@]}" -e "$pat" \
+    --exclude-dir=target --exclude-dir=build --exclude-dir=.gradle \
+    --exclude-dir=.kotlin --exclude-dir=.git --exclude-dir=.llms \
+    --exclude-dir=analysis --exclude='*.log' --exclude='*.onnx' \
+    "$@" 2>/dev/null | grep -v -e '/target/' -e '/build/' -e 'metadata_data/photos/' \
+    | cut -c1-"$MAX_COLS" || true
+}
+
+pkg_dirs_for() { # mod, pkg... -> prints existing package-root dirs (deduped)
+  local mod="$1"; shift
+  local -a found=()
+  local lang base d
+  for lang in java kotlin; do
+    base="$mod/src/main/$lang"
+    [[ -d "$ROOT/$base" ]] || continue
+    for pkg in "$@"; do
+      while IFS= read -r d; do found+=("$d"); done \
+        < <(find "$base" -type d -name "$pkg" 2>/dev/null)
+    done
+  done
+  # drop dirs subsumed by another match (e.g. data/ inside data/)
+  local a b skip
+  for a in "${found[@]:-}"; do
+    skip=0
+    for b in "${found[@]:-}"; do
+      [[ "$a" != "$b" && "$a" == "$b"/* ]] && { skip=1; break; }
+    done
+    [[ $skip -eq 0 ]] && echo "$a"
+  done | sort -u
+}
+
+# --- arg parsing ---
+PATTERN=""; IGNORE_CASE=0; MAX="$DEFAULT_MAX"; FILES_ONLY=0
+MODS_RAW=(); PKGS_RAW=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help|help) print_help; exit 0;;
+    -m|--module) shift
+      while [[ $# -gt 0 && "$1" != -* ]]; do MODS_RAW+=("$1"); shift; done;;
+    -p|--package) shift
+      while [[ $# -gt 0 && "$1" != -* ]]; do PKGS_RAW+=("$1"); shift; done;;
+    -i|--ignore-case) IGNORE_CASE=1; shift;;
+    --max) MAX="${2:?--max needs a value}"; shift 2;;
+    --max=*) MAX="${1#--max=}"; shift;;
+    --files-only) FILES_ONLY=1; shift;;
+    --) shift; if [[ -z "$PATTERN" && $# -gt 0 ]]; then PATTERN="$1"; shift; fi;;
+    -*) echo "Error: unknown flag '$1'." >&2; exit 1;;
+    *) if [[ -z "$PATTERN" ]]; then PATTERN="$1";
+       else echo "Error: unexpected arg '$1' (pattern already set)." >&2; exit 1; fi
+       shift;;
+  esac
+done
+[[ -n "$PATTERN" ]] || { echo "Error: no pattern. Usage: ./search PATTERN [-m MODULE] [-p PACKAGE]" >&2; exit 1; }
+
+# split comma-separated filter values
+MODS_SPLIT=(); for m in ${MODS_RAW[@]:-}; do IFS=',' read -ra parts <<< "$m"; for p in "${parts[@]}"; do [[ -n "$p" ]] && MODS_SPLIT+=("$p"); done; done
+PKGS_SPLIT=(); for m in ${PKGS_RAW[@]:-}; do IFS=',' read -ra parts <<< "$m"; for p in "${parts[@]}"; do [[ -n "$p" ]] && PKGS_SPLIT+=("$(echo "$p" | tr '[:upper:]' '[:lower:]')"); done; done
+for p in ${PKGS_SPLIT[@]:-}; do
+  case " $KNOWN_PACKAGES " in *" $p "*) ;; *) echo "warning: unknown root package '$p'." >&2;; esac
+done
+
+# resolve modules
+MODS=(); ALL_EXP=0
+for raw in ${MODS_SPLIT[@]:-}; do
+  norm="$(normalize_module "$raw")"
+  if [[ "$norm" == "all" ]]; then
+    if [[ $ALL_EXP -eq 0 ]]; then
+      while IFS= read -r sm; do
+        case "$sm" in "" ) continue;; esac
+        MODS+=("$sm")
+      done < <(all_module_dirs)
+      ALL_EXP=1
+    fi
+    continue
+  fi
+  if [[ "$norm" != *":"* ]]; then
+    for pfx in games personal; do
+      [[ -f "$ROOT/$pfx/$norm/build.gradle.kts" ]] && { norm="$pfx:$norm"; break; }
+    done
+  fi
+  fs="$(echo "$norm" | tr ':' '/')"
+  if [[ ! -e "$ROOT/$fs" ]]; then echo "warning: skipping unknown module '$raw' (-> $fs/)." >&2; continue; fi
+  dup=0; for m in ${MODS[@]:-}; do [[ "$m" == "$fs" ]] && dup=1; done
+  [[ $dup -eq 0 ]] && MODS+=("$fs")
+done
+if [[ ${#MODS_RAW[@]} -gt 0 && ${#MODS[@]} -eq 0 ]]; then
+  echo "error: no valid modules (all -m values unknown)" >&2; exit 1
+fi
+
+cd "$ROOT"  # rg then prints repo-relative paths
+TOTAL=0
+TMP_OUT="$(mktemp)"
+trap 'rm -f "$TMP_OUT"' EXIT
+emit_lines() { # file; applies --files-only/--max budget; prints
+  local line f
+  declare -A seen=()
+  if [[ $FILES_ONLY -eq 1 ]]; then
+    while IFS= read -r line; do
+      f="${line%%:*}"
+      [[ -n "${seen[$f]:-}" ]] && continue
+      seen[$f]=1
+      echo "$f"
+      TOTAL=$((TOTAL+1))
+      [[ $TOTAL -ge $MAX ]] && break
+    done < "$1"
+  else
+    while IFS= read -r line; do
+      echo "$line"
+      TOTAL=$((TOTAL+1))
+      [[ $TOTAL -ge $MAX ]] && break
+    done < "$1"
+  fi
+  return 0
+}
+
+search_dirs() { # prints dirs then runs backend; caller counts via emit_lines
+  if [[ $HAS_RG -eq 1 ]]; then run_rg "$PATTERN" "$@"; else run_grep "$PATTERN" "$@"; fi
+}
+
+if [[ ${#MODS[@]} -gt 0 ]]; then
+  for mod in "${MODS[@]}"; do
+    DIRS=()
+    if [[ ${#PKGS_SPLIT[@]} -gt 0 ]]; then
+      while IFS= read -r d; do DIRS+=("$d"); done < <(pkg_dirs_for "$mod" "${PKGS_SPLIT[@]}")
+      if [[ ${#DIRS[@]} -eq 0 ]]; then
+        echo "warning: $mod: no $(IFS=/; echo "${PKGS_SPLIT[*]}") package under src/main/{java,kotlin}, skipped" >&2
+        continue
+      fi
+    else
+      [[ -d "$mod/src" ]] && DIRS=("$mod/src") || DIRS=("$mod")
+    fi
+    echo "=== $mod ==="
+    RC=0
+    search_dirs "${DIRS[@]}" >"$TMP_OUT" || RC=$?
+    [[ $RC -eq 2 ]] && exit 2
+    emit_lines "$TMP_OUT"
+    [[ $TOTAL -ge $MAX ]] && break
+  done
+else
+  [[ ${#PKGS_SPLIT[@]} -gt 0 ]] && echo "warning: no -m given: -p needs a module scope, package filter ignored (repo-wide search)" >&2
+  RC=0
+  search_dirs "." >"$TMP_OUT" || RC=$?
+  [[ $RC -eq 2 ]] && exit 2
+  sed -i 's|^\./||' "$TMP_OUT"
+  emit_lines "$TMP_OUT"
+fi
+echo "--- $TOTAL match(es) ---" >&2
+exit 0

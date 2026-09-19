@@ -56,7 +56,8 @@ script objects in a task action.
 ```
 
 `./install` accepts slash or colon paths (`games/voxels` == `games:voxels`) and auto-prefixes
-game shorthands. Use `install.ps1` on Windows; both are feature-compatible.
+game shorthands. All repo scripts (`install`, `dhu`, `search`, `analyze`) are bash-only —
+run them from git-bash on Windows.
 
 **There is no `debug` build type.** Only `dev` and `release` exist — `debug` variants are
 disabled in the app convention. `dev` is `release` with minification off and

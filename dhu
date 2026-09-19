@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Runs the Desktop Head Unit loopback against the Pixel 8: adb forward,
+# fresh logcat capture, and the DHU in its own window.
+#
+# Usage:
+#   ./dhu                                # full loop, log to analysis/dhu-<timestamp>.log
+#   ./dhu --no-log                       # skip the logcat capture (DHU only)
+#   ./dhu --device-id 44050DLJH001PC     # target a different device
+#
+# Notes:
+#   DHU is interactive: piping its stdout closes stdin and it exits, so it
+#   always launches detached. `adb logcat -d` has proven unreliable (stale
+#   buffer); this captures live to a file instead.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEVICE_ID="44050DLJH001PC"
+NO_LOG=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help|help)
+      sed -n '2,/^set -euo/p' "$SCRIPT_DIR/dhu" | sed 's/^# \{0,1\}//' | head -n -1; exit 0;;
+    --no-log|--nolog|-NoLog) NO_LOG=1; shift;;
+    --device-id|-DeviceId) DEVICE_ID="${2:?--device-id needs a value}"; shift 2;;
+    --device-id=*) DEVICE_ID="${1#--device-id=}"; shift;;
+    *) echo "Error: unknown arg '$1'. Usage: ./dhu [--no-log] [--device-id SERIAL]" >&2; exit 1;;
+  esac
+done
+
+# SDK location: prefer env, then the usual per-OS defaults.
+DHU_EXE=""
+for base in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Android/Sdk" "$HOME/Library/Android/sdk" "/c/Android/Sdk" "C:/Android/Sdk"; do
+  [[ -n "$base" && -x "$base/extras/google/auto/desktop-head-unit" ]] && { DHU_EXE="$base/extras/google/auto/desktop-head-unit"; break; }
+  [[ -n "$base" && -x "$base/extras/google/auto/desktop-head-unit.exe" ]] && { DHU_EXE="$base/extras/google/auto/desktop-head-unit.exe"; break; }
+done
+if [[ -z "$DHU_EXE" ]]; then
+  echo "Error: DHU not found (looked under ANDROID_HOME, ~/Android/Sdk, ~/Library/Android/sdk, /c/Android/Sdk)." >&2
+  exit 1
+fi
+
+# The phone listens; the DHU reaches it through the forward.
+adb -s "$DEVICE_ID" forward tcp:5277 tcp:5277
+echo "forward tcp:5277 -> $DEVICE_ID"
+
+if [[ $NO_LOG -eq 0 ]]; then
+  adb -s "$DEVICE_ID" logcat -c
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  logfile="$SCRIPT_DIR/analysis/dhu-$stamp.log"
+  mkdir -p "$SCRIPT_DIR/analysis"
+  nohup adb -s "$DEVICE_ID" logcat -v time \
+    MaAuto.Service:V MaAuto.Server:V MaAuto.Video:V MaAuto.Sensors:V \
+    MaAuto.Input:V MaAuto.HostManager:V MaAuto.HostSession:V '*:S' \
+    >"$logfile" 2>&1 &
+  echo "logcat -> $logfile (pid $!)"
+fi
+
+if [[ "${OS:-}" == "Windows_NT" ]]; then
+  # git-bash: `start` detaches the GUI like Start-Process did.
+  start "" "$DHU_EXE"
+else
+  nohup "$DHU_EXE" >/dev/null 2>&1 &
+fi
+echo "DHU launched (detached)"

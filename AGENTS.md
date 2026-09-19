@@ -91,6 +91,23 @@ Rules: `dev` default, `release` only when asked, `debug` blocked. Never uninstal
 ./dhu -DeviceId <serial>              # non-default device
 ```
 
+`./search` — scoped string search (bash only, `rg` when present, grep fallback). Pattern + optional `-m` (module) / `-p` (root package) filters, composable:
+```
+./search DB_NAME -m notes -p data      # both: data/ package of notes/ only
+./search RoomRepository -m notes       # module only
+./search TrustBundle -m web -p network # module + package combined
+./search "foo" -m voxels               # shorthand → games:voxels; slash == colon; -m all = everything
+./search "bar" -m notes --files-only --max 20
+```
+Never grep repo-wide when a filter will do. Always excluded: `target/ build/ .gradle/ .kotlin/ .git/ .llms/ analysis/ *.log *.onnx metadata_data/photos/`.
+
+### On-device file map (per-module `AGENTS.md` carries concrete names)
+- Room (`RoomRepository`, `DB_NAME` in `data/`): `/data/data/<pkg>/databases/<DB_NAME>` (+ `-wal`/`-shm` sidecars). SQLCipher-encrypted. `getDatabasePath`/`deleteDatabase`/`LEGACY_*` names are the same dir.
+- DataStore: `preferencesDataStore(name=X)` → `/data/data/<pkg>/files/datastore/X.preferences_pb`; shared `DataStoreUtils` → `/data/data/<pkg>/files/datastore_default.preferences_pb`.
+- Downloads (`InitialDownloadChecker`/`InitialModelDownloadChecker`, file lists in `platform/` or `data/`): each `fileName` → `/storage/emulated/0/Android/data/<pkg>/files/<fileName>` (`+.part` while downloading).
+- Assets (`src/main/assets/`): APK-bundled, read via `AssetManager` — no on-device path. Library assets (e.g. `library/network` CAs) ship inside each dependent APK.
+- Library modules have no `applicationId`: paths resolve under the hosting app's `<pkg>`.
+
 ## 5. Git / safety
 - Other agents share the tree. Prohibited except reading state: `stash/revert/reset/checkout . /clean` etc. Only `add` + `commit` allowed, and only paths you changed — check `git status` first, never `add -A/.`, never stage without committing instantly.
 - Commit: one line ≤80 chars: `appname: short description (#iss)`.
