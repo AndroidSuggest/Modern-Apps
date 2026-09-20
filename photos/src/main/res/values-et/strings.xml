@@ -175,4 +175,27 @@
     <string name="edit_with_label">Muuda minu rakendsuega</string>
     <string name="editor_desc_lens_blur">Hägusta tausta, et saavutada teravussügavuse efekt.</string>
     <string name="tool_line">Joon</string>
+    <string name="label_albums">Albumid</string>
+    <string name="albums_empty">Albumeid veel pole. Nad saavad olema nähtavad siis, kui oled oma fotod sünkrooninud.</string>
+    <string name="albums_unknown">Pole teada</string>
+    <plurals name="album_photo_count">
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> foto</item>
+        <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> fotot</item>
+    </plurals>
+    <string name="label_add_to_album">Lisa albumisse</string>
+    <string name="album_name_hint">Albumi nimi</string>
+    <string name="album_create">Loo</string>
+    <string name="album_rename">Muuda nime</string>
+    <string name="album_delete">Kustuta album</string>
+    <string name="album_delete_confirm">Kas eemaldad albumi „<xliff:g id="name" example="Rand">%1$s</xliff:g>“? Fotod jäävad alles ning on leitavad sinu fotokogust.</string>
+    <string name="action_cancel">Katkesta</string>
+    <string name="vault_viewer_decrypt_failed">Selle objekti avamine ei õnnestunud</string>
+    <string name="vault_viewer_not_found">See objekt ei asu enam sinu turvakaustas</string>
+    <string name="play_motion_photo">Esita liikuvat fotot</string>
+    <string name="stop_motion_photo">Lõpeta liikuva foto esitus</string>
+    <string name="motion_badge">LIIKUV FOTO</string>
+    <string name="motion_photo_failed">Liikuva foto esitamine ei õnnestunud.</string>
+    <string name="secure_folder_relock_title">Turvakausta seadistused</string>
+    <string name="secure_folder_relock_label">Lahkumisel lukusta</string>
+    <string name="secure_folder_relock_description">Sisselülitumisel lukustub turvakaust peale sealt lahkumist automaatselt ja eeldab hilisemal kasutusel uuesti lukustuse avamist.</string>
 </resources>
