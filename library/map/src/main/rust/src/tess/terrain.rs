@@ -127,10 +127,37 @@ fn edge_ring(dim: usize) -> Vec<usize> {
 /// sample, appended after the grid vertices, and one wall quad per edge segment, appended after
 /// the grid indices — so the grid prefix of both buffers is the untouched triangulation above.
 pub fn tessellate(hm: &Heightmap, ground_width_m: f64, out_v: &mut Vec<f32>, out_i: &mut Vec<u32>) {
+    tessellate_masked(hm, ground_width_m, None, out_v, out_i);
+}
+
+/// [`tessellate`], but drawing the grid only where `land` says the sample is over land.
+///
+/// `land` is a `dim * dim` row-major mask (the same order the grid vertices are emitted in): a cell
+/// contributes its two triangles only when all four of its corners are land, and a skirt wall only
+/// when both of its edge samples are. `None` means "all land" — the exact output [`tessellate`]
+/// gives, so the no-mask callers and their goldens are unchanged.
+///
+/// This is what keeps the earth-coloured relief off the sea: the archive attaches a flat sea-level
+/// heightmap to coastal tiles that straddle the shore, and without this the whole tile's grid drew,
+/// painting shaded earth over open water that has no fill to cover it back (the sea is the clear
+/// colour, not a polygon). The mask is built from the tile's coastline land polygons — see
+/// [`crate::tile::geometry::terrain`]. Every grid vertex is still emitted whatever the mask says, so
+/// the row-major vertex order the skirts and callers index into is unchanged; only triangles are
+/// withheld.
+pub fn tessellate_masked(
+    hm: &Heightmap,
+    ground_width_m: f64,
+    land: Option<&[bool]>,
+    out_v: &mut Vec<f32>,
+    out_i: &mut Vec<u32>,
+) {
     let dim = hm.dim as usize;
     if dim < 2 {
         return;
     }
+    // A cell (its four corners) or a skirt segment (its two ends) is drawn only when every sample
+    // it touches is land. `None` admits everything, so the un-masked path is bit-identical.
+    let is_land = |i: usize| land.map_or(true, |m| m.get(i).copied().unwrap_or(false));
     // Tile-normalised height per metre; a degenerate (polar) tile with zero width flattens rather
     // than dividing by zero, matching how buildings handle the same edge.
     let factor = if ground_width_m > 0.0 {
@@ -195,6 +222,14 @@ pub fn tessellate(hm: &Heightmap, ground_width_m: f64, out_v: &mut Vec<f32>, out
             let b = a + 1;
             let c = a + dim32;
             let d = c + 1;
+            // Withhold a cell whose footprint reaches the sea: all four corners must be land, so a
+            // coastal cell drops out and the open water below shows the clear colour instead of
+            // shaded earth. A land-only tile keeps every cell (the mask is all-true or absent).
+            let cell = row * dim + col;
+            if !(is_land(cell) && is_land(cell + 1) && is_land(cell + dim) && is_land(cell + dim + 1))
+            {
+                continue;
+            }
             // Two triangles per cell, consistently wound; culling is off in the pipeline so the
             // winding only ever decides nothing visible, but it is kept regular for readability.
             out_i.extend_from_slice(&[a, b, d, a, d, c]);
@@ -226,8 +261,16 @@ pub fn tessellate(hm: &Heightmap, ground_width_m: f64, out_v: &mut Vec<f32>, out
     }
     let n = ring.len() as u32;
     for k in 0..n {
-        let t0 = base + ring[k as usize] as u32;
-        let t1 = base + ring[((k + 1) % n) as usize] as u32;
+        let e0 = ring[k as usize];
+        let e1 = ring[((k + 1) % n) as usize];
+        // A skirt only walls a real land edge: over the sea the grid is gone, so its skirt would
+        // be a lone earth-coloured wall hanging in open water under tilt. Drop it when either end
+        // is not land.
+        if !(is_land(e0) && is_land(e1)) {
+            continue;
+        }
+        let t0 = base + e0 as u32;
+        let t1 = base + e1 as u32;
         let s0 = skirt_base + k;
         let s1 = skirt_base + (k + 1) % n;
         // One wall quad per edge segment, wound like the grid cells; culling is off so the

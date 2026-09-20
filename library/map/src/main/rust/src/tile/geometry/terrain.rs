@@ -2,6 +2,7 @@
 use super::mesh::{TerrainMesh, EARTH_CIRCUMFERENCE_M};
 use crate::tess::terrain;
 use tilecodec::mamaps::body::{Body, Heightmap};
+use tilecodec::mamaps::dict::{LAYER_LANDTYPE, NONE};
 
 /// The DEM-displaced ground grid for this tile, or an empty mesh when the tile carries no
 /// heightmap.
@@ -11,14 +12,96 @@ use tilecodec::mamaps::body::{Body, Heightmap};
 /// a metre of relief reads the same on screen as a metre across — the same tile-local unit the
 /// building heights use. A tile with no heightmap (open ocean, off-DEM coverage) returns an empty
 /// mesh and keeps drawing its flat `earth` fill instead.
+///
+/// The grid is clipped to the tile's land: a coastal tile carries a flat sea-level heightmap over
+/// the water half, and drawing it there would bury the open sea — which is the clear colour, not a
+/// fill, so nothing repaints over it — under shaded earth. [`land_mask`] marks which samples sit on
+/// land (inside the coastline `earth` base), and [`terrain::tessellate_masked`] withholds the cells
+/// and skirts that reach the sea.
 pub(crate) fn terrain_mesh(tile: &Body, ground_width_m: f64) -> TerrainMesh {
     let Some(heightmap) = &tile.heightmap else {
         return TerrainMesh::default();
     };
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
-    terrain::tessellate(heightmap, ground_width_m, &mut vertices, &mut indices);
+    let land = land_mask(tile, heightmap.dim as usize);
+    terrain::tessellate_masked(heightmap, ground_width_m, Some(&land), &mut vertices, &mut indices);
     TerrainMesh { vertices, indices }
+}
+
+/// A `dim * dim` land mask over the tile's heightmap grid, row-major from the top-left — the same
+/// order [`terrain::tessellate_masked`] emits vertices in.
+///
+/// `true` where the sample sits on land, from the tile's coastline land polygons: the `landtype`
+/// features with kind [`NONE`], which is what the `stream_prepared` land product writes for the
+/// mainland and islands and what the style's kind-less `earth` arm paints. Inland water is *not*
+/// carved out — a lake sits on land the coastline product still calls land, and its own `water`
+/// fill paints the blue over the relief — so the mask carves out only the sea, which is the case
+/// with nothing to cover the grid.
+///
+/// A tile with no `NONE` land base at all is open sea (or off the land product): every sample reads
+/// as water, so the grid drops out completely.
+fn land_mask(tile: &Body, dim: usize) -> Vec<bool> {
+    let extent = tile.extent.max(1) as f32;
+    // The coastline land rings, in tile-local 0..1 — the space the grid vertices live in.
+    let mut rings: Vec<Vec<(f32, f32)>> = Vec::new();
+    if let Some(layer) = tile.layer(LAYER_LANDTYPE) {
+        for feature in &layer.features {
+            if feature.kind != NONE {
+                continue;
+            }
+            for part in layer.parts_of(feature) {
+                let ring: Vec<(f32, f32)> = layer
+                    .points(part)
+                    .iter()
+                    .map(|&(px, py)| (px as f32 / extent, py as f32 / extent))
+                    .collect();
+                if ring.len() >= 3 {
+                    rings.push(ring);
+                }
+            }
+        }
+    }
+    let mut mask = vec![false; dim * dim];
+    if rings.is_empty() || dim < 2 {
+        return mask;
+    }
+    let step = 1.0 / (dim as f32 - 1.0);
+    // Nudge the sample off the tile edge: a land-only tile's ring runs exactly along the boundary,
+    // and an even-odd test on the fence is a coin toss. A hair inside keeps the edge vertices land
+    // (so the full grid draws) without pulling a genuine sea sample across the coastline.
+    let eps = step * 1e-3;
+    for row in 0..dim {
+        let v = (row as f32 * step).clamp(eps, 1.0 - eps);
+        for col in 0..dim {
+            let u = (col as f32 * step).clamp(eps, 1.0 - eps);
+            mask[row * dim + col] = point_in_rings(u, v, &rings);
+        }
+    }
+    mask
+}
+
+/// Even-odd ray cast: is `(u, v)` inside the land the `rings` bound?
+///
+/// One counter across every ring so holes fall out for free — a point inside an exterior and its
+/// hole crosses twice and reads as outside — which is how an enclosed sea within a land polygon
+/// stays sea. Winding is irrelevant to the test, so it does not matter that the land product and
+/// this pipeline disagree on it.
+fn point_in_rings(u: f32, v: f32, rings: &[Vec<(f32, f32)>]) -> bool {
+    let mut inside = false;
+    for ring in rings {
+        let n = ring.len();
+        let mut j = n - 1;
+        for i in 0..n {
+            let (xi, yi) = ring[i];
+            let (xj, yj) = ring[j];
+            if (yi > v) != (yj > v) && u < (xj - xi) * (v - yi) / (yj - yi) + xi {
+                inside = !inside;
+            }
+            j = i;
+        }
+    }
+    inside
 }
 
 /// Bilinearly sample a tile's ground elevation at tile-local `(u, v)` in 0..1, in metres
