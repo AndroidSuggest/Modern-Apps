@@ -43,4 +43,7 @@ dependencies {
     // code path — the phone UI is untouched.
     implementation(libs.androidx.car.app)
     implementation(libs.androidx.car.app.projected)
+
+    // Car-view store-listing screenshots render through the shared host renderer.
+    add("screenshotTestImplementation", project(":library:carhost"))
 }
