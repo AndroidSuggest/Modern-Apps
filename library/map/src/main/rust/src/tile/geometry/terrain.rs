@@ -2,7 +2,26 @@
 use super::mesh::{TerrainMesh, EARTH_CIRCUMFERENCE_M};
 use crate::tess::terrain;
 use tilecodec::mamaps::body::{Body, Heightmap};
-use tilecodec::mamaps::dict::{LAYER_LANDTYPE, NONE};
+use tilecodec::mamaps::dict::{self, LAYER_LANDTYPE, NONE};
+
+/// The `landtype` kinds the style paints as water — the same list the `water` style arm carries.
+/// Terrain is never drawn under one: a water body's own fill (or the clear colour, when its fill is
+/// zoom-gated away) owns those pixels, and relief bleeding out from under it is the grey the clip
+/// exists to stop.
+const WATER_KINDS: [&str; 12] = [
+    "ocean", "sea", "lake", "water", "river", "stream", "bay", "strait", "fjord", "reef", "canal",
+    "dock",
+];
+
+/// Whether a `landtype` feature `kind` is one the style paints as water. `kind` is a 1-based index
+/// into [`dict::KINDS`] ([`NONE`] is 0), so it resolves back to a name and is matched against
+/// [`WATER_KINDS`] — no hard-coded ids to drift when the dictionary grows.
+fn is_water_kind(kind: u16) -> bool {
+    kind != NONE
+        && dict::KINDS
+            .get((kind - 1) as usize)
+            .is_some_and(|name| WATER_KINDS.contains(name))
+}
 
 /// The DEM-displaced ground grid for this tile, or an empty mesh when the tile carries no
 /// heightmap.
@@ -32,24 +51,30 @@ pub(crate) fn terrain_mesh(tile: &Body, ground_width_m: f64) -> TerrainMesh {
 /// A `dim * dim` land mask over the tile's heightmap grid, row-major from the top-left — the same
 /// order [`terrain::tessellate_masked`] emits vertices in.
 ///
-/// `true` where the sample sits on land, from the tile's coastline land polygons: the `landtype`
-/// features with kind [`NONE`], which is what the `stream_prepared` land product writes for the
-/// mainland and islands and what the style's kind-less `earth` arm paints. Inland water is *not*
-/// carved out — a lake sits on land the coastline product still calls land, and its own `water`
-/// fill paints the blue over the relief — so the mask carves out only the sea, which is the case
-/// with nothing to cover the grid.
+/// `true` where the sample sits on drawable land: inside the coastline `earth` base (the `landtype`
+/// features with kind [`NONE`], what the `stream_prepared` land product writes for the mainland and
+/// islands) **and not** inside a water polygon ([`is_water_kind`]). Subtracting the water bodies is
+/// what keeps relief off a lake or a harbour that sits on land the coastline still calls land: the
+/// water's own fill owns those pixels, and if that fill is zoom-gated away the clear colour shows
+/// instead — either way never the shaded earth underneath.
 ///
 /// A tile with no `NONE` land base at all is open sea (or off the land product): every sample reads
 /// as water, so the grid drops out completely.
 fn land_mask(tile: &Body, dim: usize) -> Vec<bool> {
     let extent = tile.extent.max(1) as f32;
-    // The coastline land rings, in tile-local 0..1 — the space the grid vertices live in.
-    let mut rings: Vec<Vec<(f32, f32)>> = Vec::new();
+    // The coastline land rings and the water rings punched out of them, both in tile-local 0..1 —
+    // the space the grid vertices live in.
+    let mut land_rings: Vec<Vec<(f32, f32)>> = Vec::new();
+    let mut water_rings: Vec<Vec<(f32, f32)>> = Vec::new();
     if let Some(layer) = tile.layer(LAYER_LANDTYPE) {
         for feature in &layer.features {
-            if feature.kind != NONE {
+            let bucket = if feature.kind == NONE {
+                &mut land_rings
+            } else if is_water_kind(feature.kind) {
+                &mut water_rings
+            } else {
                 continue;
-            }
+            };
             for part in layer.parts_of(feature) {
                 let ring: Vec<(f32, f32)> = layer
                     .points(part)
@@ -57,13 +82,13 @@ fn land_mask(tile: &Body, dim: usize) -> Vec<bool> {
                     .map(|&(px, py)| (px as f32 / extent, py as f32 / extent))
                     .collect();
                 if ring.len() >= 3 {
-                    rings.push(ring);
+                    bucket.push(ring);
                 }
             }
         }
     }
     let mut mask = vec![false; dim * dim];
-    if rings.is_empty() || dim < 2 {
+    if land_rings.is_empty() || dim < 2 {
         return mask;
     }
     let step = 1.0 / (dim as f32 - 1.0);
@@ -75,7 +100,8 @@ fn land_mask(tile: &Body, dim: usize) -> Vec<bool> {
         let v = (row as f32 * step).clamp(eps, 1.0 - eps);
         for col in 0..dim {
             let u = (col as f32 * step).clamp(eps, 1.0 - eps);
-            mask[row * dim + col] = point_in_rings(u, v, &rings);
+            mask[row * dim + col] =
+                point_in_rings(u, v, &land_rings) && !point_in_rings(u, v, &water_rings);
         }
     }
     mask
