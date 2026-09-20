@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaCodec
 import android.os.Handler
 import android.os.Looper
+import com.vayunmathur.library.carhost.HostNavState
 import android.os.SystemClock
 import android.util.Log
 import android.view.Choreographer

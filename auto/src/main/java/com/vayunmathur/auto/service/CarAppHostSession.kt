@@ -7,10 +7,10 @@ import com.vayunmathur.auto.platform.CarAppDiscovery
 import com.vayunmathur.auto.platform.CarLauncherState
 import com.vayunmathur.auto.platform.DiscoveredApp
 import com.vayunmathur.auto.platform.HostManager
-import com.vayunmathur.auto.platform.HostNavState
-import com.vayunmathur.auto.platform.HostTemplate
 import com.vayunmathur.auto.platform.HostTemplateBus
 import com.vayunmathur.auto.platform.VideoSinkChannel
+import com.vayunmathur.library.carhost.HostNavState
+import com.vayunmathur.library.carhost.HostTemplate
 
 /**
  * Session-scoped owner for the multi-app host ([HostManager]).

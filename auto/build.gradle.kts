@@ -14,6 +14,10 @@ dependencies {
     // The GAL wire format. Nothing in the app re-implements it, and keeping it out of here is
     // what lets the handshake be tested on the JVM.
     implementation(project(":auto:protocol"))
+    // Car template rendering (HostTemplate model + parsers + Compose renderers) lives in
+    // :library:carhost so apps can render their own car views in screenshot tests without
+    // depending on this app. This module supplies the real TextureView map island.
+    implementation(project(":library:carhost"))
     // Media3 controller for the Phase 4 now-playing feed from the on-device media session.
     implementation(libs.androidx.media3.session)
     // Car App Library host: CarAppHost binds the :maps car-app service and
