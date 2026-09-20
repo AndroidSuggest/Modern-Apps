@@ -278,8 +278,8 @@
       "source": "landtype",
       "type": "fill",
       "kinds": ["pier"],
-      "light": "#e0e0e0",
-      "dark": "#202225"
+      "light": "#d1dde1",
+      "dark": "#20262b"
     },
     {
       "id": "buildings",
