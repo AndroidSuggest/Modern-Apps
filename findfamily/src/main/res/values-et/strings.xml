@@ -176,4 +176,6 @@
     </plurals>
     <string name="noshow_save">Jälgi</string>
     <string name="noshow_scheduled">Kohale mittetulemise jälgimise reeglistik</string>
+    <string name="user_card_shutdown">Telefon on lülitatud välja <xliff:g id="shutdown_age" example="5 minutit tagasi">%1$s</xliff:g>\nViimane asukohta on teada <xliff:g id="last_updated" example="20minutit tagasi">%2$s</xliff:g>\nAsukohas <xliff:g id="location_name" example="Kodu">%3$s</xliff:g>\n<xliff:g id="since_text" example="Alates tänasest">%4$s</xliff:g></string>
+    <string name="user_card_battery_low">Aku madala täituvuse teade <xliff:g id="shutdown_age" example="5 minutit tagasi">%1$s</xliff:g>\nViimane asukohta on teada <xliff:g id="last_updated" example="20minutit tagasi">%2$s</xliff:g>\nAsukohas <xliff:g id="location_name" example="Kodu">%3$s</xliff:g>\n<xliff:g id="since_text" example="Alates tänasest">%4$s</xliff:g></string>
 </resources>
