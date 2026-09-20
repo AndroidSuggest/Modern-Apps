@@ -48,4 +48,9 @@
     <string name="lens_mono">Mustvalge</string>
     <string name="lens_picker_description">Kaamera</string>
     <string name="lens_front">Esikaamera</string>
+    <string name="settings_save_location">Salvesta asukoht</string>
+    <string name="settings_save_location_default">DCIM/Camera</string>
+    <string name="settings_save_location_choose">Vali kaust</string>
+    <string name="settings_save_location_reset">Taasta vaikimisi väärtus</string>
+    <string name="settings_save_location_error">Selle kausta kasutamine ei õnnestunud</string>
 </resources>
