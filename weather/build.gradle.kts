@@ -39,4 +39,7 @@ dependencies {
     // CarAppService/Session/Screen/template model. Only pulled into the car
     // code path (service/car/) — the phone UI is untouched.
     implementation(libs.androidx.car.app)
+
+    // Car-view store-listing screenshots render through the shared host renderer.
+    add("screenshotTestImplementation", project(":library:carhost"))
 }
