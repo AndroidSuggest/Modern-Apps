@@ -11,6 +11,8 @@ import org.gradle.process.ExecOperations
 
 plugins {
     id("common-conventions-app")
+    // Store-listing screenshots rendered from Compose @Preview (car views).
+    id("common-conventions-preview-metadata")
     id("com.google.devtools.ksp")
 }
 
@@ -197,4 +199,7 @@ dependencies {
     // sync services and crypto paths are untouched.
     implementation(libs.androidx.car.app)
     implementation(libs.androidx.car.app.projected)
+
+    // Car-view store-listing screenshots render through the shared host renderer.
+    add("screenshotTestImplementation", project(":library:carhost"))
 }
