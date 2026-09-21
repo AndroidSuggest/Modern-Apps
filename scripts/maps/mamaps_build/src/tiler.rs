@@ -256,6 +256,11 @@ pub struct Settings {
     /// See [`crate::dem::Dem`]. A tile with no DEM under it carries no heightmap
     /// section (stays 16-byte).
     pub dem: crate::dem::Dem,
+    /// Place-label id (tagged node) -> the tagged relation id of the admin boundary it names, from
+    /// stage A. The tiler stamps each `places` label whose id is a key here with the linked id in
+    /// the body's region-link table, so a tap on the label outlines that exact region. Empty when no
+    /// links were found (the section is then omitted from every tile).
+    pub region_links: std::collections::HashMap<u64, u64>,
 }
 
 /// One chunk's share of a zoom, keyed on `(tile id, layer id)`.

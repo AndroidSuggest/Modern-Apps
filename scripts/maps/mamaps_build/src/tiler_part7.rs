@@ -71,6 +71,7 @@ mod tests {
             build_id: 7,
             scratch: scratch(),
             dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
+            region_links: std::collections::HashMap::new(),
         }
     }
 

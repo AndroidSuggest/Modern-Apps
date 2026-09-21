@@ -82,7 +82,7 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
                 let _ = std::io::Write::flush(&mut std::io::stderr());
             }
             let encoding = std::time::Instant::now();
-            let done = encode_batch(batch, &settings.dem, store.conventions())?;
+            let done = encode_batch(batch, &settings.dem, store.conventions(), &settings.region_links)?;
             stats.encode_ms += encoding.elapsed().as_millis() as u64;
             let appending = std::time::Instant::now();
             for (id, encoded, rings, lines) in done {

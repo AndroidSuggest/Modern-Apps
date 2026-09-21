@@ -2,6 +2,7 @@ fn encode_batch(
     batch: Vec<(u64, Vec<ChunkEntry>)>,
     dem: &crate::dem::Dem,
     conventions: &crate::schema::boundaries::Conventions,
+    region_links: &std::collections::HashMap<u64, u64>,
 ) -> Result<Vec<Encoded>> {
     let on = timing();
     // Split the batch into tasks by cumulative geometry cost rather than by tile count. A dense
@@ -29,7 +30,7 @@ fn encode_batch(
                     group
                         .into_iter()
                         .map(|(id, layers)| {
-                            encode_tile(id, layers, dem, conventions, deflate, scratch, on)
+                            encode_tile(id, layers, dem, conventions, region_links, deflate, scratch, on)
                         })
                         .collect::<Result<Vec<Encoded>>>()
                 },
@@ -52,6 +53,7 @@ fn encode_tile(
     mut layers: Vec<ChunkEntry>,
     dem: &crate::dem::Dem,
     conventions: &crate::schema::boundaries::Conventions,
+    region_links: &std::collections::HashMap<u64, u64>,
     deflate: &mut tilecodec::gz::Compressor,
     scratch: &mut tilecodec::mamaps::body::Scratch,
     on: bool,
@@ -161,6 +163,32 @@ fn encode_tile(
         }
         ids.push((entry.layer.layer_id, std::mem::take(&mut entry.ids)));
     }
+    // The region-link table: for each `places` label, the tagged relation id of the boundary it
+    // names, looked up from stage A's link map by the label's own (tagged node) id — which is
+    // exactly what the id table above holds. Dense-parallel to the layer's features like the id
+    // table, with REGION_NONE where a label links to no region. Emitted only when at least one
+    // label in the tile links somewhere, so a tile of unlinked labels (or no places at all) carries
+    // no table.
+    let mut region_links_table: Vec<(u8, Vec<u64>)> = Vec::new();
+    if !region_links.is_empty() {
+        for (layer_id, node_ids) in &ids {
+            if *layer_id != tilecodec::mamaps::dict::LAYER_PLACES {
+                continue;
+            }
+            let links: Vec<u64> = node_ids
+                .iter()
+                .map(|id| {
+                    region_links
+                        .get(id)
+                        .copied()
+                        .unwrap_or(tilecodec::mamaps::body::REGION_NONE)
+                })
+                .collect();
+            if links.iter().any(|&l| l != tilecodec::mamaps::body::REGION_NONE) {
+                region_links_table.push((*layer_id, links));
+            }
+        }
+    }
     // The turn-lane table, built the same way as the id table and checked against the feature count
     // for the same reason: coalesce and stage C rebuild a layer's features and rewrite this
     // alongside, and a drift would misattribute every lane after the first. Only emitted when some
@@ -255,8 +283,7 @@ fn encode_tile(
         heightmap: dem.heightmap_for(z, x, y),
         carriageways,
         convention,
-        // Populated in the region-link phase; empty here keeps the section absent.
-        region_links: Vec::new(),
+        region_links: region_links_table,
     };
     let encoded_body = timed(on, &SERIALIZE_NANOS, || {
         tilecodec::mamaps::body::serialize_into(&body, scratch)

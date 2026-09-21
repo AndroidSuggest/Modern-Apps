@@ -55,7 +55,7 @@ fn run(
     // an empty graph dir with no `metadata.bin`, paid for in full.
     check_graph_dir(&graph_dir, run.region)?;
 
-    let (store, stats) = extract::extract(
+    let (store, stats, region_links) = extract::extract(
         input,
         layers,
         &run.coastline,
@@ -108,6 +108,9 @@ fn run(
             stats.lanes_inherited,
         );
     }
+    if !region_links.is_empty() {
+        println!("  including {} place-label -> boundary link(s)", region_links.len());
+    }
 
     // The build id identifies the *data*: change the input and every reader has to drop its
     // cache. Derived rather than asked for, so a forgotten input cannot silently republish
@@ -133,6 +136,7 @@ fn run(
         // Beside the archive, as the feature spill is. One zoom at a time, removed as each finishes.
         scratch: scratch_path(out),
         dem,
+        region_links,
     };
     let (bytes, per_zoom) = tiler::build(&store, &settings).map_err(|e| e.to_string())?;
     tiler::check_not_empty(&per_zoom).map_err(|e| e.to_string())?;

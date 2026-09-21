@@ -15,7 +15,7 @@ pub fn extract(
     graph: &Path,
     spill_path: &Path,
     region: Option<osm_ingest::bbox::BBox>,
-) -> Result<(Store, Stats)> {
+) -> Result<(Store, Stats, HashMap<u64, u64>)> {
     // Stage A's boundaries are printed with their elapsed time so an external RSS sampler can say
     // which of them the peak belongs to. Three candidates sit within seconds of each other -- the ref
     // vector, the id index built beside it, and the node pass's per-chunk accumulators -- and
@@ -126,7 +126,15 @@ pub fn extract(
         spill_path,
         &mark,
     )?;
-    Ok((store, stats))
+    // The place-label -> boundary link, tagged into the id space the archive uses (a place carries
+    // its node id tagged as a node; the mask keys on the boundary's relation id tagged as a
+    // relation). The tiler stamps each `places` label with its linked id from this.
+    let region_links: HashMap<u64, u64> = pass1
+        .region_label_nodes
+        .iter()
+        .map(|(&node, &rel)| (tagged_id(node, ELEMENT_NODE), tagged_id(rel, ELEMENT_RELATION)))
+        .collect();
+    Ok((store, stats, region_links))
 }
 
 /// What pass 1 hands the later phases: relations stay resident, corridors
@@ -140,6 +148,12 @@ struct Pass1Out {
     way_max_ref: i64,
     /// The sealed ways spill, shared by refcount with every later reader.
     ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
+    /// `admin_centre`/`label` node member -> its boundary relation id, both raw OSM ids, for every
+    /// relation that carries a region shape. The authoritative half of the place->boundary link:
+    /// OSM points a boundary relation at its own label node directly, so no geometry test is needed.
+    /// `label` wins over `admin_centre` when a relation lists both, since `label` is the place node
+    /// the map actually renders.
+    region_label_nodes: HashMap<i64, i64>,
 }
 
 /// Pass 1 (ways + relations) plus the corridor promotion. Moved whole from
@@ -169,6 +183,9 @@ fn run_pass1(
     // planet extract is most of the file.
     let mut ways = WaySink::create_anon(&ways_path)?;
     let mut relations: Vec<Relation> = Vec::new();
+    // `admin_centre`/`label` node member -> boundary relation id (raw), gathered as region shapes
+    // are classified below. See [`Pass1Out::region_label_nodes`].
+    let mut region_label_nodes: HashMap<i64, i64> = HashMap::new();
     // Road ways carrying a `ref`, for the corridor pass below. A small minority of ways,
     // and the only thing pass 1 keeps in memory besides the relations.
     let mut corridors: Vec<crate::corridor::Segment> = Vec::new();
@@ -183,6 +200,7 @@ fn run_pass1(
                 Vec::<(i64, Way)>::new(),
                 Vec::<Relation>::new(),
                 Vec::<crate::corridor::Segment>::new(),
+                Vec::<(i64, i64)>::new(),
             )
         },
         |state, block| {
@@ -301,6 +319,20 @@ fn run_pass1(
                             if let Some(shape) =
                                 schema::boundaries::region_area(&relation.tags, false)
                             {
+                                // The boundary points at its own label/centre node directly: record
+                                // that node -> this relation so the place label it becomes can carry
+                                // the id. `label` overwrites `admin_centre` (the label node is the
+                                // one that renders; admin_centre is the capital, a different node).
+                                for m in relation.members.iter() {
+                                    if m.kind == MEMBER_NODE && m.role == b"admin_centre" {
+                                        state.3.push((m.id, relation.id));
+                                    }
+                                }
+                                for m in relation.members.iter() {
+                                    if m.kind == MEMBER_NODE && m.role == b"label" {
+                                        state.3.push((m.id, relation.id));
+                                    }
+                                }
                                 state.1.push(Relation {
                                     class: shape,
                                     members: members.clone(),
@@ -328,7 +360,7 @@ fn run_pass1(
             })?;
             Ok(kinds)
         },
-        |(chunk_ways, chunk_relations, chunk_corridors)| {
+        |(chunk_ways, chunk_relations, chunk_corridors, chunk_label_nodes)| {
             // Chunks arrive in file order and a PBF's ways are sorted by id, so appending here
             // leaves the file in ascending id order. `WaySink::push` refuses an id that does not
             // advance rather than letting an unsorted file reorder the archive silently.
@@ -347,6 +379,10 @@ fn run_pass1(
             }
             relations.extend(chunk_relations);
             corridors.extend(chunk_corridors);
+            // `label` was pushed after `admin_centre`, so inserting in order lets the label win.
+            for (node_id, rel_id) in chunk_label_nodes {
+                region_label_nodes.insert(node_id, rel_id);
+            }
             Ok(())
         },
     )?;
@@ -372,5 +408,6 @@ fn run_pass1(
         way_refs,
         way_max_ref,
         ways_anon,
+        region_label_nodes,
     })
 }

@@ -292,6 +292,7 @@ mod tests {
             scratch: std::env::temp_dir()
                 .join(format!("mamaps_rings_{}.tilechunks", std::process::id())),
             dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
+            region_links: std::collections::HashMap::new(),
         };
         let store = crate::store::Store::of(&features).expect("spill");
         let (bytes, stats) = crate::tiler::build(&store, &settings).expect("build");
