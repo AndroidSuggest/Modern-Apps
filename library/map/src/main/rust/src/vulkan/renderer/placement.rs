@@ -6,7 +6,6 @@ use crate::camera::Camera;
 use crate::marker::Marker;
 use crate::style::{Layer, LayerKind};
 use ash::vk;
-use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::time::Instant;
@@ -59,27 +58,40 @@ impl Renderer {
     }
 
     fn smallest_containing(&self, lon: f64, lat: f64, levels: &RangeInclusive<u16>) -> Option<u64> {
-        let mut best: Option<(f32, u16, u64)> = None;
+        // A region is clipped into one fragment per tile it crosses, and `region.area` is only
+        // that fragment's area. Comparing fragments across tiles picked whichever tile happened
+        // to hold the smaller slice, so the masked region flipped as tiles loaded and clipped
+        // differently. Sum every fragment of an id first, so the comparison is against each
+        // region's whole on-screen size; then choose the smallest region that actually contains
+        // the point (containment is only ever true in the one tile the point falls in).
+        let mut level_of: HashMap<u64, u16> = HashMap::new();
+        let mut area_of: HashMap<u64, f32> = HashMap::new();
+        let mut hit: HashMap<u64, bool> = HashMap::new();
         for tile in self.tiles.values() {
-            let Some((u, v)) = tile_local(lon, lat, tile.z, tile.x, tile.y) else {
-                continue;
-            };
+            let local = tile_local(lon, lat, tile.z, tile.x, tile.y);
             for region in &tile.regions {
                 if !levels.contains(&region.level) {
                     continue;
                 }
-                if !region.rings.iter().any(|ring| contains(ring, u, v)) {
-                    continue;
-                }
-                let candidate = (region.area, region.level, region.id);
-                if best.is_none_or(|(area, level, id)| {
-                    (candidate.0, Reverse(candidate.1), candidate.2) < (area, Reverse(level), id)
-                }) {
-                    best = Some(candidate);
+                level_of.insert(region.id, region.level);
+                *area_of.entry(region.id).or_insert(0.0) += region.area;
+                if let Some((u, v)) = local {
+                    if region.rings.iter().any(|ring| contains(ring, u, v)) {
+                        hit.insert(region.id, true);
+                    }
                 }
             }
         }
-        best.map(|(_, _, id)| id)
+        // Smallest summed area wins; ties break to the deeper level, then the lower id — a total
+        // order, so the pick never depends on hash-map iteration.
+        hit.into_keys().min_by(|&a, &b| {
+            let area = |id: u64| area_of.get(&id).copied().unwrap_or(0.0);
+            let level = |id: u64| level_of.get(&id).copied().unwrap_or(0);
+            area(a)
+                .total_cmp(&area(b))
+                .then_with(|| level(b).cmp(&level(a)))
+                .then(a.cmp(&b))
+        })
     }
 
     /// The per-frame symbol pre-pass: one collision candidate per shaped label
