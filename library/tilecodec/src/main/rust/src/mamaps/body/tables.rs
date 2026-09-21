@@ -206,6 +206,100 @@ pub fn serialize_ids(ids: &[(u8, Vec<u64>)], out: &mut Vec<u8>) {
     }
 }
 
+/// Parse the region-link table. Byte-identical in shape to the id table (see [`parse_ids`]): a
+/// `u32` entry count, then per entry a `u8` layer id, three reserved bytes, a `u32` link count and
+/// that many `u64` tagged relation ids. Kept a separate section (its own body flag) so the two are
+/// independent — a `places` layer carries both an id table (node ids) and a region-link table
+/// (boundary relation ids), and neither implies the other. Same validation as [`parse_ids`].
+pub(crate) fn parse_region_links(
+    buf: &[u8],
+    layers: &[Layer],
+) -> Result<(Vec<(u8, Vec<u64>)>, usize)> {
+    if buf.len() < 4 {
+        return err("a .mamaps region-link table ends before its count");
+    }
+    let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+    if count > layers.len() {
+        return err(format!(
+            "a .mamaps region-link table has {count} entries for a body with {} layer(s)",
+            layers.len(),
+        ));
+    }
+    let mut at = 4usize;
+    let mut table = Vec::with_capacity(count);
+    let mut previous: Option<u8> = None;
+    for _ in 0..count {
+        if at + 8 > buf.len() {
+            return err("a .mamaps region-link table ends inside an entry header");
+        }
+        let layer_id = buf[at];
+        if buf[at + 1] != 0 || u16::from_le_bytes([buf[at + 2], buf[at + 3]]) != 0 {
+            return err("a .mamaps region-link table entry has non-zero reserved bytes");
+        }
+        let links_len =
+            u32::from_le_bytes([buf[at + 4], buf[at + 5], buf[at + 6], buf[at + 7]]) as usize;
+        at += 8;
+        if previous.is_some_and(|p| layer_id <= p) {
+            return err("a .mamaps region-link table's entries are not ordered by layer id");
+        }
+        previous = Some(layer_id);
+        let Some(layer) = layers.iter().find(|l| l.layer_id == layer_id) else {
+            return err(format!(
+                "a .mamaps region-link table names layer {layer_id}, which the body does not carry"
+            ));
+        };
+        if links_len != layer.features.len() {
+            return err(format!(
+                "a .mamaps region-link table gives layer {layer_id} {links_len} link(s) for {} feature(s)",
+                layer.features.len(),
+            ));
+        }
+        let bytes = links_len.checked_mul(8).ok_or_else(|| {
+            crate::proto::Error("a .mamaps region-link table's entry overflows".to_string())
+        })?;
+        if at + bytes > buf.len() {
+            return err("a .mamaps region-link table's links run past the table");
+        }
+        let mut links = Vec::with_capacity(links_len);
+        for i in 0..links_len {
+            let o = at + i * 8;
+            links.push(u64::from_le_bytes([
+                buf[o],
+                buf[o + 1],
+                buf[o + 2],
+                buf[o + 3],
+                buf[o + 4],
+                buf[o + 5],
+                buf[o + 6],
+                buf[o + 7],
+            ]));
+        }
+        at += bytes;
+        table.push((layer_id, links));
+    }
+    let aligned = align4(at);
+    if aligned > buf.len() {
+        return err("a .mamaps region-link table's padding runs past the body");
+    }
+    Ok((table, aligned))
+}
+
+/// Serialise a region-link table, 4-byte aligned. The inverse of [`parse_region_links`].
+pub fn serialize_region_links(links: &[(u8, Vec<u64>)], out: &mut Vec<u8>) {
+    out.extend_from_slice(&(links.len() as u32).to_le_bytes());
+    for (layer_id, entries) in links {
+        out.push(*layer_id);
+        out.extend_from_slice(&[0u8; 3]);
+        out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        for id in entries {
+            out.extend_from_slice(&id.to_le_bytes());
+        }
+    }
+    while out.len() % 4 != 0 {
+        out.push(0);
+    }
+}
+
 /// Parse the turn-lane table: `u32` entry count, then per entry a `u8` layer id, three reserved
 /// bytes, a `u32` feature count and that many per-feature records. A per-feature record is a `u8`
 /// forward lane count, a `u8` backward lane count, then that many `u16` masks each (forward then

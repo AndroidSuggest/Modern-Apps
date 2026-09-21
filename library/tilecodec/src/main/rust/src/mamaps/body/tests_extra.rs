@@ -50,7 +50,7 @@ fn sample() -> Body {
     roads.parts.push(Part { coord_start: 0, point_count: 3, winding: WINDING_OUTER });
     roads.coords = vec![(-64, 10), (2048, 2048), (4160, 4000)];
 
-    Body { extent: DEFAULT_EXTENT, layers: vec![roads, water], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None }
+    Body { extent: DEFAULT_EXTENT, layers: vec![roads, water], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() }
 }
 
 /// The turn-lane table rides beside the id and name tables, dense-parallel to a layer's
@@ -91,7 +91,7 @@ fn the_turn_lane_table_round_trips_dense_parallel_to_features() {
         ids: Vec::new(),
         turn_lanes: vec![(dict::LAYER_ROADS, turns)],
         buildings: Vec::new(),
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     let parsed = Body::parse(&serialize(&body).expect("serialize")).expect("parse");
     assert_eq!(parsed, body);
@@ -131,7 +131,7 @@ fn a_turn_lane_table_that_does_not_match_its_layer_is_refused() {
         // Two records for one feature.
         turn_lanes: vec![(dict::LAYER_ROADS, vec![LaneTurns::default(), LaneTurns::default()])],
         buildings: Vec::new(),
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     assert!(serialize(&body).is_err(), "a turn table longer than its layer's features");
 }
@@ -165,7 +165,7 @@ fn an_id_table_parses_without_a_name_table() {
         ids: vec![(dict::LAYER_POI, vec![7])],
         turn_lanes: Vec::new(),
         buildings: Vec::new(),
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     let parsed = Body::parse(&serialize(&body).expect("serialize")).expect("parse");
     assert_eq!(parsed, body);
@@ -183,7 +183,7 @@ fn an_id_table_that_does_not_match_its_layer_is_refused() {
         ids,
         turn_lanes: Vec::new(),
         buildings: Vec::new(),
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     assert!(
         serialize(&body(vec![(dict::LAYER_LANDTYPE, vec![1])])).is_err(),
@@ -197,6 +197,64 @@ fn an_id_table_that_does_not_match_its_layer_is_refused() {
         serialize(&body(vec![(dict::LAYER_LANDTYPE, Vec::new()), (dict::LAYER_LANDTYPE, Vec::new())]))
             .is_err(),
         "two entries for one layer"
+    );
+}
+
+/// A place label's baked boundary link round-trips through the region-link table, and a vector
+/// that does not match its layer's feature count is refused exactly as the id table is.
+#[test]
+fn the_region_link_table_round_trips_and_is_validated() {
+    let mut layer = Layer::new(dict::LAYER_PLACES);
+    for i in 0..2u32 {
+        layer.parts.push(Part {
+            coord_start: i,
+            point_count: 1,
+            winding: WINDING_OUTER,
+        });
+        layer.coords.push((i as i16 * 10, i as i16 * 10));
+        layer.features.push(Feature {
+            kind: 1,
+            kind_detail: 0,
+            geom_type: GEOM_POINT,
+            flags: 0,
+            name_idx: NAME_NONE,
+            parts_offset: i,
+            part_count: 1,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+        });
+    }
+    // First label links to boundary relation 42 (tagged as a relation: (42 << 2) | 3); second
+    // links to nothing (REGION_NONE).
+    let linked = (42u64 << 2) | 3;
+    let body = |links| Body {
+        extent: DEFAULT_EXTENT,
+        layers: vec![layer.clone()],
+        names: Vec::new(),
+        ids: Vec::new(),
+        turn_lanes: Vec::new(),
+        buildings: Vec::new(),
+        heightmap: None,
+        carriageways: Vec::new(),
+        convention: None,
+        region_links: links,
+    };
+    let good = body(vec![(dict::LAYER_PLACES, vec![linked, 0])]);
+    let parsed = Body::parse(&serialize(&good).expect("serialize")).expect("parse");
+    assert_eq!(parsed, good);
+    assert_eq!(parsed.region_link(dict::LAYER_PLACES, 0), Some(linked));
+    assert_eq!(parsed.region_link(dict::LAYER_PLACES, 1), Some(0));
+    assert_eq!(parsed.region_link(dict::LAYER_ROADS, 0), None, "layer with no table");
+    assert!(
+        serialize(&body(vec![(dict::LAYER_PLACES, vec![linked])])).is_err(),
+        "one link for a layer with two features"
+    );
+    assert!(
+        serialize(&body(vec![(dict::LAYER_POI, vec![])])).is_err(),
+        "an entry for a layer the body does not carry"
     );
 }
 
@@ -333,7 +391,7 @@ fn a_layer_with_more_than_65535_features_round_trips_via_extended_encoding() {
         layer.coords.push((0, 0));
         layer.coords.push((1, 1));
     }
-    let body = Body { extent: DEFAULT_EXTENT, layers: vec![layer], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None};
+    let body = Body { extent: DEFAULT_EXTENT, layers: vec![layer], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() };
     let bytes = serialize(&body).expect("extended tile must serialize");
     assert_eq!(bytes[11], BODY_FLAG_EXTENDED_COUNTS, "extended flag set");
     let parsed = Body::parse(&bytes).expect("must parse extended");
@@ -353,7 +411,7 @@ fn a_layer_with_more_than_65535_features_round_trips_via_extended_encoding() {
         ids: Vec::new(),
         turn_lanes: Vec::new(),
         buildings: Vec::new(),
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     let small_bytes = serialize(&small_body).expect("small tile");
     assert_eq!(small_bytes[11], 0, "common path no flag, byte-identical");
@@ -421,7 +479,7 @@ fn the_building_table_round_trips_dense_parallel_to_features() {
         ids: Vec::new(),
         turn_lanes: Vec::new(),
         buildings: vec![(dict::LAYER_BUILDINGS, attrs.clone())],
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     let bytes = serialize(&body).expect("serialize");
     // The body carries the reader's own version byte, so an older reader rejects it cleanly.

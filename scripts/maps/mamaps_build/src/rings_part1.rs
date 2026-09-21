@@ -238,7 +238,7 @@ mod tests {
             ids: Vec::new(),
             turn_lanes: Vec::new(),
             buildings: Vec::new(),
-            heightmap: None, carriageways: Vec::new(), convention: None,
+            heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
         };
         // The encoder's own contiguity check, which is the real proof.
         assert!(tilecodec::mamaps::body::serialize(&body).is_ok());

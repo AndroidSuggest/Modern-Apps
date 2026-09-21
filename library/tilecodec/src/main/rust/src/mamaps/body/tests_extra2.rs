@@ -54,6 +54,7 @@ fn the_carriageway_table_round_trips_with_its_convention() {
         heightmap: None,
         carriageways: vec![(dict::LAYER_ROADS, rows.clone())],
         convention: Some(convention),
+        region_links: Vec::new(),
     };
     let bytes = serialize(&body).expect("serialize");
     assert_ne!(bytes[11] & BODY_FLAG_ROAD_LANES, 0, "the carriageway flag is set");
@@ -85,6 +86,7 @@ fn a_body_with_no_carriageway_table_carries_neither_flag_nor_convention() {
         heightmap: None,
         carriageways: Vec::new(),
         convention: None,
+        region_links: Vec::new(),
     };
     let bytes = serialize(&body).expect("serialize");
     assert_eq!(bytes[11] & BODY_FLAG_ROAD_LANES, 0, "no carriageway flag");
@@ -108,6 +110,7 @@ fn a_convention_without_a_carriageway_table_is_refused() {
         heightmap: None,
         carriageways: Vec::new(),
         convention: Some(MarkingConvention { left_hand: true, yellow_centre: false }),
+        region_links: Vec::new(),
     };
     assert!(serialize(&body).is_err());
 }
@@ -127,6 +130,7 @@ fn a_carriageway_table_that_does_not_match_its_layer_is_refused() {
         heightmap: None,
         carriageways: vec![(dict::LAYER_ROADS, vec![Carriageway::default()])],
         convention: Some(MarkingConvention::default()),
+        region_links: Vec::new(),
     };
     assert!(serialize(&body).is_err());
 }
@@ -160,6 +164,7 @@ fn the_oneway_flag_round_trips_and_keeps_its_bit() {
         heightmap: None,
         carriageways: Vec::new(),
         convention: None,
+        region_links: Vec::new(),
     };
     let parsed = Body::parse(&serialize(&body).expect("serialize")).expect("parse");
     let feature = &parsed.layers[0].features[0];
@@ -201,7 +206,7 @@ fn a_building_table_that_does_not_match_its_layer_is_refused() {
             dict::LAYER_BUILDINGS,
             vec![BuildingAttrs::default(), BuildingAttrs::default()],
         )],
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     assert!(serialize(&body).is_err(), "a building table longer than its layer's features");
 }
@@ -235,7 +240,7 @@ fn an_out_of_range_roof_value_is_refused_on_parse() {
         ids: Vec::new(),
         turn_lanes: Vec::new(),
         buildings: vec![(dict::LAYER_BUILDINGS, vec![BuildingAttrs::default()])],
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     let good = serialize(&body).expect("serialize");
     assert!(Body::parse(&good).is_ok(), "the default record is otherwise fine");
@@ -280,6 +285,7 @@ fn the_heightmap_round_trips_and_ocean_tiles_omit_it() {
         heightmap: Some(grid.clone()),
         carriageways: Vec::new(),
         convention: None,
+        region_links: Vec::new(),
     };
     let bytes = serialize(&body).expect("serialize");
     assert_ne!(bytes[11] & BODY_FLAG_HEIGHTMAP, 0, "the heightmap flag is set");
@@ -333,6 +339,7 @@ fn the_building_table_and_heightmap_round_trip_together() {
         heightmap: Some(Heightmap { dim: 3, samples: vec![32768; 9] }),
         carriageways: Vec::new(),
         convention: None,
+        region_links: Vec::new(),
     };
     let parsed = Body::parse(&serialize(&body).expect("serialize")).expect("parse");
     assert_eq!(parsed, body);

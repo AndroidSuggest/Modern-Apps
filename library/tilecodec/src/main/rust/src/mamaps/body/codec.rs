@@ -1,6 +1,6 @@
-use super::consts::{BODY_FLAG_BUILDING_TABLE, BODY_FLAG_EXTENDED_COUNTS, BODY_FLAG_HEIGHTMAP, BODY_FLAG_ID_TABLE, BODY_FLAG_LANE_TABLE, BODY_FLAG_NAME_TABLE, BODY_FLAG_ROAD_LANES, BODY_HEADER_LEN, FEATURE_RECORD_LEN, GEOM_LINE, GEOM_POINT, GEOM_POLYGON, KNOWN_BODY_FLAGS, KNOWN_FEATURE_FLAGS, LAYER_INDEX_LEN, PART_ENTRY_LEN, WINDING_HOLE, WINDING_OUTER};
+use super::consts::{BODY_FLAG_BUILDING_TABLE, BODY_FLAG_EXTENDED_COUNTS, BODY_FLAG_HEIGHTMAP, BODY_FLAG_ID_TABLE, BODY_FLAG_LANE_TABLE, BODY_FLAG_NAME_TABLE, BODY_FLAG_REGION_LINKS, BODY_FLAG_ROAD_LANES, BODY_HEADER_LEN, FEATURE_RECORD_LEN, GEOM_LINE, GEOM_POINT, GEOM_POLYGON, KNOWN_BODY_FLAGS, KNOWN_FEATURE_FLAGS, LAYER_INDEX_LEN, PART_ENTRY_LEN, WINDING_HOLE, WINDING_OUTER};
 use super::model::{Body, BuildingAttrs, Carriageway, Feature, LaneTurns, Layer, NAME_NONE, Part};
-use super::tables::{align4, parse_carriageways, parse_heightmap, parse_ids, parse_lanes, parse_names, payloads_end};
+use super::tables::{align4, parse_carriageways, parse_heightmap, parse_ids, parse_lanes, parse_names, parse_region_links, payloads_end};
 use super::tables_extra::parse_buildings;
 use crate::proto::{Result, err};
 
@@ -16,6 +16,7 @@ impl Body {
             heightmap: None,
             carriageways: Vec::new(),
             convention: None,
+            region_links: Vec::new(),
         }
     }
 
@@ -54,6 +55,18 @@ impl Body {
             .iter()
             .find(|(id, _)| *id == layer_id)
             .and_then(|(_, ids)| ids.get(index).copied())
+    }
+
+    /// The tagged OSM relation id of the admin boundary the `index`-th feature of `layer_id` names,
+    /// or `None` when the layer carries no region-link table.
+    ///
+    /// [`REGION_NONE`](super::model::REGION_NONE) when the layer has a table but this label links to
+    /// no region. Only the `places` layer ever carries one.
+    pub fn region_link(&self, layer_id: u8, index: usize) -> Option<u64> {
+        self.region_links
+            .iter()
+            .find(|(id, _)| *id == layer_id)
+            .and_then(|(_, links)| links.get(index).copied())
     }
 
     /// This feature's S3DB attributes, or `None` when its layer carries no building table. A
@@ -178,6 +191,7 @@ impl Body {
         let mut heightmap = None;
         let mut carriageways = Vec::new();
         let mut convention = None;
+        let mut region_links = Vec::new();
         let payloads_end = payloads_end(buf, layer_count, index_end)?;
         let has_names = body_flags & BODY_FLAG_NAME_TABLE != 0;
         let has_ids = body_flags & BODY_FLAG_ID_TABLE != 0;
@@ -185,12 +199,14 @@ impl Body {
         let has_buildings = body_flags & BODY_FLAG_BUILDING_TABLE != 0;
         let has_heightmap = body_flags & BODY_FLAG_HEIGHTMAP != 0;
         let has_carriageways = body_flags & BODY_FLAG_ROAD_LANES != 0;
+        let has_region_links = body_flags & BODY_FLAG_REGION_LINKS != 0;
         if !has_names
             && !has_ids
             && !has_lanes
             && !has_buildings
             && !has_heightmap
             && !has_carriageways
+            && !has_region_links
         {
             // The body is exactly its payloads, unpadded. Anything else is trailing garbage.
             if payloads_end != buf.len() {
@@ -235,6 +251,11 @@ impl Body {
                 carriageways = table;
                 convention = Some(marking);
             }
+            if has_region_links {
+                let (table, used) = parse_region_links(&buf[at..], &layers)?;
+                at += used;
+                region_links = table;
+            }
             if at != buf.len() {
                 return err(format!(
                     "a .mamaps body has {} trailing byte(s) past its trailing sections",
@@ -252,6 +273,7 @@ impl Body {
             heightmap,
             carriageways,
             convention,
+            region_links,
         })
     }
 }

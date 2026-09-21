@@ -45,7 +45,7 @@ fn body_for(seed: i16) -> Body {
     });
     roads.parts.push(Part { coord_start: 0, point_count: 2, winding: WINDING_OUTER });
     roads.coords = vec![(0, 0), (seed, seed)];
-    Body { extent: DEFAULT_EXTENT, layers: vec![roads], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None }
+    Body { extent: DEFAULT_EXTENT, layers: vec![roads], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() }
 }
 
 /// An archive of `(z, x, y, seed)` tiles, fed in ascending id order as the writer requires.
@@ -133,7 +133,7 @@ fn wide_body_for(seed: i16) -> Body {
             ((state >> 33) as i16, (state >> 17) as i16)
         })
         .collect();
-    Body { extent: DEFAULT_EXTENT, layers: vec![roads], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None }
+    Body { extent: DEFAULT_EXTENT, layers: vec![roads], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() }
 }
 
 #[test]

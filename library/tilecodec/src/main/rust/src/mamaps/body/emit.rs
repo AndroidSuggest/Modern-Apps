@@ -1,9 +1,9 @@
-use super::consts::{BODY_FLAG_BUILDING_TABLE, BODY_FLAG_EXTENDED_COUNTS, BODY_FLAG_HEIGHTMAP, BODY_FLAG_ID_TABLE, BODY_FLAG_LANE_TABLE, BODY_FLAG_NAME_TABLE, BODY_FLAG_ROAD_LANES, BODY_HEADER_LEN, LAYER_INDEX_LEN};
+use super::consts::{BODY_FLAG_BUILDING_TABLE, BODY_FLAG_EXTENDED_COUNTS, BODY_FLAG_HEIGHTMAP, BODY_FLAG_ID_TABLE, BODY_FLAG_LANE_TABLE, BODY_FLAG_NAME_TABLE, BODY_FLAG_REGION_LINKS, BODY_FLAG_ROAD_LANES, BODY_HEADER_LEN, LAYER_INDEX_LEN};
 use super::model::{
     Body, Layer, NAME_NONE, ROOF_ORIENT_MAX, ROOF_SHAPE_MAX,
 };
 use super::emit_extra::write_full_layer_payload;
-use super::tables::{serialize_carriageways, serialize_heightmap, serialize_ids, serialize_lanes, serialize_names, align4};
+use super::tables::{serialize_carriageways, serialize_heightmap, serialize_ids, serialize_lanes, serialize_names, serialize_region_links, align4};
 use super::tables_extra::serialize_buildings;
 use crate::proto::{Result, err};
 
@@ -224,6 +224,29 @@ pub fn serialize_into<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [
         }
     }
 
+    // The region-link table is validated exactly as the id table is: keyed and ascending by layer
+    // id and dense-parallel to that layer's features, so a caller that built it against a different
+    // layer set is refused rather than linking every label to the wrong region.
+    let mut previous: Option<u8> = None;
+    for (layer_id, entries) in &body.region_links {
+        if previous.is_some_and(|p| *layer_id <= p) {
+            return err("a .mamaps body's region-link table is not ordered by layer id");
+        }
+        previous = Some(*layer_id);
+        let Some(layer) = layers.iter().find(|l| l.layer_id == *layer_id) else {
+            return err(format!(
+                "a .mamaps region-link table names layer {layer_id}, which the body does not carry"
+            ));
+        };
+        if entries.len() != layer.features.len() {
+            return err(format!(
+                "a .mamaps region-link table gives layer {layer_id} {} link(s) for {} feature(s)",
+                entries.len(),
+                layer.features.len(),
+            ));
+        }
+    }
+
     let mut index_end = BODY_HEADER_LEN + layers.len() * LAYER_INDEX_LEN;
     if needs_extended {
         index_end += layers.len() * 4;
@@ -270,6 +293,9 @@ pub fn serialize_into<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [
     if !body.carriageways.is_empty() {
         body_flags |= BODY_FLAG_ROAD_LANES;
     }
+    if !body.region_links.is_empty() {
+        body_flags |= BODY_FLAG_REGION_LINKS;
+    }
     assembled.push(body_flags);
     assembled.extend_from_slice(&0u32.to_le_bytes());
     for (i, (layer_id, feature_count)) in meta.iter().enumerate() {
@@ -308,6 +334,7 @@ pub fn serialize_into<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [
         || !body.buildings.is_empty()
         || body.heightmap.is_some()
         || !body.carriageways.is_empty()
+        || !body.region_links.is_empty()
     {
         while assembled.len() % 4 != 0 {
             assembled.push(0);
@@ -336,6 +363,9 @@ pub fn serialize_into<'s>(body: &Body, scratch: &'s mut Scratch) -> Result<&'s [
             body.convention.unwrap_or_default(),
             assembled,
         );
+    }
+    if !body.region_links.is_empty() {
+        serialize_region_links(&body.region_links, assembled);
     }
     let raw_len = assembled.len() as u32;
     assembled[4..8].copy_from_slice(&raw_len.to_le_bytes());

@@ -139,6 +139,11 @@ pub const NAME_NONE: u16 = 0;
 /// to should cost zero bytes of entropy rather than a sentinel the reader has to know about.
 pub const ID_NONE: u64 = 0;
 
+/// `region_link` for "this label names no admin region". Zero for the same reason [`ID_NONE`] is:
+/// the table is dense-parallel to the layer's features, and a label with no linked boundary should
+/// cost no entropy rather than a sentinel the reader must special-case.
+pub const REGION_NONE: u64 = 0;
+
 /// One road feature's per-lane turn indications, from OSM `turn:lanes[:forward|:backward]`.
 ///
 /// Each `u16` is a lane's [`LANE_*`](super::super) bit set — the same scheme the routing graph
@@ -428,6 +433,13 @@ impl Heightmap {
 /// Only the `roads` layer carries one. It exists because [`Feature::lane_count`] is a total and the
 /// surface renderer needs the directional split to place a centre line. `convention` rides with it
 /// as a single per-tile byte; it is `None` exactly when the table is absent.
+///
+/// `region_links` is the optional per-layer region-link table (v8), the same shape as `ids`: keyed
+/// by `layer_id`, ascending, and dense-parallel to that layer's `features`. Only the `places` layer
+/// carries one, and only when some label in the tile links to an admin boundary; a label with none
+/// holds [`REGION_NONE`]. Each entry is the tagged OSM relation id of the boundary the label names
+/// (the same id space as the `boundaries` id table), so a tap on the label can outline that region
+/// directly. A side table for the same reason `ids` is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Body {
     pub extent: u16,
@@ -439,4 +451,5 @@ pub struct Body {
     pub heightmap: Option<Heightmap>,
     pub carriageways: Vec<(u8, Vec<Carriageway>)>,
     pub convention: Option<MarkingConvention>,
+    pub region_links: Vec<(u8, Vec<u64>)>,
 }

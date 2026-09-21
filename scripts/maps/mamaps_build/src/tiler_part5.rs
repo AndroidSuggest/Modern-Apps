@@ -255,6 +255,8 @@ fn encode_tile(
         heightmap: dem.heightmap_for(z, x, y),
         carriageways,
         convention,
+        // Populated in the region-link phase; empty here keeps the section absent.
+        region_links: Vec::new(),
     };
     let encoded_body = timed(on, &SERIALIZE_NANOS, || {
         tilecodec::mamaps::body::serialize_into(&body, scratch)

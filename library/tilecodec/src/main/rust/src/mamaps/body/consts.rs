@@ -50,6 +50,14 @@ pub const BODY_FLAG_HEIGHTMAP: u8 = 0x20;
 /// traffic keeps left in the UK, Japan and Australia. One byte per tile rather than per road,
 /// because a tile never spans two conventions in any way that matters. v7.
 pub const BODY_FLAG_ROAD_LANES: u8 = 0x40;
+/// A per-feature region-link table follows the carriageway table. See [`Body::region_links`].
+///
+/// The last available body-flag bit (`0x80`). A `places` label carries the tagged OSM relation id
+/// of the admin boundary it names, so a tap on the label can outline that exact region without the
+/// point+level containment guess the renderer used to make. Keyed by layer id and dense-parallel to
+/// that layer's features exactly like the id table, with `0` for a label that has no linked region;
+/// only the `places` layer populates it, so every other tile carries nothing. v8.
+pub const BODY_FLAG_REGION_LINKS: u8 = 0x80;
 
 pub(crate) const KNOWN_BODY_FLAGS: u8 = BODY_FLAG_EXTENDED_COUNTS
     | BODY_FLAG_ID_TABLE
@@ -57,7 +65,8 @@ pub(crate) const KNOWN_BODY_FLAGS: u8 = BODY_FLAG_EXTENDED_COUNTS
     | BODY_FLAG_LANE_TABLE
     | BODY_FLAG_BUILDING_TABLE
     | BODY_FLAG_HEIGHTMAP
-    | BODY_FLAG_ROAD_LANES;
+    | BODY_FLAG_ROAD_LANES
+    | BODY_FLAG_REGION_LINKS;
 
 /// A feature whose geometry is one or more open paths.
 pub const GEOM_LINE: u8 = 1;

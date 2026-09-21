@@ -50,7 +50,7 @@ fn sample() -> Body {
     roads.parts.push(Part { coord_start: 0, point_count: 3, winding: WINDING_OUTER });
     roads.coords = vec![(-64, 10), (2048, 2048), (4160, 4000)];
 
-    Body { extent: DEFAULT_EXTENT, layers: vec![roads, water], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None }
+    Body { extent: DEFAULT_EXTENT, layers: vec![roads, water], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() }
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn the_arena_costs_far_less_than_a_fixed_four_bytes_a_point() {
     let points: Vec<(i16, i16)> = (0..1000).map(|i| (i * 3, i * 2)).collect();
     roads.parts.push(Part { coord_start: 0, point_count: 1000, winding: WINDING_OUTER });
     roads.coords = points.clone();
-    let body = Body { extent: DEFAULT_EXTENT, layers: vec![roads], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None};
+    let body = Body { extent: DEFAULT_EXTENT, layers: vec![roads], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() };
     let bytes = serialize(&body).expect("serialize");
     // Two bytes a point rather than four: each delta is (3, 2), a single varint byte each.
     assert!(
@@ -164,7 +164,7 @@ fn each_part_restarts_its_deltas_from_the_origin() {
     // The second part starts far from where the first ended; if deltas carried over, the
     // round trip would place it somewhere else entirely.
     layer.coords = vec![(0, 0), (10, 10), (3000, 3000), (3010, 3010)];
-    let body = Body { extent: DEFAULT_EXTENT, layers: vec![layer], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None};
+    let body = Body { extent: DEFAULT_EXTENT, layers: vec![layer], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() };
     let parsed = Body::parse(&serialize(&body).expect("serialize")).expect("parse");
     assert_eq!(parsed, body);
 }
@@ -191,15 +191,15 @@ fn parts_that_do_not_tile_the_arena_are_refused() {
     });
     layer.parts.push(Part { coord_start: 1, point_count: 2, winding: WINDING_OUTER });
     layer.coords = vec![(0, 0), (1, 1), (2, 2)];
-    let gapped = Body { extent: DEFAULT_EXTENT, layers: vec![layer.clone()], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None};
+    let gapped = Body { extent: DEFAULT_EXTENT, layers: vec![layer.clone()], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() };
     assert!(serialize(&gapped).is_err(), "a part starting past the front");
 
     layer.parts[0].coord_start = 0;
-    let over = Body { extent: DEFAULT_EXTENT, layers: vec![layer.clone()], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None};
+    let over = Body { extent: DEFAULT_EXTENT, layers: vec![layer.clone()], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() };
     assert!(serialize(&over).is_err(), "an arena longer than its parts cover");
 
     layer.coords.pop();
-    assert!(serialize(&Body { extent: DEFAULT_EXTENT, layers: vec![layer], names: Vec::new(), ids: Vec::new(), turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None }).is_ok());
+    assert!(serialize(&Body { extent: DEFAULT_EXTENT, layers: vec![layer], names: Vec::new(), ids: Vec::new(), turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() }).is_ok());
 }
 
 #[test]
@@ -221,7 +221,7 @@ fn a_feature_indexing_parts_it_does_not_have_is_refused_by_the_encoder() {
     });
     layer.parts.push(Part { coord_start: 0, point_count: 2, winding: WINDING_OUTER });
     layer.coords = vec![(0, 0), (1, 1)];
-    assert!(serialize(&Body { extent: DEFAULT_EXTENT, layers: vec![layer], names: Vec::new(), ids: Vec::new(), turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None }).is_err());
+    assert!(serialize(&Body { extent: DEFAULT_EXTENT, layers: vec![layer], names: Vec::new(), ids: Vec::new(), turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() }).is_err());
 }
 
 #[test]
@@ -266,7 +266,7 @@ fn a_numeric_detail_is_a_number_and_an_interned_one_is_not() {
     });
     boundaries.parts.push(Part { coord_start: 0, point_count: 2, winding: WINDING_OUTER });
     boundaries.coords = vec![(0, 0), (100, 100)];
-    let bytes = serialize(&Body { extent: DEFAULT_EXTENT, layers: vec![boundaries], names: Vec::new(), ids: Vec::new(), turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None })
+    let bytes = serialize(&Body { extent: DEFAULT_EXTENT, layers: vec![boundaries], names: Vec::new(), ids: Vec::new(), turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() })
         .expect("serialize");
     let body = Body::parse(&bytes).expect("parse");
     let feature = &body.layer(dict::LAYER_BOUNDARIES).expect("boundaries").features[0];
@@ -284,7 +284,7 @@ fn an_empty_body_is_valid_and_is_what_an_ocean_tile_costs() {
 
 #[test]
 fn a_layer_with_no_features_still_round_trips() {
-    let body = Body { extent: DEFAULT_EXTENT, layers: vec![Layer::new(dict::LAYER_LANDTYPE)], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None};
+    let body = Body { extent: DEFAULT_EXTENT, layers: vec![Layer::new(dict::LAYER_LANDTYPE)], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() };
     let parsed = Body::parse(&serialize(&body).expect("serialize")).expect("parse");
     assert_eq!(parsed, body);
 }
@@ -298,7 +298,7 @@ fn a_body_carrying_two_layers_with_one_id_is_refused() {
         ids: Vec::new(),
         turn_lanes: Vec::new(),
         buildings: Vec::new(),
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     assert!(serialize(&body).is_err());
 }
@@ -364,7 +364,7 @@ fn an_unknown_geometry_type_is_refused_but_points_round_trip() {
     poi.parts.push(Part { coord_start: 0, point_count: 1, winding: WINDING_OUTER });
     poi.coords = vec![(100, 200)];
     let body =
-        Body { extent: DEFAULT_EXTENT, layers: vec![poi], names: vec!["Cafe".to_string()], ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None};
+        Body { extent: DEFAULT_EXTENT, layers: vec![poi], names: vec!["Cafe".to_string()], ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() };
     let parsed = Body::parse(&serialize(&body).expect("serialize")).expect("parse");
     assert_eq!(parsed, body);
     let feature = &parsed.layer(dict::LAYER_POI).expect("poi").features[0];
@@ -419,7 +419,7 @@ fn the_id_table_round_trips_beside_the_name_table() {
         ids: vec![(dict::LAYER_POI, vec![12_345_678_901, ID_NONE])],
         turn_lanes: Vec::new(),
         buildings: Vec::new(),
-        heightmap: None, carriageways: Vec::new(), convention: None,
+        heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new(),
     };
     let bytes = serialize(&body).expect("serialize");
     let parsed = Body::parse(&bytes).expect("parse");

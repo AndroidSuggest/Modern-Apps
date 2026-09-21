@@ -44,7 +44,7 @@ fn body_for(seed: i16) -> Body {
     });
     roads.parts.push(Part { coord_start: 0, point_count: 2, winding: WINDING_OUTER });
     roads.coords = vec![(0, 0), (seed, seed)];
-    Body { extent: DEFAULT_EXTENT, layers: vec![roads], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None }
+    Body { extent: DEFAULT_EXTENT, layers: vec![roads], names: Vec::new(), ids: Vec::new() , turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() }
 }
 
 /// An archive of `(z, x, y, seed)` tiles, fed in ascending id order as the writer requires.
@@ -275,7 +275,7 @@ fn a_leaf_whose_data_span_would_exceed_u32_max_is_split_and_common_case_stays_by
         l.parts.push(crate::mamaps::body::Part{coord_start:0,point_count:2,winding:0});
         l.coords = vec![(0,0),(seed,seed)];
         vec![l]
-    }, names: Vec::new(), ids: Vec::new(), turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None }).expect("append"); }
+    }, names: Vec::new(), ids: Vec::new(), turn_lanes: Vec::new(), buildings: Vec::new(), heightmap: None, carriageways: Vec::new(), convention: None, region_links: Vec::new() }).expect("append"); }
     let bytes = w.finish().expect("finish");
     let hdr = crate::mamaps::Header::parse(&bytes).expect("hdr");
     assert_eq!(hdr.leaf_count as usize, (5000+4096-1)/4096);
