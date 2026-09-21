@@ -8,7 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpRect
-import androidx.compose.ui.unit.DpSize
+import com.vayunmathur.maps.ui.theme.MapChromeMetrics
 import com.vayunmathur.library.map.CameraState
 import com.vayunmathur.library.map.GeoPoint
 import com.vayunmathur.library.map.LayerOptions
@@ -299,9 +299,14 @@ fun MapSurface(
                 // when nothing is, it falls through to reverse-geocode exactly like a
                 // blank tap.
                 // to reverse-geocode exactly like a blank tap.
+                // A slop box, not the bare point: a place label is a thin line of text, and a
+                // zero-size query only hit when the finger landed exactly on a glyph — so a tap
+                // "on" a city almost always fell through to reverse-geocode. The same
+                // [MapChromeMetrics.hitSlop] the pin picker uses makes tapping the name select it.
+                val slop = MapChromeMetrics.hitSlop
                 val label = viewModel.resolveAdminLabel(
                     projection.queryRenderedLabels(
-                        DpRect(offset, DpSize.Zero),
+                        DpRect(offset.x - slop, offset.y - slop, offset.x + slop, offset.y + slop),
                         NATIVE_LABEL_LAYER_IDS,
                     ).mapNotNull { it.toFeature1() }
                 )
