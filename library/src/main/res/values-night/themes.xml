@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Night twin of Theme.General: same style, dark Material parent, so the pre-first-frame
+         window is dark in dark mode instead of flashing white. -->
+    <style name="Theme.General" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowSoftInputMode">stateUnchanged</item>
+    </style>
+</resources>

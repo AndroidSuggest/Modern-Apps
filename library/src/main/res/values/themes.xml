@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Pre-first-frame window. The parent was hardcoded Light, so every cold start flashed
-         white in dark mode. The background matches the system night state instead: black
-         while dark, white while light, before DynamicTheme paints the first frame. -->
     <style name="Theme.General" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowSoftInputMode">stateUnchanged</item>
-        <item name="android:windowBackground">@color/launch_window_background</item>
     </style>
 </resources>

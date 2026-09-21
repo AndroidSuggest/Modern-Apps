@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Pre-first-frame window background, dark side of the Theme.General fix: pitch black,
-         matching DynamicTheme's dark surface, so cold starts no longer flash white. -->
-    <color name="launch_window_background">#000000</color>
-</resources>
