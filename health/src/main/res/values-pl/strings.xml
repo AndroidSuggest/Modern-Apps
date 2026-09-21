@@ -315,4 +315,11 @@
     <string name="transport_no">Nie</string>
     <string name="decline_to_answer">Wolę nie odpowiadać</string>
     <string name="last_taken">Ostatnio przyjęto: %1$s</string>
+    <string name="nav_medical">Medyczne</string>
+    <string name="past_medications">Historia leków</string>
+    <string name="medications">Leki</string>
+    <string name="dose_reminder_exact_alarm_settings">Otwórz ustawienia</string>
+    <string name="medical_empty">Brak</string>
+    <string name="about_you_pregnancy_question">Czy jesteś w ciąży?</string>
+    <string name="about_you_smoking_question">Czy palisz?</string>
 </resources>
