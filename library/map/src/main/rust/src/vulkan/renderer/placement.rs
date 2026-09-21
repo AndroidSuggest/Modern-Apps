@@ -46,15 +46,15 @@ impl Renderer {
     /// A city and the county it is coterminous with have near-identical areas, and leaving that
     /// to a hash map's ordering makes the same tap pick differently from one frame to the next.
     ///
-    /// Falls back to any level when the band matches nothing, because "no mask at all" reads as
-    /// the feature being broken. A city mapped at a level this vocabulary calls a county is
-    /// still better answered with its own shape than with nothing.
+    /// **Only the label's own band is consulted.** There is deliberately no any-level fallback: a
+    /// city label maps to the city band, and if no boundary in that band contains the point (the
+    /// city's relation is off-screen, or its anchor sits just outside its own outline) the honest
+    /// answer is no mask — masking whatever county or state happens to contain the point instead
+    /// outlines a region the label never named, which is the whole complaint this guards against.
     ///
-    /// `None` when no resident tile covers the point, which is the honest answer — the mask would
-    /// otherwise punch out whichever larger region happened to be loaded.
+    /// `None` when no region in the band covers the point.
     pub fn region_at(&self, lon: f64, lat: f64, levels: RangeInclusive<u16>) -> Option<u64> {
         self.smallest_containing(lon, lat, &levels)
-            .or_else(|| self.smallest_containing(lon, lat, &(0..=u16::MAX)))
     }
 
     fn smallest_containing(&self, lon: f64, lat: f64, levels: &RangeInclusive<u16>) -> Option<u64> {
