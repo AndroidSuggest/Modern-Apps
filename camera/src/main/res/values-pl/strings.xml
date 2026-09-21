@@ -48,4 +48,9 @@
     <string name="lens_mono">Mono</string>
     <string name="lens_front">Przód</string>
     <string name="lens_picker_description">Obiektyw</string>
+    <string name="settings_save_location">Miejsce zapisu</string>
+    <string name="settings_save_location_default">DCIM/Camera</string>
+    <string name="settings_save_location_choose">Wybierz folder</string>
+    <string name="settings_save_location_reset">Przywróć domyślne</string>
+    <string name="settings_save_location_error">Nie udało się użyć tego folderu</string>
 </resources>
