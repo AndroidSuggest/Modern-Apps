@@ -1,3 +1,146 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Sănătate</string>
+    <string name="grant_permissions">Acordă permisiunile</string>
+    <string name="grant_permissions_rationale">Această aplicație citește și scrie datele medicale prin Health Connect. Nimic nu părăsește acest dispozitiv.</string>
+    <string name="tab_day">Zi</string>
+    <string name="tab_week">Săptămână</string>
+    <string name="tab_month">Lună</string>
+    <string name="tab_year">An</string>
+    <string name="week_range"><xliff:g id="start_date" example="May 12">%1$s</xliff:g> – <xliff:g id="end_date" example="May 18">%2$s</xliff:g></string>
+    <string name="no_data_available">Nu sunt disponibile date pentru această perioadă</string>
+    <string name="unit_per_day_avg_format"><xliff:g id="unit" example="steps">%1$s</xliff:g> pe zi (mediu)</string>
+    <string name="unit_only_format"> <xliff:g id="unit" example="steps">%1$s</xliff:g></string>
+    <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2026">%2$d</xliff:g></string>
+    <string name="value_unit_space_format"><xliff:g id="value" example="12,345">%1$s</xliff:g> <xliff:g id="unit" example="steps">%2$s</xliff:g></string>
+    <string name="k_format"><xliff:g id="thousands" example="12">%1$s</xliff:g>k</string>
+    <string name="metric_energy_burned">Calorii arse</string>
+    <string name="metric_active_calories">Calorii în mișcare</string>
+    <string name="metric_basal_metabolic_rate">Metabolismul bazal</string>
+    <string name="metric_steps">Pași</string>
+    <string name="metric_wheelchair_pushes">Împingeri scaune cu rotile</string>
+    <string name="metric_distance">Distanță</string>
+    <string name="metric_elevation_gained">Urcare</string>
+    <string name="metric_floors_climbed">Etaje urcate</string>
+    <string name="metric_hydration">Hidratare</string>
+    <string name="metric_blood_pressure">Tensiunea arterială</string>
+    <string name="metric_blood_glucose">Nivelul glucozei</string>
+    <string name="metric_vo2_max">VO2 Max</string>
+    <string name="metric_skin_temp_variation">Variația temperaturii pielii</string>
+    <string name="metric_breathing_rate">Frecvența respiratorie</string>
+    <string name="metric_resting_heart_rate">Ritm cardiac în repaus</string>
+    <string name="metric_oxygen_saturation">Oxigen în sânge</string>
+    <string name="metric_heart_rate_variability">Variabilitatea ritmului cardiac</string>
+    <string name="metric_heart_rate">Puls</string>
+    <string name="metric_height">Înălțime</string>
+    <string name="metric_weight">Greutate</string>
+    <string name="metric_body_fat">Grăsime corporală</string>
+    <string name="metric_lean_body_mass">Masa corporală slabă</string>
+    <string name="metric_bone_mass">Masa osoasă</string>
+    <string name="metric_body_water_mass">Masa apei corporale</string>
+    <string name="metric_sleep">Somn</string>
+    <string name="metric_exercise_duration">Antrenament</string>
+    <string name="label_awake">Treaz</string>
+    <string name="label_rem">REM</string>
+    <string name="label_core">De bază</string>
+    <string name="label_deep">Adânc</string>
+    <string name="section_body_composition">Compoziția corporală</string>
+    <string name="label_active">Activitate</string>
+    <string name="label_today">Astăzi</string>
+    <string name="slash_value_format"><xliff:g id="first" example="120">%1$s</xliff:g>/<xliff:g id="second" example="80">%2$s</xliff:g></string>
+    <string name="dash_value_format"><xliff:g id="min" example="60">%1$s</xliff:g> - <xliff:g id="max" example="140">%2$s</xliff:g></string>
+    <string name="hours_minutes_format"><xliff:g id="hours" example="7">%1$d</xliff:g>h <xliff:g id="minutes" example="30">%2$d</xliff:g>m</string>
+    <string name="minutes_format"><xliff:g id="minutes" example="25">%1$d</xliff:g>m</string>
+    <string name="label_steps">Pași</string>
+    <string name="label_wheelchair_pushes">Împingeri cărucior</string>
+    <string name="label_mindfulness">Meditaţie</string>
+    <string name="label_elevation">Altitudine</string>
+    <string name="label_floors">Etaje</string>
+    <string name="label_distance">Distanță</string>
+    <string name="label_heart_rate">Ritmul cardiac</string>
+    <string name="label_sleep">Somn</string>
+    <string name="label_hydration">Hidratare</string>
+    <string name="label_blood_pressure">Tensiunea arterială</string>
+    <string name="label_oxygen_saturation">Saturația oxigenului</string>
+    <string name="label_resting_heart_rate">Ritm cardiac în repaus</string>
+    <string name="label_height">Înălțime</string>
+    <string name="label_weight">Greutate</string>
+    <string name="label_body_fat">Grăsime corporală</string>
+    <string name="label_lean_body_mass">Masa corporală slabă</string>
+    <string name="label_bone_mass">Masa osoasă</string>
+    <string name="label_body_water_mass">Masa apei corporale</string>
+    <string name="unit_bpm">bpm</string>
+    <string name="unit_percent">%</string>
+    <string name="unit_cm">cm</string>
+    <string name="unit_kg">kg</string>
+    <string name="unit_ml">ml</string>
+    <string name="unit_fl">fl</string>
+    <string name="unit_m">m</string>
+    <string name="unit_km">km</string>
+    <string name="unit_steps">pași</string>
+    <string name="unit_pushes">împingeri</string>
+    <string name="unit_min">min</string>
+    <string name="unit_cal">cal</string>
+    <string name="label_blood_pressure_unit">mmHg</string>
+    <string name="nutrition_breakdown">Valoare nutritivă</string>
+    <string name="recipes">Rețete</string>
+    <string name="ingredients">Ingrediente</string>
+    <string name="rename_ingredient">Redenumește ingredientul</string>
+    <string name="custom_name">Nume personalizat</string>
+    <string name="recipe_name">Numele rețetei</string>
+    <string name="save_recipe">Salvează rețeta</string>
+    <string name="set_quantity_for_format">Setează cantitatea pentru <xliff:g id="ingredient" example="Tomato">%1$s</xliff:g></string>
+    <string name="quantity">Cantitate</string>
+    <string name="unit">Unități</string>
+    <string name="confirm">Confirmare</string>
+    <string name="search_ingredient">Căutare ingredient</string>
+    <string name="search">Căutare</string>
+    <string name="log_hydration">Adăugare hidratare</string>
+    <string name="log_meal">Adăugare mâncare</string>
+    <string name="log_body_metric">Adăugare <xliff:g id="metric" example="Weight">%1$s</xliff:g></string>
+    <string name="nav_today">Astăzi</string>
+    <string name="nav_nutrition">Nutriţie</string>
+    <string name="nav_body">Corp</string>
+    <string name="section_latest_vitals">Ultimele măsurători</string>
+    <string name="section_last_night">Aseară</string>
+    <string name="section_quick_stats">Rezumat</string>
+    <string name="label_exercise">Antrenament</string>
+    <string name="no_workouts">Niciun antrenament înregistrat</string>
+    <string name="view_full_breakdown">Vezi detalierea completă</string>
+    <string name="no_results_found">Nu s-au găsit rezultate</string>
+    <string name="original_1">Original: <xliff:g id="original_name" example="Tomato">%1$s</xliff:g></string>
+    <string name="saved_locally">Salvat local</string>
+    <string name="food_database">Baza de date cu alimente</string>
+    <string name="food_database_absent">Se pregătește baza de date cu alimente. Până atunci, pot fi găsite doar ingredientele pe care le-ai salvat deja.</string>
+    <string name="food_database_preparing">Se pregătesc <xliff:g id="products_done" example="120,000">%1$s</xliff:g> din <xliff:g id="products_total" example="465,000">%2$s</xliff:g> produse</string>
+    <string name="food_database_retry">Reîncearcă</string>
+    <string name="food_database_attribution">Date nutriționale din Open Food Facts, ODbL v1.0</string>
+    <string name="segments">Segmente</string>
+    <string name="laps">Etape</string>
+    <string name="lap">Etapa <xliff:g id="lap_index" example="1">%1$s</xliff:g></string>
+    <string name="reps"><xliff:g id="reps_count" example="12">%1$s</xliff:g> repetări</string>
+    <string name="route_recorded">Traseu înregistrat</string>
+    <string name="ingredient">(Ingredient)</string>
+    <string name="calories">Calorii</string>
+    <string name="kcal"><xliff:g id="current_cal" example="1200">%1$s</xliff:g> / <xliff:g id="goal_cal" example="2000">%2$s</xliff:g> kcal</string>
+    <string name="create_recipe">Creează o rețetă</string>
+    <string name="add_your_first_ingredient">Adaugă primul ingredient</string>
+    <string name="create_your_first_recipe">Creează-ți prima rețetă</string>
+    <string name="edit_recipe">Editează rețeta</string>
+    <string name="no_meals_logged_today">Nicio masă înregistrată astăzi</string>
+    <string name="meals_cal"><xliff:g id="meal_count" example="3">%1$s</xliff:g> mese · <xliff:g id="total_cal" example="850">%2$s</xliff:g> cal</string>
+    <string name="hydration_liters">Litri</string>
+    <string name="hydration_milliliters">Mililitri</string>
+    <string name="hydration_ounces">Uncii</string>
+    <string name="hydration_cups">Pahare</string>
+    <string name="select_recipe">Selectează rețeta</string>
+    <string name="quantity_x_100g">Cantitate (x 100g)</string>
+    <string name="servings">Porții</string>
+    <string name="kcal_2">kcal</string>
+    <string name="nav_medical">Medical</string>
+    <string name="past_medications">Medicamentele anterioare</string>
+    <string name="vaccinations">Vaccinări</string>
+    <string name="allergies">Alergii</string>
+    <string name="conditions">Condiții</string>
+    <string name="phr_unavailable">Health Connect de pe acest dispozitiv nu poate stoca dosare medicale, așa că acestea sunt păstrate doar în aplicație.</string>
 </resources>
