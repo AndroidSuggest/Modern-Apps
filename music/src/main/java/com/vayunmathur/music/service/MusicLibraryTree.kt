@@ -2,9 +2,11 @@ package com.vayunmathur.music.service
 
 import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.session.MediaConstants
 import com.vayunmathur.library.util.ManyManyMatching
 import com.vayunmathur.music.data.Album
 import com.vayunmathur.music.data.Artist
@@ -103,11 +105,11 @@ class MusicLibraryTree(context: Context) {
 
     fun children(parentId: String): List<MediaItem> = when (parentId) {
         ROOT -> listOf(
-            browsable(TAB_PLAYLISTS, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
-            browsable(TAB_ALBUMS, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
-            browsable(TAB_ARTISTS, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS),
-            browsable(TAB_SONGS, "Songs", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
-            browsable(TAB_RECENT, "Recently played", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
+            tabNode(TAB_PLAYLISTS, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
+            tabNode(TAB_ALBUMS, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
+            tabNode(TAB_ARTISTS, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS),
+            tabNode(TAB_SONGS, "Songs", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
+            tabNode(TAB_RECENT, "Recently played", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED),
         )
 
         TAB_PLAYLISTS -> playlists.sortedBy { it.name.lowercase() }.map { playlistNode(it) }
@@ -138,11 +140,11 @@ class MusicLibraryTree(context: Context) {
     /** Resolve any browse mediaId (tab, node, or song) to a display [MediaItem]. */
     fun item(mediaId: String): MediaItem? = when (mediaId) {
         ROOT -> rootItem()
-        TAB_PLAYLISTS -> browsable(TAB_PLAYLISTS, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS)
-        TAB_ALBUMS -> browsable(TAB_ALBUMS, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS)
-        TAB_ARTISTS -> browsable(TAB_ARTISTS, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS)
-        TAB_SONGS -> browsable(TAB_SONGS, "Songs", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
-        TAB_RECENT -> browsable(TAB_RECENT, "Recently played", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+        TAB_PLAYLISTS -> tabNode(TAB_PLAYLISTS, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS)
+        TAB_ALBUMS -> tabNode(TAB_ALBUMS, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS)
+        TAB_ARTISTS -> tabNode(TAB_ARTISTS, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS)
+        TAB_SONGS -> tabNode(TAB_SONGS, "Songs", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+        TAB_RECENT -> tabNode(TAB_RECENT, "Recently played", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
         else -> when {
             mediaId.startsWith(PREFIX_PLAYLIST) ->
                 mediaId.removePrefix(PREFIX_PLAYLIST).toLongOrNull()
@@ -196,10 +198,10 @@ class MusicLibraryTree(context: Context) {
         if (q.isBlank()) return emptyList()
         val songHits = songs.filter {
             it.title.contains(q, true) || it.artist.contains(q, true) || it.album.contains(q, true)
-        }.sortedBy { it.title.lowercase() }.map { songItem(it) }
-        val albumHits = albums.filter { it.name.contains(q, true) }.map { albumNode(it) }
-        val artistHits = artists.filter { it.name.contains(q, true) }.map { artistNode(it) }
-        val playlistHits = playlists.filter { it.name.contains(q, true) }.map { playlistNode(it) }
+        }.sortedBy { it.title.lowercase() }.map { songItem(it).withGroupTitle("Songs") }
+        val albumHits = albums.filter { it.name.contains(q, true) }.map { albumNode(it).withGroupTitle("Albums") }
+        val artistHits = artists.filter { it.name.contains(q, true) }.map { artistNode(it).withGroupTitle("Artists") }
+        val playlistHits = playlists.filter { it.name.contains(q, true) }.map { playlistNode(it).withGroupTitle("Playlists") }
         return songHits + albumHits + artistHits + playlistHits
     }
 
@@ -242,6 +244,8 @@ class MusicLibraryTree(context: Context) {
         browsable(
             "$PREFIX_ALBUM${a.id}", a.name, MediaMetadata.MEDIA_TYPE_ALBUM,
             artwork = a.uri.takeIf { it.isNotBlank() }?.toUri(),
+            // Albums carry cover art, so present them as grid tiles (Auxio parity).
+            browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
         )
 
     private fun artistNode(a: Artist): MediaItem =
@@ -252,11 +256,20 @@ class MusicLibraryTree(context: Context) {
         return (art ?: song.uri).toUri()
     }
 
+    /** A top-level tab node, styled as a category so AA renders the browse chrome. */
+    private fun tabNode(mediaId: String, title: String, mediaType: Int): MediaItem =
+        browsable(
+            mediaId, title, mediaType,
+            singleStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
+        )
+
     private fun browsable(
         mediaId: String,
         title: String,
         mediaType: Int,
         artwork: Uri? = null,
+        browsableStyle: Int? = null,
+        singleStyle: Int? = null,
     ): MediaItem {
         val meta = MediaMetadata.Builder()
             .setTitle(title)
@@ -264,8 +277,33 @@ class MusicLibraryTree(context: Context) {
             .setIsPlayable(false)
             .setMediaType(mediaType)
             .apply { artwork?.let { setArtworkUri(it) } }
+            .setExtras(contentStyleExtras(browsable = browsableStyle, single = singleStyle))
             .build()
         return MediaItem.Builder().setMediaId(mediaId).setMediaMetadata(meta).build()
+    }
+
+    /**
+     * Content-style hints that tell the Android Auto media browser how to lay an
+     * item out: grid vs list tiles, category chrome, and section group titles.
+     * Mirrors Auxio's MediaItemTranslation. Empty bundle = host default.
+     */
+    private fun contentStyleExtras(
+        browsable: Int? = null,
+        playable: Int? = null,
+        single: Int? = null,
+    ): Bundle = Bundle().apply {
+        browsable?.let { putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, it) }
+        playable?.let { putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, it) }
+        single?.let { putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_SINGLE_ITEM, it) }
+    }
+
+    /** Returns a copy of this browse item tagged with a section group title. */
+    private fun MediaItem.withGroupTitle(title: String): MediaItem {
+        val extras = Bundle(mediaMetadata.extras ?: Bundle())
+        extras.putString(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_GROUP_TITLE, title)
+        return buildUpon()
+            .setMediaMetadata(mediaMetadata.buildUpon().setExtras(extras).build())
+            .build()
     }
 
     /** Browse leaf for a song: playable flag set, uri intentionally omitted (added on playback). */
@@ -278,6 +316,7 @@ class MusicLibraryTree(context: Context) {
             .setIsPlayable(true)
             .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
             .setArtworkUri(artworkFor(song))
+            .setExtras(contentStyleExtras(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM))
             .build()
         return MediaItem.Builder().setMediaId(song.id.toString()).setMediaMetadata(meta).build()
     }
