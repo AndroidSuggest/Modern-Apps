@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- API 33+ twin of Theme.General: the base values/themes.xml plus icon_preferred, so the
+         system always draws the launcher glyph instead of following the OEM's default (which
+         on some devices is an empty splash). Background and icon disc mirror the base file. -->
     <style name="Theme.General" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowSoftInputMode">stateUnchanged</item>
-        <!-- System splash (API 31+): explicit single-color background per mode, white disc
-             behind the black launcher glyph, and icon forced on API 33+ where the default
-             behavior can otherwise show an empty splash. -->
         <item name="android:windowSplashScreenBackground">?android:attr/colorBackground</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@color/ic_launcher_background</item>
-        <!-- windowSplashScreenBehavior is API 33+; it lives in values-v33/themes.xml. -->
+        <item name="android:windowSplashScreenBehavior">icon_preferred</item>
     </style>
 </resources>

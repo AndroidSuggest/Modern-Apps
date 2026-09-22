@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Night twin of Theme.General: same style, dark Material parent, so the pre-first-frame
-         window is dark in dark mode instead of flashing white. Splash attrs mirror day so the
-         icon is forced on with a dark background and the white launcher disc behind it. -->
+    <!-- API 33+ night twin of Theme.General: dark parent plus icon_preferred, mirroring
+         values-night/themes.xml with the icon forced on. -->
     <style name="Theme.General" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowSoftInputMode">stateUnchanged</item>
         <item name="android:windowSplashScreenBackground">?android:attr/colorBackground</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@color/ic_launcher_background</item>
-        <!-- windowSplashScreenBehavior is API 33+; it lives in values-night-v33/themes.xml. -->
+        <item name="android:windowSplashScreenBehavior">icon_preferred</item>
     </style>
 </resources>
