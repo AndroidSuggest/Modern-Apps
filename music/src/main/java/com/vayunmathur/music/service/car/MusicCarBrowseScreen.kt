@@ -3,7 +3,10 @@ package com.vayunmathur.music.service.car
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
+import androidx.car.app.model.CarIcon
 import androidx.car.app.model.CarText
+import androidx.car.app.model.GridItem
+import androidx.car.app.model.GridSection
 import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
@@ -14,7 +17,9 @@ import androidx.car.app.model.Tab
 import androidx.car.app.model.TabContents
 import androidx.car.app.model.TabTemplate
 import androidx.car.app.model.Template
+import androidx.core.graphics.drawable.IconCompat
 import androidx.media3.common.MediaItem
+import com.vayunmathur.music.R
 import com.vayunmathur.music.service.MusicLibraryTree
 
 /**
@@ -126,12 +131,7 @@ class MusicCarBrowseScreen(
             runCatching { builder.addSection(quickActionChips()) }
         }
         return builder
-            .addSection(
-                RowSection.Builder()
-                    .setTitle(title)
-                    .setItems(songRows(tree.children(nodeId)))
-                    .build(),
-            )
+            .addSection(contentSection(nodeId, title, tree.children(nodeId)))
             .setHeader(
                 Header.Builder()
                     .setStartHeaderAction(Action.BACK)
@@ -178,13 +178,53 @@ class MusicCarBrowseScreen(
     private fun sectionedContent(tabId: String, label: String): Template {
         val tree = state.tree
         return SectionedItemTemplate.Builder()
-            .addSection(
-                RowSection.Builder()
-                    .setTitle(label)
-                    .setItems(songRows(tree.children(tabId)))
-                    .build(),
-            )
+            .addSection(contentSection(tabId, label, tree.children(tabId)))
             .build()
+    }
+
+    /**
+     * A grouping's section: albums render as an artwork [GridSection] (the AA
+     * album-grid look); everything else stays a condensed [RowSection] list.
+     */
+    @OptIn(androidx.car.app.annotations.ExperimentalCarApi::class)
+    private fun contentSection(
+        id: String,
+        title: String,
+        items: List<MediaItem>,
+    ): androidx.car.app.model.Section<*> =
+        if (id == MusicLibraryTree.TAB_ALBUMS && items.any { it.mediaMetadata.isBrowsable == true }) {
+            GridSection.Builder()
+                .setTitle(title)
+                .setItems(albumTiles(items))
+                .build()
+        } else {
+            RowSection.Builder()
+                .setTitle(title)
+                .setItems(songRows(items))
+                .build()
+        }
+
+    /** Album grid tiles: cover art (host-resolved from the content URI) + name. */
+    private fun albumTiles(items: List<MediaItem>): List<GridItem> =
+        items.mapNotNull { item ->
+            if (item.mediaMetadata.isBrowsable != true) return@mapNotNull null
+            GridItem.Builder()
+                .setTitle(item.mediaMetadata.title?.toString() ?: "Unknown")
+                .setImage(artIcon(item), GridItem.IMAGE_TYPE_LARGE)
+                .setOnClickListener {
+                    screenManager.push(MusicCarBrowseScreen(carContext, item.mediaId, state))
+                }
+                .build()
+        }
+
+    /** A [CarIcon] for the item's cover art, falling back to the app icon. */
+    private fun artIcon(item: MediaItem): CarIcon {
+        val fromArt = item.mediaMetadata.artworkUri?.let { uri ->
+            runCatching { IconCompat.createWithContentUri(uri) }.getOrNull()
+        }
+        return CarIcon.Builder(
+            fromArt ?: IconCompat.createWithResource(carContext, R.mipmap.ic_launcher),
+        ).build()
     }
 
     /** Condensed song rows: one line each so more fits on screen. */
