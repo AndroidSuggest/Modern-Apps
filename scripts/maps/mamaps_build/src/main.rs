@@ -43,6 +43,7 @@ mod coalesce_extra;
 mod corridor;
 mod dem;
 mod extract;
+mod extract_fallback;
 mod lanefill;
 mod rings;
 mod shapefile;

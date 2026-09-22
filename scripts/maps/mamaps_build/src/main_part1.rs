@@ -55,7 +55,7 @@ fn run(
     // an empty graph dir with no `metadata.bin`, paid for in full.
     check_graph_dir(&graph_dir, run.region)?;
 
-    let (store, stats, region_links) = extract::extract(
+    let (store, stats, mut region_links) = extract::extract(
         input,
         layers,
         &run.coastline,
@@ -65,6 +65,27 @@ fn run(
         run.region.bbox(),
     )
     .map_err(|e| format!("{}: {e}", input.display()))?;
+    // The containment fallback: member-less place labels gain links from the whole-polygon
+    // shapes above, never overwriting a member link. Runs here — after the store is sealed
+    // and before the tiler reads the map — because only whole rings answer containment.
+    match crate::extract_fallback::extend_region_links(&store, &mut region_links) {
+        Ok(fallback) => {
+            if fallback.places_total > 0 {
+                println!(
+                    "  place-label -> boundary links: {} place(s), {} member-linked, {} fallback-linked, {} missed",
+                    fallback.places_total,
+                    fallback.member_linked,
+                    fallback.fallback_linked,
+                    fallback.fallback_missed,
+                );
+                for (kind, total, linked) in &fallback.per_kind {
+                    let rate = *linked as f64 / (*total).max(1) as f64 * 100.0;
+                    println!("    {kind}: {linked}/{total} ({rate:.0}%)");
+                }
+            }
+        }
+        Err(e) => return Err(format!("region fallback: {e}")),
+    }
     println!(
         "classified {} way(s), {} relation(s) and {} node(s) -> {} feature(s), {} node(s) resolved",
         stats.ways_classified,
@@ -107,9 +128,6 @@ fn run(
             "  {} untagged road way(s) took a lane count from a neighbour",
             stats.lanes_inherited,
         );
-    }
-    if !region_links.is_empty() {
-        println!("  including {} place-label -> boundary link(s)", region_links.len());
     }
 
     // The build id identifies the *data*: change the input and every reader has to drop its
