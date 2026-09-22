@@ -10,33 +10,25 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import com.vayunmathur.library.ui.ConfirmDialog
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.AlertDialog
+import com.vayunmathur.library.ui.ConfirmDialog
 import com.vayunmathur.library.ui.MaterialTheme
-import com.vayunmathur.library.ui.Scaffold
-import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.vayunmathur.library.util.NavKey
 import com.vayunmathur.findfamily.data.FindFamilyRepository
 import com.vayunmathur.findfamily.ui.MainPage
@@ -45,9 +37,11 @@ import com.vayunmathur.findfamily.ui.dialogs.AddLinkDialog
 import com.vayunmathur.findfamily.ui.dialogs.AddPersonDialog
 import com.vayunmathur.findfamily.ui.dialogs.AddTrackerDialog
 import com.vayunmathur.findfamily.ui.dialogs.decodeBase26
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.rememberMultiplePermissionRequest
-import com.vayunmathur.library.ui.rememberPermissionRequest
+import com.vayunmathur.library.ui.IconBluetooth
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
 import com.vayunmathur.library.util.DialogPage
 import com.vayunmathur.library.util.MainNavigation
@@ -92,30 +86,40 @@ class MainActivity : ComponentActivity() {
             DynamicTheme {
                 val hasForeground by ffViewModel.hasForeground.collectAsState()
                 val hasCoarse by ffViewModel.hasCoarse.collectAsState()
-                val hasBackground by ffViewModel.hasBackground.collectAsState()
-                val hasBluetooth by ffViewModel.hasBluetooth.collectAsState()
-
-                // Automatically re-check when returning from System Settings
-                val lifecycleOwner = LocalLifecycleOwner.current
-                DisposableEffect(lifecycleOwner) {
-                    val observer = LifecycleEventObserver { _, event ->
-                        if (event == Lifecycle.Event.ON_RESUME) {
-                            ffViewModel.refreshPermissions()
-                        }
-                    }
-                    lifecycleOwner.lifecycle.addObserver(observer)
-                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                // Approximate-only needs the upgrade prompt even though the gate
+                // itself only blocks on the missing set.
+                val coarseOnly = hasCoarse && !hasForeground
+                var showUpgradeDialog by remember { mutableStateOf(false) }
+                LaunchedEffect(coarseOnly) {
+                    if (coarseOnly) showUpgradeDialog = true
                 }
 
-                if (!hasForeground || !hasBackground || !hasBluetooth) {
-                    NoPermissionsScreen(
-                        hasFine = hasForeground,
-                        hasCoarse = hasCoarse,
-                        hasBackground = hasBackground,
-                        hasBluetooth = hasBluetooth,
-                        onPermissionsChanged = { ffViewModel.refreshPermissions() }
+                AppPermissionsGate(
+                    spec = AppPermissionsSpec(
+                        title = stringResource(R.string.permission_grant_fine_location),
+                        icon = { IconBluetooth() },
+                        requirements = listOf(
+                            // Request fine AND coarse together: on Android 12+
+                            // this surfaces the Precise/Approximate choice;
+                            // requesting fine alone is ignored by the system.
+                            PermissionRequirement.Runtime(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                )
+                            ),
+                            PermissionRequirement.Runtime(
+                                arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                            ),
+                            // The finder half of powered-off finding is always
+                            // on, so the scanner needs BLUETOOTH_SCAN from the
+                            // start; without it it starts and immediately closes.
+                            PermissionRequirement.Runtime(
+                                arrayOf(Manifest.permission.BLUETOOTH_SCAN)
+                            ),
+                        )
                     )
-                } else {
+                ) {
                     val deepLinkPeerId = remember {
                         intent?.takeIf { it.hasExtra(EXTRA_UWB_PEER_ID) }
                             ?.getLongExtra(EXTRA_UWB_PEER_ID, -1L)
@@ -129,6 +133,19 @@ class MainActivity : ComponentActivity() {
                         deepLinkAddInvite.value,
                         onDeepLinkAddConsumed = { deepLinkAddInvite.value = null },
                     )
+
+                    // Approximate-only: explain and offer a reliable way to
+                    // re-open the upgrade prompt after it has been dismissed.
+                    if (coarseOnly && showUpgradeDialog) {
+                        ConfirmDialog(
+                            title = stringResource(R.string.permission_upgrade_dialog_title),
+                            message = stringResource(R.string.permission_upgrade_dialog_message),
+                            confirmLabel = stringResource(R.string.permission_upgrade_dialog_confirm),
+                            dismissLabel = stringResource(R.string.permission_upgrade_dialog_dismiss),
+                            onConfirm = { showUpgradeDialog = false },
+                            onDismiss = { showUpgradeDialog = false },
+                        )
+                    }
                 }
             }
         }
@@ -161,136 +178,6 @@ class MainActivity : ComponentActivity() {
 
 /** A tapped invite link: the sender's id, plus the bundle fingerprint it vouched for. */
 data class AddInvite(val id: Long, val fingerprint: String?)
-
-@Composable
-fun NoPermissionsScreen(
-    hasFine: Boolean,
-    hasCoarse: Boolean,
-    hasBackground: Boolean,
-    hasBluetooth: Boolean,
-    onPermissionsChanged: () -> Unit
-) {
-    // The user granted location but only at an approximate (coarse) level.
-    // FindFamily requires precise (fine) location.
-    val coarseOnly = hasCoarse && !hasFine
-
-    var showUpgradeDialog by remember { mutableStateOf(false) }
-
-    // Request fine AND coarse together. On Android 12+ this is what surfaces the
-    // Precise/Approximate choice; requesting fine alone is ignored by the system.
-    // Approximate-only handling stays in LaunchedEffect(coarseOnly) below; the shared
-    // helper opens app settings when fine+coarse are permanently denied.
-    val requestLocation = rememberMultiplePermissionRequest(
-        arrayOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-        )
-    ) { onPermissionsChanged() }
-
-    // Background location: the shared helper opens app settings on permanent denial.
-    val requestBackground = rememberPermissionRequest(
-        Manifest.permission.ACCESS_BACKGROUND_LOCATION
-    ) { onPermissionsChanged() }
-    // Bluetooth scanning, for the always-on finder half of powered-off finding.
-    val requestBluetooth = rememberPermissionRequest(
-        Manifest.permission.BLUETOOTH_SCAN
-    ) { onPermissionsChanged() }
-
-    // Auto-surface the upgrade prompt when we first detect approximate-only.
-    // It re-fires only when coarseOnly transitions to true, so dismissing it
-    // doesn't immediately reopen it — the explicit button below re-opens it.
-    LaunchedEffect(coarseOnly) {
-        if (coarseOnly) showUpgradeDialog = true
-    }
-
-    Scaffold { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // STEP 1: Precise (Fine) Location
-            Button(
-                onClick = { requestLocation() },
-                enabled = !hasFine
-            ) {
-                Text(if (hasFine) stringResource(R.string.permission_fine_location_granted) else stringResource(R.string.permission_grant_fine_location))
-            }
-
-            // Approximate-only: explain and offer a reliable way to re-open the
-            // upgrade prompt after it has been dismissed.
-            if (coarseOnly) {
-                Text(
-                    text = stringResource(R.string.permission_approximate_only_explanation),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp)
-                )
-                Button(onClick = { showUpgradeDialog = true }) {
-                    Text(stringResource(R.string.permission_reopen_upgrade_prompt))
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // STEP 2: Background Location
-            Button(
-                onClick = { requestBackground() },
-                enabled = hasFine && !hasBackground
-            ) {
-                val label = if (hasBackground) stringResource(R.string.permission_background_granted) else stringResource(R.string.permission_enable_all_the_time)
-                Text(label)
-            }
-
-            if (hasFine && !hasBackground) {
-                Text(
-                    text = stringResource(R.string.permission_background_explanation),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp)
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            // STEP 3: Bluetooth scanning.
-            //
-            // Required, not optional. The finder half of powered-off finding is always on, so the
-            // scanner needs BLUETOOTH_SCAN from the start; without it it starts and immediately
-            // closes, silently. Asked here with the other two rather than at a toggle, because
-            // there is no longer a toggle to ask at.
-            Button(
-                onClick = { requestBluetooth() },
-                enabled = !hasBluetooth
-            ) {
-                Text(
-                    if (hasBluetooth) {
-                        stringResource(R.string.permission_bluetooth_granted)
-                    } else {
-                        stringResource(R.string.permission_grant_bluetooth)
-                    }
-                )
-            }
-            if (!hasBluetooth) {
-                Text(
-                    text = stringResource(R.string.permission_bluetooth_explanation),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp)
-                )
-            }
-        }
-    }
-
-    if (showUpgradeDialog) {
-        ConfirmDialog(
-            title = stringResource(R.string.permission_upgrade_dialog_title),
-            message = stringResource(R.string.permission_upgrade_dialog_message),
-            confirmLabel = stringResource(R.string.permission_upgrade_dialog_confirm),
-            dismissLabel = stringResource(R.string.permission_upgrade_dialog_dismiss),
-            onConfirm = { requestLocation() },
-            onDismiss = { showUpgradeDialog = false },
-        )
-    }
-}
 
 @Composable
 fun MissingFeaturesDialog(backStack: NavBackStack<Route>) {

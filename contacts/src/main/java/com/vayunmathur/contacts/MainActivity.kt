@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Intent
 import android.content.ClipData
-import android.content.pm.PackageManager
 import android.content.ContentUris
 import android.net.Uri
 import android.os.Bundle
@@ -24,7 +23,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.vayunmathur.contacts.data.CDKEmail
@@ -40,11 +38,13 @@ import com.vayunmathur.contacts.ui.*
 import com.vayunmathur.contacts.ui.dialogs.*
 import com.vayunmathur.contacts.util.ContactViewModel
 import com.vayunmathur.contacts.util.setEditDraftPhotoFromBitmap
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.util.*
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
-import androidx.compose.ui.res.painterResource
 
 class MainActivity : ComponentActivity() {
     private val importUris = mutableStateOf<List<String>>(emptyList())
@@ -55,12 +55,22 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handleIntent(intent)
         setContent {
-            val permissions = arrayOf(Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS, Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)
-            var hasPermissions by remember { mutableStateOf(permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) }
             DynamicTheme {
-                if (!hasPermissions) {
-                    NoPermissionsScreen(permissions, stringResource(R.string.grant_contacts_permission)) { hasPermissions = it }
-                } else {
+                AppPermissionsGate(
+                    spec = AppPermissionsSpec(
+                        title = stringResource(R.string.grant_contacts_permission),
+                        requirements = listOf(
+                            PermissionRequirement.Runtime(
+                                arrayOf(
+                                    Manifest.permission.READ_CONTACTS,
+                                    Manifest.permission.WRITE_CONTACTS,
+                                    Manifest.permission.CALL_PHONE,
+                                    Manifest.permission.READ_PHONE_STATE
+                                )
+                            )
+                        )
+                    )
+                ) {
                     val viewModel: ContactViewModel = viewModel()
                     
                     val uris by importUris

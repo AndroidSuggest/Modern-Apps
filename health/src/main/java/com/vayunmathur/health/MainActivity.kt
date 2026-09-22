@@ -10,14 +10,8 @@ import androidx.lifecycle.lifecycleScope
 import com.vayunmathur.library.ui.IconBodySystem
 import com.vayunmathur.library.ui.IconFavorite
 import com.vayunmathur.library.ui.IconFire
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
@@ -79,10 +73,12 @@ import com.vayunmathur.health.util.HealthAPI
 import com.vayunmathur.health.util.HealthSyncWorker
 import com.vayunmathur.health.util.HealthViewModel
 import com.vayunmathur.health.util.HealthViewModelFactory
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.IconFavorite
 import com.vayunmathur.library.ui.IconMedicalServices
-import com.vayunmathur.library.ui.PermissionWall
-import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
 import com.vayunmathur.library.ui.dialog.TimePickerDialogContent
 import com.vayunmathur.library.util.DialogPage
@@ -150,25 +146,19 @@ class MainActivity : ComponentActivity() {
         PersonalHealthRecords.init(this, healthConnectClient)
         setContent {
             DynamicTheme {
-                var hasPermissions by remember { mutableStateOf(false) }
-
-                val requestPermissions = rememberLauncherForActivityResult(
-                    contract = PermissionController.createRequestPermissionResultContract(),
-                    onResult = { granted ->
-                        hasPermissions = granted.containsAll(PERMISSIONS)
-                    }
-                )
-
                 val requestMedicalPermissions = rememberLauncherForActivityResult(
                     contract = PermissionController.createRequestPermissionResultContract(),
                     onResult = { /* Refusal is fine — the medical screens fall back to local data. */ }
                 )
 
-                LaunchedEffect(Unit) {
-                    hasPermissions = healthConnectClient.permissionController.getGrantedPermissions().containsAll(PERMISSIONS)
-                }
-
-                if (hasPermissions) {
+                AppPermissionsGate(
+                    spec = AppPermissionsSpec(
+                        title = stringResource(R.string.grant_permissions),
+                        subtitle = stringResource(R.string.grant_permissions_rationale),
+                        icon = { IconFavorite() },
+                        requirements = listOf(PermissionRequirement.HealthConnect(PERMISSIONS))
+                    )
+                ) {
                     LaunchedEffect(Unit) {
                         HealthSyncWorker.enqueue(this@MainActivity)
                     }
@@ -185,24 +175,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     Navigation(healthViewModel, medicalViewModel)
-                } else {
-                    // Health Connect has its own permission contract, which is
-                    // why this passes onRequest rather than using the runtime
-                    // permission helper.
-                    //
-                    // The Surface is load-bearing: PermissionWall draws no background of its
-                    // own, and this is the one screen here that is not inside a scaffold, so
-                    // without it the window background shows through and the screen stays
-                    // light in dark mode.
-                    Surface(Modifier.fillMaxSize()) {
-                        PermissionWall(
-                            title = stringResource(R.string.grant_permissions),
-                            actionLabel = stringResource(R.string.grant_permissions),
-                            onRequest = { requestPermissions.launch(PERMISSIONS) },
-                            rationale = stringResource(R.string.grant_permissions_rationale),
-                            icon = { IconFavorite() },
-                        )
-                    }
                 }
             }
         }

@@ -69,6 +69,36 @@ object SpecialAccess {
     fun openVpnSettings(context: Context) =
         context.launch(Intent(Settings.ACTION_VPN_SETTINGS))
 
+    /**
+     * VPN consent via `VpnService.prepare`: null means already granted, otherwise
+     * the returned intent is what the user must approve.
+     *
+     * The check itself is side-effect free; [requestVpnConsent] launches the
+     * approval when there is one. Apps using the legacy settings page keep
+     * [openVpnSettings].
+     */
+    fun hasVpnConsent(context: Context): Boolean =
+        runCatching {
+            android.net.VpnService.prepare(context) == null
+        }.getOrDefault(false)
+
+    fun requestVpnConsent(context: Context) {
+        val approval = runCatching { android.net.VpnService.prepare(context) }.getOrNull()
+        if (approval != null) {
+            context.launch(approval)
+        } else {
+            openVpnSettings(context)
+        }
+    }
+
+    /** Media-management access for editing or deleting shared media. */
+    fun hasManageMedia(context: Context): Boolean =
+        android.provider.MediaStore.canManageMedia(context)
+
+    fun requestManageMedia(context: Context) {
+        context.launch(Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA))
+    }
+
     /** Full-screen intent permission, for alarm-style full screen notifications. */
     fun hasFullScreenIntent(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return true

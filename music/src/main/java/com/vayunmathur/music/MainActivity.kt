@@ -7,8 +7,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.PermissionsChecker
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.music.R
 import com.vayunmathur.music.data.MusicRepository
 import com.vayunmathur.music.platform.MusicViewModel
@@ -29,7 +31,12 @@ class MainActivity : ComponentActivity() {
                     arrayOf(Manifest.permission.READ_MEDIA_AUDIO) to getString(R.string.grant_audio_permissions)
                 else
                     arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE) to getString(R.string.grant_storage_permissions)
-                PermissionsChecker(permissions, message) {
+                AppPermissionsGate(
+                    spec = AppPermissionsSpec(
+                        title = message,
+                        requirements = listOf(PermissionRequirement.Runtime(permissions))
+                    )
+                ) {
                     Navigation(musicViewModel)
                 }
             }

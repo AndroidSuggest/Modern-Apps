@@ -6,7 +6,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import com.vayunmathur.library.ui.PermissionsChecker
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
+import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.IconCamera
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.translate.R
 import com.vayunmathur.translate.platform.TranslateViewModel
 
@@ -16,9 +20,14 @@ fun CameraTranslateScreen(
     onBack: () -> Unit,
     onOpenLanguagePicker: (Boolean) -> Unit,
 ) {
-    PermissionsChecker(
-        permissions = arrayOf(Manifest.permission.CAMERA),
-        text = stringResource(R.string.grant_camera_access),
+    AppPermissionsGate(
+        spec = AppPermissionsSpec(
+            title = stringResource(R.string.grant_camera_access),
+            icon = { IconCamera() },
+            requirements = listOf(
+                PermissionRequirement.Runtime(arrayOf(Manifest.permission.CAMERA))
+            )
+        )
     ) {
         CameraContent(viewModel, onBack, onOpenLanguagePicker)
     }

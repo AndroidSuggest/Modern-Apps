@@ -45,9 +45,13 @@ import com.vayunmathur.library.ui.OutlinedButton
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.SelectableDropdownMenuItem
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
 import com.vayunmathur.library.ui.IconArrowDropDown
 import com.vayunmathur.library.ui.IconCheck
+import com.vayunmathur.library.ui.IconMic
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.ui.rememberPermissionRequest
 import com.vayunmathur.speech.domain.SupertonicVoices
 import com.vayunmathur.speech.platform.SupertonicBundle
@@ -64,7 +68,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             DynamicTheme {
-                SetupScreen()
+                AppPermissionsGate(
+                    spec = AppPermissionsSpec(
+                        title = stringResource(R.string.grant_microphone),
+                        icon = { IconMic() },
+                        requirements = listOf(
+                            PermissionRequirement.Runtime(
+                                arrayOf(Manifest.permission.RECORD_AUDIO)
+                            )
+                        )
+                    )
+                ) {
+                    SetupScreen()
+                }
             }
         }
     }
@@ -111,6 +127,9 @@ private fun SetupScreen() {
         Manifest.permission.RECORD_AUDIO
     ) { refresh++ }
 
+    // Step 1 is settled by the gate above: by the time SetupScreen composes the
+    // microphone is granted, so the card always renders done and the button is
+    // gone. The step stays visible as a record, not an action.
     SpeechSetupScreen(
         state = SpeechSetupUiState(
             modelReady = modelReady,

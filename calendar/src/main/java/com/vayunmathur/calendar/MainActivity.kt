@@ -2,28 +2,20 @@ package com.vayunmathur.calendar
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.CalendarContract
 import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import com.vayunmathur.library.ui.NoPermissionsScreen
-import com.vayunmathur.library.ui.Button
-import com.vayunmathur.library.ui.Scaffold
-import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.data.Instance
@@ -32,8 +24,10 @@ import com.vayunmathur.calendar.ui.*
 import com.vayunmathur.calendar.ui.dialogs.*
 import com.vayunmathur.calendar.util.CalendarViewModel
 import com.vayunmathur.calendar.util.RecurrenceParams
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.SpecialAccess
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.ui.dialog.DatePickerDialog
 import com.vayunmathur.library.ui.dialog.TimePickerDialogContent
 import com.vayunmathur.library.util.openSettingsIfRequested
@@ -55,15 +49,8 @@ class MainActivity : ComponentActivity() {
         updateWidgetPreviews(CalendarGlanceWidgetReceiver::class)
         enableEdgeToEdge()
 
-        // Reminder notifications rely on exact alarms.
-        if (!SpecialAccess.hasExactAlarms(this)) {
-            runCatching { SpecialAccess.requestExactAlarms(this) }
-        }
-
         handleIntent(intent)
         setContent {
-            val permissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
-            var hasPermissions by remember { mutableStateOf(permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) }
             val dataStore = remember { DataStoreUtils.getInstance(this) }
             val themeName by dataStore.stringFlow("theme_mode").collectAsState(initial = dataStore.getString("theme_mode"))
             val darkTheme = when (themeName?.let { runCatching { CalendarViewModel.ThemeMode.valueOf(it) }.getOrNull() }) {
@@ -72,27 +59,25 @@ class MainActivity : ComponentActivity() {
                 else -> null
             }
             DynamicTheme(darkTheme) {
-                if (!hasPermissions) {
-                    NoPermissionsScreen(permissions, stringResource(R.string.please_grant_calendar_permission)) { hasPermissions = it }
-                } else {
+                AppPermissionsGate(
+                    spec = AppPermissionsSpec(
+                        title = stringResource(R.string.please_grant_calendar_permission),
+                        requirements = listOf(
+                            PermissionRequirement.Runtime(
+                                arrayOf(
+                                    Manifest.permission.READ_CALENDAR,
+                                    Manifest.permission.WRITE_CALENDAR
+                                )
+                            ),
+                            // Reminder notifications rely on exact alarms.
+                            PermissionRequirement.ExactAlarms,
+                            // Reminder notifications need POST_NOTIFICATIONS on
+                            // Android 13+; now blocking like everything else.
+                            PermissionRequirement.notifications(),
+                        )
+                    )
+                ) {
                     val viewModel: CalendarViewModel = viewModel()
-
-                    // Reminder notifications need runtime notification permission on
-                    // Android 13+. Requested here (not gated) so the calendar still
-                    // works if the user declines.
-                    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-                        ActivityResultContracts.RequestPermission()
-                    ) {}
-                    LaunchedEffect(Unit) {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                            ContextCompat.checkSelfPermission(
-                                this@MainActivity,
-                                Manifest.permission.POST_NOTIFICATIONS,
-                            ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        }
-                    }
 
                     LaunchedEffect(intent) {
                         if (intent?.action == Intent.ACTION_VIEW && intent.type == "time/epoch") {

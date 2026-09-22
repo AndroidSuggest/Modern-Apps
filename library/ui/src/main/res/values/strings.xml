@@ -130,4 +130,26 @@
     <string name="game_daily_challenge">Daily Challenge</string>
     <!-- Shared library: UI - MapUnavailableMessage: shown in place of the map when the graphics renderer could not start on this device. Full sentence, user cannot act on it -->
     <string name="map_unavailable">The map can\'t be displayed on this device.</string>
+    <!-- Shared library: UI – AppPermissionsGate: title over the consolidated blocking permission gate. Shown when at least one requirement is ungranted -->
+    <string name="permission_grant_required_title">Permissions required</string>
+    <!-- Shared library: UI – AppPermissionsGate: primary action on every requirement card. Verb, keep short -->
+    <string name="permission_grant">Grant</string>
+    <!-- Shared library: UI – AppPermissionsGate: secondary action opening the app's system settings entry, shown when a runtime batch can be permanently denied. Reuses the shared settings string -->
+    <string name="permission_open_settings">Open settings</string>
+    <!-- Shared library: UI – AppPermissionsGate: rationale under a runtime-permission requirement card -->
+    <string name="permission_runtime_rationale">This app needs these permissions to work. Grant them to continue.</string>
+    <!-- Shared library: UI – AppPermissionsGate: rationale under the exact-alarms card -->
+    <string name="permission_exact_alarms_rationale">Exact alarms are needed for reminders that must fire at a precise time. Open settings to allow them.</string>
+    <!-- Shared library: UI – AppPermissionsGate: rationale under the all-files-access card -->
+    <string name="permission_all_files_rationale">All-files access is needed to browse files outside the media collections. Open settings to allow it.</string>
+    <!-- Shared library: UI – AppPermissionsGate: rationale under the notification-listener card -->
+    <string name="permission_notification_listener_rationale">Notification access is needed to read notifications from other apps. Open settings to allow it.</string>
+    <!-- Shared library: UI – AppPermissionsGate: rationale under the VPN-consent card -->
+    <string name="permission_vpn_rationale">VPN access needs your approval before the app can start. Approve the connection request to continue.</string>
+    <!-- Shared library: UI – AppPermissionsGate: rationale under the full-screen-intent card -->
+    <string name="permission_full_screen_intent_rationale">Full-screen notifications need your permission, e.g. for alarms. Open settings to allow them.</string>
+    <!-- Shared library: UI – AppPermissionsGate: rationale under the manage-media card -->
+    <string name="permission_manage_media_rationale">Media-management access is needed to edit or delete photos and videos. Open settings to allow it.</string>
+    <!-- Shared library: UI – AppPermissionsGate: rationale under the Health Connect card -->
+    <string name="permission_health_connect_rationale">Health data access is needed to read and write your health records. Grant access in Health Connect to continue.</string>
 </resources>

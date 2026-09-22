@@ -16,8 +16,10 @@ import androidx.core.content.IntentCompat
 import com.vayunmathur.camera.ui.CameraScreen
 import com.vayunmathur.camera.ui.SettingsPage
 import com.vayunmathur.camera.util.CameraViewModel
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.PermissionsChecker
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.util.openSettingsIfRequested
 import com.vayunmathur.library.util.FullscreenPage
 import com.vayunmathur.library.util.MainNavigation
@@ -59,9 +61,18 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DynamicTheme {
-                PermissionsChecker(
-                    permissions = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO),
-                    text = getString(R.string.grant_camera_permission)
+                AppPermissionsGate(
+                    spec = AppPermissionsSpec(
+                        title = getString(R.string.grant_camera_permission),
+                        requirements = listOf(
+                            PermissionRequirement.Runtime(
+                                arrayOf(
+                                    Manifest.permission.CAMERA,
+                                    Manifest.permission.RECORD_AUDIO
+                                )
+                            )
+                        )
+                    )
                 ) {
                     val backStack = rememberNavBackStack<Route>(Route.Camera)
                     // Land on settings when opened from the system App Info page.

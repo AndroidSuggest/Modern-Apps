@@ -15,11 +15,13 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.downloadservice.InitialDownloadChecker
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.library.util.ListDetailPage
 import com.vayunmathur.library.util.ListPage
 import com.vayunmathur.library.util.OfflineAware
-import com.vayunmathur.library.ui.PermissionsChecker
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.IntentLauncher
 import com.vayunmathur.library.util.MainNavigation
@@ -120,7 +122,12 @@ class MainActivity : ComponentActivity() {
                     } else {
                         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
                     }
-                    PermissionsChecker(perms, getString(R.string.grant_location_permission)) {
+                    AppPermissionsGate(
+                        spec = AppPermissionsSpec(
+                            title = getString(R.string.grant_location_permission),
+                            requirements = listOf(PermissionRequirement.Runtime(perms))
+                        )
+                    ) {
                         OfflineAware {
                             Navigation()
                         }

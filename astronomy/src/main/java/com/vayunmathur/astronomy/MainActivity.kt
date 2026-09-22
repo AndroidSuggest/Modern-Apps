@@ -7,8 +7,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import com.vayunmathur.astronomy.platform.AstronomyViewModel
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.PermissionsChecker
+import com.vayunmathur.library.ui.PermissionRequirement
 
 class MainActivity : ComponentActivity() {
     private val viewModel: AstronomyViewModel by viewModels()
@@ -18,12 +20,18 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             DynamicTheme {
-                PermissionsChecker(
-                    arrayOf(
-                        Manifest.permission.ACCESS_FINE_LOCATION,
-                        Manifest.permission.ACCESS_COARSE_LOCATION
-                    ),
-                    "Grant location permission — astronomy needs your position for horizon"
+                AppPermissionsGate(
+                    spec = AppPermissionsSpec(
+                        title = "Grant location permission — astronomy needs your position for horizon",
+                        requirements = listOf(
+                            PermissionRequirement.Runtime(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
+                        )
+                    )
                 ) {
                     Navigation(viewModel)
                 }

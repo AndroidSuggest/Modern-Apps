@@ -6,8 +6,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.ui.res.stringResource
+import com.vayunmathur.library.ui.AppPermissionsGate
+import com.vayunmathur.library.ui.AppPermissionsSpec
 import com.vayunmathur.library.ui.DynamicTheme
-import com.vayunmathur.library.ui.PermissionsChecker
+import com.vayunmathur.library.ui.PermissionRequirement
 import com.vayunmathur.share.platform.SharePermissions
 import com.vayunmathur.share.platform.ShareViewModel
 import com.vayunmathur.share.platform.ShareViewModelFactory
@@ -25,9 +27,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             DynamicTheme {
-                PermissionsChecker(
-                    permissions = SharePermissions.allSharePermissions(),
-                    text = stringResource(R.string.share_permission_rationale),
+                AppPermissionsGate(
+                    spec = AppPermissionsSpec(
+                        title = stringResource(R.string.share_permission_rationale),
+                        requirements = listOf(
+                            PermissionRequirement.Runtime(SharePermissions.allSharePermissions())
+                        )
+                    )
                 ) { Navigation(shareViewModel) }
             }
         }

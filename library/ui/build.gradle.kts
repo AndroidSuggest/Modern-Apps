@@ -20,5 +20,7 @@ dependencies {
     implementation(libs.androidx.compose.adaptive.navigation3)
     // Used only internally (editor toolbars); not re-exported to apps.
     implementation(libs.androidx.compose.material.icons.extended)
+    // Health Connect client for the consolidated permission gate's async grant probe.
+    implementation(libs.androidx.connect.client)
 
 }
