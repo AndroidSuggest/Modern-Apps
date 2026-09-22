@@ -144,6 +144,11 @@ impl Ramp {
     /// The exponential curve is the style spec's: `t = (base^dz - 1) / (base^span - 1)`, which
     /// is what makes a road grow slowly at low zoom and quickly at high.
     pub fn at(&self, zoom: f64) -> f32 {
+        // A constant ramp answers without touching the stop list: most text-size
+        // and opacity arms are single stops, and this sits in the per-label path.
+        if self.stops.len() == 1 {
+            return self.stops[0].1;
+        }
         let last = self.stops.len() - 1;
         if zoom <= self.stops[0].0 {
             return self.stops[0].1;

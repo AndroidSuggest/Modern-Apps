@@ -360,6 +360,8 @@ mod tests {
             pop: 0,
             boxes: vec![Obb::from_rect((100.0, 100.0, 160.0, 120.0))],
             alternate: None,
+            feature_id: 0,
+            layer_index: 0,
         };
         let curved = SegmentedCandidate {
             id: 1,
@@ -368,6 +370,8 @@ mod tests {
             // A row of rotated glyph boxes; the first sits on the point label's box.
             boxes: vec![obb(130.0, 110.0, 9.0, 20.0), obb(300.0, 300.0, 9.0, 0.0)],
             alternate: None,
+            feature_id: 1,
+            layer_index: 0,
         };
         assert_eq!(place_segmented(&[point, curved]), vec![(0, false)], "the point label wins");
     }
@@ -382,6 +386,8 @@ mod tests {
             pop: 0,
             boxes: vec![Obb::from_rect((0.0, 0.0, 50.0, 20.0))],
             alternate: None,
+            feature_id: 0,
+            layer_index: 0,
         };
         let curved = SegmentedCandidate {
             id: 1,
@@ -389,6 +395,8 @@ mod tests {
             pop: 0,
             boxes: vec![obb(300.0, 300.0, 9.0, 30.0), obb(320.0, 305.0, 9.0, 35.0)],
             alternate: None,
+            feature_id: 1,
+            layer_index: 0,
         };
         assert_eq!(place_segmented(&[point, curved]), vec![(0, false), (1, false)]);
     }
@@ -403,6 +411,8 @@ mod tests {
             pop: 0,
             boxes: vec![Obb::from_rect((0.0, 0.0, 100.0, 40.0))],
             alternate: None,
+            feature_id: 0,
+            layer_index: 0,
         };
         let curved = SegmentedCandidate {
             id: 1,
@@ -410,6 +420,8 @@ mod tests {
             pop: 0,
             boxes: vec![obb(50.0, 20.0, 9.0, 15.0)],           // on the blocker
             alternate: Some(vec![obb(300.0, 300.0, 9.0, 15.0)]), // clear
+            feature_id: 1,
+            layer_index: 0,
         };
         assert_eq!(place_segmented(&[blocker, curved]), vec![(0, false), (1, true)]);
     }

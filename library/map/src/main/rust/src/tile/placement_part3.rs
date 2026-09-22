@@ -154,6 +154,8 @@ mod tests_tilt {
                     pop: 0,
                     boxes: vec![b],
                     alternate: None,
+                    feature_id: i as u64 + 1,
+                    layer_index: 0,
                 })
                 .collect::<Vec<_>>()
         };

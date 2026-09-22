@@ -279,11 +279,37 @@ impl Layer {
     /// arm answers from [`Layer::text_size`] whatever the rank, which is what every
     /// non-place symbol layer wants.
     pub fn text_size_for(&self, zoom: f64, pop: u16) -> f32 {
-        match (&self.text_size_large, &self.rank_threshold) {
-            (Some(large), Some(threshold)) if f32::from(pop) >= threshold.at(zoom) => {
-                large.at(zoom)
-            }
-            _ => self.text_size.at(zoom),
+        let (base, large, threshold) = self.text_size_arms(zoom);
+        Self::text_size_with_arms(pop, base, large, threshold)
+    }
+
+    /// The same three [`Ramp::at`] evaluations [`text_size_for`](Self::text_size_for)
+    /// needs, resolved once per (layer, zoom) instead of once per label.
+    ///
+    /// The per-frame path sizes hundreds of labels off two ramps; each `at` walks the
+    /// stop list (and `powf`s on exponential arms), so resolving the arms once per
+    /// layer per frame and answering each label with a float compare is the same
+    /// values for a fraction of the cost. Bit-identical to calling
+    /// [`text_size_for`](Self::text_size_for) per label: the decision below reads
+    /// the same three floats.
+    pub fn text_size_arms(&self, zoom: f64) -> (f32, Option<f32>, Option<f32>) {
+        (
+            self.text_size.at(zoom),
+            self.text_size_large.as_ref().map(|ramp| ramp.at(zoom)),
+            self.rank_threshold.as_ref().map(|ramp| ramp.at(zoom)),
+        )
+    }
+
+    /// Answer one label's size from pre-resolved [`text_size_arms`](Self::text_size_arms).
+    pub fn text_size_with_arms(
+        pop: u16,
+        base: f32,
+        large: Option<f32>,
+        threshold: Option<f32>,
+    ) -> f32 {
+        match (large, threshold) {
+            (Some(large), Some(threshold)) if f32::from(pop) >= threshold => large,
+            _ => base,
         }
     }
 

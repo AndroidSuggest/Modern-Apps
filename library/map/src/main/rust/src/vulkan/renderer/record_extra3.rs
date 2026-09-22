@@ -305,13 +305,26 @@ impl Renderer {
         // depends on its population rank, so one draw can hold two of them — and
         // `Push::line.x` carries the text size the fragment shader turns a halo width in
         // px into SDF units with. One value cannot serve both arms, so each gets a draw.
-        // The style declares at most two arms, so this is at most two.
-        let mut batches: Vec<(f32, Vec<f32>, Vec<u32>)> = Vec::new();
+        // The style declares at most two arms, so this is at most two. Buffers are
+        // pre-sized from the label count rather than grown geometrically: the frame's
+        // label set is known up front, so the push loop below pays no realloc.
+        let label_count = tile
+            .labels
+            .iter()
+            .filter(|l| l.layer_index == layer_index)
+            .count();
+        let mut batches: Vec<(f32, Vec<f32>, Vec<u32>)> = Vec::with_capacity(2);
         // Icons take one batch of their own however many sizes the text has: they are a
         // constant screen size, and they sample a different atlas through a different
         // fragment shader, so they could not share a draw with the text regardless.
-        let mut icon_vertices: Vec<f32> = Vec::new();
-        let mut icon_indices: Vec<u32> = Vec::new();
+        let mut icon_vertices: Vec<f32> =
+            Vec::with_capacity(label_count * 4 * crate::tess::text::FLOATS_PER_VERTEX);
+        let mut icon_indices: Vec<u32> = Vec::with_capacity(label_count * 6);
+        // The style's size arms resolved once per (layer, zoom) rather than once per
+        // label: each `text_size_for` walks two style ramps, and every label of this
+        // layer shares the zoom. Bit-identical sizes — `text_size_with_arms` reads the
+        // same three ramp values per label.
+        let (base_size, large_size, rank_threshold) = layer.text_size_arms(camera.zoom);
         // Labels are enumerated in tile-list order — the same order (and the
         // same ids) the pre-pass used — and only accepted ones emit. A tile
         // whose every label collides emits nothing and skips its draw.
@@ -337,7 +350,12 @@ impl Renderer {
             } else {
                 primary
             };
-            let text_px = layer.text_size_for(camera.zoom, label.pop) * camera.density;
+            let text_px = crate::style::Layer::text_size_with_arms(
+                label.pop,
+                base_size,
+                large_size,
+                rank_threshold,
+            ) * camera.density;
             if text_px <= 0.0 {
                 continue;
             }
@@ -357,7 +375,11 @@ impl Renderer {
             let batch = match batches.iter_mut().find(|(size, _, _)| *size == text_px) {
                 Some(batch) => batch,
                 None => {
-                    batches.push((text_px, Vec::new(), Vec::new()));
+                    // Sized for the whole layer's labels: the second arm's batch
+                    // over-reserves when every label takes the first, which costs
+                    // address space for one frame, not time.
+                    let cap = label_count * 4 * crate::tess::text::FLOATS_PER_VERTEX;
+                    batches.push((text_px, Vec::with_capacity(cap), Vec::with_capacity(label_count * 6)));
                     batches.last_mut().expect("just pushed")
                 }
             };

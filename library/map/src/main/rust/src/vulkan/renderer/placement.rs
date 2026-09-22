@@ -1,12 +1,12 @@
 use super::{
-    anchors_for, box_inputs, kind_name, AcceptSet, Overlay, PlacedHit, PlacementKey, Renderer,
-    QUAD_INDICES,
+    anchors_for, box_inputs, box_inputs_with_arms, kind_name, AcceptSet, Overlay, PlacedHit,
+    PlacementKey, Renderer, QUAD_INDICES,
 };
 use crate::camera::Camera;
 use crate::marker::Marker;
 use crate::style::{Layer, LayerKind};
 use ash::vk;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::RangeInclusive;
 use std::time::Instant;
 
@@ -21,7 +21,81 @@ use std::time::Instant;
 /// change (zoom, bearing, pitch, tiles, layers, filter) — the pass re-runs. A tap during the
 /// window picks against boxes projected for the current frame, so hit-testing never lags.
 /// hit-testing never lags.
+///
+/// The same window covers small zoom/bearing/pitch drift (see `drift_reuse_ms`): a pinch or
+/// rotate that stays within its thresholds reuses the accept-set too, so a gesture does not
+/// re-place every frame either. The collision outcome then lags the camera by at most this
+/// window (80 ms on a fast zoom-out) — the approved trade-off for holding 60 fps through
+/// gestures.
 pub(super) const PLACE_REUSE_MS: u128 = 300;
+
+/// The reuse window once the camera is zooming fast (see [`place_symbols`]).
+///
+/// Past ~1 zoom level per second the collision answer goes stale faster than the pan window
+/// allows: re-place promptly instead so labels do not visibly lag the zoom.
+const PLACE_REUSE_FAST_ZOOM_MS: u128 = 80;
+
+/// The zoom speed past which the reuse window shrinks to [`PLACE_REUSE_FAST_ZOOM_MS`],
+/// in zoom levels per second.
+const FAST_ZOOM_PER_SEC: f64 = 1.0;
+
+/// Drift thresholds for reusing the accept-set without an exact key match.
+///
+/// A camera that differs from the cached one only in centre/zoom/bearing/pitch, each within
+/// these, reuses the cached accept-set within [`PLACE_REUSE_MS`]: the projection moved a
+/// little but the candidate universe (tiles, layers, filter, extent, sizes) is bit-identical,
+/// so the collision answer is overwhelmingly likely unchanged and boxes still re-project per
+/// frame in `refresh_placed`. Any drift past these re-places.
+const DRIFT_MAX_DZOOM: f64 = 0.05;
+/// Degrees.
+const DRIFT_MAX_DBEARING: f64 = 2.0;
+/// Degrees.
+const DRIFT_MAX_DPITCH: f64 = 2.0;
+
+/// Whether `key` differs from `cached` only by camera drift within the reuse thresholds.
+///
+/// Centre may move arbitrarily (pan); zoom/bearing/pitch each have a small budget. The
+/// universe (tiles, stamps, filter, extent, sizes, layers) must be bit-identical — checked
+/// by the caller via [`PlacementKey::same_universe`](super::PlacementKey::same_universe).
+fn within_drift(cached: &PlacementKey, key: &PlacementKey) -> bool {
+    let zoom = f64::from_bits(key.zoom);
+    let cached_zoom = f64::from_bits(cached.zoom);
+    if (zoom - cached_zoom).abs() >= DRIFT_MAX_DZOOM {
+        return false;
+    }
+    let bearing = f64::from_bits(key.bearing);
+    let cached_bearing = f64::from_bits(cached.bearing);
+    if (bearing - cached_bearing).abs() >= DRIFT_MAX_DBEARING {
+        return false;
+    }
+    let pitch = f64::from_bits(key.pitch);
+    let cached_pitch = f64::from_bits(cached.pitch);
+    if (pitch - cached_pitch).abs() >= DRIFT_MAX_DPITCH {
+        return false;
+    }
+    true
+}
+
+/// The reuse window for a drift-reuse hit: the full [`PLACE_REUSE_MS`], shrunk to
+/// [`PLACE_REUSE_FAST_ZOOM_MS`] while zooming fast.
+///
+/// Zoom velocity comes from the cached key's zoom versus this frame's over the cache age —
+/// both already in hand, no extra state. A zero/negative age (same-instant re-entry) takes
+/// the fast path only if the zoom actually jumped; otherwise the full window.
+fn drift_reuse_ms(cached: &PlacementKey, key: &PlacementKey, at: &Instant) -> u128 {
+    let zoom = f64::from_bits(key.zoom);
+    let cached_zoom = f64::from_bits(cached.zoom);
+    let dz = (zoom - cached_zoom).abs();
+    if dz <= 0.0 {
+        return PLACE_REUSE_MS;
+    }
+    let age_secs = at.elapsed().as_secs_f64();
+    if age_secs > 0.0 && dz / age_secs > FAST_ZOOM_PER_SEC {
+        PLACE_REUSE_FAST_ZOOM_MS
+    } else {
+        PLACE_REUSE_MS
+    }
+}
 
 impl Renderer {
     /// Whether any resident tile carries a region-mask piece with this id.
@@ -91,6 +165,20 @@ impl Renderer {
             if moved == key && at.elapsed().as_millis() < PLACE_REUSE_MS {
                 return accepted.clone();
             }
+            // Small zoom/bearing/pitch drift on top of a pan: the candidate universe is
+            // bit-identical (tiles, stamps, filter, extent, layers, sizes) and only the
+            // projection moved a little, so reuse the accept-set within the same window.
+            // Boxes still re-project per frame in `refresh_placed`; only the collision
+            // outcome lags, by at most the window.
+            //
+            // A fast zoom-out shrinks the window: past ~1 level/sec the answer goes stale
+            // faster than the pan window allows, so re-place promptly.
+            if cached.same_universe(&key)
+                && within_drift(cached, &key)
+                && at.elapsed().as_millis() < drift_reuse_ms(cached, &key, at)
+            {
+                return accepted.clone();
+            }
         }
         let mut candidates: Vec<placement::SegmentedCandidate> = Vec::new();
         let camera_z = camera.zoom.floor().clamp(0.0, 22.0) as u8;
@@ -103,11 +191,13 @@ impl Renderer {
             }
             // Device px, matching `record_symbol`: `extent` below is device px, so a
             // Dp text size here would size every collision box at 1/density and let
-            // labels that visibly overlap all survive the placer. Resolved per label,
-            // because the size depends on the place's population rank.
+            // labels that visibly overlap all survive the placer. The style arms are
+            // resolved once per (layer, zoom) below; each label then answers with a
+            // float compare, because the size depends on the place's population rank.
             if !layer.text_visible_at(camera.zoom) {
                 continue;
             }
+            let (base_size, large_size, rank_threshold) = layer.text_size_arms(camera.zoom);
             let (primary, alternate) = anchors_for(layer);
             for key in ordered {
                 let Some(tile) = self.tiles.get(key) else {
@@ -141,7 +231,12 @@ impl Renderer {
                     if label.rank == 2 && label.pop < min_pop {
                         continue;
                     }
-                    let inputs = box_inputs(layer, label, camera);
+                    let inputs = box_inputs_with_arms(
+                        layer,
+                        label,
+                        camera,
+                        (base_size, large_size, rank_threshold),
+                    );
                     let id = placement::candidate_id(tile.z, tile.x, tile.y, index, label_idx);
                     // A curved label collides as the row of oriented per-glyph boxes it draws; a
                     // point label as one axis-aligned box (plus its variable-anchor alternate). Both
@@ -191,9 +286,58 @@ impl Renderer {
                         pop: label.pop,
                         boxes,
                         alternate: alternate_boxes,
+                        feature_id: label.feature_id,
+                        layer_index: index,
                     });
                 }
             }
+        }
+        // Viewport cull: drop a candidate before collision only if *all* its boxes are
+        // provably outside the viewport expanded by the candidate's own AABB margin.
+        // A box whose AABB touches the expanded viewport stays: culling is conservative
+        // by construction, and a culled candidate is one that could draw no visible
+        // pixel this frame. Rank-0 candidates are never culled — they always draw.
+        {
+            let (vw, vh) = (extent.width as f32, extent.height as f32);
+            candidates.retain(|c| {
+                if c.rank == 0 {
+                    return true;
+                }
+                // An empty footprint collides with nothing, so the placer always
+                // accepts it: keep, never cull. (Unreachable today — both builders
+                // `continue` on empty — but the placer invariant must hold.)
+                if c.boxes.is_empty() && c.alternate.as_ref().map_or(true, Vec::is_empty) {
+                    return true;
+                }
+                c.boxes
+                    .iter()
+                    .chain(c.alternate.iter().flatten())
+                    .any(|b| {
+                        let (ex, ey) = placement::obb_aabb_half(b);
+                        b.cx + ex >= 0.0 && b.cx - ex <= vw && b.cy + ey >= 0.0 && b.cy - ey <= vh
+                    })
+            });
+        }
+        // Cross-tile dedup: neighbouring tiles shape the same feature twice (shared
+        // borders, overzoomed ancestors), so the candidate list can carry two
+        // bit-identical footprints for one label. The placer would accept the first
+        // and reject the second on collision — keeping both doubles the quadratic
+        // loop's work for nothing. Drop exact duplicates by stable feature identity
+        // (feature id + layer), keeping the first occurrence. Labels with no feature
+        // id (ID_NONE) are never deduped: they carry no identity to compare.
+        //
+        // `candidate_id` is untouched: it still names the same label in the
+        // accept-set `record_symbol` filters by.
+        {
+            let mut seen: HashSet<(u64, usize)> = HashSet::with_capacity(candidates.len());
+            candidates.retain(|c| {
+                let (feature_id, layer_index) = (c.feature_id, c.layer_index);
+                // Identity unknown: keep, never dedup.
+                if feature_id == tilecodec::mamaps::body::ID_NONE {
+                    return true;
+                }
+                seen.insert((feature_id, layer_index))
+            });
         }
         // Keyed by candidate id, valued by the anchor the placer settled on and **where in
         // acceptance order it landed**. `place_segmented` returns its winners in priority order and

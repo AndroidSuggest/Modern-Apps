@@ -33,6 +33,7 @@
 //! disappearing.
 
 use crate::style::Anchor;
+use std::collections::HashMap;
 
 /// A label candidate's screen box plus its rank.
 pub struct Candidate {
@@ -126,19 +127,32 @@ fn overlaps(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
 /// renderer computes in its pre-pass names the same labels `record_symbol`
 /// later filters by.
 ///
-/// A SipHash over (tile z/x/y, layer index, position in the tile's shaped
-/// label list) — the label list is shaped once in feature order, so the inputs
-/// are frame-stable and collisions across tiles are impossible in practice.
-/// `DefaultHasher` uses fixed keys, so ids are stable across frames and runs.
+/// A cheap deterministic integer mix over (tile z/x/y, layer index, position in
+/// the tile's shaped label list) — the label list is shaped once in feature
+/// order, so the inputs are frame-stable and collisions across tiles are
+/// impossible in practice. Pure integer arithmetic, so ids are stable across
+/// frames and runs (no hasher keys, no per-process randomness).
 pub fn candidate_id(z: u8, x: u32, y: u32, layer_index: usize, label_idx: usize) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    z.hash(&mut h);
-    x.hash(&mut h);
-    y.hash(&mut h);
-    (layer_index as u64).hash(&mut h);
-    (label_idx as u64).hash(&mut h);
-    h.finish()
+    // FxHash-style multiply mix + splitmix64 final avalanche.
+    const K: u64 = 0xbf58476d1ce4e5b9;
+    let mut h: u64 = 0x9e3779b97f4a7c15;
+    h ^= z as u64;
+    h = h.wrapping_mul(K);
+    h ^= x as u64;
+    h = h.wrapping_mul(K);
+    h ^= y as u64;
+    h = h.wrapping_mul(K);
+    h ^= layer_index as u64;
+    h = h.wrapping_mul(K);
+    h ^= label_idx as u64;
+    h = h.wrapping_mul(K);
+    // Final avalanche so neighbouring inputs land far apart.
+    h ^= h >> 30;
+    h = h.wrapping_mul(K);
+    h ^= h >> 27;
+    h = h.wrapping_mul(0x94d049bb133111eb);
+    h ^= h >> 31;
+    h
 }
 
 /// One label's screen collision box in device px, from the same inputs the
@@ -326,7 +340,14 @@ impl Obb {
 /// are disjoint on any one axis they cannot intersect. Touching exactly (a gap of zero) counts as
 /// separated, matching the half-open [`overlaps`] the axis-aligned path uses so a label may sit
 /// flush against its neighbour.
+///
+/// Fast path: when both boxes are axis-aligned (`sin == 0`, which is how every point label enters
+/// via [`Obb::from_rect`]), this is exactly the 4-float AABB test — same half-open rule, no SAT.
 pub fn obb_overlap(a: &Obb, b: &Obb) -> bool {
+    if a.sin == 0.0 && b.sin == 0.0 {
+        // |dx| < hx sum AND |dy| < hy sum; touching exactly (>=) is separated.
+        return (a.cx - b.cx).abs() < a.hx + b.hx && (a.cy - b.cy).abs() < a.hy + b.hy;
+    }
     let dx = b.cx - a.cx;
     let dy = b.cy - a.cy;
     for axis in a.axes().iter().chain(b.axes().iter()) {
@@ -359,6 +380,11 @@ pub struct SegmentedCandidate {
     pub pop: u16,
     pub boxes: Vec<Obb>,
     pub alternate: Option<Vec<Obb>>,
+    /// Stable feature identity for cross-tile dedup (`ID_NONE` when the label
+    /// carries no identity — such candidates are never deduped).
+    pub feature_id: u64,
+    /// Style layer index, the second half of the dedup identity.
+    pub layer_index: usize,
 }
 
 impl SegmentedCandidate {
@@ -378,38 +404,124 @@ impl SegmentedCandidate {
 /// label enters as a one-box candidate, so point and curved labels place in the **same** pass and
 /// therefore collide with each other, which is the whole point of the exercise.
 pub fn place_segmented(candidates: &[SegmentedCandidate]) -> Vec<Placed> {
-    let mut ordered: Vec<&SegmentedCandidate> = candidates.iter().collect();
-    ordered.sort_by(|a, b| {
+    // Hoisted footprint areas: `SegmentedCandidate::area` computed once per
+    // candidate into a side table. The comparator below reads this table, so
+    // sorting never recomputes the sum.
+    let mut areas: Vec<f32> = Vec::with_capacity(candidates.len());
+    for c in candidates.iter() {
+        areas.push(c.area());
+    }
+    // Sort indices (stable) by the same key as before: rank, pop desc, area
+    // desc, id. Starting from 0..n with a stable sort and identical keys yields
+    // the identical order as sorting `Vec<&Candidate>` from iteration order.
+    let mut ordered: Vec<usize> = (0..candidates.len()).collect();
+    ordered.sort_by(|&ai, &bi| {
+        let (a, b) = (&candidates[ai], &candidates[bi]);
         a.rank
             .cmp(&b.rank)
             .then_with(|| b.pop.cmp(&a.pop))
             .then_with(|| {
-                b.area()
-                    .partial_cmp(&a.area())
+                areas[bi]
+                    .partial_cmp(&areas[ai])
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
             .then_with(|| a.id.cmp(&b.id))
     });
-    let mut accepted: Vec<Obb> = Vec::new();
+    // Reserve the accepted-box buffer from the candidate count (primary boxes;
+    // alternates substitute 1:1 so this bounds the accepted set size).
+    let total_primary: usize = candidates.iter().map(|c| c.boxes.len()).sum();
+    let mut accepted: Vec<Obb> = Vec::with_capacity(total_primary);
+    // Uniform-grid broadphase over accepted boxes. Cell size derives from the
+    // max AABB half-extent over all candidate boxes (padding is already baked
+    // into the boxes); any cell size keeps results exact, this one keeps each
+    // box in few cells.
+    let mut max_e: f32 = 0.0;
+    for c in candidates.iter() {
+        for b in c.boxes.iter().chain(c.alternate.iter().flatten()) {
+            let (ex, ey) = obb_aabb_half(b);
+            max_e = max_e.max(ex).max(ey);
+        }
+    }
+    let mut cell: f32 = max_e * 2.0;
+    if !(cell >= 1.0) {
+        cell = 1.0;
+    }
+    let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
     let mut out = Vec::new();
-    for c in ordered {
-        let free = |boxes: &[Obb], accepted: &[Obb]| {
-            c.rank == 0
-                || !boxes
-                    .iter()
-                    .any(|b| accepted.iter().any(|a| obb_overlap(a, b)))
+    for &ci in ordered.iter() {
+        let c = &candidates[ci];
+        // Rank 0 short-circuits before any geometry, as before.
+        let free = |boxes: &[Obb]| {
+            if c.rank == 0 {
+                return true;
+            }
+            for b in boxes.iter() {
+                let (x0, y0, x1, y1) = obb_aabb(b);
+                let (cx0, cy0, cx1, cy1) = cell_range(x0, y0, x1, y1, cell);
+                for cy in cy0..=cy1 {
+                    for cx in cx0..=cx1 {
+                        if let Some(bucket) = grid.get(&(cx, cy)) {
+                            for &ai in bucket.iter() {
+                                // Narrowphase stays exact `obb_overlap`, same
+                                // argument order as the brute-force loop.
+                                if obb_overlap(&accepted[ai], b) {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            true
         };
-        let taken = if free(&c.boxes, &accepted) {
+        let taken = if free(&c.boxes) {
             (&c.boxes, false)
-        } else if let Some(alternate) = c.alternate.as_ref().filter(|a| free(a, &accepted)) {
+        } else if let Some(alternate) = c.alternate.as_ref().filter(|a| free(a)) {
             (alternate, true)
         } else {
             continue;
         };
-        accepted.extend_from_slice(taken.0);
+        for b in taken.0.iter() {
+            let idx = accepted.len();
+            accepted.push(*b);
+            let (x0, y0, x1, y1) = obb_aabb(b);
+            let (cx0, cy0, cx1, cy1) = cell_range(x0, y0, x1, y1, cell);
+            for cy in cy0..=cy1 {
+                for cx in cx0..=cx1 {
+                    grid.entry((cx, cy)).or_default().push(idx);
+                }
+            }
+        }
         out.push((c.id, taken.1));
     }
     out
+}
+
+/// Half-extents of an OBB's axis-aligned bounding box.
+///
+/// `pub(crate)` for the renderer's viewport cull: the AABB conservatively bounds the OBB,
+/// so a candidate whose every box AABB misses the viewport can draw no visible pixel.
+pub(crate) fn obb_aabb_half(b: &Obb) -> (f32, f32) {
+    let (c, s) = (b.cos.abs(), b.sin.abs());
+    (b.hx * c + b.hy * s, b.hx * s + b.hy * c)
+}
+
+/// Full AABB of an OBB in screen px.
+fn obb_aabb(b: &Obb) -> (f32, f32, f32, f32) {
+    let (ex, ey) = obb_aabb_half(b);
+    (b.cx - ex, b.cy - ey, b.cx + ex, b.cy + ey)
+}
+
+/// Grid cells overlapped by an AABB (inclusive range via floor).
+fn cell_range(x0: f32, y0: f32, x1: f32, y1: f32, cell: f32) -> (i32, i32, i32, i32) {
+    let (lo_x, hi_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
+    let (lo_y, hi_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
+    (
+        (lo_x / cell).floor() as i32,
+        (lo_y / cell).floor() as i32,
+        (hi_x / cell).floor() as i32,
+        (hi_y / cell).floor() as i32,
+    )
 }
 
 include!("placement_part1.rs");

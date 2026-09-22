@@ -222,6 +222,22 @@ struct PlacementKey {
     layers: usize,
 }
 
+impl PlacementKey {
+    /// Bit-identity of everything but the camera pose: tiles and their stamps, filter, extent,
+    /// sizes, and layer count. A drift-reuse candidate must match all of these; only
+    /// centre/zoom/bearing/pitch may differ (within their thresholds — see `within_drift` in
+    /// `placement.rs`). Any universe change is a hard re-place.
+    fn same_universe(&self, other: &PlacementKey) -> bool {
+        self.width_dp == other.width_dp
+            && self.height_dp == other.height_dp
+            && self.density == other.density
+            && self.extent == other.extent
+            && self.filter == other.filter
+            && self.tiles == other.tiles
+            && self.layers == other.layers
+    }
+}
+
 /// Per-frame synchronisation and its command buffer.
 struct Frame {
     command_buffer: vk::CommandBuffer,
@@ -428,8 +444,21 @@ fn box_inputs(
     label: &geometry::ShapedLabel,
     camera: &Camera,
 ) -> crate::tile::placement::BoxInputs {
+    box_inputs_with_arms(layer, label, camera, layer.text_size_arms(camera.zoom))
+}
+
+/// [`box_inputs`], but with the style's text-size arms already resolved for this
+/// (layer, zoom) — see [`Layer::text_size_arms`]. The per-label call resolves two
+/// style ramps per label; the per-layer caller resolves them once and answers each
+/// label with a float compare. Bit-identical values either way.
+fn box_inputs_with_arms(
+    layer: &Layer,
+    label: &geometry::ShapedLabel,
+    camera: &Camera,
+    arms: (f32, Option<f32>, Option<f32>),
+) -> crate::tile::placement::BoxInputs {
     crate::tile::placement::BoxInputs {
-        text_px: layer.text_size_for(camera.zoom, label.pop) * camera.density,
+        text_px: Layer::text_size_with_arms(label.pop, arms.0, arms.1, arms.2) * camera.density,
         advance: label.total_advance,
         line_count: label.lines.len(),
         offset_em: layer.text_offset,
