@@ -137,6 +137,7 @@ internal fun ForecastColumn(
                         selectedIsoTime = (selected as? SelectedDateOrTime.Time)?.isoTime,
                         onHourSelected = { actions.toggleTime(it) },
                         scrollToIsoDate = (selected as? SelectedDateOrTime.Day)?.isoDate,
+                        nowIsoHour = forecast.current?.time?.take(13)?.let { "$it:00" },
                         nowEpochSec = nowEpochSec,
                     )
                 }
@@ -146,6 +147,7 @@ internal fun ForecastColumn(
                         tempUnit = units.temperature,
                         selectedIsoDate = (selected as? SelectedDateOrTime.Day)?.isoDate,
                         onDaySelected = { actions.toggleDay(it) },
+                        todayIsoDate = forecast.current?.time?.substringBefore('T'),
                     )
                 }
                 if (current != null && resolved != null) {

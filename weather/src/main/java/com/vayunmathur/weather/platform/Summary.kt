@@ -4,6 +4,7 @@ import android.content.Context
 import com.vayunmathur.weather.R
 import com.vayunmathur.weather.domain.TemperatureUnit
 import com.vayunmathur.weather.domain.formatTemperatureCompact
+import com.vayunmathur.weather.domain.todayIndex
 import com.vayunmathur.weather.domain.weatherConditionForCode
 import com.vayunmathur.weather.network.ForecastResponse
 import java.util.Locale
@@ -20,9 +21,10 @@ fun computeDaySummary(context: Context, forecast: ForecastResponse, tempUnit: Te
     val conditionLabel = current?.weatherCode?.let {
         context.getString(weatherConditionForCode(it).label).lowercase(Locale.getDefault())
     } ?: context.getString(R.string.summary_mixed_conditions)
-    val hi = daily?.temperatureMax?.firstOrNull()
-    val lo = daily?.temperatureMin?.firstOrNull()
-    val precip = daily?.precipitationProbabilityMax?.firstOrNull() ?: 0
+    val t = todayIndex(daily, current?.time)
+    val hi = daily?.temperatureMax?.getOrNull(t)
+    val lo = daily?.temperatureMin?.getOrNull(t)
+    val precip = daily?.precipitationProbabilityMax?.getOrNull(t) ?: 0
     val wind = current?.windSpeed
 
     val parts = mutableListOf<String>()

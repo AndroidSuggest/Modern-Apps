@@ -97,7 +97,7 @@ class WeatherCarDetailScreen(
             val lo = day.temperatureMin.getOrNull(i)
             val code = day.weatherCode.getOrNull(i)
             val precip = day.precipitationProbabilityMax.getOrNull(i)
-            val dayLabel = dayLabelFor(isoDate, i)
+            val dayLabel = dayLabelFor(isoDate, current?.time)
             val parts = mutableListOf<String>()
             if (hi != null && lo != null) {
                 parts += "${formatTemperatureCompact(hi, tempUnit)} / " +
@@ -124,8 +124,8 @@ class WeatherCarDetailScreen(
             .build()
     }
 
-    private fun dayLabelFor(isoDate: String, index: Int): String {
-        if (index == 0) return "Today"
+    private fun dayLabelFor(isoDate: String, currentTime: String?): String {
+        if (currentTime?.substringBefore('T') == isoDate) return "Today"
         return runCatching {
             LocalDate.parse(isoDate).dayOfWeek
                 .getDisplayName(TextStyle.FULL, Locale.getDefault())

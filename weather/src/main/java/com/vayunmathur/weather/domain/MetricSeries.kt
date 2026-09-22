@@ -177,7 +177,7 @@ fun metricSeries(
         is SelectedDateOrTime.Time -> selected.isoTime.substringBefore('T')
         // No selection: plot today (the location's local calendar day) so the
         // graph always runs midnight-to-midnight, never a rolling 24h window.
-        null -> forecast.daily?.time?.firstOrNull() ?: localDate(forecast.utcOffsetSeconds)
+        null -> todayIsoDate(forecast)
     }
 
     val out = ArrayList<MetricPoint>()
@@ -189,11 +189,4 @@ fun metricSeries(
         out.add(MetricPoint(epoch, value))
     }
     return out
-}
-
-/** Today's date in the location's local time, as an ISO `yyyy-MM-dd` string. */
-private fun localDate(utcOffsetSeconds: Int): String {
-    val now = System.currentTimeMillis() / 1000
-    return kotlin.time.Instant.fromEpochSeconds(now + utcOffsetSeconds)
-        .toLocalDateTime(kotlinx.datetime.TimeZone.UTC).date.toString()
 }

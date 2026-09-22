@@ -54,23 +54,26 @@ fun resolveConditions(
         daily?.time?.indexOf(isoDate)?.takeIf { it >= 0 }
 
     return when (selected) {
-        null -> ResolvedConditions(
-            weatherCode = current.weatherCode,
-            isDay = current.isDay == 1,
-            temperature = current.temperature,
-            apparentTemperature = current.apparentTemperature,
-            high = daily?.temperatureMax?.firstOrNull(),
-            low = daily?.temperatureMin?.firstOrNull(),
-            uvIndexMax = daily?.uvIndexMax?.firstOrNull(),
-            sunriseIso = daily?.sunrise?.firstOrNull(),
-            sunsetIso = daily?.sunset?.firstOrNull(),
-            precipitationSum = daily?.precipitationSum?.firstOrNull(),
-            daylightDurationSec = daily?.daylightDuration?.firstOrNull(),
-            moonPhase = daily?.moonPhase?.firstOrNull(),
-            moonriseIso = daily?.moonrise?.firstOrNull(),
-            moonsetIso = daily?.moonset?.firstOrNull(),
-            blockCurrent = current,
-        )
+        null -> {
+            val t = todayIndex(daily, current.time)
+            ResolvedConditions(
+                weatherCode = current.weatherCode,
+                isDay = current.isDay == 1,
+                temperature = current.temperature,
+                apparentTemperature = current.apparentTemperature,
+                high = daily?.temperatureMax?.getOrNull(t),
+                low = daily?.temperatureMin?.getOrNull(t),
+                uvIndexMax = daily?.uvIndexMax?.getOrNull(t),
+                sunriseIso = daily?.sunrise?.getOrNull(t),
+                sunsetIso = daily?.sunset?.getOrNull(t),
+                precipitationSum = daily?.precipitationSum?.getOrNull(t),
+                daylightDurationSec = daily?.daylightDuration?.getOrNull(t),
+                moonPhase = daily?.moonPhase?.getOrNull(t),
+                moonriseIso = daily?.moonrise?.getOrNull(t),
+                moonsetIso = daily?.moonset?.getOrNull(t),
+                blockCurrent = current,
+            )
+        }
 
         is SelectedDateOrTime.Time -> {
             val h = hourly?.time?.indexOf(selected.isoTime)?.takeIf { it >= 0 }

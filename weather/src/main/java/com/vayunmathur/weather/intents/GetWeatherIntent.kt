@@ -7,6 +7,7 @@ import com.vayunmathur.weather.network.ForecastResponse
 import com.vayunmathur.weather.network.WeatherApi
 import com.vayunmathur.weather.domain.compassDirection
 import com.vayunmathur.weather.domain.parseLocalIsoToEpochSec
+import com.vayunmathur.weather.domain.todayIndex
 import com.vayunmathur.weather.domain.weatherConditionForCode
 import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.Serializable
@@ -56,12 +57,13 @@ internal fun errorWeatherData(locationName: String?, error: String) = WeatherDat
 internal fun ForecastResponse.toWeatherData(context: Context, locationName: String?): WeatherData {
     val current = current ?: return errorWeatherData(locationName, "No current observations available")
     val condition = context.getString(weatherConditionForCode(current.weatherCode).label)
-    val hi = daily?.temperatureMax?.firstOrNull() ?: current.temperature
-    val lo = daily?.temperatureMin?.firstOrNull() ?: current.temperature
-    val precip = daily?.precipitationProbabilityMax?.firstOrNull() ?: 0
-    val uv = daily?.uvIndexMax?.firstOrNull() ?: 0.0
-    val sunrise = daily?.sunrise?.firstOrNull()?.let { parseLocalIsoToEpochSec(it, utcOffsetSeconds) }
-    val sunset = daily?.sunset?.firstOrNull()?.let { parseLocalIsoToEpochSec(it, utcOffsetSeconds) }
+    val t = todayIndex(daily, current.time)
+    val hi = daily?.temperatureMax?.getOrNull(t) ?: current.temperature
+    val lo = daily?.temperatureMin?.getOrNull(t) ?: current.temperature
+    val precip = daily?.precipitationProbabilityMax?.getOrNull(t) ?: 0
+    val uv = daily?.uvIndexMax?.getOrNull(t) ?: 0.0
+    val sunrise = daily?.sunrise?.getOrNull(t)?.let { parseLocalIsoToEpochSec(it, utcOffsetSeconds) }
+    val sunset = daily?.sunset?.getOrNull(t)?.let { parseLocalIsoToEpochSec(it, utcOffsetSeconds) }
 
     return WeatherData(
         locationName = locationName,

@@ -3,6 +3,7 @@ package com.vayunmathur.weather.ui.components
 import com.vayunmathur.library.util.DateNameStyle
 import com.vayunmathur.library.util.localizedDayOfWeekNames
 import kotlinx.datetime.isoDayNumber
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,19 +65,19 @@ fun HourlyCard(
     selectedIsoTime: String? = null,
     onHourSelected: (String) -> Unit = {},
     scrollToIsoDate: String? = null,
+    /** ISO `yyyy-MM-ddTHH:00` of the current hour in the location's zone; that cell gets an outline. */
+    nowIsoHour: String? = null,
     /**
-     * "Now" for the strip: hours before it are dropped and the first surviving cell is
-     * labelled Now. A parameter rather than a direct clock read so a preview can pin it —
-     * otherwise fixed sample data ages out and the whole card disappears.
+     * "Now" for the strip's day labels and the sun arc. A parameter rather than a
+     * direct clock read so a preview can pin it — otherwise fixed sample data ages
+     * out and the whole card disappears.
      */
     nowEpochSec: Long = System.currentTimeMillis() / 1000,
 ) {
-    val nowSec = nowEpochSec
     val cells = hourly.time.indices
         .mapNotNull { i ->
             val iso = hourly.time.getOrNull(i) ?: return@mapNotNull null
             val ts = parseLocalIsoToEpochSec(iso, utcOffsetSeconds) ?: return@mapNotNull null
-            if (ts < nowSec - 3600) return@mapNotNull null
             HourCell(
                 iso = iso,
                 epochSec = ts,
@@ -88,12 +89,17 @@ fun HourlyCard(
         }
     if (cells.isEmpty()) return
 
+    // Open scrolled so now is visible with history to its left, unless the
+    // user picked a day (which takes precedence and jumps to that date).
+    val nowIdx = cells.indexOfFirst { it.iso == nowIsoHour }.takeIf { it >= 0 }
     val listState = rememberLazyListState()
-    LaunchedEffect(scrollToIsoDate, cells) {
-        if (scrollToIsoDate != null) {
-            val target = cells.indexOfFirst { it.iso.substringBefore('T') == scrollToIsoDate }
-            if (target >= 0) listState.animateScrollToItem(target)
+    LaunchedEffect(scrollToIsoDate, nowIdx, cells) {
+        val target = if (scrollToIsoDate != null) {
+            cells.indexOfFirst { it.iso.substringBefore('T') == scrollToIsoDate }.takeIf { it >= 0 }
+        } else {
+            nowIdx?.minus(1)?.coerceAtLeast(0)
         }
+        if (target != null && target >= 0) listState.scrollToItem(target)
     }
 
     Surface(
@@ -106,12 +112,13 @@ fun HourlyCard(
             LazyRow(state = listState, contentPadding = PaddingValues(horizontal = 12.dp)) {
                 items(cells.size, key = { "${cells[it].epochSec}_$it" }) { index ->
                     val cell = cells[index]
+                    val isNow = cell.iso == nowIsoHour
                     HourlyItem(
-                        time = if (index == 0) stringResource(R.string.now) else formatStripHour(cell.epochSec, use24Hour),
+                        time = if (isNow) stringResource(R.string.now) else formatStripHour(cell.epochSec, use24Hour),
                         dayLabel = formatDayLabel(cell.epochSec, nowEpochSec),
                         precipitationProbability = cell.precip,
                         temperature = cell.temperature,
-                        isNow = index == 0,
+                        isNow = isNow,
                         isSelected = selectedIsoTime == cell.iso,
                         icon = weatherConditionForCode(cell.weatherCode).iconContent(cell.isDay),
                         tempUnit = tempUnit,
@@ -136,12 +143,33 @@ private fun HourlyItem(
     onClick: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.heightIn(min = 135.dp).widthIn(min = 45.dp).clickable(onClick = onClick),
+        modifier = Modifier
+            .heightIn(min = 135.dp)
+            .widthIn(min = 45.dp)
+            .then(
+                if (isNow) {
+                    Modifier
+                        .padding(1.dp)
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = MaterialTheme.shapes.medium,
+                        )
+                        .padding(1.dp)
+                } else {
+                    Modifier.padding(2.dp)
+                }
+            )
+            .clickable(onClick = onClick),
         verticalArrangement = Arrangement.Bottom,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(5.dp))
-        TempWithShape(temperature = temperature, tempUnit = tempUnit, highlighted = isNow || isSelected)
+        TempWithShape(
+            temperature = temperature,
+            tempUnit = tempUnit,
+            highlighted = isNow || isSelected,
+        )
         Spacer(Modifier.height(2.dp))
         Text(
             "${precipitationProbability}%",
@@ -168,7 +196,11 @@ private fun HourlyItem(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun TempWithShape(temperature: Double, tempUnit: TemperatureUnit, highlighted: Boolean) {
+private fun TempWithShape(
+    temperature: Double,
+    tempUnit: TemperatureUnit,
+    highlighted: Boolean,
+) {
     Surface(
         shape = MaterialShapes.Cookie4Sided.toShape(),
         modifier = Modifier.size(36.dp),

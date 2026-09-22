@@ -2,6 +2,7 @@ package com.vayunmathur.weather.ui.components
 
 import com.vayunmathur.library.util.DateNameStyle
 import kotlinx.datetime.isoDayNumber
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,12 +13,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.IconCalendar
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,8 +48,17 @@ fun DailyCard(
     tempUnit: TemperatureUnit,
     selectedIsoDate: String? = null,
     onDaySelected: (String) -> Unit = {},
+    /** ISO `yyyy-MM-dd` of today in the location's zone; that card gets an outline. */
+    todayIsoDate: String? = null,
 ) {
     if (daily.time.isEmpty()) return
+
+    // Open scrolled so today is visible with history to its left.
+    val todayIdx = daily.time.indexOf(todayIsoDate).takeIf { it >= 0 } ?: 0
+    val listState = rememberLazyListState()
+    LaunchedEffect(todayIdx, daily.time.size) {
+        if (todayIdx > 0) listState.scrollToItem((todayIdx - 1).coerceAtLeast(0))
+    }
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -57,6 +69,7 @@ fun DailyCard(
             CardsHeader(text = stringResource(R.string.daily_forecast), icon = { m, c -> IconCalendar(m, c) })
             Spacer(Modifier.height(14.dp))
             LazyRow(
+                state = listState,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp),
             ) {
@@ -66,15 +79,17 @@ fun DailyCard(
                     val lo = daily.temperatureMin.getOrNull(index) ?: 0.0
                     val code = daily.weatherCode.getOrNull(index) ?: 0
                     val precip = daily.precipitationProbabilityMax.getOrNull(index) ?: 0
+                    val isToday = date != null && date == todayIsoDate
 
                     DailyItem(
-                        weekday = if (index == 0) stringResource(R.string.today) else dayLabel(date),
+                        weekday = if (isToday) stringResource(R.string.today) else dayLabel(date),
                         maxTemp = hi,
                         minTemp = lo,
                         icon = weatherConditionForCode(code).iconContent(true),
                         precipitationProbability = precip,
                         tempUnit = tempUnit,
                         isSelected = date != null && date == selectedIsoDate,
+                        isToday = isToday,
                         onClick = { if (date != null) onDaySelected(date) },
                     )
                 }
@@ -92,11 +107,13 @@ private fun DailyItem(
     precipitationProbability: Int,
     tempUnit: TemperatureUnit,
     isSelected: Boolean,
+    isToday: Boolean,
     onClick: () -> Unit,
 ) {
     Surface(
         color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
         shape = CircleShape,
+        border = if (isToday) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
         onClick = onClick,
     ) {
         val onColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface

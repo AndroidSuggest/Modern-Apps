@@ -15,6 +15,8 @@ object WeatherApi {
     private const val FORECAST_BASE = "https://api.open-meteo.com/v1/forecast"
     private const val GEOCODE_BASE = "https://geocoding-api.open-meteo.com/v1/search"
     private const val AIR_QUALITY_BASE = "https://air-quality-api.open-meteo.com/v1/air-quality"
+    /** Days of historical data prepended to the forecast response. */
+    private const val PAST_DAYS = 7
 
     /**
      * Fetch the current conditions + 24h hourly + 7-day daily forecast for a
@@ -82,6 +84,7 @@ object WeatherApi {
             )
             append("&minutely_15=precipitation")
             append("&timezone=auto")
+            append("&past_days=").append(PAST_DAYS)
             append("&forecast_days=7")
         }
         return NetworkClient.getJson(url)

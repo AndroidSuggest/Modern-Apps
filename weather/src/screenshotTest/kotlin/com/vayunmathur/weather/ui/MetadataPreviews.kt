@@ -12,11 +12,11 @@ import com.vayunmathur.weather.network.Current
 import com.vayunmathur.weather.network.Daily
 import com.vayunmathur.weather.network.ForecastResponse
 import com.vayunmathur.weather.network.Hourly
-import com.vayunmathur.weather.domain.DisplayUnits
 import com.vayunmathur.weather.domain.LocationRow
 import com.vayunmathur.weather.domain.LocationUiState
 import com.vayunmathur.weather.domain.LocationsUiState
 import com.vayunmathur.weather.domain.SelectedDateOrTime
+import com.vayunmathur.weather.platform.DisplayUnits
 import com.vayunmathur.weather.platform.WeatherActions
 
 /** Phone-shaped, roughly 1080x2340 at xxhdpi — comfortably above the F-Droid minimum. */
@@ -30,24 +30,56 @@ private const val UTC_OFFSET_SEC = 3600
 
 /**
  * Wednesday 15 July 2026, 14:30 local — the epoch second that [NOW_ISO_HOUR] and every
- * timestamp below hang off. The hourly strip drops anything more than an hour old and the
- * sun block positions its marker from it, so pinning "now" is what stops the sample data
- * ageing out and keeps the two images identical from one run to the next.
+ * timestamp below hang off. The sun block positions its marker from it, so pinning "now"
+ * is what stops the sample data ageing out and keeps the two images identical from one
+ * run to the next.
  */
 private const val NOW_EPOCH_SEC = 1_784_122_200L
 
-/** The hour the strip labels "Now"; the first entry of [SAMPLE_HOURLY]. */
+/** The hour the strip labels "Now"; [HISTORY_HOURS] entries into [SAMPLE_HOURLY]. */
 private const val NOW_ISO_HOUR = "2026-07-15T14:00"
 
-/** The hour preview 2 inspects: 6 PM the same day, five cells into the strip. */
+/** The hour preview 2 inspects: 6 PM the same day, four cells after "Now". */
 private const val SELECTED_ISO_HOUR = "2026-07-15T18:00"
 
 /**
- * 24 hours from [NOW_ISO_HOUR] onwards. Open-Meteo returns local-time ISO strings with no
- * offset — [UTC_OFFSET_SEC] is what turns them back into instants.
+ * Hours of synthetic history prepended to the sample hourly strip, mirroring
+ * `past_days` on the real endpoint. Values cycle the 24 h of sample data (a whole
+ * cycle, so day/night alignment is preserved); the strip opens scrolled to "Now",
+ * so these cells sit off-screen to the left.
+ */
+private const val HISTORY_HOURS = 48
+
+/** `2026-07-13T14:00` through `2026-07-15T13:00` — the 48 hours before [NOW_ISO_HOUR]. */
+private fun historyHourLabels(): List<String> {
+    val out = ArrayList<String>(HISTORY_HOURS)
+    var day = 13
+    var hour = 14
+    repeat(HISTORY_HOURS) {
+        out += "2026-07-%02dT%02d:00".format(day, hour)
+        if (++hour == 24) {
+            hour = 0
+            day++
+        }
+    }
+    return out
+}
+
+/** Cycle [sample] to synthesize [HISTORY_HOURS] of plausible history before it. */
+private fun <T> withHistory(sample: List<T>): List<T> {
+    val hist = ArrayList<T>(HISTORY_HOURS)
+    var i = 0
+    repeat(HISTORY_HOURS) { hist += sample[i++ % sample.size] }
+    return hist + sample
+}
+
+/**
+ * [HISTORY_HOURS] of history followed by 24 hours from [NOW_ISO_HOUR] onwards.
+ * Open-Meteo returns local-time ISO strings with no offset — [UTC_OFFSET_SEC]
+ * is what turns them back into instants.
  */
 private val SAMPLE_HOURLY = Hourly(
-    time = listOf(
+    time = historyHourLabels() + listOf(
         "2026-07-15T14:00", "2026-07-15T15:00", "2026-07-15T16:00", "2026-07-15T17:00",
         "2026-07-15T18:00", "2026-07-15T19:00", "2026-07-15T20:00", "2026-07-15T21:00",
         "2026-07-15T22:00", "2026-07-15T23:00", "2026-07-16T00:00", "2026-07-16T01:00",
@@ -55,117 +87,170 @@ private val SAMPLE_HOURLY = Hourly(
         "2026-07-16T06:00", "2026-07-16T07:00", "2026-07-16T08:00", "2026-07-16T09:00",
         "2026-07-16T10:00", "2026-07-16T11:00", "2026-07-16T12:00", "2026-07-16T13:00",
     ),
-    temperature = listOf(
-        21.8, 22.1, 22.4, 22.0, 21.2, 20.0, 18.6, 17.4,
-        16.5, 15.9, 15.4, 15.0, 14.6, 14.3, 14.0, 13.8,
-        14.4, 15.7, 17.2, 18.8, 20.1, 21.2, 22.0, 22.5,
+    temperature = withHistory(
+        listOf(
+            21.8, 22.1, 22.4, 22.0, 21.2, 20.0, 18.6, 17.4,
+            16.5, 15.9, 15.4, 15.0, 14.6, 14.3, 14.0, 13.8,
+            14.4, 15.7, 17.2, 18.8, 20.1, 21.2, 22.0, 22.5,
+        ),
     ),
-    apparentTemperature = listOf(
-        21.1, 21.4, 21.7, 21.3, 20.5, 19.3, 17.9, 16.7,
-        15.8, 15.2, 14.7, 14.3, 13.9, 13.6, 13.3, 13.1,
-        13.7, 15.0, 16.5, 18.1, 19.4, 20.5, 21.3, 21.8,
+    apparentTemperature = withHistory(
+        listOf(
+            21.1, 21.4, 21.7, 21.3, 20.5, 19.3, 17.9, 16.7,
+            15.8, 15.2, 14.7, 14.3, 13.9, 13.6, 13.3, 13.1,
+            13.7, 15.0, 16.5, 18.1, 19.4, 20.5, 21.3, 21.8,
+        ),
     ),
-    relativeHumidity = listOf(
-        58, 56, 55, 57, 60, 65, 70, 74,
-        78, 81, 83, 85, 86, 87, 88, 89,
-        87, 82, 76, 70, 64, 60, 57, 55,
+    relativeHumidity = withHistory(
+        listOf(
+            58, 56, 55, 57, 60, 65, 70, 74,
+            78, 81, 83, 85, 86, 87, 88, 89,
+            87, 82, 76, 70, 64, 60, 57, 55,
+        ),
     ),
-    dewPoint = listOf(
-        13.4, 13.2, 13.3, 13.4, 13.5, 13.6, 13.4, 13.2,
-        13.0, 12.9, 12.8, 12.7, 12.6, 12.5, 12.4, 12.3,
-        12.5, 12.8, 13.1, 13.3, 13.5, 13.6, 13.5, 13.4,
+    dewPoint = withHistory(
+        listOf(
+            13.4, 13.2, 13.3, 13.4, 13.5, 13.6, 13.4, 13.2,
+            13.0, 12.9, 12.8, 12.7, 12.6, 12.5, 12.4, 12.3,
+            12.5, 12.8, 13.1, 13.3, 13.5, 13.6, 13.5, 13.4,
+        ),
     ),
-    weatherCode = listOf(
-        2, 2, 1, 1, 2, 3, 3, 2,
-        2, 1, 1, 2, 3, 3, 45, 45,
-        3, 2, 1, 1, 0, 0, 1, 2,
+    weatherCode = withHistory(
+        listOf(
+            2, 2, 1, 1, 2, 3, 3, 2,
+            2, 1, 1, 2, 3, 3, 45, 45,
+            3, 2, 1, 1, 0, 0, 1, 2,
+        ),
     ),
-    precipitationProbability = listOf(
-        5, 5, 0, 0, 5, 10, 15, 10,
-        5, 5, 10, 15, 20, 25, 30, 25,
-        15, 10, 5, 0, 0, 0, 5, 10,
+    precipitationProbability = withHistory(
+        listOf(
+            5, 5, 0, 0, 5, 10, 15, 10,
+            5, 5, 10, 15, 20, 25, 30, 25,
+            15, 10, 5, 0, 0, 0, 5, 10,
+        ),
     ),
-    precipitation = listOf(
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.1, 0.2, 0.3, 0.2,
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    precipitation = withHistory(
+        listOf(
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.1, 0.2, 0.3, 0.2,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        ),
     ),
-    windSpeed = listOf(
-        16.4, 17.2, 17.8, 17.1, 15.9, 14.3, 12.8, 11.6,
-        10.7, 10.1, 9.6, 9.2, 8.9, 8.6, 8.4, 8.7,
-        9.5, 11.0, 12.9, 14.6, 16.1, 17.3, 18.0, 18.4,
+    windSpeed = withHistory(
+        listOf(
+            16.4, 17.2, 17.8, 17.1, 15.9, 14.3, 12.8, 11.6,
+            10.7, 10.1, 9.6, 9.2, 8.9, 8.6, 8.4, 8.7,
+            9.5, 11.0, 12.9, 14.6, 16.1, 17.3, 18.0, 18.4,
+        ),
     ),
-    windDirection = listOf(
-        236, 240, 244, 246, 244, 240, 234, 228,
-        222, 218, 214, 210, 208, 206, 208, 214,
-        222, 230, 236, 242, 246, 250, 252, 254,
+    windDirection = withHistory(
+        listOf(
+            236, 240, 244, 246, 244, 240, 234, 228,
+            222, 218, 214, 210, 208, 206, 208, 214,
+            222, 230, 236, 242, 246, 250, 252, 254,
+        ),
     ),
-    pressureMsl = listOf(
-        1015.2, 1015.0, 1014.8, 1014.7, 1014.9, 1015.2, 1015.6, 1016.0,
-        1016.3, 1016.5, 1016.7, 1016.8, 1016.8, 1016.7, 1016.5, 1016.3,
-        1016.0, 1015.7, 1015.4, 1015.0, 1014.7, 1014.4, 1014.2, 1014.1,
+    pressureMsl = withHistory(
+        listOf(
+            1015.2, 1015.0, 1014.8, 1014.7, 1014.9, 1015.2, 1015.6, 1016.0,
+            1016.3, 1016.5, 1016.7, 1016.8, 1016.8, 1016.7, 1016.5, 1016.3,
+            1016.0, 1015.7, 1015.4, 1015.0, 1014.7, 1014.4, 1014.2, 1014.1,
+        ),
     ),
-    visibility = listOf(
-        24140.0, 24140.0, 24140.0, 24140.0, 22000.0, 20000.0, 18000.0, 16000.0,
-        14000.0, 12000.0, 11000.0, 10000.0, 8000.0, 6000.0, 2500.0, 1800.0,
-        5000.0, 12000.0, 18000.0, 22000.0, 24140.0, 24140.0, 24140.0, 24140.0,
+    visibility = withHistory(
+        listOf(
+            24140.0, 24140.0, 24140.0, 24140.0, 22000.0, 20000.0, 18000.0, 16000.0,
+            14000.0, 12000.0, 11000.0, 10000.0, 8000.0, 6000.0, 2500.0, 1800.0,
+            5000.0, 12000.0, 18000.0, 22000.0, 24140.0, 24140.0, 24140.0, 24140.0,
+        ),
     ),
-    cloudCover = listOf(
-        34, 30, 22, 18, 28, 44, 58, 46,
-        38, 26, 30, 42, 60, 72, 90, 94,
-        78, 55, 32, 20, 10, 8, 16, 30,
+    cloudCover = withHistory(
+        listOf(
+            34, 30, 22, 18, 28, 44, 58, 46,
+            38, 26, 30, 42, 60, 72, 90, 94,
+            78, 55, 32, 20, 10, 8, 16, 30,
+        ),
     ),
-    windGusts = listOf(
-        27.8, 29.1, 30.2, 29.0, 27.0, 24.3, 21.7, 19.6,
-        18.1, 17.1, 16.3, 15.6, 15.1, 14.6, 14.3, 14.8,
-        16.1, 18.7, 21.9, 24.8, 27.3, 29.4, 30.6, 31.2,
+    windGusts = withHistory(
+        listOf(
+            27.8, 29.1, 30.2, 29.0, 27.0, 24.3, 21.7, 19.6,
+            18.1, 17.1, 16.3, 15.6, 15.1, 14.6, 14.3, 14.8,
+            16.1, 18.7, 21.9, 24.8, 27.3, 29.4, 30.6, 31.2,
+        ),
     ),
-    uvIndex = listOf(
-        5.2, 4.3, 3.2, 2.1, 1.2, 0.5, 0.1, 0.0,
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        0.3, 0.9, 1.8, 2.9, 4.1, 5.2, 6.0, 6.3,
+    uvIndex = withHistory(
+        listOf(
+            5.2, 4.3, 3.2, 2.1, 1.2, 0.5, 0.1, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.3, 0.9, 1.8, 2.9, 4.1, 5.2, 6.0, 6.3,
+        ),
     ),
     // Sunset is 21:07 and sunrise 05:05, so 22:00 through 05:00 are the night hours.
-    isDay = listOf(
-        1, 1, 1, 1, 1, 1, 1, 1,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        1, 1, 1, 1, 1, 1, 1, 1,
+    isDay = withHistory(
+        listOf(
+            1, 1, 1, 1, 1, 1, 1, 1,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            1, 1, 1, 1, 1, 1, 1, 1,
+        ),
     ),
 )
 
-/** A week from the sample date, Wednesday through the following Tuesday. */
+/**
+ * Two weeks ending the Tuesday after the sample date: seven days of history
+ * followed by the forward week, so the sample "today" (2026-07-15) sits at
+ * index 7, mirroring a real `past_days=7` response.
+ */
 private val SAMPLE_DAILY = Daily(
     time = listOf(
+        "2026-07-08", "2026-07-09", "2026-07-10", "2026-07-11",
+        "2026-07-12", "2026-07-13", "2026-07-14",
         "2026-07-15", "2026-07-16", "2026-07-17", "2026-07-18",
         "2026-07-19", "2026-07-20", "2026-07-21",
     ),
-    weatherCode = listOf(2, 45, 1, 0, 0, 61, 3),
-    temperatureMax = listOf(22.6, 23.4, 24.8, 26.1, 24.9, 20.7, 19.8),
-    temperatureMin = listOf(13.8, 14.5, 15.2, 16.0, 15.4, 14.1, 13.2),
-    apparentTemperatureMax = listOf(21.9, 22.7, 24.1, 25.5, 24.2, 20.0, 19.0),
-    apparentTemperatureMin = listOf(13.1, 13.8, 14.5, 15.3, 14.7, 13.4, 12.5),
+    weatherCode = listOf(3, 2, 61, 45, 0, 1, 2, 2, 45, 1, 0, 0, 61, 3),
+    temperatureMax = listOf(19.5, 20.8, 18.9, 21.7, 23.0, 24.1, 22.2, 22.6, 23.4, 24.8, 26.1, 24.9, 20.7, 19.8),
+    temperatureMin = listOf(12.9, 13.5, 13.0, 14.0, 14.8, 15.0, 13.6, 13.8, 14.5, 15.2, 16.0, 15.4, 14.1, 13.2),
+    apparentTemperatureMax = listOf(18.8, 20.1, 18.2, 21.0, 22.3, 23.4, 21.5, 21.9, 22.7, 24.1, 25.5, 24.2, 20.0, 19.0),
+    apparentTemperatureMin = listOf(12.2, 12.8, 12.3, 13.3, 14.1, 14.3, 12.9, 13.1, 13.8, 14.5, 15.3, 14.7, 13.4, 12.5),
     sunrise = listOf(
+        "2026-07-08T04:59", "2026-07-09T05:00", "2026-07-10T05:01", "2026-07-11T05:02",
+        "2026-07-12T05:03", "2026-07-13T05:04", "2026-07-14T05:04",
         "2026-07-15T05:05", "2026-07-16T05:06", "2026-07-17T05:08", "2026-07-18T05:09",
         "2026-07-19T05:10", "2026-07-20T05:12", "2026-07-21T05:13",
     ),
     sunset = listOf(
+        "2026-07-08T21:12", "2026-07-09T21:11", "2026-07-10T21:10", "2026-07-11T21:09",
+        "2026-07-12T21:08", "2026-07-13T21:08", "2026-07-14T21:07",
         "2026-07-15T21:07", "2026-07-16T21:06", "2026-07-17T21:05", "2026-07-18T21:03",
         "2026-07-19T21:02", "2026-07-20T21:01", "2026-07-21T20:59",
     ),
-    daylightDuration = listOf(57720.0, 57600.0, 57420.0, 57240.0, 57120.0, 56940.0, 56760.0),
-    sunshineDuration = listOf(43200.0, 25200.0, 47000.0, 50400.0, 48600.0, 19800.0, 34200.0),
-    uvIndexMax = listOf(6.4, 5.7, 6.8, 7.2, 7.0, 4.4, 5.6),
-    precipitationProbabilityMax = listOf(15, 30, 5, 0, 0, 70, 25),
-    precipitationSum = listOf(0.0, 0.8, 0.0, 0.0, 0.0, 5.4, 0.4),
+    daylightDuration = listOf(
+        58380.0, 58260.0, 58140.0, 58020.0, 57900.0, 57840.0, 57780.0,
+        57720.0, 57600.0, 57420.0, 57240.0, 57120.0, 56940.0, 56760.0,
+    ),
+    sunshineDuration = listOf(
+        36000.0, 41400.0, 12600.0, 45000.0, 46800.0, 44100.0, 42300.0,
+        43200.0, 25200.0, 47000.0, 50400.0, 48600.0, 19800.0, 34200.0,
+    ),
+    uvIndexMax = listOf(5.9, 6.1, 3.8, 6.6, 6.9, 7.1, 6.2, 6.4, 5.7, 6.8, 7.2, 7.0, 4.4, 5.6),
+    precipitationProbabilityMax = listOf(20, 10, 65, 25, 5, 0, 10, 15, 30, 5, 0, 0, 70, 25),
+    precipitationSum = listOf(0.2, 0.0, 4.1, 0.5, 0.0, 0.0, 0.1, 0.0, 0.8, 0.0, 0.0, 0.0, 5.4, 0.4),
     // A real Open-Meteo lunation (waxing gibbous through full), relabelled onto
-    // the sample week. The moon is a 2%-lit sliver on these actual dates, which
+    // the sample fortnight. The moon is a 2%-lit sliver on these actual dates, which
     // would render as an all-but-invisible disc in the store screenshot.
-    moonPhase = listOf(0.318, 0.35, 0.381, 0.412, 0.443, 0.474, 0.504),
+    moonPhase = listOf(
+        0.10, 0.135, 0.169, 0.203, 0.235, 0.264, 0.292,
+        0.318, 0.35, 0.381, 0.412, 0.443, 0.474, 0.504,
+    ),
     moonrise = listOf(
+        "2026-07-08T06:58", "2026-07-09T08:06", "2026-07-10T09:19", "2026-07-11T10:33",
+        "2026-07-12T11:47", "2026-07-13T12:52", "2026-07-14T13:06",
         "2026-07-15T13:52", "2026-07-16T15:06", "2026-07-17T16:19", "2026-07-18T17:33",
         "2026-07-19T18:47", "2026-07-20T19:59", "2026-07-21T21:04",
     ),
     moonset = listOf(
+        "2026-07-08T00:58", "2026-07-09T01:06", "2026-07-10T01:14", "2026-07-11T01:19",
+        "2026-07-12T01:22", "2026-07-13T01:24", "2026-07-14T01:26",
         "2026-07-15T01:27", "2026-07-16T01:38", "2026-07-17T01:49", "2026-07-18T02:02",
         "2026-07-19T02:17", "2026-07-20T02:38", "2026-07-21T03:07",
     ),
