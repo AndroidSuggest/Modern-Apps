@@ -12,9 +12,9 @@ import com.vayunmathur.weather.network.Current
 import com.vayunmathur.weather.network.Daily
 import com.vayunmathur.weather.network.ForecastResponse
 import com.vayunmathur.weather.network.Hourly
-import com.vayunmathur.weather.domain.LocationRow
-import com.vayunmathur.weather.domain.LocationUiState
-import com.vayunmathur.weather.domain.LocationsUiState
+import com.vayunmathur.weather.platform.LocationRow
+import com.vayunmathur.weather.platform.LocationUiState
+import com.vayunmathur.weather.platform.LocationsUiState
 import com.vayunmathur.weather.domain.SelectedDateOrTime
 import com.vayunmathur.weather.platform.DisplayUnits
 import com.vayunmathur.weather.platform.WeatherActions

@@ -10,7 +10,7 @@ import kotlinx.serialization.json.Json
  * `SavedPlacesViewModel` so the store logic lives in one place:
  *
  *  - **Saved** — a flat starred list the user builds from the place sheet.
- *  - **Lists** — named collections (Vela's `PlaceListStore`), e.g. "Trip",
+ *  - **Lists** — named collections, e.g. "Trip",
  *    "Favorites"; a map of list-name → places.
  *
  * Each field is a small JSON string in DataStore. The store is deliberately thin

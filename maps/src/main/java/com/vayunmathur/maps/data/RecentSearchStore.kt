@@ -8,7 +8,7 @@ import kotlinx.serialization.json.Json
 
 /**
  * Persists the user's most-recent search queries so the search page can offer
- * them before any text is typed (Vela's `RecentSearchStore` analog).
+ * them before any text is typed.
  *
  * Backed by a single JSON-encoded ordered string list in [DataStoreUtils] (a
  * plain preferences string, not the removed amenities.db): most-recent first,

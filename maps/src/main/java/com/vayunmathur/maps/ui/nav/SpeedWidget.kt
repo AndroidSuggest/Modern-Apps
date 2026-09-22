@@ -28,7 +28,7 @@ private const val MPS_TO_KMH = 3.6
 private const val MPS_TO_MPH = 2.2369363
 
 /**
- * Speedometer + posted-limit badge (Vela's `SpeedWidget` + `formatSpeedLimit`).
+ * Speedometer + posted-limit badge.
  *
  * Shows the current GPS ground speed in a rounded pill, and — when a posted
  * limit is available from the maxspeed overlay (P5b) — a circular red-ringed

@@ -29,7 +29,7 @@ import com.vayunmathur.maps.util.RouteService
 import com.vayunmathur.maps.util.formatDistance
 
 /**
- * Rich turn maneuver banner (Vela's `ManeuverBanner`). Shows the upcoming
+ * Rich turn maneuver banner. Shows the upcoming
  * maneuver icon, distance-to-maneuver, the primary instruction (with a route
  * shield when the road carries a ref), a "then" peek at the following
  * maneuver, and a lane-guidance strip from the Rust router's lane data (P5a).

@@ -23,7 +23,7 @@ import com.vayunmathur.maps.util.RouteService
 import com.vayunmathur.maps.util.RouteService.API.Maneuver
 
 /**
- * Lane-guidance strip (Vela's `LaneDiagram`). Renders one cell per available
+ * Lane-guidance strip. Renders one cell per available
  * turn lane at the upcoming junction, derived by the Rust router (P5a). Lanes
  * that lead onto the taken route are highlighted; the rest are dimmed.
  *

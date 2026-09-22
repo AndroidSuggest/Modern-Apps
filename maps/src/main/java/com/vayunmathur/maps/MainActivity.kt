@@ -155,7 +155,7 @@ class MainActivity : ComponentActivity() {
         if (link.navigate) navigateTo(link) else openPlace(link)
     }
 
-    /** Select a place from the link and open its bottom pane (Vela place-card). */
+    /** Select a place from the link and open its bottom pane. */
     private fun openPlace(link: MapLink) {
         val lat = link.lat
         val lng = link.lng

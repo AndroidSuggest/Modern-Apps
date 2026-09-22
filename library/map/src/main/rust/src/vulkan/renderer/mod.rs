@@ -383,6 +383,10 @@ pub struct PlacedHit {
     /// [`ID_NONE`](tilecodec::mamaps::body::ID_NONE) when it has none. Lets the host rejoin the
     /// hit against its own data without matching on name and position.
     pub feature_id: u64,
+    /// The tagged relation id of the admin boundary this label names, or
+    /// [`REGION_NONE`](tilecodec::mamaps::body::REGION_NONE). Lets a tapped label mask that exact
+    /// region without the host re-deriving it from point + level.
+    pub region_id: u64,
     /// Anchor lon/lat in degrees.
     pub lon: f64,
     pub lat: f64,

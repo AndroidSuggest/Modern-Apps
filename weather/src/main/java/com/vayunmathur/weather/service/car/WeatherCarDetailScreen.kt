@@ -4,6 +4,7 @@ import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.Action
+import androidx.car.app.model.CarIcon
 import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Pane
 import androidx.car.app.model.PaneTemplate
@@ -17,6 +18,7 @@ import com.vayunmathur.weather.domain.formatTemperatureCompact
 import com.vayunmathur.weather.domain.formatWind
 import com.vayunmathur.weather.domain.WindUnit
 import com.vayunmathur.weather.domain.weatherConditionForCode
+import androidx.core.graphics.drawable.IconCompat
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
@@ -84,6 +86,9 @@ class WeatherCarDetailScreen(
                     "Wind ${formatWind(current.windSpeed, WindUnit.KmH)} " +
                     compassDirection(current.windDirection),
             )
+            runCatching {
+                now.setImage(conditionIcon(current.weatherCode, current.isDay == 1), Row.IMAGE_TYPE_ICON)
+            }
             pane.addRow(now.build())
         }
 
@@ -113,6 +118,11 @@ class WeatherCarDetailScreen(
                 Row.Builder()
                     .setTitle(dayLabel)
                     .apply { if (parts.isNotEmpty()) addText(parts.joinToString(" · ")) }
+                    .apply {
+                        if (code != null) {
+                            runCatching { setImage(conditionIcon(code, isDay = true), Row.IMAGE_TYPE_ICON) }
+                        }
+                    }
                     .build(),
             )
             rows++
@@ -131,6 +141,12 @@ class WeatherCarDetailScreen(
                 .getDisplayName(TextStyle.FULL, Locale.getDefault())
         }.getOrDefault(isoDate)
     }
+
+    /** A [CarIcon] for a WMO condition code, reusing the phone/widget glyphs. */
+    private fun conditionIcon(code: Int, isDay: Boolean): CarIcon =
+        CarIcon.Builder(
+            IconCompat.createWithResource(carContext, weatherConditionForCode(code).iconRes(isDay)),
+        ).build()
 
     private companion object {
         const val DEFAULT_PANE_LIMIT = 20

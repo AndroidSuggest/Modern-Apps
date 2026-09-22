@@ -456,7 +456,7 @@ private fun TemplateRow(row: HostUiRow) {
                 Text(row.texts.joinToString(" · "), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         },
-        leadingContent = row.image?.let { { ArtworkTile(it, Modifier.size(56.dp), CAR_SHAPE) } },
+        leadingContent = row.image?.let { { ArtworkTile(it, Modifier.size(56.dp), CAR_SHAPE, crop = false) } },
         trailingContent = {
             if (click != null) TextButton(onClick = click) { Text(if (row.browse) "›" else "Open") }
         },
@@ -465,7 +465,12 @@ private fun TemplateRow(row: HostUiRow) {
 
 /** Resolves an [IconCompat] to a painter, or a themed placeholder box when absent. */
 @Composable
-private fun ArtworkTile(icon: IconCompat?, modifier: Modifier, shape: androidx.compose.ui.graphics.Shape) {
+private fun ArtworkTile(
+    icon: IconCompat?,
+    modifier: Modifier,
+    shape: androidx.compose.ui.graphics.Shape,
+    crop: Boolean = true,
+) {
     val painter: Painter? = when {
         icon == null -> null
         // Resource icons render natively (vectors included) even under Layoutlib.
@@ -476,7 +481,9 @@ private fun ArtworkTile(icon: IconCompat?, modifier: Modifier, shape: androidx.c
         else -> rememberIconPainter(icon)
     }
     if (painter != null) {
-        Image(painter, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier.clip(shape))
+        // Album art fills its tile (Crop); row glyphs/avatars show whole (Fit).
+        val scale = if (crop) ContentScale.Crop else ContentScale.Fit
+        Image(painter, contentDescription = null, contentScale = scale, modifier = modifier.clip(shape))
     } else {
         Box(modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
             Text("♪", style = MaterialTheme.typography.headlineMedium)

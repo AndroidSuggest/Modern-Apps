@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * **deleted** the old `listentitiesreviews` endpoint (now HTTP 404) and moved reviews behind a
  * `batchexecute` RPC (`rpcids=T4jwAf`) whose request proto resisted capture.
  *
- * Ported from Vela (github.com/PimpinPumpkin/Vela). Rather than replay that RPC, we let Google's
+ * Rather than replay that RPC, we let Google's
  * own JS render the reviews (loading the place's canonical `?cid=` page, anonymous/no-login,
  * desktop UA) and read them back out of the DOM: per review the star rating, author, relative date,
  * text **and the reviewer's uploaded photos**. The page builds a JSON array over a JS bridge;
@@ -173,7 +173,7 @@ class WebReviewsFetcher(private val context: Context) {
         wv.settings.domStorageEnabled = true
         // Desktop UA so Google serves the desktop web Maps (a mobile UA deep-links to intent://).
         wv.settings.userAgentString = GooglePoiDataSource.USER_AGENT
-        wv.addJavascriptInterface(Bridge(), "VelaBridge")
+        wv.addJavascriptInterface(Bridge(), "ReviewsBridge")
         // Give the hidden (never-attached) WebView a REAL offscreen viewport. Google's reviews list is
         // virtualized + lazy-loaded off the scroll viewport; a 0×0 headless WebView renders the chrome
         // (rating histogram, topic filters) but NEVER the review cards. A tall explicit layout makes the
@@ -197,7 +197,7 @@ class WebReviewsFetcher(private val context: Context) {
      *  ACCUMULATING each review card into a keyed set (Google virtualizes the panel — it recycles
      *  DOM nodes as you scroll, so any single snapshot holds only ~10 cards; the union across scroll
      *  positions is the full list). Bridges the accumulated JSON array back once the list is exhausted
-     *  or the cap is hit. Ported verbatim from Vela — the fragile part. */
+     *  or the cap is hit. */
     private fun extractScript(id: String): String {
         val idj = "\"" + id.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
         return """
@@ -327,8 +327,8 @@ class WebReviewsFetcher(private val context: Context) {
                 // bar) AND the accumulated reviews themselves, so the sheet fills in under the bar
                 // while the scrape grinds instead of making the user stare at a bar for 30 s.
                 if(accN!==lastRep){ lastRep=accN;
-                  try{ VelaBridge.onProgress(ID, accN); }catch(e){}
-                  try{ VelaBridge.onPartial(ID, JSON.stringify(snap())); }catch(e){}
+                  try{ ReviewsBridge.onProgress(ID, accN); }catch(e){}
+                  try{ ReviewsBridge.onPartial(ID, JSON.stringify(snap())); }catch(e){}
                 }
                 // Are review cards rendered RIGHT NOW? On busy business pages (food, retail) the Reviews
                 // tab's list can take ~8 s to populate after the click; until then the panel holds only
@@ -362,7 +362,7 @@ class WebReviewsFetcher(private val context: Context) {
                 // Done: cap hit, OR settled at the bottom with no new reviews, OR provably empty,
                 // OR ran long.
                 if( accN>=CAP || (settled && idle) || emptyDone || tries>130 ){
-                  try{ VelaBridge.onResult(ID, JSON.stringify(snap())); }catch(e){ try{ VelaBridge.onResult(ID,'[]'); }catch(e2){} }
+                  try{ ReviewsBridge.onResult(ID, JSON.stringify(snap())); }catch(e){ try{ ReviewsBridge.onResult(ID,'[]'); }catch(e2){} }
                   return;
                 }
                 setTimeout(tick, 250);

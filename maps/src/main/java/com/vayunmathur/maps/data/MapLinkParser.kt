@@ -6,7 +6,7 @@ import java.net.URLDecoder
 /**
  * A target extracted from an external `geo:` / `google.navigation:` URI or a
  * Google-Maps web link, so this app can be the system maps handler on a
- * de-Googled phone (mirrors Vela's MapLinkParser, extended for turn-by-turn).
+ * de-Googled phone (extended for turn-by-turn).
  *
  * [zoom] is the caller's requested camera zoom (`geo:...?z=17`, `/@lat,lng,15z`)
  * when it carried one. [navigate] is true for `google.navigation:` and Google

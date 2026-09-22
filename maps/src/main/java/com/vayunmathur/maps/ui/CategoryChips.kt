@@ -39,7 +39,7 @@ data class MapCategory(
 
 /**
  * Shared quick-category definitions, reused by both the browse map screen and
- * the search page so the two stay in lock-step (Vela's `CategoryChips`). On the
+ * the search page so the two stay in lock-step. On the
  * browse map a chip FILTERS the drawn POI layers to its [MapCategory.kinds];
  * on the search page it runs the [MapCategory.query] Google search (P3).
  *

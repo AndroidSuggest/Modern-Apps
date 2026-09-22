@@ -3,6 +3,7 @@ package com.vayunmathur.communicate.service.car
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
+import androidx.car.app.model.CarIcon
 import androidx.car.app.model.Header
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
@@ -10,6 +11,8 @@ import androidx.car.app.model.Row
 import androidx.car.app.model.RowSection
 import androidx.car.app.model.SectionedItemTemplate
 import androidx.car.app.model.Template
+import androidx.core.graphics.drawable.IconCompat
+import androidx.core.net.toUri
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.SmsThread
 
@@ -105,11 +108,46 @@ class CommunicateCarThreadListScreen(
         if (thread.unreadCount > 0) {
             row.addText("${thread.unreadCount} unread")
         }
+        runCatching { row.setImage(avatarIcon(thread, title), Row.IMAGE_TYPE_LARGE) }
         row.setBrowsable(true)
         row.setOnClickListener {
             screenManager.push(CommunicateCarConversationScreen(carContext, session, thread))
         }
         return row.build()
+    }
+
+    /** Contact photo when the thread has one, else a generated initials monogram. */
+    private fun avatarIcon(thread: SmsThread, name: String): CarIcon {
+        val photo = thread.avatarUrl?.takeIf { it.isNotBlank() }?.let { url ->
+            runCatching { IconCompat.createWithContentUri(url.toUri()) }.getOrNull()
+        }
+        return CarIcon.Builder(photo ?: IconCompat.createWithBitmap(monogram(name))).build()
+    }
+
+    private fun monogram(name: String): android.graphics.Bitmap {
+        val initials = name.trim().split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+            .take(2)
+            .map { it.first().uppercaseChar() }
+            .joinToString("")
+            .ifBlank { "#" }
+        val size = 128
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        val palette = intArrayOf(0xFF5C6BC0.toInt(), 0xFF26A69A.toInt(), 0xFFEF5350.toInt(), 0xFFAB47BC.toInt(), 0xFF66BB6A.toInt(), 0xFFFFA726.toInt())
+        val bg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = palette[(name.hashCode() and 0x7fffffff) % palette.size]
+        }
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, bg)
+        val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textSize = size * 0.42f
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+        val baseline = size / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+        canvas.drawText(initials, size / 2f, baseline, textPaint)
+        return bitmap
     }
 
     private companion object {

@@ -525,19 +525,27 @@ is_system_app() {
 }
 
 install_apk_via_session() {
-  local apk="$1" package_id="$2"
-  local apk_name apk_size session device_apk idsig device_idsig commit_out
+  local apk="$1" package_id="$2" cur="${3:-}" total="${4:-}"
+  local apk_name apk_size apk_mb session device_apk idsig device_idsig commit_out prefix
   apk_name="$(basename "$apk")"
   apk_size="$(wc -c < "$apk" | tr -d ' ')"
+  apk_mb="$(awk "BEGIN {printf \"%.1f\", $apk_size/1048576}")"
   device_apk="/data/local/tmp/install_${package_id}.apk"
-  echo "Installing $package_id ($apk_name)..."
+  if [[ -n "$cur" && -n "$total" ]]; then
+    prefix="[$cur/$total] "
+  else
+    prefix=""
+  fi
+  echo "${prefix}Installing $package_id ($apk_name, ${apk_mb} MB)..."
+  echo "  ${prefix}[1/4] Pushing APK to device..."
   "$ADB_BIN" -s "$TARGET_SERIAL" push "$apk" "$device_apk" >/dev/null 2>&1 || {
-    echo "  Error: adb push failed for $apk_name."; return 1
+    echo "  ${prefix}Error: adb push failed for $apk_name."; return 1
   }
+  echo "  ${prefix}[2/4] Creating install session..."
   session="$("$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-create -r 2>&1 \
     | sed -nE 's/.*created install session \[([0-9]+)\].*/\1/p')"
   if [[ -z "$session" ]]; then
-    echo "  Error: could not create install session."
+    echo "  ${prefix}Error: could not create install session."
     "$ADB_BIN" -s "$TARGET_SERIAL" shell rm -f "$device_apk" >/dev/null 2>&1
     return 1
   fi
@@ -545,8 +553,9 @@ install_apk_via_session() {
   # matching name. PackageManager enables fs-verity from a staged idsig, which
   # MAOS/GrapheneOS requires for updates to preinstalled system apps. Plain
   # `adb install` never stages the sidecar, so those updates always fail.
+  echo "  ${prefix}[3/4] Staging APK into session $session..."
   "$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-write -S "$apk_size" "$session" base.apk "$device_apk" >/dev/null 2>&1 || {
-    echo "  Error: failed to stage $apk_name into session $session."
+    echo "  ${prefix}Error: failed to stage $apk_name into session $session."
     "$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-abandon "$session" >/dev/null 2>&1
     "$ADB_BIN" -s "$TARGET_SERIAL" shell rm -f "$device_apk" >/dev/null 2>&1
     return 1
@@ -554,25 +563,31 @@ install_apk_via_session() {
   idsig="$apk.idsig"
   if [[ -f "$idsig" ]]; then
     device_idsig="$device_apk.idsig"
+    echo "  ${prefix}Staging .idsig sidecar..."
     if "$ADB_BIN" -s "$TARGET_SERIAL" push "$idsig" "$device_idsig" >/dev/null 2>&1; then
       "$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-write -S "$(wc -c < "$idsig" | tr -d ' ')" \
         "$session" base.apk.idsig "$device_idsig" >/dev/null 2>&1 || \
-        echo "  Warning: could not stage .idsig; system-app updates may fail fs-verity."
+        echo "  ${prefix}Warning: could not stage .idsig; system-app updates may fail fs-verity."
     else
-      echo "  Warning: could not push .idsig; system-app updates may fail fs-verity."
+      echo "  ${prefix}Warning: could not push .idsig; system-app updates may fail fs-verity."
     fi
     "$ADB_BIN" -s "$TARGET_SERIAL" shell rm -f "$device_idsig" >/dev/null 2>&1
   else
-    echo "  Warning: no .idsig sidecar next to the APK; system-app updates may fail fs-verity."
+    echo "  ${prefix}Warning: no .idsig sidecar next to the APK; system-app updates may fail fs-verity."
   fi
+  echo "  ${prefix}[4/4] Committing install session $session..."
   commit_out="$("$ADB_BIN" -s "$TARGET_SERIAL" shell pm install-commit "$session" 2>&1)"
   "$ADB_BIN" -s "$TARGET_SERIAL" shell rm -f "$device_apk" >/dev/null 2>&1
   # `pm install-commit` prints "Success" but exits 0 either way; fail on absence.
   if ! echo "$commit_out" | grep -qi "^Success"; then
-    echo "  Error: install failed for $package_id: $commit_out"
+    echo "  ${prefix}Error: install failed for $package_id: $commit_out"
     return 1
   fi
-  echo "  Installed $package_id."
+  if [[ -n "$cur" && -n "$total" ]]; then
+    echo "  Installed $package_id. [$cur/$total done]"
+  else
+    echo "  Installed $package_id."
+  fi
 }
 
 # --- Extra Gradle args: --continue so one broken module doesn't block the rest ---
@@ -656,18 +671,26 @@ FAILURES=0
 if [[ $BUILD_EXIT -ne 0 ]]; then
   echo "Warning: assemble reported failures; installing whatever APKs exist."
 fi
+TOTAL=${#NORMALIZED_MODULES[@]}
+echo ""
+echo "Installing $TOTAL app(s) to $TARGET_SERIAL..."
 idx=0
 while [[ $idx -lt ${#NORMALIZED_MODULES[@]} ]]; do
   mod="${NORMALIZED_MODULES[$idx]}"
+  cur=$((idx + 1))
   if apk="$(built_apk "$mod")"; then
-    install_apk_via_session "$apk" "$(module_application_id "$mod")" || FAILURES=$((FAILURES + 1))
+    install_apk_via_session "$apk" "$(module_application_id "$mod")" "$cur" "$TOTAL" || FAILURES=$((FAILURES + 1))
   else
-    echo "Error: no APK found for :${mod} (assemble failed?)."
+    echo "[$cur/$TOTAL] Error: no APK found for :${mod} (assemble failed?)."
     FAILURES=$((FAILURES + 1))
   fi
   idx=$((idx + 1))
 done
 if [[ $FAILURES -gt 0 ]]; then
+  echo ""
+  echo "Install complete: $((TOTAL - FAILURES))/$TOTAL succeeded, $FAILURES failed."
   exit 1
 fi
+echo ""
+echo "Install complete: $TOTAL/$TOTAL installed successfully."
 exit $BUILD_EXIT

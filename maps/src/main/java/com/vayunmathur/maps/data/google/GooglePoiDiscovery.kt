@@ -24,7 +24,7 @@ import kotlin.math.log2
  * keep the WHOLE list and map each entry to a [GooglePoiPin] (id + lat/lng +
  * name + category + rating) so the pins can be drawn and tapped.
  *
- * COVERAGE (ported from Vela `GoogleMapsDataSource.nearbyPlaces`, 2026-06): a
+ * COVERAGE: a
  * single wide "points of interest" query returns only the ~20 most prominent
  * places over a ~25 km baked window, so a strip mall shows almost none of its
  * small businesses. To match what Google Maps actually renders we instead:
@@ -36,7 +36,7 @@ import kotlin.math.log2
  *    roughly doubles local coverage;
  *  - ask for a DEEPER pool per term (`!7i60`, up from 20) so the take-N cap can
  *    reach smaller POIs;
- *  - dedup by feature id and rank prominence-first (Vela `ambientProminence`),
+ *  - dedup by feature id and rank prominence-first,
  *    so recognizable landmarks win the label slot but the small restaurant you
  *    zoomed next to still survives the (raised) cap.
  *
@@ -61,7 +61,7 @@ object GooglePoiDiscovery {
 
     private const val TAG = "GooglePoiDiscovery"
 
-    // Same calibrated endpoints/identity as GooglePoiDataSource (Vela, 2026-06).
+    // Same calibrated endpoints/identity as GooglePoiDataSource (2026-06).
     private const val SEARCH_ENDPOINT =
         "https://www.google.com/search?tbm=map&authuser=0&hl=en&gl=us"
     private const val SESSION_WARM_URL = "https://www.google.com/maps?hl=en&gl=us"
@@ -75,7 +75,7 @@ object GooglePoiDiscovery {
     )
 
     /**
-     * Category fan-out terms (Vela `nearbyPlaces.allTerms`). "places" is the
+     * Category fan-out terms. "places" is the
      * broad ambient query; the rest pull the tiers a single prominent-biased
      * query under-returns so the map shows a Google-like MIX (a gas station, a
      * gym, a grocer, a small restaurant) rather than only the few big names.
@@ -156,7 +156,7 @@ object GooglePoiDiscovery {
     private suspend fun fetch(lat: Double, lon: Double, span: Double): List<GooglePoiPin> =
         withContext(Dispatchers.IO) {
             warmSession()
-            // Match the zoom to the tightened window (Vela: span 25229 ↔ zoom 13.1).
+            // Match the zoom to the tightened window (span 25229 ↔ zoom 13.1).
             val zoom = (13.1 + log2(25229.0 / span)).coerceIn(13.0, 17.5)
             val pool = coroutineScope {
                 FANOUT_TERMS.map { term ->
@@ -208,7 +208,7 @@ object GooglePoiDiscovery {
     /**
      * Dedup by feature id (the same place returned under several terms) then rank
      * for the map: prominence-first, exact distance from the viewport centre only
-     * as a tiebreak (Vela `rankAmbientPlaces`). The recognizable landmarks lead
+     * as a tiebreak. The recognizable landmarks lead
      * and win the label slot; the low-signal junk the fan-out drags in sinks and
      * is dropped by the caller's take-N cap.
      */
@@ -219,7 +219,7 @@ object GooglePoiDiscovery {
                     .thenBy { metersBetween(lat, lon, it.lat, it.lng) },
             )
 
-    /** Vela's `ambientProminence`: review count dominates (log-compressed so a
+    /** Prominence score: review count dominates (log-compressed so a
      *  mega-chain doesn't utterly bury everything), nudged by rating so among
      *  similarly-popular places the better-rated wins. */
     private fun prominenceOf(rating: Double?, reviews: Int): Double =
@@ -247,7 +247,7 @@ object GooglePoiDiscovery {
     }
 
     /** Build the viewport `pb`: substitute the query + centre, then tighten the
-     *  baked span/zoom/pool tokens to this fetch (Vela `nearbyPlaces`): `!1d` =
+     *  baked span/zoom/pool tokens to this fetch: `!1d` =
      *  ground span in metres, `!4f` = matching zoom, `!7i` = the deeper pool. */
     private fun buildViewportPb(
         query: String,

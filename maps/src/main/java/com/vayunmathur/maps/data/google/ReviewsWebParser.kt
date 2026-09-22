@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * behind a `batchexecute` RPC (`rpcids=T4jwAf`) whose proto resisted capture, so we read the
  * reviews the real browser engine renders instead.
  *
- * Ported from Vela (github.com/PimpinPumpkin/Vela); emits OUR [GoogleReview] model. Each element is
+ * Parses OUR [GoogleReview] model from the reviews JSON. Each element is
  * `{rid:reviewId, r:rating, a:author, d:relativeDate, t:text, av:avatarUrl, p:[photoUrls]}` — `rid`
  * is the scraper's cross-scroll de-dup key, ignored here. An element without an author is dropped
  * (a card whose name never resolved isn't renderable). Best-effort: a malformed blob → empty list.

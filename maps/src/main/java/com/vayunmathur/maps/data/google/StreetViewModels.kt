@@ -11,9 +11,6 @@ package com.vayunmathur.maps.data.google
  * `512·2^z` wide by `256·2^z` tall, cut into [tileSize]² tiles — but the shape is
  * NOT fixed (pre-2016 captures are `416·2^z`), so [levelDims] carries the pano's
  * own per-level dimensions and the tile loader sizes its grid from THOSE.
- *
- * Ported from Vela's `StreetViewPano` (model only; the renderer is the shared
- * `PanoramaSphere` from `:library:ui`).
  */
 data class StreetViewPano(
     val panoId: String,

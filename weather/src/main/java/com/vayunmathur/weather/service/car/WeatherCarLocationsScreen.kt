@@ -4,6 +4,7 @@ import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.Action
+import androidx.car.app.model.CarIcon
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.MessageTemplate
@@ -14,6 +15,7 @@ import androidx.car.app.model.Template
 import com.vayunmathur.weather.domain.TemperatureUnit
 import com.vayunmathur.weather.domain.formatTemperatureCompact
 import com.vayunmathur.weather.domain.weatherConditionForCode
+import androidx.core.graphics.drawable.IconCompat
 
 /**
  * Saved locations list: every pinned place plus the device-location row.
@@ -119,6 +121,9 @@ class WeatherCarLocationsScreen(
                 "${formatTemperatureCompact(current.temperature, tempUnit)} · " +
                     "${carContext.getString(weatherConditionForCode(current.weatherCode).label)}",
             )
+            runCatching {
+                row.setImage(conditionIcon(current.weatherCode, current.isDay == 1), Row.IMAGE_TYPE_ICON)
+            }
         } else {
             row.addText("Loading forecast…")
         }
@@ -130,6 +135,12 @@ class WeatherCarLocationsScreen(
         }
         return row.build()
     }
+
+    /** A [CarIcon] for a WMO condition code, reusing the phone/widget glyphs. */
+    private fun conditionIcon(code: Int, isDay: Boolean): CarIcon =
+        CarIcon.Builder(
+            IconCompat.createWithResource(carContext, weatherConditionForCode(code).iconRes(isDay)),
+        ).build()
 
     private fun contentLimit(type: Int): Int {
         return runCatching {

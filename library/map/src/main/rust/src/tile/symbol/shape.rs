@@ -73,6 +73,12 @@ pub fn shape_label(
         feature_id: tile
             .feature_id(layer.source_layer_id, feature_index)
             .unwrap_or(tilecodec::mamaps::body::ID_NONE),
+        // The boundary this label names, baked at build time (relation `label`/`admin_centre`
+        // member). Only `places` carries a region-link table; everything else reads back `None`
+        // here and so `REGION_NONE`.
+        region_id: tile
+            .region_link(layer.source_layer_id, feature_index)
+            .unwrap_or(tilecodec::mamaps::body::REGION_NONE),
         // A point label anchors one block; it does not follow a line.
         centreline: None,
     })
@@ -134,6 +140,8 @@ pub fn shape_line_label(
         feature_id: tile
             .feature_id(layer.source_layer_id, feature_index)
             .unwrap_or(tilecodec::mamaps::body::ID_NONE),
+        // A road or river line names no admin region.
+        region_id: tilecodec::mamaps::body::REGION_NONE,
         centreline: Some(centreline),
     })
 }

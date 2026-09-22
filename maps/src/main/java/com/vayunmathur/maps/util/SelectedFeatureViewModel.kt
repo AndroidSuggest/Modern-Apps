@@ -65,7 +65,7 @@ class SelectedFeatureViewModel(application: Application): AndroidViewModel(appli
     }
 
     /** A pending request for the map to fly to [position] (at [zoom] when set) and
-     *  show the place bottom PANE (peek), the Vela-style place card. Backed by a
+     *  show the place bottom PANE (peek), the place card. Backed by a
      *  StateFlow so a request made before MapPage is composed (a cold-start deep
      *  link) survives until the map consumes it via [consumeFocus]. */
     data class PlaceFocus(val position: GeoPoint, val zoom: Double? = null)

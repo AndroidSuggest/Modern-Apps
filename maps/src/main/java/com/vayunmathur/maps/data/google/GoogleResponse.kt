@@ -21,7 +21,7 @@ import kotlinx.serialization.json.longOrNull
  * hard-coded `[0][1][3]` path silently rots — so every access degrades to null
  * and the enrichment feature just disappears rather than crashing the sheet.
  *
- * Ported from Vela's GoogleResponse (calibrated against maps.google.com 2026-06).
+ * Ported response-shape helpers (calibrated against maps.google.com 2026-06).
  */
 internal object GoogleResponse {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }

@@ -15,10 +15,9 @@ import kotlin.math.sqrt
 /**
  * Keyless Google Maps POI enrichment.
  *
- * Ported from Vela (github.com/PimpinPumpkin/Vela), which follows the NewPipe
- * model: the device calls the same undocumented google.com/maps web endpoints a
- * logged-out browser does — no API key, no Vela/first-party backend, no Play
- * Services. The request is a `pb` protobuf-ish string; the response is a
+ * Follows the NewPipe model: the device calls the same undocumented google.com/maps
+ * web endpoints a logged-out browser does — no API key, no first-party backend,
+ * no Play Services. The request is a `pb` protobuf-ish string; the response is a
  * guard-prefixed, deeply nested *positional* JSON array (no field names). The
  * calibrated index paths ([Paths]) pull rating/reviews/hours/price/website/
  * photos/popular-times out of it.
@@ -39,7 +38,7 @@ import kotlin.math.sqrt
  */
 object GooglePoiDataSource {
 
-    // Endpoints (calibrated 2026-06, Vela). hl/gl pinned to en/us so the parser's
+    // Endpoints (calibrated 2026-06). hl/gl pinned to en/us so the parser's
     // English status keywords line up with the response text.
     private const val SEARCH_ENDPOINT =
         "https://www.google.com/search?tbm=map&authuser=0&hl=en&gl=us"
@@ -339,7 +338,7 @@ object GooglePoiDataSource {
         return r * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
-    /** Build the search `pb`. Calibrated template (Vela, 2026-06): a plain `q=`
+    /** Build the search `pb`. Calibrated template (2026-06): a plain `q=`
      *  returns an empty envelope, so search needs this full pb, and results are
      *  viewport-driven (the `!2d<lng>!3d<lat>` block is the OSM point). */
     private fun buildSearchPb(query: String, lat: Double, lon: Double): String =
@@ -370,7 +369,7 @@ object GooglePoiDataSource {
             "!2e2!3m1!3b1!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i782!77b1"
 
     /**
-     * Calibrated positional field-index paths (Vela DEFAULT_PATHS, 2026-06),
+     * Calibrated positional field-index paths (2026-06),
      * relative to a result *entry* whose place node is `[1]` (RESULTS/SINGLE are
      * relative to the response root). A Google reshape moves these; when that
      * happens each accessor returns null and the affected field simply drops out.

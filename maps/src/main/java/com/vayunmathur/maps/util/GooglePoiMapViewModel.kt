@@ -145,8 +145,8 @@ class GooglePoiMapViewModel(application: Application) : AndroidViewModel(applica
         val cap = if (closeZoom) MAX_PINS_CLOSE else MAX_PINS_FAR
 
         // The (padded, per-zoom) ground span the fan-out should request — the
-        // vertical extent of the box scaled by the prefetch pad, in metres. Vela
-        // tightens `!1d` to this so a strip mall's small POIs come back instead of
+        // vertical extent of the box scaled by the prefetch pad, in metres.
+        // `!1d` is tightened to this so a strip mall's small POIs come back instead of
         // only the ~20 most prominent over a baked ~25 km window.
         val spanMeters = (vp.north - vp.south) * prefetchScale * METERS_PER_DEG_LAT
 
@@ -228,7 +228,7 @@ class GooglePoiMapViewModel(application: Application) : AndroidViewModel(applica
         // close zoom so local/small POIs (restaurants) from the category fan-out
         // aren't filtered away. Raised from the old 60/200 now that the fetch
         // returns a comprehensive Google-like pool rather than ~20 prominent
-        // names (Vela parity).
+        // names.
         const val MAX_PINS_FAR = 120
         const val MAX_PINS_CLOSE = 350
 

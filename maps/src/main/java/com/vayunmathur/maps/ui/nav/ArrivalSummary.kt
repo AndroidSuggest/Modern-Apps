@@ -23,7 +23,7 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.maps.R
 
 /**
- * End-of-trip arrival card (Vela's `ArrivalSummary`). Shows a confirmation with
+ * End-of-trip arrival card. Shows a confirmation with
  * the destination name (when known) and a dismiss action that tears down the
  * navigation session.
  */

@@ -48,8 +48,8 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_pickLabels<'l>
             .map(|l| l.id.as_str())
             .unwrap_or("");
         let s = format!(
-            "{}\u{1}{}\u{1}{}\u{1}{}\u{1}{}\u{1}{}",
-            layer_id, h.name, h.kind, h.lon, h.lat, h.feature_id,
+            "{}\u{1}{}\u{1}{}\u{1}{}\u{1}{}\u{1}{}\u{1}{}",
+            layer_id, h.name, h.kind, h.lon, h.lat, h.feature_id, h.region_id,
         );
         let Ok(js) = env.new_string(s) else { continue };
         let _ = env.set_object_array_element(&out, i as i32, js);

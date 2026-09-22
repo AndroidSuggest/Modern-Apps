@@ -513,25 +513,30 @@ if ($InstallNeedBump -gt $InstallRepoVersion) {
   $InstallGradleArgsStr += " -PversionCodeOverride=$InstallNeedBump"
 }
 
-function Install-ApkViaSession([string]$Apk, [string]$PackageId, [string]$AdbBin, [string]$Serial) {
+function Install-ApkViaSession([string]$Apk, [string]$PackageId, [string]$AdbBin, [string]$Serial, [string]$Cur = '', [string]$Total = '') {
   $InstallApkName = Split-Path -Leaf $Apk
   $InstallApkSize = (Get-Item -LiteralPath $Apk).Length
+  $InstallApkMb = '{0:N1}' -f ($InstallApkSize / 1MB)
   $InstallDeviceApk = "/data/local/tmp/install_${PackageId}.apk"
-  Write-Output "Installing $PackageId ($InstallApkName)..."
+  $InstallPrefix = ''
+  if ($Cur -and $Total) { $InstallPrefix = "[$Cur/$Total] " }
+  Write-Output "$InstallPrefix Installing $PackageId ($InstallApkName, ${InstallApkMb} MB)..."
+  Write-Output "  $InstallPrefix[1/4] Pushing APK to device..."
   $InstallPrevPref = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   & $AdbBin -s $Serial push $Apk $InstallDeviceApk >$null 2>&1
   if ($LASTEXITCODE -ne 0) {
     $ErrorActionPreference = $InstallPrevPref
-    Write-Output "  Error: adb push failed for $InstallApkName."
+    Write-Output "  $InstallPrefix Error: adb push failed for $InstallApkName."
     return $false
   }
+  Write-Output "  $InstallPrefix[2/4] Creating install session..."
   $InstallCreateOut = & $AdbBin -s $Serial shell pm install-create -r 2>&1
   $InstallSession = ''
   $InstallSm = [regex]::Match(($InstallCreateOut -join "`n"), 'created install session \[([0-9]+)\]')
   if ($InstallSm.Success) { $InstallSession = $InstallSm.Groups[1].Value }
   if (-not $InstallSession) {
-    Write-Output '  Error: could not create install session.'
+    Write-Output "  $InstallPrefix Error: could not create install session."
     & $AdbBin -s $Serial shell rm -f $InstallDeviceApk >$null 2>&1
     $ErrorActionPreference = $InstallPrevPref
     return $false
@@ -540,9 +545,10 @@ function Install-ApkViaSession([string]$Apk, [string]$PackageId, [string]$AdbBin
   # matching name. PackageManager enables fs-verity from a staged idsig, which
   # MAOS/GrapheneOS requires for updates to preinstalled system apps. Plain
   # `adb install` never stages the sidecar, so those updates always fail.
+  Write-Output "  $InstallPrefix[3/4] Staging APK into session $InstallSession..."
   & $AdbBin -s $Serial shell pm install-write -S $InstallApkSize $InstallSession base.apk $InstallDeviceApk >$null 2>&1
   if ($LASTEXITCODE -ne 0) {
-    Write-Output "  Error: failed to stage $InstallApkName into session $InstallSession."
+    Write-Output "  $InstallPrefix Error: failed to stage $InstallApkName into session $InstallSession."
     & $AdbBin -s $Serial shell pm install-abandon $InstallSession >$null 2>&1
     & $AdbBin -s $Serial shell rm -f $InstallDeviceApk >$null 2>&1
     $ErrorActionPreference = $InstallPrevPref
@@ -551,31 +557,38 @@ function Install-ApkViaSession([string]$Apk, [string]$PackageId, [string]$AdbBin
   $InstallIdsig = "$Apk.idsig"
   if (Test-Path -LiteralPath $InstallIdsig -PathType Leaf) {
     $InstallDeviceIdsig = "$InstallDeviceApk.idsig"
+    Write-Output "  $InstallPrefix Staging .idsig sidecar..."
     & $AdbBin -s $Serial push $InstallIdsig $InstallDeviceIdsig >$null 2>&1
     if ($LASTEXITCODE -eq 0) {
       $InstallIdsigSize = (Get-Item -LiteralPath $InstallIdsig).Length
       & $AdbBin -s $Serial shell pm install-write -S $InstallIdsigSize $InstallSession base.apk.idsig $InstallDeviceIdsig >$null 2>&1
       if ($LASTEXITCODE -ne 0) {
-        Write-Output '  Warning: could not stage .idsig; system-app updates may fail fs-verity.'
+        Write-Output "  $InstallPrefix Warning: could not stage .idsig; system-app updates may fail fs-verity."
       }
     }
     else {
-      Write-Output '  Warning: could not push .idsig; system-app updates may fail fs-verity.'
+      Write-Output "  $InstallPrefix Warning: could not push .idsig; system-app updates may fail fs-verity."
     }
     & $AdbBin -s $Serial shell rm -f $InstallDeviceIdsig >$null 2>&1
   }
   else {
-    Write-Output '  Warning: no .idsig sidecar next to the APK; system-app updates may fail fs-verity.'
+    Write-Output "  $InstallPrefix Warning: no .idsig sidecar next to the APK; system-app updates may fail fs-verity."
   }
+  Write-Output "  $InstallPrefix[4/4] Committing install session $InstallSession..."
   $InstallCommitOut = & $AdbBin -s $Serial shell pm install-commit $InstallSession 2>&1
   & $AdbBin -s $Serial shell rm -f $InstallDeviceApk >$null 2>&1
   # `pm install-commit` prints "Success" but exits 0 either way; fail on absence.
   if (-not (($InstallCommitOut -join "`n") -match '(?im)^Success')) {
-    Write-Output "  Error: install failed for ${PackageId}: $($InstallCommitOut -join ' ')"
+    Write-Output "  $InstallPrefix Error: install failed for ${PackageId}: $($InstallCommitOut -join ' ')"
     $ErrorActionPreference = $InstallPrevPref
     return $false
   }
-  Write-Output "  Installed $PackageId."
+  if ($Cur -and $Total) {
+    Write-Output "  Installed $PackageId. [$Cur/$Total done]"
+  }
+  else {
+    Write-Output "  Installed $PackageId."
+  }
   $ErrorActionPreference = $InstallPrevPref
   return $true
 }
@@ -625,17 +638,27 @@ $InstallFailures = 0
 if ($InstallBuildExit -ne 0) {
   Write-Output 'Warning: assemble reported failures; installing whatever APKs exist.'
 }
+$InstallTotal = $InstallNormalized.Count
+Write-Output ''
+Write-Output "Installing $InstallTotal app(s) to $InstallTargetSerial..."
+$InstallCur = 0
 foreach ($InstallMod in $InstallNormalized) {
+  $InstallCur++
   $InstallApk = Get-InstallBuiltApk $InstallMod $InstallVariantLc
   if ($InstallApk) {
-    if (-not (Install-ApkViaSession $InstallApk (Get-InstallApplicationId $InstallMod) $InstallAdbBin $InstallTargetSerial)) {
+    if (-not (Install-ApkViaSession $InstallApk (Get-InstallApplicationId $InstallMod) $InstallAdbBin $InstallTargetSerial "$InstallCur" "$InstallTotal")) {
       $InstallFailures++
     }
   }
   else {
-    Write-Output "Error: no APK found for :${InstallMod} (assemble failed?)."
+    Write-Output "[$InstallCur/$InstallTotal] Error: no APK found for :${InstallMod} (assemble failed?)."
     $InstallFailures++
   }
 }
-if ($InstallFailures -gt 0) { exit 1 }
+Write-Output ''
+if ($InstallFailures -gt 0) {
+  Write-Output "Install complete: $($InstallTotal - $InstallFailures)/$InstallTotal succeeded, $InstallFailures failed."
+  exit 1
+}
+Write-Output "Install complete: $InstallTotal/$InstallTotal installed successfully."
 exit $InstallBuildExit

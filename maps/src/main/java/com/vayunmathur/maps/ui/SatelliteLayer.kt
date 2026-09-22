@@ -3,14 +3,11 @@ package com.vayunmathur.maps.ui
 import androidx.compose.runtime.Composable
 
 /**
- * Satellite / aerial imagery layer (P6), ported conceptually from Vela's
- * `SatelliteLayer`.
+ * Satellite / aerial imagery layer (P6).
  *
  * ⚠️ GATED — NO TILE SOURCE YET: [TILE_URL] is intentionally blank. MA's basemap
  * is vector (the streamed PMTiles archive, now rendered by our own Vulkan renderer);
- * there is no hosted satellite/aerial raster tileset, and the Vela clone that
- * referenced Google's imagery was removed after research (see
- * `maps/VELA_PORT_PLAN.md`, Decision D11). While unavailable the layers sheet
+ * there is no hosted satellite/aerial raster tileset. While unavailable the
  * hides the satellite toggle and this composable renders nothing.
  *
  * To activate: host an XYZ raster tileset, set [TILE_URL] to it, and draw it here

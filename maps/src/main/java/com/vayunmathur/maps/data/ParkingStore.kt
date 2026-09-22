@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * A remembered parking spot (P9, Vela's `ParkingStore`): where the user left
+ * A remembered parking spot: where the user left
  * their car, when, and an optional note. Only what we need to drop a pin,
  * recall the spot, and route back to it.
  */

@@ -24,74 +24,17 @@ use std::time::Instant;
 pub(super) const PLACE_REUSE_MS: u128 = 300;
 
 impl Renderer {
-    /// The region whose shape covers this point at the requested administrative level.
+    /// Whether any resident tile carries a region-mask piece with this id.
     ///
-    /// The caller has a place — a tapped city label or a search result — and needs the relation
-    /// id of the region it names, which the `places` feature does not carry. Containment is the
-    /// link: a city label sits inside its own boundary.
-    ///
-    /// # Why the level is not optional
-    ///
-    /// Containment alone answers the wrong question. Every label sits inside a whole stack of
-    /// regions — a city inside a county inside a state inside a country — so a point lookup has
-    /// to be told which rung of that stack the caller means. Preferring the smallest was the
-    /// first attempt and it picks the deepest rung every time: tapping a state's label selects
-    /// whichever county the label's anchor happens to land in.
-    ///
-    /// `levels` is the inclusive band the selection maps to (see `kind_for` in the tiler's
-    /// boundary schema, which is what put these numbers in the archive). Within the band the
-    /// smallest containing shape still wins, so a city inside a larger city resolves inward.
-    ///
-    /// Ties are broken by the deeper level and then by the lower id, never by iteration order.
-    /// A city and the county it is coterminous with have near-identical areas, and leaving that
-    /// to a hash map's ordering makes the same tap pick differently from one frame to the next.
-    ///
-    /// **Only the label's own band is consulted.** There is deliberately no any-level fallback: a
-    /// city label maps to the city band, and if no boundary in that band contains the point (the
-    /// city's relation is off-screen, or its anchor sits just outside its own outline) the honest
-    /// answer is no mask — masking whatever county or state happens to contain the point instead
-    /// outlines a region the label never named, which is the whole complaint this guards against.
-    ///
-    /// `None` when no region in the band covers the point.
-    pub fn region_at(&self, lon: f64, lat: f64, levels: RangeInclusive<u16>) -> Option<u64> {
-        self.smallest_containing(lon, lat, &levels)
-    }
-
-    fn smallest_containing(&self, lon: f64, lat: f64, levels: &RangeInclusive<u16>) -> Option<u64> {
-        // A region is clipped into one fragment per tile it crosses, and `region.area` is only
-        // that fragment's area. Comparing fragments across tiles picked whichever tile happened
-        // to hold the smaller slice, so the masked region flipped as tiles loaded and clipped
-        // differently. Sum every fragment of an id first, so the comparison is against each
-        // region's whole on-screen size; then choose the smallest region that actually contains
-        // the point (containment is only ever true in the one tile the point falls in).
-        let mut level_of: HashMap<u64, u16> = HashMap::new();
-        let mut area_of: HashMap<u64, f32> = HashMap::new();
-        let mut hit: HashMap<u64, bool> = HashMap::new();
-        for tile in self.tiles.values() {
-            let local = tile_local(lon, lat, tile.z, tile.x, tile.y);
-            for region in &tile.regions {
-                if !levels.contains(&region.level) {
-                    continue;
-                }
-                level_of.insert(region.id, region.level);
-                *area_of.entry(region.id).or_insert(0.0) += region.area;
-                if let Some((u, v)) = local {
-                    if region.rings.iter().any(|ring| contains(ring, u, v)) {
-                        hit.insert(region.id, true);
-                    }
-                }
-            }
-        }
-        // Smallest summed area wins; ties break to the deeper level, then the lower id — a total
-        // order, so the pick never depends on hash-map iteration.
-        hit.into_keys().min_by(|&a, &b| {
-            let area = |id: u64| area_of.get(&id).copied().unwrap_or(0.0);
-            let level = |id: u64| level_of.get(&id).copied().unwrap_or(0);
-            area(a)
-                .total_cmp(&area(b))
-                .then_with(|| level(b).cmp(&level(a)))
-                .then(a.cmp(&b))
-        })
+    /// The place->boundary link is baked at build time, so the id is known the instant a label is
+    /// tapped — but the boundary's own tiles may still be loading, in which case there is nothing to
+    /// draw the mask from yet. The host retries [`setRegionMask`](crate::bridge::region) each frame
+    /// until this turns true. Kept a pure lookup over `RegionBuffers::id`, the same key
+    /// [`record_region_mask`](super::Renderer::record_region_mask) filters on.
+    pub fn region_resident(&self, id: u64) -> bool {
+        self.tiles
+            .values()
+            .any(|tile| tile.regions.iter().any(|region| region.id == id))
     }
 
     /// The per-frame symbol pre-pass: one collision candidate per shaped label
@@ -406,6 +349,7 @@ impl Renderer {
                         // civic one, and so on for all four multi-kind layers.
                         kind: kind_name(label.kind),
                         feature_id: label.feature_id,
+                        region_id: label.region_id,
                         lon,
                         lat,
                     },
@@ -419,34 +363,6 @@ impl Renderer {
         placed.sort_by_key(|(order, _)| *order);
         *self.placed.borrow_mut() = placed.into_iter().map(|(_, hit)| hit).collect();
     }
-}
-
-/// Where `lon`/`lat` falls inside tile `z/x/y`, in tile-local 0..1, or `None` if it is outside.
-///
-/// Web Mercator, matching the projection the tiler cut the archive with.
-fn tile_local(lon: f64, lat: f64, z: u8, x: u32, y: u32) -> Option<(f32, f32)> {
-    let n = f64::from(1u32 << z);
-    let sin = lat.to_radians().sin().clamp(-0.9999, 0.9999);
-    let world_x = (lon + 180.0) / 360.0 * n;
-    let world_y = (0.5 - ((1.0 + sin) / (1.0 - sin)).ln() / (4.0 * std::f64::consts::PI)) * n;
-    let u = world_x - f64::from(x);
-    let v = world_y - f64::from(y);
-    (0.0..=1.0).contains(&u).then_some(())?;
-    (0.0..=1.0).contains(&v).then_some(())?;
-    Some((u as f32, v as f32))
-}
-
-/// Even-odd point-in-polygon over a closed ring.
-fn contains(ring: &[(f32, f32)], u: f32, v: f32) -> bool {
-    let mut inside = false;
-    for window in ring.windows(2) {
-        let (x0, y0) = window[0];
-        let (x1, y1) = window[1];
-        if (y0 > v) != (y1 > v) && u < (x1 - x0) * (v - y0) / (y1 - y0) + x0 {
-            inside = !inside;
-        }
-    }
-    inside
 }
 
 /// Screen-space quad matrix for a globe overlay anchor: the lon/lat's screen

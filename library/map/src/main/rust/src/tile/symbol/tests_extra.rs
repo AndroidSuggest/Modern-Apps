@@ -283,6 +283,7 @@ fn icon_label(anchor: (f32, f32)) -> ShapedLabel {
         sprite: None,
         kind: 0,
         feature_id: tilecodec::mamaps::body::ID_NONE,
+        region_id: tilecodec::mamaps::body::REGION_NONE,
         centreline: None,
     }
 }

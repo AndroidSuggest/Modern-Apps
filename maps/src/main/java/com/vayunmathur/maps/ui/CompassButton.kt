@@ -12,7 +12,7 @@ import kotlin.math.abs
  * from north). The compass rose rotates to keep pointing at true north; tapping
  * it calls [onResetNorth] to snap the camera back to a north-up orientation.
  *
- * Port of Vela's `onCompassTap`: the control only surfaces while the map is
+ * The control only surfaces while the map is rotated — at (near) north-up
  * rotated — at (near) north-up there's nothing to reset, so it hides itself.
  */
 @Composable

@@ -30,7 +30,7 @@ import com.vayunmathur.maps.util.RouteService
 import com.vayunmathur.maps.util.formatDistance
 
 /**
- * Full turn-by-turn step list (Vela's `StepsSheet`). Shows every remaining
+ * Full turn-by-turn step list. Shows every remaining
  * maneuver with its icon, instruction, and distance. Steps already passed are
  * dimmed. Rendered as an overlay card the driver can dismiss.
  */

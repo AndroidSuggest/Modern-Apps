@@ -20,8 +20,7 @@ private const val MPH_TO_KMH = 1.609344
  * unrecognised country schemes, blank, …).
  *
  * Handles the common forms: bare `"50"` (km/h), `"50 mph"`, `"30 km/h"`, and a
- * subset of implicit country schemes like `"DE:urban"`. Faithful to Vela's
- * `OsmMaxspeed` behaviour: unknown/relative values degrade to `null` rather
+ * subset of implicit country schemes like `"DE:urban"`. Unknown/relative values
  * than guessing.
  */
 fun parseMaxspeed(raw: String?): PostedLimit? {

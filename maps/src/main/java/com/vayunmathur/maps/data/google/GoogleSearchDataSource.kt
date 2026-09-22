@@ -46,7 +46,7 @@ object GoogleSearchDataSource {
 
     private const val TAG = "GoogleSearchDataSource"
 
-    // Same calibrated endpoints/identity as GooglePoiDataSource (Vela, 2026-06).
+    // Same calibrated endpoints/identity as GooglePoiDataSource (2026-06).
     private const val SEARCH_ENDPOINT =
         "https://www.google.com/search?tbm=map&authuser=0&hl=en&gl=us"
     private const val SESSION_WARM_URL = "https://www.google.com/maps?hl=en&gl=us"
@@ -60,7 +60,7 @@ object GoogleSearchDataSource {
     )
 
     /** Cap the result list so a broad query ("coffee") doesn't return a huge
-     *  list — matches the ~20 rows a Vela search surfaces. */
+     *  list — matches the ~20 rows a search surfaces. */
     private const val MAX_RESULTS = 20
 
     @Volatile private var sessionWarmed = false
@@ -117,7 +117,7 @@ object GoogleSearchDataSource {
 
     /**
      * Resolve the response to a list of result *entries* whose place node is at
-     * `[1]`, mirroring Vela's `SearchParser.parse` resolution order so an ADDRESS
+     * `[1]`, mirroring the resolution order so an ADDRESS
      * query resolves too (not just POI names/categories):
      *  1. the `[64]` POI list — a name/category search ("restaurants");
      *  2. [Paths.AT_THIS_PLACE] — a bare address that IS a business ("1020 Olive
@@ -234,9 +234,9 @@ object GoogleSearchDataSource {
         val LNG = intArrayOf(1, 9, 3)
         val CATEGORY = intArrayOf(1, 13, 0)
         val FEATURE_ID = intArrayOf(1, 10)
-        // Businesses listed at a geocoded address (Vela `atThisPlace`).
+        // Businesses listed at a geocoded address.
         val AT_THIS_PLACE = intArrayOf(0, 1, 0, 14, 68)
-        // Full formatted address (Vela `address` = [1][39]); ADDRESS_LINES is the
+        // Full formatted address ([1][39]); ADDRESS_LINES is the
         // component array fallback.
         val ADDRESS = intArrayOf(1, 39)
         val ADDRESS_LINES = intArrayOf(1, 2)

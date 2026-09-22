@@ -6,42 +6,36 @@ use crate::style::Palette;
 use jni::objects::JClass;
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use jni::JNIEnv;
-/// Dim everything outside the region containing this point, and report which one that is.
+/// Mask everything outside the region with this id, or clear the mask when it is zero.
 ///
-/// Takes a place's coordinates rather than a region id because nothing in the archive links the
-/// two: a city is a `places` **node** with its own OSM id, while its outline is a `boundaries`
-/// **relation**, and OSM does not oblige the node to be a member of the relation. Containment is
-/// the link - a city label sits inside its own boundary.
-///
-/// `level_min`/`level_max` are the inclusive OSM `admin_level` band the selection means, and are
-/// not optional: every label is contained by a whole stack of regions, so containment alone
-/// cannot say whether a tap on "California" meant the state or the county its label sits in.
-///
-/// Returns the region's OSM relation id, or 0 when no resident tile covers the point. Returning
-/// it rather than nothing lets the host tell "no region here" from "not loaded yet" and retry.
+/// The id is the tagged OSM relation id of an admin boundary, baked onto the tapped place label at
+/// build time (see the `places` region-link table) — so the label names its own outline directly
+/// and there is no point/level guess. Returns 1 when the mask is set (or intentionally cleared for
+/// a zero id) **and** a resident tile actually carries that region, 0 when the region's tiles are
+/// not loaded yet so the host retries next frame. `RegionBuffers::id` is what `record_region_mask`
+/// filters on, so once a piece is resident the mask draws.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setRegionMask<'l>(
     _env: JNIEnv<'l>,
     _class: JClass<'l>,
     handle: jlong,
-    lon: jfloat,
-    lat: jfloat,
-    level_min: jint,
-    level_max: jint,
+    region_id: jlong,
 ) -> jlong {
     let Some(map) = handle_mut(handle) else {
         return 0;
     };
-    let levels = (level_min.max(0) as u16)..=(level_max.max(0) as u16);
-    match map.renderer.region_at(lon as f64, lat as f64, levels) {
-        Some(id) => {
-            map.renderer.set_region_mask(Some(id));
-            id as jlong
-        }
-        None => {
-            map.renderer.set_region_mask(None);
-            0
-        }
+    let id = region_id as u64;
+    if id == 0 {
+        // No linked region: clear the mask and report resolved so the host stops retrying.
+        map.renderer.set_region_mask(None);
+        return 1;
+    }
+    map.renderer.set_region_mask(Some(id));
+    // Resolved only once a tile carrying this region is resident; until then the host retries.
+    if map.renderer.region_resident(id) {
+        1
+    } else {
+        0
     }
 }
 

@@ -27,7 +27,7 @@ import kotlin.math.roundToInt
  * "nice" round distance (1 / 2 / 5 × 10ⁿ) that fits within a fixed on-screen
  * width and draws a labelled bar for it.
  *
- * Port of Vela's `ScaleBar`/`ScaleBarReader` — kept declarative so it just reads
+ * Kept declarative so it just reads `camera.position.zoom` /
  * `camera.position.zoom` / `camera.position.target.latitude` from the caller.
  */
 @Composable

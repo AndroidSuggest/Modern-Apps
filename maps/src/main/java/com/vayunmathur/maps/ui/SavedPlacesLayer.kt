@@ -24,7 +24,7 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /** Pin id — hit-tested in MapSurface.onMapClick so a tapped saved pin
- *  re-selects that place (Vela's `SavedPin`). */
+ *  re-selects that place. */
 const val SAVED_PLACE_LAYER_ID = "saved-place-pins"
 
 private val PIN_SIZE = 26.dp
@@ -34,7 +34,7 @@ private val PIN_SIZE = 26.dp
 private val SAVED_PLACE_COLOR = Color(0xFF1A73E8)
 
 /**
- * Saved-place overlay (Vela's `SavedPin`): the starred list drawn as plain
+ * Saved-place overlay: the starred list drawn as plain
  * Compose over VectorMap. Tap → details via [toSelectedSavedPlace], reusing
  * [SpecificFeature.GenericPlace] so the existing enrichment + place sheet render with no new
  * detail path.

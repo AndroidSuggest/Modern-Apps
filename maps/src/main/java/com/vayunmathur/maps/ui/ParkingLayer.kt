@@ -19,7 +19,7 @@ import com.vayunmathur.library.ui.Text
 import com.vayunmathur.maps.data.ParkingSpot
 
 /** Pin id — hit-tested in MapSurface.onMapClick so tapping the parking pin
- *  opens the parking sheet (Vela's parking pin). */
+ *  opens the parking sheet. */
 const val PARKING_PIN_LAYER_ID = "parking-pin"
 
 /** Parking blue, distinct from the saved-place and search-result pins. */

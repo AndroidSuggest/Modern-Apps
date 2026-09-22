@@ -126,6 +126,11 @@ pub struct ShapedLabel {
     /// [`ID_NONE`](tilecodec::mamaps::body::ID_NONE) when its layer carries no id table (every
     /// layer but `places` and `poi`) or the generator could not attribute it to an OSM element.
     pub feature_id: u64,
+    /// The tagged relation id of the admin boundary this label names, or
+    /// [`REGION_NONE`](tilecodec::mamaps::body::REGION_NONE) when the label links to none. Only a
+    /// `places` label ever carries a non-zero value; it lets a tap outline that exact region
+    /// (`RegionBuffers::id`) instead of guessing one by point + level.
+    pub region_id: u64,
     /// A line feature's centreline in tile-local 0..1, for a **curved** label laid along a road
     /// or river; `None` for an ordinary point label.
     ///

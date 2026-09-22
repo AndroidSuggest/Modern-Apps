@@ -22,7 +22,7 @@ import kotlin.math.sqrt
 /**
  * Keyless Google Street View.
  *
- * Ported from Vela (data layer only): the device calls the same undocumented
+ * Keyless data layer: the device calls the same undocumented
  * endpoints a logged-out browser / the JS Maps API does — no API key, authorised
  * by a browser-like `User-Agent` + `Referer`. Two metadata endpoints feed one
  * parser (both return a deeply nested *positional* JSON array, no field names):
@@ -84,7 +84,7 @@ object StreetViewDataSource {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val PANO_ID = Regex("^[A-Za-z0-9_-]{20,25}$")
 
-    // Neighbour de-clutter (Vela): drop same-spot historical panos, cap walk
+    // Neighbour de-clutter: drop same-spot historical panos, cap walk
     // reach, keep only the nearest pano per direction bucket.
     private const val SAME_SPOT_M = 4.0
     private const val MAX_WALK_M = 45.0
@@ -219,8 +219,7 @@ object StreetViewDataSource {
     /**
      * Parse a SingleImageSearch / photometa response into a [StreetViewPano].
      * [lat]/[lng] are the fallback position used only when the response omits one.
-     * Only the pano id is required; everything else degrades to null. Ported from
-     * Vela's StreetViewParser (SF capture 2026-07-15).
+     * Only the pano id is required; everything else degrades to null.
      */
     private fun parsePano(raw: String, lat: Double, lng: Double): StreetViewPano? {
         val root = runCatching { json.parseToJsonElement(unwrap(raw)) }.getOrNull() ?: return null
