@@ -4,6 +4,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.maps.data.Feature1
+import com.vayunmathur.maps.data.SpecificFeature
 import com.vayunmathur.maps.ui.FAMILY_LOCATION_LAYER_ID
 import com.vayunmathur.maps.ui.PARKING_PIN_LAYER_ID
 import com.vayunmathur.maps.ui.SAVED_PLACE_LAYER_ID
@@ -191,7 +192,7 @@ class MapFeaturePickerTest {
         )
     }
 
-    /** The adapter emits the {kind, name, name:en} properties `parse` reads. */
+    /** The adapter emits the {kind, name, name:en, regionId} properties `parse` reads. */
     @Test
     fun `placed label converts to a parseable feature`() {
         val feature = PlacedLabel(
@@ -199,25 +200,66 @@ class MapFeaturePickerTest {
             name = "France",
             kind = "country",
             position = GeoPoint(2.35, 48.85),
+            regionId = 12345L,
         ).toFeature1() ?: error("expected a feature")
 
         val props = feature.properties ?: error("expected properties")
         assertEquals("country", props["kind"]?.jsonPrimitive?.content)
         assertEquals("France", props["name"]?.jsonPrimitive?.content)
         assertEquals("France", props["name:en"]?.jsonPrimitive?.content)
+        assertEquals("12345", props["regionId"]?.jsonPrimitive?.content)
         val pos = (feature.geometry as? Point)?.coordinates ?: error("expected point")
         assertEquals(2.35, pos.longitude)
         assertEquals(48.85, pos.latitude)
     }
 
-    /** Unknown native layers (and subplace, which has no parse branch) convert to null. */
+    /** A linked subplace converts with locality semantics so it can mask. */
+    @Test
+    fun `linked subplace converts as locality with its region id`() {
+        val feature = PlacedLabel(
+            layerId = "places-subplace",
+            name = "SoHo",
+            kind = "subplace",
+            position = GeoPoint(-74.0, 40.7),
+            regionId = 999L,
+        ).toFeature1() ?: error("expected a feature")
+
+        val props = feature.properties ?: error("expected properties")
+        assertEquals("locality", props["kind"]?.jsonPrimitive?.content)
+        assertEquals("999", props["regionId"]?.jsonPrimitive?.content)
+    }
+
+    /** Unknown native layers convert to null and never enter the candidate list. */
     @Test
     fun `unmapped native layers convert to null`() {
         assertNull(
             PlacedLabel("roads-bridges-major-casing", "x", "road", GeoPoint(0.0, 0.0)).toFeature1()
         )
-        assertNull(
-            PlacedLabel("places-subplace", "SoHo", "subplace", GeoPoint(-74.0, 40.7)).toFeature1()
+    }
+
+    /** The mask is the label's baked id: nonzero passes through, zero/null clears. */
+    @Test
+    fun `region mask passes the baked id through`() {
+        val paris = GeoPoint(2.35, 48.85)
+        assertEquals(
+            777L,
+            regionMaskFor(SpecificFeature.Admin2Label(name = "Paris", position = paris, regionId = 777L)),
         )
+        assertEquals(
+            42L,
+            regionMaskFor(SpecificFeature.Admin0Label(name = "France", position = paris, regionId = 42L)),
+        )
+        assertEquals(
+            43L,
+            regionMaskFor(SpecificFeature.Admin1Label(name = "Île-de-France", position = paris, regionId = 43L)),
+        )
+        // Unlinked (0) or positionless labels, and non-admin features, mask nothing.
+        assertNull(
+            regionMaskFor(SpecificFeature.Admin2Label(name = "Nowhere", position = paris, regionId = 0L)),
+        )
+        assertNull(
+            regionMaskFor(SpecificFeature.Admin2Label(name = "Nowhere", position = null, regionId = 777L)),
+        )
+        assertNull(regionMaskFor(null))
     }
 }

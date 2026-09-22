@@ -38,6 +38,12 @@ data class PlacedLabel(
      * the remaining bits.
      */
     val featureId: Long = 0L,
+    /**
+     * The tagged OSM relation id of the admin boundary this label names, baked at build
+     * time into the tile's `region_links` table, or `0` (`REGION_NONE`) when linked to
+     * nothing. The 7th field of the native pick row; legacy 6-field rows parse as `0`.
+     */
+    val regionId: Long = 0L,
 )
 
 /**

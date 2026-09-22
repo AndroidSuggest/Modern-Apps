@@ -21,24 +21,31 @@ sealed interface SpecificFeature {
      * A country. [iso] and [wikipedia] are optional because the basemap archive carries neither:
      * a picked label supplies a name and a position, and the Wikidata round trip that fills these
      * in needs the network. Requiring them meant tapping a country did nothing at all offline.
+     *
+     * [regionId] is the baked link: the tagged OSM relation id of the boundary this label
+     * names, stamped at build time (see `region_links`). `0` means unlinked — mask nothing.
      */
     @Serializable
     data class Admin0Label(@SerialName("iso3166_1") val iso: String? = null, val wikipedia: String? = null, val name: String,
-                           @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null) : SpecificFeature
-    /** A state or region. [iso] and [wikipedia] are optional for the same reason as [Admin0Label]. */
+                           @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null, val regionId: Long = 0L) : SpecificFeature
+    /**
+     * A state or region. [iso] and [wikipedia] are optional for the same reason as [Admin0Label].
+     * [regionId] is the baked link, as in [Admin0Label].
+     */
     @Serializable
     data class Admin1Label(@SerialName("iso3166_2") val iso: String? = null, val wikipedia: String? = null, val name: String,
-                           @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null) : SpecificFeature
+                           @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null, val regionId: Long = 0L) : SpecificFeature
     /**
      * A city / town. Unlike the country and region labels there is no ISO code to
      * key on — the baked `admin_city` layer carries only `name` / `name_en` — so
      * the border highlight matches on the name instead.
      *
      * [wikipedia] is optional for the same reason as [Admin0Label].
+     * [regionId] is the baked link, as in [Admin0Label].
      */
     @Serializable
     data class Admin2Label(val wikipedia: String? = null, val name: String,
-                           @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null) : SpecificFeature
+                           @Serializable(with = GeoPointAsCoordinates::class) val position: GeoPoint? = null, val regionId: Long = 0L) : SpecificFeature
     @Serializable
     data class Restaurant(override val name: String, val phone: String?, val website: String?, val menu: String?, val openingHours: OpeningHours?,
                           @Serializable(with = GeoPointAsCoordinates::class) override val position: GeoPoint): RoutableFeature
@@ -116,26 +123,31 @@ suspend fun parse(feature: Feature1): SpecificFeature? {
     val wiki = properties.string("wikidata")?.let { id ->
         try { Wikidata.get(id) } catch (_: Exception) { null }
     }
-    // Where the label sits, which is what the region mask probes with: the archive links a place
-    // to its outline by containment and nothing else, so losing this loses the mask.
+    // Where the label sits, kept for search-picked regions and as a fallback anchor: the
+    // mask itself is the baked `regionId` below, not a containment probe.
     val at = (feature.geometry as? Point)?.coordinates
+    // The baked link: the tagged relation id of the boundary this label names, stamped at
+    // build time (`region_links`). `0` is REGION_NONE — unlinked, mask nothing.
+    val regionId = properties["regionId"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
     return when (properties.string("kind")) {
         "country" -> SpecificFeature.Admin0Label(
             iso = wiki?.getProperty("P297"),
             wikipedia = wiki?.getWikipedia(),
             name = name,
             position = at,
+            regionId = regionId,
         )
         "region" -> SpecificFeature.Admin1Label(
             iso = wiki?.getProperty("P300"),
             wikipedia = wiki?.getWikipedia(),
             name = name,
             position = at,
+            regionId = regionId,
         )
         // No ISO lookup: a city has no ISO 3166 code, so the Wikidata round trip is only for the
         // article URL.
         "locality" ->
-            SpecificFeature.Admin2Label(wikipedia = wiki?.getWikipedia(), name = name, position = at)
+            SpecificFeature.Admin2Label(wikipedia = wiki?.getWikipedia(), name = name, position = at, regionId = regionId)
         else -> null
     }
 }

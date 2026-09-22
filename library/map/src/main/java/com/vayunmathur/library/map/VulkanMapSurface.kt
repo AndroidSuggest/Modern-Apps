@@ -55,8 +55,8 @@ internal fun VulkanMapSurface(
     layerOptions: LayerOptions = LayerOptions(),
     tileSource: TileSource = TileSource.Server,
     userPuck: UserPuck? = null,
-    /** Dim everything outside the administrative region this names. `null` draws no mask. */
-    regionMask: RegionMask? = null,
+    /** The baked `regionId` of the selected label. `null` draws no mask. */
+    regionMask: Long? = null,
     /**
      * Mirror of `VectorMap`'s `globeEnabled`: pushed into the native frame as the
      * per-frame `globe` flag (see `MapNative.render`), so the renderer draws the

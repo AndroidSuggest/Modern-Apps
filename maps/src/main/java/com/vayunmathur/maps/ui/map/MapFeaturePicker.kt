@@ -151,8 +151,8 @@ class MapFeaturePicker(
         /**
          * The flat layer ids the native pick emits for the same labels
          * (see `basemap.flat.json`: `places-country`, …). `places-subplace`
-         * (neighbourhoods) has no `parse` branch and resolves to null, which
-         * is the correct fall-through to reverse-geocode.
+         * (neighbourhoods) converts with `locality` semantics so a linked
+         * subplace can mask; unlinked (`regionId == 0`) it null-masks.
          */
         val NATIVE_LABEL_LAYER_IDS: Set<String> = setOf(
             "places-country",
@@ -166,14 +166,18 @@ class MapFeaturePicker(
             "places-country" -> "places_country"
             "places-region" -> "places_region"
             "places-locality" -> "places_locality"
+            "places-subplace" -> "places_locality"
             else -> null
         }
 
         /**
          * A native [PlacedLabel] as the [Feature1] [SpecificFeature.parse] reads:
          * point geometry at [PlacedLabel.position] plus `{kind, name, name:en}`
-         * properties. `kind` is the `country`/`region`/`locality` discriminator
-         * `parse` switches on; only labels whose native id maps to a known admin
+         * properties and the baked `regionId` the tile stamped on the label.
+         * `kind` is the `country`/`region`/`locality` discriminator
+         * `parse` switches on (a linked `places-subplace` arrives as `locality`
+         * semantics so it can mask; unlinked it still null-masks);
+         * only labels whose native id maps to a known admin
          * base id convert, the rest return null and never enter the candidate list.
          */
         fun PlacedLabel.toFeature1(): Feature1? {
@@ -182,9 +186,10 @@ class MapFeaturePicker(
                 Point(position),
                 JsonObject(
                     mapOf(
-                        "kind" to JsonPrimitive(kind),
+                        "kind" to JsonPrimitive(if (layerId == "places-subplace") "locality" else kind),
                         "name" to JsonPrimitive(name),
                         "name:en" to JsonPrimitive(name),
+                        "regionId" to JsonPrimitive(regionId),
                     )
                 ),
             )

@@ -295,15 +295,15 @@ class SurfaceMapRenderer(
         invalidate()
     }
 
-    /** The region to mask and which rung of the admin stack it is, or `null` for no mask. */
-    private var regionProbe: RegionMask? = null
+    /** The baked `regionId` to mask, or `null` for no mask. */
+    private var selectedRegionId: Long? = null
 
     /**
-     * Whether [regionProbe] has been matched to a region yet.
+     * Whether [selectedRegionId] has been matched to resident tiles yet.
      *
      * The match needs the region's tiles to be resident, and a selection usually arrives before
      * they are - tapping a city label recentres the map, so the tiles under the new camera are
-     * still in flight. So an unresolved probe is retried each frame until it lands rather than
+     * still in flight. So an unresolved id is retried each frame until it lands rather than
      * being dropped, which is the difference between the mask appearing and the mask silently
      * never appearing.
      */
@@ -696,8 +696,8 @@ class SurfaceMapRenderer(
     internal fun pickAt(xDp: Float, yDp: Float): Long = tapMarkerAt(xDp, yDp)
 
     /** Dim everything outside the region [mask] names, or clear the mask with `null`. */
-    fun setRegionMask(mask: RegionMask?) {
-        this.regionProbe = mask
+    fun setRegionMask(mask: Long?) {
+        this.selectedRegionId = mask
         this.regionResolved = false
         applyRegionMask()
         invalidate()
@@ -713,20 +713,15 @@ class SurfaceMapRenderer(
 
     private fun applyRegionMask() {
         if (handle == 0L) return
-        val probe = regionProbe
-        if (probe == null) {
+        val id = selectedRegionId
+        if (id == null || id == 0L) {
             MapNative.clearRegionMask(handle)
             regionResolved = true
             return
         }
-        val id = MapNative.setRegionMask(
-            handle,
-            probe.position.longitude.toFloat(),
-            probe.position.latitude.toFloat(),
-            probe.level.min,
-            probe.level.max,
-        )
-        regionResolved = id != 0L
+        // `0` clears above; a nonzero id returns nonzero once a resident tile carries it.
+        // `0` back means the tiles have not landed yet — retried next frame, not a miss.
+        regionResolved = MapNative.setRegionMask(handle, id) != 0L
     }
 
     private fun applyUserPuck() {

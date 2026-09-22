@@ -352,24 +352,18 @@ internal object MapNative {
     external fun clearRailLines(handle: Long)
 
     /**
-     * Dim everything outside the region containing [lon]/[lat], and return which region
-     * that is.
+     * Dim everything outside the region with id [regionId], and return whether it resolved.
      *
-     * Takes a point rather than a region id because nothing in the archive links a place to
-     * its outline: a city is a `places` node with its own OSM id, while its boundary is a
-     * `boundaries` relation, and OSM does not oblige the node to belong to the relation.
-     * Containment is the link.
+     * The id is the tagged OSM relation id of the admin boundary, baked onto the tapped
+     * place label at build time (the tile's `region_links` table) — so the label names its
+     * own outline directly and there is no point/level guess. `0` clears the mask and
+     * returns 1 (resolved: there is nothing to wait for).
      *
-     * [levelMin]/[levelMax] bound the OSM `admin_level` band the selection means, inclusive.
-     * They are required because containment alone is ambiguous: every label sits inside a
-     * whole stack of regions, so without a level a tap on a state resolves to whichever
-     * county its label happens to sit in.
-     *
-     * Returns the region's OSM relation id, or 0 when no resident tile covers the point.
-     * Callers can tell "there is no region here" from "the tiles have not landed yet" only by
-     * retrying, which is why the id comes back rather than nothing.
+     * Returns 1 when the mask is set (or intentionally cleared for a zero id) **and** a
+     * resident tile actually carries that region, 0 when the region's tiles are not loaded
+     * yet so the host retries next frame.
      */
-    external fun setRegionMask(handle: Long, lon: Float, lat: Float, levelMin: Int, levelMax: Int): Long
+    external fun setRegionMask(handle: Long, regionId: Long): Long
 
     /** Take the region mask away: the details sheet closed, or the selection moved on. */
     external fun clearRegionMask(handle: Long)

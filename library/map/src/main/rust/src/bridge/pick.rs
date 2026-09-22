@@ -6,14 +6,15 @@ use jni::objects::{JClass, JObject};
 use jni::sys::{jfloat, jlong};
 use jni::JNIEnv;
 /// Task-17 pick: placed labels intersecting the query box (Dp from the
-/// viewport top-left). Returns `\u{1}`-joined `layerId/name/kind/lon/lat/featureId`
+/// viewport top-left). Returns `\u{1}`-joined `layerId/name/kind/lon/lat/featureId/regionId`
 /// strings in placement order (topmost first); empty when nothing hits. Dp→device-px via the
 /// last frame's density, remembered on the map handle (same density the
 /// boxes were built with — boxes are device px, the query arrives in Dp).
 ///
 /// `kind` is the feature's own kind, not its layer's first one, so a `poi-food` hit says
 /// `cafe` rather than `restaurant`. `featureId` is the archive's stable id, or `0` for a
-/// feature that has none.
+/// feature that has none. `regionId` is the tagged relation id of the boundary the label
+/// names from the tile's `region_links` table, or `0` (`REGION_NONE`) when linked to nothing.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_pickLabels<'l>(
     mut env: JNIEnv<'l>,

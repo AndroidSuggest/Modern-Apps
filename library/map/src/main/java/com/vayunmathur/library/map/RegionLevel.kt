@@ -1,18 +1,21 @@
 package com.vayunmathur.library.map
 
 /**
- * Which rung of the administrative stack a region mask means.
+ * Which rung of the administrative stack a region mask meant.
  *
- * A mask is asked for by point, because nothing in the archive links a place label to its
- * outline. But a point is contained by every region above it at once — a city sits inside a
- * county inside a state inside a country — so the point alone cannot say which outline was
- * meant. Asking for the smallest was the first attempt and it always answers with the deepest
- * rung: tapping a state selects whichever county its label happens to sit in.
+ * @deprecated The mask is now the label's baked `regionId` passed straight through
+ *   (`Long?` from `regionMaskFor` to `setRegionMask`): the tile's `region_links` table links
+ *   each place label to its outline at build time, so no point/level guess is needed.
+ *   Kept until the follow-up removes it; nothing references it anymore.
  *
- * The bands are OSM `admin_level` values, and match the names the tiler's boundary schema
- * gives them (`kind_for`): 1-2 country, 3-4 region, 5-6 county, 7+ locality. Counties have no
- * rung of their own because nothing in the app selects one.
+ * A mask used to be asked for by point, because nothing in the archive linked a place label
+ * to its outline. But a point is contained by every region above it at once — a city sits
+ * inside a county inside a state inside a country — so the point alone could not say which
+ * outline was meant, and the level band disambiguated. The bands were OSM `admin_level`
+ * values, matching the names the tiler's boundary schema gives them (`kind_for`): 1-2
+ * country, 3-4 region, 5-6 county, 7+ locality.
  */
+@Deprecated("Baked-id path: pass the label's regionId (Long?) straight through instead.")
 enum class RegionLevel(val min: Int, val max: Int) {
     /** A country. */
     COUNTRY(1, 2),
@@ -32,8 +35,9 @@ enum class RegionLevel(val min: Int, val max: Int) {
 /**
  * A request to dim everything outside one administrative region.
  *
- * [position] is a point inside the region — a label's anchor or a search result — and [level]
- * says which rung of the stack containing that point was meant. Both travel together because
- * neither identifies a region on its own.
+ * @deprecated The mask is now a baked `regionId` (`Long?`): `[position]` + `[level]` travelled
+ *   together because neither identified a region on its own, and the id does. Kept until the
+ *   follow-up removes it; nothing references it anymore.
  */
+@Deprecated("Baked-id path: pass the label's regionId (Long?) straight through instead.")
 data class RegionMask(val position: GeoPoint, val level: RegionLevel)

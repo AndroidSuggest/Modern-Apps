@@ -150,32 +150,37 @@ internal fun SurfaceMapRenderer.tapMarkerAt(xDp: Float, yDp: Float): Long {
 }
 
 /**
- * Task-17 pick: placed labels intersecting [box] (Dp), restricted to
- * [layerIds] (our flat ids), in placement order. Parses the native
- * `\u0001`-joined rows; empty when the renderer isn't up or nothing hits.
+ * One native pick row as a [PlacedLabel], or null when the row is malformed.
+ *
+ * Rows are 7 fields (`layerId/name/kind/lon/lat/featureId/regionId`, see
+ * `bridge/pick.rs`); legacy 6-field rows parse with `regionId = 0`. Pure so the
+ * contract is a JVM unit test rather than a screenshot.
  */
+internal fun parseLabelRow(parts: List<String>): PlacedLabel? {
+    if (parts.size != 6 && parts.size != 7) return null
+    return PlacedLabel(
+        layerId = parts[0],
+        name = parts[1],
+        kind = parts[2],
+        position = GeoPoint(
+            longitude = parts[3].toDoubleOrNull() ?: 0.0,
+            latitude = parts[4].toDoubleOrNull() ?: 0.0,
+        ),
+        // Unsigned on the native side; ids never come close to the sign bit
+        // (an OSM id shifted left two is ~36 bits), so a Long is roomy.
+        featureId = parts[5].toLongOrNull() ?: 0L,
+        regionId = parts.getOrNull(6)?.toLongOrNull() ?: 0L,
+    )
+}
 internal fun SurfaceMapRenderer.tapLabelsIn(box: DpRect, layerIds: Set<String>): List<PlacedLabel> {
     val h = handle
     if (h == 0L) return emptyList()
     return try {
         MapNative.pickLabels(h, box.left.value, box.top.value, box.right.value, box.bottom.value)
             .asSequence()
-            .map { row -> row.split('\u0001') }
-            .filter { parts -> parts.size == 6 && (layerIds.isEmpty() || parts[0] in layerIds) }
-            .map { parts ->
-                PlacedLabel(
-                    layerId = parts[0],
-                    name = parts[1],
-                    kind = parts[2],
-                    position = GeoPoint(
-                        longitude = parts[3].toDoubleOrNull() ?: 0.0,
-                        latitude = parts[4].toDoubleOrNull() ?: 0.0,
-                    ),
-                    // Unsigned on the native side; ids never come close to the sign bit
-                    // (an OSM id shifted left two is ~36 bits), so a Long is roomy.
-                    featureId = parts[5].toLongOrNull() ?: 0L,
-                )
-            }
+            .map { row -> parseLabelRow(row.split('')) }
+            .filter { label -> label != null && (layerIds.isEmpty() || label.layerId in layerIds) }
+            .map { label -> label!! }
             .toList()
     } catch (_: Throwable) {
         emptyList()

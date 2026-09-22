@@ -258,34 +258,19 @@ internal suspend fun openVehicleTrip(
 }
 
 /**
- * The selected city/region's outline, dimmed outside. Derived from the sheet's own
+ * The selected label's outline, dimmed outside. Derived from the sheet's own
  * selection rather than the tap, so a region picked from search masks too — and the
- * label's own kind supplies the admin level, because the point alone is inside every
- * region above it and would otherwise resolve to the smallest, not the one named.
+ * mask is the label's baked `regionId`, so no point/level guess: linked masks exactly
+ * that region, unlinked (`0` / absent) masks nothing.
  */
 internal fun regionMaskFor(
     selectedFeature: com.vayunmathur.maps.data.SpecificFeature?,
-): com.vayunmathur.library.map.RegionMask? = when (selectedFeature) {
+): Long? = when (selectedFeature) {
     is com.vayunmathur.maps.data.SpecificFeature.Admin0Label ->
-        selectedFeature.position?.let {
-            com.vayunmathur.library.map.RegionMask(
-                it,
-                com.vayunmathur.library.map.RegionLevel.COUNTRY,
-            )
-        }
+        selectedFeature.regionId.takeIf { it != 0L }
     is com.vayunmathur.maps.data.SpecificFeature.Admin1Label ->
-        selectedFeature.position?.let {
-            com.vayunmathur.library.map.RegionMask(
-                it,
-                com.vayunmathur.library.map.RegionLevel.REGION,
-            )
-        }
+        selectedFeature.regionId.takeIf { it != 0L }
     is com.vayunmathur.maps.data.SpecificFeature.Admin2Label ->
-        selectedFeature.position?.let {
-            com.vayunmathur.library.map.RegionMask(
-                it,
-                com.vayunmathur.library.map.RegionLevel.LOCALITY,
-            )
-        }
+        selectedFeature.regionId.takeIf { it != 0L }
     else -> null
 }

@@ -68,7 +68,8 @@ import kotlin.math.roundToInt
  *   glued to the ground while the map moves. Defaults to drawing nothing; see [UserPuck]
  *   for why this is not a [MapMarker].
  * @param regionMask dims everything outside the administrative region it names, for showing
- *   which city or country a details sheet is about. Drawn inside the renderer's frame for the
+ *   which city or country a details sheet is about. The baked `regionId` of the selected
+ *   label (`null`/`0` draws no mask). Drawn inside the renderer's frame for the
  *   same reason as [userPuck]: an overlay composed on top would lag the map by a frame while
  *   panning. `null` draws no mask.
  * @param trafficColors the live-traffic overlay's `component_id → ARGB` table. The baked
@@ -121,7 +122,7 @@ fun VectorMap(
     options: MapOptions = MapOptions(),
     imageOverlay: ImageOverlay? = null,
     userPuck: UserPuck? = null,
-    regionMask: RegionMask? = null,
+    regionMask: Long? = null,
     trafficColors: TrafficColorTable? = null,
     route: RouteOverlay? = null,
     /**
