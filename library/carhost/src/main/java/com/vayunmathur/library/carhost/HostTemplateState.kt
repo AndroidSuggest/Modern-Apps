@@ -37,19 +37,21 @@ data class HostUiAction(
     val onClick: () -> Unit,
 )
 
-/** One browsable row: title, subtitle lines, and the app's own click. */
+/** One browsable row: title, subtitle lines, optional leading image, and click. */
 data class HostUiRow(
     val title: String,
     val texts: List<String> = emptyList(),
     val browse: Boolean = false,
+    val image: androidx.core.graphics.drawable.IconCompat? = null,
     val onClick: (() -> Unit)? = null,
 )
 
-/** One grid cell: title, subtitle, and the app's own click. */
+/** One grid cell: title, subtitle, optional artwork, and the app's own click. */
 data class HostUiGridItem(
     val title: String,
     val text: String? = null,
     val loading: Boolean = false,
+    val image: androidx.core.graphics.drawable.IconCompat? = null,
     val onClick: (() -> Unit)? = null,
 )
 
@@ -155,6 +157,7 @@ sealed interface HostTemplate {
     data class MediaPlayback(
         val title: String? = null,
         val loading: Boolean = false,
+        val image: androidx.core.graphics.drawable.IconCompat? = null,
     ) : HostTemplate
 
     /** Parked-only sign-in / permissions / long text. */
@@ -199,13 +202,14 @@ data class HostUiTab(
  * One named section inside [HostTemplate.TemplateList].
  *
  * [chips] marks a section that came from a `ChipSection`: the renderer draws its
- * rows as a horizontal chip strip (compact filter/quick-action pills) instead of
- * full-width list rows. Row/grid sections leave it false.
+ * rows as a horizontal chip strip. [grid] marks a `GridSection`: rows render as
+ * artwork tiles in a multi-column grid. Plain row sections leave both false.
  */
 data class HostUiSection(
     val header: String? = null,
     val rows: List<HostUiRow> = emptyList(),
     val chips: Boolean = false,
+    val grid: Boolean = false,
 )
 
 /** Parses template wrappers into [HostTemplate]. Pure functions, any thread. */
@@ -269,6 +273,7 @@ object HostTemplateParsers {
                             title = carText(runCatching { item.title }.getOrNull()) ?: return@mapNotNull null,
                             texts = listOfNotNull(carText(runCatching { item.text }.getOrNull())),
                             browse = false,
+                            image = carIcon(runCatching { item.image }.getOrNull()),
                             onClick = runCatching { item.onClickDelegate }.getOrNull()?.let { d ->
                                 {
                                     thread(name = "ma-auto-carhost-click", isDaemon = true) {
@@ -313,6 +318,7 @@ object HostTemplateParsers {
                 header = header,
                 rows = rows,
                 chips = section is androidx.car.app.model.ChipSection,
+                grid = section is androidx.car.app.model.GridSection,
             )
         }
         return HostTemplate.TemplateList(
@@ -588,6 +594,7 @@ object HostTemplateParsers {
             title = title,
             texts = texts,
             browse = runCatching { row.isBrowsable }.getOrDefault(false),
+            image = carIcon(runCatching { row.image }.getOrNull()),
             onClick = delegate?.let { d ->
                 {
                     thread(name = "ma-auto-carhost-click", isDaemon = true) {
@@ -609,6 +616,7 @@ object HostTemplateParsers {
                 title = title,
                 text = carText(runCatching { grid.text }.getOrNull()),
                 loading = runCatching { grid.isLoading }.getOrDefault(false),
+                image = carIcon(runCatching { grid.image }.getOrNull()),
                 onClick = delegate?.let { d ->
                     {
                         thread(name = "ma-auto-carhost-click", isDaemon = true) {
@@ -657,6 +665,10 @@ object HostTemplateParsers {
     private fun carText(text: CarText?): String? = runCatching {
         text?.toCharSequence()?.toString()?.takeIf { it.isNotBlank() }
     }.getOrNull()
+
+    /** Pulls the [androidx.core.graphics.drawable.IconCompat] out of a car image, if any. */
+    private fun carIcon(icon: androidx.car.app.model.CarIcon?): androidx.core.graphics.drawable.IconCompat? =
+        runCatching { icon?.icon }.getOrNull()
 
     private fun laneArrows(directions: List<LaneDirection>): String = directions.joinToString("") { dir ->
         when (runCatching { dir.shape }.getOrNull()) {
