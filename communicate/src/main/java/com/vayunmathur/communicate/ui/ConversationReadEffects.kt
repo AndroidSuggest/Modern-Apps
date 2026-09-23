@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.googlevoice.GoogleVoiceParser
+import com.vayunmathur.communicate.data.markRcsRead
 import com.vayunmathur.communicate.data.markSignalRead
 import com.vayunmathur.communicate.data.markSimThreadRead
 import com.vayunmathur.communicate.data.markWhatsAppRead
@@ -92,6 +93,24 @@ fun ConversationReadEffects(
                 CommunicateRepository.markSignalRead(context, remoteId, address, sigLastReadId)
             } catch (_: Throwable) {
                 sigLastReadId
+            }
+        }
+    }
+    // RCS messages land in local Room via the SIP delegate; poll so inbound
+    // (and our own outgoing echo) appear live while the conversation is open.
+    LaunchedEffect(line) {
+        if (line == CommunicateLine.Rcs) {
+            while (true) {
+                kotlinx.coroutines.delay(2_000)
+                onRefreshTick()
+            }
+        }
+    }
+    // Clear the RCS unread badge for the open conversation (no receipt protocol in v1).
+    LaunchedEffect(line, remoteId, address) {
+        if (line == CommunicateLine.Rcs) {
+            runCatching {
+                CommunicateRepository.markRcsRead(context, remoteId, address)
             }
         }
     }

@@ -57,6 +57,11 @@ import com.vayunmathur.communicate.data.whatsapp.WhatsAppLineSession
 import com.vayunmathur.communicate.data.signal.SignalFeature
 import com.vayunmathur.communicate.data.signal.SignalLineSession
 import com.vayunmathur.communicate.telephony.SignalSyncService
+import com.vayunmathur.communicate.data.rcs.RcsFeature
+import com.vayunmathur.communicate.data.rcs.RcsRegistrationState
+import com.vayunmathur.communicate.data.rcs.RcsSipTransport
+import com.vayunmathur.communicate.telephony.RcsSyncService
+import com.vayunmathur.communicate.ui.rcs.RcsRegistrationScreen
 import com.vayunmathur.communicate.ui.signal.SignalRegistrationScreen
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.serialization.Serializable
@@ -68,6 +73,8 @@ sealed interface Route : NavKey {
     @Serializable data object WhatsAppRegistration : Route
     @Serializable data object WhatsAppBackupImport : Route
     @Serializable data object SignalRegistration : Route
+
+    @Serializable data object RcsStatus : Route
 
     @Serializable
     data class Conversation(
@@ -162,6 +169,15 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
         if (sigSignedIn) SignalSyncService.start(context) else SignalSyncService.stop(context)
     }
 
+    // Own the RCS always-on receive state via its foreground sync service (dev-only).
+    // Provisioning IS the session: Available owns the service, anything else stops it.
+    val rcsState by RcsSipTransport.state.collectAsState(initial = RcsRegistrationState.Unknown)
+    LaunchedEffect(rcsState) {
+        if (!RcsFeature.enabled) return@LaunchedEffect
+        if (rcsState is RcsRegistrationState.Available) RcsSyncService.start(context)
+        else RcsSyncService.stop(context)
+    }
+
     // Keep the Telecom account fresh, but let the foreground service own always-on receive state.
     LaunchedEffect(gvSignedIn) {
         GoogleVoiceCallManager.init(context)
@@ -240,6 +256,11 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
                         backStack.add(Route.SignalRegistration)
                     }
                 },
+                onShowRcsStatus = {
+                    if (RcsFeature.enabled) {
+                        backStack.add(Route.RcsStatus)
+                    }
+                },
             )
         }
         entry<Route.GoogleVoiceSignIn>(metadata = ListDetailPage()) {
@@ -263,6 +284,11 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
             SignalRegistrationScreen(
                 onBack = { backStack.pop() },
                 onRegistered = { backStack.pop() },
+            )
+        }
+        entry<Route.RcsStatus>(metadata = ListDetailPage()) {
+            RcsRegistrationScreen(
+                onBack = { backStack.pop() },
             )
         }
         entry<Route.Conversation>(metadata = ListDetailPage() + MorphPage()) { route ->

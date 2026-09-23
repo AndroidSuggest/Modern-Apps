@@ -64,6 +64,7 @@ fun ConversationScreen(
             CommunicateLine.GoogleVoice -> LineChoice.GoogleVoice
             CommunicateLine.WhatsApp -> LineChoice.WhatsApp
             CommunicateLine.Signal -> LineChoice.Signal
+            CommunicateLine.Rcs -> LineChoice.Rcs
             CommunicateLine.Sim -> lineChoices
                 .filterIsInstance<LineChoice.Sim>()
                 .firstOrNull { subscriptionId == null || it.subscriptionId == subscriptionId }

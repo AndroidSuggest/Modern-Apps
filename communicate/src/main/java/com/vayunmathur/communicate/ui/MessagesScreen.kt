@@ -159,6 +159,26 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                                 )
                             }
                         }
+                        CommunicateLine.Rcs -> {
+                            // v1: no conference setup — open a group thread addressed by the
+                            // participant list; sends fan out per-recipient with SMS fallback.
+                            val groupId = "rcs-group:${contacts.sorted().joinToString(",")}"
+                            onOpenThread(
+                                SmsThread(
+                                    threadId = CommunicateRepository.stableThreadId(groupId),
+                                    address = groupId,
+                                    displayName = subject.ifBlank { null },
+                                    snippet = "",
+                                    timestampMillis = System.currentTimeMillis(),
+                                    unreadCount = 0,
+                                    line = CommunicateLine.Rcs,
+                                    remoteId = groupId,
+                                    isGroup = true,
+                                    participants = contacts,
+                                    groupTitle = subject.ifBlank { null },
+                                ),
+                            )
+                        }
                         else -> AppMessages.show("Groups aren't supported on this line")
                     }
                 }

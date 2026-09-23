@@ -166,6 +166,13 @@ dependencies {
     implementation(libs.ringrtc.android)
     // E.164 normalization to reconcile SIM vs Google Voice numbers.
     implementation(libs.libphonenumber)
+    // Compile-only stubs for the framework's @SystemApi app-data backup transport
+    // (see :library:backup-stubs).
+    compileOnly(project(":library:backup-stubs"))
+    // Compile-only stubs for the framework's @SystemApi single-registration RCS APIs
+    // (SipDelegateManager, UCE). Absent from the public SDK; the framework provides
+    // them at runtime, so they must NOT be packaged. See :library:rcs-stubs.
+    compileOnly(project(":library:rcs-stubs"))
     // Persist the Google Voice / WhatsApp session (cookies, API key, auth, number).
     implementation(libs.androidx.datastore.preferences)
     // Document-start JS injection to hook fetch/XHR before the GV web app captures them.

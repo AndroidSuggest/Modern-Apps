@@ -47,6 +47,7 @@ class CommunicateCarSession : Session() {
         CommunicateLine.GoogleVoice -> LineChoice.GoogleVoice
         CommunicateLine.WhatsApp -> LineChoice.WhatsApp
         CommunicateLine.Signal -> LineChoice.Signal
+        CommunicateLine.Rcs -> LineChoice.Rcs
         CommunicateLine.Sim -> LineChoice.Sim(
             thread.subscriptionId ?: -1,
             thread.displayName ?: thread.address,

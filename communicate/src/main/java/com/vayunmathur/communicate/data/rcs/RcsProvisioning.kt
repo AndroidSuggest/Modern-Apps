@@ -1,0 +1,160 @@
+package com.vayunmathur.communicate.data.rcs
+
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.telephony.CarrierConfigManager
+import android.telephony.SubscriptionManager
+import android.telephony.ims.ImsManager
+import androidx.core.content.ContextCompat
+import com.vayunmathur.library.network.NetworkClient
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Why the RCS transport is unavailable. Surfaced in the UI so an unprovisioned
+ * SIM (e.g. Astound with an empty `rcs_config_server_url`) reads as a reason,
+ * not a silent failure.
+ */
+enum class RcsUnavailableReason {
+    NoEntitlementUrl,
+    NoCarrierPrivilege,
+    NotSupported,
+    NoSubscription,
+    ProvisioningRequired,
+    UceDisabled,
+    TransportDenied,
+    ServiceUnavailable,
+    Unknown,
+}
+
+/**
+ * Lifecycle of the RCS single-registration transport.
+ *
+ * `Disabled` is the release-build state (gate off). Everything else is dev-only.
+ * There are no RCS credentials to persist — provisioning IS the session — so
+ * this doubles as the line session: `Available` means signed-in.
+ */
+sealed interface RcsRegistrationState {
+    data object Unknown : RcsRegistrationState
+    data object Provisioning : RcsRegistrationState
+    data object Available : RcsRegistrationState
+    data class Unavailable(val reason: RcsUnavailableReason) : RcsRegistrationState
+    data object Disabled : RcsRegistrationState
+}
+
+/**
+ * TS.43 entitlement + carrier-config provisioning check.
+ *
+ * Reads `rcs_config_server_url` for the active data subscription; an empty URL
+ * means the carrier never provisioned RCS (the Astound case) and maps to
+ * [RcsUnavailableReason.NoEntitlementUrl]. Never throws; caches the last
+ * result. All entry points early-return `Disabled` when the dev gate is off so
+ * release builds strip cleanly.
+ */
+object RcsProvisioning {
+    private val _state = MutableStateFlow<RcsRegistrationState>(RcsRegistrationState.Unknown)
+    val state: StateFlow<RcsRegistrationState> = _state.asStateFlow()
+
+    /** Last carrier config URL seen, for the status screen. Null = never probed. */
+    @Volatile
+    var lastConfigServerUrl: String? = null
+        private set
+
+    fun reset() {
+        _state.value = if (RcsFeature.enabled) RcsRegistrationState.Unknown else RcsRegistrationState.Disabled
+        lastConfigServerUrl = null
+    }
+
+    /**
+     * Run the provisioning check for [subscriptionId] (defaults to the default
+     * data subscription). Updates [state]; also returns it.
+     */
+    suspend fun probe(context: Context, subscriptionId: Int = defaultSubscriptionId()): RcsRegistrationState {
+        if (!RcsFeature.enabled) {
+            _state.value = RcsRegistrationState.Disabled
+            return _state.value
+        }
+        _state.value = RcsRegistrationState.Provisioning
+        _state.value = checkProvisioning(context.applicationContext, subscriptionId)
+        return _state.value
+    }
+
+    private fun checkProvisioning(context: Context, subscriptionId: Int): RcsRegistrationState {
+        if (!SubscriptionManager.isValidSubscriptionId(subscriptionId)) {
+            return RcsRegistrationState.Unavailable(RcsUnavailableReason.NoSubscription)
+        }
+        // Carrier config is the source of truth for "does this SIM do RCS".
+        // Keyed query avoids the deprecated whole-bundle getter.
+        val url = runCatching {
+            val ccm = context.getSystemService(CarrierConfigManager::class.java)
+                ?: return RcsRegistrationState.Unavailable(
+                    RcsUnavailableReason.ServiceUnavailable,
+                )
+            ccm.getConfigForSubId(
+                subscriptionId,
+                CarrierConfigManager.KEY_RCS_CONFIG_SERVER_URL_STRING,
+            ).getString(CarrierConfigManager.KEY_RCS_CONFIG_SERVER_URL_STRING).orEmpty()
+        }.getOrElse {
+            return RcsRegistrationState.Unavailable(RcsUnavailableReason.ServiceUnavailable)
+        }
+        lastConfigServerUrl = url.ifEmpty { null }
+        if (url.isBlank()) {
+            // Unprovisioned SIM (e.g. Astound): no entitlement server, no RCS.
+            return RcsRegistrationState.Unavailable(RcsUnavailableReason.NoEntitlementUrl)
+        }
+        // Secondary signal: the provisioning manager's RCS status. Capability/tech
+        // constants live in hidden ImsFeature/MmTelFeature surface, so this uses the
+        // AOSP values directly (CAPABILITY_TYPE_CALL_COMPOSER = 1 << 4, NETWORK_TYPE_LTE = 0).
+        // Any reflection failure degrades to "not required" — the carrier-config URL
+        // above is the authoritative gate.
+        val provisioningRequired = runCatching {
+            val ims = context.getSystemService(ImsManager::class.java)
+                ?: return@runCatching false
+            val pm = ims.getProvisioningManager(subscriptionId)
+            pm.isRcsProvisioningRequiredForCapability(CAPABILITY_TYPE_CALL_COMPOSER, NETWORK_TYPE_LTE) &&
+                !pm.getRcsProvisioningStatusForCapability(CAPABILITY_TYPE_CALL_COMPOSER, NETWORK_TYPE_LTE)
+        }.getOrDefault(false)
+        if (provisioningRequired) {
+            return RcsRegistrationState.Unavailable(RcsUnavailableReason.ProvisioningRequired)
+        }
+        // Single-registration support gate: without it there is no delegate to create.
+        // The feature constant is @SystemApi/hidden; the AOSP value is used directly.
+        val singleReg = context.packageManager.hasSystemFeature(FEATURE_SINGLE_REG)
+        if (!singleReg) {
+            return RcsRegistrationState.Unavailable(RcsUnavailableReason.NotSupported)
+        }
+        return RcsRegistrationState.Available
+    }
+
+    /**
+     * Optional TS.43 entitlement HTTP check against the carrier config server.
+     * Best-effort: any failure maps to `Unavailable`, never throws. The carrier
+     * URL is dynamic, so system trust is used.
+     */
+    suspend fun entitlementCheck(context: Context, url: String): Boolean {
+        if (!RcsFeature.enabled || url.isBlank()) return false
+        return runCatching {
+            val response = NetworkClient.performRequest(
+                url = url,
+                method = "GET",
+                useSystemTrust = true,
+            )
+            response.isSuccess
+        }.getOrDefault(false)
+    }
+
+    private fun defaultSubscriptionId(): Int = runCatching {
+        SubscriptionManager.getDefaultDataSubscriptionId()
+    }.getOrDefault(SubscriptionManager.INVALID_SUBSCRIPTION_ID)
+
+    fun hasPhoneStatePermission(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED
+
+    // AOSP values from hidden surface (verified against frameworks/base main).
+    private const val CAPABILITY_TYPE_CALL_COMPOSER = 1 shl 4
+    private const val NETWORK_TYPE_LTE = 0
+    private const val FEATURE_SINGLE_REG = "android.hardware.telephony.ims.singlereg"
+}

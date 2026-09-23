@@ -207,6 +207,11 @@
             android:foregroundServiceType="remoteMessaging" />
 
         <service
+            android:name=".telephony.RcsSyncService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
+
+        <service
             android:name=".telephony.GoogleVoiceCallForegroundService"
             android:exported="false"
             android:foregroundServiceType="phoneCall" />

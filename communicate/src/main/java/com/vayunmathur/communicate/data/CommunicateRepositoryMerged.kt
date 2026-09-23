@@ -79,6 +79,14 @@ suspend fun CommunicateRepository.deleteConversation(context: Context, thread: S
                 true
             }.getOrDefault(false)
         } ?: false
+        CommunicateLine.Rcs -> thread.remoteId?.let { id ->
+            runCatching {
+                val db = com.vayunmathur.communicate.data.rcs.RcsDatabase.getDatabase(context)
+                db.conversationDao().delete(id)
+                db.cachedMessageDao().deleteConversation(id)
+                true
+            }.getOrDefault(false)
+        } ?: false
     }
 }
 
@@ -114,6 +122,7 @@ suspend fun CommunicateRepository.deleteCallLog(context: Context, entry: Communi
 fun CommunicateRepository.canSendPoll(line: CommunicateLine): Boolean = when (line) {
     CommunicateLine.WhatsApp -> com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled
     CommunicateLine.Signal -> com.vayunmathur.communicate.data.signal.SignalFeature.enabled
+    CommunicateLine.Rcs -> com.vayunmathur.communicate.data.rcs.RcsFeature.enabled
     else -> false
 }
 
@@ -124,6 +133,7 @@ fun CommunicateRepository.canSendPoll(line: CommunicateLine): Boolean = when (li
 fun CommunicateRepository.canShareContact(line: CommunicateLine): Boolean = when (line) {
     CommunicateLine.WhatsApp -> com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled
     CommunicateLine.Signal -> com.vayunmathur.communicate.data.signal.SignalFeature.enabled
+    CommunicateLine.Rcs -> com.vayunmathur.communicate.data.rcs.RcsFeature.enabled
     else -> false
 }
 

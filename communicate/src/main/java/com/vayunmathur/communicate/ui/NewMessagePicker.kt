@@ -63,11 +63,12 @@ internal fun NewMessagePicker(
     var groupName by remember { mutableStateOf("") }
     // Selected recipients for group mode, keyed by phone number (value = display label).
     val selectedContacts = remember { mutableStateListOf<Pair<String, String>>() }
-    // Lines that support group chats: WhatsApp, Signal, and SIM (MMS). GV is 1:1 only.
+    // Lines that support group chats: WhatsApp, Signal, RCS, and SIM (MMS). GV is 1:1 only.
     val groupChoices = remember(choices) {
         choices.filter {
             it.category == CommunicateLine.WhatsApp ||
                 it.category == CommunicateLine.Signal ||
+                it.category == CommunicateLine.Rcs ||
                 it.category == CommunicateLine.Sim
         }
     }

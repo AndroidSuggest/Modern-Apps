@@ -23,7 +23,8 @@ suspend fun CommunicateRepository.loadSmsThreadsMerged(context: Context): List<S
     val gv = loadGoogleVoiceThreads(context)
     val wa = loadWhatsAppThreads(context)
     val signal = loadSignalThreads(context)
-    return (sim + gv + wa + signal).sortedByDescending { it.timestampMillis }
+    val rcs = loadRcsThreads(context)
+    return (sim + gv + wa + signal + rcs).sortedByDescending { it.timestampMillis }
 }
 
 /** Route by line: SIM threads read the provider; GV threads hit `api2thread/get`; WA/Signal read Room. */
@@ -49,6 +50,10 @@ suspend fun CommunicateRepository.loadSmsMessagesMerged(context: Context, thread
             // New Signal conversations have no remoteId yet — derive recipient from address.
             val recipient = thread.remoteId?.takeIf { it.isNotBlank() } ?: toSignalRecipient(context, thread.address)
             loadSignalMessages(context, recipient)
+        }
+        CommunicateLine.Rcs -> {
+            val recipient = thread.remoteId?.takeIf { it.isNotBlank() } ?: toRcsRecipient(context, thread.address)
+            loadRcsMessages(context, recipient)
         }
     }
 
@@ -146,6 +151,25 @@ suspend fun CommunicateRepository.sendMessage(
             }
             sentId != null
         }.getOrDefault(false)
+    }
+    LineChoice.Rcs -> withContext(Dispatchers.IO) {
+        when (sendRcsMessage(context, address, body, threadRemoteId, attachments, participants)) {
+            RcsSendResult.Sent -> true
+            RcsSendResult.Failed -> false
+            RcsSendResult.FallbackSms -> {
+                // Not RCS-capable or transport unavailable: fall back to SMS on the
+                // default subscription and tell the user (never silently downgrade).
+                notifyRcsFallback(context)
+                val subId = SimManager.activeSims(context).firstOrNull()?.subscriptionId
+                    ?: SimManager.defaultSmsSubscriptionId()
+                val recipients = participants.map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf(address) }
+                if (recipients.size > 1 || attachments.isNotEmpty()) {
+                    sendSimMms(context, subId, recipients, body, attachments)
+                } else {
+                    sendSimSms(context, subId, address, body)
+                }
+            }
+        }
     }
 } }
 

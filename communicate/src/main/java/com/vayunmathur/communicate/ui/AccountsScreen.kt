@@ -41,6 +41,7 @@ fun AccountsScreen(
     onRegisterWhatsApp: () -> Unit = {},
     onImportBackup: () -> Unit = {},
     onRegisterSignal: () -> Unit = {},
+    onShowRcsStatus: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val session = remember { GoogleVoiceSession.get(context) }
@@ -155,6 +156,40 @@ fun AccountsScreen(
                             Button(onClick = onRegisterSignal, modifier = Modifier.fillMaxWidth()) {
                                 Text("Register")
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // RCS single-registration line (dev-only; hidden in the release variant).
+        if (com.vayunmathur.communicate.data.rcs.RcsFeature.enabled) {
+            val rcsState by com.vayunmathur.communicate.data.rcs.RcsSipTransport.state.collectAsState(
+                initial = com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Unknown,
+            )
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                    ListItem(
+                        leadingContent = { IconPerson() },
+                        content = { Text("RCS", fontWeight = FontWeight.SemiBold) },
+                        supportingContent = {
+                            Text(
+                                when (val s = rcsState) {
+                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Available -> "Available"
+                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Provisioning -> "Checking…"
+                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Disabled -> "Disabled"
+                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Unknown -> "Not checked"
+                                    is com.vayunmathur.communicate.data.rcs.RcsRegistrationState.Unavailable -> "Unavailable: ${s.reason}"
+                                },
+                            )
+                        },
+                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(onClick = onShowRcsStatus, modifier = Modifier.fillMaxWidth()) {
+                            Text("Status")
                         }
                     }
                 }

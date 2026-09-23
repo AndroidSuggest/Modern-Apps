@@ -46,7 +46,7 @@ fun CommunicateRepository.placeCall(context: Context, choice: LineChoice?, numbe
 }
 
 /** Virtual (network-backed) lines that don't map to a physical SIM subscription. */
-val CommunicateRepository.isVirtualLine get() = setOf(CommunicateLine.GoogleVoice, CommunicateLine.WhatsApp, CommunicateLine.Signal)
+val CommunicateRepository.isVirtualLine get() = setOf(CommunicateLine.GoogleVoice, CommunicateLine.WhatsApp, CommunicateLine.Signal, CommunicateLine.Rcs)
 
 /**
  * Place a voice call on [line] for a conversation.
@@ -87,6 +87,8 @@ suspend fun CommunicateRepository.placeCallForLine(
             true
         }
     }
+    // RCS is messaging-only in v1: no telephony or WebRTC call path.
+    CommunicateLine.Rcs -> false
 }
 
 /** Whether [line] can place a call at all, so the UI can hide the affordance instead of failing. */
@@ -95,6 +97,8 @@ fun CommunicateRepository.canPlaceCall(line: CommunicateLine): Boolean = when (l
     CommunicateLine.GoogleVoice -> true
     CommunicateLine.WhatsApp -> com.vayunmathur.communicate.data.whatsapp.WhatsAppFeature.enabled
     CommunicateLine.Signal -> com.vayunmathur.communicate.data.signal.SignalFeature.enabled
+    // RCS is messaging-only in v1.
+    CommunicateLine.Rcs -> false
 }
 
 /**
