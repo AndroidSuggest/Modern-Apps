@@ -426,8 +426,7 @@ fn anchors_for(layer: &Layer) -> (Anchor, Option<Anchor>) {
 /// tried at can only differ in where they sit — not in how big they are.
 ///
 /// Lives in [`placement_reuse`] (file-length split) alongside the candidate loop
-/// that reads it; re-exported here so existing `super::box_inputs` paths keep working.
-pub(super) use placement_reuse::{box_inputs, box_inputs_with_arms};
+/// that reads it; import it from there (`super::placement_reuse::{...}`).
 
 /// Multiply a colour's alpha by `opacity`, for the style's fill-opacity ramps.
 ///

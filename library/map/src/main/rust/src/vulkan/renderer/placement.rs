@@ -1,6 +1,6 @@
 use super::{
-    anchors_for, box_inputs, box_inputs_with_arms, kind_name,
-    placement_reuse::{drift_reuse_ms, within_drift},
+    anchors_for, kind_name,
+    placement_reuse::{box_inputs, box_inputs_with_arms, drift_reuse_ms, within_drift},
     AcceptSet, Overlay, PlacedHit, PlacementKey, Renderer, QUAD_INDICES,
 };
 use crate::camera::Camera;
