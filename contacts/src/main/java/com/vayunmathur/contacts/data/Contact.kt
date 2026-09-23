@@ -232,22 +232,23 @@ data class Contact(
     val customRingtone: String? = null
 ) {
     val name: Name
-        get() = details.names.first()
+        get() = details.names.firstOrNull() ?: Name(0, "", "", "", "", "")
 
     val photo: Photo?
         get() = details.photos.firstOrNull()
 
     val org: Organization
-        get() = details.orgs.first()
+        get() = details.orgs.firstOrNull() ?: Organization(0, "")
 
     val nickname: Nickname
-        get() = details.nicknames.first { it.type == CDKNickname.TYPE_DEFAULT }
+        get() = details.nicknames.firstOrNull { it.type == CDKNickname.TYPE_DEFAULT }
+            ?: Nickname(0, "", CDKNickname.TYPE_DEFAULT)
 
     val birthday: Event?
         get() = details.dates.firstOrNull { it.type == CDKEvent.TYPE_BIRTHDAY }
 
     val note: Note
-        get() = details.notes.first()
+        get() = details.notes.firstOrNull() ?: Note(0, "")
 
     /** Returns false if the provider rejected the batch; never throws. */
     fun save(context: Context, newDetails: ContactDetails, oldDetails: ContactDetails): Boolean {
@@ -510,16 +511,19 @@ data class Contact(
                 null, null, null,
             )?.use { c -> if (c.moveToFirst()) { accountName = c.getString(0); accountType = c.getString(1) } }
 
-            if (accountType.isNullOrEmpty() && accountName.isNullOrEmpty()) {
-                // Null/device-local account: a plain delete already hard-deletes.
-                resolver.delete(rawUri, null, null)
-            } else {
+            // Only local/null accounts (blank type, or the app's LOCAL_ACCOUNT_TYPE) have no
+            // sync adapter, so they need the sync-adapter hard-delete URI. Real synced
+            // accounts (Google etc.) must use the plain tombstoning delete so the server
+            // sync removes them everywhere.
+            if (accountType.isNullOrBlank() || accountType == LOCAL_ACCOUNT_TYPE) {
                 val syncUri = rawUri.buildUpon()
                     .appendQueryParameter(ContactsContract.CALLER_IS_SYNCADAPTER, "true")
                     .appendQueryParameter(ContactsContract.RawContacts.ACCOUNT_NAME, accountName ?: "")
                     .appendQueryParameter(ContactsContract.RawContacts.ACCOUNT_TYPE, accountType ?: "")
                     .build()
                 resolver.delete(syncUri, null, null)
+            } else {
+                resolver.delete(rawUri, null, null)
             }
         }
     }
@@ -528,6 +532,12 @@ data class Contact(
 fun getDetails(context: Context, id: Long, isProfile: Boolean = false): ContactDetails {
     return getDetailsInternal(context, id, isProfile)[id] ?: ContactDetails.empty()
 }
+
+/** Loads the full-size photo bytes for [contactId], or null if none / on error. */
+fun loadFullSizePhoto(context: Context, contactId: Long): ByteArray? = runCatching {
+    val contactUri = ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contactId)
+    ContactsContract.Contacts.openContactPhotoInputStream(context.contentResolver, contactUri, true)?.use { it.readBytes() }
+}.getOrNull()
 
 fun getDetailsInternal(context: Context, id: Long? = null, isProfile: Boolean = false): Map<Long, ContactDetails> {
     val contentResolver = context.contentResolver
@@ -633,13 +643,12 @@ fun getDetailsInternal(context: Context, id: Long? = null, isProfile: Boolean = 
                             }
                         }
                         CDKPhoto.CONTENT_ITEM_TYPE -> runCatching {
-                            val contactId = cursor.getLong(contactIdIdx)
-                            val contactUri = ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contactId)
-                            val fullSizeStream = ContactsContract.Contacts.openContactPhotoInputStream(contentResolver, contactUri, true)
-                            val photoBytes = if (fullSizeStream != null) {
-                                fullSizeStream.use { it.readBytes() }
-                            } else {
-                                cursor.getBlobOrNull(d15Idx)
+                            // Prefer the DATA15 thumbnail blob so whole-book sync doesn't open
+                            // a full-size stream per row; only fall back when the blob is null.
+                            val photoBytes = cursor.getBlobOrNull(d15Idx) ?: run {
+                                val contactId = cursor.getLong(contactIdIdx)
+                                val contactUri = ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contactId)
+                                ContactsContract.Contacts.openContactPhotoInputStream(contentResolver, contactUri, true)?.use { it.readBytes() }
                             }
                             if (photoBytes != null) {
                                 photosMap.getOrPut(rawId) { mutableListOf() }.add(Photo(dataId, Base64.encode(photoBytes)))

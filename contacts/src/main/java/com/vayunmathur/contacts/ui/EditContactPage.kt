@@ -198,6 +198,7 @@ fun EditContactPage(backStack: NavBackStack<Route>, viewModel: ContactViewModel,
                 mobileIndex = mobileIndex,
                 homeEmailIndex = homeEmailIndex,
                 onUpdate = { viewModel.updateEditDraft { _ -> it } },
+                isSimAccount = isSimAccount,
             )
             Spacer(Modifier.height(8.dp))
 

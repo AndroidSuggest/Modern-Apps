@@ -218,17 +218,39 @@ fun ContactViewModel.saveEditDraft(onResult: ((Boolean, String?) -> Unit)? = nul
     }
     val original = editingOriginal
     val phoneNumbers = draft.phoneNumbers.filter { it.number.isNotBlank() }
+    val emails = draft.emails.filter { it.address.isNotBlank() }
+    val addresses = draft.addresses.filter { it.formattedAddress.isNotBlank() }
     val birthdayId = original?.birthday?.id ?: 0L
     val datesWithoutBirthday = draft.dates.filter { it.type != CDKEvent.TYPE_BIRTHDAY }.toMutableList()
     draft.birthday?.let { bday ->
         datesWithoutBirthday += Event(birthdayId, bday, CDKEvent.TYPE_BIRTHDAY)
     }
+    // Blank org/note/nickname placeholder rows are dropped so they aren't persisted;
+    // a cleared field yields an empty list so the old row is deleted via id diff.
+    val orgs = if (draft.company.isNotBlank()) {
+        listOf(Organization(original?.details?.orgs?.firstOrNull()?.id ?: 0, draft.company))
+    } else emptyList()
+    val notes = if (draft.noteContent.isNotBlank()) {
+        listOf(Note(original?.details?.notes?.firstOrNull()?.id ?: 0, draft.noteContent))
+    } else emptyList()
+    val nicknames = if (draft.nickname.isNotBlank()) {
+        listOf(
+            Nickname(
+                original?.details?.nicknames?.firstOrNull { it.type == CDKNickname.TYPE_DEFAULT }?.id ?: 0,
+                draft.nickname,
+                CDKNickname.TYPE_DEFAULT
+            )
+        )
+    } else emptyList()
+    // SIM cards can store only name parts, a first phone, and at most a first email.
+    // Defensively strip everything else so SIM saves never persist unsupported rows.
+    val isSimDraft = isSimAccountType(draft.accountType)
     val details = ContactDetails(
-        phoneNumbers = phoneNumbers,
-        emails = draft.emails,
-        addresses = draft.addresses,
-        dates = datesWithoutBirthday,
-        photos = listOfNotNull(draft.photo),
+        phoneNumbers = if (isSimDraft) listOfNotNull(phoneNumbers.firstOrNull()) else phoneNumbers,
+        emails = if (isSimDraft) listOfNotNull(emails.firstOrNull()) else emails,
+        addresses = if (isSimDraft) emptyList() else addresses,
+        dates = if (isSimDraft) emptyList() else datesWithoutBirthday,
+        photos = if (isSimDraft) emptyList() else listOfNotNull(draft.photo),
         names = listOf(
             Name(
                 original?.name?.id ?: 0,
@@ -239,15 +261,9 @@ fun ContactViewModel.saveEditDraft(onResult: ((Boolean, String?) -> Unit)? = nul
                 draft.nameSuffix
             )
         ),
-        orgs = listOf(Organization(original?.org?.id ?: 0, draft.company)),
-        notes = listOf(Note(original?.note?.id ?: 0, draft.noteContent)),
-        nicknames = listOf(
-            Nickname(
-                original?.nickname?.id ?: 0,
-                draft.nickname,
-                CDKNickname.TYPE_DEFAULT
-            )
-        ),
+        orgs = if (isSimDraft) emptyList() else orgs,
+        notes = if (isSimDraft) emptyList() else notes,
+        nicknames = if (isSimDraft) emptyList() else nicknames,
         groups = draft.groupMemberships
     )
     // For existing SIM contacts, keep synthetic id so saveContact can locate old row.

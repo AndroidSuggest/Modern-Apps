@@ -99,6 +99,14 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
 
     private fun accountKey(type: String?, name: String?): String = "${type ?: ""}|${name ?: ""}"
 
+    private fun encodedAccountKey(type: String?, name: String?): String {
+        fun enc(raw: String): String = raw.replace("%", "%25").replace("|", "%7C").replace(",", "%2C")
+        return "${enc(type ?: "")}|${enc(name ?: "")}"
+    }
+
+    /** Unfiltered address book for export (ignores search query and hidden accounts). */
+    val allContactsForExport: StateFlow<List<com.vayunmathur.contacts.data.Contact>> = _allContacts.asStateFlow()
+
     /**
      * Each contact paired with the lowercased text [filterBySearch] matches against.
      *
@@ -120,12 +128,22 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
     ) { indexed, query, hidden ->
         val visible = indexed.filter { (c, _) ->
             val key = accountKey(c.accountType, c.accountName)
-            // Support legacy hidden entries that stored only accountName
-            key !in hidden && c.accountName !in hidden
+            val encodedKey = encodedAccountKey(c.accountType, c.accountName)
+            // Support legacy hidden entries that stored only accountName, raw "type|name"
+            // keys, and separator-safe encoded keys.
+            key !in hidden && encodedKey !in hidden && c.accountName !in hidden
         }
         val tokens = query.trim().lowercase().split(WHITESPACE).filter { it.isNotBlank() }
         if (tokens.isEmpty()) visible.map { it.first }
-        else visible.filter { (_, haystack) -> tokens.all { haystack.contains(it) } }
+        else visible.filter { (_, haystack) ->
+            tokens.all { token ->
+                if (haystack.contains(token)) true
+                else {
+                    val normalizedToken = normalizePhoneForCompare(token)
+                    normalizedToken.isNotEmpty() && normalizedToken != token && haystack.contains(normalizedToken)
+                }
+            }
+        }
             .map { it.first }
     }
         // viewModelScope is Main.immediate, so without this the whole address book was filtered on
@@ -254,9 +272,11 @@ class ContactViewModel(application: Application) : AndroidViewModel(application)
         append(contact.details.names.joinToString(" ") { it.value }); append(' ')
         append(contact.details.nicknames.joinToString(" ") { it.nickname }); append(' ')
         append(contact.details.phoneNumbers.joinToString(" ") { it.number }); append(' ')
+        append(contact.details.phoneNumbers.joinToString(" ") { normalizePhoneForCompare(it.number) }); append(' ')
         append(contact.details.emails.joinToString(" ") { it.address }); append(' ')
         append(contact.details.notes.joinToString(" ") { it.content }); append(' ')
-        append(contact.details.orgs.joinToString(" ") { it.company })
+        append(contact.details.orgs.joinToString(" ") { it.company }); append(' ')
+        append(contact.details.addresses.joinToString(" ") { it.formattedAddress })
     }.lowercase()
 
     fun setCalendarSyncEnabled(enabled: Boolean) {

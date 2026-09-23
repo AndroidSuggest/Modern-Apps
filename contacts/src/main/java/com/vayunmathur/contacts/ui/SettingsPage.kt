@@ -47,6 +47,7 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
     val hiddenAccounts by viewModel.hiddenAccounts.collectAsStateWithLifecycle()
     val isCalendarSyncEnabled by viewModel.isCalendarSyncEnabled.collectAsStateWithLifecycle()
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+    val allContactsForExport by viewModel.allContactsForExport.collectAsStateWithLifecycle()
     val simLabels by viewModel.simAccountLabels.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -70,8 +71,9 @@ fun SettingsPage(viewModel: ContactViewModel, backStack: NavBackStack<Route>) {
             uri?.let {
                 coroutineScope.launch {
                     try {
+                        val exportList = allContactsForExport.ifEmpty { contacts }
                         context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                            VcfUtils.exportContacts(contacts, outputStream)
+                            VcfUtils.exportContacts(exportList, outputStream)
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("SettingsPage", "Error exporting contacts", e)

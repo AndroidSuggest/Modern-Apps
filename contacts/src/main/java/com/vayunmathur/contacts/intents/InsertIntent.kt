@@ -1,9 +1,13 @@
 package com.vayunmathur.contacts.intents
 
+import com.vayunmathur.contacts.data.CDKNickname
 import com.vayunmathur.contacts.data.CDKPhone
 import com.vayunmathur.contacts.data.Contact
 import com.vayunmathur.contacts.data.ContactDetails
 import com.vayunmathur.contacts.data.Name
+import com.vayunmathur.contacts.data.Nickname
+import com.vayunmathur.contacts.data.Note
+import com.vayunmathur.contacts.data.Organization
 import com.vayunmathur.contacts.data.PhoneNumber
 import com.vayunmathur.library.intents.contacts.ContactData
 import com.vayunmathur.library.util.AssistantIntent
@@ -14,9 +18,14 @@ import kotlinx.serialization.serializer
 class InsertIntent: AssistantIntent<ContactData, Unit>(serializer<ContactData>(), serializer<Unit>()) {
 
     override suspend fun performCalculation(input: ContactData) {
+        // Seed default name/org/note/nickname rows (mirror processDetails defaults)
+        // so the saved contact always has them.
         val details = ContactDetails.empty().copy(
             phoneNumbers = listOf(PhoneNumber(0, input.phoneNumber, CDKPhone.TYPE_MOBILE)),
-            names = listOf(Name(0, "", input.name, "", "", ""))
+            names = listOf(Name(0, "", input.name, "", "", "")),
+            orgs = listOf(Organization(0, "")),
+            notes = listOf(Note(0, "")),
+            nicknames = listOf(Nickname(0, "", CDKNickname.TYPE_DEFAULT))
         )
         val contact = Contact(0L, null, null, false, details)
         contact.save(this, contact.details, ContactDetails.empty())

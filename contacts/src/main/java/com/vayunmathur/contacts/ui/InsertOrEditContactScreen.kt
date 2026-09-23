@@ -59,6 +59,7 @@ fun InsertOrEditContactScreen(
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val hasLoadedContacts by viewModel.hasLoadedContacts.collectAsStateWithLifecycle()
     var isSaving by remember { mutableStateOf(false) }
 
     // Cold-launched via external intent (dialer "Add to contacts"), _allContacts starts
@@ -110,9 +111,29 @@ fun InsertOrEditContactScreen(
             )
 
             when {
-                contacts.isEmpty() && searchQuery.isEmpty() -> {
+                contacts.isEmpty() && searchQuery.isEmpty() && !hasLoadedContacts -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
+                    }
+                }
+                contacts.isEmpty() && searchQuery.isEmpty() -> {
+                    Column(
+                        Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(stringResource(R.string.no_contacts_yet), style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        Button(onClick = {
+                            backStack.setLast(
+                                Route.EditContact(
+                                    contactId = null,
+                                    prefill = insertOrEditRoute.prefill
+                                )
+                            )
+                        }) {
+                            Text(stringResource(R.string.create_new_contact))
+                        }
                     }
                 }
                 contacts.isEmpty() && searchQuery.isNotEmpty() -> {

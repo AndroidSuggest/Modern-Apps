@@ -128,6 +128,7 @@ internal fun placePlatformCall(
         != PackageManager.PERMISSION_GRANTED
     ) {
         if (fallbackDataRowId != null) launchPlatformAction(context, fallbackDataRowId)
+        else ExternalIntents.launch(context, Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null)))
         return
     }
     try {
@@ -148,9 +149,12 @@ internal fun placePlatformCall(
             telecomManager.placeCall(uri, extras)
         } else if (fallbackDataRowId != null) {
             launchPlatformAction(context, fallbackDataRowId)
+        } else {
+            ExternalIntents.launch(context, Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null)))
         }
     } catch (_: Exception) {
         if (fallbackDataRowId != null) launchPlatformAction(context, fallbackDataRowId)
+        else ExternalIntents.launch(context, Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null)))
     }
 }
 

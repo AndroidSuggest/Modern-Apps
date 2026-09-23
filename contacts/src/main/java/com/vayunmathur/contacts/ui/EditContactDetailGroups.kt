@@ -32,6 +32,7 @@ fun EditContactDetailGroups(
     mobileIndex: Int,
     homeEmailIndex: Int,
     onUpdate: (ContactViewModel.ContactDraft) -> Unit,
+    isSimAccount: Boolean = false,
 ) {
     val phoneCtx = LocalContext.current
     FormDetailGroup(
@@ -62,54 +63,56 @@ fun EditContactDetailGroups(
         expandOnEnter = true,
     )
 
-    val emailCtx = LocalContext.current
-    FormDetailGroup(
-        items = draft.emails,
-        label = stringResource(R.string.email),
-        addLabel = stringResource(R.string.add_email),
-        typeOptions = listOf(CDKEmail.TYPE_HOME, CDKEmail.TYPE_WORK, CDKEmail.TYPE_OTHER, CDKEmail.TYPE_MOBILE, CDKEmail.TYPE_CUSTOM),
-        value = { it.value },
-        onValueChange = { idx, v -> onUpdate(draft.copy(emails = draft.emails.toMutableList().also { l -> l[idx] = l[idx].withValue(v) })) },
-        typeLabel = { it.typeString(emailCtx) },
-        optionLabel = { opt -> ContactDetail.default<Email>().withType(opt).typeString(emailCtx) },
-        onTypeChange = { idx, opt -> onUpdate(draft.copy(emails = draft.emails.toMutableList().also { l -> l[idx] = l[idx].withType(opt) })) },
-        onRemove = { idx -> onUpdate(draft.copy(emails = draft.emails.toMutableList().also { l -> l.removeAt(idx) })) },
-        onAdd = { onUpdate(draft.copy(emails = draft.emails + ContactDetail.default<Email>())) },
-        currentType = { it.type },
-        keyboardType = KeyboardType.Email,
-        isCustom = { it.type == CDKEmail.TYPE_CUSTOM },
-        customLabel = { it.label },
-        onLabelChange = { idx, v -> onUpdate(draft.copy(emails = draft.emails.toMutableList().also { l -> l[idx] = l[idx].withLabel(v) })) },
-        customLabelText = stringResource(R.string.custom_label),
-        customPlaceholder = stringResource(R.string.enter_custom_label),
-        addIcon = { IconMail() },
-        sharedKey = { it.id.takeIf { id -> id > 0 }?.let { id -> "contact-email-$id" } },
-        isMandatory = { it == homeEmailIndex },
-        expandOnEnter = true,
-    )
+    if (!isSimAccount) {
+        val emailCtx = LocalContext.current
+        FormDetailGroup(
+            items = draft.emails,
+            label = stringResource(R.string.email),
+            addLabel = stringResource(R.string.add_email),
+            typeOptions = listOf(CDKEmail.TYPE_HOME, CDKEmail.TYPE_WORK, CDKEmail.TYPE_OTHER, CDKEmail.TYPE_MOBILE, CDKEmail.TYPE_CUSTOM),
+            value = { it.value },
+            onValueChange = { idx, v -> onUpdate(draft.copy(emails = draft.emails.toMutableList().also { l -> l[idx] = l[idx].withValue(v) })) },
+            typeLabel = { it.typeString(emailCtx) },
+            optionLabel = { opt -> ContactDetail.default<Email>().withType(opt).typeString(emailCtx) },
+            onTypeChange = { idx, opt -> onUpdate(draft.copy(emails = draft.emails.toMutableList().also { l -> l[idx] = l[idx].withType(opt) })) },
+            onRemove = { idx -> onUpdate(draft.copy(emails = draft.emails.toMutableList().also { l -> l.removeAt(idx) })) },
+            onAdd = { onUpdate(draft.copy(emails = draft.emails + ContactDetail.default<Email>())) },
+            currentType = { it.type },
+            keyboardType = KeyboardType.Email,
+            isCustom = { it.type == CDKEmail.TYPE_CUSTOM },
+            customLabel = { it.label },
+            onLabelChange = { idx, v -> onUpdate(draft.copy(emails = draft.emails.toMutableList().also { l -> l[idx] = l[idx].withLabel(v) })) },
+            customLabelText = stringResource(R.string.custom_label),
+            customPlaceholder = stringResource(R.string.enter_custom_label),
+            addIcon = { IconMail() },
+            sharedKey = { it.id.takeIf { id -> id > 0 }?.let { id -> "contact-email-$id" } },
+            isMandatory = { it == homeEmailIndex },
+            expandOnEnter = true,
+        )
 
-    val addressCtx = LocalContext.current
-    FormDetailGroup(
-        items = draft.addresses,
-        label = stringResource(R.string.addresses),
-        addLabel = stringResource(R.string.add_address),
-        typeOptions = listOf(CDKStructuredPostal.TYPE_HOME, CDKStructuredPostal.TYPE_WORK, CDKStructuredPostal.TYPE_OTHER, CDKStructuredPostal.TYPE_CUSTOM),
-        value = { it.value },
-        onValueChange = { idx, v -> onUpdate(draft.copy(addresses = draft.addresses.toMutableList().also { l -> l[idx] = l[idx].withValue(v) })) },
-        typeLabel = { it.typeString(addressCtx) },
-        optionLabel = { opt -> ContactDetail.default<Address>().withType(opt).typeString(addressCtx) },
-        onTypeChange = { idx, opt -> onUpdate(draft.copy(addresses = draft.addresses.toMutableList().also { l -> l[idx] = l[idx].withType(opt) })) },
-        onRemove = { idx -> onUpdate(draft.copy(addresses = draft.addresses.toMutableList().also { l -> l.removeAt(idx) })) },
-        onAdd = { onUpdate(draft.copy(addresses = draft.addresses + ContactDetail.default<Address>())) },
-        currentType = { it.type },
-        isCustom = { it.type == CDKStructuredPostal.TYPE_CUSTOM },
-        customLabel = { it.label },
-        onLabelChange = { idx, v -> onUpdate(draft.copy(addresses = draft.addresses.toMutableList().also { l -> l[idx] = l[idx].withLabel(v) })) },
-        customLabelText = stringResource(R.string.custom_label),
-        customPlaceholder = stringResource(R.string.enter_custom_label),
-        addIcon = { IconLocationOn() },
-        expandOnEnter = true,
-    )
+        val addressCtx = LocalContext.current
+        FormDetailGroup(
+            items = draft.addresses,
+            label = stringResource(R.string.addresses),
+            addLabel = stringResource(R.string.add_address),
+            typeOptions = listOf(CDKStructuredPostal.TYPE_HOME, CDKStructuredPostal.TYPE_WORK, CDKStructuredPostal.TYPE_OTHER, CDKStructuredPostal.TYPE_CUSTOM),
+            value = { it.value },
+            onValueChange = { idx, v -> onUpdate(draft.copy(addresses = draft.addresses.toMutableList().also { l -> l[idx] = l[idx].withValue(v) })) },
+            typeLabel = { it.typeString(addressCtx) },
+            optionLabel = { opt -> ContactDetail.default<Address>().withType(opt).typeString(addressCtx) },
+            onTypeChange = { idx, opt -> onUpdate(draft.copy(addresses = draft.addresses.toMutableList().also { l -> l[idx] = l[idx].withType(opt) })) },
+            onRemove = { idx -> onUpdate(draft.copy(addresses = draft.addresses.toMutableList().also { l -> l.removeAt(idx) })) },
+            onAdd = { onUpdate(draft.copy(addresses = draft.addresses + ContactDetail.default<Address>())) },
+            currentType = { it.type },
+            isCustom = { it.type == CDKStructuredPostal.TYPE_CUSTOM },
+            customLabel = { it.label },
+            onLabelChange = { idx, v -> onUpdate(draft.copy(addresses = draft.addresses.toMutableList().also { l -> l[idx] = l[idx].withLabel(v) })) },
+            customLabelText = stringResource(R.string.custom_label),
+            customPlaceholder = stringResource(R.string.enter_custom_label),
+            addIcon = { IconLocationOn() },
+            expandOnEnter = true,
+        )
+    }
 }
 
 internal fun getCountryFlagEmoji(phoneNumber: String): String {

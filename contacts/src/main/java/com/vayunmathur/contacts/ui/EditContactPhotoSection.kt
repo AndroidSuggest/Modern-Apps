@@ -1,5 +1,6 @@
 package com.vayunmathur.contacts.ui
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,7 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +28,8 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import com.vayunmathur.library.util.sharedContent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun EditContactPhotoSection(
@@ -56,7 +59,9 @@ fun EditContactPhotoSection(
             contentAlignment = Alignment.Center
         ) {
             if (photo != null) {
-                val bitmap = remember(photo) { viewModel.decodePhoto(photo) }
+                val bitmap = produceState<Bitmap?>(null, photo) {
+                    value = withContext(Dispatchers.IO) { viewModel.decodePhoto(photo) }
+                }.value
                 if (bitmap != null) {
                     Image(
                         bitmap = bitmap.asImageBitmap(),

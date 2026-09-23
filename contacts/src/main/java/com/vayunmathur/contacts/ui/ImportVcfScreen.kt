@@ -4,7 +4,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import com.vayunmathur.library.ui.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -209,7 +209,7 @@ fun ImportVcfScreen(
                     }
 
                     // Contacts list
-                    items(contacts, key = { "${it.name.value}|${it.details.phoneNumbers.firstOrNull()?.number ?: ""}|${it.details.emails.firstOrNull()?.address ?: ""}" }) { contact ->
+                    itemsIndexed(contacts, key = { index, contact -> "${contact.name.value}|${contact.details.phoneNumbers.firstOrNull()?.number ?: ""}|${contact.details.emails.firstOrNull()?.address ?: ""}|$index" }) { _, contact ->
                         ContactCard(contact = contact)
                     }
 

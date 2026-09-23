@@ -15,7 +15,6 @@ import com.vayunmathur.contacts.data.hasYear
 import kotlinx.datetime.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.time.Clock
 import com.vayunmathur.contacts.data.Event as ContactEvent
 
 object CalendarSyncHelper {
@@ -136,16 +135,14 @@ object CalendarSyncHelper {
     }
 
     private fun buildAddEventOperations(
-        context: Context, 
-        calendarId: Long, 
-        contact: Contact, 
+        context: Context,
+        calendarId: Long,
+        contact: Contact,
         dateEvent: ContactEvent,
         eventUri: android.net.Uri
     ): List<ContentProviderOperation> {
-        val ops = mutableListOf<ContentProviderOperation>()
         val originalDate = dateEvent.startDate
-        val currentYear = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).year
-        val endYear = currentYear + 1
+        val deviceTimeZone = TimeZone.currentSystemDefault()
 
         val eventTypeStr = if (dateEvent.type == CDKEvent.TYPE_BIRTHDAY) {
             context.getString(R.string.birthday)
@@ -153,39 +150,43 @@ object CalendarSyncHelper {
             context.getString(R.string.anniversary)
         }
 
+        // Title deliberately omits age: a single FREQ=YEARLY instance is reused every
+        // year, so any embedded age would go stale after the first occurrence.
+        val title = "${contact.name.value}: $eventTypeStr"
+
         val hasYear = originalDate.hasYear
-        val startYear = if (hasYear) maxOf(originalDate.year, currentYear - 100) else currentYear - 1
+        // RRULE makes the DTSTART year irrelevant (only month/day recur), so for
+        // no-year dates (year 1604 sentinel) normalize to a leap year (2000). This
+        // ensures Feb-29 no-year birthdays still recur instead of collapsing to an
+        // invalid date. For dates with a real year, keep the original year so the
+        // first instance lands correctly; Feb 29 then fires on leap years only.
+        // NOTE: a yearly RRULE starting Feb 29 fires only on leap years on most
+        // providers — accepted as correct rather than shifting to Feb 28, which
+        // would show the birthday on the wrong day in leap years.
+        val anchorYear = if (hasYear) originalDate.year else 2000
+        val anchorDate = try {
+            LocalDate(anchorYear, originalDate.month, originalDate.day)
+        } catch (_: IllegalArgumentException) {
+            return emptyList()
+        }
 
-        for (year in startYear..endYear) {
-            val age = if (hasYear) year - originalDate.year else -1
-            if (hasYear && age < 0) continue
-            
-            val eventDate = try {
-                LocalDate(year, originalDate.month, originalDate.day)
-            } catch (_: IllegalArgumentException) {
-                if (originalDate.month == Month.FEBRUARY && originalDate.day == 29) {
-                    LocalDate(year, Month.FEBRUARY, 28)
-                } else continue
-            }
+        // All-day events must be anchored at local midnight in the device timezone.
+        // Using 00:00 UTC shifts the displayed day for negative-offset zones (US).
+        val startMillis =
+            anchorDate.atTime(0, 0).toInstant(deviceTimeZone).toEpochMilliseconds()
 
-            val title = if (hasYear) {
-                "${contact.name.value}: $eventTypeStr ($age)"
-            } else {
-                "${contact.name.value}: $eventTypeStr"
-            }
-            val startMillis = eventDate.atTime(0, 0).toInstant(TimeZone.UTC).toEpochMilliseconds()
-
-            ops.add(ContentProviderOperation.newInsert(eventUri)
+        return listOf(
+            ContentProviderOperation.newInsert(eventUri)
                 .withValue(CalendarContract.Events.CALENDAR_ID, calendarId)
                 .withValue(CalendarContract.Events.TITLE, title)
                 .withValue(CalendarContract.Events.DTSTART, startMillis)
                 .withValue(CalendarContract.Events.DTEND, startMillis + 24 * 60 * 60 * 1000)
                 .withValue(CalendarContract.Events.ALL_DAY, 1)
-                .withValue(CalendarContract.Events.EVENT_TIMEZONE, "UTC")
+                .withValue(CalendarContract.Events.EVENT_TIMEZONE, deviceTimeZone.id)
+                .withValue(CalendarContract.Events.RRULE, "FREQ=YEARLY")
                 .withValue(CalendarContract.Events.SYNC_DATA1, contact.id.toString())
-                .build())
-        }
-        return ops
+                .build()
+        )
     }
     
     suspend fun syncAll(context: Context) {

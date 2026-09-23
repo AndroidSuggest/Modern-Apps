@@ -10,7 +10,11 @@ import java.io.OutputStream
 import java.io.Writer
 
 object VcfUtils {
-    suspend fun exportContacts(contacts: List<Contact>, outputStream: OutputStream) {
+    suspend fun exportContacts(
+        contacts: List<Contact>,
+        outputStream: OutputStream,
+        groupNames: Map<Long, String> = emptyMap()
+    ) {
         withContext(Dispatchers.IO) {
             outputStream.bufferedWriter(Charsets.UTF_8).use { writer ->
                 for (contact in contacts) {
@@ -99,6 +103,28 @@ object VcfUtils {
                         if (note.content.isNotEmpty()) writeFolded(writer, "NOTE:${escapeV(note.content)}")
                     }
 
+                    // Nicknames
+                    for (nn in details.nicknames) {
+                        if (nn.nickname.isNotBlank()) writeFolded(writer, "NICKNAME:${escapeV(nn.nickname)}")
+                    }
+
+                    // Group memberships as CATEGORIES (names via id->name map)
+                    if (details.groups.isNotEmpty()) {
+                        val catNames = details.groups.mapNotNull { gm ->
+                            val mapped = groupNames[gm.groupId]
+                            when {
+                                mapped != null && mapped.isNotBlank() -> mapped
+                                else -> gm.groupId.toString()
+                            }
+                        }.filter { it.isNotBlank() }.distinct()
+                        if (catNames.isNotEmpty()) {
+                            writeFolded(writer, "CATEGORIES:${catNames.joinToString(",") { escapeV(it) }}")
+                        }
+                    }
+
+                    // Favorite marker
+                    if (contact.isFavorite) writeFolded(writer, "X-STARRED:1")
+
                     // Photo (base64) - write as single line; large photos are written raw
                     val photo = details.photos.firstOrNull()
                     if (photo != null && photo.photo.isNotEmpty()) {
@@ -112,36 +138,19 @@ object VcfUtils {
         }
     }
 
-    fun parseContacts(inputStream: InputStream): List<Contact> {
+    fun parseContacts(
+        inputStream: InputStream,
+        resolveGroups: (List<String>) -> List<GroupMembership> = { emptyList() }
+    ): List<Contact> {
         val contactsToSave = mutableListOf<Contact>()
-        val rawLines = inputStream.bufferedReader(Charsets.UTF_8).use { br ->
-            buildList {
-                var line: String?
-                while (br.readLine().also { line = it } != null) {
-                    add(line!!)
-                }
-            }
-        }
-        val unfolded = mutableListOf<String>()
-        var bufferLine: String? = null
-        for (ln in rawLines) {
-            if (ln.startsWith(" ") || ln.startsWith("\t")) {
-                bufferLine = (bufferLine ?: "") + ln.trimStart()
-            } else {
-                if (bufferLine != null) unfolded.add(bufferLine)
-                bufferLine = ln
-            }
-        }
-        if (bufferLine != null) unfolded.add(bufferLine)
-
         var currentContact: ContactBuilder? = null
 
-        for (raw in unfolded) {
+        fun handleUnfolded(raw: String) {
             val line = raw.trimEnd()
-            if (line.isEmpty()) continue
+            if (line.isEmpty()) return
             if (line.startsWith("BEGIN:VCARD", ignoreCase = true)) {
                 currentContact = ContactBuilder()
-                continue
+                return
             }
             if (line.startsWith("END:VCARD", ignoreCase = true)) {
                 currentContact?.let { builder ->
@@ -155,66 +164,81 @@ object VcfUtils {
                         orgs = builder.orgs.toList(),
                         notes = builder.notes.toList(),
                         nicknames = builder.nicknames.toList(),
-                        groups = emptyList()
+                        groups = builder.groups.toList()
                     )
                     val newContact = Contact(
                         id = 0L,
                         null,
                         null,
-                        isFavorite = false,
+                        isFavorite = builder.isFavorite,
                         details
                     )
                     contactsToSave.add(newContact)
                 }
                 currentContact = null
-                continue
+                return
             }
 
-            if (currentContact == null) continue
+            val builder = currentContact ?: return
 
             // Parse property line: NAME[;PARAMS]:VALUE
             val colonIndex = line.indexOf(':')
-            if (colonIndex == -1) continue
+            if (colonIndex == -1) return
             val nameAndParams = line.take(colonIndex)
             val valuePart = line.substring(colonIndex + 1)
 
             val segments = nameAndParams.split(';')
-            val propName = segments.firstOrNull()?.uppercase() ?: continue
+            val propName = segments.firstOrNull()?.uppercase() ?: return
             val params = parseParams(segments.drop(1))
 
-            // Handle QUOTED-PRINTABLE decoding
+            // Handle QUOTED-PRINTABLE decoding; unknown CHARSET skips just this value.
             val encodingVals = params["ENCODING"] ?: params["ENCOD"]
             val isQP = encodingVals?.any { it.equals("QUOTED-PRINTABLE", ignoreCase = true) } == true
             val charsetName = params["CHARSET"]?.firstOrNull() ?: params["CHARSET*"]?.firstOrNull()
-            val value = if (isQP) decodeQuotedPrintable(valuePart, charsetName ?: "UTF-8") else valuePart
+            val decodedValue = try {
+                if (isQP) decodeQuotedPrintable(valuePart, charsetName ?: "UTF-8") else valuePart
+            } catch (_: Exception) {
+                valuePart
+            }
 
             when (propName) {
                 "N" -> {
+                    val value = unescapeV(decodedValue)
                     val comps = value.split(';')
                     val family = comps.getOrNull(0) ?: ""
                     val given = comps.getOrNull(1) ?: ""
                     val additional = comps.getOrNull(2) ?: ""
                     val prefix = comps.getOrNull(3) ?: ""
                     val suffix = comps.getOrNull(4) ?: ""
-                    currentContact.names.clear()
-                    currentContact.names.add(Name(0, prefix, given, additional, family, suffix))
+                    builder.names.clear()
+                    builder.names.add(Name(0, prefix, given, additional, family, suffix))
                 }
                 "FN" -> {
-                    if (currentContact.names.isEmpty()) {
+                    val value = unescapeV(decodedValue)
+                    val existing = builder.names.firstOrNull()
+                    val isBlankDefault = existing != null &&
+                        existing.firstName.isBlank() && existing.lastName.isBlank() &&
+                        existing.middleName.isBlank() && existing.namePrefix.isBlank() &&
+                        existing.nameSuffix.isBlank()
+                    if (existing == null || isBlankDefault) {
                         val first = value.split(" ").firstOrNull() ?: value
                         val last = value.split(" ").drop(1).joinToString(" ")
-                        currentContact.names.add(Name(0, "", first, "", last, ""))
+                        builder.names.clear()
+                        builder.names.add(Name(0, "", first, "", last, ""))
                     }
                 }
                 "TEL" -> {
+                    val value = unescapeV(decodedValue)
                     val (ttype, tlabel) = detectPhoneTypeWithLabel(params)
-                    currentContact.phones.add(PhoneNumber(0, value, ttype, tlabel))
+                    builder.phones.add(PhoneNumber(0, value, ttype, tlabel))
                 }
                 "EMAIL" -> {
+                    val value = unescapeV(decodedValue)
                     val (etype, elabel) = detectEmailTypeWithLabel(params)
-                    currentContact.emails.add(Email(0, value, etype, elabel))
+                    builder.emails.add(Email(0, value, etype, elabel))
                 }
                 "ADR" -> {
+                    val value = unescapeV(decodedValue)
                     val comps = value.split(';')
                     val street = comps.getOrNull(2) ?: ""
                     val city = comps.getOrNull(3) ?: ""
@@ -223,10 +247,10 @@ object VcfUtils {
                     val country = comps.getOrNull(6) ?: ""
                     val formatted = listOfNotNull(street.ifEmpty { null }, city.ifEmpty { null }, region.ifEmpty { null }, postal.ifEmpty { null }, country.ifEmpty { null }).joinToString(", ")
                     val (atype, alabel) = detectAddressTypeWithLabel(params)
-                    currentContact.addresses.add(Address(0, formatted, atype, alabel))
+                    builder.addresses.add(Address(0, formatted, atype, alabel))
                 }
                 "X-EVENT" -> {
-                    var dv = value
+                    var dv = unescapeV(decodedValue)
                     if (dv.matches(Regex("^\\d{8}"))) {
                         dv = dv.take(4) + "-" + dv.substring(4,6) + "-" + dv.substring(6,8)
                     } else if (dv.startsWith("--")) {
@@ -235,15 +259,18 @@ object VcfUtils {
                     try {
                         val date = LocalDate.parse(dv)
                         val (dtype, dlabel) = detectEventTypeWithLabel(params)
-                        currentContact.dates.add(Event(0, date, dtype, dlabel))
+                        builder.dates.add(Event(0, date, dtype, dlabel))
                     } catch (_: Exception) { }
                 }
                 "ORG" -> {
-                    currentContact.orgs.clear()
-                    currentContact.orgs.add(Organization(0, value))
+                    val value = unescapeV(decodedValue)
+                    builder.orgs.clear()
+                    builder.orgs.add(Organization(0, value))
                 }
                 "BDAY" -> {
-                    var dv = value
+                    // Only the first BDAY per vCard wins.
+                    if (builder.dates.any { it.type == ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY }) return
+                    var dv = unescapeV(decodedValue)
                     if (dv.matches(Regex("^\\d{8}"))) {
                         dv = dv.take(4) + "-" + dv.substring(4,6) + "-" + dv.substring(6,8)
                     } else if (dv.startsWith("--")) {
@@ -251,21 +278,73 @@ object VcfUtils {
                     }
                     try {
                         val date = LocalDate.parse(dv)
-                        currentContact.dates.add(Event(0, date, ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY))
+                        builder.dates.add(Event(0, date, ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY))
                     } catch (_: Exception) {
                     }
                 }
                 "NOTE" -> {
-                    currentContact.notes.add(Note(0, value))
+                    val value = unescapeV(decodedValue)
+                    if (builder.notes.size == 1 && builder.notes[0].content.isBlank()) {
+                        builder.notes.clear()
+                    }
+                    builder.notes.add(Note(0, value))
+                }
+                "NICKNAME" -> {
+                    val value = unescapeV(decodedValue)
+                    // NICKNAME may hold a comma-separated list; split on unescaped commas.
+                    val parts = splitUnescaped(value, ',').map { it.trim() }.filter { it.isNotBlank() }
+                    val names = parts.ifEmpty { listOf(value).filter { it.isNotBlank() } }
+                    for (n in names) {
+                        if (builder.nicknames.size == 1 && builder.nicknames[0].nickname.isBlank()) {
+                            builder.nicknames.clear()
+                        }
+                        builder.nicknames.add(
+                            Nickname(0, n, ContactsContract.CommonDataKinds.Nickname.TYPE_DEFAULT)
+                        )
+                    }
+                }
+                "CATEGORIES" -> {
+                    val value = unescapeV(decodedValue)
+                    val names = splitUnescaped(value, ',').map { it.trim() }.filter { it.isNotBlank() }
+                    if (names.isNotEmpty()) {
+                        try {
+                            builder.groups.addAll(resolveGroups(names))
+                        } catch (_: Exception) {
+                            // Default no-op / resolver failures must never crash import.
+                        }
+                    }
+                }
+                "X-STARRED" -> {
+                    val v = decodedValue.trim()
+                    if (v == "1" || v.equals("true", ignoreCase = true) || v.equals("yes", ignoreCase = true)) {
+                        builder.isFavorite = true
+                    }
                 }
                 "PHOTO" -> {
-                    currentContact.photos.add(Photo(0, value))
+                    builder.photos.add(Photo(0, decodedValue))
                 }
                 "URL" -> {
-                    currentContact.notes.add(Note(0, value))
+                    // Do not create Note rows from URL lines.
                 }
                 else -> {}
             }
+        }
+
+        // Streaming unfold: process line-by-line, keeping only a small pending
+        // buffer for folded (continuation) lines instead of loading the file.
+        inputStream.bufferedReader(Charsets.UTF_8).use { br ->
+            var pending: String? = null
+            var line: String?
+            while (br.readLine().also { line = it } != null) {
+                val ln = line!!
+                if (ln.startsWith(" ") || ln.startsWith("\t")) {
+                    pending = (pending ?: "") + ln.trimStart()
+                } else {
+                    if (pending != null) handleUnfolded(pending)
+                    pending = ln
+                }
+            }
+            if (pending != null) handleUnfolded(pending)
         }
 
         return contactsToSave
@@ -277,14 +356,51 @@ object VcfUtils {
         val addresses: MutableList<Address> = mutableListOf()
         val dates: MutableList<Event> = mutableListOf()
         val photos: MutableList<Photo> = mutableListOf()
-        val names: MutableList<Name> = mutableListOf()
-        val orgs: MutableList<Organization> = mutableListOf()
-        val notes: MutableList<Note> = mutableListOf()
-        val nicknames: MutableList<Nickname> = mutableListOf()
+        val names: MutableList<Name> = mutableListOf(Name(0, "", "", "", "", ""))
+        val orgs: MutableList<Organization> = mutableListOf(Organization(0, ""))
+        val notes: MutableList<Note> = mutableListOf(Note(0, ""))
+        val nicknames: MutableList<Nickname> = mutableListOf(
+            Nickname(0, "", ContactsContract.CommonDataKinds.Nickname.TYPE_DEFAULT)
+        )
+        val groups: MutableList<GroupMembership> = mutableListOf()
+        var isFavorite: Boolean = false
     }
 
     private fun escapeV(value: String): String {
         return value.replace("\\", "\\\\").replace("\n", "\\n").replace(",", "\\,").replace(";", "\\;")
+    }
+
+    private fun unescapeV(value: String): String {
+        // Unescape backslash LAST to avoid double-processing.
+        return value
+            .replace("\\n", "\n")
+            .replace("\\N", "\n")
+            .replace("\\,", ",")
+            .replace("\\;", ";")
+            .replace("\\\\", "\\")
+    }
+
+    private fun splitUnescaped(value: String, delimiter: Char): List<String> {
+        val out = mutableListOf<String>()
+        val cur = StringBuilder()
+        var i = 0
+        while (i < value.length) {
+            val c = value[i]
+            if (c == '\\' && i + 1 < value.length) {
+                // Keep the escape pair intact; unescapeV runs afterwards per-part.
+                cur.append(c).append(value[i + 1])
+                i += 2
+            } else if (c == delimiter) {
+                out.add(cur.toString())
+                cur.clear()
+                i++
+            } else {
+                cur.append(c)
+                i++
+            }
+        }
+        out.add(cur.toString())
+        return out
     }
 
     private fun parseParams(parts: List<String>): Map<String, List<String>> {

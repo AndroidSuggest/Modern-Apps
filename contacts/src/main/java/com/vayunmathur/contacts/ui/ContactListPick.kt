@@ -2,12 +2,21 @@ package com.vayunmathur.contacts.ui
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.contacts.R
 import com.vayunmathur.contacts.data.Contact
+import com.vayunmathur.library.ui.CircularProgressIndicator
+import com.vayunmathur.library.ui.CommonSearchBar
+import com.vayunmathur.library.ui.EmptyState
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.ExtendedFloatingActionButton
 import com.vayunmathur.library.ui.LazyListScaffold
@@ -25,9 +34,22 @@ fun ContactListPick(
     allowMultiple: Boolean = false,
     selectedUris: List<Uri> = emptyList(),
     onConfirm: () -> Unit = {},
+    isLoading: Boolean = true,
     onClick: (Uri) -> Unit,
 ) {
-    val (favorites, otherContacts) = remember(contacts) { contacts.partition { it.isFavorite } }
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(contacts, query) {
+        if (query.isBlank()) contacts
+        else {
+            val q = query.trim().lowercase()
+            contacts.filter { contact ->
+                contact.name.value.lowercase().contains(q) ||
+                    contact.details.phoneNumbers.any { it.number.contains(query.trim()) } ||
+                    contact.details.emails.any { it.address.lowercase().contains(q) }
+            }
+        }
+    }
+    val (favorites, otherContacts) = remember(filtered) { filtered.partition { it.isFavorite } }
 
     val groupedContacts = remember(otherContacts) {
         otherContacts
@@ -38,7 +60,7 @@ fun ContactListPick(
     val selectedSet = selectedUris.toSet()
 
     LazyListScaffold(
-        topBar = { TopAppBar({ Text(stringResource(R.string.app_name)) }) },
+        topBar = { TopAppBar(title = { Text(stringResource(R.string.app_name)) }) },
         floatingActionButton = {
             if (allowMultiple) {
                 ExtendedFloatingActionButton(onClick = onConfirm) {
@@ -52,20 +74,59 @@ fun ContactListPick(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         scrollBehavior = appBarScrollBehavior(),
     ) {
-        if (favorites.isNotEmpty()) {
-            item(key = "pick-favorites-header") { FavoritesHeader() }
-            item(key = "pick-favorites-card") {
-                GroupedContactSection(count = favorites.size) { idx ->
-                    ContactItemPick(favorites[idx], mimeType, selectedSet, onClick)
+        item(key = "pick-search") {
+            CommonSearchBar(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = stringResource(R.string.search_contacts),
+                padding = PaddingValues(vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        when {
+            filtered.isEmpty() && isLoading -> {
+                item(key = "pick-loading") {
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier.fillParentMaxSize(),
+                        contentAlignment = androidx.compose.ui.Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
                 }
             }
-        }
+            filtered.isEmpty() -> {
+                item(key = "pick-empty") {
+                    if (query.isNotEmpty()) {
+                        EmptyState(
+                            title = stringResource(R.string.no_contacts_found),
+                            modifier = Modifier.fillParentMaxSize(),
+                        )
+                    } else {
+                        EmptyState(
+                            title = stringResource(R.string.no_contacts_yet),
+                            modifier = Modifier.fillParentMaxSize(),
+                            message = stringResource(R.string.no_contacts_yet_message),
+                        )
+                    }
+                }
+            }
+            else -> {
+                if (favorites.isNotEmpty()) {
+                    item(key = "pick-favorites-header") { FavoritesHeader() }
+                    item(key = "pick-favorites-card") {
+                        GroupedContactSection(count = favorites.size) { idx ->
+                            ContactItemPick(favorites[idx], mimeType, selectedSet, onClick)
+                        }
+                    }
+                }
 
-        groupedContacts.forEach { (letter, contactsInGroup) ->
-            item(key = "pick-letter-header-$letter") { LetterHeader(letter) }
-            item(key = "pick-letter-card-$letter") {
-                GroupedContactSection(count = contactsInGroup.size) { idx ->
-                    ContactItemPick(contactsInGroup[idx], mimeType, selectedSet, onClick)
+                groupedContacts.forEach { (letter, contactsInGroup) ->
+                    item(key = "pick-letter-header-$letter") { LetterHeader(letter) }
+                    item(key = "pick-letter-card-$letter") {
+                        GroupedContactSection(count = contactsInGroup.size) { idx ->
+                            ContactItemPick(contactsInGroup[idx], mimeType, selectedSet, onClick)
+                        }
+                    }
                 }
             }
         }
