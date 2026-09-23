@@ -65,7 +65,8 @@ object RcsCapabilityExchange {
     ): Map<String, Boolean> {
         if (numbers.isEmpty()) return emptyMap()
         val app = context.applicationContext
-        val subId = SubscriptionManager.getDefaultDataSubscriptionId()
+        // TestRcsApp keys everything off the default SMS subscription.
+        val subId = SubscriptionManager.getDefaultSmsSubscriptionId()
         if (!SubscriptionManager.isValidSubscriptionId(subId)) return emptyMap()
         val ims = app.getSystemService(ImsManager::class.java) ?: return emptyMap()
         val adapter = runCatching { ims.getImsRcsManager(subId).getUceAdapter() }.getOrNull()

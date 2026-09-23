@@ -103,4 +103,105 @@ internal object RcsHiddenApi {
         fun onComplete()
         fun onError(errorCode: Int, retryAfterMillis: Long)
     }
+
+    /** Dynamic-dispatch target for the provisioning proxy (config is raw XML bytes). */
+    interface ProvisioningCallback {
+        fun onConfigurationChanged(configXml: ByteArray)
+        fun onConfigurationReset()
+        fun onRemoved()
+    }
+
+    /**
+     * `ProvisioningManager.createForSubscriptionId(int)` (hidden static).
+     * Returns the framework manager as `Any` — all further calls go through
+     * the helpers below. Null on any failure.
+     */
+    fun provisioningManager(subId: Int): Any? {
+        if (!RcsFeature.enabled) return null
+        return runCatching {
+            val pmClass = Class.forName("android.telephony.ims.ProvisioningManager")
+            val factory = pmClass.getMethod("createForSubscriptionId", Int::class.javaPrimitiveType)
+            factory.invoke(null, subId)
+        }.getOrElse {
+            Log.w(TAG, "createForSubscriptionId failed", it)
+            null
+        }
+    }
+
+    /**
+     * `ProvisioningManager#isRcsVolteSingleRegistrationCapable()` (hidden).
+     * Tri-state: true/false from the service, null when the bridge itself
+     * failed (e.g. missing permission) so callers can treat it as "unknown"
+     * rather than "not capable".
+     */
+    fun isSingleRegCapable(provisioningManager: Any): Boolean? {
+        return runCatching {
+            val method = provisioningManager.javaClass.getMethod("isRcsVolteSingleRegistrationCapable")
+            method.invoke(provisioningManager) as? Boolean
+        }.getOrElse {
+            Log.w(TAG, "isRcsVolteSingleRegistrationCapable failed", it)
+            null
+        }
+    }
+
+    /**
+     * `setRcsClientConfiguration` + `registerRcsProvisioningCallback` (hidden).
+     * The callback interface is hidden, so it is delivered through a Proxy
+     * like the UCE path. Returns false when the bridge itself fails.
+     */
+    fun registerProvisioningCallback(
+        provisioningManager: Any,
+        executor: java.util.concurrent.Executor,
+        rcsVersion: String,
+        rcsProfile: String,
+        callback: ProvisioningCallback,
+    ): Boolean {
+        if (!RcsFeature.enabled) return false
+        return runCatching {
+            val pmClass = provisioningManager.javaClass
+            val configClass = Class.forName("android.telephony.ims.RcsClientConfiguration")
+            val callbackClass = Class.forName("android.telephony.ims.ProvisioningManager\$RcsProvisioningCallback")
+            val config = configClass
+                .getConstructor(String::class.java, String::class.java, String::class.java, String::class.java)
+                .newInstance(rcsVersion, rcsProfile, "Vayun", "Communicate-1.0")
+            pmClass.getMethod("setRcsClientConfiguration", configClass).invoke(provisioningManager, config)
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                pmClass.classLoader,
+                arrayOf(callbackClass),
+            ) { _, method, args ->
+                when (method.name) {
+                    "onConfigurationChanged" -> callback.onConfigurationChanged(
+                        (args?.getOrNull(0) as? ByteArray) ?: ByteArray(0),
+                    )
+                    "onConfigurationReset" -> callback.onConfigurationReset()
+                    "onRemoved" -> callback.onRemoved()
+                    "toString" -> "RcsProvisioningCallbackProxy"
+                    "hashCode" -> System.identityHashCode(callback)
+                    "equals" -> args?.getOrNull(0) === callback
+                    else -> null
+                }
+            }
+            pmClass.getMethod(
+                "registerRcsProvisioningCallback",
+                java.util.concurrent.Executor::class.java,
+                callbackClass,
+            ).invoke(provisioningManager, executor, proxy)
+            true
+        }.getOrElse {
+            val cause = (it as? java.lang.reflect.InvocationTargetException)?.cause ?: it
+            Log.w(TAG, "registerRcsProvisioningCallback failed", cause)
+            false
+        }
+    }
+
+    fun unregisterProvisioningCallback(provisioningManager: Any, callbackProxy: Any? = null) {
+        runCatching {
+            // Unregister by callback instance when we hold the proxy; otherwise best-effort no-op.
+            if (callbackProxy != null) {
+                provisioningManager.javaClass
+                    .getMethod("unregisterRcsProvisioningCallback", callbackProxy.javaClass.interfaces.first())
+                    .invoke(provisioningManager, callbackProxy)
+            }
+        }
+    }
 }

@@ -69,7 +69,7 @@ object RcsProvisioning {
 
     /**
      * Run the provisioning check for [subscriptionId] (defaults to the default
-     * data subscription). Updates [state]; also returns it.
+     * SMS subscription, mirroring TestRcsApp). Updates [state]; also returns it.
      */
     suspend fun probe(context: Context, subscriptionId: Int = defaultSubscriptionId()): RcsRegistrationState {
         if (!RcsFeature.enabled) {
@@ -119,6 +119,18 @@ object RcsProvisioning {
         if (provisioningRequired) {
             return RcsRegistrationState.Unavailable(RcsUnavailableReason.ProvisioningRequired)
         }
+        // Tertiary signal (TestRcsApp ProvisioningActivity): the hidden
+        // isRcsVolteSingleRegistrationCapable() on the per-sub manager. Tri-state —
+        // null (bridge failure, e.g. role not yet granted) means "unknown", not
+        // "not capable", so it never blocks on permission errors.
+        val singleRegCapable = runCatching {
+            val pm = RcsHiddenApi.provisioningManager(subscriptionId)
+                ?: return@runCatching null
+            RcsHiddenApi.isSingleRegCapable(pm)
+        }.getOrDefault(null)
+        if (singleRegCapable == false) {
+            return RcsRegistrationState.Unavailable(RcsUnavailableReason.NotSupported)
+        }
         // Single-registration support gate: without it there is no delegate to create.
         // The feature constant is @SystemApi/hidden; the AOSP value is used directly.
         val singleReg = context.packageManager.hasSystemFeature(FEATURE_SINGLE_REG)
@@ -146,7 +158,8 @@ object RcsProvisioning {
     }
 
     private fun defaultSubscriptionId(): Int = runCatching {
-        SubscriptionManager.getDefaultDataSubscriptionId()
+        // TestRcsApp keys everything off the default SMS subscription.
+        SubscriptionManager.getDefaultSmsSubscriptionId()
     }.getOrDefault(SubscriptionManager.INVALID_SUBSCRIPTION_ID)
 
     fun hasPhoneStatePermission(context: Context): Boolean =

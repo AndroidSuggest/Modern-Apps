@@ -43,11 +43,14 @@ object RcsSipTransport {
     /**
      * CPM feature tags for RCS chat + file transfer (RCC.07 §2.6.1.3). Must be
      * allowed by the carrier (`KEY_RCS_FEATURE_TAG_ALLOWED_STRING_ARRAY`) or
-     * the request is denied.
+     * the request is denied. Tag set mirrors TestRcsApp's DelegateActivity:
+     * session + pager-mode variants + FT.
      */
     val CPM_FEATURE_TAGS: Set<String> = setOf(
         "+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.session\"",
+        "+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.msg\"",
         "+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.largemsg\"",
+        "+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.deferred\"",
         "+g.3gpp.iari-ref=\"urn%3Aurn-7%3A3gpp-application.ims.iari.rcs.fthttp\"",
     )
 
@@ -60,6 +63,8 @@ object RcsSipTransport {
     @Volatile private var connection: SipDelegateConnection? = null
     @Volatile private var configVersion: Long = -1L
     @Volatile private var activeSubId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID
+    /** Last IMS configuration (identity, server, route headers for sends). */
+    @Volatile private var lastConfig: SipDelegateConfiguration? = null
 
     /** Inbound SIP MESSAGE listener (sync service writes to Room + notifies). */
     @Volatile
@@ -87,12 +92,14 @@ object RcsSipTransport {
 
         override fun onConfigurationChanged(registeredSipConfig: SipDelegateConfiguration) {
             configVersion = registeredSipConfig.getVersion()
+            lastConfig = registeredSipConfig
         }
 
         override fun onDestroyed(reason: Int) {
             Log.w(TAG, "SipDelegate destroyed reason=$reason")
             connection = null
             configVersion = -1L
+            lastConfig = null
             if (_state.value is RcsRegistrationState.Available) {
                 _state.value = RcsRegistrationState.Unavailable(RcsUnavailableReason.ServiceUnavailable)
             }
@@ -187,6 +194,10 @@ object RcsSipTransport {
     /**
      * Build a pager-mode SIP MESSAGE start line + headers for a 1:1 CPM chat
      * message. The branch parameter doubles as the send ack key.
+     *
+     * The body is a `message/cpim` envelope (TestRcsApp CpimUtils) carrying
+     * IMDN metadata; the From identity comes from the delegate configuration
+     * (public user identifier) when known, else the [fromUri] fallback.
      */
     fun buildChatMessage(
         fromUri: String,
@@ -195,17 +206,38 @@ object RcsSipTransport {
         body: String,
     ): Triple<String, String, ByteArray> {
         val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
+        val from = lastConfig?.getPublicUserIdentifier()?.takeIf { it.isNotBlank() } ?: fromUri
+        val cpim = buildCpimBody(body)
+        val bytes = cpim.toByteArray(Charsets.UTF_8)
         val startLine = "MESSAGE $toUri SIP/2.0"
         val headers = buildString {
-            append("Via: SIP/2.0/TCP $fromUri;branch=$branch\r\n")
-            append("From: <$fromUri>;tag=${UUID.randomUUID().toString().take(8)}\r\n")
+            append("Via: SIP/2.0/TCP $from;branch=$branch\r\n")
+            append("From: <$from>;tag=${UUID.randomUUID().toString().take(8)}\r\n")
             append("To: <$toUri>\r\n")
             append("Call-ID: $callId\r\n")
             append("CSeq: 1 MESSAGE\r\n")
-            append("Content-Type: text/plain;charset=UTF-8\r\n")
-            append("Content-Length: ${body.toByteArray(Charsets.UTF_8).size}\r\n")
+            append("Content-Type: message/cpim\r\n")
+            append("Content-Length: ${bytes.size}\r\n")
         }
-        return Triple(startLine, headers, body.toByteArray(Charsets.UTF_8))
+        return Triple(startLine, headers, bytes)
+    }
+
+    /**
+     * Minimal `message/cpim` envelope for a text message (TestRcsApp
+     * CpimUtils.createForText): IMDN namespace + delivery/display disposition,
+     * anonymous From/To (routing uses the SIP headers), ISO-instant DateTime.
+     */
+    fun buildCpimBody(text: String): String = buildString {
+        append("NS: imdn <urn:ietf:params:imdn>\r\n")
+        append("imdn.Message-ID: rcs-${UUID.randomUUID()}\r\n")
+        append("imdn.Disposition-Notification: positive-delivery, display\r\n")
+        append("To: <sip:anonymous@anonymous.invalid>\r\n")
+        append("From: <sip:anonymous@anonymous.invalid>\r\n")
+        append("DateTime: ${java.time.Instant.now()}\r\n")
+        append("Content-Type: text/plain;charset=UTF-8\r\n")
+        append("Content-Length: ${text.toByteArray(Charsets.UTF_8).size}\r\n")
+        append("\r\n")
+        append(text)
     }
 
     private fun createDelegate(context: Context, subId: Int) {
@@ -245,7 +277,8 @@ object RcsSipTransport {
 
     private fun activeSubId(context: Context): Int {
         if (!RcsProvisioning.hasPhoneStatePermission(context)) {
-            return SubscriptionManager.getDefaultDataSubscriptionId()
+            // TestRcsApp keys everything off the default SMS subscription.
+            return SubscriptionManager.getDefaultSmsSubscriptionId()
         }
         val sims = SimManager.activeSims(context)
         if (sims.isEmpty()) return SubscriptionManager.INVALID_SUBSCRIPTION_ID

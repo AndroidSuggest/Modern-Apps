@@ -107,11 +107,17 @@ class RcsSyncService : Service() {
 
     private fun parseInbound(message: SipMessage): InboundRcs? {
         return runCatching {
-            val headers = message.getHeaderSection()
+            // Modem quirk (TestRcsApp RegistrationControllerImpl.repairHeaderSection):
+            // some modems emit "ia:" instead of "Via:".
+            var headers = message.getHeaderSection()
+            if (headers.startsWith("ia:")) {
+                headers = "V$headers"
+                Log.w(TAG, "Repaired malformed Via header")
+            }
             val from = headerValue(headers, "From:")?.substringAfter("<")?.substringBefore(">")
                 ?.substringAfter("sip:")?.substringBefore("@")
                 ?.takeIf { it.isNotBlank() } ?: return null
-            val body = message.getContent().toString(Charsets.UTF_8)
+            val body = extractTextBody(message.getContent()) ?: return null
             if (body.isBlank()) return null
             val callId = message.getCallIdParameter() ?: body.hashCode().toString()
             InboundRcs(
@@ -121,6 +127,25 @@ class RcsSyncService : Service() {
                 messageId = "in-$callId-${message.getViaBranchParameter()}",
             )
         }.getOrNull()
+    }
+
+    /**
+     * Extract display text from a message body. Pager-mode RCS arrives as
+     * `message/cpim` (TestRcsApp CpimUtils); plain `text/plain` passes through.
+     */
+    private fun extractTextBody(content: ByteArray): String? {
+        val raw = content.toString(Charsets.UTF_8)
+        if (raw.isBlank()) return null
+        if (raw.contains("message/cpim", ignoreCase = true)) {
+            // CPIM: headers, blank line, payload. The payload after the last
+            // double-CRLF is the text (cpim content with Content-Type text/plain).
+            val sections = raw.split("\r\n\r\n")
+            if (sections.size >= 2) {
+                return sections.last().trim().takeIf { it.isNotEmpty() }
+            }
+            return null
+        }
+        return raw
     }
 
     private data class InboundRcs(
