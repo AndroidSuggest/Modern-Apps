@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.telephony.euicc.DownloadableSubscription
+import android.telephony.euicc.EuiccManager
 import android.util.Patterns
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -115,6 +117,11 @@ internal fun NightModeButton(
 
 @Composable
 internal fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Context, modifier: Modifier = Modifier) {
+    // eSIM activation codes (SGP.22 `LPA:1$<smdp>$<matchingId>`) get their own action:
+    // hand the scanned code to the platform LPA via EuiccManager instead of treating
+    // it as a URL or plain text to copy.
+    val trimmed = text.trim()
+    val isEsim = isEsimActivationCode(trimmed)
     Column(
         modifier = modifier
             .padding(16.dp)
@@ -126,7 +133,7 @@ internal fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Conte
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            stringResource(R.string.qr_result),
+            if (isEsim) stringResource(R.string.esim_qr_result) else stringResource(R.string.qr_result),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -139,9 +146,28 @@ internal fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Conte
         // Passkey (FIDO hybrid/caBLE) QR codes decode to a "FIDO:/..." URI. Treat it as an
         // openable URL alongside normal web links. Intent-filter scheme matching is case-SENSITIVE,
         // so the "FIDO" scheme must be lowercased (normalizeScheme) or nothing will handle it.
+        // eSIM activation codes are neither: they go to the platform LPA, not a browser.
         val isFidoUri = text.startsWith("FIDO:", ignoreCase = true)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (isFidoUri || Patterns.WEB_URL.matcher(text).matches()) {
+            if (isEsim) {
+                Button(onClick = {
+                    val subscription = DownloadableSubscription.forActivationCode(text)
+                    val intent = Intent(EuiccManager.ACTION_START_EUICC_ACTIVATION).putExtra(
+                        EuiccManager.EXTRA_EMBEDDED_SUBSCRIPTION_DOWNLOADABLE_SUBSCRIPTION,
+                        subscription
+                    )
+                    try {
+                        context.startActivity(intent)
+                        onDismiss()
+                    } catch (e: ActivityNotFoundException) {
+                        AppMessages.show(context.getString(R.string.no_app_to_add_esim))
+                    } catch (e: SecurityException) {
+                        AppMessages.show(context.getString(R.string.no_app_to_add_esim))
+                    }
+                }) {
+                    Text(stringResource(R.string.add_esim))
+                }
+            } else if (isFidoUri || Patterns.WEB_URL.matcher(text).matches()) {
                 Button(onClick = {
                     val url = if (!isFidoUri && !text.startsWith("http")) "https://$text" else text
                     val uri = url.toUri().normalizeScheme()
@@ -165,6 +191,23 @@ internal fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Conte
             }
         }
     }
+}
+
+/**
+ * Whether [text] is an SGP.22 eSIM activation code (`LPA:1$<smdp>$<matchingId>`,
+ * prefix and trailing fields optional — see euicc's `parse_activation_code`).
+ *
+ * Same standard as the euicc scanner's `looksLikeActivationCode`: a bare
+ * `1$<smdp>$...` code has no readable tag, so only the `$`-delimited shape
+ * marks it.
+ */
+internal fun isEsimActivationCode(text: String): Boolean {
+    val trimmed = text.trim()
+    if (trimmed.startsWith("LPA:", ignoreCase = true)) return true
+    if (!trimmed.contains('$')) return false
+    val parts = trimmed.split('$')
+    // Version + SM-DP+ + matching ID at minimum.
+    return parts.size >= 3 && parts[1].isNotBlank()
 }
 
 @Composable

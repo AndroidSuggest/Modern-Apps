@@ -86,6 +86,12 @@
     <!-- QR code detection overlay -->
     <!-- QrResultOverlay: header title when QR code detected -->
     <string name="qr_result">QR Code</string>
+    <!-- QrResultOverlay: header title when an eSIM activation code QR is detected -->
+    <string name="esim_qr_result">eSIM QR Code</string>
+    <!-- QrResultOverlay: button to hand an eSIM activation code to the system LPA. Verb. -->
+    <string name="add_esim">Add eSIM</string>
+    <!-- Toast error when no LPA can handle the eSIM activation intent -->
+    <string name="no_app_to_add_esim">No app can add this eSIM</string>
     <!-- QrResultOverlay: button to open URL from QR. Verb. -->
     <string name="open_url">Open URL</string>
     <!-- Toast error when no app can handle the URL from QR -->
