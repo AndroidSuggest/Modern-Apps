@@ -697,6 +697,7 @@ class SurfaceMapRenderer(
 
     /** Dim everything outside the region [mask] names, or clear the mask with `null`. */
     fun setRegionMask(mask: Long?) {
+        Log.d("RegionDbg", "setRegionMask mask=$mask")
         this.selectedRegionId = mask
         this.regionResolved = false
         applyRegionMask()
@@ -721,7 +722,9 @@ class SurfaceMapRenderer(
         }
         // `0` clears above; a nonzero id returns nonzero once a resident tile carries it.
         // `0` back means the tiles have not landed yet — retried next frame, not a miss.
-        regionResolved = MapNative.setRegionMask(handle, id) != 0L
+        val resolved = MapNative.setRegionMask(handle, id) != 0L
+        Log.d("RegionDbg", "applyRegionMask id=$id resolved=$resolved")
+        regionResolved = resolved
     }
 
     private fun applyUserPuck() {

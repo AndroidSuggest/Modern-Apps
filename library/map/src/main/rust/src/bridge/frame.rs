@@ -33,7 +33,7 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     let Some(map) = handle_mut(handle) else {
         return 0;
     };
-    // Per-step timing for the `%60` rollup: `Instant` deltas only, never the camera clock
+    // Per-step timing for the per-frame report: `Instant` deltas only, never the camera clock
     // (which wraps hourly). The render thread is the only writer.
     let jni_start = std::time::Instant::now();
 
@@ -230,21 +230,40 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
         .borrow_mut()
         .record(Step::Select, nanos_since(select_start));
 
-    // Once a second, state what the renderer actually has. Every bug in this file so far has
+    // The active category filter goes to the renderer as well as to tessellation: a chip both
+    // narrows which POIs are drawn and pulls its own kinds in earlier than the ambient map shows
+    // them. See `Layer::draws_at_focused`.
+    let (_, kinds, _) = map.toggles.get();
+    let outcome = map.renderer.render(
+        &camera,
+        &map.layers,
+        map.palette,
+        style::background(map.palette.variant),
+        &kinds,
+    );
+    // The JNI-entry sample closes here: it covers drain + select + render, which is the whole
+    // native half of the frame the host asked for.
+    map.renderer
+        .step_times
+        .borrow_mut()
+        .record(Step::JniEntry, nanos_since(jni_start));
+    // Every frame, state what the renderer just did. Every bug in this file so far has
     // been invisible from the outside: a viewport nobody measured, a zoom level the archive
     // does not contain, a tile stuck in flight forever. All of them would have been one line
     // of this away.
-    map.frames += 1;
-    if map.frames % 60 == 0 {
+    //
+    // After `render`, so `draws`/`tris` and every step sample below belong to the frame this
+    // line describes rather than the one before it.
+    {
         let (tiles, meshes, draws, triangles) = map.renderer.stats();
         let (width_px, height_px) = map.renderer.extent();
-        // `meshes` is what is resident, `draws` what the last frame actually submitted. They
+        // `meshes` is what is resident, `draws` what the frame just submitted. They
         // differ wherever the authored style ramps a layer's width to zero, so reporting only
         // the first would claim roads are being drawn at zooms where they are gated out.
         //
-        // The step rollup is built (and its window reset) only on this frame: every other
-        // frame pays integer stores only. `avg/max` per step in ms over the last 60 frames.
-        let steps = map.renderer.step_times.borrow_mut().report(60);
+        // The step report is built (and its window reset) every frame: `avg/max`
+        // per step in ms for this frame alone.
+        let steps = map.renderer.step_times.borrow_mut().report(1);
         log_info(&format!(
             "z{:.2} @{:.4},{:.4} b{:.0} vp {}x{}dp {}x{}px msaa {}x | resident {} tiles, {} meshes, \
              {} draws, {} tris | {} in flight, {} absent | archive z{}..{} | {}",
@@ -268,24 +287,6 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
             steps,
         ));
     }
-
-    // The active category filter goes to the renderer as well as to tessellation: a chip both
-    // narrows which POIs are drawn and pulls its own kinds in earlier than the ambient map shows
-    // them. See `Layer::draws_at_focused`.
-    let (_, kinds, _) = map.toggles.get();
-    let outcome = map.renderer.render(
-        &camera,
-        &map.layers,
-        map.palette,
-        style::background(map.palette.variant),
-        &kinds,
-    );
-    // The JNI-entry sample closes here: it covers drain + select + render, which is the whole
-    // native half of the frame the host asked for.
-    map.renderer
-        .step_times
-        .borrow_mut()
-        .record(Step::JniEntry, nanos_since(jni_start));
     match outcome {
         Ok(drawn) => jboolean::from(drawn),
         Err(e) => {

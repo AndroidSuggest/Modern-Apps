@@ -136,7 +136,6 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
         palette: Palette::new(dark != 0, muted != 0),
         toggles,
         zoom_range,
-        frames: 0,
         density: 1.0,
     });
     Box::into_raw(handle) as jlong

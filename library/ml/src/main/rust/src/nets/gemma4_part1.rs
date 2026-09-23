@@ -368,7 +368,11 @@ fn prefill_layer(
             let k = b.rms_norm_grouped(k, k_norm_at, EPSILON, KV_HEADS);
             let k = b.rotary(k, angles, KV_HEADS);
             let v = point(b, v_proj, normed, KV_HEADS * dim);
-            // No v_norm: litertlm carries none, so values cache unnormalized.
+            // S10's `value_norm`, as in [`super::layer`]: a parameter-free
+            // RMS norm (all-ones gamma, [`ONE_SLIDING`]/[`ONE_FULL`]) before
+            // the cache write. The decode path must read what this wrote.
+            let ones = if is_full_attention(index) { ONE_FULL } else { ONE_SLIDING };
+            let v = b.rms_norm(v, ones, EPSILON);
             // Written for the decode steps that follow this prompt. `cache_write` transposes
             // channel-major into the cache's position-major layout.
             b.cache_write(k, cache_k);

@@ -52,6 +52,10 @@ ab_glyph = "0.2.32"
 # compressed sheet instead of the 466 KB of raw RGBA a `build.rs` decode would bake into
 # the `.so` — the same trade the fonts make with `ab_glyph`.
 png = "0.18"
+# Whole-file mmap for the pushed on-device `.mamaps` archive (see `tile::source::file`):
+# range reads are slices of the mapping, so tile fetch pays no syscalls and the OS pages
+# the multi-GB archive in and out rather than us copying it through `read_at`.
+memmap2 = "0.9"
 
 # `default-features = false` drops the `linked` feature, so nothing links against
 # libvulkan at build time; `loaded` dlopen's it, which is what an Android app must

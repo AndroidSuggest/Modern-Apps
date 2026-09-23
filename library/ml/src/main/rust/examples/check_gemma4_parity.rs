@@ -29,10 +29,28 @@ use modelrunner::nets::gemma4;
 use modelrunner::vulkan::context;
 use modelrunner::vulkan::reshape::Reshaped;
 use modelrunner::vulkan::run::StepParams;
-use modelrunner::weights::{graph, Weights};
+use modelrunner::weights::{Streamed, graph};
 
 /// The cache these examples record against: the top tier, so a long prompt fits.
 const TIER: u32 = gemma4::MAX_CONTEXT;
+
+/// Open both `.maml` files as [`Streamed`] instead of `std::fs::read` + [`Weights::parse`].
+///
+/// The old path held 1.09 GB + 2.39 GB resident and then copied each data section again
+/// inside `parse`, which is ~7 GB of peak host RSS against the ~2.4 GB a 7 GB Pixel 8 has
+/// free — the OOM-reboot this harness caused twice. `Streamed::open` reads only the
+/// ~64 KB header/table prefix; the data section stays in the file and is pulled through
+/// `Net`'s 8 MB chunked staging upload plus row-at-a-time host gathers, so peak host RSS
+/// is tens of MB. Identical bytes reach the device (`read_at` over the same section).
+fn open_streamed(path: &PathBuf, expect_graph: u32) -> Result<Streamed, String> {
+    let file = std::fs::File::open(path)
+        .map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    let len = file
+        .metadata()
+        .map_err(|e| format!("cannot size {}: {e}", path.display()))?
+        .len();
+    Streamed::open(file, 0, len, expect_graph)
+}
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -42,20 +60,13 @@ fn main() {
         println!("usage: check_gemma4_parity <text.maml> <embed.maml> <golden.json>");
         return;
     };
-    let (text_bytes, embed_bytes) = match (std::fs::read(&text), std::fs::read(&embed)) {
-        (Ok(a), Ok(b)) => (a, b),
-        (a, b) => {
-            println!("cannot read the weights: {:?} {:?}", a.err(), b.err());
-            return;
-        }
-    };
-    let weights = match Weights::parse(&text_bytes, graph::GEMMA4_TEXT) {
+    let weights = match open_streamed(&text, graph::GEMMA4_TEXT) {
         Ok(w) => w,
-        Err(why) => return println!("the text model does not parse: {why}"),
+        Err(why) => return println!("the text model does not stream: {why}"),
     };
-    let embed_weights = match Weights::parse(&embed_bytes, graph::GEMMA4_EMBED) {
+    let embed_weights = match open_streamed(&embed, graph::GEMMA4_EMBED) {
         Ok(w) => w,
-        Err(why) => return println!("the embedding does not parse: {why}"),
+        Err(why) => return println!("the embedding does not stream: {why}"),
     };
     let golden = match std::fs::read_to_string(&golden) {
         Ok(text) => text,
@@ -125,14 +136,19 @@ fn field(text: &str, key: &str) -> Option<Vec<f32>> {
 /// [`run`] stopping after `layers` layers, returning `(hidden, per_layer)`.
 fn trace_run(
     context: &Arc<context::Context>,
-    weights: &Weights,
-    embed: &Weights,
+    weights: &Streamed,
+    embed: &Streamed,
     tokens: &[u32],
     layers: usize,
 ) -> Result<(Vec<f32>, Vec<f32>), String> {
     let mode = gemma4::Mode::Trace { layers }.at(TIER);
-    let mut net =
-        Reshaped::new(Arc::clone(context), weights, mode, |offsets, mode| gemma4::build(offsets, mode))?;
+    let mut net = Reshaped::streamed(
+        Arc::clone(context),
+        weights.offsets(),
+        weights,
+        mode,
+        |offsets, mode| gemma4::build(offsets, mode),
+    )?;
     let reader = embed.reader();
     let rotary = weights.reader();
     let mut last = (Vec::new(), Vec::new());
@@ -163,12 +179,13 @@ fn trace_run(
 /// transformer, AND the tied-head path the app actually uses.
 fn run(
     context: &Arc<context::Context>,
-    weights: &Weights,
-    embed: &Weights,
+    weights: &Streamed,
+    embed: &Streamed,
     tokens: &[u32],
 ) -> Result<Vec<f32>, String> {
-    let mut net = Reshaped::new(
+    let mut net = Reshaped::streamed(
         Arc::clone(context),
+        weights.offsets(),
         weights,
         gemma4::Mode::DecodeStep.at(TIER),
         |offsets, mode| gemma4::build(offsets, mode),

@@ -1,5 +1,6 @@
 package com.vayunmathur.maps.ui.map
 
+import android.util.Log
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
@@ -182,6 +183,7 @@ class MapFeaturePicker(
          */
         fun PlacedLabel.toFeature1(): Feature1? {
             if (nativeToBase(layerId) == null) return null
+            Log.d("RegionDbg", "pick layer=$layerId name=$name kind=$kind regionId=$regionId")
             return Feature1(
                 Point(position),
                 JsonObject(

@@ -136,8 +136,6 @@ pub(crate) struct MapHandle {
     pub(crate) toggles: Arc<SharedToggles>,
     /// Read live every frame, because the worker only learns it after fetching the header.
     pub(crate) zoom_range: Arc<ZoomRange>,
-    /// Frames drawn, for the once-a-second diagnostic log.
-    pub(crate) frames: u32,
     /// Last frame's density (device px per Dp), for the task-17 pick path's
     /// Dp→device-px conversion. Written every render call.
     pub(crate) density: f32,

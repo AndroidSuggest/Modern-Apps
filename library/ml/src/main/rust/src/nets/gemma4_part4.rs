@@ -65,8 +65,12 @@ pub mod embed {
 /// `inputs_embeds` is the working-table row; `per_layer_inputs` is the COMBINED
 /// block the reference's `maybe_preprocess_per_layer_embeddings` produces:
 ///
-///     projected = hidden @ SHARED_PROJ * 1/sqrt(d_model)
-///     combined  = (embedded + rms_norm(projected)) * 1/sqrt(2)
+///     projected = hidden @ SHARED_PROJ
+///     combined  = (16 * embedded + rms_norm(projected)) * 1/sqrt(2)
+///
+/// S10 graph walk t319 -> t30: t307 `[16.0]` scales the gather side, t304
+/// `[1/sqrt(2)]` the sum. No `1/sqrt(d_model)` exists anywhere in S10 (and a
+/// grouped RMS-norm would erase a uniform pre-scale anyway).
 ///
 /// `embedded` concatenates one 256-wide row from each layer's own mmap table
 /// (litertlm gathers the same way: 35 parallel lookups + concat).
@@ -131,16 +135,20 @@ fn combine(
     let gamma = embed.fp16(embed::SHARED_NORM, &[PER_LAYER])?;
     let rows = LAYERS;
     let wide = PER_LAYER as usize;
-    let inv_sqrt_d = 1.0 / (f32::from(D_MODEL as u16)).sqrt();
+    // S10 t307: the gather side carries x16 (a real term, not a neutral
+    // rescale - the sum mixes two different-magnitude halves).
+    const GATHER_SCALE: f32 = 16.0;
     let inv_sqrt_2 = 1.0 / std::f32::consts::SQRT_2;
     let mut out = Vec::with_capacity(rows * wide);
     for r in 0..rows {
         let row = &proj[r * wide * D_MODEL as usize..(r + 1) * wide * D_MODEL as usize];
         let emb = &embedded[r * wide..(r + 1) * wide];
-        // projected = W @ hidden / sqrt(d_model), one 256-wide group.
+        // projected = W @ hidden, one 256-wide group. No 1/sqrt(d_model):
+        // S10 has no such constant, and the grouped RMS-norm below would
+        // erase a uniform pre-scale anyway.
         let mut group = vec![0f32; wide];
         for (o, wrow) in group.iter_mut().zip(row.chunks_exact(D_MODEL as usize)) {
-            *o = wrow.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum::<f32>() * inv_sqrt_d;
+            *o = wrow.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum::<f32>();
         }
         // Grouped RMS norm with the shared 256-wide gamma.
         let mean_sq = group.iter().map(|v| v * v).sum::<f32>() / wide as f32;
@@ -148,9 +156,9 @@ fn combine(
         for (v, &g) in group.iter_mut().zip(gamma.iter()) {
             *v = *v * norm * g;
         }
-        // combined = (embedded + normed) / sqrt(2).
+        // combined = (16 * embedded + normed) / sqrt(2) (t307, t304).
         for (v, &e) in group.iter_mut().zip(emb.iter()) {
-            *v = (*v + e) * inv_sqrt_2;
+            *v = (*v + GATHER_SCALE * e) * inv_sqrt_2;
         }
         out.extend_from_slice(&group);
     }

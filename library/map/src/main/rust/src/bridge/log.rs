@@ -10,7 +10,7 @@ pub(crate) fn log(message: &str) {
     write_log(6, message);
 }
 
-/// Logcat, at info level, for the periodic frame report.
+/// Logcat, at info level, for the per-frame report.
 pub(crate) fn log_info(message: &str) {
     write_log(4, message);
 }

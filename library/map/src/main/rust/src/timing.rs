@@ -3,13 +3,13 @@
 //! The frame log used to say only how many draws and triangles the last frame submitted, so a
 //! janky pan or tilt could not be attributed to a stage — upload drain, tile select, fence wait,
 //! each record sub-pass, submit, present. This module times each of those steps separately, so
-//! the once-a-second `%60` rollup can say *which* one owns the tail.
+//! the per-frame report can say *which* one owns the tail.
 //!
 //! # Cost model
 //!
 //! Every frame pays one [`Instant::now`](std::time::Instant::now) pair per step and three integer
-//! array stores in [`StepTimes::record`] — no allocation, no formatting. The rollup string is
-//! built only on report frames (every 60th), in [`StepTimes::report`], which also resets the
+//! array stores in [`StepTimes::record`] — no allocation, no formatting — plus one report string
+//! built in [`StepTimes::report`], which also resets the window. A slow UI poll reads the last
 //! window. A slow UI poll reads the last frame's array through [`StepTimes::last_nanos`] for the
 //! debug overlay; the render thread never blocks on it.
 //!
@@ -24,7 +24,7 @@
 
 /// One timed step of a frame, in the order the frame runs them.
 ///
-/// Short names are the `%60` logcat labels; [`Step::ALL`] fixes the order the JNI getter and the
+/// Short names are the per-frame logcat labels; [`Step::ALL`] fixes the order the JNI getter and the
 /// Kotlin overlay mirror, so adding a step means appending here *and* there (the overlay
 /// size-checks the array and shows `n/a` on drift rather than mislabelling rows).
 #[derive(Clone, Copy)]
@@ -100,7 +100,7 @@ impl Step {
     /// Steps timed per frame.
     pub(crate) const COUNT: usize = Self::ALL.len();
 
-    /// The `%60` logcat label: short, fixed-width-ish, unambiguous at a glance.
+    /// The per-frame logcat label: short, fixed-width-ish, unambiguous at a glance.
     pub(crate) fn short_name(self) -> &'static str {
         match self {
             Step::JniEntry => "jni",
@@ -130,7 +130,7 @@ impl Step {
 /// The per-step timing state for one renderer.
 ///
 /// Three fixed arrays plus the window length: the last frame's steps (for the JNI getter), and
-/// the rolling sum/max the `%60` rollup reports. Fixed-size and allocation-free by construction —
+/// the rolling sum/max the per-frame report prints. Fixed-size and allocation-free by construction —
 /// [`record`](Self::record) is three integer stores, and only [`report`](Self::report) formats.
 pub(crate) struct StepTimes {
     last: [u64; Step::COUNT],
@@ -166,10 +166,10 @@ impl StepTimes {
         &self.last
     }
 
-    /// The `avg/max` rollup over the last `frames` frames, in ms with one decimal, then reset the
-    /// window. Called only on report frames, so this is the one place that formats.
+    /// The `avg/max` report over the last `frames` frames, in ms with one decimal, then reset the
+    /// window. Called every frame, so this is the one place that formats.
     ///
-    /// `frames` is the window length (60 on the `%60` cadence), not read from here, so a frame
+    /// `frames` is the window length (1 on the per-frame cadence), not read from here, so a frame
     /// that never ran a step still divides correctly.
     pub(crate) fn report(&mut self, frames: u32) -> String {
         let frames = frames.max(1) as u64;

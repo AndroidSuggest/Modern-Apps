@@ -109,7 +109,7 @@ pub struct Renderer {
     /// module docs of [`crate::bridge`] set out.
     pub(crate) submitted_draws: Cell<usize>,
     /// Per-step frame timing (see [`crate::timing`]): last-frame steps plus the rolling
-    /// sum/max the `%60` rollup reports. A `RefCell` because the record sub-passes take `&self`
+    /// sum/max the per-frame report prints and resets. A `RefCell` because the record sub-passes take `&self`
     /// — the same reason `placed` is one — and each record is a short leaf borrow.
     pub(crate) step_times: std::cell::RefCell<crate::timing::StepTimes>,
     /// Task-17 pick state: the last frame's PLACED labels — accept-set id,
