@@ -220,9 +220,15 @@ class NoShowPolicyTest {
 
     @Test
     fun anyFreshFixCountsWhenNoWaypointWatched() {
-        assertTrue(NoShowPolicy.hasAnyFreshFix(expectedAt, expectedAt))
-        assertTrue(NoShowPolicy.hasAnyFreshFix(expectedAt + 1.hours, expectedAt))
-        assertFalse(NoShowPolicy.hasAnyFreshFix(expectedAt - 1.seconds, expectedAt))
+        assertTrue(NoShowPolicy.hasAnyFreshFix(expectedAt, expectedAt, 10.0))
+        assertTrue(NoShowPolicy.hasAnyFreshFix(expectedAt + 1.hours, expectedAt, 100.0))
+        assertFalse(NoShowPolicy.hasAnyFreshFix(expectedAt - 1.seconds, expectedAt, 10.0))
+    }
+
+    @Test
+    fun coarseFixDoesNotCountWhenNoWaypointWatched() {
+        assertFalse(NoShowPolicy.hasAnyFreshFix(expectedAt, expectedAt, 100.01))
+        assertFalse(NoShowPolicy.hasAnyFreshFix(expectedAt + 1.hours, expectedAt, Double.POSITIVE_INFINITY))
     }
 
     // --- fire-once guard ---

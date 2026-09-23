@@ -18,7 +18,12 @@ import kotlin.time.Instant
  * (`data/Coord.kt:havershine` + `util/LocationTrackingInbound.kt`):
  * entering needs the whole error circle inside the radius, leaving needs it
  * wholly outside a hysteresis margin, and fixes worse than
- * [NO_SHOW_MAX_ACCURACY_METERS] cannot move the answer. The distance itself is
+ * [NO_SHOW_MAX_ACCURACY_METERS] cannot move the answer. The same constant
+ * also gates the whole fix pipeline (`util/LocationTrackingHeartbeat.kt`):
+ * intake drops anything coarser at `util/recordFix`, inbound drops coarser peer
+ * fixes before Room, and the crowd-finding sighting paths drop them before
+ * reporting. Shutdown / battery-low parting reports are the one bypass — they
+ * republish the last held fix however stale, marked as such. The distance itself is
  * a pure haversine here rather than the platform geodesic, so values agree to
  * within the sub-meter noise the strict inequalities already tolerate.
  */
@@ -109,11 +114,16 @@ object NoShowPolicy {
     }
 
     /**
-     * Arrival when the alert watches no waypoint: any fresh-enough location
-     * update counts, regardless of position or accuracy.
+     * Arrival when the alert watches no waypoint: a fresh fix that is also accurate
+     * enough. A coarse fix cannot say where the person is, so it must not suppress
+     * the alert.
      */
-    fun hasAnyFreshFix(fixTimestamp: Instant, expectedAt: Instant): Boolean =
-        isFixFreshForArrival(fixTimestamp, expectedAt)
+    fun hasAnyFreshFix(
+        fixTimestamp: Instant,
+        expectedAt: Instant,
+        fixAccuracyMeters: Double,
+    ): Boolean =
+        isFixFreshForArrival(fixTimestamp, expectedAt) && isAccurateEnough(fixAccuracyMeters)
 
     /**
      * Fire-once guard for the scheduler: fires only for an unfired alert whose

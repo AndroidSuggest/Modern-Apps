@@ -119,7 +119,11 @@ object NoShowCheckScheduler {
         if (fix == null) return false
         val waypointId = alert.waypointId
         if (waypointId == null) {
-            return NoShowPolicy.hasAnyFreshFix(fix.timestamp, alert.expectedAt)
+            return NoShowPolicy.hasAnyFreshFix(
+                fixTimestamp = fix.timestamp,
+                expectedAt = alert.expectedAt,
+                fixAccuracyMeters = fix.acc.toDouble(),
+            )
         }
         val waypoint = runCatching { repository.getWaypoint(waypointId) }.getOrNull()
             ?: return false

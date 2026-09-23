@@ -7,6 +7,7 @@ import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.havershine
 import com.vayunmathur.findfamily.data.RequestStatus
+import com.vayunmathur.findfamily.domain.NoShowPolicy
 import com.vayunmathur.findfamily.uwb.UwbEnvelope
 import com.vayunmathur.findfamily.uwb.UwbEnvelopeKind
 import com.vayunmathur.findfamily.uwb.UwbInbox
@@ -17,10 +18,12 @@ import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 
 /**
- * Accuracy beyond which a fix is not used to decide geofence membership. Matches the
- * gate the tracker sighting path already applies.
+ * Accuracy beyond which a fix is not used to decide geofence membership.
+ * Delegates to [NoShowPolicy.NO_SHOW_MAX_ACCURACY_METERS] so the live path and
+ * the no-show path can never drift apart.
  */
-internal const val GEOFENCE_MAX_ACCURACY_METERS = 100.0
+internal val GEOFENCE_MAX_ACCURACY_METERS: Double
+    get() = NoShowPolicy.NO_SHOW_MAX_ACCURACY_METERS
 
 /** How far past a geofence's radius a fix has to be before it counts as having left. */
 internal const val WAYPOINT_EXIT_HYSTERESIS = 1.2
@@ -42,10 +45,18 @@ internal suspend fun LocationTrackingService.processIncomingLocations(incoming: 
     // stream, that person silently disappears from this map, and "Alice was dropped" is the
     // only thread anyone will have to pull on. See the note on LocationSource before adding
     // a value that could cause it.
-    val locList = incoming.filter { it.source != LocationSource.UNKNOWN }
-    if (locList.size != incoming.size) {
+    val knownSource = incoming.filter { it.source != LocationSource.UNKNOWN }
+    if (knownSource.size != incoming.size) {
         val dropped = incoming.filter { it.source == LocationSource.UNKNOWN }.map { it.userid.toULong() }.distinct()
-        Log.w("FF-Heartbeat", "dropped ${incoming.size - locList.size} fix(es) from newer peer(s) with an unrecognised source: $dropped")
+        Log.w("FF-Heartbeat", "dropped ${incoming.size - knownSource.size} fix(es) from newer peer(s) with an unrecognised source: $dropped")
+    }
+    // Low-accuracy fixes are never used: anything worse than the intake gate never
+    // reaches Room, the map, or latestLocations.
+    val locList = knownSource.filter {
+        it.acc.isFinite() && it.acc >= 0f && it.acc <= MAX_FIX_ACCURACY_METERS
+    }
+    if (locList.size != knownSource.size) {
+        Log.i("FF-Heartbeat", "dropped ${knownSource.size - locList.size} fix(es) worse than ${MAX_FIX_ACCURACY_METERS}m")
     }
     if (locList.isEmpty()) return
     val currentUsers = repository.getAllUsers()

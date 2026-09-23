@@ -31,8 +31,8 @@ internal fun LocationTrackingService.startTrackerScanner() {
                     Log.i("FF-Tracker", "sighting dropped: no location fix yet")
                     return@collect
                 }
-                if (loc.accuracy > 100f) {
-                    Log.i("FF-Tracker", "sighting dropped: accuracy ${loc.accuracy}m > 100m")
+                if (loc.accuracy > MAX_FIX_ACCURACY_METERS) {
+                    Log.i("FF-Tracker", "sighting dropped: accuracy ${loc.accuracy}m > ${MAX_FIX_ACCURACY_METERS}m")
                     return@collect
                 }
                 val battery = runCatching {
@@ -96,10 +96,10 @@ internal fun LocationTrackingService.startPoweredOffScanner() {
                             return@collect
                         }
                         // A sighting is only ever "the finder was near here". Reporting one
-                        // from a 500m-accurate fix would add noise the owner cannot tell
+                        // from a coarse fix would add noise the owner cannot tell
                         // apart from a good one, so drop it rather than dilute the answer.
-                        if (loc.accuracy > 100f) {
-                            Log.i(LocationTrackingService.TAG_POWERED_OFF, "sighting dropped: accuracy ${loc.accuracy}m > 100m")
+                        if (loc.accuracy > MAX_FIX_ACCURACY_METERS) {
+                            Log.i(LocationTrackingService.TAG_POWERED_OFF, "sighting dropped: accuracy ${loc.accuracy}m > ${MAX_FIX_ACCURACY_METERS}m")
                             return@collect
                         }
                         val lv = LocationValue(

@@ -180,7 +180,7 @@ class LocationTrackingService : Service(), SensorEventListener {
     private val networkListener = LocationListener { location ->
         lastNetworkFixElapsedMs = SystemClock.elapsedRealtime()
         recordFix(location)
-        if (location.accuracy > 100f) {
+        if (!location.hasAccuracy() || location.accuracy > MAX_FIX_ACCURACY_METERS) {
             if (!isGpsRunning && isMoving) startGps()
         } else {
             if (isGpsRunning) stopGps()

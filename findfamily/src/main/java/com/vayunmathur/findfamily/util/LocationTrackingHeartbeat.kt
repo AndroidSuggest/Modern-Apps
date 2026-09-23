@@ -9,6 +9,7 @@ import com.vayunmathur.findfamily.data.LocationValue
 import com.vayunmathur.findfamily.data.User
 import com.vayunmathur.findfamily.data.RequestStatus
 import com.vayunmathur.findfamily.data.havershine
+import com.vayunmathur.findfamily.domain.NoShowPolicy
 import com.vayunmathur.findfamily.R
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
@@ -22,14 +23,35 @@ import kotlin.time.Duration.Companion.minutes
 private val FIX_MAX_AGE_NANOS = 2.minutes.inWholeNanoseconds
 
 /**
+ * Fixes worse than this are never held, published, or used for crowd reports.
+ *
+ * Applies at intake ([recordFix]) and to inbound peer fixes before they reach
+ * Room. Shutdown and low-battery parting reports bypass it: they deliberately
+ * republish the last held fix however stale, so the last-seen stays truthful.
+ *
+ * Delegates to [NoShowPolicy.NO_SHOW_MAX_ACCURACY_METERS] so the fix pipeline,
+ * the live geofence, and the no-show path can never drift apart.
+ */
+internal val MAX_FIX_ACCURACY_METERS: Float
+    get() = NoShowPolicy.NO_SHOW_MAX_ACCURACY_METERS.toFloat()
+
+/**
  * Keeps the best recent fix rather than simply the newest one.
  *
  * The network provider delivers a fix every ten seconds and its answer wanders by tens
  * to hundreds of metres between them, so overwriting a recent GPS fix with one of those
  * made a phone sitting on a table appear to move around the city. A coarser fix only
  * wins once the one being held has gone stale enough to be the worse answer.
+ *
+ * Fixes worse than [MAX_FIX_ACCURACY_METERS] are dropped here and never become
+ * [LocationTrackingService.lastKnownLocation].
  */
 internal fun LocationTrackingService.recordFix(location: Location) {
+    if (!location.hasAccuracy() || !location.accuracy.isFinite() ||
+        location.accuracy < 0f || location.accuracy > MAX_FIX_ACCURACY_METERS
+    ) {
+        return
+    }
     val held = lastKnownLocation
     if (held == null) {
         lastKnownLocation = location
