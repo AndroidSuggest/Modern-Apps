@@ -13,6 +13,7 @@ mod fog;
 mod frame;
 mod mod_extra;
 mod placement;
+mod placement_reuse;
 mod rebuild;
 mod record;
 mod record_extra;
@@ -222,22 +223,6 @@ struct PlacementKey {
     layers: usize,
 }
 
-impl PlacementKey {
-    /// Bit-identity of everything but the camera pose: tiles and their stamps, filter, extent,
-    /// sizes, and layer count. A drift-reuse candidate must match all of these; only
-    /// centre/zoom/bearing/pitch may differ (within their thresholds — see `within_drift` in
-    /// `placement.rs`). Any universe change is a hard re-place.
-    fn same_universe(&self, other: &PlacementKey) -> bool {
-        self.width_dp == other.width_dp
-            && self.height_dp == other.height_dp
-            && self.density == other.density
-            && self.extent == other.extent
-            && self.filter == other.filter
-            && self.tiles == other.tiles
-            && self.layers == other.layers
-    }
-}
-
 /// Per-frame synchronisation and its command buffer.
 struct Frame {
     command_buffer: vk::CommandBuffer,
@@ -439,53 +424,10 @@ fn anchors_for(layer: &Layer) -> (Anchor, Option<Anchor>) {
 ///
 /// Built once per label and reused for each candidate anchor, so the two boxes a POI is
 /// tried at can only differ in where they sit — not in how big they are.
-fn box_inputs(
-    layer: &Layer,
-    label: &geometry::ShapedLabel,
-    camera: &Camera,
-) -> crate::tile::placement::BoxInputs {
-    box_inputs_with_arms(layer, label, camera, layer.text_size_arms(camera.zoom))
-}
-
-/// [`box_inputs`], but with the style's text-size arms already resolved for this
-/// (layer, zoom) — see [`Layer::text_size_arms`]. The per-label call resolves two
-/// style ramps per label; the per-layer caller resolves them once and answers each
-/// label with a float compare. Bit-identical values either way.
-fn box_inputs_with_arms(
-    layer: &Layer,
-    label: &geometry::ShapedLabel,
-    camera: &Camera,
-    arms: (f32, Option<f32>, Option<f32>),
-) -> crate::tile::placement::BoxInputs {
-    crate::tile::placement::BoxInputs {
-        text_px: Layer::text_size_with_arms(label.pop, arms.0, arms.1, arms.2) * camera.density,
-        advance: label.total_advance,
-        line_count: label.lines.len(),
-        offset_em: layer.text_offset,
-        // Dp from the sheet, device px here — the same conversion `emit_icon` makes.
-        icon_px: label
-            .sprite
-            .map(|s| (s.width_dp * camera.density, s.height_dp * camera.density)),
-        pad_px: collision_padding_px(camera.zoom),
-    }
-}
-
-/// Collision padding in device px around every label box, by camera zoom.
 ///
-/// MapLibre pads every label (icon + text padding, growing at low zoom via
-/// the icon-padding ramp), which is what holds z6 to ~10 cities while z14
-/// stays dense. Without it tight advance boxes let hundreds of villages
-/// survive at z6. 24px at z6 and below culls hamlets against towns; 4px at
-/// z14+ keeps street labels tight. Linear between.
-fn collision_padding_px(zoom: f64) -> f32 {
-    if zoom <= 6.0 {
-        24.0
-    } else if zoom >= 14.0 {
-        4.0
-    } else {
-        (24.0 - (zoom - 6.0) * (20.0 / 8.0)) as f32
-    }
-}
+/// Lives in [`placement_reuse`] (file-length split) alongside the candidate loop
+/// that reads it; re-exported here so existing `super::box_inputs` paths keep working.
+pub(super) use placement_reuse::{box_inputs, box_inputs_with_arms};
 
 /// Multiply a colour's alpha by `opacity`, for the style's fill-opacity ramps.
 ///

@@ -1,6 +1,7 @@
 use super::{
-    anchors_for, box_inputs, box_inputs_with_arms, kind_name, AcceptSet, Overlay, PlacedHit,
-    PlacementKey, Renderer, QUAD_INDICES,
+    anchors_for, box_inputs, box_inputs_with_arms, kind_name,
+    placement_reuse::{drift_reuse_ms, within_drift},
+    AcceptSet, Overlay, PlacedHit, PlacementKey, Renderer, QUAD_INDICES,
 };
 use crate::camera::Camera;
 use crate::marker::Marker;
@@ -28,74 +29,6 @@ use std::time::Instant;
 /// window (80 ms on a fast zoom-out) — the approved trade-off for holding 60 fps through
 /// gestures.
 pub(super) const PLACE_REUSE_MS: u128 = 300;
-
-/// The reuse window once the camera is zooming fast (see [`place_symbols`]).
-///
-/// Past ~1 zoom level per second the collision answer goes stale faster than the pan window
-/// allows: re-place promptly instead so labels do not visibly lag the zoom.
-const PLACE_REUSE_FAST_ZOOM_MS: u128 = 80;
-
-/// The zoom speed past which the reuse window shrinks to [`PLACE_REUSE_FAST_ZOOM_MS`],
-/// in zoom levels per second.
-const FAST_ZOOM_PER_SEC: f64 = 1.0;
-
-/// Drift thresholds for reusing the accept-set without an exact key match.
-///
-/// A camera that differs from the cached one only in centre/zoom/bearing/pitch, each within
-/// these, reuses the cached accept-set within [`PLACE_REUSE_MS`]: the projection moved a
-/// little but the candidate universe (tiles, layers, filter, extent, sizes) is bit-identical,
-/// so the collision answer is overwhelmingly likely unchanged and boxes still re-project per
-/// frame in `refresh_placed`. Any drift past these re-places.
-const DRIFT_MAX_DZOOM: f64 = 0.05;
-/// Degrees.
-const DRIFT_MAX_DBEARING: f64 = 2.0;
-/// Degrees.
-const DRIFT_MAX_DPITCH: f64 = 2.0;
-
-/// Whether `key` differs from `cached` only by camera drift within the reuse thresholds.
-///
-/// Centre may move arbitrarily (pan); zoom/bearing/pitch each have a small budget. The
-/// universe (tiles, stamps, filter, extent, sizes, layers) must be bit-identical — checked
-/// by the caller via [`PlacementKey::same_universe`](super::PlacementKey::same_universe).
-fn within_drift(cached: &PlacementKey, key: &PlacementKey) -> bool {
-    let zoom = f64::from_bits(key.zoom);
-    let cached_zoom = f64::from_bits(cached.zoom);
-    if (zoom - cached_zoom).abs() >= DRIFT_MAX_DZOOM {
-        return false;
-    }
-    let bearing = f64::from_bits(key.bearing);
-    let cached_bearing = f64::from_bits(cached.bearing);
-    if (bearing - cached_bearing).abs() >= DRIFT_MAX_DBEARING {
-        return false;
-    }
-    let pitch = f64::from_bits(key.pitch);
-    let cached_pitch = f64::from_bits(cached.pitch);
-    if (pitch - cached_pitch).abs() >= DRIFT_MAX_DPITCH {
-        return false;
-    }
-    true
-}
-
-/// The reuse window for a drift-reuse hit: the full [`PLACE_REUSE_MS`], shrunk to
-/// [`PLACE_REUSE_FAST_ZOOM_MS`] while zooming fast.
-///
-/// Zoom velocity comes from the cached key's zoom versus this frame's over the cache age —
-/// both already in hand, no extra state. A zero/negative age (same-instant re-entry) takes
-/// the fast path only if the zoom actually jumped; otherwise the full window.
-fn drift_reuse_ms(cached: &PlacementKey, key: &PlacementKey, at: &Instant) -> u128 {
-    let zoom = f64::from_bits(key.zoom);
-    let cached_zoom = f64::from_bits(cached.zoom);
-    let dz = (zoom - cached_zoom).abs();
-    if dz <= 0.0 {
-        return PLACE_REUSE_MS;
-    }
-    let age_secs = at.elapsed().as_secs_f64();
-    if age_secs > 0.0 && dz / age_secs > FAST_ZOOM_PER_SEC {
-        PLACE_REUSE_FAST_ZOOM_MS
-    } else {
-        PLACE_REUSE_MS
-    }
-}
 
 impl Renderer {
     /// Whether any resident tile carries a region-mask piece with this id.
@@ -175,7 +108,7 @@ impl Renderer {
             // faster than the pan window allows, so re-place promptly.
             if cached.same_universe(&key)
                 && within_drift(cached, &key)
-                && at.elapsed().as_millis() < drift_reuse_ms(cached, &key, at)
+                && at.elapsed().as_millis() < drift_reuse_ms(cached, &key, at, PLACE_REUSE_MS)
             {
                 return accepted.clone();
             }
