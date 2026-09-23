@@ -26,6 +26,8 @@ import kotlin.time.Instant
 import com.vayunmathur.calendar.data.Event
 import com.vayunmathur.calendar.data.Calendar
 import com.vayunmathur.calendar.data.Instance
+import com.vayunmathur.calendar.util.toIcalBasic
+import com.vayunmathur.calendar.util.toIcalUtcDateTime
 
 import com.vayunmathur.library.util.DataStoreUtils
 import com.vayunmathur.library.util.AppMessages
@@ -199,8 +201,14 @@ class CalendarViewModel(application: Application) :
     }
 
     /**
-     * Bulk-inserts the previously parsed [events] into the calendar with id [calendarId].
+     * Inserts the previously parsed [events] into the calendar with id [calendarId].
      * Runs off the main thread; invokes [onDone] on the main thread when complete (or on failure).
+     *
+     * Events are inserted one by one rather than via `bulkInsert` because `bulkInsert`
+     * returns only a count, not the new row ids — and reminders live in
+     * `CalendarContract.Reminders`, which needs the event id. Each event's
+     * [Event.reminders] (from VALARM triggers on the import path) are written
+     * explicitly and `HAS_ALARM` is set, mirroring [upsertEvent].
      */
     fun importIcsEvents(
         events: List<Event>,
@@ -211,9 +219,23 @@ class CalendarViewModel(application: Application) :
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 try {
-                    val valuesList = events.map { it.toContentValues(calendarId) }.toTypedArray()
-                    app.contentResolver.bulkInsert(CalendarContract.Events.CONTENT_URI, valuesList)
+                    for (event in events) {
+                        val newUri = app.contentResolver.insert(
+                            CalendarContract.Events.CONTENT_URI,
+                            event.toContentValues(calendarId).apply {
+                                put(
+                                    CalendarContract.Events.HAS_ALARM,
+                                    if (event.reminders.isEmpty()) 0 else 1,
+                                )
+                            },
+                        )
+                        val newId = newUri?.lastPathSegment?.toLongOrNull()
+                        if (newId != null && event.reminders.isNotEmpty()) {
+                            writeReminders(newId, event.reminders)
+                        }
+                    }
                     _events.value = Event.getAllEvents(app)
+                    ReminderScheduler.reconcileAll(app, _events.value)
                 } catch (e: Exception) {
                     Log.e("CalendarViewModel", "Error importing events", e)
                 }
@@ -341,9 +363,15 @@ class CalendarViewModel(application: Application) :
 
     override fun deleteEventInstance(eventId: Long, instanceBeginTime: Long) {
         val event = _events.value.find { it.id == eventId } ?: return
+        val zone = TimeZone.of(event.timezone)
         val instanceDate = Instant.fromEpochMilliseconds(instanceBeginTime)
-            .toLocalDateTime(TimeZone.of(event.timezone)).date
-        val exdateStr = (event.exdate + instanceDate).distinct().joinToString(",") { it.toIcalBasic() }
+            .toLocalDateTime(zone).date
+        // Timed occurrences need the datetime form; a date-only EXDATE is ignored
+        // by the provider for timed events and the delete silently no-ops.
+        val exdateStr = (event.exdate + instanceDate).distinct().joinToString(",") { date ->
+            if (event.allDay) date.toIcalBasic()
+            else date.toIcalUtcDateTime(event.startDateTimeDisplay.time, zone)
+        }
         upsertEvent(eventId, ContentValues().apply {
             put(CalendarContract.Events.EXDATE, exdateStr)
         })

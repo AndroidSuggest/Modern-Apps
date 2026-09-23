@@ -33,7 +33,8 @@ fun SummaryEventItem(
     onEventClick: (Instance) -> Unit,
     titleSharedKey: Any? = null
 ) {
-    val eventColor = Color(ev.color ?: calendars[ev.calendarID]!!.color)
+    // Fall back to the event's own color, then neutral grey, when its calendar is gone.
+    val eventColor = Color(ev.color ?: calendars[ev.calendarID]?.color ?: 0xFF808080.toInt())
     val onEventColor = contentColorOn(eventColor)
     Box(
         Modifier

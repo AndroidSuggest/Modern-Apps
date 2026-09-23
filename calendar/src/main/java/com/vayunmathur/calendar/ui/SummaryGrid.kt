@@ -50,7 +50,9 @@ fun SummaryGrid(
                     .padding(2.dp)
             ) {
                 dayInstances.forEach { instance ->
-                    val ev = vEventsByID[instance.eventID]!!
+                    // The provider can return instances whose event was just deleted
+                    // (sync-adapter delete semantics). Skip the stale row instead of crashing.
+                    val ev = vEventsByID[instance.eventID] ?: return@forEach
                     SummaryEventItem(context, instance, ev, calendars, onEventClick, eventTitleMorphKey(instance, day))
                 }
             }

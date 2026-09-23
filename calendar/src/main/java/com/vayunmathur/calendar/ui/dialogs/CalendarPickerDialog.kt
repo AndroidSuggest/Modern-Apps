@@ -56,7 +56,9 @@ fun CalendarPickerDialog(backStack: NavBackStack<Route>, resultKey: String) {
                         Row(modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                vm.setDefaultCalendar(cal.id)
+                                // Per-event pick only: must not rewrite the stored default
+                                // calendar as a side-effect (the default is applied when
+                                // creating a new event, not when choosing one for this edit).
                                 scope.launch { registry.dispatchResult(resultKey, cal.id) }
                                 backStack.pop()
                             }

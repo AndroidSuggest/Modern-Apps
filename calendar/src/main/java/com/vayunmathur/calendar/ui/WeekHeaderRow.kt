@@ -94,8 +94,10 @@ internal fun AllDayRow(
                 } else {
                     Column {
                         instances.forEach { instance ->
-                            val ev = events[instance.eventID]!!
-                            val eventColor = Color(ev.color ?: calendars[ev.calendarID]!!.color)
+                            // Skip instances whose event was just deleted, and fall back
+                            // to the event's own color when its calendar is gone.
+                            val ev = events[instance.eventID] ?: return@forEach
+                            val eventColor = Color(ev.color ?: calendars[ev.calendarID]?.color ?: 0xFF808080.toInt())
                             val titleKey = eventTitleMorphKey(instance, d)
                             Box(
                                 Modifier

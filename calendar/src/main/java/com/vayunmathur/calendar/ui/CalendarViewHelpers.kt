@@ -1,6 +1,7 @@
 package com.vayunmathur.calendar.ui
 
 import androidx.compose.ui.unit.dp
+import com.vayunmathur.calendar.util.CalendarViewModel
 import com.vayunmathur.calendar.data.Instance
 import com.vayunmathur.library.util.localeFirstDayOfWeek
 import java.util.Locale
@@ -9,6 +10,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.isoDayNumber
+import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlin.time.Instant
 
@@ -35,3 +37,36 @@ internal fun LocalDate.atEndOfDayIn(currentSystemDefault: TimeZone): Instant {
 
 /** Width of the hour-label gutter down the left of the day/week grid. */
 internal val HourGutterWidth = 56.dp
+
+/**
+ * First workday of the locale week containing [date]. The week boundaries come from
+ * [localeFirstDayOfWeek]; Saturday and Sunday are then skipped, so a Sunday-first locale
+ * shows the coming Monday–Friday instead of the previous week (and a Saturday-first
+ * locale starts on Monday too). Monday–Friday is consecutive in every locale week.
+ */
+internal fun workWeekStart(date: LocalDate, locale: Locale): LocalDate {
+    val weekStart = date.minus(DatePeriod(days = firstDayOfWeekOffset(date, locale)))
+    val shift = when (weekStart.dayOfWeek.isoDayNumber) {
+        6 -> 2 // Saturday -> Monday
+        7 -> 1 // Sunday -> Monday
+        else -> 0
+    }
+    return weekStart.plus(DatePeriod(days = shift))
+}
+
+/**
+ * The first visible day of a pager page: the week's start day for week layouts (not the
+ * anchor-derived page start, which can sit mid-week), the day itself for the day layout.
+ * Idempotent, so mapping a reported day back to a page is stable.
+ */
+internal fun weekStartForLayout(
+    pageStartDate: LocalDate,
+    layout: CalendarViewModel.CalendarLayout,
+    locale: Locale,
+): LocalDate = when (layout) {
+    CalendarViewModel.CalendarLayout.Day -> pageStartDate
+    CalendarViewModel.CalendarLayout.WorkWeek,
+    CalendarViewModel.CalendarLayout.WorkWeekSummary,
+    CalendarViewModel.CalendarLayout.WorkWeekCompact -> workWeekStart(pageStartDate, locale)
+    else -> pageStartDate.minus(DatePeriod(days = firstDayOfWeekOffset(pageStartDate, locale)))
+}

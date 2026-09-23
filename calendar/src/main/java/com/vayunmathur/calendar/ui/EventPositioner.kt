@@ -15,6 +15,8 @@ data class PositionedEvent(
     val endMinutes: Int,
     val columnIndex: Int,
     val totalColumns: Int,
+    /** How many adjacent columns this event stretches into where neighbours don't overlap it. */
+    val columnSpan: Int = 1,
 )
 
 fun computePositionedEventsForDay(instances: List<Instance>, day: LocalDate): List<PositionedEvent> {
@@ -32,7 +34,11 @@ fun computePositionedEventsForDay(instances: List<Instance>, day: LocalDate): Li
         } else 24 * 60
 
         val s = startMinutes.coerceAtLeast(0).coerceAtMost(24 * 60)
-        val e = endMinutes.coerceAtLeast(0).coerceAtMost(24 * 60)
+        val e0 = endMinutes.coerceAtLeast(0).coerceAtMost(24 * 60)
+        if (e0 < s) continue
+        // A zero-duration event is a point in time, not an absence: give it a visible
+        // slice instead of dropping it.
+        val e = if (e0 == s) (s + 30).coerceAtMost(24 * 60) else e0
         if (s >= e) continue
         slices.add(Slice(instance.id, instance.eventID, instance.eventTitle, instance.color, s, e))
     }
@@ -79,8 +85,10 @@ fun computePositionedEventsForDay(instances: List<Instance>, day: LocalDate): Li
         val freeCols = ArrayDeque<Int>()
         var nextCol = 0
 
-        // map local assigned -> PositionedEvent (we'll collect events for this component then set totalColumns)
-        val assigned = ArrayList<PositionedEvent>()
+        // map each range to its column, then widen events rightward into columns that
+        // are free for their whole span (uniform 1/peak widths over-narrow events that
+        // only overlap part of a busy period).
+        val assigned = ArrayList<Pair<Range, Int>>()
 
         for (r in comp.sortedWith(compareBy({ it.start }, { it.end }))) {
             while (pq.isNotEmpty() && pq.peek()!!.first <= r.start) {
@@ -89,24 +97,38 @@ fun computePositionedEventsForDay(instances: List<Instance>, day: LocalDate): Li
             }
             val col = if (freeCols.isNotEmpty()) freeCols.removeLast() else nextCol++
             pq.add(Pair(r.end, col))
-            assigned.add(
-                PositionedEvent(
-                    instanceID = r.slice.instanceID,
-                    eventID = r.slice.eventID,
-                    title = r.slice.title,
-                    color = r.slice.color,
-                    startMinutes = r.start,
-                    endMinutes = r.end,
-                    columnIndex = col,
-                    totalColumns = -1 // placeholder
-                )
-            )
+            assigned.add(r to col)
         }
+
+        fun overlaps(a: Range, b: Range): Boolean = a.start < b.end && b.start < a.end
 
         val used = nextCol
         // set totalColumns for assigned events in this component
-        for (p in assigned) {
-            output.add(p.copy(totalColumns = used))
+        for ((range, col) in assigned) {
+            var span = 1
+            var c = col + 1
+            while (c < used) {
+                val blocked = assigned.any { (other, otherCol) ->
+                    otherCol == c && overlaps(other, range)
+                }
+                if (blocked) break
+                span++
+                c++
+            }
+            val slice = range.slice
+            output.add(
+                PositionedEvent(
+                    instanceID = slice.instanceID,
+                    eventID = slice.eventID,
+                    title = slice.title,
+                    color = slice.color,
+                    startMinutes = range.start,
+                    endMinutes = range.end,
+                    columnIndex = col,
+                    totalColumns = used,
+                    columnSpan = span,
+                )
+            )
         }
     }
 

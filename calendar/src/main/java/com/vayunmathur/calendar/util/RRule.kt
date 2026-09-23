@@ -21,9 +21,13 @@ private fun DayOfWeek.toIcal(): String = this.name.take(2)
 // RFC 5545 two-letter day codes (MO, TU, ...) mapped back to DayOfWeek.
 private val dayOfWeekByIcal: Map<String, DayOfWeek> = DayOfWeek.entries.associateBy { it.toIcal() }
 
-// Helper to format LocalDate to YYYYMMDD
+/** Upper bound for COUNT so a malicious/huge value can't blow up provider expansion. */
+const val MAX_RRULE_COUNT = 1000L
+
+// Helper to format LocalDate to an inclusive end-of-day UTC datetime. 23:59:59 local keeps the
+// whole date inside the recurrence; the old 23:59 flat truncated anything after 23:59:00.
 private fun LocalDate.toIcalString(timeZone: TimeZone): String {
-    val datetime = atTime(23, 59).toInstant(timeZone).toLocalDateTime(TimeZone.UTC)
+    val datetime = atTime(23, 59, 59).toInstant(timeZone).toLocalDateTime(TimeZone.UTC)
     return datetime.format(LocalDateTime.Format {
         year()
         monthNumber()
@@ -90,11 +94,11 @@ sealed class RRule {
 
             // 2. Extract common fields
             val freq = parts["FREQ"] ?: return null
-            val interval = parts["INTERVAL"]?.toIntOrNull() ?: 1
+            val interval = (parts["INTERVAL"]?.toIntOrNull() ?: 1).coerceAtLeast(1)
 
             val endCondition = when {
                 parts.containsKey("COUNT") ->
-                    EndCondition.Count(parts["COUNT"]?.toLongOrNull() ?: 1L)
+                    EndCondition.Count((parts["COUNT"]?.toLongOrNull() ?: 1L).coerceIn(1L, MAX_RRULE_COUNT))
                 parts.containsKey("UNTIL") ->
                     parseIcalUntil(parts["UNTIL"]!!, timeZone)?.let { EndCondition.Until(it) } ?: return null
                 else -> EndCondition.Never
@@ -128,12 +132,19 @@ sealed class RRule {
                         byDayRaw.any { it.isDigit() } -> 1
                         else -> 0
                     }
-                    EveryXMonths(interval, type, endCondition, byMonthDay, byMonth, bySetPos, byYearDay, byWeekNo, wkst)
+                    // Preserve BYDAY days so type-0 round-trips; type 1/2 keep
+                    // type-derived emission in asString (generic byDay suppressed there).
+                    val parsedDays = byDayRaw?.split(",")?.mapNotNull { dayOfWeekByIcal[it.takeLast(2)] }
+                    EveryXMonths(interval, type, endCondition, byMonthDay, byMonth, bySetPos, byYearDay, byWeekNo, wkst, parsedDays)
                 }
 
                 "YEARLY" -> {
-                    val byDayDows = parts["BYDAY"]?.split(",")?.mapNotNull { dayOfWeekByIcal[it.takeLast(2)] }
-                    EveryXYears(interval, endCondition, byMonthDay, byMonth, bySetPos, byYearDay, byWeekNo, wkst, byDayDows)
+                    val byDayTokens = parts["BYDAY"]?.split(",")
+                    val byDayDows = byDayTokens?.mapNotNull { dayOfWeekByIcal[it.takeLast(2)] }
+                    // Preserve numeric prefixes (e.g. 20MO, -1FR) for round-trip;
+                    // plain day codes round-trip via byDay as before.
+                    val byDayRaw = byDayTokens?.takeIf { tokens -> tokens.any { it.any(Char::isDigit) || it.startsWith("-") } }
+                    EveryXYears(interval, endCondition, byMonthDay, byMonth, bySetPos, byYearDay, byWeekNo, wkst, byDayDows, byDayRaw)
                 }
 
                 else -> null // Unsupported frequency (e.g., HOURLY)
@@ -193,10 +204,17 @@ sealed class RRule {
         override val byYearDay: List<Int>? = null,
         override val byWeekNo: List<Int>? = null,
         override val wkst: DayOfWeek? = null,
-        override val byDay: List<DayOfWeek>? = null
+        override val byDay: List<DayOfWeek>? = null,
+        val byDayRaw: List<String>? = null
     ) : RRule() {
         override fun asString(firstDay: LocalDate, timeZone: TimeZone): String {
             val base = "FREQ=YEARLY;INTERVAL=$years"
+            // Prefer raw BYDAY (with numeric prefixes) when present; suppress the
+            // generic byDay emission to avoid a duplicated BYDAY key.
+            if (!byDayRaw.isNullOrEmpty()) {
+                val withRaw = "$base;BYDAY=${byDayRaw.joinToString(",")}"
+                return copy(byDay = null).buildRRuleString(withRaw, timeZone)
+            }
             return buildRRuleString(base, timeZone)
         }
         override fun describeImpl(context: Context): String =
@@ -230,6 +248,9 @@ sealed class RRule {
                 2 -> ";BYDAY=-1${firstDay.dayOfWeek.toIcal()}"
                 else -> ""
             }
+            // typeE 1/2 already carry BYDAY in byDayPart; drop generic byDay so the
+            // key isn't emitted twice. typeE 0 passes parsed BYDAY through.
+            if (typeE != 0) return copy(byDay = null).buildRRuleString(base + byDayPart, timeZone)
             return buildRRuleString(base + byDayPart, timeZone)
         }
         override fun describeImpl(context: Context): String =
@@ -253,8 +274,9 @@ sealed class RRule {
         override val byDay: List<DayOfWeek>? = null
     ) : RRule() {
         override fun asString(firstDay: LocalDate, timeZone: TimeZone): String {
-            val days = daysOfWeek.sorted().joinToString(",") { it.toIcal() }
-            val base = "FREQ=WEEKLY;INTERVAL=$weeks;BYDAY=$days"
+            // Empty selection omits BYDAY entirely; never emit `BYDAY=` with no value.
+            val base = if (daysOfWeek.isEmpty()) "FREQ=WEEKLY;INTERVAL=$weeks"
+                else "FREQ=WEEKLY;INTERVAL=$weeks;BYDAY=${daysOfWeek.sorted().joinToString(",") { it.toIcal() }}"
             return buildRRuleString(base, timeZone)
         }
         override fun describeImpl(context: Context): String {

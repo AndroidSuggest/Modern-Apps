@@ -43,12 +43,15 @@ object SpecialAccess {
     /**
      * Exact alarms, required for anything that must fire at a precise time.
      *
-     * From Android 13 on, an app that declares `USE_EXACT_ALARM` is granted this
-     * at install and the user cannot revoke it, so only older releases need the
-     * revocable `SCHEDULE_EXACT_ALARM` access checked.
+     * On API 33+ the `USE_EXACT_ALARM` permission is install-granted and
+     * non-revocable, but a denial can still happen (e.g. Play policy rejects the
+     * declaration on update, or the grant is otherwise missing), so the
+     * `AlarmManager.canScheduleExactAlarms()` state is always checked and a
+     * denial routes through the `AppPermissionsGate` exact-alarms prompt instead
+     * of silently degrading to inexact alarms.
      */
     fun hasExactAlarms(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return true
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
         val manager = context.getSystemService(android.app.AlarmManager::class.java)
         return manager?.canScheduleExactAlarms() ?: false
     }

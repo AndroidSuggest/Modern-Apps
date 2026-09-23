@@ -4,6 +4,11 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- SCHEDULE_EXACT_ALARM is only needed up to API 32: on API 33+ the
+         USE_EXACT_ALARM permission above covers exact reminders (install-granted,
+         non-revocable). The gate still checks canScheduleExactAlarms() at runtime
+         via SpecialAccess.hasExactAlarms() so a denial routes through
+         AppPermissionsGate instead of silently degrading. -->
     <uses-permission
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
@@ -26,6 +31,7 @@
             android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:name="MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.General">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -40,37 +46,49 @@
                 <data android:mimeType="vnd.android.cursor.dir/event" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- Date-jump from the system provider. The provider usually sends
+                 these VIEW intents with a null type, so the second filter matches
+                 on scheme+host+path only (no mimeType). Both are scoped to /time
+                 so event URIs never fall into the ICS path. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="time/epoch" />
                 <data android:host="com.android.calendar" />
                 <data android:scheme="content"/>
+                <data android:pathPrefix="/time" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" />
                 <data android:host="com.android.calendar" />
+                <data android:pathPrefix="/time" />
             </intent-filter>
+            <!-- ICS import: text/calendar family only, via content/file URIs
+                 (file managers, Downloads, shares, picker). application/octet-stream
+                 is deliberately excluded: it matched every download. http/https are
+                 deliberately excluded too: browsers only route links to BROWSABLE
+                 activities and App Links require declared hosts, so keeping them
+                 would either re-introduce browser hijacking or break lint; a
+                 browser-downloaded .ics still imports fine via the Downloads app.
+                 No pathPattern: filter dimensions AND-match, and opaque content
+                 URIs (MediaStore/Gmail IDs) rarely end in .ics — the mimeType
+                 scoping above is what prevents hijacks. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <action android:name="android.intent.action.GET_CONTENT" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" />
                 <data android:scheme="file" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
                 <data android:mimeType="text/calendar" />
                 <data android:mimeType="application/calendar" />
                 <data android:mimeType="application/x-icalendar" />
                 <data android:mimeType="text/x-icalendar" />
                 <data android:mimeType="text/icalendar" />
                 <data android:mimeType="application/ics" />
-                <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
         <receiver

@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.util.NavBackStack
+import com.vayunmathur.calendar.util.MAX_RRULE_COUNT
 import com.vayunmathur.calendar.util.RRule
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.util.RecurrenceDates
@@ -116,7 +117,9 @@ fun RecurrenceDialog(
                     backStack.pop()
                     return@Button
                 }
-                val interval = intervalStr.toIntOrNull() ?: 1
+                // Clamp before buildRRuleString(): 0/negative/unparseable fall back to 1 so the
+                // provider never sees INTERVAL=0 (rejected/misbehaving).
+                val interval = (intervalStr.toIntOrNull() ?: 1).coerceAtLeast(1)
                 val rrule: RRule = when (freq) {
                     "days" -> RRule.EveryXDays(interval, endCondition)
                     "weeks" -> RRule.EveryXWeeks(
@@ -276,8 +279,11 @@ fun RecurrenceDialog(
                 if (endCondition is RRule.EndCondition.Count) {
                     var countStr by remember { mutableStateOf((endCondition as RRule.EndCondition.Count).count.toString()) }
                     OutlinedTextField(countStr, { new ->
-                        val v = new.toLongOrNull() ?: 1L
-                        countStr = new
+                        // Clamp here too: reject 0/negative/unparseable with a 1 fallback, cap huge
+                        // values at MAX_RRULE_COUNT, and write the clamped value back so the field
+                        // shows what the rule will actually carry.
+                        val v = (new.toLongOrNull() ?: 1L).coerceIn(1L, MAX_RRULE_COUNT)
+                        countStr = v.toString()
                         endCondition = RRule.EndCondition.Count(v)
                     }, label = { Text(stringResource(R.string.count)) })
                 }

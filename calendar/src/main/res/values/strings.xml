@@ -214,6 +214,18 @@
     <!-- Option to delete all occurrences of recurring event -->
     <string name="delete_all_events">Delete all events</string>
 
+    <!-- Edit event: save-scope chooser for recurring events, mirrors the delete options -->
+    <!-- Option to apply edits to only this occurrence of a recurring event -->
+    <string name="save_this_event">Save this event</string>
+    <!-- Option to apply edits to this and all following occurrences -->
+    <string name="save_this_and_following_events">Save this and following events</string>
+    <!-- Option to apply edits to every occurrence -->
+    <string name="save_all_events">Save all events</string>
+    <!-- Shown when the edited occurrence can't be resolved; nothing is saved -->
+    <string name="edit_occurrence_not_found">Couldn\'t find this occurrence — nothing was saved</string>
+    <!-- Shown when an event's calendar is missing -->
+    <string name="calendar_not_found">Calendar not found</string>
+
     <!-- Import ICS dialog: import events from .ics file -->
     <!-- Dropdown option to create new calendar for import. + indicates add new -->
     <string name="create_new_calendar">+ Create new calendar</string>

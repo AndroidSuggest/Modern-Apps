@@ -7,6 +7,7 @@ import android.os.UserManager
 import android.util.Log
 import androidx.glance.appwidget.updateAll
 import com.vayunmathur.calendar.glance.CalendarGlanceWidget
+import com.vayunmathur.calendar.glance.CalendarMonthGlanceWidget
 import com.vayunmathur.library.widgets.scheduleHourlyUpdate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -70,7 +71,9 @@ class BootReceiver : BroadcastReceiver() {
         }
         try {
             context.scheduleHourlyUpdate(CalendarGlanceWidget::class)
+            context.scheduleHourlyUpdate(CalendarMonthGlanceWidget::class)
             CalendarGlanceWidget().updateAll(context)
+            CalendarMonthGlanceWidget().updateAll(context)
         } catch (e: Exception) {
             Log.e(TAG, "$action: could not refresh widgets", e)
         }

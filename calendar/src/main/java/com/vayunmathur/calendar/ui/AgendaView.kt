@@ -53,7 +53,8 @@ fun AgendaView(
 ) {
     val initialIndex = 50000
     val listState = rememberLazyListState(initialIndex)
-    val vEventsByID = remember(events) { events.associateBy { it.id!! } }
+    // New rows have no id yet and can't be looked up; drop them instead of crashing.
+    val vEventsByID = remember(events) { events.mapNotNull { e -> e.id?.let { id -> id to e } }.toMap() }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }.collect { index ->
@@ -94,7 +95,9 @@ fun AgendaView(
                     color = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                 )
                 dayInstances.filter { date in it.spanDays }.forEach { instance ->
-                    val ev = vEventsByID[instance.eventID]!!
+                    // Skip instances whose event was just deleted (sync-adapter delete
+                    // semantics) instead of crashing.
+                    val ev = vEventsByID[instance.eventID] ?: return@forEach
                     val titleKey = eventTitleMorphKey(instance, date)
                     ListItem(
                         content = {
@@ -107,7 +110,7 @@ fun AgendaView(
                             Text(dateRangeString(context, instance.startDateTimeDisplay.date, instance.endDateTimeDisplay.date, instance.startDateTimeDisplay.time, instance.endDateTimeDisplay.time, instance.allDay, includeDate = false))
                         },
                         leadingContent = {
-                            Box(Modifier.size(16.dp).background(Color(ev.color ?: calendars[ev.calendarID]!!.color), CircleShape))
+                            Box(Modifier.size(16.dp).background(Color(ev.color ?: calendars[ev.calendarID]?.color ?: 0xFF808080.toInt()), CircleShape))
                         },
                         modifier = Modifier.clickable { onEventClick(instance) }
                     )

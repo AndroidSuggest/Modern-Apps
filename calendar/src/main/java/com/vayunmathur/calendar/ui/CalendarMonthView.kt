@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -28,7 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -50,7 +48,6 @@ import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
 import kotlinx.datetime.number
 import kotlinx.datetime.plus
-import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
@@ -82,8 +79,10 @@ fun MonthCalendarView(
 
     LaunchedEffect(pagerState.currentPage) {
         if (programmaticScroll) return@LaunchedEffect
-        val monthDate = anchorDate.plus(DatePeriod(months = pagerState.currentPage - 5000))
-        onDateViewingChanged(monthDate)
+        // Report the visible month, derived from its first day (see monthFirstDay):
+        // adding months to the anchor directly overflows on a 31st (Jan 31 + 1 mo),
+        // shifting the pager and the title onto the wrong month.
+        onDateViewingChanged(monthDateClamped(anchorDate, pagerState.currentPage))
     }
 
     LaunchedEffect(dateViewing) {
@@ -99,8 +98,7 @@ fun MonthCalendarView(
     }
 
     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-        val monthDate = anchorDate.plus(DatePeriod(months = page - 5000))
-        val firstOfMonth = LocalDate(monthDate.year, monthDate.month, 1)
+        val firstOfMonth = monthFirstDay(anchorDate, page)
         val lastOfMonth = firstOfMonth.plus(DatePeriod(months = 1)).minus(DatePeriod(days = 1))
 
         val locale = context.resources.configuration.locales[0]
@@ -120,7 +118,8 @@ fun MonthCalendarView(
             }
         }
 
-        val vEventsByID = remember(events) { events.associateBy { it.id!! } }
+        // New rows have no id yet and can't be looked up; drop them instead of crashing.
+        val vEventsByID = remember(events) { events.mapNotNull { e -> e.id?.let { id -> id to e } }.toMap() }
         val loadedInstances by produceState(emptyList<Instance>(), events, calendarVisibility, startDay, endDay) {
             value = loadInstances(
                 startDay.atStartOfDayIn(TimeZone.currentSystemDefault()),
@@ -153,13 +152,29 @@ fun MonthCalendarView(
                     onDayClick,
                     onDayLongClick,
                     context,
-                    monthDate.month.number,
+                    firstOfMonth.month.number,
                     monthInstances,
                     today
                 )
             }
         }
     }
+}
+
+/**
+ * The first day of the month shown on [page], computed from a day-1 base so month
+ * arithmetic can never overflow: `anchorDate.plus(DatePeriod(months = n))` clamps a 31st
+ * anchor (Jan 31 + 1 month lands Feb 28), which is the right month here but only by
+ * accident of clamping — deriving from the 1st makes it structural.
+ */
+private fun monthFirstDay(anchorDate: LocalDate, page: Int): LocalDate =
+    LocalDate(anchorDate.year, anchorDate.month, 1).plus(DatePeriod(months = page - 5000))
+
+/** Same month as [monthFirstDay], keeping the anchor's day when that month has it. */
+private fun monthDateClamped(anchorDate: LocalDate, page: Int): LocalDate {
+    val first = monthFirstDay(anchorDate, page)
+    val lastDay = first.plus(DatePeriod(months = 1)).minus(DatePeriod(days = 1)).day
+    return LocalDate(first.year, first.month, anchorDate.day.coerceAtMost(lastDay))
 }
 
 @Composable
@@ -226,7 +241,9 @@ internal fun MonthWeekRow(
                 }
                 Spacer(Modifier.height(2.dp))
                 dayInstances.forEach { instance ->
-                    val ev = vEventsByID[instance.eventID]!!
+                    // The provider can return instances whose event just got deleted
+                    // (sync-adapter delete semantics). Skip the stale row instead of crashing.
+                    val ev = vEventsByID[instance.eventID] ?: return@forEach
                     SummaryEventItem(context, instance, ev, calendars, onEventClick, eventTitleMorphKey(instance, date))
                 }
             }

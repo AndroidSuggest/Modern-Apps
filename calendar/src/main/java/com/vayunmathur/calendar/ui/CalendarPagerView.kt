@@ -1,13 +1,11 @@
 package com.vayunmathur.calendar.ui
 
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,10 +13,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -34,8 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -47,24 +41,16 @@ import com.vayunmathur.calendar.data.Instance
 import com.vayunmathur.calendar.util.CalendarViewModel
 import com.vayunmathur.library.ui.contentColorOn
 import com.vayunmathur.library.ui.DateString
-import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
-import com.vayunmathur.library.util.DateNameStyle
-import com.vayunmathur.library.util.localizedDayOfWeekNames
-import com.vayunmathur.library.util.localeFirstDayOfWeek
 import com.vayunmathur.library.util.sharedText
 import androidx.compose.foundation.clickable
-import com.vayunmathur.library.ui.VerticalDivider
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.graphics.Color
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
-import kotlinx.datetime.isoDayNumber
-import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
 import kotlinx.datetime.toLocalDateTime
@@ -81,7 +67,6 @@ fun CalendarPagerView(
     events: List<Event>,
     calendars: Map<Long, Calendar>,
     calendarVisibility: Map<Long, Boolean>,
-    verticalState: ScrollState,
     loadInstances: suspend (Instant, Instant) -> List<Instance>,
     onEventClick: (Instance) -> Unit,
     onDateViewingChanged: (LocalDate) -> Unit
@@ -98,29 +83,34 @@ fun CalendarPagerView(
     val isCompact = currentLayout == CalendarViewModel.CalendarLayout.WorkWeekCompact ||
                     currentLayout == CalendarViewModel.CalendarLayout.FullWeekCompact
 
+    val locale = context.resources.configuration.locales[0]
+    // Page <-> day math must go through the visible week starts on both sides: page N
+    // shows weekStartForLayout(anchor + 7N), so reporting the anchor-derived start back
+    // would walk the pager one page per swipe (startDay maps back to a later page).
+    fun pageOf(day: LocalDate): Int =
+        if (daysToShow == 1) 5000 + (day.toEpochDays() - anchorDate.toEpochDays()).toInt()
+        else 5000 + ((weekStartForLayout(day, currentLayout, locale).toEpochDays() -
+            weekStartForLayout(anchorDate, currentLayout, locale).toEpochDays()) / 7).toInt()
+    fun startOfPage(page: Int): LocalDate {
+        val raw = if (daysToShow == 1) anchorDate.plus(DatePeriod(days = page - 5000))
+        else anchorDate.plus(DatePeriod(days = (page - 5000) * 7))
+        return weekStartForLayout(raw, currentLayout, locale)
+    }
+
     val pagerState = rememberPagerState(initialPage = 5000) { 10000 }
     // Track whether the pager is being programmatically scrolled to avoid feedback loops
     var programmaticScroll by remember { mutableStateOf(false) }
 
     LaunchedEffect(pagerState.currentPage, currentLayout) {
         if (programmaticScroll) return@LaunchedEffect
-        val delta = pagerState.currentPage - 5000
-        val currentStart = if (daysToShow == 1) {
-            anchorDate.plus(DatePeriod(days = delta))
-        } else {
-            anchorDate.plus(DatePeriod(days = delta * 7))
-        }
-        onDateViewingChanged(currentStart)
+        // Report the visible week's start day, not the anchor-derived page start: the
+        // anchor can sit mid-week, and the title/pager would then disagree on the week.
+        onDateViewingChanged(startOfPage(pagerState.currentPage))
     }
 
-    LaunchedEffect(dateViewing) {
+    LaunchedEffect(dateViewing, currentLayout) {
         if (!pagerState.isScrollInProgress) {
-            val delta = if (daysToShow == 1) {
-                dateViewing.toEpochDays() - anchorDate.toEpochDays()
-            } else {
-                (dateViewing.toEpochDays() - anchorDate.toEpochDays()) / 7
-            }
-            val targetPage = 5000 + delta.toInt()
+            val targetPage = pageOf(dateViewing)
             if (pagerState.currentPage != targetPage) {
                 programmaticScroll = true
                 pagerState.scrollToPage(targetPage)
@@ -134,27 +124,13 @@ fun CalendarPagerView(
         modifier = Modifier.fillMaxSize(),
         beyondViewportPageCount = 1
     ) { page ->
-        val delta = page - 5000
-        val pageStartDate = if (daysToShow == 1) {
-            anchorDate.plus(DatePeriod(days = delta))
-        } else {
-            anchorDate.plus(DatePeriod(days = delta * 7))
-        }
-
-        val startDay = when (currentLayout) {
-            CalendarViewModel.CalendarLayout.Day -> pageStartDate
-            CalendarViewModel.CalendarLayout.WorkWeek,
-            CalendarViewModel.CalendarLayout.WorkWeekSummary,
-            CalendarViewModel.CalendarLayout.WorkWeekCompact ->
-                pageStartDate.minus(DatePeriod(days = (pageStartDate.dayOfWeek.isoDayNumber - 1) % 7))
-            else -> {
-                val locale = context.resources.configuration.locales[0]
-                pageStartDate.minus(DatePeriod(days = firstDayOfWeekOffset(pageStartDate, locale)))
-            }
-        }
+        // workWeekStart() skips Sat/Sun, so the week stays a fixed Mon-Fri stride and
+        // page math above stays exact; full weeks use the locale's first day.
+        val startDay = startOfPage(page)
 
         val weekDays = (0 until daysToShow).map { startDay.plus(DatePeriod(days = it)) }
-        val vEventsByID = remember(events) { events.associateBy { it.id!! } }
+        // New rows have no id yet and can't be looked up; drop them instead of crashing.
+        val vEventsByID = remember(events) { events.mapNotNull { e -> e.id?.let { id -> id to e } }.toMap() }
 
         val weekInstances by produceState(emptyList<Instance>(), events, calendarVisibility, startDay, daysToShow) {
             value = loadInstances(
@@ -180,7 +156,6 @@ fun CalendarPagerView(
                     context,
                     timedByDateHour,
                     weekDays,
-                    verticalState,
                     shrinkEmptyHours = isCompact,
                     onEventClick = onEventClick,
                     innerPadding = PaddingValues(0.dp)
@@ -195,13 +170,15 @@ internal fun HourlyGrid(
     context: android.content.Context,
     timedByDateHour: Map<LocalDate, Map<Int, List<Instance>>>,
     weekDays: List<LocalDate>,
-    verticalState: ScrollState,
     shrinkEmptyHours: Boolean,
     onEventClick: (Instance) -> Unit,
     innerPadding: PaddingValues
 ) {
     val minEventHeight = 18.dp
-    val minEventWidth = 56.dp
+    // Each day column owns its scroll position: the old shared verticalState was created
+    // once in CalendarScreen and reused across pages, so swiping weeks kept the previous
+    // page's offset while the hour gutter (per page) restarted at the top.
+    val verticalState = androidx.compose.foundation.rememberScrollState()
 
     val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
     var now by remember { mutableStateOf(Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())) }
@@ -286,11 +263,14 @@ internal fun HourlyGrid(
                             var heightDp = scale.offsetOf(ev.endMinutes) - yOffset
                             if (heightDp < minEventHeight) heightDp = minEventHeight
 
-                            // compute horizontal position and size
-                            val widthFraction = 1f / ev.totalColumns.toFloat()
-                            val xFraction = ev.columnIndex * widthFraction
+                            // compute horizontal position and size. columnSpan widens an event
+                            // into columns free for its whole span (see EventPositioner); the
+                            // old coerceAtLeast(56.dp) forced every chip wider than its column
+                            // and overflowed the day on narrow screens.
+                            val widthFraction = ev.columnSpan / ev.totalColumns.toFloat()
+                            val xFraction = ev.columnIndex / ev.totalColumns.toFloat()
                             val xOffsetDp = columnWidth * xFraction
-                            val widthDp = (columnWidth * widthFraction).coerceAtLeast(minEventWidth)
+                            val widthDp = columnWidth * widthFraction
 
                             Box(
                                 Modifier

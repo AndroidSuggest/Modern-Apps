@@ -35,6 +35,9 @@ class CalendarMonthGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
         super.onReceive(context, intent)
         when (intent.action) {
             Intent.ACTION_DATE_CHANGED,
+            // Intent.ACTION_TIME_CHANGED's wire value is
+            // "android.intent.action.TIME_SET" (the action the manifest declares),
+            // so this arm already covers manual clock changes.
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
             Intent.ACTION_PROVIDER_CHANGED -> {

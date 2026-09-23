@@ -17,10 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.DetailScaffold
-import com.vayunmathur.library.ui.DropdownMenu
-import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.HorizontalDivider
-import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.LabeledTextField
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
@@ -32,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,9 +49,6 @@ import com.vayunmathur.calendar.util.RRule
 import com.vayunmathur.calendar.util.RecurrenceDates
 import com.vayunmathur.calendar.util.RecurrenceParams
 import com.vayunmathur.calendar.Route
-import com.vayunmathur.library.ui.IconGlobe
-import com.vayunmathur.library.ui.IconSave
-import com.vayunmathur.library.ui.IconSchedule
 import com.vayunmathur.library.util.ResultEffect
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
@@ -92,16 +87,22 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
 
     val event = events.find { it.id == eventId }
 
+    // The event list loads async: first composition usually seeds from null, then the
+    // event arrives. Every seeded remember below is keyed on the loaded id so the
+    // blank first-composition values reset instead of overwriting the event.
     val znow = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
     val today = znow.date
     val now = znow.time
 
-    var title by remember { mutableStateOf(event?.title ?: editRoute.title ?: "") }
-    var descriptionText by remember { mutableStateOf(event?.description ?: editRoute.description ?: "") }
-    val descriptionController = com.vayunmathur.library.ui.rememberOdfMarkdownEditorController(initialMarkdown = descriptionText) { descriptionText = it }
-    var location by remember { mutableStateOf(event?.location ?: editRoute.location ?: "") }
+    var title by remember(event?.id) { mutableStateOf(event?.title ?: editRoute.title ?: "") }
+    var descriptionText by remember(event?.id) { mutableStateOf(event?.description ?: editRoute.description ?: "") }
+    // Keyed like the state above so an async-loaded event replaces the blank controller.
+    val descriptionController = key(event?.id) {
+        com.vayunmathur.library.ui.rememberOdfMarkdownEditorController(initialMarkdown = descriptionText) { descriptionText = it }
+    }
+    var location by remember(event?.id) { mutableStateOf(event?.location ?: editRoute.location ?: "") }
     // default to the event's calendar if editing; otherwise the last calendar the user picked, then first editable
-    var selectedCalendar by remember {
+    var selectedCalendar by remember(event?.id) {
         mutableLongStateOf(
             event?.calendarID
                 ?: viewModel.getDefaultCalendarId()?.takeIf { id -> calendars.any { it.id == id && it.canModify } }
@@ -128,28 +129,28 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
             it.toInstant(tz).plus(1.hours).toLocalDateTime(tz)
         }
 
-    var allDay by remember { mutableStateOf(event?.allDay ?: editRoute.allDay ?: false) }
-    var startDate by remember { mutableStateOf(event?.startDateTimeDisplay?.date ?: initialBeginLdt?.date ?: today) }
+    var allDay by remember(event?.id) { mutableStateOf(event?.allDay ?: editRoute.allDay ?: false) }
+    var startDate by remember(event?.id) { mutableStateOf(event?.startDateTimeDisplay?.date ?: initialBeginLdt?.date ?: today) }
     // Stored all-day end is exclusive (midnight after the last day), so show the last covered day.
-    var endDate by remember {
+    var endDate by remember(event?.id) {
         mutableStateOf(
             event?.let { if (it.allDay) it.endDateTimeDisplay.date.minus(DatePeriod(days = 1)) else it.endDateTimeDisplay.date }
                 ?: initialEndLdt?.date ?: startDate
         )
     }
-    var startTime by remember { mutableStateOf(event?.startDateTimeDisplay?.time ?: initialBeginLdt?.time ?: now) }
-    var endTime by remember { mutableStateOf(event?.endDateTimeDisplay?.time ?: initialEndLdt?.time ?: startTime) }
+    var startTime by remember(event?.id) { mutableStateOf(event?.startDateTimeDisplay?.time ?: initialBeginLdt?.time ?: now) }
+    var endTime by remember(event?.id) { mutableStateOf(event?.endDateTimeDisplay?.time ?: initialEndLdt?.time ?: startTime) }
     // All-day events are stored in UTC as a provider/RFC 5545 artifact, not a real user zone.
     // Seed the picker with the device zone so switching to a timed event doesn't reinterpret the
     // wall-clock time in UTC (which the day/week/month views would then shift by the local offset).
-    var timezone by remember {
+    var timezone by remember(event?.id) {
         mutableStateOf(
             if (event?.allDay == true) TimeZone.currentSystemDefault().id
             else event?.timezone ?: TimeZone.currentSystemDefault().id
         )
     }
-    var rruleObj by remember { mutableStateOf(event?.rrule) }
-    var rdateObj by remember { mutableStateOf(event?.rdate ?: emptyList()) }
+    var rruleObj by remember(event?.id) { mutableStateOf(event?.rrule) }
+    var rdateObj by remember(event?.id) { mutableStateOf(event?.rdate ?: emptyList()) }
     val repeatSummary by remember {
         derivedStateOf {
             when {
@@ -162,7 +163,7 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
             }
         }
     }
-    var reminders by remember { mutableStateOf(event?.reminders ?: emptyList()) }
+    var reminders by remember(event?.id) { mutableStateOf(event?.reminders ?: emptyList()) }
 
     // A new event inherits the reminders configured as defaults for its calendar; switching the
     // calendar re-applies that calendar's defaults. Editing an existing event keeps its own set.
@@ -232,35 +233,35 @@ fun EditEventScreen(viewModel: CalendarViewModel, editRoute: Route.EditEvent, ba
         title = "",
         onNavigateBack = { backStack.pop() },
         actions = {
-            IconButton(onClick = {
-                val buildTz = if (allDay) TimeZone.UTC else TimeZone.of(timezone)
-                // All-day events are stored at midnight UTC with an exclusive end (the midnight
-                // after the last selected day), matching RFC 5545 / the Android calendar provider.
-                val startInstant = if (allDay) startDate.atStartOfDayIn(buildTz)
-                    else startDate.atTime(startTime).toInstant(buildTz)
-                val endInstant = if (allDay) endDate.plus(DatePeriod(days = 1)).atStartOfDayIn(buildTz)
-                    else endDate.atTime(endTime).toInstant(buildTz)
-                val newEvent = Event(
-                    id = eventId,
-                    calendarID = selectedCalendar,
-                    title = title,
-                    description = descriptionText,
-                    location = location,
-                    color = event?.color,
-                    start = startInstant.toEpochMilliseconds(),
-                    end = endInstant.toEpochMilliseconds(),
-                    timezone = if (allDay) "UTC" else timezone,
-                    allDay = allDay,
-                    rrule = rruleObj,
-                    exdate = event?.exdate ?: emptyList(),
-                    rdate = rdateObj,
-                    reminders = reminders,
-                )
-                viewModel.upsertEvent(eventId, newEvent.toContentValues(selectedCalendar), reminders)
-                backStack.pop()
-            }) {
-                IconSave()
-            }
+            // The series + resolution live in EditEventScope.kt (file-length limit):
+            // a series edited from its detail screen asks which occurrences the edit
+            // applies to (delete does the same) instead of always rewriting everything.
+            EditSaveActions(
+                viewModel = viewModel,
+                eventId = eventId,
+                event = event,
+                instanceId = editRoute.instanceId,
+                snapshot = {
+                    EditFormSnapshot(
+                        title = title,
+                        description = descriptionText,
+                        location = location,
+                        calendarId = selectedCalendar,
+                        allDay = allDay,
+                        startDate = startDate,
+                        endDate = endDate,
+                        startTime = startTime,
+                        endTime = endTime,
+                        timezone = timezone,
+                        rrule = rruleObj,
+                        rdate = rdateObj,
+                        reminders = reminders,
+                        color = event?.color,
+                        exdate = event?.exdate ?: emptyList(),
+                    )
+                },
+                onSaved = { backStack.pop() },
+            )
         },
         bottomBar = {
             if (descriptionController.focused) {

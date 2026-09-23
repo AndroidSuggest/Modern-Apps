@@ -21,6 +21,7 @@ import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +42,7 @@ import com.vayunmathur.library.ui.IconDelete
 import com.vayunmathur.library.ui.IconDescription
 import com.vayunmathur.library.ui.IconEdit
 import com.vayunmathur.library.ui.IconGlobe
+import com.vayunmathur.library.ui.rememberMessenger
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.library.util.sharedText
 import kotlinx.datetime.LocalDate
@@ -55,16 +57,36 @@ fun EventScreen(viewModel: CalendarViewModel, instance: Instance, backStack: Nav
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
 
     val event = events.find { it.id == instance.eventID }
+    val calendar = event?.let { ev -> calendars.find { it.id == ev.calendarID } }
+    val messenger = rememberMessenger()
+    val calendarNotFoundMessage = stringResource(R.string.calendar_not_found)
     if (event == null) {
         // simple empty state
         Text(stringResource(R.string.event_not_found))
         return
     }
-
-    val calendar = calendars.find { it.id == event.calendarID }!!
+    if (calendar == null) {
+        // The event outlived its calendar (delete-while-viewing, sync race): say so on the
+        // snackbar rather than crashing on `!!`, and keep the detail readable.
+        LaunchedEffect(event.id) { messenger.show(calendarNotFoundMessage) }
+    }
+    // Unmodifiable fallback for a vanished calendar. The detail can't edit while its
+    // calendar is gone anyway; this keeps the stateless screen's non-null contract.
+    val resolvedCalendar = calendar ?: com.vayunmathur.calendar.data.Calendar(
+        id = event.calendarID,
+        accountName = "",
+        displayName = calendarNotFoundMessage,
+        color = 0xFF808080.toInt(),
+        accessLevel = 0,
+        visible = false,
+    )
 
     EventScreen(
-        state = EventUiState(event = event, calendar = calendar, instance = instance),
+        state = EventUiState(
+            event = event,
+            calendar = resolvedCalendar,
+            instance = instance,
+        ),
         // Deleting is the ViewModel's; navigating is the binder's.
         actions = object : EventActions by viewModel {
             override fun closeEvent() {
@@ -99,9 +121,12 @@ fun EventScreen(state: EventUiState, actions: EventActions) {
         title = "",
         onNavigateBack = actions::closeEvent,
         actions = {
-            if(isEditable) {
+            // New/unsynced rows have no id yet: without one there is nothing to
+            // edit or delete, so the row hides its actions instead of crashing.
+            val eventId = event.id
+            if (isEditable && eventId != null) {
                 IconButton({
-                    actions.editEvent(event.id!!)
+                    actions.editEvent(eventId)
                 }) {
                     IconEdit()
                 }
@@ -112,7 +137,7 @@ fun EventScreen(state: EventUiState, actions: EventActions) {
                             showDeleteMenu = true
                         } else {
                             // Non-recurring event - delete directly
-                            actions.deleteEventSeries(event.id!!)
+                            actions.deleteEventSeries(eventId)
                             actions.closeEvent()
                         }
                     }) {
@@ -126,7 +151,7 @@ fun EventScreen(state: EventUiState, actions: EventActions) {
                             text = { Text(stringResource(R.string.delete_this_event)) },
                             onClick = {
                                 showDeleteMenu = false
-                                actions.deleteEventInstance(event.id!!, instance.begin)
+                                actions.deleteEventInstance(eventId, instance.begin)
                                 actions.closeEvent()
                             }
                         )
@@ -134,7 +159,7 @@ fun EventScreen(state: EventUiState, actions: EventActions) {
                             text = { Text(stringResource(R.string.delete_all_events)) },
                             onClick = {
                                 showDeleteMenu = false
-                                actions.deleteEventSeries(event.id!!)
+                                actions.deleteEventSeries(eventId)
                                 actions.closeEvent()
                             }
                         )

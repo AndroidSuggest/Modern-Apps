@@ -17,6 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.vayunmathur.calendar.R
 import com.vayunmathur.calendar.data.Instance
 import com.vayunmathur.calendar.glance.CalendarGlanceWidgetReceiver
@@ -43,6 +47,8 @@ import kotlinx.serialization.json.Json
 
 class MainActivity : ComponentActivity() {
     private val importUris = mutableStateOf<List<String>>(emptyList())
+    private val pendingRoute = mutableStateOf<Route?>(null)
+    private val pendingDate = mutableStateOf<LocalDate?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,24 +85,37 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val viewModel: CalendarViewModel = viewModel()
 
-                    LaunchedEffect(intent) {
-                        if (intent?.action == Intent.ACTION_VIEW && intent.type == "time/epoch") {
+                    val dateJump by pendingDate
+                    LaunchedEffect(intent, dateJump) {
+                        // The provider often sends time URIs with a null type, so match by
+                        // URI shape (see isTimeEpochIntent), not just type == "time/epoch".
+                        val target = dateJump ?: if (intent != null && intent.action == Intent.ACTION_VIEW && isTimeEpochIntent(intent)) {
                             intent.data?.lastPathSegment?.toLongOrNull()?.let { timestamp ->
-                                val date = Instant.fromEpochMilliseconds(timestamp)
-                                    .toLocalDateTime(TimeZone.currentSystemDefault()).date
-                                viewModel.setSelectedDate(date)
-                                viewModel.setLastViewedDate(date)
+                                runCatching {
+                                    Instant.fromEpochMilliseconds(timestamp)
+                                        .toLocalDateTime(TimeZone.currentSystemDefault()).date
+                                }.getOrNull()
                             }
+                        } else null
+                        if (target != null) {
+                            viewModel.setSelectedDate(target)
+                            viewModel.setLastViewedDate(target)
+                            pendingDate.value = null
                         }
                     }
                     
                     val uris by importUris
 
+                    val pending by pendingRoute
                     val initialRoute = when {
                         uris.isNotEmpty() -> Route.Settings.ImportIcs(uris)
-                        intent.hasExtra("instance") -> {
-                            Route.Event(Json.decodeFromString<Instance>(intent.getStringExtra("instance")!!))
-                        }
+                        pending != null -> pending
+                        // Exported activity: malformed "instance" extras fall back to no
+                        // route (calendar home) instead of crashing.
+                        intent.hasExtra("instance") ->
+                            intent.getStringExtra("instance")?.let { raw ->
+                                runCatching { Json.decodeFromString<Instance>(raw) }.getOrNull()
+                            }?.let { Route.Event(it) }
                         intent.action == Intent.ACTION_INSERT && (intent.type == "vnd.android.cursor.dir/event" || intent.type == null) -> {
                             Route.EditEvent(
                                 id = null,
@@ -120,20 +139,85 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleIntent(intent)
     }
 
-    private fun handleIntent(intent: Intent?) {
-        intent?.let {
-            // Only handle URIs if they are actually intended for import (ignore time/epoch VIEW intents)
-            if (it.action == Intent.ACTION_VIEW && it.type == "time/epoch") return
+    /**
+     * Time/date-jump VIEW intents. The provider often sends these with a null
+     * type, so the URI shape is matched too: without this the date-jump never
+     * runs and the URI falls into the ICS import path.
+     */
+    private fun isTimeEpochIntent(it: Intent): Boolean {
+        if (it.action != Intent.ACTION_VIEW) return false
+        if (it.type == "time/epoch") return true
+        if (it.type != null) return false
+        val data = it.data ?: return false
+        if (data.lastPathSegment?.toLongOrNull() == null) return false
+        return data.authority == "com.android.calendar" || data.path?.contains("time") == true
+    }
 
-            val uris = IntentHelper.getUrisFromIntent(it)
-            // Decide here, before setContent, whether this is a real import: parse the
-            // file(s) and only route to the import screen when they contain events.
-            // Empty/eventless ICS files fall through and open the calendar on today,
-            // so the import screen never flashes.
-            val hasEvents = uris.any { uri ->
+    private fun handleIntent(intent: Intent?) {
+        val it = intent ?: return
+        // Date-jump intents never carry files; pendingDate drives the
+        // LaunchedEffect above for onNewIntent (onCreate is covered there too).
+        if (isTimeEpochIntent(it)) {
+            it.data?.lastPathSegment?.toLongOrNull()?.let { timestamp ->
+                runCatching {
+                    Instant.fromEpochMilliseconds(timestamp)
+                        .toLocalDateTime(TimeZone.currentSystemDefault()).date
+                }.getOrNull()?.let { date -> pendingDate.value = date }
+            }
+            return
+        }
+
+        // Instance deep-link: never crash on malformed extras (exported activity).
+        if (it.hasExtra("instance")) {
+            it.getStringExtra("instance")?.let { raw ->
+                runCatching { Json.decodeFromString<Instance>(raw) }.getOrNull()
+            }?.let { instance -> pendingRoute.value = Route.Event(instance) }
+            // Instance intents carry no stream data; avoid falling into ICS handling.
+            if (it.data == null && IntentHelper.getUrisFromIntent(it).isEmpty()) return
+        }
+
+        // ACTION_INSERT from other apps while already open (singleTask).
+        if (it.action == Intent.ACTION_INSERT &&
+            (it.type == "vnd.android.cursor.dir/event" || it.type == null)
+        ) {
+            pendingRoute.value = Route.EditEvent(
+                id = null,
+                title = it.getStringExtra(CalendarContract.Events.TITLE),
+                description = it.getStringExtra(CalendarContract.Events.DESCRIPTION),
+                location = it.getStringExtra(CalendarContract.Events.EVENT_LOCATION),
+                beginTime = it.getLongExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, -1L)
+                    .takeIf { value -> value != -1L },
+                endTime = it.getLongExtra(CalendarContract.EXTRA_EVENT_END_TIME, -1L)
+                    .takeIf { value -> value != -1L },
+                allDay = it.getBooleanExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, false)
+                    .takeIf { _ -> it.hasExtra(CalendarContract.EXTRA_EVENT_ALL_DAY) },
+            )
+            return
+        }
+
+        val uris = IntentHelper.getUrisFromIntent(it)
+        if (uris.isEmpty()) return
+        // Persist read access so the import screen can re-open the files later.
+        // Best-effort: non-persistable grants throw, the one-shot grant still covers
+        // the immediate import.
+        uris.forEach { uri ->
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+        }
+        // Decide off the main thread whether this is a real import: parse the
+        // file(s) and only route to the import screen when they contain events.
+        // Empty/eventless ICS files fall through and open the calendar on today,
+        // so the import screen never flashes. Large files must not ANR.
+        lifecycleScope.launch(Dispatchers.IO) {
+            val withEvents = uris.filter { uri ->
                 try {
                     contentResolver.openInputStream(uri)?.use { iS -> parseICSFile(iS).isNotEmpty() } == true
                 } catch (e: Exception) {
@@ -141,8 +225,10 @@ class MainActivity : ComponentActivity() {
                     false
                 }
             }
-            if (hasEvents) {
-                importUris.value = uris.map { uri -> uri.toString() }
+            if (withEvents.isNotEmpty()) {
+                withContext(Dispatchers.Main) {
+                    importUris.value = withEvents.map { uri -> uri.toString() }
+                }
             }
         }
     }

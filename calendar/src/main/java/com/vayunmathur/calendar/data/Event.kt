@@ -91,7 +91,16 @@ data class Event(
             put(CalendarContract.Events.ALL_DAY, if (allDay) 1 else 0)
             put(CalendarContract.Events.EVENT_TIMEZONE, tz)
             if (exdate.isNotEmpty()) {
-                put(CalendarContract.Events.EXDATE, exdate.joinToString(",") { it.toIcalBasic() })
+                // A timed occurrence is an instant, so it needs the datetime form: the
+                // provider ignores a date-only EXDATE for timed events and the delete
+                // silently no-ops. All-day events stay date-only.
+                put(
+                    CalendarContract.Events.EXDATE,
+                    exdate.joinToString(",") { date ->
+                        if (allDay) date.toIcalBasic()
+                        else date.toIcalUtcDateTime(startDateTimeDisplay.time, tzObj)
+                    },
+                )
             }
         }
     }

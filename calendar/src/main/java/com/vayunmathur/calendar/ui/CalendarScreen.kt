@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -139,9 +138,6 @@ fun CalendarScreen(viewModel: CalendarViewModel, backStack: NavBackStack<Route>)
 fun CalendarScreen(state: CalendarUiState, actions: CalendarActions) {
     val context = LocalContext.current
 
-    // shared vertical scroll so hour labels and grid scroll together
-    val verticalState = rememberScrollState()
-
     AppScaffold(
         title = {
             // show month/year of the currently visible date
@@ -217,7 +213,6 @@ fun CalendarScreen(state: CalendarUiState, actions: CalendarActions) {
                         state.events,
                         state.calendars,
                         state.calendarVisibility,
-                        verticalState,
                         actions::visibleInstances,
                         onEventClick = { actions.openEvent(it) },
                         onDateViewingChanged = { actions.setSelectedDate(it) }

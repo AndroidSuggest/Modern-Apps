@@ -4,9 +4,12 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import com.vayunmathur.calendar.data.Event
 import com.vayunmathur.calendar.data.Instance
 import com.vayunmathur.calendar.data.ReminderMirror
+import com.vayunmathur.library.ui.R as UiR
+import com.vayunmathur.library.util.AppMessages
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 
@@ -72,7 +75,7 @@ object ReminderScheduler {
             val offsets = event.reminders.distinct()
             if (offsets.isEmpty()) continue
 
-            if (event.rrule == null) {
+            if (!event.isRecurring) {
                 for (minutes in offsets) {
                     val triggerAt = event.start - minutes.toLong() * 60_000L
                     if (triggerAt <= nowMillis) continue
@@ -178,15 +181,23 @@ object ReminderScheduler {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        // canScheduleExactAlarms() may be false if the user hasn't granted the
-        // exact-alarm special access; fall back to an inexact alarm rather than
-        // crashing on the SecurityException setExactAndAllowWhileIdle throws.
+        // The exact-alarm gate UI lives in MainActivity's AppPermissionsGate
+        // (PermissionRequirement.ExactAlarms -> SpecialAccess.requestExactAlarms); this stays
+        // the runtime backstop and must not duplicate that flow. canScheduleExactAlarms() is
+        // checked on S+ so a denial surfaces via messenger instead of silently degrading to
+        // inexact; the SecurityException catch remains for the revoked-mid-scheduling race.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            AppMessages.show(context.getString(UiR.string.permission_exact_alarms_rationale))
+            return
+        }
         try {
             alarmManager.setExactAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent,
             )
         } catch (_: SecurityException) {
             alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            AppMessages.show(context.getString(UiR.string.permission_exact_alarms_rationale))
         }
     }
 
