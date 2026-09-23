@@ -98,7 +98,10 @@ internal fun BoxWithConstraintsScope.CameraPreviewBox(
         .clip(RoundedCornerShape(12.dp))
         .then(
             run {
-                val hasColorAdj = state.warmth != 0f || state.shadows != 0f
+                // Warmth/shadows only render where the capture path bakes them (PHOTO/PORTRAIT):
+                // elsewhere the capture drops them, so showing the grade in the viewfinder is a lie.
+                val bakesStills = cameraMode == CameraMode.PHOTO || cameraMode == CameraMode.PORTRAIT
+                val hasColorAdj = bakesStills && (state.warmth != 0f || state.shadows != 0f)
                 // Snapshot mask bitmap at this composition point – don't !! inside graphicsLayer
                 // or a race with DisposableEffect onDispose (null + recycle) causes NPE at 567.
                 val currentMask = maskBitmap?.takeIf {

@@ -91,21 +91,22 @@ internal fun CameraViewModel.captureSinglePhoto() {
                         }
                         viewModelScope.launch {
                             val uri = withContext(Dispatchers.IO) {
-                                val decoded = cropToRect(
-                                    BitmapFactory.decodeByteArray(sourceJpeg, 0, sourceJpeg.size),
-                                    cropRect
-                                )
-                                // The bokeh renderer folds the colour matrix and the mirror in
-                                // as it composites; it leaves `decoded` alone if it can't run,
-                                // so fall back to the plain colour pass.
-                                val adjusted = (if (bokeh) {
-                                    stillBokeh.render(decoded, degrees, strength, warmth, shadows, mirror)
-                                } else null)
-                                    ?: applyColorAdjustments(decoded, warmth, shadows, mirror)
-                                val name = "IMG_${MediaStoreSaver.timestamp()}.jpg"
-                                saveStillBitmap(name, adjusted)
-                                    ?.also { writeCaptureExif(it, sourceJpeg, degrees, mirrored = mirror) }
-                                    .also { adjusted.recycle() }
+                                runCatching {
+                                    val decodedRaw = BitmapFactory.decodeByteArray(sourceJpeg, 0, sourceJpeg.size)
+                                        ?: error("Could not decode captured frame")
+                                    val decoded = cropToRect(decodedRaw, cropRect)
+                                    // The bokeh renderer folds the colour matrix and the mirror in
+                                    // as it composites; it leaves `decoded` alone if it can't run,
+                                    // so fall back to the plain colour pass.
+                                    val adjusted = (if (bokeh) {
+                                        stillBokeh.render(decoded, degrees, strength, warmth, shadows, mirror)
+                                    } else null)
+                                        ?: applyColorAdjustments(decoded, warmth, shadows, mirror)
+                                    val name = "IMG_${MediaStoreSaver.timestamp()}.jpg"
+                                    saveStillBitmap(name, adjusted)
+                                        ?.also { writeCaptureExif(it, sourceJpeg, degrees, mirrored = mirror) }
+                                        .also { adjusted.recycle() }
+                                }.getOrNull()
                             }
                             finishCapture(uri)
                         }
@@ -169,6 +170,7 @@ internal fun CameraViewModel.captureSinglePhoto() {
  */
 fun CameraViewModel.capturePhotoForResult(onSaved: (Bitmap?) -> Unit, onError: () -> Unit) {
     val capture = imageCapture ?: return onError()
+    if (_isCapturing.value) return
     _isCapturing.value = true
     val executor = ContextCompat.getMainExecutor(app)
     val outputUri = resultOutputUri

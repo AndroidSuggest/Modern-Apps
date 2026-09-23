@@ -2,6 +2,7 @@ package com.vayunmathur.camera.util
 
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.graphics.Rect
 import android.net.Uri
 import android.util.Log
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
@@ -62,6 +63,9 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
             .setFlashMode(getImageCaptureFlashMode())
             .build()
         imageCapture = capture
+        // Match the still crop the normal photo session uses (1:1 / 16:9 / 4:3), or
+        // night-extension shots always save full-frame while the preview shows cropped.
+        capture.setCropAspectRatio(currentCropAspectRatio())
         boundCamera = bindSession(provider, owner, nightSelector, preview, capture)
 
         val pending = prepareStillSave("IMG_${MediaStoreSaver.timestamp()}.jpg")
@@ -212,8 +216,11 @@ internal fun CameraViewModel.captureNightBurst(exposure: NightExposure, onDone: 
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
                     try {
-                        // toBitmap() is provided by CameraX (used also in BokehAnalyzer)
-                        val raw = image.toBitmap()
+                        // toBitmap() is provided by CameraX (used also in BokehAnalyzer).
+                        // Apply the session's cropRect (setCropAspectRatio): the raw frame is
+                        // always full-frame, so without this the burst ignores the 1:1/16:9 crop.
+                        val cropRect = android.graphics.Rect(image.cropRect)
+                        val raw = cropToRect(image.toBitmap(), cropRect)
                         val matrix = Matrix().apply {
                             postRotate(image.imageInfo.rotationDegrees.toFloat())
                             if (mirror) postScale(-1f, 1f)

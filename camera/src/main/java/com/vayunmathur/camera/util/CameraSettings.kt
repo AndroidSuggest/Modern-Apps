@@ -9,9 +9,15 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 
 internal fun CameraViewModel.loadSettings() {
-    ds.getString("camera_flash")?.let { _flashMode.value = FlashMode.valueOf(it) }
-    ds.getString("camera_timer")?.let { _timerDuration.value = TimerDuration.valueOf(it) }
-    ds.getString("camera_aspect_ratio")?.let { _aspectRatio.value = AspectRatioOption.valueOf(it) }
+    ds.getString("camera_flash")?.let {
+        runCatching { _flashMode.value = FlashMode.valueOf(it) }
+    }
+    ds.getString("camera_timer")?.let {
+        runCatching { _timerDuration.value = TimerDuration.valueOf(it) }
+    }
+    ds.getString("camera_aspect_ratio")?.let {
+        runCatching { _aspectRatio.value = AspectRatioOption.valueOf(it) }
+    }
     ds.getString("camera_video_codec")?.let {
         _videoCodec.value = try { VideoCodec.valueOf(it) } catch (_: Exception) {
             when {

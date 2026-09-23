@@ -70,11 +70,6 @@ fun CameraViewModel.applyManualControls() {
     }
 }
 
-internal fun CameraViewModel.resetManualControls() {
-    _manualIsoIndex.value = 0
-    _exposureTimeIndex.value = 0
-}
-
 /** Reads the bound sensor's ISO range → stop list for the manual ISO control. */
 @OptIn(ExperimentalCamera2Interop::class)
 internal fun CameraViewModel.readManualControlRanges() {
@@ -99,6 +94,9 @@ internal fun CameraViewModel.readManualControlRanges() {
             Log.w("NightPreview", "readManualControlRanges() isoRange null, emitting emptyList -> ISO bar notAvailable")
             emptyList()
         }
+        // The stop list is per-lens: a new lens can be shorter, so re-clamp the persisted
+        // index instead of pointing past the end (ISO bar read getOrNull → blank label).
+        _manualIsoIndex.value = _manualIsoIndex.value.coerceIn(0, _isoStops.value.size)
     } catch (e: Exception) {
         Log.e("NightPreview", "readManualControlRanges() FAILED (was Warn, hidden) – could affect ISO bar + manual controls", e)
     }

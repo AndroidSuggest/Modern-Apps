@@ -8,6 +8,8 @@ internal fun CameraModesPane(
     cameraMode: CameraMode,
     isPhotoType: Boolean,
     sloMoSupported: Boolean?,
+    captureForResult: Boolean,
+    videoPickerEnabled: Boolean = true,
     onModeSelected: (CameraMode) -> Unit,
     iconRotation: Float,
     onPickerChanged: (Boolean) -> Unit,
@@ -17,6 +19,7 @@ internal fun CameraModesPane(
         cameraMode = cameraMode,
         isPhotoType = isPhotoType,
         sloMoSupported = sloMoSupported,
+        captureForResult = captureForResult,
         onModeSelected = onModeSelected
     )
 
@@ -25,6 +28,7 @@ internal fun CameraModesPane(
         isPhotoType = isPhotoType,
         iconRotation = iconRotation,
         onPickerChanged = onPickerChanged,
-        onSettingsClick = onSettingsClick
+        onSettingsClick = onSettingsClick,
+        videoPickerEnabled = videoPickerEnabled,
     )
 }

@@ -54,7 +54,12 @@ fun CameraScreen(
 
     // The shutter action, shared by the on-screen button and the volume-key (hardware) shutter.
     val performCapture: () -> Unit = {
-        view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+        // Post to the view's message queue: the hardware-shutter path collects shutterEvents
+        // off the composition thread, and performHapticFeedback must run on the UI thread
+        // (ThreadConstraint lint). post{} is a no-op hop when already on the UI thread.
+        view.post {
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+        }
         if (state.longExposureProgress <= 0f) when {
             state.cameraMode == CameraMode.PHOTOSPHERE -> {
                 if (state.panoSweeping) viewModel.stopPhotosphere() else viewModel.startPhotosphere()
@@ -104,9 +109,11 @@ fun CameraScreen(
                 CameraTopBar(
                     flashMode = state.flashMode,
                     torchEnabled = state.torchEnabled,
+                    hasFlashUnit = state.hasFlashUnit,
                     gridEnabled = state.gridEnabled,
                     levelEnabled = state.levelEnabled,
                     aspectRatio = state.aspectRatio,
+                    stillCropEnabled = state.cameraMode == CameraMode.PHOTO || state.cameraMode == CameraMode.PORTRAIT,
                     isPhotoType = state.isPhotoType,
                     isVideoType = state.isVideoType,
                     micMuted = state.micMuted,

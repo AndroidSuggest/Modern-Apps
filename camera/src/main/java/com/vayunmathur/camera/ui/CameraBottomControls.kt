@@ -111,10 +111,12 @@ internal fun CameraBottomControls(
                 cameraMode = cameraMode,
                 isPhotoType = state.isPhotoType,
                 sloMoSupported = state.sloMoSupported,
+                captureForResult = onCaptureResult != null,
                 onModeSelected = { viewModel.switchCameraMode(it) },
                 iconRotation = animatedRotation,
                 onPickerChanged = onPickerChanged,
                 onSettingsClick = { backStack.add(Route.Settings) },
+                videoPickerEnabled = onCaptureResult == null,
             )
         },
         sideBySide = expandedSide,

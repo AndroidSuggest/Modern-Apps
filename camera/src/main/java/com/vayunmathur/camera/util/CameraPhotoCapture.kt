@@ -14,14 +14,21 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 fun CameraViewModel.takePhoto() {
+    // Second tap cancels an armed timer, mirroring toggleRecording().
+    if (_timerCountdown.value > 0) {
+        cancelTimerCountdown()
+        return
+    }
+    if (_isCapturing.value || _burstActive.value) return
     val timer = _timerDuration.value
     if (timer.seconds > 0) {
-        viewModelScope.launch {
+        timerCountdownJob = viewModelScope.launch {
             for (i in timer.seconds downTo 1) {
                 _timerCountdown.value = i
                 kotlinx.coroutines.delay(1000)
             }
             _timerCountdown.value = 0
+            timerCountdownJob = null
             capturePhoto()
         }
     } else {
@@ -30,7 +37,10 @@ fun CameraViewModel.takePhoto() {
 }
 
 internal fun CameraViewModel.capturePhoto() {
-    if (imageCapture == null) return
+    if (imageCapture == null || _isCapturing.value || _burstActive.value) return
+    // Claim in-flight synchronously so a second shutter tap (or a stacked timer firing)
+    // can't start a concurrent capture; every path below clears it on completion.
+    _isCapturing.value = true
     when {
         // Night Sight mode (or auto-engaged night): the preview is bound with the vendor NIGHT
         // extension, so a plain single capture through that ImageCapture lets the vendor pipeline
@@ -55,19 +65,32 @@ internal fun CameraViewModel.capturePhoto() {
  * is reached. Uses the plain capture path (no night/manual special-casing).
  */
 fun CameraViewModel.startBurst() {
-    if (_burstActive.value) return
+    if (_burstActive.value || _isCapturing.value) return
+    // A burst is immediate: an armed shutter timer no longer applies.
+    cancelTimerCountdown()
     val capture = imageCapture ?: return
+    // Mark both in-flight: a single capture must not start mid-burst and a burst must not
+    // start mid-capture. Releasing the shutter always goes through finishBurst().
+    _isCapturing.value = true
     _burstActive.value = true
     _burstCount.value = 0
     val ts = MediaStoreSaver.timestamp()
 
+    fun finishBurst() {
+        _burstActive.value = false
+        _isCapturing.value = false
+    }
+
     fun shootNext(n: Int) {
         if (!_burstActive.value || n > CameraViewModel.BURST_MAX) {
-            _burstActive.value = false
+            finishBurst()
             return
         }
+        // prepareStillSave falls back to MediaStore, so null is unexpected — but a null
+        // here must terminate, never retry (the old `?: run { shootNext(n + 1) }` looped
+        // forever when the save target was unusable).
         val pending = prepareStillSave("IMG_${ts}_BURST${n}.jpg") ?: run {
-            shootNext(n + 1)
+            finishBurst()
             return
         }
         val outputOptions = pending.outputOptions
@@ -94,6 +117,9 @@ fun CameraViewModel.startBurst() {
 }
 
 fun CameraViewModel.stopBurst() {
+    // Release path for the press-and-hold gesture: only clears the loop flag. The in-flight
+    // frame's save callback finishes the sequence (finishBurst) so a release between frames
+    // still lands the shot already exposing.
     _burstActive.value = false
 }
 
@@ -171,7 +197,7 @@ internal fun CameraViewModel.assembleAndSaveMotionPhoto(
     // In-memory captures carry no ImageCapture.Metadata, so stamp GPS/orientation into the
     // still bytes here (issue #731). Must happen BEFORE the MP4 trailer is appended —
     // ExifInterface only understands a pure JPEG.
-    val stillBytes = stampStillBytes(jpegBytes, degrees)
+    val stillBytes = stampStillBytes(jpegBytes, degrees, mirrorCaptures)
     // Only frames matching the newest frame's dimensions are encoded (a rebind can change size).
     val sized = frames.takeIf { it.isNotEmpty() }?.let { list ->
         val w = list.last().bitmap.width

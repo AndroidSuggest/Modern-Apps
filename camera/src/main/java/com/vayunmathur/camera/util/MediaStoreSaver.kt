@@ -23,8 +23,12 @@ object MediaStoreSaver {
         year(); monthNumber(); day(); char('_'); hour(); minute(); second()
     }
 
-    fun timestamp(): String =
-        Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).format(FileStamp)
+    // Millisecond suffix: two singles in the same second otherwise share IMG_<ts>.jpg
+    // (burst adds its own suffix, singles don't), producing confusing duplicates.
+    fun timestamp(): String {
+        val now = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+        return now.format(FileStamp) + "_%03d".format(now.nanosecond / 1_000_000)
+    }
 
     fun imageValues(displayName: String): ContentValues = contentValues(displayName, "image/jpeg")
 
@@ -43,8 +47,18 @@ object MediaStoreSaver {
         quality: Int = 95,
     ): Uri? {
         val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return null
-        resolver.openOutputStream(uri)?.use { os ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, os)
+        val ok = try {
+            resolver.openOutputStream(uri)?.use { os ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, os)
+            } ?: false
+        } catch (e: Exception) {
+            android.util.Log.w("MediaStoreSaver", "saveBitmap write failed for $uri", e)
+            false
+        }
+        // A failed write must not leave a 0-byte ghost row that becomes the gallery thumbnail.
+        if (!ok) {
+            try { resolver.delete(uri, null, null) } catch (_: Exception) {}
+            return null
         }
         return uri
     }
@@ -56,8 +70,18 @@ object MediaStoreSaver {
         bytes: ByteArray,
     ): Uri? {
         val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return null
-        resolver.openOutputStream(uri)?.use { os ->
-            os.write(bytes)
+        val ok = try {
+            resolver.openOutputStream(uri)?.use { os ->
+                os.write(bytes)
+            }
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("MediaStoreSaver", "saveJpegBytes write failed for $uri", e)
+            false
+        }
+        if (!ok) {
+            try { resolver.delete(uri, null, null) } catch (_: Exception) {}
+            return null
         }
         return uri
     }
@@ -106,8 +130,18 @@ object MediaStoreSaver {
 
     fun saveVideoFile(resolver: ContentResolver, values: ContentValues, file: File): Uri? {
         val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: return null
-        resolver.openOutputStream(uri)?.use { os ->
-            file.inputStream().use { input -> input.copyTo(os) }
+        val ok = try {
+            resolver.openOutputStream(uri)?.use { os ->
+                file.inputStream().use { input -> input.copyTo(os) }
+            }
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("MediaStoreSaver", "saveVideoFile write failed for $uri", e)
+            false
+        }
+        if (!ok) {
+            try { resolver.delete(uri, null, null) } catch (_: Exception) {}
+            return null
         }
         return uri
     }

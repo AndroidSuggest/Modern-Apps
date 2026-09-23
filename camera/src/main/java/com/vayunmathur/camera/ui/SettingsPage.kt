@@ -76,6 +76,14 @@ fun <T : NavKey> SettingsPage(backStack: NavBackStack<T>, viewModel: CameraViewM
         if (granted) viewModel.updateLocation()
     }
 
+    // Publish the foreground route so MainActivity's hardware shutter only fires on camera.
+    // onDispose restores "camera" (not null): popping Settings always returns to Camera, and
+    // CameraScreen's entry effect won't re-run if NavDisplay kept it composed underneath.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        viewModel.foregroundRoute = "settings"
+        onDispose { viewModel.foregroundRoute = "camera" }
+    }
+
     // ACTION_OPEN_DOCUMENT_TREE via a hand-built intent: the stock
     // OpenDocumentTree contract doesn't set FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
     // which we need to keep the folder across restarts.

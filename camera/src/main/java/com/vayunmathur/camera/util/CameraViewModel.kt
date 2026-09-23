@@ -574,6 +574,21 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
         sloMoFps = fps
     }
 
+    /** Cancels an armed photo/video shutter timer (second tap dismisses it). */
+    fun cancelTimerCountdown() {
+        timerCountdownJob?.cancel()
+        timerCountdownJob = null
+        _timerCountdown.value = 0
+    }
+
+    /**
+     * Which camera route is in the foreground ("camera" vs "settings"), or null before first
+     * composition. Set by CameraScreenEffects/SettingsPage; MainActivity gates the hardware
+     * shutter on it so volume/space keys pressed in Settings don't queue a surprise capture
+     * (and volume keys keep adjusting volume there).
+     */
+    @Volatile var foregroundRoute: String? = null
+
     init {
         loadSettings()
         panoramaEngine.onSweepComplete = { finishPanoramaSweep() }
@@ -661,9 +676,12 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     // Last-capture persistence lives in CameraSettings.kt as an extension.
 
     fun switchCameraMode(newMode: CameraMode) {
-        // A new mode starts with a clean night-detection slate (teardown no longer
-        // resets it, since it also runs on night<->normal preview rebinds).
-        if (newMode != _cameraMode.value) resetNightModeDetection()
+        // A pending shutter timer belongs to the old mode: firing capturePhoto() into the
+        // new session would capture unprompted (and with the wrong use cases bound).
+        if (newMode != _cameraMode.value) {
+            cancelTimerCountdown()
+            resetNightModeDetection()
+        }
         // Slo-Mo is back-camera only; enforce it when entering Slo-Mo.
         if (newMode == CameraMode.SLOW_MO) {
             if (_lensFacing.value != CameraSelector.LENS_FACING_BACK) {

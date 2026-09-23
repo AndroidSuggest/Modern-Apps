@@ -166,11 +166,3 @@ internal fun CameraViewModel.stopRecordingTimer() {
     recordingTimerJob?.cancel()
     _recordingDurationSec.value = 0
 }
-
-fun CameraViewModel.triggerShutter() {
-    _shutterEvents.tryEmit(Unit)
-}
-
-fun CameraViewModel.setSloMoFps(fps: Int) {
-    sloMoFps = fps
-}

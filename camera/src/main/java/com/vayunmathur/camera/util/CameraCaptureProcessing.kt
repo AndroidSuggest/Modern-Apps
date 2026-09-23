@@ -54,13 +54,16 @@ internal fun downscaledThumbnail(image: ImageProxy, mirror: Boolean): Bitmap {
         if (mirror) postScale(-1f, 1f)
     }
     val upright = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, matrix, true)
+    if (upright !== raw) raw.recycle()
     val maxSide = 512
     val scale = maxSide.toFloat() / maxOf(upright.width, upright.height)
     if (scale >= 1f) return upright
     return upright.scale(
         (upright.width * scale).roundToInt(),
         (upright.height * scale).roundToInt()
-    )
+    ).also {
+        if (it !== upright) upright.recycle()
+    }
 }
 
 /**
@@ -130,14 +133,18 @@ internal fun CameraViewModel.writeCaptureExif(uri: Uri, sourceJpeg: ByteArray?, 
  * kept it (issue #731).
  *
  * Stamping happens BEFORE any Motion Photo trailer is appended so ExifInterface only ever
- * rewrites a pure JPEG. When there is no location to stamp the bytes are returned untouched
- * (bit-for-bit, Ultra HDR gain map included).
+ * rewrites a pure JPEG. When location is off only orientation is stamped (no GPS rewrite);
+ * the Ultra HDR gain map survives either way since ExifInterface preserves it.
  * Must be called off the main thread (file I/O).
  */
-internal fun CameraViewModel.stampStillBytes(jpeg: ByteArray, rotationDegrees: Int): ByteArray {
+internal fun CameraViewModel.stampStillBytes(jpeg: ByteArray, rotationDegrees: Int, mirrored: Boolean = false): ByteArray {
     updateLocation()
     val loc = if (_locationEnabled.value) lastLocation else null
-        ?: return jpeg
+    // In-memory captures carry no ImageCapture.Metadata, so orientation must ALWAYS be
+    // stamped — not just when GPS is on — or motion shots save sideways with location off.
+    // Mirrored front shots need the inverted rotation (FLIP∘ROTATE(θ)∘FLIP = ROTATE(−θ)),
+    // matching writeCaptureExif().
+    val effectiveDegrees = if (mirrored) (360 - rotationDegrees) % 360 else rotationDegrees
     var tmp: java.io.File? = null
     return try {
         tmp = java.io.File.createTempFile("stamp_", ".jpg", app.cacheDir)
@@ -145,14 +152,16 @@ internal fun CameraViewModel.stampStillBytes(jpeg: ByteArray, rotationDegrees: I
         val exif = ExifInterface(tmp.absolutePath)
         exif.setAttribute(
             ExifInterface.TAG_ORIENTATION,
-            when ((rotationDegrees % 360 + 360) % 360) {
+            when ((effectiveDegrees % 360 + 360) % 360) {
                 90 -> ExifInterface.ORIENTATION_ROTATE_90
                 180 -> ExifInterface.ORIENTATION_ROTATE_180
                 270 -> ExifInterface.ORIENTATION_ROTATE_270
                 else -> ExifInterface.ORIENTATION_NORMAL
             }.toString()
         )
-        exif.setGpsInfo(loc)
+        // GPS only when the user opted in; orientation is always stamped above. Skipping
+        // setGpsInfo with no location keeps the bytes bit-for-bit (Ultra HDR gain map intact).
+        if (loc != null) exif.setGpsInfo(loc)
         exif.saveAttributes()
         tmp.readBytes()
     } catch (e: Exception) {

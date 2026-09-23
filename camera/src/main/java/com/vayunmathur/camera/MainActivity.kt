@@ -108,9 +108,12 @@ class MainActivity : ComponentActivity() {
     // button (the CameraScreen collects shutterEvents and picks the right action for the mode).
     // Desktop keyboards cannot send volume keys, so Esc/space-preview also triggers the shutter
     // without disturbing phones (phones rarely carry a hardware keyboard; onKeyDown still wins).
+    // Gated on the camera route being foreground so keys pressed in Settings don't take a
+    // photo behind your back (and volume keeps adjusting volume there).
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        return if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ||
-            keyCode == KeyEvent.KEYCODE_SPACE || keyCode == KeyEvent.KEYCODE_ESCAPE
+        return if ((keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ||
+            keyCode == KeyEvent.KEYCODE_SPACE || keyCode == KeyEvent.KEYCODE_ESCAPE) &&
+            viewModel.foregroundRoute == "camera"
         ) {
             viewModel.triggerShutter()
             true
@@ -119,9 +122,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Consume the matching key-up so the system volume UI doesn't appear.
+    // Consume the matching key-up so the system volume UI doesn't appear (camera route only).
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        return if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+        return if ((keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) &&
+            viewModel.foregroundRoute == "camera") {
             true
         } else {
             super.onKeyUp(keyCode, event)

@@ -96,10 +96,13 @@ suspend fun CameraViewModel.setupVideoSession(): Boolean {
             recordingWithHevc = hevc
             return if (snapshot) {
                 // Extra ImageCapture use case enables taking a still while recording (SDR JPEG).
+                // Crop matches the still aspect ratio like the photo session, or snapshots
+                // always save full-frame while the preview shows cropped.
                 val still = ImageCapture.Builder()
                     .setFlashMode(ImageCapture.FLASH_MODE_OFF)
                     .build()
                 imageCapture = still
+                still.setCropAspectRatio(currentCropAspectRatio())
                 bindSession(provider, owner, lensSelector, preview, capture, still)
             } else {
                 imageCapture = null

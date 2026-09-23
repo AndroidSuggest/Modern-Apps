@@ -47,6 +47,7 @@ fun CameraViewModel.toggleHighSpeedRecording() {
 
 @android.annotation.SuppressLint("MissingPermission")
 internal fun CameraViewModel.startHighSpeedRecording() {
+    if (_isRecording.value) return
     val videoCapture = highSpeedVideoCapture ?: return
 
     val timestamp = MediaStoreSaver.timestamp()
@@ -120,6 +121,7 @@ fun CameraViewModel.toggleRecording() {
 
 @android.annotation.SuppressLint("MissingPermission")
 internal fun CameraViewModel.startRecording() {
+    if (_isRecording.value) return
     val capture = videoCapture ?: return
 
     val timestamp = MediaStoreSaver.timestamp()
@@ -212,6 +214,7 @@ fun CameraViewModel.toggleMicMuted() {
  * video session. No-op if the device couldn't bind the extra ImageCapture use case.
  */
 fun CameraViewModel.captureVideoSnapshot() {
+    if (_isCapturing.value) return
     val capture = imageCapture ?: return
     val pending = prepareStillSave("IMG_${MediaStoreSaver.timestamp()}.jpg") ?: return
     val outputOptions = pending.outputOptions
@@ -231,11 +234,17 @@ fun CameraViewModel.captureVideoSnapshot() {
     )
 }
 
-fun CameraViewModel.startPanorama() = panoramaEngine.startSweep()
+fun CameraViewModel.startPanorama() {
+    if (panoramaEngine.isSweeping.value || panoramaEngine.isStitching.value || _isCapturing.value) return
+    panoramaEngine.startSweep()
+}
 
 fun CameraViewModel.stopPanorama() = finishPanoramaSweep()
 
-fun CameraViewModel.startPhotosphere() = panoramaEngine.startSweep(fullSphere = true)
+fun CameraViewModel.startPhotosphere() {
+    if (panoramaEngine.isSweeping.value || panoramaEngine.isStitching.value || _isCapturing.value) return
+    panoramaEngine.startSweep(fullSphere = true)
+}
 
 fun CameraViewModel.stopPhotosphere() = finishPanoramaSweep()
 

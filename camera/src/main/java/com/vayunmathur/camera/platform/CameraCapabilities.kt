@@ -5,6 +5,8 @@ import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import com.vayunmathur.camera.domain.LensSelectionLogic
 import com.vayunmathur.camera.util.CameraViewModel
+import com.vayunmathur.camera.util.applyExposureCompensation
+import com.vayunmathur.camera.util.applyManualControls
 import com.vayunmathur.camera.util.readManualControlRanges
 import com.vayunmathur.camera.util.refreshNightExtensionUsable
 import com.vayunmathur.camera.util.restoreZoom
@@ -52,6 +54,20 @@ suspend fun CameraViewModel.refreshCapabilities(bound: Camera, lensId: String?) 
     restoreZoom(minZoom, maxZoom)
 
     readManualControlRanges()
+
+    // Re-assert manual shutter/ISO and exposure compensation onto the fresh bind: the
+    // session effect only pushes them on value change, so without this a rebind silently
+    // drops them (video mode never applied them at all).
+    try {
+        applyManualControls()
+    } catch (e: Exception) {
+        Log.w("LensSelector", "Could not re-apply manual controls", e)
+    }
+    try {
+        applyExposureCompensation(_exposureCompensation.value)
+    } catch (e: Exception) {
+        Log.w("LensSelector", "Could not re-apply exposure compensation", e)
+    }
 
     val hasFlash = try {
         bound.cameraInfo.hasFlashUnit()

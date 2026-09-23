@@ -566,7 +566,6 @@ suspend fun CameraViewModel.setupPortraitSession(): Boolean {
 
         val zsPor = boundCamera?.cameraInfo?.zoomState?.value
         Log.d("NightPreview", "setupPortraitSession() final zoom min=${zsPor?.minZoomRatio} max=${zsPor?.maxZoomRatio} ratio=${zsPor?.zoomRatio} – if max=1, zoom bar will show only 1x")
-        _sloMoSupported.value = true
         applyManualControls()
         boundCamera?.let { refreshCapabilities(it, portraitBoundLensId) }
         onSessionBound()

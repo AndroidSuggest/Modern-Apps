@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.vayunmathur.camera.R
 import com.vayunmathur.camera.util.CameraMode
 
 @Composable
@@ -30,6 +32,7 @@ internal fun ModeSelector(
     cameraMode: CameraMode,
     isPhotoType: Boolean,
     sloMoSupported: Boolean?,
+    captureForResult: Boolean,
     onModeSelected: (CameraMode) -> Unit
 ) {
     Row(
@@ -37,22 +40,27 @@ internal fun ModeSelector(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // IMAGE_CAPTURE callers wait on a still: lock out video/slo-mo/pano/sphere so the
+        // user can't wander into a mode whose shutter never resolves the caller's intent.
         val modes = if (isPhotoType) {
-            listOf(
-                CameraMode.PORTRAIT to "Portrait",
-                CameraMode.PHOTO to "Photo",
-                CameraMode.PANORAMA to "Pano",
-                CameraMode.PHOTOSPHERE to "Sphere"
+            val photoModes = listOf(
+                CameraMode.PORTRAIT to stringResource(R.string.mode_portrait),
+                CameraMode.PHOTO to stringResource(R.string.mode_photo),
+            )
+            if (captureForResult) photoModes
+            else photoModes + listOf(
+                CameraMode.PANORAMA to stringResource(R.string.mode_panorama),
+                CameraMode.PHOTOSPHERE to stringResource(R.string.mode_photosphere),
             )
         } else {
             // Only include Slo-Mo when the device's back camera actually supports true HFR.
             buildList {
                 if (sloMoSupported != false) {
-                    add(CameraMode.SLOW_MO to "Slo-Mo")
+                    add(CameraMode.SLOW_MO to stringResource(R.string.mode_slo_mo))
                 }
-                add(CameraMode.VIDEO to "Video")
-                add(CameraMode.CINEMATIC to "Cinematic")
-                add(CameraMode.TIMELAPSE to "Timelapse")
+                add(CameraMode.VIDEO to stringResource(R.string.mode_video))
+                add(CameraMode.CINEMATIC to stringResource(R.string.mode_cinematic))
+                add(CameraMode.TIMELAPSE to stringResource(R.string.mode_timelapse))
             }
         }
         modes.forEach { (mode, label) ->
@@ -77,7 +85,8 @@ internal fun BottomBar(
     isPhotoType: Boolean,
     iconRotation: Float,
     onPickerChanged: (Boolean) -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    videoPickerEnabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier
@@ -118,10 +127,12 @@ internal fun BottomBar(
                 modifier = Modifier
                     .size(36.dp)
                     .selectedPill(!isPhotoType, CircleShape, Color(0xFF5C5C5C))
-                    .clickable { if (isPhotoType) onPickerChanged(false) },
+                    // IMAGE_CAPTURE callers wait on a still: the video picker stays disabled so
+                    // the user can't enter a mode whose shutter never resolves the intent.
+                    .clickable(enabled = videoPickerEnabled) { if (isPhotoType) onPickerChanged(false) },
                 contentAlignment = Alignment.Center
             ) {
-                IconVideoCamera(Modifier.size(20.dp).rotate(iconRotation), Color.White)
+                IconVideoCamera(Modifier.size(20.dp).rotate(iconRotation), if (videoPickerEnabled) Color.White else Color(0xFF777777))
             }
         }
 

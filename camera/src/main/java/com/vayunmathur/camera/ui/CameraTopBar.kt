@@ -47,9 +47,11 @@ import com.vayunmathur.library.ui.Text
 internal fun CameraTopBar(
     flashMode: FlashMode,
     torchEnabled: Boolean,
+    hasFlashUnit: Boolean,
     gridEnabled: Boolean,
     levelEnabled: Boolean,
     aspectRatio: AspectRatioOption,
+    stillCropEnabled: Boolean,
     isPhotoType: Boolean,
     isVideoType: Boolean,
     micMuted: Boolean,
@@ -72,26 +74,30 @@ internal fun CameraTopBar(
         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val flashBg = if (torchEnabled || flashMode != FlashMode.OFF) Color(0xFF3C3C3C) else Color.Transparent
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(flashBg, CircleShape)
-                .combinedClickable(
-                    onClick = onFlashToggle,
-                    onLongClick = onTorchToggle
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            val flashIconModifier = Modifier.size(22.dp).rotate(iconRotation)
-            if (torchEnabled) {
-                IconFlashlight(flashIconModifier, Color.White)
-            } else {
-                when (flashMode) {
-                    FlashMode.ON -> IconFlashOn(flashIconModifier, Color.White)
-                    FlashMode.OFF -> IconFlashOff(flashIconModifier, Color.White)
-                    FlashMode.AUTO -> IconFlashAuto(flashIconModifier, Color.White)
+        // Flash/torch share the same LED: without a flash unit (some front lenses) the
+        // control is dead, so hide it instead of showing a button that does nothing.
+        if (hasFlashUnit) {
+            val flashBg = if (torchEnabled || flashMode != FlashMode.OFF) Color(0xFF3C3C3C) else Color.Transparent
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(flashBg, CircleShape)
+                    .combinedClickable(
+                        onClick = onFlashToggle,
+                        onLongClick = onTorchToggle
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                val flashIconModifier = Modifier.size(22.dp).rotate(iconRotation)
+                if (torchEnabled) {
+                    IconFlashlight(flashIconModifier, Color.White)
+                } else {
+                    when (flashMode) {
+                        FlashMode.ON -> IconFlashOn(flashIconModifier, Color.White)
+                        FlashMode.OFF -> IconFlashOff(flashIconModifier, Color.White)
+                        FlashMode.AUTO -> IconFlashAuto(flashIconModifier, Color.White)
+                    }
                 }
             }
         }
@@ -106,22 +112,24 @@ internal fun CameraTopBar(
             IconGrid(Modifier.size(22.dp).rotate(iconRotation), Color.White)
         }
 
-        // The ratio as text: an icon of three nested rectangles does not tell you which one is
-        // active, and the enum already carries "16:9" / "4:3" / "1:1".
-        val aspectLabel = stringResource(R.string.settings_aspect_ratio)
-        IconButton(
-            onClick = onAspectCycle,
-            modifier = Modifier.height(40.dp).widthIn(min = 40.dp)
-        ) {
-            Text(
-                aspectRatio.label,
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .rotate(iconRotation)
-                    .semantics { contentDescription = aspectLabel },
-            )
+        // The still crop only binds on the photo sessions (PHOTO/PORTRAIT ImageCapture):
+        // hide the picker elsewhere so it can't promise a 1:1 video or pano it won't deliver.
+        if (stillCropEnabled) {
+            val aspectLabel = stringResource(R.string.settings_aspect_ratio)
+            IconButton(
+                onClick = onAspectCycle,
+                modifier = Modifier.height(40.dp).widthIn(min = 40.dp)
+            ) {
+                Text(
+                    aspectRatio.label,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .rotate(iconRotation)
+                        .semantics { contentDescription = aspectLabel },
+                )
+            }
         }
 
         if (isPhotoType) {

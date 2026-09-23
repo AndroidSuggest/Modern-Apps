@@ -103,12 +103,18 @@ internal fun SettingsButtonRow(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // The sliders below bake into saved stills (PHOTO/PORTRAIT) or drive the live
+        // preview's 3A (PHOTO only). Offer them only where they do something: elsewhere
+        // they'd silently move a preview effect that the capture path drops.
+        val bakesStills = cameraMode == CameraMode.PHOTO || cameraMode == CameraMode.PORTRAIT
         val settings = buildList<Pair<CameraSetting, @Composable (Modifier, Color) -> Unit>> {
-            add(CameraSetting.BRIGHTNESS to { m, c -> IconSunny(m, c) })
-            add(CameraSetting.SHADOWS to { m, c -> IconContrast(m, c) })
-            add(CameraSetting.WARMTH to { m, c -> IconLightbulb(m, c) })
-            add(CameraSetting.EXPOSURE_TIME to { m, c -> IconTimer(m, c) })
+            if (bakesStills) {
+                add(CameraSetting.BRIGHTNESS to { m, c -> IconSunny(m, c) })
+                add(CameraSetting.SHADOWS to { m, c -> IconContrast(m, c) })
+                add(CameraSetting.WARMTH to { m, c -> IconLightbulb(m, c) })
+            }
             if (cameraMode == CameraMode.PHOTO) {
+                add(CameraSetting.EXPOSURE_TIME to { m, c -> IconTimer(m, c) })
                 add(CameraSetting.ISO to { m, c -> IconIso(m, c) })
             }
             if (cameraMode == CameraMode.PORTRAIT) {

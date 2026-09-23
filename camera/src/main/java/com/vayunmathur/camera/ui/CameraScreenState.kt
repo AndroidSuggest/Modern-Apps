@@ -12,10 +12,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.vayunmathur.camera.util.AspectRatioOption
+import com.vayunmathur.camera.util.AudioInputSource
 import com.vayunmathur.camera.util.CameraMode
 import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.camera.util.FlashMode
 import com.vayunmathur.camera.util.TimerDuration
+import com.vayunmathur.camera.util.VideoCodec
 
 /**
  * All UI state read by [CameraScreen], collected from [CameraViewModel] flows in one
@@ -25,7 +27,7 @@ import com.vayunmathur.camera.util.TimerDuration
  * Collection happens in [rememberCameraScreenState] (a @Composable context); this class is a
  * plain snapshot holder so the screen stays a thin layout.
  */
-internal class CameraScreenState(
+    internal class CameraScreenState(
     val cameraMode: CameraMode,
     val lensFacing: Int,
     val selectedLens: com.vayunmathur.camera.domain.PhysicalLens?,
@@ -33,6 +35,8 @@ internal class CameraScreenState(
     val hasFlashUnit: Boolean,
     val flashMode: FlashMode,
     val torchEnabled: Boolean,
+    val videoCodec: VideoCodec,
+    val audioInputSource: AudioInputSource,
     val isRecording: Boolean,
     val recordingDuration: Long,
     val timerCountdown: Int,
@@ -110,10 +114,16 @@ internal class CameraScreenState(
     val useNightPreview get() = sessionKind == SessionKind.PHOTO && cameraMode == CameraMode.PHOTO &&
         nightModeActive && nightExtAvailable
 
-    val previewAspectRatio get() = when (aspectRatio) {
-        AspectRatioOption.RATIO_16_9 -> 9f / 16f
-        AspectRatioOption.RATIO_4_3 -> 3f / 4f
-        AspectRatioOption.RATIO_1_1 -> 1f
+    val previewAspectRatio get() = when {
+        // The still crop only exists on the photo sessions (PHOTO/PORTRAIT ImageCapture).
+        // Video/HFR/pano never crop to it, so letterboxing their preview to it lies about
+        // the framing — they show their native 4:3 frame instead.
+        cameraMode == CameraMode.PHOTO || cameraMode == CameraMode.PORTRAIT -> when (aspectRatio) {
+            AspectRatioOption.RATIO_16_9 -> 9f / 16f
+            AspectRatioOption.RATIO_4_3 -> 3f / 4f
+            AspectRatioOption.RATIO_1_1 -> 1f
+        }
+        else -> 3f / 4f
     }
 
     val mirrorPreview get() = lensFacing == CameraSelector.LENS_FACING_FRONT && !mirrorFront
@@ -128,6 +138,8 @@ internal fun rememberCameraScreenState(viewModel: CameraViewModel): CameraScreen
     val hasFlashUnit by viewModel.hasFlashUnit.collectAsState()
     val flashMode by viewModel.flashMode.collectAsState()
     val torchEnabled by viewModel.torchEnabled.collectAsState()
+    val videoCodec by viewModel.videoCodec.collectAsState()
+    val audioInputSource by viewModel.audioInputSource.collectAsState()
     val isRecording by viewModel.isRecording.collectAsState()
     val recordingDuration by viewModel.recordingDurationSec.collectAsState()
     val timerCountdown by viewModel.timerCountdown.collectAsState()
@@ -183,8 +195,8 @@ internal fun rememberCameraScreenState(viewModel: CameraViewModel): CameraScreen
     val deviceRotationState = remember { mutableIntStateOf(0) }
 
     return remember(
-        cameraMode, lensFacing, selectedLens, availableLenses, hasFlashUnit, flashMode, torchEnabled, isRecording, recordingDuration,
-        timerCountdown, qrResult, aspectRatio, zoomRatio, mirrorFront, timerDuration,
+        cameraMode, lensFacing, selectedLens, availableLenses, hasFlashUnit, flashMode, torchEnabled, videoCodec, audioInputSource, mirrorFront, isRecording, recordingDuration,
+        timerCountdown, qrResult, aspectRatio, zoomRatio, timerDuration,
         isCapturing, burstActive, burstCount, focusLocked, recordingPaused, micMuted,
         videoSnapshotSupported, lastCaptureUri, gridEnabled, levelEnabled, roll,
         blurStrength, exposureComp, warmth, shadows, exposureTimeIndex, manualIsoIndex,
@@ -202,6 +214,8 @@ internal fun rememberCameraScreenState(viewModel: CameraViewModel): CameraScreen
             hasFlashUnit = hasFlashUnit,
             flashMode = flashMode,
             torchEnabled = torchEnabled,
+            videoCodec = videoCodec,
+            audioInputSource = audioInputSource,
             isRecording = isRecording,
             recordingDuration = recordingDuration,
             timerCountdown = timerCountdown,

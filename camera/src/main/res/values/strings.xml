@@ -3,6 +3,14 @@
     <string name="app_name">Camera</string>
 
     <!-- Main camera: mode selector at bottom (Photo / Video / Portrait etc) -->
+    <string name="mode_photo">Photo</string>
+    <string name="mode_portrait">Portrait</string>
+    <string name="mode_panorama">Pano</string>
+    <string name="mode_photosphere">Sphere</string>
+    <string name="mode_video">Video</string>
+    <string name="mode_slo_mo">Slo-Mo</string>
+    <string name="mode_cinematic">Cinematic</string>
+    <string name="mode_timelapse">Timelapse</string>
     <!-- TopBar / Auto night: night mode button shown in low light -->
     <string name="night">Night</string>
 

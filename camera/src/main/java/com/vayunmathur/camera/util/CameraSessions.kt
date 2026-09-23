@@ -39,6 +39,22 @@ fun CameraViewModel.teardownSession() {
     currentRecording = null
     highSpeedRecording?.stop()
     highSpeedRecording = null
+    // Reset recording/timer state: the session they belonged to is gone (e.g. app
+    // backgrounded mid-recording via repeatOnLifecycle). Without this the timer keeps
+    // ticking with _isRecording=true while nothing records (phantom indicator), and a
+    // pending shutter timer would fire capturePhoto() into the next session unprompted.
+    // _isCapturing is also reset: a capture in flight across teardown never completes
+    // (its session is gone), and a stuck true would deaden the shutter on resume.
+    recordingTimerJob?.cancel()
+    recordingTimerJob = null
+    timerCountdownJob?.cancel()
+    timerCountdownJob = null
+    _isRecording.value = false
+    _recordingPaused.value = false
+    _recordingDurationSec.value = 0
+    _timerCountdown.value = 0
+    _isCapturing.value = false
+    stopLongExposureCountdown()
     try {
         imageAnalysis?.clearAnalyzer()
         Log.d("NightPreview", "teardownSession() cleared analyzer previous=${desiredAnalyzer?.javaClass?.simpleName}")
@@ -72,7 +88,12 @@ fun CameraViewModel.teardownSession() {
     // runs on every night<->normal preview rebind, and resetting would clear
     // nightModeActive mid-swap and thrash the session. Explicit resets live in
     // switchCameraMode / flipCamera instead.
-    resetManualControls()
+    //
+    // Manual shutter/ISO are likewise NOT reset: they are no longer a transient preview
+    // tweak — applyManualControls() pushes them onto the session, and
+    // refreshCapabilities() re-asserts them after this teardown's rebind. Resetting
+    // silently wiped the user's pro settings on every mode switch. The ISO stop list is
+    // per-lens, so readManualControlRanges() re-probes it; the index is re-clamped there.
     clearMotionFrames()
 }
 

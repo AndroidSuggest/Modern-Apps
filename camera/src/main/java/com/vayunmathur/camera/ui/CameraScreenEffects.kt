@@ -143,7 +143,13 @@ internal fun CameraScreenEffects(
                         state.maskBitmap = null
                         viewModel.setImageAnalyzer(
                             ImageAnalysis.Analyzer { imageProxy ->
-                                viewModel.panoramaEngine.latestFrame = imageProxy.toBitmap()
+                                // Atomic publish; captureFrame() takes ownership exactly once, and
+                                // offerFrame() recycles any undelivered previous bitmap (no leak,
+                                // no use-after-free across the analyzer/sensor threads).
+                                viewModel.panoramaEngine.offerFrame(
+                                    imageProxy.toBitmap(),
+                                    imageProxy.imageInfo.rotationDegrees
+                                )
                                 imageProxy.close()
                             }
                         )
@@ -227,8 +233,11 @@ internal fun CameraScreenEffects(
     // backgrounded and rebound on resume. Without this the ManualLifecycleOwner stays RESUMED,
     // the OS reclaims the camera while we're away, and the preview comes back frozen.
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(lensFacing, selectedLens, sessionKind, useNightPreview, lifecycleOwner) {
-        Log.d("NightPreview", "CameraScreen session LaunchedEffect START keys lensFacing=$lensFacing selectedLens=${selectedLens?.labelKey} sessionKind=$sessionKind useNightPreview=$useNightPreview lifecycle=${lifecycleOwner.lifecycle.currentState} thread=${Thread.currentThread().name}")
+    // Codec/audio/mirror are fixed at bind time (Recorder mime, AudioSource, MirrorMode), so
+    // they join the effect keys: changing them in Settings rebinds instead of silently waiting
+    // for the next mode switch. Aspect ratio is applied live (setCropAspectRatio) — no rebind.
+    LaunchedEffect(cameraMode, lensFacing, selectedLens, sessionKind, useNightPreview, state.videoCodec, state.audioInputSource, state.mirrorFront, lifecycleOwner) {
+        Log.d("NightPreview", "CameraScreen session LaunchedEffect START keys lensFacing=$lensFacing selectedLens=${selectedLens?.labelKey} sessionKind=$sessionKind useNightPreview=$useNightPreview codec=${state.videoCodec} audio=${state.audioInputSource} mirror=${state.mirrorFront} lifecycle=${lifecycleOwner.lifecycle.currentState} thread=${Thread.currentThread().name}")
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             Log.d("NightPreview", "CameraScreen repeatOnLifecycle STARTED – calling teardownSession()")
             viewModel.teardownSession()
@@ -267,6 +276,11 @@ internal fun CameraScreenEffects(
     // Hardware volume-key shutter.
     val currentCapture = rememberUpdatedState(onCapture)
     LaunchedEffect(Unit) {
-        viewModel.shutterEvents.collect { currentCapture.value() }
+        viewModel.foregroundRoute = "camera"
+        try {
+            viewModel.shutterEvents.collect { currentCapture.value() }
+        } finally {
+            viewModel.foregroundRoute = null
+        }
     }
 }

@@ -91,8 +91,47 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
 
     private var sphereMode = false
 
-    @Volatile
-    var latestFrame: Bitmap? = null
+    /**
+     * Latest analysis frame for panorama capture, with the sensor rotation (degrees) needed
+     * to upright it. Delivered every frame by the analyzer; only the newest is kept — the
+     * setter recycles any undelivered previous bitmap so a sweep doesn't leak one per frame.
+     * All access is under [frameLock]: the analyzer writes on the main executor while
+     * captureFrame() reads on the sensor thread, so an unsynchronized recycle would
+     * use-after-free the bitmap mid-compress.
+     */
+    private val frameLock = Any()
+    private var _latestFrame: Bitmap? = null
+    private var _latestFrameRotation: Int = 0
+    var latestFrame: Bitmap?
+        get() = synchronized(frameLock) { _latestFrame }
+        set(value) = synchronized(frameLock) {
+            val old = _latestFrame
+            _latestFrame = value
+            if (old !== value && old != null && !old.isRecycled) {
+                try { old.recycle() } catch (_: Exception) {}
+            }
+        }
+    var latestFrameRotation: Int
+        get() = synchronized(frameLock) { _latestFrameRotation }
+        set(value) = synchronized(frameLock) { _latestFrameRotation = value }
+
+    /** Atomically publishes one analyzer frame plus its rotation. */
+    fun offerFrame(frame: Bitmap?, rotation: Int) = synchronized(frameLock) {
+        val old = _latestFrame
+        _latestFrame = frame
+        _latestFrameRotation = rotation
+        if (old !== frame && old != null && !old.isRecycled) {
+            try { old.recycle() } catch (_: Exception) {}
+        }
+    }
+
+    /** Atomically takes ownership of the pending frame (clearing the slot); caller must recycle. */
+    fun takeFrame(): Pair<Bitmap?, Int> = synchronized(frameLock) {
+        val f = _latestFrame
+        val r = _latestFrameRotation
+        _latestFrame = null
+        f to r
+    }
 
     /**
      * Invoked once when a sweep auto-completes (all guide dots captured, or a flat
@@ -157,8 +196,13 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
         nativeHandle = if (StitchNative.isAvailable) StitchNative.newSession(fullSphere) else 0L
         capturedFrames.clear()
 
-        captureFrame() // seed with the starting frame
-        updateDotState(0, GuideDotState.CAPTURED)
+        // Seed with the starting frame, but only mark dot 0 captured if a frame was actually
+        // available: the analyzer may not have delivered one yet, and marking it captured with
+        // zero frames produced an empty sweep that could never complete.
+        captureFrame()
+        if (_frameCount.value > 0) {
+            updateDotState(0, GuideDotState.CAPTURED)
+        }
 
         _isSweeping.value = true
         gyroscope?.let {
@@ -172,23 +216,51 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
     }
 
     private fun captureFrame() {
-        val frame = latestFrame ?: return
-        val handle = nativeHandle
-        if (handle == 0L) return
-        // Rotate to upright and JPEG-compress. Storing frames compressed keeps
-        // memory bounded across a long, high-resolution sweep (they're decoded on
-        // demand by the native stitcher, one at a time).
-        val rotMatrix = Matrix().apply { postRotate(90f) }
-        val rotated = Bitmap.createBitmap(frame, 0, 0, frame.width, frame.height, rotMatrix, true)
-        val baos = ByteArrayOutputStream()
-        rotated.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, baos)
-        rotated.recycle()
-        val jpeg = baos.toByteArray()
-        // Keep the same JPEG bytes the native registrar receives, so the GPU
-        // compositor can decode kept frames into textures by capture index.
-        capturedFrames.add(jpeg)
-        StitchNative.addFrame(handle, jpeg, accumulatedAngle, accumulatedPitch, accumulatedRoll)
-        _frameCount.value = _frameCount.value + 1
+        // Takes ownership of the pending analyzer frame (clearing the slot); the source bitmap
+        // is always consumed here — either compressed to JPEG bytes or recycled on failure.
+        val (frame, rotation) = takeFrame()
+        if (frame == null) return
+        try {
+            if (frame.isRecycled || frame.width <= 0 || frame.height <= 0) return
+            val handle = nativeHandle
+            if (handle == 0L) return
+            // Upright the sensor-oriented frame with the rotation the analyzer reported for it
+            // (instead of the old hardcoded 90° that sideways-stitched landscape sensors), then
+            // JPEG-compress for storage: frames are decoded on demand by the native stitcher,
+            // one at a time, so a long high-resolution sweep stays memory-bounded.
+            val normalized = ((rotation % 360) + 360) % 360
+            val rotated = if (normalized == 0) {
+                frame
+            } else {
+                val rotMatrix = Matrix().apply { postRotate(normalized.toFloat()) }
+                try {
+                    Bitmap.createBitmap(frame, 0, 0, frame.width, frame.height, rotMatrix, true)
+                } catch (_: Exception) {
+                    return
+                }
+            }
+            val baos = ByteArrayOutputStream()
+            val ok = try {
+                rotated.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, baos)
+            } catch (_: Exception) {
+                false
+            }
+            if (rotated !== frame) {
+                try { rotated.recycle() } catch (_: Exception) {}
+            }
+            if (!ok) return
+            val jpeg = baos.toByteArray()
+            if (jpeg.isEmpty()) return
+            // Keep the same JPEG bytes the native registrar receives, so the GPU
+            // compositor can decode kept frames into textures by capture index.
+            capturedFrames.add(jpeg)
+            StitchNative.addFrame(handle, jpeg, accumulatedAngle, accumulatedPitch, accumulatedRoll)
+            _frameCount.value = _frameCount.value + 1
+        } finally {
+            // The analyzer hands off ownership; either the rotated copy above survives as JPEG
+            // bytes or nothing does — the source bitmap is always consumed here.
+            try { frame.recycle() } catch (_: Exception) {}
+        }
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -430,6 +502,10 @@ class PanoramaEngine(private val context: Context) : SensorEventListener {
         accumulatedPitch = 0f
         accumulatedRoll = 0f
         pitchVelocity = 0f
-        latestFrame = null
+        // takeFrame() takes ownership; recycle whatever the analyzer left pending.
+        val (pending, _) = takeFrame()
+        if (pending != null && !pending.isRecycled) {
+            try { pending.recycle() } catch (_: Exception) {}
+        }
     }
 }
