@@ -245,17 +245,20 @@ fn run(
 }
 
 /// One position's angles from a rotary table, which is plain fp16.
+///
+/// A single-row `fp16_rows` read (512 B local, 1 KB global) rather than the
+/// whole `[MAX_CONTEXT, width]` table: the old `fp16` call held the full
+/// 8/16 MB blob as ~16/33 MB of fp32 transient per step, twice a step.
 fn rotary_row(
     reader: &modelrunner::weights::Reader<'_>,
     index: usize,
     width: u32,
     position: u32,
 ) -> Result<Vec<f32>, String> {
-    let all = reader.fp16(index, &[gemma4::MAX_CONTEXT, width])?;
-    let from = (position * width) as usize;
-    all.get(from..from + width as usize)
-        .map(<[f32]>::to_vec)
-        .ok_or_else(|| format!("position {position} is past the rotary table"))
+    if position >= gemma4::MAX_CONTEXT {
+        return Err(format!("position {position} is past the rotary table"));
+    }
+    reader.fp16_rows(index, &[gemma4::MAX_CONTEXT, width], position, 1)
 }
 
 /// Print the comparison, and say plainly whether it passed.

@@ -39,6 +39,12 @@ impl NodeIds {
         NodeIds::Rank(RankIndex::build_sorted(ids, len))
     }
 
+    /// From an already-populated bitset over the id space: the rank-select index without a second
+    /// words array. See [`RankIndex::from_words`] for why the ownership moves rather than streams.
+    fn from_words(words: Vec<u64>, len: usize) -> NodeIds {
+        NodeIds::Rank(RankIndex::from_words(words, len))
+    }
+
     fn len(&self) -> usize {
         match self {
             NodeIds::Compressed(index) => index.len(),
@@ -128,6 +134,25 @@ impl RankIndex {
             words[w] |= 1u64 << (bit % 64);
             count += 1;
         }
+        RankIndex::from_words(words, count)
+    }
+
+    /// Build from an already-populated bitset over the id space: bit `i` set iff id `i` is in the
+    /// set. Takes ownership, so no second words array is ever allocated.
+    ///
+    /// **This is the planet path's memory argument.** The caller collected the needed ids as one
+    /// bit per id ([`crate::extract`]'s `NeededBits`); streaming those bits back out into ids just
+    /// to re-set them here would hold the collector's words and this index's words at once --
+    /// ~1.5 GB twice. Moving the words across keeps the peak at one bitset plus the rank
+    /// directory (`words.len() / 8` u64s, ~1.6% over the bitset).
+    ///
+    /// `len` is the number of set bits (the distinct-id count), which the caller tracked as it
+    /// set them. Trailing zero words are trimmed: the collector sizes to its maximum *ref*, which
+    /// may sit past the maximum *set* id by less than a word.
+    pub(crate) fn from_words(mut words: Vec<u64>, len: usize) -> RankIndex {
+        while words.last() == Some(&0) {
+            words.pop();
+        }
         let mut ranks: Vec<u64> = Vec::with_capacity(words.len() / RANK_WORDS + 1);
         let mut running = 0u64;
         for (i, word) in words.iter().enumerate() {
@@ -136,7 +161,11 @@ impl RankIndex {
             }
             running += word.count_ones() as u64;
         }
-        RankIndex { words, ranks, len: count }
+        debug_assert_eq!(
+            running, len as u64,
+            "the rank directory counted a different number of ids than the caller set",
+        );
+        RankIndex { words, ranks, len: running as usize }
     }
 
     fn len(&self) -> usize {

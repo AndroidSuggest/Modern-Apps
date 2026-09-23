@@ -292,9 +292,10 @@ pub fn junction_class() -> Class {
 /// `maps/src/main/rust/src/graph.rs::edge_lane_masks`; the trailing sentinel entry exists only to
 /// give the last real edge a length.
 ///
-/// The whole file is read rather than mapped, matching how [`Graph`] reads the rest of the graph.
+/// Mapped, not read: a planet `lanes.bin` is looked up by binary search, so only its index pages
+/// stay resident. Matches [`Graph`].
 struct LaneTable {
-    raw: Vec<u8>,
+    raw: osm_ingest::mem::Mapped,
     count: u32,
     blob_off: usize,
 }
@@ -305,11 +306,13 @@ impl LaneTable {
     /// for most edges even when the file is present.
     fn load(dir: &Path) -> Result<Option<LaneTable>> {
         let path = dir.join("lanes.bin");
-        let raw = match std::fs::read(&path) {
-            Ok(raw) => raw,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return err(format!("cannot read {}: {e}", path.display())),
-        };
+        // Absence is not an error (a graph built without lane data); any other failure to open
+        // or map is. Checked by existence first so a mapping failure on a present file is not
+        // misread as "no lane data".
+        if std::fs::metadata(&path).is_err() {
+            return Ok(None);
+        }
+        let raw = osm_ingest::mem::Mapped::open(&path).map_err(osm_ingest::proto::Error)?;
         if raw.len() < 4 {
             return err("lanes.bin is too short to hold its entry count".to_string());
         }

@@ -20,9 +20,11 @@
 
 use crate::proto::{err, Error, Result};
 
-/// One mapping segment. 1GB: large enough that a 300GB spill is 300 segments
-/// (a small table), small enough that the tail wastes at most 1GB of commit.
-const SEGMENT_BYTES: usize = 1 << 30;
+/// One mapping segment. 256MB: large enough that a 300GB spill is ~1200 segments
+/// (a small table), small enough that the tail wastes at most 256MB of commit.
+/// Was 1GB; the tail waste is per store and there are two large ones (ways +
+/// features), so planet builds paid up to 2GB of commit for partial tails.
+const SEGMENT_BYTES: usize = 1 << 28;
 
 /// A growable anonymous byte store with file-like offsets.
 ///

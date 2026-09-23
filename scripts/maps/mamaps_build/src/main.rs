@@ -91,6 +91,13 @@ mod tilespill;
 /// returning them promptly, which took peak RSS from 6.86 GB to 10.14 GB on the same build. That
 /// trade is worth revisiting if memory becomes the binding constraint again.
 ///
+/// No `mi_collect` purge is wired after stage A's phase drops for the same reason: `mi_collect`
+/// lives behind the `extended` feature (plus its `cty` dependency), which is not in the offline
+/// registry cache, and the drops that matter for the planet peak are not heap frees at all --
+/// unmapping an anon segment releases pagefile commit immediately, and a file mapping never
+/// charged it. A purge would only return heap slack (relations, members, rayon buffers), which
+/// is measured in hundreds of MB against the multi-GB anon/mmap peaks above.
+///
 /// It cannot change a byte of the output — an allocator decides *where*, never *what* — so it needed
 /// no argument about ordering, only a measurement. The us-west archive hashes the same either way.
 #[global_allocator]

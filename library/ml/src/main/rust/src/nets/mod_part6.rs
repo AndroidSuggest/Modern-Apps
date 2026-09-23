@@ -345,8 +345,8 @@ impl<'a> Builder<'a> {
     /// [`Builder::rotary`] over `axes` independent blocks inside each head.
     ///
     /// A 2-D position needs two rotations, not one over twice the channels: Gemma 4's vision
-    /// tower rotates the first half of a 64-wide head by the patch's row and the second half by
-    /// its column. Rotating the head as a single block would pair a row channel with a column
+    /// tower rotates the first half of a 64-wide head by the patch's column and the second half
+    /// by its row. Rotating the head as a single block would pair a row channel with a column
     /// channel - no shape error, and an encoder that is subtly position-blind.
     ///
     /// The angle table stays `[head_dim, 1, T]`, read as `axes` consecutive blocks of

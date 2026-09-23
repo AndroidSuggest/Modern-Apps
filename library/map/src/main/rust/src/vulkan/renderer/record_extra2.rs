@@ -351,14 +351,19 @@ impl Renderer {
         globe: bool,
     ) {
         // Copy the overlay state out so no borrow of `self.overlays` lives across the `&mut self`
-        // marker draw below (which uploads a transient buffer).
+        // marker draw below (which uploads a transient buffer). Labels ride parallel to the
+        // markers (same index); vehicles carry none, so their label slice stays empty.
         let mut markers: Vec<Marker> = Vec::new();
+        let mut marker_labels: Vec<String> = Vec::new();
         let mut vehicles: Vec<Marker> = Vec::new();
         let mut puck: Option<UserPuck> = None;
         for overlay in &self.overlays {
             match overlay {
                 Overlay::Puck(p) => puck = Some(*p),
-                Overlay::Markers(m) => markers.extend_from_slice(m),
+                Overlay::Markers(m, labels) => {
+                    markers.extend_from_slice(m);
+                    marker_labels.extend(labels.iter().cloned());
+                }
                 Overlay::Vehicles(v) => vehicles.extend_from_slice(v),
             }
         }
@@ -372,10 +377,18 @@ impl Renderer {
             // pipeline (no cone, no white rim), sized just past the 28 Dp
             // sprite, drawn before the sprites so they cover its middle.
             self.draw_vehicle_rings(command_buffer, camera, &vehicles, submitted, globe);
-            self.draw_markers(command_buffer, camera, palette, &vehicles, submitted, globe);
+            self.draw_markers(command_buffer, camera, palette, &vehicles, &[], submitted, globe);
         }
         if !markers.is_empty() {
-            self.draw_markers(command_buffer, camera, palette, &markers, submitted, globe);
+            self.draw_markers(
+                command_buffer,
+                camera,
+                palette,
+                &markers,
+                &marker_labels,
+                submitted,
+                globe,
+            );
         }
 
         // The puck last, so it sits on top of any pin at the same spot. The shared unit quad, an

@@ -32,11 +32,22 @@ impl Renderer {
     /// WS-F's `set_vehicles` is modelled on this exactly.
     ///
     /// [`set_traffic_speeds`]: Self::set_traffic_speeds
-    pub fn set_markers(&mut self, markers: Vec<Marker>) {
+    pub fn set_markers(&mut self, markers: Vec<Marker>, labels: Vec<String>) {
         self.overlays
-            .retain(|overlay| !matches!(overlay, Overlay::Markers(_)));
+            .retain(|overlay| !matches!(overlay, Overlay::Markers(..)));
+        // The placement key below reads this, so a push that changes nothing still re-places —
+        // a stale accept-set is a POI drawn over a new pin, while a redundant re-place is a
+        // millisecond on a state change, not per frame.
+        self.marker_epoch = self.marker_epoch.wrapping_add(1);
         if !markers.is_empty() {
-            self.overlays.push(Overlay::Markers(markers));
+            // Parallel arrays cross JNI together and are truncated to the shortest there, so
+            // these lengths already agree; a defensive trunc here keeps a future direct caller
+            // from indexing past the end.
+            let n = markers.len().min(labels.len());
+            self.overlays.push(Overlay::Markers(
+                markers.into_iter().take(n).collect(),
+                labels.into_iter().take(n).collect(),
+            ));
         }
     }
 

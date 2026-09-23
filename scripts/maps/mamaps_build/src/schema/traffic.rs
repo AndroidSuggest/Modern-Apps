@@ -151,12 +151,17 @@ fn edge_bitmap_bytes(edges: u64) -> usize {
 /// types, and big-edge geometry. Names, distances and speed limits are skipped — the server reads
 /// those; the archive carries only geometry and the id.
 ///
+/// The three tables are file mappings rather than heap `Vec`s: a planet graph is gigabytes, and
+/// `Graph::load` runs while the OSM tables are still alive, so reading them whole would stack that
+/// many gigabytes of commit on top of the peak. Mapped, the OS pages the working set (junction
+/// walks nodes in order) and no commit is charged. Same bytes, same layout, same readers.
+///
 /// `pub(crate)` because [`crate::schema::junction`] reads the same four files for the same reason
 /// and must not carry a second copy of this byte layout.
 pub(crate) struct Graph {
-    nodes: Vec<u8>,
-    edges: Vec<u8>,
-    inter: Vec<u8>,
+    nodes: osm_ingest::mem::Mapped,
+    edges: osm_ingest::mem::Mapped,
+    inter: osm_ingest::mem::Mapped,
     pub(crate) node_count: u64,
     escape_first_off: usize,
     escapes_off: usize,
@@ -169,12 +174,15 @@ pub(crate) struct Graph {
 
 impl Graph {
     pub(crate) fn load(dir: &Path) -> Result<Graph> {
-        let read = |name: &str| -> Result<Vec<u8>> {
-            let path = dir.join(name);
-            std::fs::read(&path)
-                .map_err(|e| osm_ingest::proto::Error(format!("cannot read {}: {e}", path.display())))
+        let map = |name: &str| -> Result<osm_ingest::mem::Mapped> {
+            osm_ingest::mem::Mapped::open(&dir.join(name)).map_err(osm_ingest::proto::Error)
         };
-        let meta = read("metadata.bin")?;
+        let meta = std::fs::read(dir.join("metadata.bin")).map_err(|e| {
+            osm_ingest::proto::Error(format!(
+                "cannot read {}: {e}",
+                dir.join("metadata.bin").display()
+            ))
+        })?;
         if meta.len() < 40 {
             return err(format!("metadata.bin is {} bytes, a v6 MARG header is 40", meta.len()));
         }
@@ -199,7 +207,7 @@ impl Graph {
             ));
         }
 
-        let nodes = read("nodes.bin")?;
+        let nodes = map("nodes.bin")?;
         let want_nodes = (node_count + 1)
             .checked_mul(12)
             .ok_or_else(|| osm_ingest::proto::Error("node table size overflows".to_string()))?;
@@ -211,7 +219,7 @@ impl Graph {
             ));
         }
 
-        let edges = read("edges.bin")?;
+        let edges = map("edges.bin")?;
         let escape_first_off = align_up8((edge_count as usize) * 7);
         let escape_blocks = edge_count.div_ceil(ESCAPE_BLOCK) + 1;
         let escapes_off = escape_first_off + (escape_blocks as usize) * 4;
@@ -223,7 +231,7 @@ impl Graph {
             ));
         }
 
-        let inter = read("intermediate.bin")?;
+        let inter = map("intermediate.bin")?;
         if inter.len() < 8 {
             return err("intermediate.bin is too short to hold its geometry-edge count".to_string());
         }

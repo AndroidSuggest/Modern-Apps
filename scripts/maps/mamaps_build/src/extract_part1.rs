@@ -54,27 +54,48 @@ pub fn extract(
         );
     }
 
-    let pass1 = run_pass1(input, &blobs, graph_kinds.as_deref(), &select, layers, &ways_path, &mut stats, &mark)?;
+    let ways_plan = plan_ways_spill(input, &blobs, &ways_path)?;
+    let pass1 = run_pass1(input, &blobs, graph_kinds.as_deref(), &select, layers, &ways_path, ways_plan, &mut stats, &mark)?;
     let members = load_member_ways(input, &blobs, &pass1.blob_kinds, &pass1.relations)?;
+    // --- budget gate (phase 1: real counts) ------------------------------------------
+    //
+    // The planet build died at the junction tail with `cannot commit anon segment` (OS error
+    // 1455): anonymous spills charge RAM+pagefile ("commit"), and nothing checked the charge
+    // against the limit before asking. Pass 1 measured the real counts (classified ways and
+    // relations, total refs, max ref), the ways spill sealed at an exact byte length, and the
+    // graph files stat to theirs -- so the feature spill's backend is decided HERE, from those
+    // counts, failing fast with the numbers when neither backend fits. Same records either way;
+    // the backend never changes a hash.
+    let spill_plan = plan_feature_spill(&pass1, &members, graph, spill_path)?;
     // Created before the fused node pass below, which spills `places`/`poi` label nodes straight
     // into it. This sits where pass 4's `Sink::create` used to, moved earlier so those labels reach
     // the sink in the same order -- chunk order, ahead of every way and relation -- they did when
     // classification was its own pass after the coordinate resolve. Nothing else touches
     // `spill_path` until then; the lane-fill temps hang off `with_extension`.
-    // Spills stage in anonymous pagefile memory (no `.tmp` files): see `anon`.
-    let mut sink = Sink::create(spill_path)?;
+    let mut sink = Sink::create_planned(spill_path, spill_plan)?;
+    // Take pass 1 apart so each piece can be freed the moment its last reader is done. `pass1`
+    // itself is consumed here: nothing below sees it whole, which is what makes a use-after-free
+    // a compile error rather than a peak.
+    let Pass1Out {
+        relations,
+        promoted,
+        blob_kinds,
+        way_refs,
+        way_max_ref,
+        ways_anon,
+        region_label_nodes,
+    } = pass1;
     // The ways spill, shared by refcount with every reader below (collectors,
-    // lanefill scan, materialise).
-    let ways_anon = pass1.ways_anon.clone();
+    // lanefill scan, materialise). Last use is `materialise_ways`; freed there.
     let table = build_resolved_table(
         input,
         &blobs,
-        &pass1.blob_kinds,
+        &blob_kinds,
         &ways_path,
-        ways_anon.clone(),
+        &ways_anon,
         &members,
-        pass1.way_refs,
-        pass1.way_max_ref,
+        way_refs,
+        way_max_ref,
         &select,
         layers,
         region.as_ref(),
@@ -82,10 +103,14 @@ pub fn extract(
         &mut stats,
         &mark,
     )?;
+    // The node pass was the last reader of the blob-kinds mask. Freed before lanefill so the
+    // mask (one byte per blob, small) does not pin anything beside it -- and, more importantly,
+    // so the next large allocation cannot sit beside a dead one.
+    drop(blob_kinds);
     let inherited_lanes = inherit_lane_counts(
         spill_path,
         &ways_path,
-        ways_anon.clone(),
+        &ways_anon,
         &table,
         stats.ways_classified as usize,
     )?;
@@ -100,22 +125,38 @@ pub fn extract(
     mark("materialising");
     materialise_ways(
         &ways_path,
-        ways_anon.clone(),
-        &pass1.promoted,
+        &ways_anon,
+        &promoted,
         &inherited_lanes,
         &table,
         region.as_ref(),
         &mut sink,
         &mut stats,
     )?;
+    // The ways spill is dead from here: no later phase reads it. Dropping the `Arc`s unmaps the
+    // anon segments, which releases pagefile commit immediately (unlike heap frees, which the
+    // allocator may hold). This is the tens-of-GB ways spill, freed BEFORE the routing graph
+    // is loaded below -- the two must never peak together.
+    drop(ways_anon);
+    drop(promoted);
+    drop(inherited_lanes);
+    mark("ways spill freed");
     let conventions = materialise_relations(
-        &pass1.relations,
+        &relations,
         &members,
         &table,
         region.as_ref(),
         &mut sink,
         &mut stats,
     )?;
+    // The OSM tables are dead from here: relations, member refs and the coordinate table serve
+    // only materialisation. Dropping them before the externals (coastline, transit, graph)
+    // keeps the RankIndex bitset (~1.5 GB on planet), the resolved bitset and the mapped locs
+    // file out of the junction phase, where `Graph::load` needs its own gigabytes.
+    drop(relations);
+    drop(members);
+    drop(table);
+    mark("OSM tables freed");
     let store = append_external_and_finish(
         coastline,
         transit_routes,
@@ -129,25 +170,148 @@ pub fn extract(
     // The place-label -> boundary link, tagged into the id space the archive uses (a place carries
     // its node id tagged as a node; the mask keys on the boundary's relation id tagged as a
     // relation). The tiler stamps each `places` label with its linked id from this.
-    let region_links: HashMap<u64, u64> = pass1
-        .region_label_nodes
+    let region_links: HashMap<u64, u64> = region_label_nodes
         .iter()
         .map(|(&node, &rel)| (tagged_id(node, ELEMENT_NODE), tagged_id(rel, ELEMENT_RELATION)))
         .collect();
     Ok((store, stats, region_links))
 }
 
+/// Spill bytes per classified feature, calibrated from measured builds.
+///
+/// California (10.03 GB peak): ~15.5 M features spilled ~2.0 GB => ~135 B/feature. The record is a
+/// varint stream (delta-coded refs were in the *ways* spill, not here; here it is e7 coordinates
+/// plus a packed class plus optional names/ids/lane data), so this varies by layer mix -- but the
+/// gate only needs order-of-magnitude, and over-estimating pushes to files, which is the safe
+/// side.
+const SPILL_BYTES_PER_FEATURE: u64 = 256;
+
+/// Budget gate, phase 0: which backend the *ways* spill stages in.
+///
+/// Runs BEFORE pass 1, so no classified counts exist yet -- only the input size, the blob count
+/// and the commit/disk limits. The ways spill holds one delta-coded record per classified way
+/// (tens of bytes each: a varint id gap, a packed class, delta-coded refs at ~1 B each), and on
+/// planet that is 1.1 B ways => tens of GB. The estimate is deliberately crude (input bytes / 32,
+/// bounded below by 1 GB for planet-scale inputs): over-estimating files a build that would have
+/// fit anon, under-estimating pages it. Files are the safe side -- same records, removed after
+/// materialise -- so the bound leans that way past 8 GB of input.
+fn plan_ways_spill(
+    input: &Path,
+    blobs: &[pbf::BlobLoc],
+    ways_path: &Path,
+) -> Result<osm_ingest::mem::SpillPlan> {
+    let input_bytes = std::fs::metadata(input)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    // No gate on small inputs: the historical anon path, no behaviour change.
+    if input_bytes < (8u64 << 30) {
+        return Ok(osm_ingest::mem::SpillPlan::Anon);
+    }
+    let estimate = (input_bytes / 32).max(1 << 30);
+    let mut budget = osm_ingest::mem::StageBudget::default();
+    budget.ways_spill_bytes = estimate;
+    // Phase 0 knows nothing else yet; the rest is zero, so `anon_commit_bytes` is just this.
+    let context = format!(
+        "stage A ways spill (pre-pass estimate {} from {} input over {} blobs)",
+        osm_ingest::mem::fmt_gb(estimate),
+        osm_ingest::mem::fmt_gb(input_bytes),
+        blobs.len(),
+    );
+    osm_ingest::mem::SpillPlan::decide(&budget, ways_path, &context)
+        .map_err(osm_ingest::proto::Error)
+}
+
+/// Budget gate, phase 1: which backend the *feature* spill stages in.
+///
+/// Runs AFTER pass 1, so every count is real: classified ways/relations, total refs, max ref, the
+/// sealed ways-spill length, member-way refs. The feature estimate is `ways + relations +
+/// labels + externals` times [`SPILL_BYTES_PER_FEATURE`]; the graph sizes from `metadata.bin`'s
+/// 40-byte header before anything is mapped. Relations move the needle less (8.4 M vs 1.1 B ways
+/// on planet) and are counted at struct overhead -- their member refs are already inside the
+/// distinct-node estimate via the bitset walk.
+fn plan_feature_spill(
+    pass1: &Pass1Out,
+    members: &MemberWays,
+    graph: &Path,
+    spill_path: &Path,
+) -> Result<osm_ingest::mem::SpillPlan> {
+    let member_refs: u64 = members.values().map(|refs| refs.len() as u64).sum();
+    let refs_total = pass1.way_refs.saturating_add(member_refs);
+    // Distinct nodes <= total refs; the collector dedups, so size the table on the upper bound.
+    // `max_node_id` bounds the rank bitset; `distinct` (upper-bounded here) sizes the resolved
+    // bit and the locs file.
+    let mut budget = osm_ingest::mem::StageBudget::default();
+    budget.distinct_nodes = refs_total;
+    budget.max_node_id = pass1.way_max_ref.max(0) as u64;
+    budget.ways_spill_bytes = pass1
+        .ways_anon
+        .as_ref()
+        .map(|a| a.len())
+        .unwrap_or_else(|| std::fs::metadata(spill_path.with_extension("ways.tmp")).map(|m| m.len()).unwrap_or(0));
+    // Features to come: every classified way and relation materialises at most one feature, plus
+    // label nodes (upper-bounded by distinct nodes -- vast over-estimate, safe side), plus the
+    // externals (land polygons ~831 K on planet, transit, junction connectors).
+    budget.features_expected = pass1
+        .way_refs
+        .saturating_add(pass1.relations.len() as u64)
+        .saturating_add(2_000_000);
+    budget.bytes_per_feature = SPILL_BYTES_PER_FEATURE;
+    budget.relations = pass1.relations.len() as u64;
+    budget.graph_bytes = graph_mapped_bytes(graph).unwrap_or(0);
+    let context = format!(
+        "stage A feature spill ({} ways, {} relations, {} refs, max node {})",
+        pass1.way_refs, pass1.relations.len(), refs_total, pass1.way_max_ref,
+    );
+    let plan = osm_ingest::mem::SpillPlan::decide(&budget, spill_path, &context)
+        .map_err(osm_ingest::proto::Error)?;
+    println!(
+        "  [stage A] budget: rank {} + ways spill {} + {} expected features x {} B => {:?} backend",
+        osm_ingest::mem::fmt_gb(budget.rank_bytes()),
+        osm_ingest::mem::fmt_gb(budget.ways_spill_bytes),
+        budget.features_expected,
+        budget.bytes_per_feature,
+        plan,
+    );
+    Ok(plan)
+}
+
+/// Bytes the junction phase must address at once: the three mapped graph files plus `lanes.bin`,
+/// plus the `InEdges` reverse index (`4 * (node_count + 1)` start array + 4 per drivable edge,
+/// upper-bounded by 4 per edge). Sized from `metadata.bin`'s 40-byte header -- the same header
+/// `check_graph_dir` already validates -- before anything is mapped.
+fn graph_mapped_bytes(dir: &Path) -> Option<u64> {
+    let meta = std::fs::read(dir.join("metadata.bin")).ok()?;
+    if meta.len() < 40 {
+        return None;
+    }
+    let u64_at = |at: usize| {
+        u64::from_le_bytes([
+            meta[at], meta[at + 1], meta[at + 2], meta[at + 3],
+            meta[at + 4], meta[at + 5], meta[at + 6], meta[at + 7],
+        ])
+    };
+    let node_count = u64_at(8);
+    let edge_count = u64_at(16);
+    let nodes = (node_count.saturating_add(1)).saturating_mul(12);
+    let edges = std::fs::metadata(dir.join("edges.bin")).map(|m| m.len()).unwrap_or(edge_count.saturating_mul(7));
+    let inter = std::fs::metadata(dir.join("intermediate.bin")).map(|m| m.len()).unwrap_or(0);
+    let lanes = std::fs::metadata(dir.join("lanes.bin")).map(|m| m.len()).unwrap_or(0);
+    let in_edges = (node_count.saturating_add(1)).saturating_mul(4).saturating_add(edge_count.saturating_mul(4));
+    Some(nodes.saturating_add(edges).saturating_add(inter).saturating_add(lanes).saturating_add(in_edges))
+}
 /// What pass 1 hands the later phases: relations stay resident, corridors
-/// collapse to (way id, zoom) overrides, and the ways spill stages in
-/// anonymous memory, shared by refcount with every later reader.
+/// collapse to (way id, zoom) overrides, and the ways spill stages on whichever backend the
+/// budget gate chose, shared by refcount with every later reader (`Some`) or read back from
+/// the file at `ways_path` (`None`).
 struct Pass1Out {
     relations: Vec<Relation>,
     promoted: Vec<(i64, u8)>,
     blob_kinds: Vec<u8>,
     way_refs: u64,
     way_max_ref: i64,
-    /// The sealed ways spill, shared by refcount with every later reader.
-    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
+    /// The sealed ways spill, shared by refcount with every later reader; `None` on the file
+    /// plan, where readers open `ways_path` instead.
+    ways_anon: Option<std::sync::Arc<tile_build::anon::AnonStore>>,
     /// `admin_centre`/`label` node member -> its boundary relation id, both raw OSM ids, for every
     /// relation that carries a region shape. The authoritative half of the place->boundary link:
     /// OSM points a boundary relation at its own label node directly, so no geometry test is needed.
@@ -161,6 +325,10 @@ struct Pass1Out {
 ///
 /// `blob_kinds_in` is an optional pre-computed mask (the graph sidecar) that lets this pass skip
 /// node blobs; `None` means scan the whole file. Either way the mask it returns is complete.
+///
+/// `spill_plan` is the budget gate's backend choice: the ways spill stages anonymously or through
+/// the `.tmp` at `ways_path`. Decided by the caller from pass-0 counts, not here, because this
+/// pass cannot know the graph size that shares its peak.
 #[allow(clippy::too_many_arguments)]
 fn run_pass1(
     input: &Path,
@@ -169,6 +337,7 @@ fn run_pass1(
     select: &Select,
     layers: Layers,
     ways_path: &Path,
+    spill_plan: osm_ingest::mem::SpillPlan,
     stats: &mut Stats,
     mark: &dyn Fn(&str),
 ) -> Result<Pass1Out> {
@@ -181,7 +350,7 @@ fn run_pass1(
     //
     // `blob_kinds` comes back from this pass and lets the later ones skip whole blobs, which on a
     // planet extract is most of the file.
-    let mut ways = WaySink::create_anon(&ways_path)?;
+    let mut ways = WaySink::create_planned(&ways_path, spill_plan)?;
     let mut relations: Vec<Relation> = Vec::new();
     // `admin_centre`/`label` node member -> boundary relation id (raw), gathered as region shapes
     // are classified below. See [`Pass1Out::region_label_nodes`].
@@ -386,10 +555,10 @@ fn run_pass1(
             Ok(())
         },
     )?;
-    let (counts, store) = ways.finish_anon()?;
+    let (counts, store) = ways.finish_either()?;
     stats.ways_classified = counts.ways;
     let (way_refs, way_max_ref, ways_anon) =
-        (counts.refs, counts.max_ref, std::sync::Arc::new(store));
+        (counts.refs, counts.max_ref, store.map(std::sync::Arc::new));
     stats.relations_classified = relations.len() as u64;
 
     // A numbered road changes class along its length, so deciding `min_zoom` per way chops

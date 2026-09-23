@@ -89,7 +89,7 @@ fn read_chunks(
             let path = store_path.clone();
             let chunks = store_chunks.clone();
             let chunk_mins = store_mins.clone();
-            let anon = std::sync::Arc::clone(&store_anon);
+            let anon = store_anon.clone();
             let first_err = &first_err;
             let send_lane = sends[lane].clone();
             let h = std::thread::Builder::new()

@@ -4,14 +4,15 @@ fn load_member_ways(
     blobs: &[pbf::BlobLoc],
     blob_kinds: &[u8],
     relations: &[Relation],
-) -> Result<HashMap<i64, Vec<i64>>> {
+) -> Result<MemberWays> {
     // --- pass 2: the refs of every relation member way ------------------------------------
     //
     // **Every** member, not just the ones pass 1 did not classify. A relation reaches its members by
     // id, in the order it lists them, which is the one random access in this stage and the one thing
     // a sequential spill file cannot serve. So the members — and only the members — stay resident,
     // and that is what lets the other several million classified ways go to disk. California has
-    // 63 156 relations, so this table is small next to the one it replaces.
+    // 63 156 relations, so this table is small next to the one it replaces; planet has 8.4 M, so
+    // it is a sorted vector rather than a hash map (see [`MemberWays`]).
     let wanted: Vec<i64> = {
         let mut wanted: Vec<i64> = relations
             .iter()
@@ -21,7 +22,7 @@ fn load_member_ways(
         wanted.dedup();
         wanted
     };
-    let mut members: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut members = MemberWays::empty();
     if !wanted.is_empty() {
         let (chunks, _) = pbf::run_pass(
             input,
@@ -43,12 +44,96 @@ fn load_member_ways(
                 Ok(kinds)
             },
         )?;
-        for chunk in chunks {
-            members.extend(chunk);
-        }
+        // Chunks arrive in file order and ways are sorted by id, so concatenation is sorted as
+        // long as no way id appears in two chunks (ids are unique in the PBF). Sortedness is
+        // asserted, not assumed: `MemberWays::build` sorts anyway, which is also what absorbs
+        // the (impossible in practice) duplicate across chunks.
+        let all: Vec<(i64, Vec<i64>)> = chunks.into_iter().flatten().collect();
+        members = MemberWays::build(all);
     }
 
     Ok(members)
+}
+
+/// Relation member ways by id: the one random access in stage A.
+///
+/// A `HashMap<i64, Vec<i64>>` costs ~48 B overhead per entry plus the hasher's table slack --
+/// at planet's 8.4 M member ways that is hundreds of MB beside the ref bytes themselves. This is
+/// a sorted `Vec` with binary search instead: lookups are `O(log n)` rather than `O(1)`, but a
+/// lookup is followed by cloning a ref vec and resolving every ref through the coordinate table,
+/// so the search is noise next to the use. Built sorted once; every reader shares the shape.
+pub struct MemberWays {
+    entries: Vec<(i64, Vec<i64>)>,
+}
+
+impl MemberWays {
+    fn empty() -> MemberWays {
+        MemberWays { entries: Vec::new() }
+    }
+
+    /// Build from `(way id, refs)` pairs in any order. Sorts by id; a duplicated id keeps its
+    /// first occurrence (ids are unique in the PBF, so this is defence, not logic).
+    fn build(mut all: Vec<(i64, Vec<i64>)>) -> MemberWays {
+        all.sort_by_key(|(id, _)| *id);
+        all.dedup_by_key(|(id, _)| *id);
+        MemberWays { entries: all }
+    }
+
+    /// The refs of member way `id`, or `None` if pass 2 never saw it (an extract cut it away).
+    pub fn get(&self, id: i64) -> Option<&Vec<i64>> {
+        self.entries
+            .binary_search_by_key(&id, |(id, _)| *id)
+            .ok()
+            .map(|at| &self.entries[at].1)
+    }
+
+    /// Every member's refs, for the ref collectors (order irrelevant: both collectors only add).
+    pub fn values(&self) -> impl Iterator<Item = &Vec<i64>> {
+        self.entries.iter().map(|(_, refs)| refs)
+    }
+
+    /// How many member ways are held.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    #[cfg(test)]
+    pub fn from_map(map: HashMap<i64, Vec<i64>>) -> MemberWays {
+        MemberWays::build(map.into_iter().collect())
+    }
+}
+
+#[cfg(test)]
+mod member_ways_tests {
+    use super::*;
+
+    /// The whole contract: lookups answer like the map, whatever order the pairs arrived in, and
+    /// a duplicated id keeps its first occurrence.
+    #[test]
+    fn lookups_match_the_map_regardless_of_input_order() {
+        let table = MemberWays::build(vec![
+            (9, vec![10_000, 9_999]),
+            (1, vec![7, 8]),
+            (9, vec![1, 2, 3]),
+            (5, vec![]),
+        ]);
+        assert_eq!(table.len(), 3, "the duplicate id is absorbed");
+        assert_eq!(table.get(1), Some(&vec![7, 8]));
+        assert_eq!(table.get(5), Some(&vec![]), "an empty ref list is still a member");
+        assert_eq!(table.get(9), Some(&vec![10_000, 9_999]), "first occurrence wins");
+        assert_eq!(table.get(2), None, "not a member at all");
+        assert_eq!(table.get(-1), None, "negative ids never resolve");
+        assert_eq!(table.get(i64::MAX), None, "past the end");
+        // `values` covers every entry exactly once, for the ref collectors.
+        let mut seen: Vec<i64> = table.values().flatten().copied().collect();
+        seen.sort_unstable();
+        assert_eq!(seen, vec![7, 8, 9_999, 10_000]);
+        assert!(MemberWays::empty().is_empty(), "empty is empty");
+    }
 }
 
 /// Pass 3: id index plus resolved coordinates, with `places`/`poi` label nodes classified and
@@ -63,8 +148,8 @@ fn build_resolved_table(
     blobs: &[pbf::BlobLoc],
     blob_kinds: &[u8],
     ways_path: &Path,
-    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
-    members: &HashMap<i64, Vec<i64>>,
+    ways_anon: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
+    members: &MemberWays,
     way_refs: u64,
     way_max_ref: i64,
     select: &Select,
@@ -85,9 +170,9 @@ fn build_resolved_table(
         .flat_map(|refs| refs.iter().copied())
         .fold(way_max_ref, i64::max);
     let table = if refs_total <= REFS_IN_MEMORY {
-        collect_needed_in_memory(&ways_path, ways_anon.clone(), &members, refs_total, &mark)?
+        collect_needed_in_memory(&ways_path, ways_anon, &members, refs_total, &mark)?
     } else {
-        collect_needed_by_bitset(&ways_path, ways_anon.clone(), &members, max_ref, &mark)?
+        collect_needed_by_bitset(&ways_path, ways_anon, &members, max_ref, &mark)?
     };
     mark("id index built, refs freed");
     stats.nodes_needed = table.len() as u64;
@@ -149,21 +234,21 @@ fn build_resolved_table(
     Ok(table)
 }
 
-/// Open the ways spill for sequential reading, from the shared anonymous
-/// store. One helper so the four readers (two ref collectors, lanefill scan,
-/// materialise) share one backend.
+/// Open the ways spill for sequential reading, from whichever backend the budget gate chose:
+/// the shared anonymous store when present, else the file at `ways_path`. One helper so the four
+/// readers (two ref collectors, lanefill scan, materialise) share one backend.
 fn open_ways_reader(
     ways_path: &Path,
-    ways_anon: &std::sync::Arc<tile_build::anon::AnonStore>,
+    ways_anon: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
 ) -> Result<WayReader> {
-    WayReader::open_anon(ways_path, std::sync::Arc::clone(ways_anon))
+    WayReader::open_either(ways_path, ways_anon)
 }
 
 /// Lane inheritance over the ways spill. Moved whole from `extract`.
 fn inherit_lane_counts(
     spill_path: &Path,
     ways_path: &Path,
-    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
+    ways_anon: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
     table: &NodeLocations,
     ways_classified: usize,
 ) -> Result<Vec<(i64, u8)>> {
@@ -221,7 +306,7 @@ fn inherit_lane_counts(
 /// clips per tile later.
 fn materialise_ways(
     ways_path: &Path,
-    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
+    ways_anon: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
     promoted: &[(i64, u8)],
     inherited_lanes: &[(i64, u8)],
     table: &NodeLocations,
@@ -229,7 +314,7 @@ fn materialise_ways(
     sink: &mut Sink,
     stats: &mut Stats,
 ) -> Result<()> {
-    let mut reader = open_ways_reader(ways_path, &ways_anon)?;
+    let mut reader = open_ways_reader(ways_path, ways_anon)?;
     let mut refs: Vec<i64> = Vec::new();
     // Silent until now, and it is not a short step: on a north-america extract this loop ran 623
     // seconds on one thread with nothing on stdout, which is indistinguishable from a hang.
@@ -370,7 +455,8 @@ fn materialise_ways(
     }
     bar.finish("way(s)");
     // Nothing reads the ways spill after this: the relations below reach their members through
-    // `members`, which is why that table is kept at all.
+    // `members`, which is why that table is kept at all. The file backend's `.tmp` is removed;
+    // the anon backend's segments unmap with the last `Arc`.
     drop(reader);
     let _ = std::fs::remove_file(&ways_path);
 

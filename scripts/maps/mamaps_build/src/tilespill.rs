@@ -163,7 +163,7 @@ pub struct ChunkRef {
 /// many threads, positional I/O and no shared cursor.
 ///
 /// Anonymous twin: [`create_anon`](Self::create_anon) stages the same chunks in
-/// pagefile-backed memory (`MAPS_ANON_SPILL=1`). Same offsets, same bytes, no
+/// pagefile-backed memory. Same offsets, same bytes, no
 /// file. The merge reads through the same [`ChunkReader`] either way.
 pub struct ChunkSpill {
     /// `None` only while dropping, where the handle has to close before the file can be unlinked or
@@ -212,16 +212,27 @@ impl ChunkSpill {
     /// pagefile-backed memory, no file. `path` names nothing — it only rides
     /// along for error messages and the `check_books` accounting.
     pub fn create_anon(path: impl Into<PathBuf>) -> Result<ChunkSpill> {
-        Ok(ChunkSpill {
-            file: None,
-            anon: Some(std::sync::Mutex::new(tile_build::anon::AnonStore::new())),
-            path: path.into(),
-            at: Mutex::new(0),
-            written: AtomicU64::new(0),
-            written_entries: AtomicU64::new(0),
-            read: AtomicU64::new(0),
-            read_entries: AtomicU64::new(0),
-        })
+        Self::create_planned(path, osm_ingest::mem::SpillPlan::Anon)
+    }
+
+    /// Create with an explicit staging plan. See [`osm_ingest::mem::SpillPlan::decide`]: the
+    /// budget gate picks `File` when anon commit does not fit, and `File` stages through the
+    /// scratch path (truncated like [`create`](Self::create), removed on drop). Same chunks,
+    /// same offsets, same bytes -- the backend never changes a hash.
+    pub fn create_planned(path: impl Into<PathBuf>, plan: osm_ingest::mem::SpillPlan) -> Result<ChunkSpill> {
+        match plan {
+            osm_ingest::mem::SpillPlan::Anon => Ok(ChunkSpill {
+                file: None,
+                anon: Some(std::sync::Mutex::new(tile_build::anon::AnonStore::new())),
+                path: path.into(),
+                at: Mutex::new(0),
+                written: AtomicU64::new(0),
+                written_entries: AtomicU64::new(0),
+                read: AtomicU64::new(0),
+                read_entries: AtomicU64::new(0),
+            }),
+            osm_ingest::mem::SpillPlan::File => Self::create(path),
+        }
     }
 
     /// Whether this spill stages in anonymous memory rather than a file.

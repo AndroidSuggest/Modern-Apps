@@ -4,35 +4,39 @@
 use super::handle::handle_mut;
 use super::log::log;
 use crate::marker::Marker;
-use jni::objects::{JClass, JFloatArray, JIntArray, JLongArray};
+use jni::objects::{JClass, JFloatArray, JIntArray, JLongArray, JObjectArray, JString};
 use jni::sys::jlong;
 use jni::JNIEnv;
 /// Replace the app's pins with a marker set, drawn by the renderer as billboarded sprites.
 ///
-/// Three parallel bulk arrays, the same convention as
+/// Four parallel bulk arrays, the same convention as
 /// [`setRoute`](Java_com_vayunmathur_library_map_MapNative_setRoute) and
 /// [`setTrafficSpeeds`](Java_com_vayunmathur_library_map_MapNative_setTrafficSpeeds): `ids[i]` is
 /// the host's own stable id for marker `i` (echoed back by
 /// [`pickAt`](Java_com_vayunmathur_library_map_MapNative_pickAt)), `lonLat` holds
-/// `[lon0, lat0, lon1, lat1, …]`, and `icons[i]` is the icon id (see `crate::marker::icon`). Bulk
-/// arrays rather than a list of objects so a viewport's worth of pins crosses the boundary in a
-/// few `get_*_array_region` reads with no per-pin JNI traffic; `float` coordinates for the same
-/// reason the camera's are.
+/// `[lon0, lat0, lon1, lat1, …]`, `icons[i]` is the icon id (see `crate::marker::icon`), and
+/// `labels[i]` is the optional display name drawn beside the pin like a POI label (an empty
+/// string draws the icon alone). Bulk arrays rather than a list of objects so a viewport's worth
+/// of pins crosses the boundary in a few `get_*_array_region` reads with no per-pin JNI traffic;
+/// `float` coordinates for the same reason the camera's are.
 ///
 /// The whole set is replaced each call, not merged — a stale pin left behind would sit under the
 /// finger and pick wrong. Moving the pins into the renderer is what stops them trailing the basemap
 /// on a pan or tilt the way the Compose overlays did. Mismatched lengths are truncated to the
 /// shortest; an empty set is the same as
 /// [`clearMarkers`](Java_com_vayunmathur_library_map_MapNative_clearMarkers). Arrays that cannot be
-/// read leave the markers **unchanged** rather than blanking them.
+/// read leave the markers **unchanged** rather than blanking them. A label that cannot be read
+/// degrades to the empty string (icon alone) rather than failing the whole push.
 #[no_mangle]
+#[allow(clippy::too_many_arguments)]
 pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setMarkers<'l>(
-    env: JNIEnv<'l>,
+    mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     handle: jlong,
     ids: JLongArray<'l>,
     lon_lat: JFloatArray<'l>,
     icons: JIntArray<'l>,
+    labels: JObjectArray<'l>,
 ) {
     let Some(map) = handle_mut(handle) else {
         return;
@@ -40,10 +44,11 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setMarkers<'l>
     let id_len = env.get_array_length(&ids).unwrap_or(0).max(0) as usize;
     let icon_len = env.get_array_length(&icons).unwrap_or(0).max(0) as usize;
     let coord_len = env.get_array_length(&lon_lat).unwrap_or(0).max(0) as usize;
+    let label_len = env.get_array_length(&labels).unwrap_or(0).max(0) as usize;
     // Each marker consumes two floats (lon, lat), so the coordinate array bounds the count too.
-    let n = id_len.min(icon_len).min(coord_len / 2);
+    let n = id_len.min(icon_len).min(coord_len / 2).min(label_len);
     if n == 0 {
-        map.renderer.set_markers(Vec::new());
+        map.renderer.set_markers(Vec::new(), Vec::new());
         return;
     }
     let mut id_buf = vec![0i64; n];
@@ -71,7 +76,12 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_setMarkers<'l>
             colour: 0,
         })
         .collect();
-    map.renderer.set_markers(markers);
+    let marker_labels: Vec<String> = (0..n)
+        .map(|i| {
+            read_marker_label(&mut env, &labels, i as i32)
+        })
+        .collect();
+    map.renderer.set_markers(markers, marker_labels);
 }
 
 /// Take every marker away: the host cleared its pins.
@@ -82,8 +92,26 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_clearMarkers<'
     handle: jlong,
 ) {
     if let Some(map) = handle_mut(handle) {
-        map.renderer.set_markers(Vec::new());
+        map.renderer.set_markers(Vec::new(), Vec::new());
     }
+}
+
+/// One marker's display name from the parallel labels array.
+///
+/// Any failure — a null element, an object that is not a string, an undecodable
+/// string — degrades to the empty string (icon alone) rather than failing the
+/// whole push: a label is decoration, and a malformed one must not blank pins.
+fn read_marker_label(env: &mut JNIEnv<'_>, labels: &JObjectArray<'_>, index: i32) -> String {
+    let Ok(obj) = env.get_object_array_element(labels, index) else {
+        return String::new();
+    };
+    if obj.is_null() {
+        return String::new();
+    }
+    let string = JString::from(obj);
+    env.get_string(&string)
+        .map(Into::into)
+        .unwrap_or_default()
 }
 
 /// Replace the simulated transit vehicles with a set the renderer draws as billboarded sprites.

@@ -208,7 +208,7 @@ fn layer(b: &mut Builder, index: usize, x: Id, angles: Id) -> Result<Id, String>
     let q = b.rms_norm_grouped(q, q_norm, EPSILON, HEADS);
     let k = b.rms_norm_grouped(k, k_norm, EPSILON, HEADS);
     let v = b.rms_norm_grouped(v, v_norm, EPSILON, HEADS);
-    // Two blocks per head: the patch's row rotates the first 32 channels, its column the rest.
+    // Two blocks per head: the patch's column rotates the first 32 channels, its row the rest.
     let q = b.rotary_axes(q, angles, HEADS, ROPE_AXES);
     let k = b.rotary_axes(k, angles, HEADS, ROPE_AXES);
 

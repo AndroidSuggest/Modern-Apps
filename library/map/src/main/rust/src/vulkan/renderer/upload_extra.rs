@@ -186,6 +186,7 @@ impl Renderer {
             scratch_deferred_symbols: Vec::new(),
             placement_cache: std::cell::RefCell::new(None),
             overlays: Vec::new(),
+            marker_epoch: 0,
             quad,
             selected_region: None,
             route: None,

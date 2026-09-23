@@ -45,8 +45,9 @@ impl Store {
 
     /// The shared anonymous spill store. Cloned (refcount bump, never bytes)
     /// into per-lane store views so decode threads read the same memory.
-    pub fn anon_store(&self) -> std::sync::Arc<tile_build::anon::AnonStore> {
-        std::sync::Arc::clone(&self.anon)
+    /// `None` on the file plan, where lanes open the file at `path` instead.
+    pub fn anon_store(&self) -> Option<std::sync::Arc<tile_build::anon::AnonStore>> {
+        self.anon.clone()
     }
 
     pub fn raw_chunks(&self) -> &[u64] {
@@ -60,7 +61,7 @@ impl Store {
     pub fn from_parts(path: PathBuf, chunks: Vec<u64>, chunk_mins: Vec<u8>) -> Self {
         Self {
             path,
-            anon: std::sync::Arc::new(tile_build::anon::AnonStore::new()),
+            anon: None,
             chunks,
             chunk_mins,
             count: 0,
@@ -70,14 +71,15 @@ impl Store {
     }
 
     /// A view over the same staged bytes: `store` is the shared anonymous
-    /// spill (cloned Arc, never bytes), `chunks`/`chunk_mins` the same index.
+    /// spill (cloned Arc, never bytes) or `None` on the file plan, where the view reads the file
+    /// at `path`. `chunks`/`chunk_mins` the same index either way.
     /// Used by per-lane decode threads, which need a `Store` to open readers
     /// from but must not copy the spill.
     pub fn view_over(
         path: PathBuf,
         chunks: Vec<u64>,
         chunk_mins: Vec<u8>,
-        store: std::sync::Arc<tile_build::anon::AnonStore>,
+        store: Option<std::sync::Arc<tile_build::anon::AnonStore>>,
     ) -> Self {
         Self {
             path,
@@ -90,6 +92,34 @@ impl Store {
         }
     }
 
+    /// Open the staged bytes for chunked reading, anonymous or file according to the plan the
+    /// sink was created with. One helper so the three reader constructors agree.
+    fn open_chunks(&self) -> Result<NormalizedChunks> {
+        match &self.anon {
+            Some(store) => NormalizedChunks::open_anon(
+                self.path.clone(),
+                self.chunks.clone(),
+                std::sync::Arc::clone(store),
+            )
+            .map_err(|e| osm_ingest::proto::Error(e.to_string())),
+            None => NormalizedChunks::open(self.path.clone(), self.chunks.clone())
+                .map_err(|e| osm_ingest::proto::Error(e.to_string())),
+        }
+    }
+
+    /// Open the staged bytes for sequential reading. See [`open_chunks`](Self::open_chunks).
+    fn open_sequential(&self) -> Result<NormalizedReader> {
+        match &self.anon {
+            Some(store) => NormalizedReader::open_anon(
+                self.path.clone(),
+                std::sync::Arc::clone(store),
+            )
+            .map_err(|e| osm_ingest::proto::Error(e.to_string())),
+            None => NormalizedReader::open(self.path.clone())
+                .map_err(|e| osm_ingest::proto::Error(e.to_string())),
+        }
+    }
+
     /// Attach the anonymous store after construction. Used by tests that build
     /// a `Store` from parts and then read it back without a file.
     #[cfg(test)]
@@ -97,7 +127,7 @@ impl Store {
         mut self,
         store: std::sync::Arc<tile_build::anon::AnonStore>,
     ) -> Self {
-        self.anon = store;
+        self.anon = Some(store);
         self
     }
 
@@ -116,12 +146,7 @@ impl Store {
     }
 
     pub fn reader_for_wanted(&self, wanted: Vec<usize>, z: u8) -> Result<ZoomReader> {
-        let chunks = NormalizedChunks::open_anon(
-            self.path.clone(),
-            self.chunks.clone(),
-            std::sync::Arc::clone(&self.anon),
-        )
-        .map_err(|e| osm_ingest::proto::Error(e.to_string()))?;
+        let chunks = self.open_chunks()?;
         ZoomReader::spawn(chunks, wanted, z)
     }
 
@@ -131,13 +156,7 @@ impl Store {
     /// both ways and compares is the cheapest possible guard on the chunk index being right.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn reader(&self) -> Result<Reader> {
-        Ok(Reader {
-            inner: NormalizedReader::open_anon(
-                self.path.clone(),
-                std::sync::Arc::clone(&self.anon),
-            )
-            .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
-        })
+        Ok(Reader { inner: self.open_sequential()? })
     }
 }
 

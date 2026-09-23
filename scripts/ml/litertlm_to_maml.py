@@ -1,15 +1,31 @@
 """Convert litertlm artisan Gemma bundle DIRECTLY to .maml files. The ONNX is a different model; litertlm is truth.
 
 FILE-DRIVEN shapes (TFLite INT4 shapefield = nibble count; INT8/U8/F32 = elements):
-  sliding (0-3,5-8,10-13): q [1024,1536] (8x128!), k/v [128,1536], o [1536,1024]  => head_dim 128
-  full (4,9,14,19,24,29,34): q [4096,1536] (8x512), k/v [512,1536], o [1536,4096]  => head_dim 512
+  NOTE on the artisan shapefield quirk: every shapefield in this file is a
+  BYTE count (verified: F32 `final_norm.scale` shapefield [6144] holds 6144 B
+  = 1536 floats; `skip.scale` shapefield [4] holds 4 B = 1 float). INT4
+  [1572864] = 1572864 bytes = 2x nibbles.
+  sliding (0-3,5-8,10-13, head_dim 256): q [2048,1536] (8x256), k/v [256,1536],
+    o [1536,2048]
+  full (4,9,14,... index%5==4, head_dim 512): q [4096,1536] (8x512),
+    k/v [512,1536], o [1536,4096]
   MLP owning (0-14): gate+ff1 [6144,1536], linear [1536,6144], signed INT4
   MLP slim (15-34): gate+ff1 [12288,1536], linear [1536,12288], artisan 2-bit
     (INT8-tagged, 4 vals/byte, 1 F32 scale/row); same geometry as the base
     bundle's own Section 10 weights (type 19)
-  scales: q/k/v 8-per-row (group 192); o/mlp 4-per-row (group 384); embed INT8 4-per-row
-  embedder: input [262144,384] INT8; proj [35840,384] INT8; per-layer [262144,128] U8 x35
-  norms F32; q_norm/k_norm full-vector [1024]/[2048]; NO head (tied); sampler TOP_P 64/0.95/1.0
+  scales: 1 F32 scale per row for EVERY table (verified scale counts: q 2048/
+  2048 rows, O 1536/1536, gate 6144/6144, slim 12288/12288, PLE proj 8960/
+  8960, per-layer gate 256/256, per-layer proj 1536/1536, per-layer embed
+  262144/262144). Zero-points all 0.
+  embedder: working table = exact S2 `embedder` fp32 rows [262144, 1536] via
+  GEMMA4_EMBED_DUMP (the artisan 2-bit `input_embedding.w` packing is a
+  different checkpoint's arrangement, uncorrelated ~-0.03); shared proj
+  [8960,1536] INT8; per-layer [262144,256] signed INT4 x35 (33.5MB each,
+  1 fp32 scale/row)
+  norms: q_norm/k_norm are head-dim-wide full vectors ([256] sliding, [512]
+  full — shapefields read [1024]/[2048] bytes); pre/post norms [1536]. NO
+  head table in this file (tied head reads the S2 working table); sampler
+  TOP_P 64/0.95/1.0
 
 Emits via maml_convert.build (symmetric per-block int4 requant, fidelity-gated):
   gemma4_text.maml (graph 20), gemma4_embed.maml (graph 21).
@@ -108,20 +124,23 @@ class LitertlmReader:
 
 
 def dequant2(name_or_rdr, name=None, rows=None, cols=None):
-    """Artisan 2-bit (INT8-tagged, 4 values/byte, row-major) -> fp32.
+    """Artisan 2-bit (INT8-tagged, 4 values/byte, row-major, lo-first) -> fp32.
 
-    The slim-layer MLP (layers 15-34) shares this packing with the embedder's
-    working table, whose own packing is still undecoded (see collect_embed). The
-    base bundle's Section 10 metadata for the same slim tensors (type 19,
-    per-row scales bit-identical to the GPU bundle's `_quantized_scale` suffix,
-    zero-points all 0, dim 0) matches the INT4 convention in the same file
-    (type 17, zp 0, signed nibbles), whose signed read is proven (cos 1.0000 vs
-    base S3): codes are consumed as two's complement (0, 1, -2, -1).
+    Codebook is the SAME head codebook as S10's type-19 tables
+    (`embedder.decode` t2698, slim gates t1587...): [0, +s, -2s, -s] lo-first
+    (s10_to_maml.S10Reader.dequant2). BUT the artisan slim bytes are stored
+    XOR-2-remapped relative to S10 storage: exact global XOR-2 code multisets
+    (L15/L16/L20 gate artisan counts == S10 counts permuted c->c^2) with
+    bit-identical per-row scales (L15 full-cos 1.000000), while position-wise
+    agreement after remap is only ~0.30 (different checkpoint arrangement, same
+    2-bit convention). So artisan codes are mapped `(code ^ 2)` through the
+    head codebook. Without the remap the read centers at -0.021 with 68%
+    negative; with it, at -0.003 with 32% negative / 39% zero — matching the
+    head-table statistics (negfrac 0.34) and zero-mean trained-weight priors.
 
-    Proven, not approximate: an unsigned read leaves zero negative weights in
-    18.9M values (mean +0.049), while trained weights are ~zero-mean (the
-    proven INT4 path: 58% negative). The signed read centers at -0.021 with
-    68% negative, matching that convention. Parity still arbitrates end to end.
+    Applies to every slim-layer MLP table (layers 15-34 gate/ff1/linear).
+    S10's own slim gates decode WITHOUT the remap (native S10 code space).
+    Parity still arbitrates end to end.
     """
     if name is None:
         raise SystemExit('dequant2 takes (rdr, name, rows, cols)')
@@ -132,7 +151,10 @@ def dequant2(name_or_rdr, name=None, rows=None, cols=None):
     vals = np.empty(rows * cols, dtype=np.float32)
     for k in range(4):
         vals[k::4] = ((u8 >> (2 * k)) & 0x3).astype(np.float32)
-    vals = np.where(vals >= 2, vals - 4, vals).reshape(rows, cols)
+    # XOR-2 storage remap into the S10/head code space (see docstring).
+    vals = np.bitwise_xor(vals.astype(np.uint8), np.uint8(2)).astype(np.float32)
+    codebook = np.array([0.0, 1.0, -2.0, -1.0], dtype=np.float32)
+    vals = codebook[vals.astype(int)].reshape(rows, cols)
     s = np.frombuffer(rdr.raw(name + '_quantized_scale'), dtype=np.float32)
     assert s.size == rows, f'{name} scales: {s.size} vs {rows} rows'
     out = vals * s[:, None]
@@ -181,8 +203,15 @@ def collect_text(rdr, rope_theta_local=10000.0, rope_theta_global=1000000.0):
 
     Rotary thetas read off the BASE bundle's own Section 10 graph: its
     `maybe_rope` div constants are freq tables with freq[1] = 0.93057203
-    (sliding, 128 freqs over head_dim 256) and 0.9474635 (full, 128 freqs over
-    head_dim 512), implying theta=1e4 and theta=1e6 (verified freq[2] both).
+    (sliding, 128 freqs over head_dim 256, S10 t296 — full match) and
+    0.9474635 (full, 256 entries over head_dim 512, S10 t245 — only the first
+    64 nonzero), implying theta=1e4 and theta=1e6 (verified freq[2] both).
+    Track-3 evidence: global theta-regen first-64 vs native t245 = 1.000000,
+    truncated-regen vs native full = 1.000000, full 256-freq regen vs native =
+    0.9995 — because S10's full table is zero-padded after 64, generating 256
+    freqs rotates 192 channel pairs the reference leaves fixed. PREFER native
+    t296/t245 reads (s10_to_maml.collect_text); this theta path is a fallback
+    and SHOULD truncate the global table to its 64 nonzero freqs.
     Caution: the table ENTRY count is half the head dim (64 freqs would imply
     theta=100/1000 - wrong); the exponent's dim is the head dim 256/512, and
     S10's (1,1,8,128) pre_qk tensor is a norm reshape, not the head dim.
@@ -221,8 +250,12 @@ def collect_text(rdr, rope_theta_local=10000.0, rope_theta_global=1000000.0):
     # ff1 -> mul -> down -> post_ffw_norm, pl proj -> post_per_layer norm),
     # and an RMS norm erases uniform input scaling exactly, so pow2 weight
     # scaling is computation-neutral: it only shrinks what fp16 must hold.
-    # The gate stays full-scale (gelu is nonlinear; scaling it would move the
-    # operating point), and scaling the LINEAR up-path is exact.
+    # Track-3 fidelity justification: O/FF1/PL constants (4/256/4) are pure
+    # powers of two (exact in fp16, no rounding of the stored weights), the
+    # gate stays full-scale (gelu is nonlinear; scaling it would move the
+    # operating point), and scaling the LINEAR up-path is exact. The runtime
+    # re-applies the inverse gain on the norm side (see nets::gemma4 rescale
+    # consts), so end-to-end numerics are unchanged up to fp16 rounding.
     O_SCALE, FF1_SCALE, PL_SCALE = 4.0, 256.0, 4.0
     for index in range(35):
         at = f'transformer.layer_{index}'
@@ -231,11 +264,12 @@ def collect_text(rdr, rope_theta_local=10000.0, rope_theta_global=1000000.0):
         qrows = 8 * dim
         kvrows = dim
         # Slim layers (15-34, shared KV) run a 12288-wide MLP in artisan 2-bit
-        # storage (type tag INT8, 4 values/byte, 1 F32 scale/row) while the 15
-        # owning layers run 6144-wide signed-int4. Proven by byte counts
-        # (4718592 B = 12288x1536/4 = 6144x1536/2), scale counts (12288 vs
-        # 6144/1536), and the base bundle's own Section 10 weights
-        # (gate/up [12288,1536], down [1536,12288], type 19 = artisan 2-bit).
+        # storage (type tag INT8, 4 values/byte, 1 F32 scale/row). Same
+        # checkpoint convention as the base bundle's own Section 10 type-19
+        # slim weights: exact global XOR-2 code multisets (L15/L16/L20) with
+        # bit-identical per-row scales — decoded via dequant2's (code ^ 2)
+        # remap through the head codebook (see its docstring). Proven by byte
+        # counts (4718592 B = 12288x1536/4) and scale counts (12288 = rows).
         slim = index >= 15
         inner = 12288 if slim else 6144
         emit_vec(layers, tensors, f'{at}.pre_attention_norm.scale', rdr.f32(f'{at}.pre_attention_norm.scale'))

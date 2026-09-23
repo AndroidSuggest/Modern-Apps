@@ -47,8 +47,8 @@ and are carried step to step; `input_pos = [position]`.
     `ple_combined` is computed in numpy from the reference's own S2/S3 outputs
     plus the shared-projection weights from the file (same dequantisation the
     converter uses - the check this arbitrates is the gather + combination,
-    not the dequant): projected = W @ hidden / sqrt(1536), grouped RMS norm
-    over 35x256, plus the S3 gather, over sqrt(2). It matches the `per_layer`
+    not the dequant): projected = W @ hidden, grouped RMS norm over 35x256,
+    plus 16x the S3 gather (t307), over sqrt(2) (t304). It matches the `per_layer`
     the Rust `Trace { layers: 0 }` path returns.
 
     python scripts/ml/gemma4_text_parity.py -o build/gemma4
@@ -66,6 +66,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from litertlm_to_maml import LitertlmReader
+from s10_to_maml import S10Reader
 
 # A short text-only prompt, inside every sliding window so one causal mask
 # serves both layer types. Tokenizer already prepends <bos> (id 2).
@@ -86,13 +87,21 @@ def ple_combined(hidden, embedded, proj_w, proj_norm):
 
     `hidden` [1536] is S2's embedding; `embedded` [35, 256] is S3's gather;
     the projection/norm come from the file. Returns [8960].
+
+    Proven from the S10 graph walk (t319 <- t30 input): PLE slice =
+    (grouped_rmsnorm(W @ hidden) + 16 x S3_gather) / sqrt(2), with x16 =
+    t307 on the gather path and 1/sqrt(2) = t304. There is no sqrt(1536)
+    anywhere in S10 (full-file constant scan finds only 16.0 and 1/sqrt(2));
+    /sqrt(1536) before a grouped RMS-norm would be computation-neutral
+    (uniform scale erased by the norm) but spec-divergent, so it is dropped.
+    Track-3 evidence: S10-table + x16-on-gather vs live t318 = 0.999974
+    (x16-on-normed 0.847, no-x16 0.867).
     """
     projected = (proj_w.astype(np.float64) @ hidden.astype(np.float64))
-    projected = projected / np.sqrt(1536.0)
     grouped = projected.reshape(35, 256)
     var = (grouped ** 2).mean(axis=1, keepdims=True)
     normed = grouped / np.sqrt(var + EPSILON) * proj_norm.reshape(1, 256)
-    combined = embedded.reshape(35, 256) + normed
+    combined = 16.0 * embedded.reshape(35, 256) + normed
     return (combined / np.sqrt(2.0)).reshape(-1)
 
 
@@ -103,8 +112,13 @@ def main():
     ap.add_argument("--s2", default="analysis/base-sections/Section2_TFLiteModel_tf_lite_embedder.tflite")
     ap.add_argument("--s3", default="analysis/base-sections/Section3_TFLiteModel_tf_lite_per_layer_embedder.tflite")
     ap.add_argument("--s10", default="analysis/base-sections/Section10_TFLiteModel_tf_lite_prefill_decode.tflite")
-    ap.add_argument("--weights", default="analysis/gpu-sections/Section2_TFLiteModel_tf_lite_artisan_text_decoder.tflite",
-                    help="artisan text decoder holding the shared projection/norm")
+    ap.add_argument("--weights", default=None,
+                    help="optional artisan text decoder holding the shared "
+                         "projection/norm (legacy path: artisan table scores only "
+                         "0.42 vs live t318 — different checkpoint). When omitted "
+                         "(default), the trace uses S10's OWN t312/t305 so the "
+                         "S10-control pair is S10-self-consistent (S10 table + "
+                         "x16-gather vs live t318 = 0.99997).")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
@@ -113,21 +127,30 @@ def main():
 
     s2 = Interpreter(model_path=args.s2).get_signature_runner("embedder")
     s3 = Interpreter(model_path=args.s3).get_signature_runner("per_layer_embedder")
-    rdr = LitertlmReader(args.weights)
-    proj_w = rdr.dequant8("transformer.embedder.per_layer_model_projection.w", 8960, 1536)
-    proj_norm = rdr.f32("transformer.embedder.per_layer_projection_norm.scale")
-    s10 = load_interpreter(args.s10)
-    details = {d["name"].split(":")[0]: d for d in s10.get_input_details()}
-    out_details = {d["name"].split(":")[0]: d for d in s10.get_output_details()}
-    index_of = {k: v["index"] for k, v in details.items()}
-
-    # Zero caches, shaped from the inputs. Names here are the raw tensor
-    # names (decode_kv_cache_k_0:0), keyed short below.
-    short = {k.split(":")[0].replace("decode_", ""): k for k in details}
-    cache_keys = [k for k in details if "kv_cache" in k]
+    if args.weights:
+        # Legacy artisan path (kept for the artisan-file golden only): the
+        # artisan PLE table is a different checkpoint from S10's t312
+        # (full-cos ~0.0005), so its trace can never match live t318.
+        rdr = LitertlmReader(args.weights)
+        proj_w = rdr.dequant8("transformer.embedder.per_layer_model_projection.w", 8960, 1536)
+        proj_norm = rdr.f32("transformer.embedder.per_layer_projection_norm.scale")
+    else:
+        s10rdr = S10Reader(args.s10)
+        proj_w = s10rdr.dequant8(312, 8960, 1536)
+        proj_norm = s10rdr.f32(305)
+    # True-carry drive (Track 11): the `decode` signature runner returns the
+    # UPDATED caches as dict outputs (`kv_cache_k_0`, ...), mirroring
+    # analysis/live_kv.py. The old raw-interpreter loop carried via
+    # get_tensor() on INPUT indices, which reads back the just-fed values
+    # (no-op: fed nonzero returns bit-identical), so caches stayed zero all
+    # 6 steps and the golden (argmax 95375) was a zero-carry artifact. The
+    # runner-output path is deterministic (1.000000 across fresh runs).
+    dec = Interpreter(model_path=args.s10).get_signature_runner("decode")
+    in_details = dec.get_input_details()
+    cache_keys = [k for k in in_details if "kv_cache" in k]
     cache = {}
     for k in cache_keys:
-        cache[k] = np.zeros(list(details[k]["shape"]), np.int8)
+        cache[k] = np.zeros(list(in_details[k]["shape"]), np.int8)
 
     logits = None
     for step, token in enumerate(tokens):
@@ -139,17 +162,16 @@ def main():
         mask = np.zeros([1, 1, 1, CONTEXT], bool)
         mask[0, 0, 0, : step + 1] = True
         feed = dict(cache)
-        feed[short["embeddings"]] = emb
-        feed[short["per_layer_embeddings"]] = ple
-        feed[short["input_pos"]] = np.array([step], np.int32)
-        feed[short["mask"]] = mask
-        feed[short["param_tensor"]] = np.array([[[[step, step + 1, step + 1, 0, 0, 0, 0]]]], np.int32)
-        for k, v in feed.items():
-            s10.set_tensor(index_of[k], v)
-        s10.invoke()
+        feed["embeddings"] = emb
+        feed["per_layer_embeddings"] = ple
+        feed["input_pos"] = np.array([step], np.int32)
+        feed["mask"] = mask
+        feed["param_tensor"] = np.array([[[[step, step + 1, step + 1, 0, 0, 0, 0]]]], np.int32)
+        out = dec(**feed)
         for k in cache_keys:
-            cache[k] = s10.get_tensor(index_of[k]).copy()
-        logits = s10.get_tensor(2702).ravel().astype(np.float64)
+            if k in out:
+                cache[k] = np.asarray(out[k])
+        logits = np.asarray(out["logits"]).ravel().astype(np.float64)
         top = np.argsort(logits)[-3:]
         print(f"  step {step} token {token}: top {top.tolist()}")
 

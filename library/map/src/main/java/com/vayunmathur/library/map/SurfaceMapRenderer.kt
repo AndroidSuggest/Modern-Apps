@@ -750,8 +750,8 @@ class SurfaceMapRenderer(
             MapNative.clearMarkers(handle)
             return
         }
-        val (ids, lonLat, icons) = packMapMarkers(pins)
-        MapNative.setMarkers(handle, ids, lonLat, icons)
+        val packed = packMapMarkers(pins)
+        MapNative.setMarkers(handle, packed.ids, packed.lonLat, packed.icons, packed.labels)
     }
 
     private fun applyVehicles() {

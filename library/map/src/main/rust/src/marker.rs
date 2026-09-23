@@ -54,6 +54,45 @@ pub struct Marker {
 /// by a tile matrix. A touch larger than a POI icon (19 Dp) so an app pin reads as foreground.
 pub const MARKER_SIZE_DP: f32 = 28.0;
 
+/// The screen size a marker's name label is drawn at, in Dp.
+///
+/// Screen-constant like the icon beside it: a pin is not tile data, so its label cannot follow
+/// a zoom ramp the way a POI's does. 12 Dp is the `places-locality` size at browse zooms, which
+/// is what a pin label reads alongside.
+pub const MARKER_LABEL_DP: f32 = 12.0;
+
+/// The gap between a marker icon's edge and its name label's start, in Dp.
+///
+/// The POI `text-offset` of 1.1 em is measured from the anchor (the icon's centre) for a 19 Dp
+/// icon; scaled to a 28 Dp icon that same daylight is this gap past the half-extent.
+pub const MARKER_LABEL_GAP_DP: f32 = 4.0;
+
+/// A marker label's text colour, light and dark.
+///
+/// The neutral `places-locality` recipe verbatim: markers span kinds (parking, search, saved,
+/// family) so no kind colour fits, and this grey is the proven legible neutral on both
+/// basemaps with the halos below.
+pub const MARKER_LABEL_LIGHT: u32 = 0xFF5C_5C5C;
+/// A marker label's text colour on the dark basemap (see [`MARKER_LABEL_LIGHT`]).
+pub const MARKER_LABEL_DARK: u32 = 0xFF5C_5C5C;
+/// A marker label's halo colour on the light basemap (see [`MARKER_LABEL_LIGHT`]).
+pub const MARKER_LABEL_HALO_LIGHT: u32 = 0xFFFF_FFFF;
+/// A marker label's halo colour on the dark basemap (see [`MARKER_LABEL_LIGHT`]).
+pub const MARKER_LABEL_HALO_DARK: u32 = 0xFF0D_1B2A;
+
+/// A drawn marker icon's half-extents in Dp for `sprite`.
+///
+/// The single definition both the icon draw and the POI-placement blocker read: the icon
+/// draws at [`MARKER_SIZE_DP`] on its larger side keeping its aspect ratio, so the box the
+/// placer blocks with is the box the GPU draws — never a second implementation of it.
+pub fn marker_icon_half_extents(sprite: crate::tile::sprite::Sprite) -> (f32, f32) {
+    let scale = MARKER_SIZE_DP / sprite.width_dp.max(sprite.height_dp).max(1e-3);
+    (
+        sprite.width_dp * scale * 0.5,
+        sprite.height_dp * scale * 0.5,
+    )
+}
+
 /// Icon ids: the shared contract with WS-F. Kotlin passes these as ints; the renderer resolves
 /// each to a sprite-atlas name via [`icon_sprite_name`].
 ///
@@ -87,17 +126,20 @@ pub mod icon {
 /// # Provisional pin art
 ///
 /// The current sprite sheet (`assets/sprites/sprites@2x.png`) carries the Protomaps POI icons,
-/// which have no dedicated *pin* pictograms, so the pin ids map to the closest existing sprite so a
-/// marker is visible today rather than blank. A follow-up build-side asset pass can add dedicated
-/// `pin-*` sprites and repoint these names with no code change beyond this table — the JNI ids stay
-/// the same.
+/// which have no dedicated *pin* pictograms, so the remaining pin ids map to the closest
+/// existing sprite so a marker is visible today rather than blank. A follow-up build-side
+/// asset pass can add dedicated `pin-*` sprites and repoint these names with no code change
+/// beyond this table — the JNI ids stay the same.
 ///
-/// # Vehicle art
+/// # Vehicle and family art
 ///
 /// The vehicle ids resolve to dedicated `vehicle-*` sprites: solid transport-blue badges with
 /// white Maki glyphs, built by `analysis/spritepack/pack.py` alongside the `fuel`/`hotel`/`bank`
 /// POI additions. Solid rather than the pale POI badge on purpose — vehicles dwell exactly on
 /// stops, and pale badges read as duplicated station POIs (seen on-device 2026-09-14).
+///
+/// The family id resolves to a dedicated `family` sprite the same way: a solid family-indigo
+/// badge with a white person glyph, so a family member never reads as a starred POI.
 pub fn icon_sprite_name(icon: u32) -> Option<&'static str> {
     let name = match icon {
         // Pins — provisional mappings onto existing POI sprites (see the doc above).
@@ -105,7 +147,7 @@ pub fn icon_sprite_name(icon: u32) -> Option<&'static str> {
         icon::TRANSIT_STOP => "bus_stop",
         icon::SEARCH => "attraction",
         icon::SAVED => "artwork",
-        icon::FAMILY => "attraction",
+        icon::FAMILY => "family",
         // Vehicles (WS-F) — dedicated solid-badge sprites, not POI icons.
         icon::VEHICLE_BUS => "vehicle-bus",
         icon::VEHICLE_TRAM => "vehicle-tram",
@@ -163,5 +205,35 @@ mod tests {
         assert_eq!(icon_sprite_name(icon::VEHICLE_TRAM), Some("vehicle-tram"));
         assert_eq!(icon_sprite_name(icon::VEHICLE_TRAIN), Some("vehicle-train"));
         assert_eq!(icon_sprite_name(icon::VEHICLE_FERRY), Some("vehicle-ferry"));
+    }
+
+    /// The family pin draws the dedicated indigo person badge, not the provisional
+    /// `attraction` star it shared with search pins — a family member must never read
+    /// as a starred POI.
+    #[test]
+    fn the_family_id_maps_to_its_own_sprite() {
+        assert_eq!(icon_sprite_name(icon::FAMILY), Some("family"));
+    }
+
+    /// The family sprite draws at the POI icon size (38 sheet px at ratio 2 = 19 Dp),
+    /// so the pin scales to `MARKER_SIZE_DP` on its larger side exactly like the rest.
+    #[test]
+    fn the_family_sprite_is_drawn_at_poi_icon_size() {
+        let family = crate::tile::sprite::atlas()
+            .get("family")
+            .expect("family is in the sheet");
+        assert!((family.width_dp - 19.0).abs() < 1e-6, "{}", family.width_dp);
+        assert!((family.height_dp - 19.0).abs() < 1e-6, "{}", family.height_dp);
+    }
+
+    /// Half-extents scale the larger side to `MARKER_SIZE_DP`: a square sprite yields the
+    /// 14 Dp half-box the icon draw and the POI-placement blocker both cover.
+    #[test]
+    fn icon_half_extents_scale_the_larger_side_to_marker_size() {
+        let atlas = crate::tile::sprite::atlas();
+        let family = atlas.get("family").expect("family is in the sheet");
+        let (hw, hh) = marker_icon_half_extents(family);
+        assert!((hw - 14.0).abs() < 1e-6, "{hw}");
+        assert!((hh - 14.0).abs() < 1e-6, "{hh}");
     }
 }

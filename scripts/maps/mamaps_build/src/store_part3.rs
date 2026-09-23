@@ -304,12 +304,31 @@ impl WaySink {
     }
 
     /// Anonymous twin of [`create`](Self::create): same records in pagefile-backed
-    /// memory (`MAPS_ANON_SPILL=1`), no file. `path` names nothing — it only rides
+    /// memory, no file. `path` names nothing — it only rides
     /// along for error messages. Pair with [`WaySink::finish_anon`].
     pub fn create_anon(path: &Path) -> Result<WaySink> {
-        let _ = path;
+        Self::create_planned(path, osm_ingest::mem::SpillPlan::Anon)
+    }
+
+    /// Create with an explicit staging plan. See [`Sink::create_planned`]: the budget gate picks
+    /// `File` when anon commit does not fit, and `File` stages through the `.tmp` at `path`,
+    /// removed after materialise like every other scratch file. Pair with
+    /// [`finish_either`](Self::finish_either).
+    pub fn create_planned(path: &Path, plan: osm_ingest::mem::SpillPlan) -> Result<WaySink> {
+        let out = match plan {
+            osm_ingest::mem::SpillPlan::Anon => {
+                WayOut::Anon(tile_build::anon::AnonStore::new())
+            }
+            osm_ingest::mem::SpillPlan::File => {
+                println!("  [stage A] ways spill -> {} (file backend: commit budget)", path.display());
+                let file = File::create(path)
+                    .map_err(|e| Error(format!("cannot create {}: {e}", path.display())))?;
+                // A megabyte, because the writes are a few dozen bytes each and there are millions.
+                WayOut::File(BufWriter::with_capacity(1 << 20, file))
+            }
+        };
         Ok(WaySink {
-            out: WayOut::Anon(tile_build::anon::AnonStore::new()),
+            out,
             record: Vec::new(),
             last_id: 0,
             count: 0,
@@ -439,6 +458,22 @@ impl WaySink {
         match self.out {
             WayOut::Anon(a) => Ok((counts, a)),
             WayOut::File(_) => unreachable!("checked above"),
+        }
+    }
+
+    /// Seal, and hand back the counts plus the staged bytes on the anon plan or `None` on the
+    /// file plan (whose bytes live at the path the sink was created with). Unifies
+    /// [`finish`](Self::finish) and [`finish_anon`](Self::finish_anon) so callers that pick the
+    /// backend by budget seal without knowing which one they chose.
+    pub fn finish_either(mut self) -> Result<(WayCounts, Option<tile_build::anon::AnonStore>)> {
+        match &mut self.out {
+            WayOut::File(f) => f.flush().map_err(|e| Error(format!("cannot flush the ways spill: {e}")))?,
+            WayOut::Anon(a) => a.finish(),
+        }
+        let counts = WayCounts { ways: self.count, refs: self.refs, max_ref: self.max_ref };
+        match self.out {
+            WayOut::Anon(a) => Ok((counts, Some(a))),
+            WayOut::File(_) => Ok((counts, None)),
         }
     }
 }

@@ -24,6 +24,12 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
     })?;
 
     let mut per_zoom = Vec::new();
+    // The tile-chunk spill's backend, decided once from the feature count: z14 holds the most
+    // clipped copies at once (the 53 GB north-america case that motivated the spill), so sizing
+    // for the whole store is the safe side. Per-zoom files share one scratch path -- each zoom's
+    // spill truncates it on create and removes it on drop, so peak disk is still the largest
+    // single zoom.
+    let chunk_plan = plan_chunk_spill(store, &settings.scratch);
     for z in 0..=crate::DEFAULT_MAX_ZOOM {
         let mut stats = ZoomStats { zoom: z, ..ZoomStats::default() };
         let tolerance =
@@ -32,9 +38,9 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
 
         // Per zoom, so peak scratch is the largest single zoom rather than the sum, and so a build
         // that dies at z14 leaves one zoom behind rather than fifteen. Anonymous
-        // pagefile-backed memory (no file); the merge reads through the same
-        // ChunkReader.
-        let spill = ChunkSpill::create_anon(&settings.scratch)?;
+        // pagefile-backed memory (no file) when commit allows, else the scratch file; the merge
+        // reads through the same ChunkReader either way.
+        let spill = ChunkSpill::create_planned(&settings.scratch, chunk_plan)?;
         let mapped = std::time::Instant::now();
         let (chunks, tally) = map_zoom(store, z, tolerance, buffer, &spill)?;
         stats.map_ms = mapped.elapsed().as_millis() as u64;
@@ -120,6 +126,48 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
 
     let bytes = writer.finish()?;
     Ok((bytes, per_zoom))
+}
+
+/// Which backend one zoom's tile-chunk spill stages in.
+///
+/// The chunk spill holds clipped copies -- one record per (feature, tile) pair -- so its size
+/// scales with the store's feature count times the tiling fan-out, not with anything known
+/// exactly up front. The estimate is `features x 512 B`: a clipped copy carries the feature's
+/// packed body (tens of bytes) plus its share of parts/coords, and z14's fan-out dominates.
+/// Over-estimating files a zoom that would have fit anon; under-estimating pages it. Files are
+/// the safe side -- same chunks, removed on drop -- so the constant leans that way.
+///
+/// Unknown limits (or a small store under 1 M features): the historical anon path, no behaviour
+/// change.
+fn plan_chunk_spill(store: &Store, scratch: &std::path::Path) -> osm_ingest::mem::SpillPlan {
+    const CHUNK_BYTES_PER_FEATURE: u64 = 512;
+    const SMALL_STORE_FEATURES: u64 = 1_000_000;
+    if store.len() < SMALL_STORE_FEATURES {
+        return osm_ingest::mem::SpillPlan::Anon;
+    }
+    let mut budget = osm_ingest::mem::StageBudget::default();
+    // Reuse the anon-commit field for the chunk estimate: it is the number `decide` compares
+    // against the commit allowance, and the chunk spill is the only anon charge this phase adds
+    // (the feature spill is already staged and counted separately).
+    budget.ways_spill_bytes = store.len().saturating_mul(CHUNK_BYTES_PER_FEATURE);
+    match osm_ingest::mem::SpillPlan::decide(&budget, scratch, "tiler chunk spill") {
+        Ok(plan) => {
+            if plan != osm_ingest::mem::SpillPlan::Anon {
+                println!(
+                    "  [tiler] chunk spill -> {} (file backend: commit budget)",
+                    scratch.display(),
+                );
+            }
+            plan
+        }
+        Err(e) => {
+            // A zoom that fits neither backend is not a hard failure here: later zooms are
+            // smaller, and each zoom re-creates the spill. Warn and take files -- the operator
+            // sees the message and the build still has a chance.
+            eprintln!("WARNING: {e}; continuing with file staging");
+            osm_ingest::mem::SpillPlan::File
+        }
+    }
 }
 
 /// The map half of one zoom: every feature in the store, clipped into per-chunk tile maps and

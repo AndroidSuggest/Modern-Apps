@@ -17,7 +17,7 @@ enum BuiltRelation {
 /// both immutable, so it is safe to call across the pool. See [`BuiltRelation`].
 fn build_relation(
     relation: &Relation,
-    members: &HashMap<i64, Vec<i64>>,
+    members: &MemberWays,
     table: &NodeLocations,
 ) -> BuiltRelation {
     // A `places` relation (a country, a region) is labelled at its centroid: one point, not a
@@ -26,7 +26,7 @@ fn build_relation(
         let line: Vec<(f64, f64)> = relation
             .members
             .iter()
-            .filter_map(|(id, _)| members.get(id))
+            .filter_map(|(id, _)| members.get(*id))
             .flat_map(|refs| table.line(refs))
             .collect();
         return BuiltRelation::Label(centroid(&line));
@@ -38,7 +38,7 @@ fn build_relation(
         let lines: Vec<Vec<(f64, f64)>> = relation
             .members
             .iter()
-            .filter_map(|(id, _)| members.get(id))
+            .filter_map(|(id, _)| members.get(*id))
             .map(|refs| table.line(refs))
             .filter(|line| line.len() >= 2)
             .collect();
@@ -48,7 +48,7 @@ fn build_relation(
         .members
         .iter()
         .filter_map(|(id, inner)| {
-            Some(MemberWay { refs: members.get(id)?.clone(), outer: !inner })
+            Some(MemberWay { refs: members.get(*id)?.clone(), outer: !inner })
         })
         .collect();
     let mut rings = RingStats::default();
@@ -64,7 +64,7 @@ fn build_relation(
 /// the tiler mis-marks roads at the region's edge.
 fn materialise_relations(
     relations: &[Relation],
-    members: &HashMap<i64, Vec<i64>>,
+    members: &MemberWays,
     table: &NodeLocations,
     region: Option<&osm_ingest::bbox::BBox>,
     sink: &mut Sink,
@@ -290,14 +290,14 @@ const MAX_NODE_ID: i64 = 48 << 30;
 /// already know.
 fn collect_needed_in_memory(
     ways_path: &Path,
-    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
-    members: &HashMap<i64, Vec<i64>>,
+    ways_anon: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
+    members: &MemberWays,
     refs_total: usize,
     mark: &dyn Fn(&str),
 ) -> Result<NodeLocations> {
     let mut needed: Vec<i64> = Vec::with_capacity(refs_total);
     {
-        let mut reader = open_ways_reader(ways_path, &ways_anon)?;
+        let mut reader = open_ways_reader(ways_path, ways_anon)?;
         let mut refs: Vec<i64> = Vec::new();
         while reader.next(&mut refs)?.is_some() {
             needed.extend_from_slice(&refs);
@@ -331,14 +331,14 @@ fn collect_needed_in_memory(
 /// of OSM's data rather than a hope about it, and [`MAX_NODE_ID`] is where that property is enforced.
 fn collect_needed_by_bitset(
     ways_path: &Path,
-    ways_anon: std::sync::Arc<tile_build::anon::AnonStore>,
-    members: &HashMap<i64, Vec<i64>>,
+    ways_anon: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
+    members: &MemberWays,
     max_ref: i64,
     mark: &dyn Fn(&str),
 ) -> Result<NodeLocations> {
     let mut bits = NeededBits::new(max_ref)?;
     {
-        let mut reader = open_ways_reader(ways_path, &ways_anon)?;
+        let mut reader = open_ways_reader(ways_path, ways_anon)?;
         let mut refs: Vec<i64> = Vec::new();
         while reader.next(&mut refs)?.is_some() {
             for &id in &refs {
@@ -352,8 +352,10 @@ fn collect_needed_by_bitset(
         }
     }
     mark("refs collected");
-    // Ascending and unique by construction, which is `from_sorted`'s whole precondition.
-    NodeLocations::from_sorted(bits.ids(), bits.len())
+    // The bitset's words move into the rank index directly (`from_bitset`), not through `ids()`:
+    // walking them out as ids and re-setting them would hold two ~1.5 GB words arrays at once.
+    let (words, count) = bits.into_words();
+    NodeLocations::from_bitset(words, count)
 }
 
 /// One bit per node id in `0..=max_id`.
@@ -400,9 +402,16 @@ impl NeededBits {
         Ok(())
     }
 
-    /// How many distinct ids were set. The `len` [`NodeLocations::from_sorted`] sizes from.
+    /// How many distinct ids were set. The `len` [`NodeLocations::from_bitset`] sizes from.
     fn len(&self) -> usize {
         self.count
+    }
+
+    /// Hand the words over to the rank index: the collector is done setting bits and the index is
+    /// done needing a settable bitset, so one moves into the other rather than both living at once.
+    /// Consumes `self`; the count travels beside the words so the index need not recount them.
+    fn into_words(self) -> (Vec<u64>, usize) {
+        (self.words, self.count)
     }
 
     /// Every set id, ascending. `trailing_zeros` on a word at a time, so an empty stretch of the id

@@ -1,0 +1,275 @@
+Calculating task graph as no cached configuration is available for tasks: :maps:assembleDev
+> Task :build-logic:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :build-logic:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :build-logic:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :build-logic:compilePluginsBlocks UP-TO-DATE
+> Task :build-logic:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :build-logic:generateScriptPluginAdapters UP-TO-DATE
+> Task :build-logic:compileKotlin UP-TO-DATE
+> Task :build-logic:compileJava NO-SOURCE
+> Task :build-logic:pluginDescriptors UP-TO-DATE
+> Task :build-logic:processResources UP-TO-DATE
+> Task :build-logic:classes UP-TO-DATE
+> Task :build-logic:jar UP-TO-DATE
+
+> Configure project :appstore
+WARNING: The option setting 'android.experimental.enableScreenshotTest=true' is experimental.
+The current default is 'false'.
+Add android.sync.suppressAgpWarnings=UNSUPPORTED_PROJECT_OPTION_USE to the gradle.properties file to suppress this warning.
+
+> Task :maps:cargoNdkBuild UP-TO-DATE
+> Task :library:preBuild UP-TO-DATE
+> Task :library:preReleaseBuild UP-TO-DATE
+> Task :library:generateReleaseResources UP-TO-DATE
+> Task :library:packageReleaseResources UP-TO-DATE
+> Task :library:processReleaseNavigationResources UP-TO-DATE
+> Task :library:parseReleaseLocalResources UP-TO-DATE
+> Task :library:generateReleaseRFile UP-TO-DATE
+> Task :sdk:games:preBuild UP-TO-DATE
+> Task :sdk:games:preReleaseBuild UP-TO-DATE
+> Task :sdk:games:generateReleaseResources UP-TO-DATE
+> Task :sdk:games:packageReleaseResources UP-TO-DATE
+> Task :sdk:games:processReleaseNavigationResources UP-TO-DATE
+> Task :sdk:games:parseReleaseLocalResources UP-TO-DATE
+> Task :sdk:games:generateReleaseRFile UP-TO-DATE
+> Task :maps:rustFileLength
+> Task :maps:preBuild
+> Task :maps:preDevBuild
+> Task :maps:mergeDevNativeDebugMetadata NO-SOURCE
+> Task :sdk:games:javaPreCompileRelease UP-TO-DATE
+> Task :library:javaPreCompileRelease UP-TO-DATE
+> Task :maps:generateDevBuildConfig UP-TO-DATE
+> Task :maps:generateDevLauncherIcon UP-TO-DATE
+> Task :library:extractReleaseSupportedLocales UP-TO-DATE
+> Task :maps:extractDevSupportedLocales UP-TO-DATE
+> Task :maps:mapDevSourceSetPaths UP-TO-DATE
+> Task :library:downloadservice:preBuild UP-TO-DATE
+> Task :library:downloadservice:preReleaseBuild UP-TO-DATE
+> Task :library:downloadservice:extractReleaseSupportedLocales UP-TO-DATE
+> Task :library:image:preBuild UP-TO-DATE
+> Task :sdk:games:compileReleaseKotlin UP-TO-DATE
+> Task :library:image:preReleaseBuild UP-TO-DATE
+> Task :library:image:extractReleaseSupportedLocales UP-TO-DATE
+> Task :sdk:games:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:map:cargoNdkBuild UP-TO-DATE
+> Task :sdk:games:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:kspReleaseKotlin UP-TO-DATE
+> Task :library:compileReleaseKotlin UP-TO-DATE
+> Task :library:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:network:preBuild UP-TO-DATE
+> Task :library:network:preReleaseBuild UP-TO-DATE
+> Task :library:network:extractReleaseSupportedLocales UP-TO-DATE
+> Task :library:ui:preBuild UP-TO-DATE
+> Task :library:ui:preReleaseBuild UP-TO-DATE
+> Task :library:ui:extractReleaseSupportedLocales UP-TO-DATE
+> Task :library:work:preBuild UP-TO-DATE
+> Task :library:work:preReleaseBuild UP-TO-DATE
+> Task :library:map:rustFileLength
+> Task :library:map:preBuild
+> Task :library:map:preReleaseBuild
+> Task :library:work:extractReleaseSupportedLocales UP-TO-DATE
+> Task :library:map:extractReleaseSupportedLocales UP-TO-DATE
+> Task :sdk:games:extractReleaseSupportedLocales UP-TO-DATE
+> Task :maps:generateDevResources UP-TO-DATE
+> Task :library:downloadservice:processReleaseNavigationResources UP-TO-DATE
+> Task :library:image:processReleaseNavigationResources UP-TO-DATE
+> Task :library:map:processReleaseNavigationResources UP-TO-DATE
+> Task :library:network:processReleaseNavigationResources UP-TO-DATE
+> Task :library:ui:processReleaseNavigationResources UP-TO-DATE
+> Task :library:work:processReleaseNavigationResources UP-TO-DATE
+> Task :maps:generateDevLocaleConfig UP-TO-DATE
+> Task :maps:packageDevResources UP-TO-DATE
+> Task :library:downloadservice:generateReleaseResources UP-TO-DATE
+> Task :library:downloadservice:packageReleaseResources UP-TO-DATE
+> Task :library:downloadservice:parseReleaseLocalResources UP-TO-DATE
+> Task :library:downloadservice:generateReleaseRFile UP-TO-DATE
+> Task :library:work:generateReleaseResources UP-TO-DATE
+> Task :library:work:packageReleaseResources UP-TO-DATE
+> Task :library:work:parseReleaseLocalResources UP-TO-DATE
+> Task :library:work:generateReleaseRFile UP-TO-DATE
+> Task :library:work:compileReleaseKotlin UP-TO-DATE
+> Task :library:work:javaPreCompileRelease UP-TO-DATE
+> Task :library:work:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:work:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:downloadservice:compileReleaseKotlin UP-TO-DATE
+> Task :library:downloadservice:javaPreCompileRelease UP-TO-DATE
+> Task :library:downloadservice:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:downloadservice:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:image:generateReleaseResources UP-TO-DATE
+> Task :library:image:packageReleaseResources UP-TO-DATE
+> Task :library:image:parseReleaseLocalResources UP-TO-DATE
+> Task :library:image:generateReleaseRFile UP-TO-DATE
+> Task :library:network:generateReleaseResources UP-TO-DATE
+> Task :library:network:packageReleaseResources UP-TO-DATE
+> Task :library:network:parseReleaseLocalResources UP-TO-DATE
+> Task :library:network:generateReleaseRFile UP-TO-DATE
+> Task :library:network:compileReleaseKotlin UP-TO-DATE
+> Task :library:network:javaPreCompileRelease UP-TO-DATE
+> Task :library:network:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:network:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:image:compileReleaseKotlin UP-TO-DATE
+> Task :library:image:javaPreCompileRelease UP-TO-DATE
+> Task :library:image:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:image:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :library:map:generateReleaseResources UP-TO-DATE
+> Task :library:map:packageReleaseResources UP-TO-DATE
+> Task :library:map:parseReleaseLocalResources UP-TO-DATE
+> Task :library:map:generateReleaseRFile UP-TO-DATE
+> Task :maps:processDevNavigationResources UP-TO-DATE
+> Task :maps:parseDevLocalResources UP-TO-DATE
+> Task :maps:generateDevRFile UP-TO-DATE
+> Task :library:map:javaPreCompileRelease UP-TO-DATE
+> Task :library:ui:generateReleaseResources UP-TO-DATE
+> Task :library:ui:packageReleaseResources UP-TO-DATE
+> Task :library:ui:parseReleaseLocalResources UP-TO-DATE
+> Task :library:ui:generateReleaseRFile UP-TO-DATE
+> Task :library:ui:compileReleaseKotlin UP-TO-DATE
+> Task :library:ui:javaPreCompileRelease UP-TO-DATE
+> Task :library:ui:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:ui:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :maps:javaPreCompileDev UP-TO-DATE
+> Task :library:generateReleaseAssets UP-TO-DATE
+> Task :library:mergeReleaseAssets UP-TO-DATE
+> Task :maps:generateDevAssets UP-TO-DATE
+> Task :library:downloadservice:generateReleaseAssets UP-TO-DATE
+> Task :library:downloadservice:mergeReleaseAssets UP-TO-DATE
+> Task :library:image:generateReleaseAssets UP-TO-DATE
+> Task :library:image:mergeReleaseAssets UP-TO-DATE
+> Task :library:map:generateReleaseAssets UP-TO-DATE
+> Task :library:map:mergeReleaseAssets UP-TO-DATE
+> Task :library:network:generateReleaseAssets UP-TO-DATE
+> Task :library:network:mergeReleaseAssets UP-TO-DATE
+> Task :library:ui:generateReleaseAssets UP-TO-DATE
+> Task :library:ui:mergeReleaseAssets UP-TO-DATE
+> Task :library:work:generateReleaseAssets UP-TO-DATE
+> Task :library:work:mergeReleaseAssets UP-TO-DATE
+> Task :sdk:games:generateReleaseAssets UP-TO-DATE
+> Task :sdk:games:mergeReleaseAssets UP-TO-DATE
+> Task :maps:mergeDevAssets UP-TO-DATE
+> Task :maps:compressDevAssets UP-TO-DATE
+> Task :maps:generateDevGlobalSynthetics UP-TO-DATE
+> Task :library:compressReleaseJavaRes UP-TO-DATE
+> Task :library:downloadservice:compressReleaseJavaRes UP-TO-DATE
+> Task :library:image:compressReleaseJavaRes UP-TO-DATE
+> Task :library:network:compressReleaseJavaRes UP-TO-DATE
+> Task :library:ui:compressReleaseJavaRes UP-TO-DATE
+> Task :library:work:compressReleaseJavaRes UP-TO-DATE
+> Task :sdk:games:compressReleaseJavaRes UP-TO-DATE
+> Task :maps:checkDevDuplicateClasses UP-TO-DATE
+> Task :maps:desugarDevFileDependencies UP-TO-DATE
+> Task :maps:mergeExtDexDev UP-TO-DATE
+> Task :library:ui:bundleLibRuntimeToDirRelease UP-TO-DATE
+> Task :library:image:bundleLibRuntimeToDirRelease UP-TO-DATE
+> Task :library:downloadservice:bundleLibRuntimeToDirRelease UP-TO-DATE
+> Task :library:work:bundleLibRuntimeToDirRelease UP-TO-DATE
+> Task :library:bundleLibRuntimeToDirRelease UP-TO-DATE
+> Task :library:network:bundleLibRuntimeToDirRelease UP-TO-DATE
+> Task :sdk:games:bundleLibRuntimeToDirRelease UP-TO-DATE
+> Task :library:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :library:compileReleaseLibraryResources UP-TO-DATE
+> Task :library:writeReleaseAarMetadata UP-TO-DATE
+> Task :library:downloadservice:writeReleaseAarMetadata UP-TO-DATE
+> Task :library:image:writeReleaseAarMetadata UP-TO-DATE
+> Task :library:map:writeReleaseAarMetadata UP-TO-DATE
+> Task :library:network:writeReleaseAarMetadata UP-TO-DATE
+> Task :library:ui:writeReleaseAarMetadata UP-TO-DATE
+> Task :library:work:writeReleaseAarMetadata UP-TO-DATE
+> Task :sdk:games:writeReleaseAarMetadata UP-TO-DATE
+> Task :maps:checkDevAarMetadata UP-TO-DATE
+> Task :maps:compileDevNavigationResources UP-TO-DATE
+> Task :maps:mergeDevResources UP-TO-DATE
+> Task :maps:createDevCompatibleScreenManifests UP-TO-DATE
+> Task :library:extractDeepLinksRelease UP-TO-DATE
+> Task :library:processReleaseManifest UP-TO-DATE
+> Task :maps:extractDeepLinksDev UP-TO-DATE
+> Task :library:downloadservice:extractDeepLinksRelease UP-TO-DATE
+> Task :library:downloadservice:processReleaseManifest UP-TO-DATE
+> Task :library:image:extractDeepLinksRelease UP-TO-DATE
+> Task :library:image:processReleaseManifest UP-TO-DATE
+> Task :library:map:extractDeepLinksRelease UP-TO-DATE
+> Task :library:map:processReleaseManifest UP-TO-DATE
+> Task :library:network:extractDeepLinksRelease UP-TO-DATE
+> Task :library:network:processReleaseManifest UP-TO-DATE
+> Task :library:ui:extractDeepLinksRelease UP-TO-DATE
+> Task :library:ui:processReleaseManifest UP-TO-DATE
+> Task :library:work:extractDeepLinksRelease UP-TO-DATE
+> Task :library:work:processReleaseManifest UP-TO-DATE
+> Task :sdk:games:extractDeepLinksRelease UP-TO-DATE
+> Task :sdk:games:processReleaseManifest UP-TO-DATE
+> Task :maps:processDevMainManifest UP-TO-DATE
+> Task :maps:processDevManifest UP-TO-DATE
+> Task :maps:processDevManifestForPackage UP-TO-DATE
+> Task :library:downloadservice:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :library:downloadservice:compileReleaseLibraryResources UP-TO-DATE
+> Task :library:image:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :library:image:compileReleaseLibraryResources UP-TO-DATE
+> Task :library:map:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :library:map:compileReleaseLibraryResources UP-TO-DATE
+> Task :library:network:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :library:network:compileReleaseLibraryResources UP-TO-DATE
+> Task :library:ui:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :library:ui:compileReleaseLibraryResources UP-TO-DATE
+> Task :library:work:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :library:work:compileReleaseLibraryResources UP-TO-DATE
+> Task :sdk:games:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :sdk:games:compileReleaseLibraryResources UP-TO-DATE
+> Task :maps:processDevResources UP-TO-DATE
+> Task :library:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :library:mergeReleaseNativeLibs NO-SOURCE
+> Task :library:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :maps:mergeDevJniLibFolders UP-TO-DATE
+> Task :library:downloadservice:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :library:downloadservice:mergeReleaseNativeLibs NO-SOURCE
+> Task :library:downloadservice:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :library:image:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :library:image:mergeReleaseNativeLibs NO-SOURCE
+> Task :library:image:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :library:map:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :library:map:mergeReleaseNativeLibs UP-TO-DATE
+> Task :library:map:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :library:network:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :library:network:mergeReleaseNativeLibs NO-SOURCE
+> Task :library:network:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :library:ui:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :library:ui:mergeReleaseNativeLibs NO-SOURCE
+> Task :library:ui:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :library:work:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :library:work:mergeReleaseNativeLibs NO-SOURCE
+> Task :library:work:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :sdk:games:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :sdk:games:mergeReleaseNativeLibs NO-SOURCE
+> Task :sdk:games:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :maps:mergeDevNativeLibs UP-TO-DATE
+> Task :maps:stripDevDebugSymbols UP-TO-DATE
+> Task :maps:validateSigningDev UP-TO-DATE
+> Task :maps:writeDevAppMetadata UP-TO-DATE
+> Task :maps:writeDevSigningConfigVersions UP-TO-DATE
+
+> Task :library:map:compileReleaseKotlin
+w: Opt-in requirement marker 'androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi' is unresolved. Make sure it's present in the module dependencies.
+
+> Task :library:map:compileReleaseJavaWithJavac NO-SOURCE
+> Task :library:map:compressReleaseJavaRes UP-TO-DATE
+> Task :library:map:bundleLibRuntimeToDirRelease
+> Task :library:map:bundleLibCompileToJarRelease
+> Task :maps:kspDevKotlin
+> Task :maps:mergeLibDexDev
+
+> Task :maps:compileDevKotlin
+w: file:///C:/Users/Vayun/Documents/code/Modern-Apps/maps/src/main/java/com/vayunmathur/maps/car/CarSearchScreen.kt:93:14 'fun setActionStrip(p0: ActionStrip): ListTemplate.Builder' is deprecated. Deprecated in Java.
+
+> Task :maps:compressDevJavaRes UP-TO-DATE
+> Task :maps:mergeDevJavaResource UP-TO-DATE
+> Task :maps:compileDevJavaWithJavac UP-TO-DATE
+> Task :maps:dexBuilderDev
+> Task :maps:mergeProjectDexDev
+> Task :maps:packageDev
+> Task :maps:assembleDev
+> Task :maps:createDevApkListingFileRedirect UP-TO-DATE
+
+[Incubating] Problems report is available at: file:///C:/Users/Vayun/Documents/code/Modern-Apps/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 47s
+207 actionable tasks: 11 executed, 196 up-to-date
+Configuration cache entry stored.

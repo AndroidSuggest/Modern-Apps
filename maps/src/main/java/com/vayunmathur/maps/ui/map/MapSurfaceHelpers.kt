@@ -178,21 +178,21 @@ internal fun buildMarkers(
     id = 100_000L
     for (result in searchResults) {
         val place = searchPinFeature(result).toSelectedSearchResult() ?: continue
-        markers.add(MapMarker(id, GeoPoint(result.lon, result.lat), MarkerIcon.SEARCH))
+        markers.add(MapMarker(id, GeoPoint(result.lon, result.lat), MarkerIcon.SEARCH, label = result.title))
         hits[id] = MapHit.Place(place)
         id++
     }
     id = 200_000L
     for (saved in savedPlaces) {
         val place = savedPinFeature(saved).toSelectedSavedPlace() ?: continue
-        markers.add(MapMarker(id, GeoPoint(saved.lon, saved.lat), MarkerIcon.SAVED))
+        markers.add(MapMarker(id, GeoPoint(saved.lon, saved.lat), MarkerIcon.SAVED, label = saved.name))
         hits[id] = MapHit.Place(place)
         id++
     }
     id = 300_000L
     for (member in familyMembers) {
         val place = familyPinFeature(member).toSelectedFamilyMember() ?: continue
-        markers.add(MapMarker(id, GeoPoint(member.lng, member.lat), MarkerIcon.FAMILY))
+        markers.add(MapMarker(id, GeoPoint(member.lng, member.lat), MarkerIcon.FAMILY, label = member.name))
         hits[id] = MapHit.Place(place)
         id++
     }

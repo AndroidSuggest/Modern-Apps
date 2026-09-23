@@ -408,6 +408,19 @@ impl NodeLocations {
         Ok(NodeLocations { ids: index, locs })
     }
 
+    /// The same table from an already-populated bitset over the id space, taking ownership of its
+    /// words: bit `i` set iff id `i` is needed, `len` the number of set bits.
+    ///
+    /// [`Self::from_sorted`] walks the caller's bitset into ids and re-sets them here, holding two
+    /// words arrays at once. This moves the words across and builds the rank directory in place, so
+    /// the peak is one bitset rather than two. The only production caller is the planet ref
+    /// collector; the vector path ([`Self::new`]) is untouched.
+    pub fn from_bitset(words: Vec<u64>, len: usize) -> Result<NodeLocations> {
+        let index = NodeIds::from_words(words, len);
+        let locs = Locs::new(index.len())?;
+        Ok(NodeLocations { ids: index, locs })
+    }
+
     pub fn len(&self) -> usize {
         self.ids.len()
     }

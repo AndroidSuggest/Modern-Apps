@@ -38,8 +38,8 @@ const DRIFT_MAX_DPITCH: f64 = 2.0;
 /// Whether `key` differs from `cached` only by camera drift within the reuse thresholds.
 ///
 /// Centre may move arbitrarily (pan); zoom/bearing/pitch each have a small budget. The
-/// universe (tiles, stamps, filter, extent, sizes, layers) must be bit-identical — checked
-/// by the caller via [`PlacementKey::same_universe`].
+/// universe (tiles, stamps, filter, extent, sizes, layers, marker generation) must be
+/// bit-identical — checked by the caller via [`PlacementKey::same_universe`].
 pub(super) fn within_drift(cached: &PlacementKey, key: &PlacementKey) -> bool {
     let zoom = f64::from_bits(key.zoom);
     let cached_zoom = f64::from_bits(cached.zoom);
@@ -98,6 +98,7 @@ impl PlacementKey {
             && self.filter == other.filter
             && self.tiles == other.tiles
             && self.layers == other.layers
+            && self.markers == other.markers
     }
 }
 

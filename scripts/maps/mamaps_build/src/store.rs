@@ -1,4 +1,4 @@
-//! The feature store: classified features on **disk** rather than in memory.
+//! The feature store: classified features staged **outside the heap** rather than in memory.
 //!
 //! # Why this exists
 //!
@@ -7,14 +7,18 @@
 //! large things were alive at once:
 //!
 //! | | California |
-//! |---|---|
+//! |---|
 //! | materialised features, lon/lat `f64` | ~4.9 GB |
 //! | classified ways and their node refs | ~2.7 GB |
 //! | node id -> location table | ~2.5 GB |
 //!
 //! The features were the largest and the only one that did not have to be resident: nothing reads
-//! them until the tiler does, and the tiler reads them **once per zoom, in order**. So they go to a
-//! file, and the tiler streams it fifteen times instead of holding it fifteen times over.
+//! them until the tiler does, and the tiler reads them **once per zoom, in order**. So they are
+//! staged outside the heap -- anonymous pagefile memory when the commit budget allows (no `.tmp`
+//! files, nothing stranded on kill), a scratch file beside the output when it does not -- and the
+//! tiler streams them fifteen times instead of holding them fifteen times over. Which backend is
+//! the budget gate's decision ([`osm_ingest::mem::SpillPlan`]), made from the counts pass 1
+//! measured; same records either way, so the backend never changes a hash.
 //!
 //! # The format is `tile_build`'s, not a new one
 //!
@@ -34,7 +38,17 @@
 //! [`WaySink`] and [`WayReader`] do the same for the ~2.7 GB row of that table, for the same reason
 //! and by a different route: a way's record is a handful of integers rather than a geometry, and it
 //! is read back in the order it was written, so it gets a format of its own rather than
-//! `NormalizedWriter`'s. See [`WaySink`] for why no sort is needed on the way back.
+//! `NormalizedWriter`'s. Same backend choice as the features (anon or file, budget-gated); the
+//! spill is freed right after materialise, before the routing graph is loaded, so the two never
+//! peak together. See [`WaySink`] for why no sort is needed on the way back.
+//!
+//! # The third table: relation member ways
+//!
+//! Neither spill serves the one random access in stage A: a relation reaches its member ways by
+//! id, in the order it lists them. So the members -- and only the members -- stay resident, in a
+//! sorted vector ([`MemberWays`](crate::extract::MemberWays)) rather than a hash map: at planet's
+//! 8.4 M member ways the map's per-entry overhead is hundreds of MB beside the ref bytes. Freed
+//! with the coordinate table after materialise, before the externals.
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};

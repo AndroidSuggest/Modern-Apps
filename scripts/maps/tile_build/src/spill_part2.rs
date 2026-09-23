@@ -140,7 +140,7 @@ impl NormalizedSummary {
 /// lossless for OSM coordinates and what it costs a coastline.
 ///
 /// Backed by a file ([`create`](Self::create)) or by anonymous pagefile memory
-/// ([`create_anon`](Self::create_anon)): `MAPS_ANON_SPILL=1` takes the anon path,
+/// ([`create_anon`](Self::create_anon)),
 /// which stages the same bytes with no directory entry. Same records, same
 /// offsets, same output bytes — the -Verify hash check proves it.
 /// Where a [`NormalizedWriter`] stages its bytes: a file, or anonymous memory.
@@ -241,6 +241,23 @@ impl NormalizedWriter {
             self.summary.chunks.push(self.at);
         }
         Ok(self.summary)
+    }
+
+    /// Flush, and hand back what the pass learned plus whatever backend holds the bytes.
+    ///
+    /// Unifies [`finish`](Self::finish) and [`finish_anon`](Self::finish_anon): callers that pick
+    /// the backend by budget ([`osm_ingest::mem::SpillPlan`]) seal without knowing which one they
+    /// chose. A file backend yields no store -- its bytes live at the path it was created with,
+    /// and readers open that path.
+    pub fn finish_either(mut self) -> Result<(NormalizedSummary, Option<crate::anon::AnonStore>)> {
+        self.flush_out()?;
+        if !self.summary.chunks.is_empty() {
+            self.summary.chunks.push(self.at);
+        }
+        match self.out {
+            WriterSink::Anon(a) => Ok((self.summary, Some(a))),
+            WriterSink::File(_) => Ok((self.summary, None)),
+        }
     }
 
     /// Anonymous twin of [`finish`](Self::finish): flush, hand back the summary

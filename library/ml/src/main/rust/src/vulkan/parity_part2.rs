@@ -409,8 +409,8 @@ fn a_standalone_activation_matches_a_folded_one() {
 #[test]
 #[ignore = "needs a Vulkan device"]
 fn a_two_axis_rotary_rotates_each_half_by_its_own_position() {
-    // Gemma 4's vision tower rotates the first half of a 64-wide head by the patch's row and the
-    // second half by its column. The failure this guards is not a shape error: rotating the head
+    // Gemma 4's vision tower rotates the first half of a 64-wide head by the patch's column
+    // and the second half by its row. The failure this guards is not a shape error: rotating the head
     // as one block pairs a row channel with a column channel, and produces an encoder that is
     // subtly position-blind rather than one that crashes.
     //
@@ -420,17 +420,17 @@ fn a_two_axis_rotary_rotates_each_half_by_its_own_position() {
     let head_dim = 64u32;
     let positions = 5u32;
     let input = spread((heads * head_dim * positions) as usize, 0.31);
-    // `[head_dim, 1, W]`: block 0 is cos(row) then sin(row), block 1 cos(col) then sin(col).
+    // `[head_dim, 1, W]`: block 0 is cos(col) then sin(col), block 1 cos(row) then sin(row).
     let mut angles = vec![0f32; (head_dim * positions) as usize];
     for position in 0..positions {
         for frequency in 0..16u32 {
-            let row = 0.11 * (position + 1) as f32 * (frequency + 1) as f32;
-            let column = 0.37 * (position + 2) as f32 * (frequency + 1) as f32;
+            let column = 0.11 * (position + 1) as f32 * (frequency + 1) as f32;
+            let row = 0.37 * (position + 2) as f32 * (frequency + 1) as f32;
             let at = |channel: u32| (channel * positions + position) as usize;
-            angles[at(frequency)] = row.cos();
-            angles[at(16 + frequency)] = row.sin();
-            angles[at(32 + frequency)] = column.cos();
-            angles[at(48 + frequency)] = column.sin();
+            angles[at(frequency)] = column.cos();
+            angles[at(16 + frequency)] = column.sin();
+            angles[at(32 + frequency)] = row.cos();
+            angles[at(48 + frequency)] = row.sin();
         }
     }
     agrees_invented(

@@ -13,6 +13,7 @@ mod fog;
 mod frame;
 mod mod_extra;
 mod placement;
+mod placement_markers;
 mod placement_reuse;
 mod rebuild;
 mod record;
@@ -221,6 +222,9 @@ struct PlacementKey {
     /// The style, by layer count. A style or toggle change re-tessellates the resident set, which
     /// restamps every tile above, so this only has to catch the layer set itself changing.
     layers: usize,
+    /// The marker generation ([`Renderer::marker_epoch`]): a pushed pin set must re-place even
+    /// when the camera has not moved, so a new pin immediately culls the POIs it covers.
+    markers: u64,
 }
 
 /// Per-frame synchronisation and its command buffer.
@@ -271,7 +275,12 @@ enum Overlay {
     Puck(UserPuck),
     /// App pins: parking, transit stops, search results, saved places, family members. Replaces
     /// the Compose pin overlays so they pan and tilt in lock-step with the basemap.
-    Markers(Vec<Marker>),
+    ///
+    /// The labels ride parallel to the markers (same index, same length): an empty string draws
+    /// the icon alone. A tuple rather than a field on [`Marker`](crate::marker::Marker) so the
+    /// marker stays `Copy` for the pick path (`iter().copied()`); the whole set is replaced
+    /// atomically by [`set_markers`](Renderer::set_markers), so the two can never drift.
+    Markers(Vec<Marker>, Vec<String>),
     /// WS-F simulated transit vehicles: a bus/tram/train/ferry sprite per in-service trip in the
     /// visible bbox, pushed at ~1 Hz. Drawn through the same billboarded sprite path as
     /// [`Markers`](Self::Markers), under the pins and the puck.

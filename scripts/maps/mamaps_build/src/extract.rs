@@ -36,9 +36,21 @@
 //!
 //! [`collect_needed_by_bitset`] is the other shape, taken above [`REFS_IN_MEMORY`]: a bit per node
 //! id, which is at most ~1.7 GB *for any extract, forever*, because OSM's node ids are monotonic and
-//! near 13 G. Walking it low to high yields sorted unique ids directly, so it removes the vector and
-//! the sort together, in one streaming pass with no extra I/O. Both paths must produce the same
-//! sequence and `the_two_ref_collectors_agree_on_the_same_input` holds them to it.
+//! near 13 G. The bitset's words move into the rank index directly ([`NodeLocations::from_bitset`])
+//! rather than being walked out as ids and re-set -- walking them out would hold two ~1.5 GB words
+//! arrays at once. Both paths must produce the same sequence and
+//! `the_two_ref_collectors_agree_on_the_same_input` holds them to it.
+//!
+//! # Nothing large outlives its phase
+//!
+//! The tables above are freed as soon as their last reader is done, not at the end of the stage:
+//! the blob-kinds mask after the node pass, the ways spill (plus corridor overrides and inherited
+//! lane counts) after `materialise_ways`, and relations, member refs and the coordinate table
+//! after `materialise_relations` -- before the coastline, transit and routing-graph externals.
+//! The planet build died at the junction tail with the OSM tables still resident beside a freshly
+//! `Graph::load`ed graph; the frees plus the graph's own file mappings (no heap `Vec`s, no commit
+//! charge) are what keep those two peaks apart. `plan_ways_spill` / `plan_feature_spill` decide
+//! the anon-vs-file backend from the counts before the bytes are asked for.
 
 use std::collections::HashMap;
 use std::path::Path;

@@ -9,7 +9,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import com.vayunmathur.library.ui.IconHome
+import com.vayunmathur.library.ui.IconWork
 import com.vayunmathur.library.ui.LoadingState
+import com.vayunmathur.library.ui.LocalContentColor
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton

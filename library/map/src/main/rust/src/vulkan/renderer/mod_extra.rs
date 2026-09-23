@@ -133,6 +133,11 @@ pub struct Renderer {
         std::cell::RefCell<Option<(PlacementKey, AcceptSet, std::time::Instant)>>,
     /// What this frame draws on top of every tile, in order. See [`Overlay`].
     pub(crate) overlays: Vec<Overlay>,
+    /// How many marker sets the host has pushed — bumped by every [`set_markers`](Renderer::set_markers).
+    ///
+    /// Part of the symbol-placement key (see [`PlacementKey`]): a new pin must immediately cull
+    /// the POIs it covers, and placement otherwise reuses its answer while the camera is still.
+    pub(crate) marker_epoch: u64,
     /// The geometry every overlay shares, uploaded once.
     pub(crate) quad: Quad,
     /// The OSM relation whose shape is punched out of the mask scrim, if any.

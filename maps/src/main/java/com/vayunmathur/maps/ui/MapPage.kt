@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vayunmathur.library.ui.CompassCalibrationHint
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.FreeHeightBottomSheetScaffold
@@ -47,6 +48,7 @@ import com.vayunmathur.library.map.rememberCameraState
 import com.vayunmathur.maps.Route
 import com.vayunmathur.maps.data.ParkingSpot
 import com.vayunmathur.maps.data.SpecificFeature
+import com.vayunmathur.maps.data.parse
 import com.vayunmathur.maps.data.transit.TransitStop
 import com.vayunmathur.maps.ipc.FamilyMember
 import com.vayunmathur.maps.ui.map.LayerToggles
@@ -62,6 +64,9 @@ import com.vayunmathur.maps.ui.streetview.StreetViewPegman
 import com.vayunmathur.maps.ui.theme.MapChromeMetrics
 import com.vayunmathur.maps.ui.map.MapChromeState
 import com.vayunmathur.maps.util.DeparturesState
+import com.vayunmathur.maps.util.GooglePoiMapViewModel
+import com.vayunmathur.maps.util.MapTileCache
+import com.vayunmathur.maps.util.OfflineRouter
 import com.vayunmathur.maps.util.MapSettingsViewModel
 import com.vayunmathur.maps.util.MapsSearchViewModel
 import com.vayunmathur.maps.util.MoonAssetLoader
@@ -76,12 +81,7 @@ import com.vayunmathur.maps.util.SavedPlacesViewModel
 import com.vayunmathur.maps.util.SearchActions
 import com.vayunmathur.maps.util.SearchUiState
 import com.vayunmathur.maps.util.SelectedFeatureViewModel
-import com.vayunmathur.maps.util.visibleBoundsOrWorld
-import kotlin.math.roundToInt
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import com.vayunmathur.maps.R as MapsR
 
 /** Cold-start camera: San Francisco at z14, where the baked POIs are dense enough to see. */
@@ -107,6 +107,9 @@ fun MapPage(
     parkingViewModel: com.vayunmathur.maps.util.ParkingViewModel,
     transitViewModel: com.vayunmathur.maps.util.TransitStopsViewModel,
 ) {
+    // Obtained in-body (not a parameter) so the MainActivity call site stays stable: the Google
+    // POI overlay pins are viewport-driven state owned by this screen alone.
+    val poiViewModel: GooglePoiMapViewModel = viewModel()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val messenger = rememberMessenger()

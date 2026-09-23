@@ -85,6 +85,7 @@ impl Renderer {
                 })
                 .collect(),
             layers: layers.len(),
+            markers: self.marker_epoch,
         };
         if let Some((cached, accepted, at)) = self.placement_cache.borrow().as_ref() {
             if *cached == key {
@@ -225,6 +226,10 @@ impl Renderer {
                 }
             }
         }
+        // App-pin blockers (see placement_markers): pin boxes enter the grid before any
+        // POI is tested, so a POI that would land on a pin loses instead of drawing under it.
+        let (blockers, blocker_ids) = self.marker_blockers(camera, extent);
+        candidates.extend(blockers);
         // Viewport cull: drop a candidate before collision only if *all* its boxes are
         // provably outside the viewport expanded by the candidate's own AABB margin.
         // A box whose AABB touches the expanded viewport stays: culling is conservative
@@ -275,9 +280,12 @@ impl Renderer {
         // Keyed by candidate id, valued by the anchor the placer settled on and **where in
         // acceptance order it landed**. `place_segmented` returns its winners in priority order and
         // a `HashMap` would throw that away, which is what made `pick_labels`' "topmost first" a
-        // claim rather than a fact.
+        // claim rather than a fact. Marker blockers are stripped: they are not tile labels, so
+        // neither `record_symbol` nor `refresh_placed` (which resolve ids through tiles) may see
+        // them — their only effect is the grid footprint they left behind.
         let accepted: AcceptSet = placement::place_segmented(&candidates)
             .into_iter()
+            .filter(|(id, _)| !blocker_ids.contains(id))
             .enumerate()
             .map(|(order, (id, flipped))| (id, (flipped, order as u32)))
             .collect();
@@ -320,7 +328,7 @@ impl Renderer {
             .overlays
             .iter()
             .filter_map(|overlay| match overlay {
-                Overlay::Markers(m) => Some(m.iter().copied()),
+                Overlay::Markers(m, _) => Some(m.iter().copied()),
                 _ => None,
             })
             .flatten()

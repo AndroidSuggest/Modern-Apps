@@ -16,12 +16,16 @@ package com.vayunmathur.library.map
  * @param color route colour packed as `0xRRGGBB` for the ring drawn under a
  *   transit-vehicle sprite so it reads in its line's colour; `0` draws no
  *   ring. Only vehicles carry one today — app pins leave the default.
+ * @param label optional name drawn beside the pin like a POI label (family-member
+ *   names, search titles, saved-place names); `null` draws the icon alone.
+ *   Carried as a parallel string array across JNI (see `MapNative.setMarkers`).
  */
 data class MapMarker(
     val id: Long,
     val position: GeoPoint,
     val icon: Int,
     val color: Int = 0,
+    val label: String? = null,
 )
 
 /**

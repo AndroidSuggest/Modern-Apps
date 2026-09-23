@@ -3,10 +3,29 @@ impl Sink {
     /// file, nothing stranded on kill). `path` names nothing — it only rides
     /// along for error messages.
     pub fn create(path: impl AsRef<Path>) -> Result<Sink> {
-        let _ = path;
+        Self::create_planned(path, osm_ingest::mem::SpillPlan::Anon)
+    }
+
+    /// Create with an explicit staging plan. See [`osm_ingest::mem::SpillPlan::decide`]: the
+    /// budget gate picks `File` when anon commit does not fit, and `File` stages the same
+    /// records through a `.tmp` beside `path`, removed by `finish`'s caller on success like every
+    /// other scratch file. Same records, same offsets, same bytes -- the backend never changes a
+    /// hash.
+    pub fn create_planned(path: impl AsRef<Path>, plan: osm_ingest::mem::SpillPlan) -> Result<Sink> {
+        let path = path.as_ref();
+        let writer = match plan {
+            osm_ingest::mem::SpillPlan::Anon => {
+                NormalizedWriter::create_anon(std::path::PathBuf::from("anon-spill"))
+                    .map_err(|e| osm_ingest::proto::Error(e.to_string()))?
+            }
+            osm_ingest::mem::SpillPlan::File => {
+                println!("  [stage A] feature spill -> {} (file backend: commit budget)", path.display());
+                NormalizedWriter::create(path)
+                    .map_err(|e| osm_ingest::proto::Error(e.to_string()))?
+            }
+        };
         Ok(Sink {
-            writer: NormalizedWriter::create_anon(std::path::PathBuf::from("anon-spill"))
-                .map_err(|e| osm_ingest::proto::Error(e.to_string()))?,
+            writer,
             props: vec![(CLASS_KEY.to_string(), Value::Uint(0))],
             chunk_mins: Vec::new(),
             filling: u8::MAX,
@@ -195,10 +214,12 @@ impl Sink {
             self.chunk_mins.push(self.filling);
         }
         let chunk_mins = std::mem::take(&mut self.chunk_mins);
-        // The writer is always anonymous (see `create`): seal the store and
-        // carry it on the `Store`, not a file.
-        let (summary, store) =
-            self.writer.finish_anon().map_err(|e| osm_ingest::proto::Error(e.to_string()))?;
+        // Anonymous or file-backed depending on the plan `create_planned` took: seal the store and
+        // carry the anon bytes on the `Store`, or `None` when the bytes live in the file at `path`.
+        let (summary, anon) = self
+            .writer
+            .finish_either()
+            .map_err(|e| osm_ingest::proto::Error(e.to_string()))?;
         let chunks = summary.chunks;
         // The two indexes must describe the same chunks, or skipping silently drops real features.
         // Cheap to assert and near-impossible to diagnose from the symptom, which would be missing
@@ -212,7 +233,7 @@ impl Sink {
         }
         Ok(Store {
             path: path.into(),
-            anon: std::sync::Arc::new(store),
+            anon: anon.map(std::sync::Arc::new),
             count,
             bbox: bbox.unwrap_or((0, 0, 0, 0)),
             chunks,
@@ -236,13 +257,13 @@ impl Sink {
     }
 }
 
-/// Features staged in anonymous memory, re-readable in order as many times as
-/// the tiler needs. `path` names nothing — it only rides along for error
-/// messages. `anon` carries the pagefile-backed store; everything else
-/// (indexes, counts, conventions) is as before.
+/// Features staged in anonymous memory or a scratch file, re-readable in order as many times as
+/// the tiler needs. `path` names the file on the `File` plan and nothing on the `Anon` one (it
+/// only rides along for error messages there). `anon` carries the pagefile-backed store when
+/// present; everything else (indexes, counts, conventions) is as before.
 pub struct Store {
     path: PathBuf,
-    anon: std::sync::Arc<tile_build::anon::AnonStore>,
+    anon: Option<std::sync::Arc<tile_build::anon::AnonStore>>,
     /// Byte offset of every 64th record, plus a sentinel holding the file length, so chunk `i` spans
     /// `chunks[i]..chunks[i + 1]` and reads with no knowledge of any other chunk.
     chunks: Vec<u64>,

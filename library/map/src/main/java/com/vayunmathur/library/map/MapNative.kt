@@ -242,11 +242,13 @@ internal object MapNative {
      * Replace the app's pins with a marker set the renderer draws as billboarded sprites.
      *
      * [ids] holds each marker's stable host id (echoed back by [pickAt]), [lonLat] is a flat
-     * `[lon0, lat0, lon1, lat1, …]`, and [icons] is each marker's icon id (see the native
+     * `[lon0, lat0, lon1, lat1, …]`, [icons] is each marker's icon id (see the native
      * `crate::marker::icon` table: parking/transit/search/saved/family, plus the transit-vehicle
-     * ids WS-F reuses). Three parallel bulk arrays, the same convention as [setRoute] and
-     * [setTrafficSpeeds]: a viewport of pins crosses the boundary in a few reads with no per-pin
-     * traffic. `Float` coordinates for the same reason [render]'s are.
+     * ids WS-F reuses), and [labels] is each marker's optional display name drawn beside the
+     * pin like a POI label (an empty string draws the icon alone). Four parallel bulk arrays,
+     * the same convention as [setRoute] and [setTrafficSpeeds]: a viewport of pins crosses the
+     * boundary in a few reads with no per-pin traffic. `Float` coordinates for the same reason
+     * [render]'s are.
      *
      * Free in the [setPalette] sense: the geometry is the shared unit quad billboarded per marker,
      * so nothing is tessellated or uploaded. The whole set is replaced each call — a stale pin left
@@ -254,7 +256,13 @@ internal object MapNative {
      * basemap on a pan or tilt. Mismatched array lengths are truncated to the shortest; an empty set
      * is the same as [clearMarkers].
      */
-    external fun setMarkers(handle: Long, ids: LongArray, lonLat: FloatArray, icons: IntArray)
+    external fun setMarkers(
+        handle: Long,
+        ids: LongArray,
+        lonLat: FloatArray,
+        icons: IntArray,
+        labels: Array<String>,
+    )
 
     /** Take every marker away: the host cleared its pins. */
     external fun clearMarkers(handle: Long)

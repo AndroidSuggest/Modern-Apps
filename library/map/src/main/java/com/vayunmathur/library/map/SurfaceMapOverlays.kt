@@ -5,23 +5,34 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.DpRect
 
 /**
- * Packs marker lists into the three parallel bulk arrays the native side reads:
- * ids, then interleaved lon/lat, then icon ids. Packed once per push rather than
- * crossing the JNI boundary per pin.
+ * Packs marker lists into the four parallel bulk arrays the native side reads:
+ * ids, then interleaved lon/lat, then icon ids, then labels. Packed once per push rather than
+ * crossing the JNI boundary per pin. A null label packs as the empty string, which the native
+ * side reads as "icon alone".
  */
-internal fun packMapMarkers(pins: List<MapMarker>): Triple<LongArray, FloatArray, IntArray> {
+internal fun packMapMarkers(pins: List<MapMarker>): MarkerArrays {
     val ids = LongArray(pins.size)
     val lonLat = FloatArray(pins.size * 2)
     val icons = IntArray(pins.size)
+    val labels = Array(pins.size) { "" }
     for (i in pins.indices) {
         val pin = pins[i]
         ids[i] = pin.id
         lonLat[i * 2] = pin.position.longitude.toFloat()
         lonLat[i * 2 + 1] = pin.position.latitude.toFloat()
         icons[i] = pin.icon
+        labels[i] = pin.label ?: ""
     }
-    return Triple(ids, lonLat, icons)
+    return MarkerArrays(ids, lonLat, icons, labels)
 }
+
+/** The four parallel marker arrays crossing JNI in [MapNative.setMarkers]. */
+internal data class MarkerArrays(
+    val ids: LongArray,
+    val lonLat: FloatArray,
+    val icons: IntArray,
+    val labels: Array<String>,
+)
 
 /**
  * Packs vehicle lists into the four parallel bulk arrays the native vehicle

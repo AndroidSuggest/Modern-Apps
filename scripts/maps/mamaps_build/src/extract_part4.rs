@@ -220,12 +220,12 @@ mod tests {
                 .expect("push");
         }
         let (counts, store) = sink.finish_anon().expect("finish");
-        let store = std::sync::Arc::new(store);
 
-        let mut members: HashMap<i64, Vec<i64>> = HashMap::new();
+        let mut member_map: HashMap<i64, Vec<i64>> = HashMap::new();
         // One member whose refs overlap the spill's, and one that is entirely new.
-        members.insert(7, vec![30, 31, 32, 30]);
-        members.insert(9, vec![10_000, 9_999, 10_000]);
+        member_map.insert(7, vec![30, 31, 32, 30]);
+        member_map.insert(9, vec![10_000, 9_999, 10_000]);
+        let members = MemberWays::from_map(member_map);
         let member_refs: usize = members.values().map(|refs| refs.len()).sum();
         let max_ref = members
             .values()
@@ -233,11 +233,12 @@ mod tests {
             .fold(counts.max_ref, i64::max);
 
         let quiet = |_: &str| {};
+        let anon = Some(std::sync::Arc::new(store));
         let in_memory =
-            collect_needed_in_memory(&path, std::sync::Arc::clone(&store), &members, counts.refs as usize + member_refs, &quiet)
+            collect_needed_in_memory(&path, &anon, &members, counts.refs as usize + member_refs, &quiet)
                 .expect("the in-memory path");
         let by_bitset =
-            collect_needed_by_bitset(&path, std::sync::Arc::clone(&store), &members, max_ref, &quiet).expect("the bitset path");
+            collect_needed_by_bitset(&path, &anon, &members, max_ref, &quiet).expect("the bitset path");
 
         assert_eq!(
             in_memory.len(),

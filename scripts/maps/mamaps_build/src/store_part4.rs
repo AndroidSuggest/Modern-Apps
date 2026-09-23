@@ -24,6 +24,19 @@ impl WayReader {
         })
     }
 
+    /// Open whichever backend the sink sealed: the shared anon store when present, else the file
+    /// at `path`. One helper so the four stage-A readers (two ref collectors, lanefill scan,
+    /// materialise) agree.
+    pub fn open_either(
+        path: &Path,
+        store: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
+    ) -> Result<WayReader> {
+        match store {
+            Some(anon) => Self::open_anon(path, std::sync::Arc::clone(anon)),
+            None => Self::open(path),
+        }
+    }
+
     /// The next way's id, class, display name, lane count, per-lane turn masks and carriageway,
     /// with its node refs written into `refs`.
     ///

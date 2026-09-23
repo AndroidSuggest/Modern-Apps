@@ -39,12 +39,14 @@
 //! every mesh, so instead the theme is applied at emit time by
 //! [`crate::tile::symbol::emit_icon`], which adds the offset to `v`.
 //!
-//! # The four icons upstream does not have
+//! # The five icons upstream does not have
 //!
 //! The first 53 entries are Protomaps' own `basemaps-assets` v4 sheets, vendored unchanged.
 //! `fuel`, `hotel`, `bank` and `atm` are ours: the reference style draws none of those
 //! kinds, so no version of the upstream sheet has ever carried an icon for them, and the
 //! app has offered Gas, Hotels and ATM chips all along.
+//! `family` is ours too: the family-member pin, a solid family-indigo badge with a white
+//! person glyph in the same construction as the vehicle badges below.
 //!
 //! They are built by `analysis/spritepack/pack.py`, which lifts the badge (rounded square,
 //! 2 px border, flat fill) from an existing icon of the same colour group **in the same
@@ -72,7 +74,7 @@ use super::sprite_extra::decode_rgba8;
 /// The 2x sprite sheet, embedded. An APK asset is not a file the renderer can open, so
 /// the bytes ship in the `.so` exactly as the fonts do.
 const SHEET_PNG: &[u8] = include_bytes!("../../assets/sprites/sprites@2x.png");
-/// Its index: 57 entries of `{x, y, width, height, pixelRatio}`.
+/// Its index: 62 entries of `{x, y, width, height, pixelRatio}`.
 const SHEET_JSON: &str = include_str!("../../assets/sprites/sprites@2x.json");
 
 /// One icon in the sheet: where to sample it, and how big to draw it.
@@ -311,8 +313,8 @@ mod tests {
         assert_eq!(atlas.pixels.len(), 512 * 532 * 4, "RGBA8, tightly packed");
         assert_eq!(
             atlas.len(),
-            61,
-            "upstream's 53 entries plus fuel, hotel, bank, atm and the four vehicle mode sprites"
+            62,
+            "upstream's 53 entries plus fuel, hotel, bank, atm, the four vehicle mode sprites and family"
         );
         assert_eq!(atlas.dark_v_offset(), 0.5, "two equal halves");
     }

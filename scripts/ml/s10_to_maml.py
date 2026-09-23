@@ -247,9 +247,14 @@ def collect_text(rdr):
             emit4(fid, layers, tensors, f'transformer.layer_{index}.mlp.linear.w',
                   rdr.dequant4(dw, D, 6144))
         else:
-            # Slim layers: full-width 2-bit gate/up/down (same codebook as
-            # the head table). Gate and up are separate 12288-wide tables;
-            # the runtime's ffn() is 12288 here, so no split.
+            # Slim layers: full-width 2-bit gate/up/down in S10's NATIVE code
+            # space through the head codebook [0,+s,-2s,-s] lo-first (same as
+            # t2698; S10Reader.dequant2 applies no XOR remap). The artisan
+            # file's slim bytes are the same convention XOR-2-remapped
+            # (exact global XOR-2 multisets, bit-identical scales) — that
+            # remap lives in litertlm_to_maml.dequant2, NOT here. Gate and up
+            # are separate 12288-wide tables; the runtime's ffn() is 12288
+            # here, so no split.
             emit4(fid, layers, tensors, f'transformer.layer_{index}.mlp.gate.w',
                   rdr.dequant2(gw, 12288, D))
             emit4(fid, layers, tensors, f'transformer.layer_{index}.mlp.ff1.w',
@@ -324,12 +329,15 @@ def collect_embed(rdr):
     - head table: S10 t2698 (`embedder.decode` composite, type 19 2-bit,
       codebook [0,+s,-2s,-s] lo-first — 10/10 vs the golden ranking). The
       tied head reads this raw-scale table (see nets::gemma4::EMBED_GAIN).
-    - shared projection: the ARTISAN file's
-      `per_layer_model_projection.w` (int8, two's-complement) + norm gamma.
-      S10's t312 is the same table's shape/scales but a DIFFERENT
-      checkpoint's arrangement (global signed multiset matches, elementwise
-      does not — like the INT4 projections; the golden combination path
-      scores 1.00000 with the artisan table, -0.09 with S10's).
+    - shared projection: S10's OWN t312 (int8 [8960,1536], 1 scale/row) +
+      norm gamma t305 (256). Track-3 decision (live t318 oracle): S10-table +
+      x16-on-gather scores 0.99997 vs live t318 while the artisan table peaks
+      at 0.42 — the two files are different checkpoints for the dense tables
+      (L0 Q/O/gate artisan-vs-S10 full-cos ~0.0006, row-max ~0.10; S10 Q@hidden
+      vs live t357 = 0.989, artisan = -0.14), so the S10-control file defaults
+      to S10's table. (The old note claiming artisan 1.00000 vs S10 -0.09 was
+      scored against a trace.json itself generated with artisan weights — circular.
+      Gammas are identical either way, cos 1.000000.)
     - 35 per-layer mmap tables: S10 has no per-layer embedder (that is
       Section 3, not Section 10); these come from the artisan file's
       `per_layer_embeddings.w` INT4 tables, whose signed-nibble read is
@@ -359,9 +367,9 @@ def collect_embed(rdr):
                             'Section2_TFLiteModel_tf_lite_artisan_text_decoder.tflite')
     art = lt.LitertlmReader(art_path)
     emit8(fid, layers, tensors, 'transformer.embedder.per_layer_model_projection.w',
-          art.dequant8('transformer.embedder.per_layer_model_projection.w', 8960, 1536))
+          rdr.dequant8(312, 8960, 1536))
     emit_vec(layers, tensors, 'transformer.embedder.per_layer_projection_norm.scale',
-             art.f32('transformer.embedder.per_layer_projection_norm.scale'))
+             rdr.f32(305))
     for index in range(35):
         at = f'transformer.layer_{index}.per_layer_embeddings.w'
         w = np.frombuffer(art.raw(at), dtype=np.uint8)
