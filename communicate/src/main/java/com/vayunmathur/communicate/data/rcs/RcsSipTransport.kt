@@ -66,6 +66,37 @@ object RcsSipTransport {
     /** Last IMS configuration (identity, server, route headers for sends). */
     @Volatile private var lastConfig: SipDelegateConfiguration? = null
 
+    /**
+     * Snapshot of the fields SIP construction needs, decoupled from the hidden
+     * config class so callers never touch framework types.
+     */
+    data class ConfigSnapshot(
+        val version: Long,
+        val publicUserId: String?,
+        val homeDomain: String?,
+        val msrpLocalIp: String?,
+        val serviceRoute: String?,
+        val pani: String?,
+        val userAgent: String?,
+        val imei: String?,
+    )
+
+    fun lastConfigSnapshot(): ConfigSnapshot? {
+        val cfg = lastConfig ?: return null
+        return runCatching {
+            ConfigSnapshot(
+                version = cfg.getVersion(),
+                publicUserId = cfg.getPublicUserIdentifier(),
+                homeDomain = cfg.getHomeDomain(),
+                msrpLocalIp = null,
+                serviceRoute = cfg.getSipServiceRouteHeader(),
+                pani = cfg.getSipPaniHeader(),
+                userAgent = cfg.getSipUserAgentHeader(),
+                imei = cfg.getImei(),
+            )
+        }.getOrNull()
+    }
+
     /** Inbound SIP MESSAGE listener (sync service writes to Room + notifies). */
     @Volatile
     var onInboundMessage: ((SipMessage) -> Unit)? = null

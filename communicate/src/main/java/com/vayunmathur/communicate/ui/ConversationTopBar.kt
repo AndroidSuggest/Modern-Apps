@@ -186,6 +186,40 @@ internal fun ConversationActions(
                 onClick = { ContactIntents.addToExisting(context, address) },
             )
         }
+        // Closed-loop MLS encryption for 1:1 RCS threads (our-app-to-our-app).
+        if (!isGroup && line == CommunicateLine.Rcs &&
+            com.vayunmathur.communicate.data.rcs.RcsFeature.enabled
+        ) {
+            Item(
+                text = stringResource(R.string.rcs_start_encrypted),
+                leadingIcon = { com.vayunmathur.library.ui.IconLock() },
+                onClick = {
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            val local = com.vayunmathur.communicate.data.rcs.e2e.RcsE2E.localE164(context)
+                                ?: return@withContext false
+                            val peer = remoteId?.takeIf { it.isNotBlank() } ?: address
+                            // Fast path: cached key package → create group immediately.
+                            val cached = com.vayunmathur.communicate.data.rcs.e2e.RcsPeerKeys.consume(peer)
+                            if (cached != null) {
+                                com.vayunmathur.communicate.data.rcs.e2e.RcsE2E.setupGroupWithPeer(
+                                    context, local, peer, peer, cached,
+                                )
+                            } else {
+                                com.vayunmathur.communicate.data.rcs.e2e.RcsE2E.requestEncryptedChat(
+                                    context, local, peer,
+                                )
+                            }
+                        }
+                        AppMessages.show(
+                            context.getString(
+                                if (ok) R.string.rcs_encrypted_started else R.string.rcs_encrypted_failed,
+                            ),
+                        )
+                    }
+                },
+            )
+        }
         Item(
             text = stringResource(com.vayunmathur.library.ui.R.string.delete),
             leadingIcon = { com.vayunmathur.library.ui.IconDelete() },

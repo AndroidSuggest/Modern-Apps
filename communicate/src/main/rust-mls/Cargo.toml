@@ -1,0 +1,25 @@
+[package]
+name = "communicate_mls"
+version = "0.1.0"
+edition = "2021"
+description = "MLS (RFC 9420) via OpenMLS for the RCS line in communicate, exposed to Kotlin over JNI. Kotlin owns persistence (Room) and passes group/key-package state as opaque bytes; the crate never calls back into Kotlin."
+license = "GPL-2.0-only"
+
+[lib]
+name = "communicate_mls"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openmls.workspace = true
+openmls_rust_crypto.workspace = true
+openmls_memory_storage.workspace = true
+openmls_basic_credential.workspace = true
+openmls_traits.workspace = true
+tls_codec.workspace = true
+ed25519-dalek.workspace = true
+rand_core.workspace = true
+getrandom.workspace = true
+jni.workspace = true
+
+[lints]
+workspace = true

@@ -11,6 +11,8 @@ import androidx.room3.OnConflictStrategy
 import androidx.room3.PrimaryKey
 import androidx.room3.Query
 import androidx.room3.RoomDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 import com.vayunmathur.library.room.RoomRepository
 import com.vayunmathur.library.util.DatabaseMigrations
 
@@ -24,17 +26,42 @@ import com.vayunmathur.library.util.DatabaseMigrations
     entities = [
         RcsConversation::class,
         RcsCachedMessage::class,
+        RcsMlsIdentity::class,
+        RcsMlsGroup::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 @ColumnTypeConverters(RcsTypeConverters::class)
 abstract class RcsDatabase : RoomDatabase() {
     abstract fun conversationDao(): RcsConversationDao
     abstract fun cachedMessageDao(): RcsCachedMessageDao
+    abstract fun mlsIdentityDao(): RcsMlsIdentityDao
+    abstract fun mlsGroupDao(): RcsMlsGroupDao
 
     companion object : DatabaseMigrations {
-        override val migrations = emptyList<androidx.room3.migration.Migration>()
+        /**
+         * v1 → v2: MLS E2EE tables (identity + group state). New tables only,
+         * nothing to backfill.
+         */
+        private val MIGRATION_1_2 = object : androidx.room3.migration.Migration(1, 2) {
+            override suspend fun migrate(connection: androidx.sqlite.SQLiteConnection) {
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `rcs_mls_identity` (" +
+                        "`e164` TEXT NOT NULL, `identity` BLOB NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`e164`))",
+                )
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `rcs_mls_group` (" +
+                        "`groupIdHex` TEXT NOT NULL, `conversationId` TEXT NOT NULL, " +
+                        "`storage` BLOB NOT NULL, `updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`groupIdHex`))",
+                )
+            }
+        }
+
+        override val migrations = listOf(MIGRATION_1_2)
 
         fun getDatabase(context: Context): RcsDatabase =
             RcsRepository.get(context).database()
@@ -107,7 +134,6 @@ interface RcsConversationDao {
 }
 
 // -- Cached messages --
-
 @Entity(tableName = "rcs_cached_message")
 data class RcsCachedMessage(
     @PrimaryKey val messageId: String,
@@ -159,4 +185,61 @@ interface RcsCachedMessageDao {
 
     @Query("DELETE FROM rcs_cached_message")
     suspend fun deleteAll()
+}
+
+// -- MLS E2EE (closed-loop, our-app-to-our-app) --
+
+/**
+ * Our MLS identity for one local E.164: serialized `IdentityState`
+ * (Ed25519 keypair + identity string) from the `communicate_mls` crate.
+ */
+@Entity(tableName = "rcs_mls_identity")
+data class RcsMlsIdentity(
+    @PrimaryKey val e164: String,
+    val identity: ByteArray,
+    val updatedAt: Long = 0L,
+)
+
+/**
+ * One MLS group, keyed by hex-encoded MLS group id bytes. [storage] is the
+ * opaque provider snapshot the crate needs on every call; [conversationId]
+ * maps back to the RCS thread.
+ */
+@Entity(tableName = "rcs_mls_group")
+data class RcsMlsGroup(
+    /** Hex of the MLS group id (BLOB PKs are unreliable in Room). */
+    @PrimaryKey val groupIdHex: String,
+    val conversationId: String,
+    val storage: ByteArray,
+    val updatedAt: Long = 0L,
+)
+
+@Dao
+interface RcsMlsIdentityDao {
+    @Query("SELECT * FROM rcs_mls_identity WHERE e164 = :e164 LIMIT 1")
+    suspend fun get(e164: String): RcsMlsIdentity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(identity: RcsMlsIdentity)
+
+    @Query("DELETE FROM rcs_mls_identity WHERE e164 = :e164")
+    suspend fun delete(e164: String)
+}
+
+@Dao
+interface RcsMlsGroupDao {
+    @Query("SELECT * FROM rcs_mls_group WHERE groupIdHex = :groupIdHex LIMIT 1")
+    suspend fun get(groupIdHex: String): RcsMlsGroup?
+
+    @Query("SELECT * FROM rcs_mls_group WHERE conversationId = :conversationId LIMIT 1")
+    suspend fun getByConversation(conversationId: String): RcsMlsGroup?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(group: RcsMlsGroup)
+
+    @Query("DELETE FROM rcs_mls_group WHERE groupIdHex = :groupIdHex")
+    suspend fun delete(groupIdHex: String)
+
+    @Query("DELETE FROM rcs_mls_group WHERE conversationId = :conversationId")
+    suspend fun deleteByConversation(conversationId: String)
 }

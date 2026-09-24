@@ -7,6 +7,10 @@ import com.vayunmathur.communicate.data.rcs.RcsCapabilityExchange
 import com.vayunmathur.communicate.data.rcs.RcsConversation
 import com.vayunmathur.communicate.data.rcs.RcsDatabase
 import com.vayunmathur.communicate.data.rcs.RcsFeature
+import com.vayunmathur.communicate.data.rcs.RcsFileTransfer
+import com.vayunmathur.communicate.data.rcs.RcsFileTransferHttp
+import com.vayunmathur.communicate.data.rcs.RcsMsrp
+import com.vayunmathur.communicate.data.rcs.RcsSessionManager
 import com.vayunmathur.communicate.data.rcs.RcsSipTransport
 import com.vayunmathur.library.util.AppMessages
 import java.util.UUID
@@ -117,22 +121,65 @@ suspend fun CommunicateRepository.sendRcsMessage(
     }.getOrDefault(false)
     if (!capable) return@withContext RcsSendResult.FallbackSms
     if (!RcsSipTransport.canSend()) return@withContext RcsSendResult.FallbackSms
+    val repository = this@sendRcsMessage
     runCatching {
-        val (startLine, headers, content) = if (attachments.isEmpty()) {
-            RcsSipTransport.buildChatMessage(
+        // E2EE first: when the conversation has an MLS group, encrypt and send
+        // the framed payload as an MLS content message. Falls through to the
+        // plaintext paths when no group exists or encryption fails.
+        val e2ePayload = encryptForE2E(context, recipient, body)
+        if (e2ePayload != null) {
+            val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
                 fromUri = "sip:me@rcs",
                 toUri = "sip:$recipient@rcs",
-                body = body,
+                callId = "${UUID.randomUUID()}@rcs-mls",
+                body = android.util.Base64.encodeToString(
+                    e2ePayload,
+                    android.util.Base64.NO_WRAP,
+                ),
             )
-        } else {
-            // v1: attachments ride as a plain-text placeholder + FT metadata row;
-            // full MSRP/FT flows land in RcsFileTransfer.
-            RcsSipTransport.buildChatMessage(
-                fromUri = "sip:me@rcs",
-                toUri = "sip:$recipient@rcs",
-                body = body.ifBlank { "[attachment]" },
+            // Re-wrap as the MLS content type (buildChatMessage defaults CPIM).
+            val mlsHeaders = headers.replace(
+                "Content-Type: message/cpim",
+                "Content-Type: ${com.vayunmathur.communicate.data.rcs.e2e.RcsE2E.CT_MLS}",
             )
+            val ok = RcsSipTransport.sendSipMessage(startLine, mlsHeaders, content)
+            if (!ok) return@withContext RcsSendResult.FallbackSms
+            if (body.isNotBlank()) {
+                cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
+            }
+            return@withContext RcsSendResult.Sent
         }
+        // Prefer an established session (MSRP) when one exists; else pager-mode CPIM.
+        val session = RcsSessionManager.sessionFor(recipient)
+        if (session?.msrpRemotePath != null && attachments.isEmpty()) {
+            val cpim = RcsSipTransport.buildCpimBody(body).toByteArray(Charsets.UTF_8)
+            if (RcsMsrp.send(session, cpim)) {
+                if (body.isNotBlank()) {
+                    cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
+                }
+                return@withContext RcsSendResult.Sent
+            }
+        }
+        if (attachments.isNotEmpty()) {
+            // FT-over-HTTP when the content server is known, else the v1 envelope.
+            val ftOk = if (RcsFileTransferHttp.contentServerUri != null) {
+                var oneOk = false
+                for (attachment in attachments) {
+                    if (RcsFileTransferHttp.sendFile(context, repository, recipient, attachment, body)) {
+                        oneOk = true
+                    }
+                }
+                oneOk
+            } else {
+                RcsFileTransfer.sendFiles(context, repository, recipient, body, attachments)
+            }
+            return@withContext if (ftOk) RcsSendResult.Sent else RcsSendResult.FallbackSms
+        }
+        val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
+            fromUri = "sip:me@rcs",
+            toUri = "sip:$recipient@rcs",
+            body = body,
+        )
         val ok = RcsSipTransport.sendSipMessage(startLine, headers, content)
         if (!ok) return@withContext RcsSendResult.FallbackSms
         if (body.isNotBlank()) {
@@ -280,4 +327,25 @@ suspend fun CommunicateRepository.markRcsRead(
 /** Surface the SMS-fallback notice on the caller's behalf (never `Toast`). */
 fun CommunicateRepository.notifyRcsFallback(context: Context) {
     AppMessages.show(context.getString(com.vayunmathur.communicate.R.string.rcs_fallback_sms))
+}
+
+/**
+ * Encrypt [body] for [recipient]'s E2EE group when one exists. Returns the
+ * framed MLS payload, or null when the conversation is plaintext (no group)
+ * or encryption failed (caller falls through to plaintext paths).
+ */
+internal suspend fun CommunicateRepository.encryptForE2E(
+    context: Context,
+    recipient: String,
+    body: String,
+): ByteArray? {
+    if (!com.vayunmathur.communicate.data.rcs.RcsFeature.enabled || body.isBlank()) return null
+    // Group threads address by remoteId; 1:1 threads by E.164 recipient.
+    val conversationId = recipient
+    val hasGroup = com.vayunmathur.communicate.data.rcs.e2e.RcsE2E.groupIdFor(context, conversationId) != null
+    if (!hasGroup) return null
+    val local = com.vayunmathur.communicate.data.rcs.e2e.RcsE2E.localE164(context) ?: return null
+    return com.vayunmathur.communicate.data.rcs.e2e.RcsE2E.encryptTo(
+        context, local, conversationId, body.toByteArray(Charsets.UTF_8),
+    )
 }

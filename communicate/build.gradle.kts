@@ -153,6 +153,10 @@ androidComponents {
 // messages' whatsapp_signal.
 rustNativeLib("communicate_signal", "communicate_signal")
 
+// MLS (RFC 9420, OpenMLS) for the RCS line's closed-loop E2EE — separate crate
+// (own dependency tree) with its own JNI lib.
+rustNativeLib("communicate_mls", "communicate_mls", srcDir = "src/main/rust-mls")
+
 dependencies {
     // Google Voice virtual line: protojson RPCs + SIP-over-WSS transport go through
     // the repo's own Android-only HTTP/WebSocket stack (no OkHttp/Ktor).

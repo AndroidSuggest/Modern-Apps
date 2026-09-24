@@ -69,6 +69,9 @@ private val KNOWN_RUST_ABIS = listOf(
  * @param crate      cargo package lib name → produces `lib<crate>.so`
  * @param remapLabel `--remap-path-prefix` label baked in for reproducible builds
  *                   (defaults to [crate]).
+ * @param srcDir     crate directory relative to the module (defaults to
+ *                   `src/main/rust`). Namespaces the per-ABI task names by
+ *                   [crate] so a module can build several crates.
  * @param extraAbis  ABIs to build in addition to [ABI_ARM64]. Opt-in per module so only
  *                   the modules that need a second ABI pay for the extra cargo build;
  *                   pass [ABI_ARMV7] for libraries consumed by an app that sets
@@ -83,6 +86,7 @@ fun Project.rustNativeLib(
     remapLabel: String = crate,
     extraAbis: List<String> = emptyList(),
     features: List<String> = emptyList(),
+    srcDir: String = "src/main/rust",
 ) {
     // Serialize cargoBuild across all Rust modules to avoid concurrent rustup installs.
     val rustLock = gradle.sharedServices.registerIfAbsent(
@@ -129,10 +133,10 @@ fun Project.rustNativeLib(
 
     val perAbi = rustAbis.map { abi ->
         val (abiDir, triple) = abi
-        tasks.register<Exec>("cargoBuild_${abiDir.replace('-', '_')}") {
+        tasks.register<Exec>("cargoBuild_${crate}_${abiDir.replace('-', '_')}") {
             usesService(rustLock)
             description = "Cross-compiles lib$crate for $abiDir."
-            workingDir = file("src/main/rust")
+            workingDir = file(srcDir)
 
             // Windows hosts use the .cmd clang wrappers and .exe tool suffixes; Unix hosts none.
             val isWindows = OperatingSystem.current().isWindows
@@ -143,12 +147,12 @@ fun Project.rustNativeLib(
             val linkerVar = "CARGO_TARGET_${triple.uppercase().replace('-', '_')}_LINKER"
             // Per-crate target (may exist from older isolated builds) and workspace root target
             // (current scheme since Cargo.toml workspace unified to root).
-            val perCrateSoOut = file("src/main/rust/target/$triple/release/lib$crate.so")
+            val perCrateSoOut = file("$srcDir/target/$triple/release/lib$crate.so")
             val workspaceSoOut = rootProject.file("target/$triple/release/lib$crate.so")
             val destSo = layout.buildDirectory.file("rustJniLibs/$abiDir/lib$crate.so").get().asFile
 
-            inputs.dir("src/main/rust/src")
-            inputs.file("src/main/rust/Cargo.toml")
+            inputs.dir("$srcDir/src")
+            inputs.file("$srcDir/Cargo.toml")
             // The crate's own build script and whatever it generates from. `:library:ml`'s
             // build.rs compiles `shaders/*.comp` to SPIR-V and `include_bytes!`s the result, so
             // a shader edit changes the .so - but without these two the task stays up to date,
@@ -156,13 +160,13 @@ fun Project.rustNativeLib(
             // makes shader A/B measurements read as "no effect".
             //
             // Optional because not every Rust module here has either.
-            file("src/main/rust/build.rs").takeIf { it.isFile }?.let { inputs.file(it) }
-            file("src/main/rust/shaders").takeIf { it.isDirectory }?.let { inputs.dir(it) }
+            file("$srcDir/build.rs").takeIf { it.isFile }?.let { inputs.file(it) }
+            file("$srcDir/shaders").takeIf { it.isDirectory }?.let { inputs.dir(it) }
             // `:library:ml`'s build.rs also compiles `schema/maml2.fbs` to Rust via
             // flatc and `include!`s the result, so a schema edit changes the .so too.
             // Same staleness hazard as shaders above: without this the task stays up
             // to date and the old bindings ship.
-            file("src/main/rust/schema").takeIf { it.isDirectory }?.let { inputs.dir(it) }
+            file("$srcDir/schema").takeIf { it.isDirectory }?.let { inputs.dir(it) }
             // Whole-crate safety net: track every source under src/main/rust so ANY
             // rust change invalidates cargoBuild - crucially vendored dependency
             // crates under vendor/, which
@@ -172,7 +176,7 @@ fun Project.rustNativeLib(
             // output back in as an input means the task can never be up to date. The
             // FileTree is a FileCollection resolved at configuration time, so only the
             // file set (never the Project) crosses into the task action.
-            inputs.files(fileTree("src/main/rust") { exclude("target/**") })
+            inputs.files(fileTree(srcDir) { exclude("target/**") })
                 .withPropertyName("rustCrateTree")
             // Root workspace unified (Cargo.toml + Cargo.lock + rust-toolchain.toml)
             inputs.file(rootProject.file("Cargo.toml"))
@@ -189,7 +193,7 @@ fun Project.rustNativeLib(
             outputs.file(destSo)
 
             val cargoHome = System.getenv("CARGO_HOME") ?: "${System.getProperty("user.home")}/.cargo"
-            val rustSrc = file("src/main/rust").absolutePath
+            val rustSrc = file(srcDir).absolutePath
 
             val pathSep = if (isWindows) ";" else ":"
             environment("PATH", "$cargoBin$pathSep${System.getenv("PATH")}")
@@ -253,17 +257,26 @@ fun Project.rustNativeLib(
         }
     }
 
-    val cargoNdkBuild = tasks.register("cargoNdkBuild") {
+    val cargoNdkBuild = tasks.register("cargoNdkBuild_$crate") {
         description = "Builds lib$crate.so for all Android ABIs."
         dependsOn(perAbi)
+    }
+    // Keep the historic aggregate name for the default crate dir so existing
+    // invocations (`./gradlew :mod:cargoNdkBuild`) keep working.
+    if (srcDir == "src/main/rust") {
+        tasks.register("cargoNdkBuild") {
+            description = "Builds lib$crate.so for all Android ABIs."
+            dependsOn(cargoNdkBuild)
+        }
     }
     // Rust file-length gate: fails the build on any *.rs over
     // RUST_FILE_LENGTH_LIMIT lines, like the Kotlin FileLength rule (which
     // cannot see Rust). Configuration-cache compatible: plain path strings
     // cross the configuration boundary, never the Project object.
-    val rustSrcPath: String = file("src/main/rust/src").absolutePath
+    val rustSrcPath: String = file("$srcDir/src").absolutePath
     val rustProjPath: String = projectDir.absolutePath
-    val rustFileLength = tasks.register("rustFileLength") {
+    val lengthTaskName = if (srcDir == "src/main/rust") "rustFileLength" else "rustFileLength_$crate"
+    val rustFileLength = tasks.register(lengthTaskName) {
         description = "Fails on Rust files over $RUST_FILE_LENGTH_LIMIT lines."
         inputs.dir(rustSrcPath)
         doLast {
