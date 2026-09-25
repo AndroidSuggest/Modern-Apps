@@ -139,6 +139,33 @@ impl NormalizedSummary {
 /// Eight bytes a vertex rather than sixteen: see [`encode_geometry`] for why that is
 /// lossless for OSM coordinates and what it costs a coastline.
 ///
+/// # Compressed frames (planet disk peak)
+///
+/// Records are grouped into frames of [`NORM_CHUNK_FEATURES`] features and each frame is
+/// stored as raw DEFLATE. The file layout is:
+///
+/// ```text
+/// 0..4    magic `NZC1`
+/// 4..5    version 1
+/// 5..8    reserved, zero
+/// 8..    frames, back to back:
+///           u32 compressed_len (this field excluded)
+///           raw DEFLATE stream of one chunk's records
+/// ```
+///
+/// Why this shape: the 259 GB planet feature spill is what fills the disk beside the z14
+/// tile chunks (~101 GB) and the bodies scratch, and coordinates compress ~3x (sorted e7
+/// varints, delta runs). Per-chunk frames keep the [`NormalizedSummary::chunks`] index valid
+/// verbatim -- chunk `i` still spans `chunks[i]..chunks[i+1]`, now over compressed bytes --
+/// so positional reads, the `chunk_mins` zoom filter, the prefetch lanes and the anon backend
+/// all work unchanged, and inflate-then-decode yields byte-identical records. A whole-file
+/// stream would kill positional reads; per-record frames would pay inflate setup 1.9 B x 15
+/// times for worse ratio.
+///
+/// Spill files are build-temp (removed on success, never shipped), so there is no cross-version
+/// compat to keep: a reader that does not know `NZC1` refuses the magic rather than decoding
+/// frames as records.
+///
 /// Backed by a file ([`create`](Self::create)) or by anonymous pagefile memory
 /// ([`create_anon`](Self::create_anon)),
 /// which stages the same bytes with no directory entry. Same records, same
@@ -149,12 +176,34 @@ enum WriterSink {
     Anon(crate::anon::AnonStore),
 }
 
+/// File magic for the compressed normalized spill. A reader that does not know it refuses
+/// the file rather than decoding frames as records.
+const NORM_MAGIC: &[u8; 4] = b"NZC1";
+/// Frame format version. Bumped if the framing ever changes; spill files are build-temp so no
+/// migration path is needed, only a refusal.
+const NORM_VERSION: u8 = 1;
+/// Bytes of file header before the first frame. The chunk index's first offset equals this.
+const NORM_FILE_HEADER_BYTES: usize = 8;
+/// Largest single frame accepted, compressed or not. A 64-feature chunk of plausible records is
+/// kilobytes; a gigabyte frame is corruption, not a dense chunk.
+const MAX_FRAME_BYTES: u64 = 1 << 30;
+
 pub struct NormalizedWriter {
     out: WriterSink,
     path: PathBuf,
     summary: NormalizedSummary,
     rec: Vec<u8>,
-    /// Bytes written so far, which is the next record's offset.
+    /// The current chunk's raw records, accumulating until [`NORM_CHUNK_FEATURES`] are held.
+    /// Buffered rather than written per record because a frame is compressed as a unit: flushing
+    /// per record would be per-record frames (worse ratio, 1.9 B x 15 inflates). One chunk is
+    /// ~9 KB raw, noise next to every other peak in the build.
+    pending: Vec<u8>,
+    /// Records in `pending`. Counted rather than derived because records are variable-length.
+    pending_count: u64,
+    /// Compressed scratch, reused across frames so a chunk seal allocates nothing.
+    sealed: Vec<u8>,
+    /// Bytes written so far, which is the next frame's offset. Tracks *compressed* bytes: the
+    /// chunk index addresses frames, not records.
     at: u64,
 }
 
@@ -169,13 +218,20 @@ impl NormalizedWriter {
         }
         let f = File::create(&path)
             .map_err(|e| Error(format!("cannot create {}: {e}", path.display())))?;
-        Ok(NormalizedWriter {
+        let mut w = NormalizedWriter {
             out: WriterSink::File(BufWriter::with_capacity(1 << 20, f)),
             path,
             summary: NormalizedSummary::default(),
             rec: Vec::new(),
-            at: 0,
-        })
+            pending: Vec::new(),
+            pending_count: 0,
+            sealed: Vec::new(),
+            // The first frame starts past the file header; the chunk index's first offset
+            // records exactly this, so readers never special-case it.
+            at: NORM_FILE_HEADER_BYTES as u64,
+        };
+        w.write_file_header()?;
+        Ok(w)
     }
 
     /// Anonymous twin of [`create`](Self::create): same records and offsets,
@@ -183,13 +239,36 @@ impl NormalizedWriter {
     /// disk — it only rides along for error messages. Pair with
     /// [`NormalizedChunks::open_anon`] on the way back.
     pub fn create_anon(path: impl Into<PathBuf>) -> Result<NormalizedWriter> {
-        Ok(NormalizedWriter {
+        let mut w = NormalizedWriter {
             out: WriterSink::Anon(crate::anon::AnonStore::new()),
             path: path.into(),
             summary: NormalizedSummary::default(),
             rec: Vec::new(),
-            at: 0,
-        })
+            pending: Vec::new(),
+            pending_count: 0,
+            sealed: Vec::new(),
+            at: NORM_FILE_HEADER_BYTES as u64,
+        };
+        w.write_file_header()?;
+        Ok(w)
+    }
+
+    /// The 8-byte file header: magic, version, reserved zero. Written once, before the first
+    /// frame, on both backends -- so anon and file bytes are identical and every reader parses
+    /// one layout.
+    fn write_file_header(&mut self) -> Result<()> {
+        let mut head = [0u8; NORM_FILE_HEADER_BYTES];
+        head[0..4].copy_from_slice(NORM_MAGIC);
+        head[4] = NORM_VERSION;
+        match &mut self.out {
+            WriterSink::File(f) => f
+                .write_all(&head)
+                .map_err(|e| Error(format!("writing {}: {e}", self.path.display())))?,
+            WriterSink::Anon(a) => {
+                a.push(&head)?;
+            }
+        }
+        Ok(())
     }
 
     /// A line the caller could not use. Counted here so the summary is the one place
@@ -210,19 +289,18 @@ impl NormalizedWriter {
         self.rec[4..8].copy_from_slice(&geom_len.to_le_bytes());
         self.rec[8..12].copy_from_slice(&props_len.to_le_bytes());
         self.rec[12] = GeomKind::of(geometry).tag();
-        // Index before writing, so the offset recorded is this record's own start.
+        // Buffered, not written: a frame is one chunk's records compressed as a unit. The index
+        // entry below still fires on the same 64-feature boundary, so entry `i` still describes
+        // chunk `i` -- only the bytes behind the offset are frames now.
+        self.pending.extend_from_slice(&self.rec);
+        self.pending_count += 1;
+        // Index before sealing, so the offset recorded is this frame's own start.
         if self.summary.count.is_multiple_of(NORM_CHUNK_FEATURES) {
             self.summary.chunks.push(self.at);
         }
-        match &mut self.out {
-            WriterSink::File(f) => f
-                .write_all(&self.rec)
-                .map_err(|e| Error(format!("writing {}: {e}", self.path.display())))?,
-            WriterSink::Anon(a) => {
-                a.push(&self.rec)?;
-            }
+        if self.pending_count >= NORM_CHUNK_FEATURES {
+            self.seal_frame()?;
         }
-        self.at += self.rec.len() as u64;
 
         if self.summary.geom_kind.is_none() {
             self.summary.geom_kind = Some(GeomKind::of(geometry));
@@ -232,8 +310,44 @@ impl NormalizedWriter {
         Ok(())
     }
 
+    /// Compress the buffered chunk into one frame and stage it.
+    ///
+    /// Level 6: the write happens once (stage A, serial sink) while the reads happen fifteen
+    /// times (parallel prefetch lanes), so ratio matters more than deflate speed -- and inflate
+    /// speed is level-independent. `miniz_oxide` is already this crate's DEFLATE dependency.
+    /// A corrupt frame can only come from a corrupt file (or a killed run's partial write),
+    /// and every reader re-validates: the frame length against the chunk span, the inflate
+    /// itself, then every record header inside.
+    fn seal_frame(&mut self) -> Result<()> {
+        if self.pending.is_empty() {
+            return Ok(());
+        }
+        self.sealed.clear();
+        self.sealed = miniz_oxide::deflate::compress_to_vec(&self.pending, 6);
+        let frame_len = u32::try_from(self.sealed.len())
+            .map_err(|_| Error("a spill frame is larger than 4 GiB".to_string()))?;
+        let mut staged = Vec::with_capacity(4 + self.sealed.len());
+        staged.extend_from_slice(&frame_len.to_le_bytes());
+        staged.extend_from_slice(&self.sealed);
+        match &mut self.out {
+            WriterSink::File(f) => f
+                .write_all(&staged)
+                .map_err(|e| Error(format!("writing {}: {e}", self.path.display())))?,
+            WriterSink::Anon(a) => {
+                a.push(&staged)?;
+            }
+        }
+        self.at += staged.len() as u64;
+        self.pending.clear();
+        self.pending_count = 0;
+        Ok(())
+    }
+
     /// Flush, and hand back what the pass learned.
     pub fn finish(mut self) -> Result<NormalizedSummary> {
+        // The last chunk is usually partial and still needs its frame -- without this its
+        // records would be buffered and never staged.
+        self.seal_frame()?;
         self.flush_out()?;
         // Close the last chunk. Without this the final partial chunk has no end, and
         // `chunk_count` would also over-report by one.
@@ -250,6 +364,7 @@ impl NormalizedWriter {
     /// chose. A file backend yields no store -- its bytes live at the path it was created with,
     /// and readers open that path.
     pub fn finish_either(mut self) -> Result<(NormalizedSummary, Option<crate::anon::AnonStore>)> {
+        self.seal_frame()?;
         self.flush_out()?;
         if !self.summary.chunks.is_empty() {
             self.summary.chunks.push(self.at);
@@ -264,6 +379,7 @@ impl NormalizedWriter {
     /// AND the staged store for [`NormalizedChunks::open_anon`]. Errors when
     /// this writer is file-backed (a programming bug, not a runtime one).
     pub fn finish_anon(mut self) -> Result<(NormalizedSummary, crate::anon::AnonStore)> {
+        self.seal_frame()?;
         self.flush_out()?;
         if !self.summary.chunks.is_empty() {
             self.summary.chunks.push(self.at);
@@ -326,6 +442,101 @@ fn norm_payload(kind: GeomKind, geom_len: usize, payload: &[u8]) -> Result<Norma
     })
 }
 
+/// Validate a spill file header, returning nothing: the magic, version and reserved tail are
+/// either exactly what the writer emits or the file is not a spill this reader knows.
+fn norm_file_header(head: &[u8; NORM_FILE_HEADER_BYTES]) -> Result<()> {
+    if &head[0..4] != NORM_MAGIC {
+        return err("not a normalized spill file (bad NZC1 magic)".to_string());
+    }
+    if head[4] != NORM_VERSION {
+        return err(format!(
+            "unsupported normalized spill version {} (this reader speaks v{NORM_VERSION})",
+            head[4],
+        ));
+    }
+    if head[5..NORM_FILE_HEADER_BYTES].iter().any(|v| *v != 0) {
+        return err("a normalized spill file has a nonzero reserved tail".to_string());
+    }
+    Ok(())
+}
+
+/// Inflate one frame: `u32 compressed_len` + raw DEFLATE of one chunk's records.
+///
+/// The length is checked against the chunk span first (a frame longer than its span is
+/// corruption, not a large chunk), then the inflate itself is the check: DEFLATE framing errors
+/// on truncated or bit-rotted input rather than yielding partial records. Record validation
+/// (`norm_header` per record) still runs on the inflated bytes, so a corrupt frame that
+/// happens to inflate is refused as the desync it is.
+fn inflate_frame(chunk: usize, path: &std::path::Path, frame: &[u8]) -> Result<Vec<u8>> {
+    if frame.len() < 4 {
+        return err(format!(
+            "normalized chunk {chunk} of {} ends {} byte(s) into its 4-byte frame header",
+            path.display(),
+            frame.len(),
+        ));
+    }
+    let want = u32::from_le_bytes(frame[0..4].try_into().expect("4 bytes")) as u64;
+    if want > MAX_FRAME_BYTES {
+        return err(format!(
+            "normalized chunk {chunk} of {} claims a {want}-byte frame, which is corruption",
+            path.display(),
+        ));
+    }
+    if want as usize != frame.len() - 4 {
+        return err(format!(
+            "normalized chunk {chunk} of {} holds {} frame byte(s) but claims {want}",
+            path.display(),
+            frame.len() - 4,
+        ));
+    }
+    miniz_oxide::inflate::decompress_to_vec(&frame[4..]).map_err(|e| {
+        Error(format!(
+            "normalized chunk {chunk} of {} does not inflate: {e:?}",
+            path.display(),
+        ))
+    })
+}
+
+/// Decode every record in one inflated chunk into `out`, which is cleared first.
+///
+/// Split from [`NormalizedChunks::read_into`] so the sequential reader shares the exact same
+/// validation: a record one of them rejects must not be one the other decodes.
+fn decode_chunk_records(
+    chunk: usize,
+    path: &std::path::Path,
+    raw: &[u8],
+    out: &mut Vec<NormalizedFeature>,
+) -> Result<()> {
+    out.clear();
+    let mut at = 0usize;
+    while at < raw.len() {
+        if raw.len() - at < NORM_HEADER_BYTES {
+            return err(format!(
+                "normalized chunk {chunk} of {} ends {} byte(s) into a \
+                 {NORM_HEADER_BYTES}-byte record header",
+                path.display(),
+                raw.len() - at
+            ));
+        }
+        let head: &[u8; NORM_HEADER_BYTES] = raw[at..at + NORM_HEADER_BYTES]
+            .try_into()
+            .expect("a header's worth of bytes");
+        let (geom_len, props_len, kind) = norm_header(head)?;
+        let body = at + NORM_HEADER_BYTES;
+        let rec_end = body + geom_len + props_len;
+        if rec_end > raw.len() {
+            return err(format!(
+                "normalized chunk {chunk} of {} holds a record running {} byte(s) past its end",
+                path.display(),
+                rec_end - raw.len()
+            ));
+        }
+        out.push(norm_payload(kind, geom_len, &raw[body..rec_end])?);
+        at = rec_end;
+    }
+    Ok(())
+}
+
 /// Sequential reader over the normalized spill, rewindable because every zoom
 /// re-reads it from the front. File-backed ([`open`](Self::open)) or anonymous
 /// ([`open_anon`](Self::open_anon)): the record format is a sequential stream
@@ -334,10 +545,21 @@ fn norm_payload(kind: GeomKind, geom_len: usize, payload: &[u8]) -> Result<Norma
 pub struct NormalizedReader {
     src: ReaderIn,
     path: PathBuf,
-    buf: Vec<u8>,
+    /// The current frame's inflated records. Refilled from the next frame when exhausted; the
+    /// reader yields records across the refill boundary without the caller seeing frames at all.
+    frame: Vec<u8>,
+    /// Bytes of `frame` already yielded.
+    frame_used: usize,
+    /// Frames exhausted so far, for error messages that name the chunk.
+    frames_seen: usize,
+    /// Scratch for one compressed frame, reused so a refill allocates nothing but the inflate.
+    raw_frame: Vec<u8>,
 }
 
 /// Where a [`NormalizedReader`] reads from.
+///
+/// Both variants are frame-aware now: the file cursor sits at the next unread frame (past the
+/// 8-byte file header), and the anon offset likewise. `rewind` returns both to the first frame.
 enum ReaderIn {
     File(BufReader<File>),
     Anon {
@@ -351,11 +573,16 @@ impl NormalizedReader {
         let path = path.into();
         let f = File::open(&path)
             .map_err(|e| Error(format!("cannot read {}: {e}", path.display())))?;
-        Ok(NormalizedReader {
+        let mut reader = NormalizedReader {
             src: ReaderIn::File(BufReader::with_capacity(1 << 20, f)),
             path,
-            buf: Vec::new(),
-        })
+            frame: Vec::new(),
+            frame_used: 0,
+            frames_seen: 0,
+            raw_frame: Vec::new(),
+        };
+        reader.read_file_header()?;
+        Ok(reader)
     }
 
     /// Anonymous twin of [`open`](Self::open): reads the sealed store from
@@ -364,27 +591,65 @@ impl NormalizedReader {
         path: impl Into<PathBuf>,
         store: std::sync::Arc<crate::anon::AnonStore>,
     ) -> Result<NormalizedReader> {
-        Ok(NormalizedReader {
-            src: ReaderIn::Anon { store, at: 0 },
+        let mut reader = NormalizedReader {
+            src: ReaderIn::Anon { store, at: NORM_FILE_HEADER_BYTES as u64 },
             path: path.into(),
-            buf: Vec::new(),
-        })
+            frame: Vec::new(),
+            frame_used: 0,
+            frames_seen: 0,
+            raw_frame: Vec::new(),
+        };
+        reader.read_file_header()?;
+        Ok(reader)
+    }
+
+    /// Parse and validate the 8-byte file header, positioning the cursor at the first frame.
+    ///
+    /// Read through the cursor itself (not a separate open) so the file and anon paths share
+    /// the framing: on the file path this consumes the header bytes; on anon it validates the
+    /// store's own first 8 bytes while `at` already skips past them.
+    fn read_file_header(&mut self) -> Result<()> {
+        match &mut self.src {
+            ReaderIn::File(f) => {
+                let mut head = [0u8; NORM_FILE_HEADER_BYTES];
+                use std::io::Read;
+                f.read_exact(&mut head).map_err(|e| {
+                    Error(format!("reading {}'s spill header: {e}", self.path.display()))
+                })?;
+                norm_file_header(&head)?;
+            }
+            ReaderIn::Anon { store, .. } => {
+                let mut head = [0u8; NORM_FILE_HEADER_BYTES];
+                store.read_at(0, &mut head).map_err(|e| {
+                    Error(format!("reading {}'s spill header: {e}", self.path.display()))
+                })?;
+                norm_file_header(&head)?;
+            }
+        }
+        Ok(())
     }
 
     pub fn rewind(&mut self) -> Result<()> {
         match &mut self.src {
             ReaderIn::File(f) => {
                 use std::io::Seek;
-                f.rewind()
+                // Past the file header: frame 0 starts at byte 8, not byte 0.
+                f.seek(std::io::SeekFrom::Start(NORM_FILE_HEADER_BYTES as u64))
                     .map_err(|e| Error(format!("rewinding {}: {e}", self.path.display())))?;
             }
-            ReaderIn::Anon { at, .. } => *at = 0,
+            ReaderIn::Anon { at, .. } => *at = NORM_FILE_HEADER_BYTES as u64,
         }
+        self.frame.clear();
+        self.frame_used = 0;
+        self.frames_seen = 0;
         Ok(())
     }
 
     /// Fill `buf` with exactly `len` bytes from the cursor, or `Ok(false)` at a
-    /// clean record boundary (start of read).
+    /// clean frame boundary (start of read, or exactly past the last frame's bytes).
+    ///
+    /// A short read anywhere else is corruption, and the callers treat it as such: frames state
+    /// their own length, so a file that ends mid-frame is truncated, not finished.
     fn read_full(&mut self, buf: &mut [u8]) -> Result<bool> {
         match &mut self.src {
             ReaderIn::File(f) => {
@@ -398,6 +663,8 @@ impl NormalizedReader {
                     }
                     read += n;
                 }
+                // `Ok(false)` only at a frame boundary: mid-frame EOF is reported by the frame
+                // length check in `refill`, not here.
                 Ok(read > 0)
             }
             ReaderIn::Anon { store, at } => {
@@ -415,39 +682,90 @@ impl NormalizedReader {
         }
     }
 
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Result<Option<NormalizedFeature>> {
-        let mut head = [0u8; NORM_HEADER_BYTES];
-        if !self.read_full(&mut head)? {
-            return Ok(None);
+    /// The next frame's inflated records, replacing `frame`.
+    ///
+    /// Reads the frame's `u32` length, then exactly that many bytes -- a short read there is a
+    /// truncated file, never a legitimate end -- inflates, and validates the inflate before any
+    /// record is yielded. `Ok(false)` only when the cursor sits exactly at end of input.
+    fn refill(&mut self) -> Result<bool> {
+        let mut len_buf = [0u8; 4];
+        if !self.read_full(&mut len_buf)? {
+            return Ok(false);
         }
-        // A short read mid-header is corruption on both backends: the anon
-        // store's lengths are exact, so a partial header means the store is
-        // not what was written — same as a truncated file.
-        let (geom_len, props_len, kind) = norm_header(&head)?;
-        self.buf.clear();
-        self.buf.resize(geom_len + props_len, 0);
-        // Payload reads are exact-length by construction (header-validated),
-        // so a short payload is corruption, not EOF.
+        let want = u32::from_le_bytes(len_buf) as usize;
+        if want as u64 > MAX_FRAME_BYTES {
+            return err(format!(
+                "normalized frame {} of {} claims {} byte(s), which is corruption",
+                self.frames_seen,
+                self.path.display(),
+                want,
+            ));
+        }
+        self.raw_frame.clear();
+        self.raw_frame.resize(want, 0);
+        // Exact-length by construction (the length was just read), so a short payload is
+        // corruption, not EOF. `read_full` may return short mid-frame on the file path;
+        // loop until the frame is whole or the file ends.
         let mut read = 0usize;
-        while read < self.buf.len() {
-            let mut chunk = vec![0u8; self.buf.len() - read];
+        while read < want {
+            let mut chunk = vec![0u8; want - read];
             if !self.read_full(&mut chunk)? {
                 return err(format!(
-                    "{} ends mid-record payload",
-                    self.path.display()
+                    "{} ends {} byte(s) into frame {}",
+                    self.path.display(),
+                    read,
+                    self.frames_seen,
                 ));
             }
-            // `read_full` on the file path may return short (EOF splits the
-            // loop); on anon it fills exactly. Copy what arrived.
+            // `read_full` on the file path may return short; on anon it fills exactly.
             let n = chunk.len();
-            self.buf[read..read + n].copy_from_slice(&chunk);
+            self.raw_frame[read..read + n].copy_from_slice(&chunk);
             read += n;
             if n == 0 {
                 break;
             }
         }
-        Ok(Some(norm_payload(kind, geom_len, &self.buf)?))
+        let mut framed = Vec::with_capacity(4 + want);
+        framed.extend_from_slice(&len_buf);
+        framed.extend_from_slice(&self.raw_frame);
+        self.frame = inflate_frame(self.frames_seen, &self.path, &framed)?;
+        self.frame_used = 0;
+        self.frames_seen += 1;
+        Ok(true)
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> Result<Option<NormalizedFeature>> {
+        loop {
+            if self.frame_used < self.frame.len() {
+                let head: &[u8; NORM_HEADER_BYTES] = self.frame
+                    [self.frame_used..self.frame_used + NORM_HEADER_BYTES]
+                    .try_into()
+                    .map_err(|_| {
+                        Error(format!(
+                            "{} ends {} byte(s) into a {NORM_HEADER_BYTES}-byte record header",
+                            self.path.display(),
+                            self.frame.len() - self.frame_used,
+                        ))
+                    })?;
+                let (geom_len, props_len, kind) = norm_header(head)?;
+                let body = self.frame_used + NORM_HEADER_BYTES;
+                let rec_end = body + geom_len + props_len;
+                if rec_end > self.frame.len() {
+                    return err(format!(
+                        "{} holds a record running {} byte(s) past its frame",
+                        self.path.display(),
+                        rec_end - self.frame.len(),
+                    ));
+                }
+                let feature = norm_payload(kind, geom_len, &self.frame[body..rec_end])?;
+                self.frame_used = rec_end;
+                return Ok(Some(feature));
+            }
+            if !self.refill()? {
+                return Ok(None);
+            }
+        }
     }
 }
 
@@ -515,6 +833,10 @@ impl NormalizedChunks {
     /// The first feature of chunk `i` is input feature `i * NORM_CHUNK_FEATURES`, by
     /// construction of the index — which is what lets the caller reproduce the exact
     /// `seq` the sequential path assigns.
+    ///
+    /// The chunk span covers one compressed frame: it is read whole, inflated, and decoded
+    /// with the same [`decode_chunk_records`] the sequential reader uses, so the two paths
+    /// cannot diverge on what they accept.
     pub fn read_into(
         &self,
         i: usize,
@@ -555,33 +877,8 @@ impl NormalizedChunks {
             })?,
             _ => return err("a normalized chunk reader has no backend".to_string()),
         }
-        let mut at = 0usize;
-        while at < len {
-            if len - at < NORM_HEADER_BYTES {
-                return err(format!(
-                    "normalized chunk {i} of {} ends {} byte(s) into a \
-                     {NORM_HEADER_BYTES}-byte record header",
-                    self.path.display(),
-                    len - at
-                ));
-            }
-            let head: &[u8; NORM_HEADER_BYTES] = scratch[at..at + NORM_HEADER_BYTES]
-                .try_into()
-                .expect("a header's worth of bytes");
-            let (geom_len, props_len, kind) = norm_header(head)?;
-            let body = at + NORM_HEADER_BYTES;
-            let rec_end = body + geom_len + props_len;
-            if rec_end > len {
-                return err(format!(
-                    "normalized chunk {i} of {} holds a record running {} byte(s) past its end",
-                    self.path.display(),
-                    rec_end - len
-                ));
-            }
-            out.push(norm_payload(kind, geom_len, &scratch[body..rec_end])?);
-            at = rec_end;
-        }
-        Ok(())
+        let raw = inflate_frame(i, &self.path, scratch)?;
+        decode_chunk_records(i, &self.path, &raw, out)
     }
 }
 

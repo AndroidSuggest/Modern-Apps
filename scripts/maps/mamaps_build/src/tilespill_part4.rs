@@ -95,5 +95,11 @@ mod tests_extra {
                 "{streams} streams gave a {window}-byte window"
             );
         }
+        // The planet ceiling: streams x floor must stay a small fraction of a
+        // constrained box's commit headroom (~50 GB here), not half of it.
+        assert!(
+            27_000u64 * MIN_WINDOW as u64 <= 512 << 20,
+            "a planet z14's merge cursors must fit in ~512 MB"
+        );
     }
 }

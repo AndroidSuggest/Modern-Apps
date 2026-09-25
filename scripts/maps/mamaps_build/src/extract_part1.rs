@@ -80,6 +80,7 @@ pub fn extract(
         relations,
         promoted,
         blob_kinds,
+        ways: _,
         way_refs,
         way_max_ref,
         ways_anon,
@@ -179,12 +180,17 @@ pub fn extract(
 
 /// Spill bytes per classified feature, calibrated from measured builds.
 ///
-/// California (10.03 GB peak): ~15.5 M features spilled ~2.0 GB => ~135 B/feature. The record is a
-/// varint stream (delta-coded refs were in the *ways* spill, not here; here it is e7 coordinates
-/// plus a packed class plus optional names/ids/lane data), so this varies by layer mix -- but the
-/// gate only needs order-of-magnitude, and over-estimating pushes to files, which is the safe
-/// side.
-const SPILL_BYTES_PER_FEATURE: u64 = 256;
+/// California (10.03 GB peak): ~15.5 M features spilled ~2.0 GB => ~135 B/feature raw. The record
+/// is a varint stream (delta-coded refs were in the *ways* spill, not here; here it is e7
+/// coordinates plus a packed class plus optional names/ids/lane data), so this varies by layer
+/// mix -- but the gate only needs order-of-magnitude, and over-estimating pushes to files, which
+/// is the safe side.
+///
+/// Stored compressed: the spill stages per-chunk DEFLATE frames (~3x on coordinate runs), so the
+/// file holds roughly a third of the raw bytes. 96 B lands between the compressed California
+/// figure (~45 B) and the raw one, leaning the safe way; the gate's job is only to pick the
+/// backend, and files are the safe side.
+const SPILL_BYTES_PER_FEATURE: u64 = 96;
 
 /// Budget gate, phase 0: which backend the *ways* spill stages in.
 ///
@@ -225,10 +231,16 @@ fn plan_ways_spill(
 ///
 /// Runs AFTER pass 1, so every count is real: classified ways/relations, total refs, max ref, the
 /// sealed ways-spill length, member-way refs. The feature estimate is `ways + relations +
-/// labels + externals` times [`SPILL_BYTES_PER_FEATURE`]; the graph sizes from `metadata.bin`'s
+/// externals` times [`SPILL_BYTES_PER_FEATURE`]; the graph sizes from `metadata.bin`'s
 /// 40-byte header before anything is mapped. Relations move the needle less (8.4 M vs 1.1 B ways
 /// on planet) and are counted at struct overhead -- their member refs are already inside the
 /// distinct-node estimate via the bitset walk.
+///
+/// `ways`, not refs: `Pass1Out::way_refs` is the ref *total* (duplicates included, ~12 G on
+/// planet), which would size the spill 10x over and refuse, on estimates alone, builds whose
+/// real spill fits. The externals headroom leans the safe way instead: the junction connectors
+/// (~746 M on planet) arrive after this gate, so half the way count stands in for them plus
+/// land/transit, pushing continent-scale builds to files (same records, removed on success).
 fn plan_feature_spill(
     pass1: &Pass1Out,
     members: &MemberWays,
@@ -249,30 +261,48 @@ fn plan_feature_spill(
         .map(|a| a.len())
         .unwrap_or_else(|| std::fs::metadata(spill_path.with_extension("ways.tmp")).map(|m| m.len()).unwrap_or(0));
     // Features to come: every classified way and relation materialises at most one feature, plus
-    // label nodes (upper-bounded by distinct nodes -- vast over-estimate, safe side), plus the
-    // externals (land polygons ~831 K on planet, transit, junction connectors).
+    // the externals below (the junction connectors dominate: ~746 M on planet, arriving after
+    // this gate, hence the ways/2 headroom on the safe side).
     budget.features_expected = pass1
-        .way_refs
+        .ways
         .saturating_add(pass1.relations.len() as u64)
+        .saturating_add(pass1.ways / 2)
         .saturating_add(2_000_000);
     budget.bytes_per_feature = SPILL_BYTES_PER_FEATURE;
     budget.relations = pass1.relations.len() as u64;
     budget.graph_bytes = graph_mapped_bytes(graph).unwrap_or(0);
     let context = format!(
         "stage A feature spill ({} ways, {} relations, {} refs, max node {})",
-        pass1.way_refs, pass1.relations.len(), refs_total, pass1.way_max_ref,
+        pass1.ways, pass1.relations.len(), refs_total, pass1.way_max_ref,
     );
-    let plan = osm_ingest::mem::SpillPlan::decide(&budget, spill_path, &context)
-        .map_err(osm_ingest::proto::Error)?;
-    println!(
-        "  [stage A] budget: rank {} + ways spill {} + {} expected features x {} B => {:?} backend",
-        osm_ingest::mem::fmt_gb(budget.rank_bytes()),
-        osm_ingest::mem::fmt_gb(budget.ways_spill_bytes),
-        budget.features_expected,
-        budget.bytes_per_feature,
-        plan,
-    );
-    Ok(plan)
+    // Warn-and-file rather than fail: the counts above are order-of-magnitude (the feature
+    // estimate most of all), and refusing on them alone would abort builds whose real spill
+    // fits. Files are the safe side -- same records, removed on success -- and a volume that
+    // truly is too small still fails naturally, with its path in the error.
+    match osm_ingest::mem::SpillPlan::decide(&budget, spill_path, &context) {
+        Ok(plan) => {
+            println!(
+                "  [stage A] budget: rank {} + ways spill {} + {} expected features x {} B => {:?} backend",
+                osm_ingest::mem::fmt_gb(budget.rank_bytes()),
+                osm_ingest::mem::fmt_gb(budget.ways_spill_bytes),
+                budget.features_expected,
+                budget.bytes_per_feature,
+                plan,
+            );
+            Ok(plan)
+        }
+        Err(e) => {
+            eprintln!("WARNING: {e}; continuing with file staging");
+            println!(
+                "  [stage A] budget: rank {} + ways spill {} + {} expected features x {} B => File backend (over budget)",
+                osm_ingest::mem::fmt_gb(budget.rank_bytes()),
+                osm_ingest::mem::fmt_gb(budget.ways_spill_bytes),
+                budget.features_expected,
+                budget.bytes_per_feature,
+            );
+            Ok(osm_ingest::mem::SpillPlan::File)
+        }
+    }
 }
 
 /// Bytes the junction phase must address at once: the three mapped graph files plus `lanes.bin`,
@@ -307,6 +337,12 @@ struct Pass1Out {
     relations: Vec<Relation>,
     promoted: Vec<(i64, u8)>,
     blob_kinds: Vec<u8>,
+    /// Classified way count (one materialised feature each, at most). Distinct from
+    /// `way_refs` below: the ref total is ~10x the way count and must not size a feature
+    /// estimate.
+    ways: u64,
+    /// Node ref total, duplicates included -- a capacity for the collector, NOT a feature
+    /// count. Planet's ~12 G refs must never be multiplied by bytes-per-feature.
     way_refs: u64,
     way_max_ref: i64,
     /// The sealed ways spill, shared by refcount with every later reader; `None` on the file
@@ -557,8 +593,8 @@ fn run_pass1(
     )?;
     let (counts, store) = ways.finish_either()?;
     stats.ways_classified = counts.ways;
-    let (way_refs, way_max_ref, ways_anon) =
-        (counts.refs, counts.max_ref, store.map(std::sync::Arc::new));
+    let (ways, way_refs, way_max_ref, ways_anon) =
+        (counts.ways, counts.refs, counts.max_ref, store.map(std::sync::Arc::new));
     stats.relations_classified = relations.len() as u64;
 
     // A numbered road changes class along its length, so deciding `min_zoom` per way chops
@@ -574,6 +610,7 @@ fn run_pass1(
         relations,
         promoted,
         blob_kinds,
+        ways,
         way_refs,
         way_max_ref,
         ways_anon,

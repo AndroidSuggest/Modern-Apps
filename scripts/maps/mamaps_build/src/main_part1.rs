@@ -155,10 +155,28 @@ fn run(
         scratch: scratch_path(out),
         dem,
         region_links,
+        // Honour the operator's backend choice: `MAPS_ANON_SPILL=1` (or any truthy value) stages
+        // the tile-chunk spill in pagefile-backed anonymous memory instead of the scratch file
+        // beside the output. Same chunks, same offsets, same bytes -- the merge reads through the
+        // same `ChunkReader` either way, so the archive is identical and `-Verify` still holds.
+        //
+        // This matters because the tiler's own budget gate (`plan_chunk_spill`) answers from the
+        // commit limit, not from this variable: on a box with a generous pagefile it picks anon
+        // for an 11.9 M-feature store even when the operator knows the commit headroom is ~50 GB
+        // and wants files. The variable is the override; the gate stays the default.
+        force_chunk_spill_file: std::env::var("MAPS_ANON_SPILL")
+            .map(|v| {
+                let v = v.trim().to_ascii_lowercase();
+                !(v == "1" || v == "true" || v == "yes")
+            })
+            .unwrap_or(false),
     };
-    let (bytes, per_zoom) = tiler::build(&store, &settings).map_err(|e| e.to_string())?;
+    // Streamed straight to `out`: the archive's data section is tens of GB on a planet, and
+    // holding it in a `Vec<u8>` beside the merge's own peak is the OOM after z14 merges.
+    // `build_to_path` runs the identical zoom loop and assembles the identical
+    // header/dictionary/root/leaves/data layout through `finish_to_path`.
+    let per_zoom = tiler::build_to_path(&store, &settings, out).map_err(|e| e.to_string())?;
     tiler::check_not_empty(&per_zoom).map_err(|e| e.to_string())?;
-    std::fs::write(out, &bytes).map_err(|e| format!("cannot write {}: {e}", out.display()))?;
     // The spill is scratch. Removed on success; left behind on failure, where it is evidence.
     let _ = std::fs::remove_file(&spill);
 
@@ -250,10 +268,14 @@ fn run(
             encode as f64 / 1000.0,
         );
     }
+    // The archive was streamed straight to `out` (`build_to_path`), so its length is read
+    // back from the file rather than from a buffer that no longer exists.
+    let archive_len = std::fs::metadata(out)
+        .map(|m| m.len())
+        .map_err(|e| format!("cannot stat {}: {e}", out.display()))?;
     println!(
-        "\nwrote {} ({} bytes, build_id {build_id:#018x}) in {:.1}s",
+        "\nwrote {} ({archive_len} bytes, build_id {build_id:#018x}) in {:.1}s",
         out.display(),
-        bytes.len(),
         started.elapsed().as_secs_f64(),
     );
     Ok(())

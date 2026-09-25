@@ -252,6 +252,13 @@ pub struct Settings {
     /// Beside the output archive, as `<out>.tilechunks`, matching where the feature spill is placed.
     /// Truncated at the start of every zoom and removed at the end of each, so it holds one zoom.
     pub scratch: PathBuf,
+    /// Force the tile-chunk spill through the scratch *file* even when the budget gate would pick
+    /// anonymous pagefile-backed memory. Set from `MAPS_ANON_SPILL` (unset, or any value but
+    /// `1`/`true`/`yes`, forces files): on a box whose commit headroom is tens of GB against a
+    /// ~900 GB estimate, anon staging pages the merge to death -- files page too, but against
+    /// the scratch volume rather than the commit limit that aborts the build. Same chunks, same
+    /// offsets, same bytes; the merge reads through the same `ChunkReader` either way.
+    pub force_chunk_spill_file: bool,
     /// The DEM heightmap dataset to sample one grid per output tile from.
     /// See [`crate::dem::Dem`]. A tile with no DEM under it carries no heightmap
     /// section (stays 16-byte).

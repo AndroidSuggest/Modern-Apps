@@ -113,9 +113,22 @@ const MAX_ENTRY_BYTES: u64 = 1 << 30;
 const FLUSH_BYTES: usize = 1 << 20;
 
 /// Bytes the whole merge may hold in read windows, divided across its streams.
-pub const READ_BUDGET: usize = 256 << 20;
+///
+/// Small against the old 256 MiB on purpose: the merge holds one cursor per chunk (~27 k at a
+/// planet z14), and each cursor's window is live beside the batch above and the encode workers.
+/// 256 MiB of cursors on top of a ~GB batch is what a 512 KiB allocation failure looks like on
+/// a box with ~50 GB of commit headroom. 64 MiB still reads in 16 KiB+ windows at 4 k streams
+/// (the floor binds long before the budget does at planet scale), so the extra syscalls are
+/// noise against the decode.
+pub const READ_BUDGET: usize = 64 << 20;
 /// Smallest read window. Below this the syscall costs more than the memory saves.
-pub const MIN_WINDOW: usize = 16 << 10;
+///
+/// Halved alongside the budget: at a planet z14's ~27 k streams the window formula divides the
+/// budget by the stream count and clamps to this floor, so the floor *is* the total
+/// (`streams x MIN_WINDOW`). 8 KiB keeps that total at ~216 MB instead of ~432 MB, still a
+/// reasonable read size off NVMe or the page cache, and the window-identity test pins that the
+/// size is not observable in the archive.
+pub const MIN_WINDOW: usize = 8 << 10;
 /// Largest read window. A stream is forward-only, so beyond this a longer window is only read-ahead
 /// the page cache would have done anyway.
 pub const MAX_WINDOW: usize = 1 << 20;

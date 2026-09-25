@@ -6,8 +6,45 @@
 /// a measured 10.03 GB California peak.
 pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomStats>)> {
     adopt_thread_budget();
+    let mut writer = writer_for(store, settings)?;
+    let per_zoom = tile_zooms(store, settings, &mut writer)?;
+    let bytes = writer.finish()?;
+    Ok((bytes, per_zoom))
+}
+
+/// Tile every feature in `store` straight into the archive at `out`, without ever holding the
+/// archive in memory.
+///
+/// `build` above returns the whole archive as a `Vec<u8>` -- fine for tests, fatal for a planet:
+/// the data section alone is tens of GB, and holding it beside the merge's own peak is what OOMs
+/// a box with ~50 GB of commit headroom right after z14 merges. This runs the identical zoom loop
+/// ([`tile_zooms`]) and finishes through [`StreamWriter::finish_to_path`], so the only thing ever
+/// held is the prefix (the index, small next to the bodies). Same tiles, same order, same bytes:
+/// the writer appends identically either way, and `finish_to_path` assembles the same
+/// header/dictionary/root/leaves/data layout as `finish`.
+pub fn build_to_path(
+    store: &Store,
+    settings: &Settings,
+    out: &std::path::Path,
+) -> Result<Vec<ZoomStats>> {
+    adopt_thread_budget();
+    let mut writer = writer_for(store, settings)?;
+    let per_zoom = tile_zooms(store, settings, &mut writer)?;
+    writer.finish_to_path(out)?;
+    Ok(per_zoom)
+}
+
+/// The [`StreamWriter`] for a build: zoom range, build id, compression, and the body scratch
+/// beside the output.
+///
+/// The scratch placement matters: the writer spills the data section (tens of GB on a planet)
+/// through a temp file, and the default is the system temp dir -- routinely a small system
+/// volume. Beside the output it shares the volume the operator already sized for the build
+/// (feature spill, tile chunks, archive), and it is removed on drop like every other scratch
+/// file. Path only, never bytes: the archive is identical wherever the scratch lives.
+fn writer_for(store: &Store, settings: &Settings) -> Result<StreamWriter> {
     let bbox = store.bbox();
-    let mut writer = StreamWriter::new(Options {
+    StreamWriter::new(Options {
         min_zoom: 0,
         max_zoom: crate::DEFAULT_MAX_ZOOM,
         build_id: settings.build_id,
@@ -20,8 +57,21 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
         min_lat_e7: bbox.1,
         max_lon_e7: bbox.2,
         max_lat_e7: bbox.3,
+        spill_dir: settings.scratch.parent().map(std::path::Path::to_path_buf),
         ..Options::default()
-    })?;
+    })
+}
+
+/// The zoom loop both builders share: map, merge, encode and append z0..=z14 through `writer`.
+///
+/// Extracted whole from `build` so the two finishes cannot diverge: the per-zoom stats, the
+/// progress bars, the `check_books` gate and the append order are identical, and only the final
+/// assembly differs (in-memory vs streaming).
+fn tile_zooms(
+    store: &Store,
+    settings: &Settings,
+    writer: &mut StreamWriter,
+) -> Result<Vec<ZoomStats>> {
 
     let mut per_zoom = Vec::new();
     // The tile-chunk spill's backend, decided once from the feature count: z14 holds the most
@@ -30,6 +80,20 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
     // spill truncates it on create and removes it on drop, so peak disk is still the largest
     // single zoom.
     let chunk_plan = plan_chunk_spill(store, &settings.scratch);
+    // The operator's override wins over the gate: `force_chunk_spill_file` (from
+    // `MAPS_ANON_SPILL`, unset or non-`1`) stages through the scratch file even when the gate
+    // picks anon. Same chunks, same bytes, no commit charge for the merge to trip over.
+    let chunk_plan = if settings.force_chunk_spill_file
+        && chunk_plan == osm_ingest::mem::SpillPlan::Anon
+    {
+        println!(
+            "  [tiler] chunk spill -> {} (file backend: MAPS_ANON_SPILL)",
+            settings.scratch.display(),
+        );
+        osm_ingest::mem::SpillPlan::File
+    } else {
+        chunk_plan
+    };
     for z in 0..=crate::DEFAULT_MAX_ZOOM {
         let mut stats = ZoomStats { zoom: z, ..ZoomStats::default() };
         let tolerance =
@@ -63,6 +127,17 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
         let mut written = 0usize;
         let mut shown = 0usize;
         loop {
+            // Cost-batched rather than count-batched: z14 has tiles whose merged geometry is tens
+            // of MB (a dense city tile's whole layer set) beside rural tiles worth bytes. A
+            // fixed `batch_len()` of those holds ~GB of merged tiles plus their encoded copies
+            // before the writer takes them -- on top of the merge's own peak, on a box with
+            // ~50 GB of commit headroom, which is where `Map z14 [100%]` went followed by a
+            // 512 KiB allocation failure. Capped at `MERGE_BATCH_BYTES` of merged cost, so a
+            // heavy tile still gets its own batch (a minimum of one batch per pull) and common
+            // zooms -- whose batches never reach the cap -- take the same count they always
+            // did. Order is untouched: batches are contiguous pulls of the merge in order, and
+            // `encode_batch` preserves tile order, so the archive does not move.
+            //
             // Batched rather than a task per tile: one tile's stage C and encode is tens of
             // microseconds and rayon's stealing costs more than that. Batched rather than a whole
             // zoom at once because the batch is what bounds the encoded bytes held before the
@@ -74,7 +149,7 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
             // `collect` into a `Result`, because a truncated scratch file must fail the build rather
             // than end the zoom early and publish a short archive.
             let batch: Vec<(u64, Vec<ChunkEntry>)> =
-                merged.by_ref().take(par::batch_len()).collect::<Result<Vec<_>>>()?;
+                merge_batch(&mut merged, par::batch_len())?;
             stats.merge_ms += merging.elapsed().as_millis() as u64;
             if batch.is_empty() {
                 break;
@@ -124,9 +199,43 @@ pub fn build(store: &Store, settings: &Settings) -> Result<(Vec<u8>, Vec<ZoomSta
         per_zoom.push(stats);
     }
 
-    let bytes = writer.finish()?;
-    Ok((bytes, per_zoom))
+    Ok(per_zoom)
 }
+
+/// One merge pull, capped by merged-geometry cost rather than by tile count.
+///
+/// Pulls up to `max_tiles` from the merge, stopping early once the accumulated `tile_cost` --
+/// features plus coordinates, the same proxy the encode pass balances tasks by -- reaches
+/// [`MERGE_BATCH_BYTES`]. Always pulls at least one tile, so a tile heavier than the cap on its
+/// own still makes progress. The pulled prefix is contiguous merge order, so feeding it to
+/// `encode_batch` (which preserves tile order) keeps the archive byte-identical: the only
+/// change is how many tiles one batch holds.
+fn merge_batch(
+    merged: &mut Merged<'_>,
+    max_tiles: usize,
+) -> Result<Vec<(u64, Vec<ChunkEntry>)>> {
+    let mut batch: Vec<(u64, Vec<ChunkEntry>)> = Vec::new();
+    let mut cost: u64 = 0;
+    for tile in merged.by_ref().take(max_tiles) {
+        let (id, layers) = tile?;
+        cost += tile_cost(&layers);
+        batch.push((id, layers));
+        // Checked after pushing, so the batch is never empty and a heavy tile closes its own
+        // batch -- the same shape as `partition_by_cost`'s grouping, for the same reason.
+        if cost >= MERGE_BATCH_BYTES {
+            break;
+        }
+    }
+    Ok(batch)
+}
+
+/// Cap on one merge pull's merged-geometry cost, in `tile_cost` units (features + coordinates).
+///
+/// 8 M units is ~64 MB of merged tile geometry per batch at typical z14 density -- small against
+/// the box, large against the pool (still hundreds of tiles per batch on common zooms, so the
+/// encode pass stays fed). The failure this bounds held ~GB: `batch_len()` tiles at 64 threads
+/// is 4096 tiles, and a planet z14 batch of those carries dense-city tiles tens of MB each.
+const MERGE_BATCH_BYTES: u64 = 8 << 20;
 
 /// Which backend one zoom's tile-chunk spill stages in.
 ///

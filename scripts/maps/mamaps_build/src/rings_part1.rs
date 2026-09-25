@@ -291,6 +291,7 @@ mod tests {
             build_id: 1,
             scratch: std::env::temp_dir()
                 .join(format!("mamaps_rings_{}.tilechunks", std::process::id())),
+            force_chunk_spill_file: false,
             dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
             region_links: std::collections::HashMap::new(),
         };

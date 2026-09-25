@@ -268,12 +268,21 @@ impl StageBudget {
             .saturating_mul(self.bytes_per_feature.max(1))
     }
 
-    /// Commit charged if everything stages anonymously: rank + resolved + ways spill (the feature
-    /// spill and graph are the caller's choice -- see `plan`).
+    /// Commit charged if everything stages anonymously: rank + resolved + ways spill +
+    /// the feature spill (the graph is the caller's choice -- see `plan`).
+    ///
+    /// The feature spill used to be missing here, so a planet gate compared ~43 GB
+    /// (rank + resolved + ways) against the allowance while the anon feature spill
+    /// itself needed hundreds of GB more. The build then paid for it 1767 s in with
+    /// `cannot commit anon segment` -- or, when it survived stage A, left the tiling
+    /// phase with no commit headroom and OOM'd merging z14. Counting it pushes
+    /// planet-scale builds to files (same records, removed on success), which is the
+    /// safe side.
     pub fn anon_commit_bytes(&self) -> u64 {
         self.rank_bytes()
             .saturating_add(self.resolved_bytes())
             .saturating_add(self.ways_spill_bytes)
+            .saturating_add(self.feature_spill_bytes())
     }
 
     /// Disk needed on the spill volume if the spills go to files: ways spill + feature spill +

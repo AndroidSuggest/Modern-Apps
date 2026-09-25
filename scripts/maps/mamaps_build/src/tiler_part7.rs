@@ -70,6 +70,7 @@ mod tests {
         Settings {
             build_id: 7,
             scratch: scratch(),
+            force_chunk_spill_file: false,
             dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
             region_links: std::collections::HashMap::new(),
         }

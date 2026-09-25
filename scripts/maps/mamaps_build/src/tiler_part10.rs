@@ -302,7 +302,7 @@ mod tests_part10 {
         spill.check_books().expect("the books balance");
     }
 
-    /// The read window is a memory/syscall trade and must not be observable in the archive. Forced
+/// The read window is a memory/syscall trade and must not be observable in the archive. Forced
     /// here at both clamps and either side of one entry's header, because a real build only ever
     /// reaches one clamp and which one depends on the extract.
     #[test]
@@ -314,7 +314,7 @@ mod tests_part10 {
         let store = spilled(&a_crowd());
 
         let want = build(&store, &settings(0, 14)).expect("build").0;
-        for window in [1usize, 23, 24, 25, 4096, tilespill::MIN_WINDOW, tilespill::MAX_WINDOW] {
+        for window in [1usize, 23, 24, 25, 4096, tilespill::MIN_WINDOW, tilespill::READ_BUDGET / 8, tilespill::MAX_WINDOW] {
             tilespill::set_read_window(window);
             let got = build(&store, &settings(0, 14)).expect("build").0;
             assert_eq!(got, want, "a {window}-byte read window moved the archive");

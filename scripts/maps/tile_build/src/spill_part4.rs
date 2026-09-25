@@ -279,17 +279,101 @@
         w.finish().unwrap();
 
         let bytes = std::fs::read(&path).unwrap();
+        // Layout is the 8-byte spill header, then one frame (`u32` len + DEFLATE). Truncations
+        // are relative to that: cutting the frame is a truncated file, cutting into the spill
+        // header is a file that is not a spill at all.
+        assert!(bytes.len() > 8 + 4, "the fixture must hold a frame");
         std::fs::write(&path, &bytes[..bytes.len() - 8]).unwrap();
         assert!(NormalizedReader::open(&path).unwrap().next().is_err(), "short payload");
-        std::fs::write(&path, &bytes[..NORM_HEADER_BYTES - 1]).unwrap();
-        assert!(NormalizedReader::open(&path).unwrap().next().is_err(), "short header");
-        let mut dirty = bytes.clone();
-        dirty[NORM_HEADER_BYTES - 1] = 1;
+        std::fs::write(&path, &bytes[..8 + 4 - 1]).unwrap();
+        assert!(NormalizedReader::open(&path).unwrap().next().is_err(), "short frame header");
+        // A file shorter than the spill header is not a spill file at all.
+        std::fs::write(&path, &bytes[..8 - 1]).unwrap();
+        assert!(NormalizedReader::open(&path).is_err(), "short spill header");
+        // Corrupt the first record's reserved tail *inside* the frame: inflate the frame,
+        // dirty byte 15 of the record header, recompress, and rewrite the file. The reader
+        // must refuse the record, not decode past it.
+        let frame_len =
+            u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        let mut raw =
+            miniz_oxide::inflate::decompress_to_vec(&bytes[12..12 + frame_len]).unwrap();
+        raw[NORM_HEADER_BYTES - 1] = 1;
+        let sealed = miniz_oxide::deflate::compress_to_vec(&raw, 6);
+        let mut dirty = bytes[..12].to_vec();
+        dirty[8..12].copy_from_slice(&(sealed.len() as u32).to_le_bytes());
+        dirty.extend_from_slice(&sealed);
         std::fs::write(&path, &dirty).unwrap();
         assert!(
             NormalizedReader::open(&path).unwrap().next().is_err(),
             "nonzero reserved tail"
         );
+        // And the chunked reader agrees on the truncated file: a frame that will not inflate
+        // is corruption, not a short chunk.
+        std::fs::write(&path, &bytes[..bytes.len() - 8]).unwrap();
+        let summary = NormalizedSummary { count: 1, chunks: vec![8, bytes.len() as u64 - 8], ..Default::default() };
+        let chunks = NormalizedChunks::open(&path, summary.chunks.clone()).unwrap();
+        let mut scratch = Vec::new();
+        let mut out = Vec::new();
+        assert!(chunks.read_into(0, &mut scratch, &mut out).is_err(), "short frame");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A file with the wrong magic or version is refused on open, not decoded as frames.
+    #[test]
+    fn a_spill_with_bad_magic_or_version_is_refused() {
+        let dir = tmp("normmagic");
+        let path = dir.join("f.bin");
+        let mut w = NormalizedWriter::create(&path).unwrap();
+        w.push(&Geometry::Points(vec![(1.0, 2.0)]), &[]).unwrap();
+        w.finish().unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+
+        let mut bad = bytes.clone();
+        bad[0] = b'X';
+        std::fs::write(&path, &bad).unwrap();
+        assert!(NormalizedReader::open(&path).is_err(), "bad magic decodes");
+
+        let mut bad = bytes.clone();
+        bad[4] = 9;
+        std::fs::write(&path, &bad).unwrap();
+        assert!(NormalizedReader::open(&path).is_err(), "bad version decodes");
+
+        let mut bad = bytes.clone();
+        bad[7] = 1;
+        std::fs::write(&path, &bad).unwrap();
+        assert!(NormalizedReader::open(&path).is_err(), "nonzero reserved decodes");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Compression is the point: 64 repetitive line features must stage at a fraction of
+    /// their raw records. A regression to uncompressed staging fails here rather than on a
+    /// planet disk at z14.
+    #[test]
+    fn a_chunk_of_repetitive_features_stages_compressed() {
+        let dir = tmp("normratio");
+        let path = dir.join("f.bin");
+        let mut w = NormalizedWriter::create(&path).unwrap();
+        for i in 0..NORM_CHUNK_FEATURES {
+            let f = i as f64;
+            w.push(
+                &Geometry::Lines(vec![vec![(f * 0.001, 1.0), (f * 0.001, 2.0)]]),
+                &[("i".to_string(), Value::Uint(i))],
+            )
+            .unwrap();
+        }
+        let summary = w.finish().unwrap();
+        assert_eq!(summary.chunk_count(), 1);
+        let staged = std::fs::metadata(&path).unwrap().len();
+        // Raw records: each ~50+ bytes, so ~3.2 KB minimum unstaged. The frame must be
+        // well under that; 1 KB is generous to DEFLATE on coordinate runs.
+        assert!(staged < 8 + 4 + 1024, "{staged} staged bytes for one chunk is not compressed");
+        // And it still reads back exactly.
+        let chunks = NormalizedChunks::open(&path, summary.chunks.clone()).unwrap();
+        let mut scratch = Vec::new();
+        let mut out = Vec::new();
+        chunks.read_into(0, &mut scratch, &mut out).unwrap();
+        assert_eq!(out.len(), NORM_CHUNK_FEATURES as usize);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -466,17 +466,26 @@
             .expect("a feature");
         assert_eq!(back, feature, "an e7-grid coordinate must not move at all");
 
-        // Eight bytes a vertex, not sixteen. The whole point of the encoding.
-        let bytes = std::fs::metadata(&path).unwrap().len() as usize;
+        // Eight bytes a vertex, not sixteen, in the *records* -- the whole point of the
+        // encoding. The file itself holds those records inside one compressed frame (plus the
+        // 8-byte spill header), so its length is asserted structurally instead of exactly: the
+        // frame must inflate to exactly the raw records above.
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(&bytes[0..4], b"NZC1", "the spill magic");
+        assert_eq!(bytes[4], 1, "the spill version");
+        assert!(bytes[5..8].iter().all(|v| *v == 0), "reserved zero");
+        let frame_len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        assert_eq!(8 + 4 + frame_len, bytes.len(), "one frame fills the file");
+        let raw = miniz_oxide::inflate::decompress_to_vec(&bytes[12..]).expect("inflate");
         let props = {
             let mut buf = Vec::new();
             encode_props(&feature.props, &mut buf).unwrap();
             buf.len()
         };
         assert_eq!(
-            bytes,
+            raw.len(),
             NORM_HEADER_BYTES + 4 + points.len() * 8 + props,
-            "a vertex must cost eight bytes"
+            "a vertex must cost eight bytes of record"
         );
 
         let _ = std::fs::remove_dir_all(&dir);

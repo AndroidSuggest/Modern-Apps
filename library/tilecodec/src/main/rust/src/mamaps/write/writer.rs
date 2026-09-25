@@ -38,6 +38,9 @@ pub struct StreamWriter {
     /// spill on every append, which is how the shortcut is held to the file's answer rather than
     /// trusted to stay in step with it.
     last_body: Vec<u8>,
+    /// Distinct bodies appended since the last [`Self::sweep_dedup`] pass. Bounds how stale the
+    /// dedup index may get between sweeps; see the sweep for why staleness is memory.
+    distinct_since_sweep: u64,
     pub(crate) tiles_addressed: u64,
     /// Bodies actually appended to `data`, which is what dedup reduces. Distinct from
     /// `entries.len()`, which counts *index* entries: a body shared by two non-adjacent tiles is
@@ -80,6 +83,19 @@ type Split = (Vec<RootEntry>, Vec<Vec<LeafEntry>>);
 /// together.
 const MAX_DEDUP_REACH: u64 = 2 << 30;
 
+/// How many new distinct bodies between dedup-index sweeps. A planet z14 writes tens of millions
+/// of distinct bodies; sweeping every one would be quadratic in the map's own bookkeeping, and
+/// never sweeping leaves hundreds of MB of `(hash, len) -> offsets` behind. One sweep per ~200 k
+/// distinct bodies keeps each sweep's `retain` pass small against the bodies it reclaims.
+const DEDUP_SWEEP_DISTINCT: u64 = 200_000;
+
+/// How much of the data section the dedup index keeps entries for. Matches `MAX_DEDUP_REACH`:
+/// bodies older than the reach can never match again (the `push` skip above refuses them), so
+/// their entries are dead lookups. At planet z14 density ~2 GB of bodies covers millions of
+/// recently-written tiles -- the whole neighbourhood that actually shares bodies -- while the
+/// map stays tens of MB instead of hundreds.
+const DEDUP_KEEP_REACH: u64 = 2 << 30;
+
 impl StreamWriter {
     pub fn new(options: Options) -> Result<StreamWriter> {
         if options.min_zoom > options.max_zoom || options.max_zoom > MAX_ZOOM {
@@ -104,6 +120,7 @@ impl StreamWriter {
             seen: HashMap::new(),
             last_id: None,
             last_body: Vec::new(),
+            distinct_since_sweep: 0,
             tiles_addressed: 0,
             distinct: 0,
             runs_used: false,
@@ -190,6 +207,24 @@ impl StreamWriter {
 
     /// The part both appends share: range and order checks, dedup, and the index entry. `hash` is
     /// the FNV-1a dedup key of `stored`, computed by the caller so it need not sit on this thread.
+    ///
+    /// # How `seen` stays bounded
+    ///
+    /// Every distinct stored body leaves one `(hash, len) -> offsets` entry behind, and there is
+    /// one distinct body per structurally-unique tile on a planet build -- hundreds of megabytes
+    /// of `HashMap` in the steady state, with the OS error at the end of it when the box only has
+    /// ~50 GB of commit headroom. So every [`DEDUP_SWEEP_DISTINCT`] new distinct bodies the index
+    /// is swept down to the youngest [`DEDUP_KEEP_RECENT`]: dropping a reachable entry cannot
+    /// change a byte, because a miss re-appends the identical stored body and the index maps a body
+    /// to its offset, never an offset to a meaning. The only cost is bytes: a body that would have
+    /// deduped against a swept entry is re-appended (still deduplicated against a *later* copy,
+    /// still correct). A test build has a handful of distinct bodies and sweeps nothing.
+    ///
+    /// The bound is distance, not a body count: urban bodies that recur within a neighbourhood
+    /// still dedup (the window covers ~200 M bodies' worth of archive reach at z14 density), while
+    /// a body from eighteen zooms ago cannot be referenced cheaply across a 4 GiB-spanning leaf
+    /// anyway (see `MAX_DEDUP_REACH`). Byte-identity on small archives holds because the sweep
+    /// never fires there.
     fn push(&mut self, tile_id: u64, stored: &[u8], hash: u64) -> Result<()> {
         let (z, _, _) = crate::pmtiles::tile_zxy(tile_id);
         if z < self.options.min_zoom || z > self.options.max_zoom {
@@ -255,13 +290,54 @@ impl StreamWriter {
                 data.append(&stored)?;
                 bucket.push(at);
                 *distinct += 1;
+                // Counted here -- not in the caller -- so the sweep below sees every new
+                // distinct body exactly once, wherever the dedup miss happened.
+                //
+                // Borrowed through the destructure above; updated after the re-borrow
+                // ends would fight it, so it rides on `self` after `data` is released.
+                // (The counter lives on `self`, the map on the destructured borrow;
+                // both are written below once the borrow ends.)
                 at
             }
         };
+        // The counter update deferred from above: the destructure's borrow of `seen`/`data`
+        // has ended (both `bucket` and `data` go out of scope here), so `self` is writable.
+        if hit.is_none() {
+            self.distinct_since_sweep += 1;
+            if self.distinct_since_sweep >= DEDUP_SWEEP_DISTINCT {
+                self.sweep_dedup(head);
+            }
+        }
         self.entries.push(Pending { tile_id, offset, run_length: 1, length });
         self.last_body.clear();
         self.last_body.extend_from_slice(stored);
         Ok(())
+    }
+
+    /// Sweep the dedup index down to bodies written recently.
+    ///
+    /// `head` is the data-section length at the sweep -- every offset older than
+    /// `head - DEDUP_KEEP_REACH` loses its entries. Buckets left empty are removed, so the
+    /// map itself shrinks rather than filling with empty vectors.
+    ///
+    /// Correctness rests on one fact: `seen` is a *cache*, not an index. A hit reuses a body;
+    /// a miss re-appends the identical bytes. Dropping an entry therefore costs at most the
+    /// re-appended bytes, never a wrong byte: two equal stored bodies compress identically
+    /// (DEFLATE is deterministic), so the re-appended body dedups and reads exactly as the
+    /// swept one would have. The run-length shortcut above is unaffected (it keys on
+    /// `last_body`, not on `seen`).
+    ///
+    /// Reach, not count: nearby tiles share bodies (Hilbert order writes neighbours together),
+    /// so a sweep that keeps the last ~2 GB of bodies preserves the dedups that actually fire
+    /// while bounding the map. The `MAX_DEDUP_REACH` skip in `push` already stops matching
+    /// older bodies, so entries past it were dead weight -- buckets walked, never hit.
+    fn sweep_dedup(&mut self, head: u64) {
+        let floor = head.saturating_sub(DEDUP_KEEP_REACH);
+        self.seen.retain(|_, bucket| {
+            bucket.retain(|&at| at >= floor);
+            !bucket.is_empty()
+        });
+        self.distinct_since_sweep = 0;
     }
 
     /// Write the whole archive to `path`, never holding more than one section of it.
@@ -408,6 +484,7 @@ impl StreamWriter {
             seen: std::collections::HashMap::new(),
             last_id: None,
             last_body: Vec::new(),
+            distinct_since_sweep: 0,
             tiles_addressed: entries.len() as u64,
             distinct: entries.len() as u64,
             runs_used: false,
