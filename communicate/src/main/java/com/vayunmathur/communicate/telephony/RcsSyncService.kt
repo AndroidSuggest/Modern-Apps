@@ -17,8 +17,10 @@ import com.vayunmathur.communicate.MainActivity
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
+import com.vayunmathur.communicate.data.applyRcsDeliveryReport
 import com.vayunmathur.communicate.data.cacheInboundRcs
 import com.vayunmathur.communicate.data.rcs.ImdnDisposition
+import com.vayunmathur.communicate.data.rcs.RcsDatabase
 import com.vayunmathur.communicate.data.rcs.RcsFeature
 import com.vayunmathur.communicate.data.rcs.RcsFileTransferHttp
 import com.vayunmathur.communicate.data.rcs.RcsImdn
@@ -34,8 +36,12 @@ import com.vayunmathur.communicate.data.rcs.e2e.RcsPeerKeys
 import com.vayunmathur.communicate.data.rcs.e2e.RcsPendingGroups
 import com.vayunmathur.communicate.data.rcs.e2e.RustMlsCrypto
 import com.vayunmathur.communicate.data.rcs.extractImdnMessageId
+import com.vayunmathur.communicate.data.rcs.parseChunkHeader
+import com.vayunmathur.communicate.data.rcs.parseEditBody
+import com.vayunmathur.communicate.data.rcs.parseGeopushBody
 import com.vayunmathur.communicate.data.rcs.parseImdnBody
 import com.vayunmathur.communicate.data.rcs.parseIsComposingBody
+import com.vayunmathur.communicate.data.rcs.parseRevokeBody
 import com.vayunmathur.communicate.notifications.ConversationSpace
 import com.vayunmathur.communicate.notifications.ConversationTarget
 import com.vayunmathur.library.util.ensureNotificationChannel
@@ -56,7 +62,14 @@ class RcsSyncService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** MSRP connections per conversation, owned by this service's lifecycle. */
-    private val msrpConnections = java.util.concurrent.ConcurrentHashMap<String, RcsMsrp.MsrpConnection>()
+    internal val msrpConnections = java.util.concurrent.ConcurrentHashMap<String, RcsMsrp.MsrpConnection>()
+
+    /** Close MSRP connections whose sessions went away. */
+    internal fun closeDeadMsrpConnections() {
+        msrpConnections.keys.filter { RcsSessionManager.sessionFor(it) == null }.forEach { id ->
+            msrpConnections.remove(id)?.close()
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -136,6 +149,27 @@ class RcsSyncService : Service() {
     }
 
     private suspend fun handleInbound(message: SipMessage) {
+        val startLine = message.getStartLine()
+        val method = startLine.substringBefore(" ").trim().uppercase()
+        // Dialog-forming and dialog methods route before MESSAGE handling.
+        when (method) {
+            "INVITE" -> {
+                handleInboundInvite(message)
+                return
+            }
+            "BYE" -> {
+                handleInboundBye(message)
+                return
+            }
+            "REFER" -> {
+                handleInboundRefer(message)
+                return
+            }
+            "OPTIONS" -> {
+                handleInboundOptions(message)
+                return
+            }
+        }
         val envelope = parseEnvelope(message) ?: return
         // E2EE control + data payloads route before plaintext handling.
         handleE2EEInbound(envelope)?.let { e2ee ->
@@ -177,6 +211,15 @@ class RcsSyncService : Service() {
                 Unit
             }
         }
+    }
+
+    /** Inbound BYE: tear down the session + MSRP connection. */
+    private suspend fun handleInboundBye(message: SipMessage) {
+        if (!RcsFeature.enabled) return
+        val callId = message.getCallIdParameter() ?: return
+        RcsSessionManager.onSipRequest("BYE", callId, "", null, "")
+        closeDeadMsrpConnections()
+        Log.i(TAG, "BYE processed callId=$callId")
     }
 
     /**
@@ -281,10 +324,15 @@ class RcsSyncService : Service() {
             val from = envelope.from
             val contentType = envelope.contentType
             val raw = envelope.raw
-            // IMDN reports and is-composing route to their trackers, not the inbox.
+            // IMDN reports update delivery ticks AND route to the tracker.
             if (contentType?.contains("imdn", ignoreCase = true) == true ||
                 parseImdnBody(raw) != null
             ) {
+                parseImdnBody(raw)?.let { (id, disposition) ->
+                    serviceScope.launch {
+                        CommunicateRepository.applyRcsDeliveryReport(this@RcsSyncService, id, disposition)
+                    }
+                }
                 RcsImdn.onReportReceived(raw)
                 return InboundRcs(
                     conversationId = from,
@@ -308,6 +356,76 @@ class RcsSyncService : Service() {
             }
             val body = extractTextBody(envelope.raw.toByteArray(Charsets.UTF_8)) ?: return null
             if (body.isBlank()) return null
+            // Revoke: blank the referenced row, no inbox row.
+            parseRevokeBody(body)?.let { revokedId ->
+                serviceScope.launch {
+                    runCatching {
+                        val db = RcsDatabase.getDatabase(this@RcsSyncService)
+                        db.cachedMessageDao().get(revokedId)?.let {
+                            db.cachedMessageDao().upsert(it.copy(body = ""))
+                        }
+                    }
+                }
+                return InboundRcs(
+                    conversationId = from,
+                    body = "",
+                    senderId = from,
+                    messageId = "in-${envelope.callId}",
+                    kind = InboundKind.Receipt,
+                )
+            }
+            // Edit: swap the referenced row body, no new inbox row.
+            parseEditBody(body)?.let { (originalId, newText) ->
+                serviceScope.launch {
+                    runCatching {
+                        val db = RcsDatabase.getDatabase(this@RcsSyncService)
+                        db.cachedMessageDao().get(originalId)?.let {
+                            db.cachedMessageDao().upsert(it.copy(body = newText))
+                        }
+                    }
+                }
+                return InboundRcs(
+                    conversationId = from,
+                    body = "",
+                    senderId = from,
+                    messageId = "in-${envelope.callId}",
+                    kind = InboundKind.Receipt,
+                )
+            }
+            // Geolocation Push → location row.
+            parseGeopushBody(body)?.let { (lat, lon, label) ->
+                return InboundRcs(
+                    conversationId = from,
+                    body = label ?: "📍 $lat, $lon",
+                    senderId = from,
+                    messageId = "in-${envelope.callId}-${envelope.viaBranch}",
+                    kind = InboundKind.Text,
+                    ftUrl = "geo:$lat,$lon",
+                    ftMime = "application/vnd.gsma.rcs.geopush+xml",
+                    imdnMessageId = extractImdnMessageId(raw),
+                )
+            }
+            // Large Message chunks: buffer per Message-ID; emit only when complete.
+            parseChunkHeader(body)?.let { (chunkId, part, total) ->
+                val complete = bufferLargeChunk(from, chunkId, part, total, body)
+                if (complete == null) {
+                    return InboundRcs(
+                        conversationId = from,
+                        body = "",
+                        senderId = from,
+                        messageId = "in-${envelope.callId}",
+                        kind = InboundKind.Receipt,
+                    )
+                }
+                return InboundRcs(
+                    conversationId = from,
+                    body = complete,
+                    senderId = from,
+                    messageId = "in-$chunkId",
+                    kind = InboundKind.Text,
+                    imdnMessageId = extractImdnMessageId(raw),
+                )
+            }
             // FT-over-HTTP descriptors expose URL + mime for the renderer.
             val ft = RcsFileTransferHttp.parseFtBody(body)
             InboundRcs(
@@ -413,6 +531,34 @@ class RcsSyncService : Service() {
             ftMime = null,
             imdnMessageId = extractImdnMessageId(text),
         )
+    }
+
+    /** Large-message reassembly buffers: conversation → messageId → part → text. */
+    private val largeChunks = java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, MutableMap<Int, String>>>()
+
+    /**
+     * Buffer one Large Message chunk; return the joined text once all [total]
+     * parts for ([conversationId], [chunkId]) arrived, else null.
+     */
+    private fun bufferLargeChunk(
+        conversationId: String,
+        chunkId: String,
+        part: Int,
+        total: Int,
+        body: String,
+    ): String? {
+        if (total <= 0 || part <= 0 || part > total) return null
+        val text = body.substringAfter("\r\n\r\n", "").ifBlank {
+            body.substringAfter("\n\n", "")
+        }.trim()
+        val convo = largeChunks.getOrPut(conversationId) { java.util.concurrent.ConcurrentHashMap() }
+        val parts = convo.getOrPut(chunkId) { java.util.concurrent.ConcurrentHashMap() }
+        parts[part] = text
+        if (parts.size != total) return null
+        val complete = (1..total).map { parts[it] ?: return null }.joinToString("")
+        convo.remove(chunkId)
+        if (convo.isEmpty()) largeChunks.remove(conversationId)
+        return complete.ifBlank { null }
     }
 
     /** Base64-decode a CPIM-wrapped binary payload body. */
@@ -553,10 +699,10 @@ class RcsSyncService : Service() {
     }
 
     companion object {
-        private const val TAG = "RcsSync"
+        internal const val TAG = "RcsSync"
         private const val SYNC_NOTIFICATION_ID = 4723
         private const val SYNC_CHANNEL_ID = "rcs_sync"
-        private const val INCOMING_CHANNEL_ID = "rcs_messages_incoming"
+        internal const val INCOMING_CHANNEL_ID = "rcs_messages_incoming"
         private const val ACTION_STOP = "com.vayunmathur.communicate.rcs.STOP_SYNC"
         const val EXTRA_OPEN_RCS_THREAD = "open_rcs_thread"
 
@@ -571,17 +717,6 @@ class RcsSyncService : Service() {
                 context,
                 Intent(context, RcsSyncService::class.java).apply { action = ACTION_STOP },
             )
-        }
-
-        /** Parse a header value out of a SIP header section (case-sensitive name + colon). */
-        private fun headerValue(headers: String, name: String): String? {
-            for (line in headers.lineSequence()) {
-                val trimmed = line.trim()
-                if (trimmed.startsWith(name, ignoreCase = true)) {
-                    return trimmed.substringAfter(":").trim().takeIf { it.isNotEmpty() }
-                }
-            }
-            return null
         }
     }
 }

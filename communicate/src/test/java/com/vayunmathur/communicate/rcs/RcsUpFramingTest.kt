@@ -1,12 +1,21 @@
 package com.vayunmathur.communicate.rcs
 
 import com.vayunmathur.communicate.data.rcs.ImdnDisposition
+import com.vayunmathur.communicate.data.rcs.buildEditBody
+import com.vayunmathur.communicate.data.rcs.buildGeopushBody
 import com.vayunmathur.communicate.data.rcs.buildImdnBody
 import com.vayunmathur.communicate.data.rcs.buildIsComposingBody
+import com.vayunmathur.communicate.data.rcs.buildRevokeBody
+import com.vayunmathur.communicate.data.rcs.chunkLargeMessage
 import com.vayunmathur.communicate.data.rcs.extractImdnMessageId
 import com.vayunmathur.communicate.data.rcs.e2e.RcsKeyDirectory
+import com.vayunmathur.communicate.data.rcs.parseChunkHeader
+import com.vayunmathur.communicate.data.rcs.parseEditBody
+import com.vayunmathur.communicate.data.rcs.parseGeopushBody
 import com.vayunmathur.communicate.data.rcs.parseImdnBody
 import com.vayunmathur.communicate.data.rcs.parseIsComposingBody
+import com.vayunmathur.communicate.data.rcs.parseRevokeBody
+import com.vayunmathur.communicate.data.rcs.reassembleLargeMessage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -77,5 +86,51 @@ class RcsUpFramingTest {
                 "Content-Type: application/x-rcs-keypackage\r\n\r\n!!!not-base64!!!",
             ) != null,
         )
+    }
+
+    @Test
+    fun geopushRoundTrip() {
+        val body = buildGeopushBody(37.42, -122.08, "HQ")
+        val parsed = parseGeopushBody(body)
+        assertEquals(Triple(37.42, -122.08, "HQ"), parsed)
+        assertNull(parseGeopushBody("plain text"))
+    }
+
+    @Test
+    fun largeMessageChunksReassemble() {
+        val text = "x".repeat(20000)
+        val chunks = chunkLargeMessage("m1", text)
+        assertTrue(chunks.size > 1)
+        val map = mutableMapOf<Int, String>()
+        var total = 0
+        for (chunk in chunks) {
+            val (id, part, t) = parseChunkHeader(chunk) ?: error("no header")
+            assertEquals("m1", id)
+            total = t
+            map[part] = chunk.substringAfter("\r\n\r\n")
+        }
+        assertEquals(text, reassembleLargeMessage(map, total))
+        assertNull(reassembleLargeMessage(mapOf(1 to "a"), 2))
+    }
+
+    @Test
+    fun smallMessageNotChunked() {
+        val chunks = chunkLargeMessage("m2", "hi")
+        assertEquals(listOf("hi"), chunks)
+    }
+
+    @Test
+    fun revokeRoundTrip() {
+        val body = buildRevokeBody("orig-9")
+        assertEquals("orig-9", parseRevokeBody(body))
+        assertNull(parseRevokeBody("hello"))
+    }
+
+    @Test
+    fun editRoundTrip() {
+        val (id, text) = parseEditBody(buildEditBody("orig-7", "fixed")) ?: error("no edit")
+        assertEquals("orig-7", id)
+        assertEquals("fixed", text)
+        assertNull(parseEditBody("plain"))
     }
 }

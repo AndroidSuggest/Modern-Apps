@@ -11,7 +11,12 @@ import com.vayunmathur.communicate.data.rcs.RcsFileTransfer
 import com.vayunmathur.communicate.data.rcs.RcsFileTransferHttp
 import com.vayunmathur.communicate.data.rcs.RcsMsrp
 import com.vayunmathur.communicate.data.rcs.RcsSessionManager
+import com.vayunmathur.communicate.data.rcs.ImdnDisposition
 import com.vayunmathur.communicate.data.rcs.RcsSipTransport
+import com.vayunmathur.communicate.data.rcs.buildEditBody
+import com.vayunmathur.communicate.data.rcs.buildGeopushBody
+import com.vayunmathur.communicate.data.rcs.buildRevokeBody
+import com.vayunmathur.communicate.data.rcs.chunkLargeMessage
 import com.vayunmathur.library.util.AppMessages
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -180,10 +185,27 @@ suspend fun CommunicateRepository.sendRcsMessage(
             toUri = "sip:$recipient@rcs",
             body = body,
         )
-        val ok = RcsSipTransport.sendSipMessage(startLine, headers, content)
+        // Large Message: chunk oversized bodies with a shared Message-ID so
+        // the far end reassembles; cache one row per send (snippet = full text).
+        val messageId = "rcs-${UUID.randomUUID()}"
+        val chunks = chunkLargeMessage(messageId, body)
+        var ok = true
+        for ((index, chunk) in chunks.withIndex()) {
+            val (line, head, payload) = if (chunks.size == 1) {
+                Triple(startLine, headers, content)
+            } else {
+                RcsSipTransport.buildChatMessage(
+                    fromUri = "sip:me@rcs",
+                    toUri = "sip:$recipient@rcs",
+                    callId = "${UUID.randomUUID()}@rcs-lm$index",
+                    body = chunk,
+                )
+            }
+            ok = RcsSipTransport.sendSipMessage(line, head, payload) && ok
+        }
         if (!ok) return@withContext RcsSendResult.FallbackSms
         if (body.isNotBlank()) {
-            cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
+            cacheOutgoingRcs(context, recipient, body, messageId)
         }
         RcsSendResult.Sent
     }.getOrDefault(RcsSendResult.FallbackSms)
@@ -327,6 +349,122 @@ suspend fun CommunicateRepository.markRcsRead(
 /** Surface the SMS-fallback notice on the caller's behalf (never `Toast`). */
 fun CommunicateRepository.notifyRcsFallback(context: Context) {
     AppMessages.show(context.getString(com.vayunmathur.communicate.R.string.rcs_fallback_sms))
+}
+
+/**
+ * Send a Geolocation Push to [recipient] (UP Geolocation Push, geosms tag).
+ * Returns true when the SIP leg accepted.
+ */
+suspend fun CommunicateRepository.sendRcsGeopush(
+    context: Context,
+    recipient: String,
+    latitude: Double,
+    longitude: Double,
+    label: String? = null,
+): Boolean = withContext(Dispatchers.IO) {
+    if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return@withContext false
+    runCatching {
+        val body = buildGeopushBody(latitude, longitude, label)
+        val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
+            fromUri = "sip:me@rcs",
+            toUri = "sip:$recipient@rcs",
+            callId = "${UUID.randomUUID()}@rcs-geo",
+            body = body,
+        )
+        val geoHeaders = headers.replace(
+            "Content-Type: message/cpim",
+            "Content-Type: application/vnd.gsma.rcs.geopush+xml",
+        )
+        if (!RcsSipTransport.sendSipMessage(startLine, geoHeaders, content)) {
+            return@withContext false
+        }
+        cacheOutgoingRcs(context, recipient, label ?: "📍 Location", "local-${UUID.randomUUID()}")
+        true
+    }.getOrDefault(false)
+}
+
+/**
+ * Revoke our outgoing message [messageId] in [conversationId]: sends the
+ * revoke report and blanks the local row. Returns true when sent.
+ */
+suspend fun CommunicateRepository.revokeRcsMessage(
+    context: Context,
+    conversationId: String,
+    messageId: String,
+): Boolean = withContext(Dispatchers.IO) {
+    if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return@withContext false
+    runCatching {
+        val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
+            fromUri = "sip:me@rcs",
+            toUri = "sip:$conversationId@rcs",
+            callId = "${UUID.randomUUID()}@rcs-revoke",
+            body = buildRevokeBody(messageId),
+        )
+        val ok = RcsSipTransport.sendSipMessage(startLine, headers, content)
+        if (ok) {
+            val db = RcsDatabase.getDatabase(context)
+            db.cachedMessageDao().get(messageId)?.let {
+                db.cachedMessageDao().upsert(it.copy(body = ""))
+            }
+        }
+        ok
+    }.getOrDefault(false)
+}
+
+/**
+ * Edit our outgoing message [messageId] in [conversationId] to [newText]:
+ * sends the replacement and updates the local row. Returns true when sent.
+ */
+suspend fun CommunicateRepository.editRcsMessage(
+    context: Context,
+    conversationId: String,
+    messageId: String,
+    newText: String,
+): Boolean = withContext(Dispatchers.IO) {
+    if (!RcsFeature.enabled || !RcsSipTransport.canSend() || newText.isBlank()) {
+        return@withContext false
+    }
+    runCatching {
+        val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
+            fromUri = "sip:me@rcs",
+            toUri = "sip:$conversationId@rcs",
+            callId = "${UUID.randomUUID()}@rcs-edit",
+            body = buildEditBody(messageId, newText),
+        )
+        val ok = RcsSipTransport.sendSipMessage(startLine, headers, content)
+        if (ok) {
+            val db = RcsDatabase.getDatabase(context)
+            db.cachedMessageDao().get(messageId)?.let {
+                db.cachedMessageDao().upsert(it.copy(body = newText))
+            }
+        }
+        ok
+    }.getOrDefault(false)
+}
+
+/**
+ * Apply an inbound delivery/display report: advance the cached outgoing
+ * message's status ticks (Delivered=2, Read=3). Called from the sync service
+ * alongside [RcsImdn.onReportReceived].
+ */
+internal suspend fun CommunicateRepository.applyRcsDeliveryReport(
+    context: Context,
+    messageId: String,
+    disposition: ImdnDisposition,
+) {
+    if (!RcsFeature.enabled) return
+    runCatching {
+        val db = RcsDatabase.getDatabase(context)
+        when (disposition) {
+            ImdnDisposition.Delivered -> db.cachedMessageDao().markDelivered(messageId)
+            ImdnDisposition.Displayed -> db.cachedMessageDao().markReadStatus(messageId)
+            ImdnDisposition.Failed -> {
+                db.cachedMessageDao().get(messageId)?.let {
+                    db.cachedMessageDao().upsert(it.copy(status = 4))
+                }
+            }
+        }
+    }
 }
 
 /**

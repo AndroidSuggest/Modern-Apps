@@ -12,7 +12,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Closed-loop MLS E2EE orchestration for the RCS line (our-app-to-our-app).
+ * Closed-loop MLS E2EE orchestration for the RCS line.
+ *
+ * MLS here follows GSMA Universal Profile 3.0 (standard MLS, RFC 9420) — the
+ * same profile Google Messages uses — so the crypto is interop-shaped:
+ * standard ciphersuite, `BasicCredential` identities, TLS framing. What stays
+ * closed-loop in v1 is *key discovery*: key packages ride our own RCS
+ * content-types rather than a federated directory.
  *
  * Flow:
  * - Each local E.164 gets an Ed25519 identity (generated once, Room-held).

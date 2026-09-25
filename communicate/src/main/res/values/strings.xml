@@ -178,6 +178,7 @@
     <string name="rcs_encrypted_group_hint">Only members running this app can read messages. Set up once everyone\'s keys arrive.</string>
     <string name="rcs_encrypted_banner">🔒 Encrypted — only members can read these messages</string>
     <string name="rcs_encrypted_pending">🔒 Waiting for members\' keys — messages send plaintext until then</string>
+    <string name="rcs_session_invite">📞 Incoming chat session — open to join</string>
     <string name="inapp_ongoing_call">Ongoing call</string>
     <string name="inapp_call_channel_name">Calls</string>
     <string name="inapp_incoming_call_channel_name">Incoming calls</string>

@@ -11,8 +11,10 @@ import android.util.Log
  * rows; identity bytes live in the MLS identity table. The crate holds no
  * state across calls.
  *
- * Closed-loop only: our-app-to-our-app over RCS as the wire. There is no
- * interop with proprietary key distribution (e.g. Google Messages).
+ * MLS follows GSMA Universal Profile 3.0 (standard MLS — the same profile
+ * Google Messages uses). Key discovery stays closed-loop in v1 (our own RCS
+ * content-types instead of a federated directory); the crypto itself is
+ * interop-shaped.
  */
 object RustMlsCrypto {
 

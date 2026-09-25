@@ -95,6 +95,77 @@ object RcsSessionManager {
         return dialogId
     }
 
+    /**
+     * Answer a pending incoming INVITE with 200 OK + SDP answer (passive —
+     * the caller connects to us... see ACTIVE-only note below).
+     *
+     * ACTIVE-only reality: we cannot listen (no ServerSocket, unroutable
+     * offer IP), so our answer offers `setup:active` too and the session
+     * proceeds only if the caller tolerates dual-active or falls back. In
+     * practice acceptance means MSRP connect-out to the offerer's path when
+     * it answers `passive`/`actpass`; otherwise the dialog exists for
+     * in-dialog MESSAGE while media stays pager-mode.
+     *
+     * Returns true when the 200 OK was accepted by the transport.
+     */
+    suspend fun acceptIncoming(conversationId: String): Boolean {
+        if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return false
+        val session = _sessions.value[conversationId] ?: return false
+        val cfg = RcsSipTransport.lastConfigSnapshot()
+        val from = cfg?.publicUserId?.takeIf { it.isNotBlank() } ?: "sip:local@rcs"
+        val sdp = buildSdpAnswer(cfg?.msrpLocalIp)
+        val bytes = sdp.toByteArray(Charsets.UTF_8)
+        val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
+        val startLine = "SIP/2.0 200 OK"
+        val headers = buildString {
+            append("Via: SIP/2.0/TCP local;branch=$branch\r\n")
+            append("From: <${session.remoteUri}>;tag=${session.remoteTag.ifBlank { "unknown" }}\r\n")
+            append("To: <$from>;tag=${session.localTag}\r\n")
+            append("Call-ID: ${session.callId}\r\n")
+            append("CSeq: 1 INVITE\r\n")
+            append("Contact: <$from>;+sip.instance=\"<urn:gsma:imei:${cfg?.imei ?: "unknown"}>\";+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.session\"\r\n")
+            append("Content-Type: application/sdp\r\n")
+            append("Content-Length: ${bytes.size}\r\n")
+        }
+        val ok = RcsSipTransport.sendSipMessage(startLine, headers, bytes)
+        if (ok) {
+            // Record the offerer's path/setup for connect-out.
+            val offered = _pendingOffers.remove(session.callId)
+            if (offered != null) {
+                _sessions.value = _sessions.value + (conversationId to session.copy(
+                    msrpRemotePath = offered.remotePath,
+                    msrpSetup = offered.setup,
+                ))
+            }
+        }
+        return ok
+    }
+
+    /**
+     * Decline a pending incoming INVITE with 488 (used when the offer
+     * requires passive-us, i.e. `setup:active` with no usable path).
+     */
+    suspend fun declineIncoming(conversationId: String): Boolean {
+        if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return false
+        val session = _sessions.value[conversationId] ?: return true
+        val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
+        val startLine = "SIP/2.0 488 Not Acceptable Here"
+        val headers = buildString {
+            append("Via: SIP/2.0/TCP local;branch=$branch\r\n")
+            append("Call-ID: ${session.callId}\r\n")
+            append("CSeq: 1 INVITE\r\n")
+            append("Content-Length: 0\r\n")
+        }
+        val ok = RcsSipTransport.sendSipMessage(startLine, headers, ByteArray(0))
+        _pendingOffers.remove(session.callId)
+        _sessions.value = _sessions.value - conversationId
+        return ok
+    }
+
+    /** Inbound offer details stashed at INVITE time for [acceptIncoming]. */
+    private data class PendingOffer(val remotePath: String?, val setup: MsrpSetup?)
+
+    private val _pendingOffers = ConcurrentHashMap<String, PendingOffer>()
     /** Tear down the session for [conversationId] with BYE. */
     suspend fun terminateSession(conversationId: String): Boolean {
         val session = _sessions.value[conversationId] ?: return true
@@ -146,8 +217,9 @@ object RcsSessionManager {
     }
 
     /**
-     * Route an inbound SIP request: INVITE starts an incoming session entry
-     * (caller answers via [acceptIncoming]), BYE tears down, MESSAGE with
+     * Route an inbound SIP request: INVITE stashes the offer and starts an
+     * incoming session entry (caller answers via [acceptIncoming] or declines
+     * via [declineIncoming]), BYE tears down, MESSAGE with
      * `message/imdn+xml` updates receipts, `im-iscomposing` updates typing.
      */
     fun onSipRequest(
@@ -156,16 +228,23 @@ object RcsSessionManager {
         fromUri: String,
         contentType: String?,
         body: String,
+        fromTag: String? = null,
     ): RcsSession? {
         return when (method.uppercase()) {
             "INVITE" -> {
                 val conversationId = fromUri.substringAfter("sip:").substringBefore("@")
                     .takeIf { it.isNotBlank() } ?: fromUri
+                // Stash the offerer's path/setup for acceptIncoming connect-out.
+                _pendingOffers[callId] = PendingOffer(
+                    remotePath = Regex("a=path:(\\S+)", RegexOption.IGNORE_CASE).find(body)
+                        ?.groupValues?.getOrNull(1)?.trim(),
+                    setup = parseSdpSetup(body),
+                )
                 val session = RcsSession(
                     dialogId = "$callId:in",
                     callId = callId,
                     localTag = UUID.randomUUID().toString().take(8),
-                    remoteTag = "",
+                    remoteTag = fromTag.orEmpty(),
                     remoteUri = fromUri,
                     conversationId = conversationId,
                 )
@@ -248,7 +327,28 @@ object RcsSessionManager {
             append("t=0 0\r\n")
             append("m=message 2855 TCP/MSRP *\r\n")
             append("a=path:$path\r\n")
-            append("a=accept-types:message/cpim text/plain\r\n")
+            append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
+            append("a=setup:active\r\n")
+        }
+    }
+
+    /**
+     * SDP answer for [acceptIncoming]: same media shape as the offer with our
+     * (unroutable-by-construction) path; the usable direction is connect-out
+     * to the offerer's path recorded in [_pendingOffers].
+     */
+    private fun buildSdpAnswer(localIp: String?): String {
+        val ip = localIp?.takeIf { it.isNotBlank() } ?: "0.0.0.0"
+        val path = "msrp://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp"
+        return buildString {
+            append("v=0\r\n")
+            append("o=- ${System.currentTimeMillis()} ${System.currentTimeMillis()} IN IP4 $ip\r\n")
+            append("s=-\r\n")
+            append("c=IN IP4 $ip\r\n")
+            append("t=0 0\r\n")
+            append("m=message 2855 TCP/MSRP *\r\n")
+            append("a=path:$path\r\n")
+            append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
             append("a=setup:active\r\n")
         }
     }
