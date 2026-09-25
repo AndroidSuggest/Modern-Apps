@@ -142,16 +142,16 @@ fun SetupScreen() {
 
             Text(stringResource(UiR.string.settings), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
 
-            SettingSwitch("Haptic feedback", haptic) {
+            SettingSwitch(stringResource(R.string.setting_haptic_feedback), haptic) {
                 haptic = it; scope.launch { ds.setBoolean(keys.HAPTIC, it) }
             }
-            SettingSwitch("Key sound", sound) {
+            SettingSwitch(stringResource(R.string.setting_key_sound), sound) {
                 sound = it; scope.launch { ds.setBoolean(keys.SOUND, it) }
             }
-            SettingSwitch("Auto-capitalize", autoCap) {
+            SettingSwitch(stringResource(R.string.setting_auto_capitalize), autoCap) {
                 autoCap = it; scope.launch { ds.setBoolean(keys.AUTO_CAP, it) }
             }
-            SettingSwitch("Double-space inserts period", doubleSpace) {
+            SettingSwitch(stringResource(R.string.setting_double_space_period), doubleSpace) {
                 doubleSpace = it; scope.launch { ds.setBoolean(keys.DOUBLE_SPACE_PERIOD, it) }
             }
             // The word list we ship is English, so say so rather than let these two look
@@ -159,30 +159,36 @@ fun SetupScreen() {
             val englishOnly = KeyboardLayouts.byId(activeLayoutId)?.englishDictionary == false
             val englishNote =
                 if (englishOnly) stringResource(R.string.available_for_english_layouts_only) else null
-            SettingSwitch("Show suggestions", showSuggestions, englishNote) {
+            SettingSwitch(stringResource(R.string.setting_show_suggestions), showSuggestions, englishNote) {
                 showSuggestions = it; scope.launch { ds.setBoolean(keys.SHOW_SUGGESTIONS, it) }
             }
-            SettingSwitch("Auto-correct", autoCorrect, englishNote) {
+            SettingSwitch(stringResource(R.string.setting_auto_correct), autoCorrect, englishNote) {
                 autoCorrect = it; scope.launch { ds.setBoolean(keys.AUTO_CORRECT, it) }
             }
-            SettingSwitch("Number row", numberRow) {
+            SettingSwitch(stringResource(R.string.setting_number_row), numberRow) {
                 numberRow = it; scope.launch { ds.setBoolean(keys.NUMBER_ROW, it) }
             }
             SettingSwitch(
-                "Clipboard history",
+                stringResource(R.string.setting_clipboard_history),
                 clipboardEnabled,
-                "Remember what you copy and offer it back above the keys",
+                stringResource(R.string.setting_clipboard_history_desc),
             ) {
                 clipboardEnabled = it
                 scope.launch { ds.setBoolean(keys.CLIPBOARD, it) }
             }
             if (clipboardEnabled) {
-                // Blanking the stored value is the signal the running IME watches for; it
+                // Bumping the wipe counter is the signal the running IME watches for; it
                 // wipes its in-memory history (including the sensitive clips that never
-                // reached disk) rather than letting this write be overwritten.
+                // reached disk) rather than letting this write be overwritten. A counter
+                // rather than a blanked clips string, so the startup migration clearing
+                // the legacy key cannot be mistaken for a wipe request.
                 SettingsRow(
                     title = stringResource(R.string.clear_clipboard_history),
-                    onClick = { scope.launch { ds.setString(keys.CLIPS, "") } },
+                    onClick = {
+                        scope.launch {
+                            ds.setLong(keys.CLIPS_WIPE, (ds.getLong(keys.CLIPS_WIPE) ?: 0L) + 1)
+                        }
+                    },
                     leadingContent = { IconDelete() },
                 )
             }
@@ -224,8 +230,8 @@ private fun StatusCard(enabled: Boolean, selected: Boolean) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            StatusRow("Enabled in system settings", enabled)
-            StatusRow("Selected as active keyboard", selected)
+            StatusRow(stringResource(R.string.status_enabled), enabled)
+            StatusRow(stringResource(R.string.status_selected), selected)
         }
     }
 }

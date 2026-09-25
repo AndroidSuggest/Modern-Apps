@@ -104,6 +104,13 @@ class KeyboardState {
 
     /** Dictation progress or its last failure, shown in place of the strip. Null when idle. */
     var voice by mutableStateOf<VoiceState?>(null)
+
+    /**
+     * A short-lived strip notice (e.g. image paste refused), shown in place of the
+     * strip. An IME has no scaffold for a snackbar and a Toast is banned repo-wide,
+     * so the strip is the channel; the service clears this after a few seconds.
+     */
+    var notice by mutableStateOf<String?>(null)
 }
 
 /**
@@ -116,7 +123,6 @@ interface ImeActions {
     fun onEnter()
     fun onSpace()
     fun onShift()
-    fun onCapsLock()
     fun setPage(page: KeyboardPage)
     fun commitSuggestion(word: String)
 
@@ -158,7 +164,6 @@ interface ImeActions {
             override fun onEnter() {}
             override fun onSpace() {}
             override fun onShift() {}
-            override fun onCapsLock() {}
             override fun setPage(page: KeyboardPage) {}
             override fun commitSuggestion(word: String) {}
             override fun startEmojiSearch() {}

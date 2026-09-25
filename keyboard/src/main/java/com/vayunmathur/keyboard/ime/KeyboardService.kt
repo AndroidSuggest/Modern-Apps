@@ -45,6 +45,7 @@ import com.vayunmathur.keyboard.platform.VoiceInput
 import com.vayunmathur.keyboard.platform.VoicePermission
 import com.vayunmathur.keyboard.platform.VoicePermissionResult
 import com.vayunmathur.keyboard.ui.KeyboardScreen
+import com.vayunmathur.keyboard.R
 import com.vayunmathur.keyboard.util.ClipItem
 import com.vayunmathur.keyboard.util.ClipboardStore
 import com.vayunmathur.keyboard.util.ComposerKind
@@ -66,6 +67,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -88,6 +90,18 @@ private const val VOICE_MESSAGE_MS = 6_000L
 /** How long a granted microphone still counts as "the user just asked for dictation". */
 private const val VOICE_GRANT_MS = 30_000L
 
+/** How long a strip notice (e.g. image paste refused) stays up before clearing itself. */
+private const val NOTICE_MS = 4_000L
+
+/**
+ * Layouts that stay registered as framework subtypes on platforms below API 34 even when
+ * they share a language prefix with another layout. Same-language *arrangements* (QWERTY
+ * vs Dvorak) collapse to one entry there because the platform cannot label them apart, but
+ * these are different inputs, not different arrangements: hiding one would remove a script
+ * the user cannot reach any other way.
+ */
+private val PRE34_DISTINCT_LAYOUTS = setOf("zh_pinyin", "zh_pinyin_tc", "ja_romaji", "ja_kana", "tr_q", "tr_f")
+
 class KeyboardService : InputMethodService(),
     LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner, ImeActions {
 
@@ -105,8 +119,14 @@ class KeyboardService : InputMethodService(),
     private val kbState = KeyboardState()
     private var dictionary: Dictionary = Dictionary.EMPTY
 
+    // Credential-encrypted cache, like before: pre-unlock the files are unreadable rather
+    // than readable-without-a-passcode, so clipboard I/O below tolerates failure and the
+    // history is simply unavailable until first unlock (see onCreate/restoreState).
     private val clipboard by lazy { ClipboardStore(File(cacheDir, "clips")) }
     private var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+
+    /** Clears a strip notice after a while; cancelled by the next notice. */
+    private var noticeJob: Job? = null
 
     /** Id of the clip the chip is currently offering, so a stale timeout can't clear a newer one. */
     private var chipClipId = 0L
@@ -179,9 +199,13 @@ class KeyboardService : InputMethodService(),
         scope.launch { dictionary = Dictionary.load(this@KeyboardService) }
         scope.launch { kbState.emojiData = EmojiData.load(this@KeyboardService) }
         kbState.recentEmoji = RecentEmoji.decode(ds.getString(KeyboardSettings.Keys.EMOJI_RECENTS))
-        scope.launch {
-            clipboard.restore(ds.getString(KeyboardSettings.Keys.CLIPS))
-            kbState.clips = clipboard.items
+        scope.launch(Dispatchers.IO) {
+            migrateLegacyClips()
+            // Pre-unlock (direct boot) credential-encrypted storage is unreadable;
+            // the history then stays empty until the next start rather than crashing.
+            runCatching { clipboard.restoreState() }
+            val items = clipboard.items
+            withContext(Dispatchers.Main) { kbState.clips = items }
         }
         observeClipboard()
         syncComposer()
@@ -206,10 +230,23 @@ class KeyboardService : InputMethodService(),
                 if (!it) forgetClips()
             }
         }
-        // Settings can wipe the history while the keyboard is running; an empty stored value
-        // is that request. Nothing here writes a blank string back, so this cannot loop.
+        // Settings wipes the history by bumping the wipe counter; a counter (not a blank
+        // string) means the one-time legacy migration below can clear the old key without
+        // looking like a wipe request. The first emission is the stored value, not a request.
         scope.launch {
-            ds.stringFlow(keys.CLIPS).collectLatest { if (it.isBlank()) forgetClips() }
+            var first = true
+            var seen = 0L
+            ds.longFlow(keys.CLIPS_WIPE, 0L).collectLatest {
+                if (first) {
+                    seen = it
+                    first = false
+                    return@collectLatest
+                }
+                if (it > seen) {
+                    seen = it
+                    forgetClips()
+                }
+            }
         }
         scope.launch { ds.doubleFlow(keys.KEY_HEIGHT).collectLatest { update { copy(keyHeightScale = it.toFloat()) } } }
         scope.launch {
@@ -322,7 +359,9 @@ class KeyboardService : InputMethodService(),
     }
 
     private fun deleteBackward(ic: InputConnection) {
-        ic.deleteSurroundingText(1, 0)
+        // Code points, not Java chars: a single emoji is two UTF-16 units, and
+        // deleting one unit leaves a lone surrogate (�) in the field.
+        ic.deleteSurroundingTextInCodePoints(1, 0)
         before.deleted()
     }
 
@@ -699,18 +738,17 @@ class KeyboardService : InputMethodService(),
         feedback()
         // Apply shift immediately on every tap; a quick second tap (while already shifted)
         // latches caps-lock. No waiting for a double-tap, so shift feels instant.
+        // A rapid tap while latched unlatches: without it the third tap of a
+        // triple-tap re-latched and caps-lock had no quick exit.
         val now = SystemClock.uptimeMillis()
+        val rapid = now - lastShiftTime < DOUBLE_TAP_MS
         kbState.shift = when {
-            now - lastShiftTime < DOUBLE_TAP_MS && kbState.shift != ShiftState.OFF -> ShiftState.CAPS_LOCK
+            kbState.shift == ShiftState.CAPS_LOCK && rapid -> ShiftState.OFF
+            rapid && kbState.shift != ShiftState.OFF -> ShiftState.CAPS_LOCK
             kbState.shift == ShiftState.OFF -> ShiftState.SHIFTED
             else -> ShiftState.OFF
         }
         lastShiftTime = now
-    }
-
-    override fun onCapsLock() {
-        feedback()
-        kbState.shift = ShiftState.CAPS_LOCK
     }
 
     override fun setPage(page: KeyboardPage) {
@@ -750,9 +788,11 @@ class KeyboardService : InputMethodService(),
      * Several layouts can share a language (English alone has QWERTY, Dvorak, Colemak…), so
      * each subtype needs a distinct name to be tellable apart in the enabler. Naming a
      * subtype requires [InputMethodSubtypeBuilder.setSubtypeNameOverride], added in API 34;
-     * below that the extra same-language variants are not registered at all (rather than
-     * showing several indistinguishable "English" entries), so each language appears once
-     * via its primary variant.
+     * below that the extra same-language *arrangements* are not registered (rather than
+     * showing several indistinguishable "English" entries), but layouts that are different
+     * inputs rather than different arrangements — simplified vs traditional, romaji vs kana,
+     * Q vs F — are kept, via [PRE34_DISTINCT_LAYOUTS]. The fallback name resource keeps
+     * the entry labelled on old platforms instead of rendering blank.
      */
     private fun registerLayoutSubtypes() {
         val imm = getSystemService(InputMethodManager::class.java) ?: return
@@ -764,8 +804,10 @@ class KeyboardService : InputMethodService(),
         val layouts = if (nameable) {
             KeyboardLayouts.ALL
         } else {
-            // One layout per language code (first = primary variant, e.g. en_qwerty, tr_q).
-            KeyboardLayouts.ALL.groupBy { it.id.substringBefore('_') }.map { it.value.first() }
+            val seen = HashSet<String>()
+            KeyboardLayouts.ALL.filter { layout ->
+                layout.id in PRE34_DISTINCT_LAYOUTS || seen.add(layout.id.substringBefore('_'))
+            }
         }
         val map = LinkedHashMap<String, InputMethodSubtype>()
         for (layout in layouts) {
@@ -774,7 +816,7 @@ class KeyboardService : InputMethodService(),
                 .setLanguageTag(layout.id.substringBefore('_'))
                 .setSubtypeExtraValue("layoutId=${layout.id}")
                 .setSubtypeId(layout.id.hashCode())
-                .setSubtypeNameResId(0)
+                .setSubtypeNameResId(R.string.subtype_keyboard)
             if (nameable) {
                 builder.setSubtypeNameOverride(layout.description)
             }
@@ -826,6 +868,32 @@ class KeyboardService : InputMethodService(),
     // --- Clipboard ---
 
     /**
+     * One-time move off the old DataStore-backed history (see [KeyboardSettings.Keys.CLIPS]):
+     * decode the legacy string into the file store, persist it, then blank the key. The
+     * wipe watcher keys off CLIPS_WIPE, so blanking here is not mistaken for a request.
+     * Runs on IO from onCreate.
+     */
+    private suspend fun migrateLegacyClips() {
+        // Await, not snapshot-read: the DataStore mirror may not be hydrated yet this
+        // early in onCreate, and a null here would skip the one-time migration forever.
+        val stored = ds.getStringAwait(KeyboardSettings.Keys.CLIPS) ?: return
+        if (stored.isBlank()) return
+        clipboard.seed(ClipboardStore.decode(stored))
+        clipboard.persistState()
+        ds.setString(KeyboardSettings.Keys.CLIPS, "")
+    }
+
+    /** A short-lived strip notice; the IME has no snackbar host, so the strip is the channel. */
+    private fun showNotice(text: String) {
+        noticeJob?.cancel()
+        kbState.notice = text
+        noticeJob = scope.launch {
+            delay(NOTICE_MS)
+            if (kbState.notice == text) kbState.notice = null
+        }
+    }
+
+    /**
      * Watch the system clipboard. An IME may read it while it is the active input method,
      * which is what makes this possible on Android 10+ — but the callback only fires while
      * we are bound, so [onStartInputView] also sweeps the current clip to catch copies made
@@ -864,8 +932,8 @@ class KeyboardService : InputMethodService(),
     }
 
     private fun persistClips() {
-        val encoded = clipboard.serialize()
-        scope.launch { ds.setString(KeyboardSettings.Keys.CLIPS, encoded) }
+        // File I/O, never on the main thread; encode() already excludes sensitive clips.
+        scope.launch(Dispatchers.IO) { runCatching { clipboard.persistState() } }
     }
 
     /** Drop everything, in memory and on disk — what turning the setting off has to mean. */
@@ -893,17 +961,29 @@ class KeyboardService : InputMethodService(),
 
     /**
      * Hand an image clip to the field via `commitContent`. Most fields cannot take one, so
-     * the editor's accepted MIME types are checked first rather than committing into the void.
+     * the editor's accepted MIME types are checked first; every refusal explains itself in
+     * the strip rather than leaving the tap visibly dead.
      */
     private fun commitImage(ic: InputConnection, item: ClipItem) {
-        val file = item.imageFile ?: return
-        val mime = item.mimeType ?: return
-        val editor = currentInputEditorInfo ?: return
+        val file = item.imageFile
+        val mime = item.mimeType
+        val editor = currentInputEditorInfo
+        if (file == null || mime == null || editor == null || !file.exists()) {
+            showNotice(getString(R.string.clipboard_image_unavailable))
+            return
+        }
         val accepted = EditorInfoCompat.getContentMimeTypes(editor)
-        if (accepted.none { ClipDescription.compareMimeTypes(mime, it) }) return
+        if (accepted.none { ClipDescription.compareMimeTypes(mime, it) }) {
+            showNotice(getString(R.string.clipboard_image_not_supported))
+            return
+        }
         val uri = runCatching {
             FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-        }.getOrNull() ?: return
+        }.getOrNull()
+        if (uri == null) {
+            showNotice(getString(R.string.clipboard_image_unavailable))
+            return
+        }
         val content = InputContentInfoCompat(uri, ClipDescription(item.preview, arrayOf(mime)), null)
         InputConnectionCompat.commitContent(
             ic,

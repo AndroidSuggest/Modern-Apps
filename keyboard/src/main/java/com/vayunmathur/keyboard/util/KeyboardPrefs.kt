@@ -37,6 +37,12 @@ data class KeyboardSettings(
         const val NUMBER_ROW = "kb_number_row"
         const val CLIPBOARD = "kb_clipboard"
         const val CLIPS = "kb_clips"
+        /**
+         * Bumped whenever the history must be forgotten (settings "clear"). A counter, not
+         * a blanked string: blanking the stored clips as the wipe signal meant the
+         * startup migration clearing the legacy key looked like a wipe request.
+         */
+        const val CLIPS_WIPE = "kb_clips_wipe"
         const val EMOJI_RECENTS = "kb_emoji_recents"
         const val KEY_HEIGHT = "kb_key_height"
         const val ACTIVE_LAYOUT = "kb_active_layout"

@@ -47,6 +47,21 @@ class ClipboardTest {
         assertFalse(ClipboardStore.looksSensitive("a1" + "x".repeat(80)))
     }
 
+    /** PINs, 2FA codes and card numbers are digit runs, often grouped with spaces/dashes. */
+    @Test
+    fun `pins and card numbers are flagged`() {
+        assertTrue(ClipboardStore.looksSensitive("123456"))
+        assertTrue(ClipboardStore.looksSensitive("1234"))
+        assertTrue(ClipboardStore.looksSensitive("4111 1111 1111 1111"))
+        assertTrue(ClipboardStore.looksSensitive("123-456"))
+    }
+
+    @Test
+    fun `short digit runs that are clearly not pins are not`() {
+        assertFalse(ClipboardStore.looksSensitive("123"))
+        assertFalse(ClipboardStore.looksSensitive("1".repeat(25)))
+    }
+
     // --- history ---
 
     @Test
@@ -78,6 +93,13 @@ class ClipboardTest {
         assertEquals(listOf("one", "two"), store.items.map { it.text })
     }
 
+    @Test
+    fun `ids are unique and monotonic even within one millisecond`() {
+        val ids = (1..1000).map { ClipboardStore.nextId() }
+        assertEquals(ids.size, ids.toSet().size, "duplicate clip id")
+        assertTrue(ids.zipWithNext().all { (a, b) -> b > a }, "ids must be monotonic")
+    }
+
     // --- persistence ---
 
     @Test
@@ -85,6 +107,29 @@ class ClipboardTest {
         val items = listOf(text(1, "hello"), image(2))
         val restored = ClipboardStore.decode(ClipboardStore.encode(items))
         assertEquals(items, restored)
+    }
+
+    @Test
+    fun `the history persists to its state file and restores from it`() {
+        val dir = kotlin.io.path.createTempDirectory("clips").toFile()
+        try {
+            val store = ClipboardStore(dir)
+            store.add(text(1, "hello"))
+            store.add(text(2, "world"))
+            store.persistState()
+            val restored = ClipboardStore(dir)
+            restored.restoreState()
+            assertEquals(listOf("world", "hello"), restored.items.map { it.text })
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `a missing state file restores to an empty history rather than throwing`() {
+        val store = ClipboardStore(java.io.File("/tmp/clip-test-does-not-exist"))
+        store.restoreState()
+        assertEquals(emptyList(), store.items)
     }
 
     @Test

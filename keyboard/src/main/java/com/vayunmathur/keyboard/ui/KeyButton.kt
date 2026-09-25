@@ -2,9 +2,10 @@
 
 package com.vayunmathur.keyboard.ui
 
+import android.os.SystemClock
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -152,41 +154,76 @@ fun RowScope.CharKey(
             // emitting, all of which happen mid-keypress — the Press interaction is never
             // released and the key stays lit with its preview stuck above it until it
             // leaves composition (i.e. until the user switches to another page).
+            //
+            // One gesture per awaitEachGesture iteration, deliberately. The previous code
+            // waited out the long-press timeout and then started a *second* wait for the
+            // lift; an up landing in between left the second wait holding a stale
+            // still-pressed snapshot, so it hung until the next touch on the same key —
+            // the stuck popup — and that next touch was then consumed as the old
+            // gesture's release position, committing a phantom variant. A tap whose up
+            // arrived as a cancellation (second thumb down mid-tap) also read as a
+            // timeout and opened the menu. Bounding each down→up to one iteration
+            // removes all three.
             .pointerInput(Unit) {
-                while (true) {
-                    val down = awaitPointerEventScope { awaitFirstDown(requireUnconsumed = false) }
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
                     val press = PressInteraction.Press(down.position)
                     try {
-                        interaction.emit(press)
-                        val lifted = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-                            awaitPointerEventScope { waitForUpOrCancellation() }
+                        // tryEmit, not emit: awaitEachGesture's block is a restricted
+                        // suspend scope, so member suspend calls on other objects
+                        // (like emit) do not compile here.
+                        interaction.tryEmit(press)
+                        val timeout = viewConfiguration.longPressTimeoutMillis
+                        val start = SystemClock.uptimeMillis()
+                        var up: PointerInputChange? = null
+                        var lastX = down.position.x
+                        while (up == null && SystemClock.uptimeMillis() - start < timeout) {
+                            val remaining = timeout - (SystemClock.uptimeMillis() - start)
+                            val event = withTimeoutOrNull(remaining.coerceAtLeast(0L)) {
+                                awaitPointerEvent()
+                            } ?: break
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                            lastX = change.position.x
+                            if (!change.pressed) up = change
                         }
-                        if (lifted != null) {
-                            if (lifted.position.isInside(size)) currentOnClick()
-                            continue
+                        if (up != null) {
+                            if (up.position.isInside(size)) currentOnClick()
+                            return@awaitEachGesture
                         }
                         val opts = currentOptions
                         val onAlt = currentOnAlternate
                         if (opts.isEmpty() || onAlt == null) {
-                            awaitPointerEventScope { waitForUpOrCancellation() }
-                            continue
+                            // A hold with nothing to offer still types the key; the old
+                            // code waited for the lift and then committed nothing.
+                            currentOnClick()
+                            return@awaitEachGesture
                         }
-                        val picked = awaitPointerEventScope {
-                            val offset = alternatesOffset(bounds, currentItemWidth, opts.length, currentScreenWidth)
-                            selected = indexAt(down.position.x, offset, currentItemWidth, opts.length)
-                            var change = down
-                            while (change.pressed) {
-                                change = awaitPointerEvent().changes
-                                    .firstOrNull { it.id == down.id } ?: break
-                                selected = indexAt(change.position.x, offset, currentItemWidth, opts.length)
+                        val offset = alternatesOffset(bounds, currentItemWidth, opts.length, currentScreenWidth)
+                        var picked = indexAt(lastX, offset, currentItemWidth, opts.length)
+                        selected = picked
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                            if (change == null) {
+                                // Only other pointers speaking. A fresh down here means
+                                // our own up was lost in the timeout race; abandon rather
+                                // than hang on a gesture that is already over.
+                                if (event.changes.any { it.pressed && !it.previousPressed }) {
+                                    return@awaitEachGesture
+                                }
+                                continue
                             }
-                            selected
+                            if (!change.pressed) {
+                                onAlt(opts[picked].toString())
+                                break
+                            }
+                            picked = indexAt(change.position.x, offset, currentItemWidth, opts.length)
+                            selected = picked
                         }
-                        onAlt(opts[picked].toString())
                     } finally {
                         // tryEmit, not emit: this also has to run on the cancellation path,
                         // where a suspending emit would itself be cancelled and leave the
-                        // key stuck. `continue` runs it too, so every exit clears the press.
+                        // key stuck.
                         selected = -1
                         interaction.tryEmit(PressInteraction.Release(press))
                     }

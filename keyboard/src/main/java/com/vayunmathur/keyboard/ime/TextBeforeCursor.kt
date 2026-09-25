@@ -83,16 +83,32 @@ internal class TextBeforeCursor {
         append(text)
     }
 
-    /** One character deleted from in front of the cursor. */
+    /** One code point deleted from in front of the cursor (an emoji is two UTF-16 units). */
     fun deleted() {
-        moveCursor(-1)
         hasSelection = false
-        if (!known) return
+        if (!known) {
+            // Guessing one unit; a wrong guess only costs a reread (see class docs).
+            moveCursor(-1)
+            return
+        }
         when {
-            window.isNotEmpty() -> window.deleteCharAt(window.length - 1)
+            window.isNotEmpty() -> {
+                var units = 1
+                if (window.last().isLowSurrogate() && window.length >= 2 &&
+                    window[window.length - 2].isHighSurrogate()
+                ) {
+                    units = 2
+                }
+                window.delete(window.length - units, window.length)
+                moveCursor(-units)
+            }
             // The window was already empty and the field did not start there, so what is
             // left in front of the cursor now is something we never saw.
-            !atStart -> known = false
+            !atStart -> {
+                known = false
+                moveCursor(-1)
+            }
+            // Otherwise the field starts here and there was nothing to delete.
         }
     }
 

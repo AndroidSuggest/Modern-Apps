@@ -17,6 +17,24 @@
     <string name="clear_clipboard">Clear all</string>
     <string name="clear_clipboard_history">Clear clipboard history</string>
     <string name="copied_text_shows_up_here">Copied text and images show up here</string>
+    <!-- Fallback label for a framework input-method subtype on platforms below API 34, where per-subtype names are unavailable. -->
+    <string name="subtype_keyboard">Keyboard</string>
+    <!-- Keyboard: shown in the strip above the keys when an image clip cannot be pasted because the cached file is gone. -->
+    <string name="clipboard_image_unavailable">Image is no longer available</string>
+    <!-- Keyboard: shown in the strip above the keys when an image clip cannot be pasted because the field only accepts text. -->
+    <string name="clipboard_image_not_supported">This field doesn\'t accept images</string>
+    <!-- Keyboard setup screen. -->
+    <string name="setting_haptic_feedback">Haptic feedback</string>
+    <string name="setting_key_sound">Key sound</string>
+    <string name="setting_auto_capitalize">Auto-capitalize</string>
+    <string name="setting_double_space_period">Double-space inserts period</string>
+    <string name="setting_show_suggestions">Show suggestions</string>
+    <string name="setting_auto_correct">Auto-correct</string>
+    <string name="setting_number_row">Number row</string>
+    <string name="setting_clipboard_history">Clipboard history</string>
+    <string name="setting_clipboard_history_desc">Remember what you copy and offer it back above the keys</string>
+    <string name="status_enabled">Enabled in system settings</string>
+    <string name="status_selected">Selected as active keyboard</string>
 
     <!-- Accessibility label for the long-press action on the keyboard's enter key, which starts dictation. -->
     <string name="voice_input">Voice input</string>

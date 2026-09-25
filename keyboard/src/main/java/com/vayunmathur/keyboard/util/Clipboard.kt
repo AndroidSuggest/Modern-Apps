@@ -12,10 +12,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 /**
- * One thing the user copied. [id] is the capture time in milliseconds, which is also what
- * orders the history and names the cached image file.
+ * One thing the user copied. [id] is unique and monotonic (see [nextId]), which is also
+ * what orders the history and names the cached image file.
  *
  * A clip is either text or an image, never both: [imagePath] points at the keyboard's own
  * copy of the image bytes (see [ClipboardStore.capture]) and is null for text clips.
@@ -51,17 +52,40 @@ data class ClipItem(
  * app's clip, so a reference would paste fine for a minute and then silently fail — which
  * is exactly when a clipboard history is worth having.
  *
- * Sensitive clips (see [looksSensitive]) live in memory for the session only; [serialize]
- * leaves them out, so a password never reaches disk.
+ * Sensitive clips (see [looksSensitive]) live in memory for the session only; [persistState]
+ * writes through [encode], which leaves them out, so a password never reaches disk.
+ * Sensitive images are refused at capture instead, so no bytes are written either.
  */
 class ClipboardStore(private val imageDir: File) {
 
     var items: List<ClipItem> = emptyList()
         private set
 
-    fun restore(stored: String?) {
-        items = decode(stored).filter { it.imageFile?.exists() != false }
+    fun restoreState() {
+        val file = stateFile()
+        if (!file.exists()) {
+            items = emptyList()
+            return
+        }
+        items = decode(runCatching { file.readText() }.getOrNull())
+            .filter { it.imageFile?.exists() != false }
     }
+
+    /** Write the history to [stateFile]; sensitive clips are excluded by [encode]. Must be called off the main thread. */
+    fun persistState() {
+        runCatching {
+            imageDir.mkdirs()
+            stateFile().writeText(encode(items))
+        }
+    }
+
+    /** Replace the history wholesale (startup migration); trims to the caps like [add] does. */
+    fun seed(history: List<ClipItem>) {
+        items = cap(history.filter { it.imageFile?.exists() != false }, ::discardImage)
+    }
+
+    /** The history file inside [imageDir]. Cache is excluded from backup rules, so clips never leave the device. */
+    fun stateFile(): File = stateFile(imageDir)
 
     /**
      * Record [item]. Returns it when it is genuinely new; re-copying something already in
@@ -89,43 +113,68 @@ class ClipboardStore(private val imageDir: File) {
         items = emptyList()
     }
 
-    fun serialize(): String = encode(items)
-
     /**
      * Turn the system's primary clip into a [ClipItem], copying image bytes into the cache
      * on the way. Returns null for a clip with nothing usable in it.
      */
     suspend fun capture(context: Context, clip: ClipData, inPasswordField: Boolean): ClipItem? {
         val entry = (if (clip.itemCount > 0) clip.getItemAt(0) else null) ?: return null
-        val id = System.currentTimeMillis()
         val flagged = inPasswordField || clip.description.isMarkedSensitive()
 
         val uri = entry.uri
         val mime = uri?.let { context.contentResolver.getType(it) }
         if (uri != null && mime != null && mime.startsWith("image/")) {
+            // Sensitive images are not recorded at all: bytes on disk would outlive
+            // the session while the history entry (excluded from serialization)
+            // does not, leaving orphaned credential-adjacent files.
+            if (flagged) return null
+            val id = nextId()
             val file = withContext(Dispatchers.IO) { copyImage(context, uri, id, mime) }
                 ?: return null
-            return ClipItem(id, imagePath = file.path, mimeType = mime, sensitive = flagged)
+            return ClipItem(
+                id = id,
+                imagePath = file.path,
+                mimeType = mime,
+                sensitive = false,
+            )
         }
 
         val text = entry.coerceToText(context).toString().trim()
-        if (text.isEmpty()) return null
+        // Beyond this a copy is an accident (select-all of a document), not a clip;
+        // a multi-megabyte string does not belong in DataStore-shaped persistence.
+        if (text.isEmpty() || text.length > MAX_TEXT_CHARS) return null
         return ClipItem(
-            id = id,
+            id = nextId(),
             text = text,
             mimeType = ClipDescription.MIMETYPE_TEXT_PLAIN,
             sensitive = flagged || looksSensitive(text),
         )
     }
 
-    private fun copyImage(context: Context, uri: Uri, id: Long, mime: String): File? = runCatching {
-        imageDir.mkdirs()
+    private fun copyImage(context: Context, uri: Uri, id: Long, mime: String): File? {
         val file = File(imageDir, "$id.${mime.substringAfterLast('/', "png")}")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            file.outputStream().use(input::copyTo)
-        } ?: return null
-        file
-    }.getOrNull()
+        val ok = runCatching {
+            imageDir.mkdirs()
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                file.outputStream().use { out ->
+                    val buf = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var total = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        total += n
+                        // Refuse rather than half-keep: a truncated image pastes as
+                        // a corrupt file, which is worse than no history entry.
+                        if (total > MAX_IMAGE_BYTES) return@runCatching false
+                        out.write(buf, 0, n)
+                    }
+                    true
+                }
+            } == true
+        }.getOrDefault(false)
+        if (!ok) runCatching { file.delete() }
+        return if (ok) file else null
+    }
 
     private fun discardImage(item: ClipItem) {
         runCatching { item.imageFile?.delete() }
@@ -137,6 +186,32 @@ class ClipboardStore(private val imageDir: File) {
 
         /** Images are cached as real files, so far fewer of them are kept. */
         const val MAX_IMAGES = 10
+
+        /** Longest single text clip kept; beyond this a copy is an accident, not a clip. */
+        const val MAX_TEXT_CHARS = 50_000
+
+        /** Largest single image cached; bigger copies are refused rather than half-kept. */
+        const val MAX_IMAGE_BYTES = 10_000_000L
+
+        /** History file inside a clips dir; cache is excluded from backup rules. */
+        fun stateFile(clipsDir: File): File = File(clipsDir, "clips.json")
+
+        /**
+         * Unique, monotonic ids. Wall-clock millis plus a sequence, so two copies in
+         * the same millisecond — or a backwards clock step — never share an id.
+         * Ids are LazyColumn keys and image filenames, so a collision is a crash
+         * plus one image overwriting the other.
+         */
+        private val lastClipId = AtomicLong(0)
+
+        fun nextId(): Long {
+            val now = System.currentTimeMillis() * 1_000L
+            while (true) {
+                val last = lastClipId.get()
+                val next = maxOf(now, last + 1)
+                if (lastClipId.compareAndSet(last, next)) return next
+            }
+        }
 
         private val json = Json { ignoreUnknownKeys = true }
 
@@ -171,6 +246,13 @@ class ClipboardStore(private val imageDir: File) {
          * mistake shows someone's password on screen.
          */
         fun looksSensitive(text: String): Boolean {
+            // PINs, 2FA codes and card numbers: short digit runs, often grouped with
+            // spaces or dashes ("1234", "4111 1111 1111 1111"). Over-blurs an
+            // occasional year or score, which costs one eye-tap; the opposite mistake
+            // shows a credential in the clear.
+            val digits = text.count { it.isDigit() }
+            val rest = text.filterNot { it.isDigit() || it.isWhitespace() || it == '-' || it == '+' }
+            if (rest.isEmpty() && digits in 4..24) return true
             if (text.length !in 6..64) return false
             if (text.any { it.isWhitespace() }) return false
             if (text.contains("://") || EMAIL.matches(text)) return false

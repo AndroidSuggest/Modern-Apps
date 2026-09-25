@@ -18,8 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.vayunmathur.keyboard.ime.ImeActions
 import com.vayunmathur.keyboard.ime.KeyboardState
 import com.vayunmathur.keyboard.util.KeyboardPage
@@ -27,6 +29,7 @@ import com.vayunmathur.keyboard.util.Layouts
 import com.vayunmathur.library.ui.IconPaste
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Text
 
 /**
  * Root of the keyboard view: a suggestion strip (when enabled) above whichever page of keys
@@ -101,6 +104,12 @@ private fun EmojiSearchStrip(state: KeyboardState, actions: ImeActions) {
 /** Whatever occupies the strip above the keys, or nothing. */
 @Composable
 private fun Strip(state: KeyboardState, actions: ImeActions) {
+    // A paste refusal explains itself here: the strip is the IME's only channel —
+    // there is no scaffold for a snackbar and Toast is banned repo-wide.
+    state.notice?.let {
+        NoticeStrip(text = it)
+        return
+    }
     // A fresh clip outranks suggestions because the two never really compete: the chip is
     // offered before anything has been typed and the service drops it on the first keypress,
     // which is exactly when suggestions appear. The chip carries its own open button, so it
@@ -165,6 +174,24 @@ private fun Strip(state: KeyboardState, actions: ImeActions) {
                 )
             }
         }
+    }
+}
+
+/** One line of strip text for paste refusals and other notices the IME must surface inline. */
+@Composable
+private fun NoticeStrip(text: String) {
+    Box(
+        modifier = Modifier.fillMaxWidth().height(StripHeight),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
     }
 }
 

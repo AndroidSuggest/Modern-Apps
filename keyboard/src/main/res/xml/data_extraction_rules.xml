@@ -1,22 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Keyboard. Audited state: ten settings persisted through DataStoreUtils into
+  Keyboard. Audited state: settings persist through DataStoreUtils into
   filesDir/datastore_default.preferences_pb — haptics, sound, auto-capitalise,
   double-space-period, suggestions, autocorrect, number row, key height, the
-  enabled layout list and the active layout (KeyboardSettings.Keys).
+  active layout (KeyboardSettings.Keys) and a clipboard-wipe counter.
 
   Checked specifically for a learned-words / user dictionary, since an IME that
   records what the user types would be sensitive regardless of this app's
   general risk level. There is none. Dictionary.load() and
   PinyinDictionary.load() read fixed APK assets (dict/words_en.txt,
-  dict/bopomofo.txt, emoji.txt) and are never written back; the only writes
-  anywhere in the module are the ds.setBoolean/setString calls in SetupScreen
-  and the active-layout write in KeyboardService. There is also no persisted
-  clipboard history — the clipboard page is UI-only.
+  dict/bopomofo.txt, emoji.txt) and are never written back.
 
-  So nothing the user has typed is stored on disk, and there is nothing to hold
-  back from cloud backup. Settings back up in full; restoring them is the whole
-  point, since reconfiguring layouts by hand on a new phone is tedious.
+  Clipboard history lives in the app cache (cacheDir/clips/clips.json plus cached
+  image files), never in DataStore, and cache/ is never backed up — so clips never
+  leave the device. Sensitive clips never reach disk at all (memory only), and
+  sensitive images are refused at capture. The legacy kb_clips DataStore key is
+  migrated to the cache file on first start and then blanked.
+
+  Settings back up in full; restoring them is the whole point, since
+  reconfiguring layouts by hand on a new phone is tedious.
 -->
 <data-extraction-rules>
     <cloud-backup>

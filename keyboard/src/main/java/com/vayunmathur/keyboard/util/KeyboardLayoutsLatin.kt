@@ -167,7 +167,10 @@ internal val latinKeyboardLayouts: List<KeyboardLayout> by lazy {
             description = "Azerbaijani · QWERTY",
             rows = listOf("qüertyuiopöğ", "asdfghjklıə", "zxcvbnmçş"),
             shiftedRows = listOf("QÜERTYUİOPÖĞ", "ASDFGHJKLIƏ", "ZXCVBNMÇŞ"),
-            alternates = mapOf('a' to "â", 'i' to "ı", 'u' to "ü", 'o' to "ö", 'e' to "ə"),
+            alternates = latinExtra(
+                listOf("qüertyuiopöğ", "asdfghjklıə", "zxcvbnmçş"),
+                'a' to "â", 'i' to "ı", 'u' to "ü", 'o' to "ö", 'e' to "ə",
+            ),
         ),
         KeyboardLayout(
             id = "et_qwerty",
@@ -404,3 +407,13 @@ internal val latinKeyboardLayouts: List<KeyboardLayout> by lazy {
 /** Latin alternates plus this language's own, which take precedence. */
 private fun latinExtra(vararg extra: Pair<Char, String>): Map<Char, String> =
     Layouts.LATIN_ALTERNATES + extra.toMap()
+
+/**
+ * Same, but only for keys the layout actually has. Long-pressing a key that isn't on the
+ * layout can never fire (see the layout tests), so unfiltered defaults would add dead
+ * entries — Azerbaijani has no `w`, for example, and no `i` either (it has `ı`).
+ */
+private fun latinExtra(rows: List<String>, vararg extra: Pair<Char, String>): Map<Char, String> {
+    val chars = rows.joinToString("").toSet()
+    return (Layouts.LATIN_ALTERNATES + extra.toMap()).filterKeys { it in chars }
+}
