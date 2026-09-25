@@ -239,6 +239,40 @@ object RcsE2E {
     }
 
     /**
+     * Request one peer's key package (public; the peer auto-publishes).
+     * Used for N-peer group setup when cached packages are missing.
+     */
+    suspend fun requestKeyPackage(context: Context, peerE164: String): Boolean {
+        if (!RcsFeature.enabled || !RustMlsCrypto.isAvailable) return false
+        return sendKeyRequest(context, peerE164)
+    }
+
+    /**
+     * Create the E2EE group for N peers and fan out: one commit to the group
+     * thread ([CT_COMMIT]), one Welcome per peer 1:1 ([CT_WELCOME]). Persists
+     * the group under [conversationId]. Returns true when every leg was
+     * accepted by the transport.
+     */
+    suspend fun setupEncryptedGroup(
+        context: Context,
+        localE164: String,
+        conversationId: String,
+        peerPackages: Map<String, ByteArray>,
+    ): Boolean {
+        if (!RcsFeature.enabled || !RustMlsCrypto.isAvailable || peerPackages.isEmpty()) return false
+        val (commit, welcome) = createEncryptedGroup(
+            context, localE164, conversationId, peerPackages.values.toList(),
+        ) ?: return false
+        var ok = sendMlsEnvelope(context, conversationId, commit, CT_COMMIT)
+        for ((peer, _) in peerPackages) {
+            ok = sendMlsEnvelope(context, peer, welcome, CT_WELCOME) && ok
+        }
+        // Rotate our key package now that the previous one may be consumed.
+        freshKeyPackage(context, localE164)
+        return ok
+    }
+
+    /**
      * Create the E2EE group once the peer's key package is known and send the
      * Welcome + commit. Called when a key package arrives for a conversation
      * with no group yet, or explicitly from the setup UI. Returns true when

@@ -122,12 +122,22 @@ object RcsSessionManager {
         val session = entry.value
         if (statusCode in 200..299 && !remoteTag.isNullOrBlank()) {
             val (localPath, remotePath) = parseSdpPaths(sdpAnswer)
+            val setup = parseSdpSetup(sdpAnswer)
             _sessions.value = _sessions.value + (entry.key to session.copy(
                 remoteTag = remoteTag,
                 msrpLocalPath = localPath,
                 msrpRemotePath = remotePath,
+                // ACTIVE-only: we connect out. A peer answering `active` means
+                // it expects US to listen, which we cannot — keep the remote
+                // path nulled so sends stay on pager-mode.
+                msrpSetup = setup,
             ))
-            Log.i(TAG, "Session established ${session.dialogId}")
+            val usable = remotePath != null && setup != MsrpSetup.ACTIVE
+            Log.i(TAG, "Session established ${session.dialogId} setup=$setup usable=$usable")
+            if (!usable) {
+                _sessions.value = _sessions.value + (entry.key to
+                    (_sessions.value[entry.key] ?: session).copy(msrpRemotePath = null))
+            }
         } else if (statusCode >= 300) {
             Log.w(TAG, "Session failed $callId code=$statusCode")
             transactions.entries.removeIf { it.value == session.dialogId }
@@ -248,5 +258,21 @@ object RcsSessionManager {
         val path = Regex("a=path:(\\S+)", RegexOption.IGNORE_CASE).find(sdp)
             ?.groupValues?.getOrNull(1)?.trim()
         return null to path
+    }
+
+    /**
+     * Parse the MSRP `a=setup:` role from an SDP answer. Null when absent
+     * (assume peer is passive, the common answer to our active offer).
+     */
+    fun parseSdpSetup(sdp: String?): MsrpSetup? {
+        if (sdp.isNullOrBlank()) return null
+        val token = Regex("a=setup:(\\S+)", RegexOption.IGNORE_CASE).find(sdp)
+            ?.groupValues?.getOrNull(1)?.trim()?.lowercase() ?: return null
+        return when (token) {
+            "active" -> MsrpSetup.ACTIVE
+            "passive" -> MsrpSetup.PASSIVE
+            "actpass" -> MsrpSetup.ACTPASS
+            else -> null
+        }
     }
 }

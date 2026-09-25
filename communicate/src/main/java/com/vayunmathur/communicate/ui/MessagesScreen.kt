@@ -21,6 +21,7 @@ import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.CommunicateRepository
 import com.vayunmathur.communicate.data.SmsThread
+import com.vayunmathur.communicate.data.createEncryptedRcsGroup
 import com.vayunmathur.communicate.data.createSignalGroup
 import com.vayunmathur.communicate.data.createWhatsAppGroup
 import com.vayunmathur.communicate.data.deleteConversation
@@ -77,7 +78,7 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                     ),
                 )
             },
-            onCreateGroup = { choice, subject, contacts ->
+            onCreateGroup = { choice, subject, contacts, encrypted ->
                 showPicker = false
                 scope.launch {
                     when (choice.category) {
@@ -160,24 +161,35 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                             }
                         }
                         CommunicateLine.Rcs -> {
-                            // v1: no conference setup — open a group thread addressed by the
-                            // participant list; sends fan out per-recipient with SMS fallback.
                             val groupId = "rcs-group:${contacts.sorted().joinToString(",")}"
-                            onOpenThread(
-                                SmsThread(
-                                    threadId = CommunicateRepository.stableThreadId(groupId),
-                                    address = groupId,
-                                    displayName = subject.ifBlank { null },
-                                    snippet = "",
-                                    timestampMillis = System.currentTimeMillis(),
-                                    unreadCount = 0,
-                                    line = CommunicateLine.Rcs,
-                                    remoteId = groupId,
-                                    isGroup = true,
-                                    participants = contacts,
-                                    groupTitle = subject.ifBlank { null },
-                                ),
+                            val thread = SmsThread(
+                                threadId = CommunicateRepository.stableThreadId(groupId),
+                                address = groupId,
+                                displayName = subject.ifBlank { null },
+                                snippet = "",
+                                timestampMillis = System.currentTimeMillis(),
+                                unreadCount = 0,
+                                line = CommunicateLine.Rcs,
+                                remoteId = groupId,
+                                isGroup = true,
+                                participants = contacts,
+                                groupTitle = subject.ifBlank { null },
                             )
+                            if (encrypted &&
+                                com.vayunmathur.communicate.data.rcs.RcsFeature.enabled &&
+                                com.vayunmathur.communicate.data.rcs.e2e.RustMlsCrypto.isAvailable
+                            ) {
+                                // Encrypted group: set up MLS now (fast path) or park
+                                // for key arrival (slow path). Thread opens either
+                                // way; the banner shows the pending state.
+                                val ok = withContext(Dispatchers.IO) {
+                                    CommunicateRepository.createEncryptedRcsGroup(context, groupId, contacts)
+                                }
+                                if (!ok) {
+                                    AppMessages.show(context.getString(R.string.rcs_encrypted_failed))
+                                }
+                            }
+                            onOpenThread(thread)
                         }
                         else -> AppMessages.show("Groups aren't supported on this line")
                     }

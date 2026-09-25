@@ -2,7 +2,11 @@ package com.vayunmathur.communicate.data.rcs
 
 import android.util.Log
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -15,16 +19,260 @@ import kotlinx.coroutines.withContext
  * IMDN reports travel inside sessions once established; pager-mode remains
  * the pre-session path).
  *
- * Sockets open on Dispatchers.IO; every failure returns null/false so callers
- * fall back to pager-mode. No Guava — plain suspend functions.
+ * ACTIVE-only: we always connect out, never listen (same as TestRcsApp —
+ * `MsrpManager` has no accept loop). Sockets open on Dispatchers.IO; every
+ * failure returns null/false so callers fall back to pager-mode. No Guava —
+ * plain suspend functions.
  */
 object RcsMsrp {
     private const val TAG = "RcsMsrp"
 
     /**
+     * A persistent MSRP connection for one session: one socket, reused across
+     * SENDs, with a reader loop feeding inbound chunks to [onChunk].
+     * Create via [connect]; [close] on BYE / teardown.
+     */
+    class MsrpConnection internal constructor(
+        private val socket: java.net.Socket,
+        private val localPath: String,
+        private val remotePath: String,
+    ) {
+        @Volatile private var closed = false
+        private val readerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        internal fun launchReader(block: suspend () -> Unit) {
+            readerScope.launch { block() }
+        }
+
+        /**
+         * Send one CPIM payload as an MSRP SEND chunk. Returns true on a 200
+         * response. Thread-safe (single-writer lock).
+         */
+        private val writeLock = Any()
+
+        fun sendCpim(payload: ByteArray, contentType: String = "message/cpim"): Boolean {
+            if (closed) return false
+            return runCatching {
+                val txid = UUID.randomUUID().toString().replace("-", "").take(12)
+                val messageId = UUID.randomUUID().toString()
+                val head = buildString {
+                    append("MSRP $txid SEND\r\n")
+                    append("To-Path: $remotePath\r\n")
+                    append("From-Path: $localPath\r\n")
+                    append("Message-ID: $messageId\r\n")
+                    append("Byte-Range: 1-${payload.size}/${payload.size}\r\n")
+                    append("Failure-Report: yes\r\n")
+                    append("Success-Report: no\r\n")
+                    append("Content-Type: $contentType\r\n")
+                }
+                synchronized(writeLock) {
+                    val out = socket.getOutputStream()
+                    out.write(head.toByteArray(Charsets.UTF_8))
+                    out.write("\r\n".toByteArray(Charsets.UTF_8))
+                    out.write(payload)
+                    out.write("\r\n-------$txid\$\r\n".toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
+                true
+            }.getOrElse {
+                Log.w(TAG, "MSRP chunk send failed", it)
+                false
+            }
+        }
+
+        fun close() {
+            closed = true
+            runCatching { socket.close() }
+            readerScope.cancel()
+        }
+
+        internal fun isClosed(): Boolean = closed || socket.isClosed
+    }
+
+    /**
+     * Open a persistent active connection for [session] and start the reader
+     * loop on Dispatchers.IO. [onChunk] receives complete `message/cpim`
+     * bodies (content type + bytes). Returns null when the session has no
+     * usable remote path or the peer expects us to listen (`setup=active`).
+     */
+    suspend fun connect(
+        session: RcsSession,
+        onChunk: (contentType: String, body: ByteArray) -> Unit,
+    ): MsrpConnection? = withContext(Dispatchers.IO) {
+        if (!RcsFeature.enabled) return@withContext null
+        val remotePath = session.msrpRemotePath ?: return@withContext null
+        if (session.msrpSetup == MsrpSetup.ACTIVE) {
+            Log.w(TAG, "Peer is active; ACTIVE-only cannot listen")
+            return@withContext null
+        }
+        val localPath = session.msrpLocalPath ?: "msrp://local.invalid/${UUID.randomUUID()};tcp"
+        runCatching {
+            val (host, port) = parseMsrpPath(remotePath) ?: return@runCatching null
+            val socket = runCatching {
+                val s = java.net.Socket()
+                s.connect(java.net.InetSocketAddress(host, port), 10_000)
+                s.soTimeout = 0
+                s
+            }.getOrNull() ?: return@runCatching null
+            val conn = MsrpConnection(socket, localPath, remotePath)
+            // Reader loop: parse SEND chunks, auto-200 them, deliver bodies.
+            // Owned by the connection; dies on close.
+            conn.launchReader { readLoop(conn, socket, onChunk) }
+            conn
+        }.getOrElse {
+            Log.w(TAG, "MSRP connect failed", it)
+            null
+        }
+    }
+
+    private fun readLoop(
+        conn: MsrpConnection,
+        socket: java.net.Socket,
+        onChunk: (String, ByteArray) -> Unit,
+    ) {
+        val input = runCatching { socket.getInputStream().bufferedReader(Charsets.UTF_8) }.getOrNull()
+            ?: return
+        val pending = StringBuilder()
+        // Reassembly buffer for multi-chunk SENDs, keyed by Message-ID.
+        val reassembly = mutableMapOf<String, ByteArrayOutputStream2>()
+        try {
+            while (!conn.isClosed()) {
+                val line = runCatching { input.readLine() }.getOrNull() ?: break
+                if (line.startsWith("MSRP ")) {
+                    pending.clear()
+                    pending.append(line).append("\r\n")
+                    val headers = mutableMapOf<String, String>()
+                    var contentLength = -1
+                    // Header block.
+                    while (true) {
+                        val h = runCatching { input.readLine() }.getOrNull() ?: break
+                        if (h.isEmpty()) break
+                        pending.append(h).append("\r\n")
+                        val name = h.substringBefore(":").trim()
+                        val value = h.substringAfter(":").trim()
+                        headers[name.lowercase()] = value
+                        if (name.equals("Content-Length", ignoreCase = true)) {
+                            contentLength = value.toIntOrNull() ?: -1
+                        }
+                    }
+                    val txid = line.split(" ").getOrNull(1).orEmpty()
+                    val method = line.split(" ").getOrNull(2).orEmpty()
+                    if (method.equals("SEND", ignoreCase = true)) {
+                        // Body: Content-Length bytes when present, else to end-marker.
+                        val bodyBytes = if (contentLength >= 0) {
+                            readFixed(input, contentLength)
+                        } else {
+                            readToEndMarker(input, txid)
+                        }
+                        // Consume the end-marker line.
+                        runCatching { input.readLine() }
+                        // Auto-200 the peer SEND.
+                        sendResponse(socket, txid, 200, "OK", conn)
+                        val msgId = headers["message-id"].orEmpty()
+                        val contentType = headers["content-type"] ?: "message/cpim"
+                        if (msgId.isNotEmpty() && bodyBytes != null) {
+                            val buf = reassembly.getOrPut(msgId) { ByteArrayOutputStream2() }
+                            buf.write(bodyBytes)
+                            // Single-chunk fast path: Byte-Range 1-N/N delivers now.
+                            val range = headers["byte-range"]
+                            if (range == null || isCompleteRange(range)) {
+                                reassembly.remove(msgId)
+                                val complete = buf.toBytes()
+                                if (complete.isNotEmpty()) onChunk(contentType, complete)
+                            }
+                        } else if (bodyBytes != null && bodyBytes.isNotEmpty()) {
+                            onChunk(contentType, bodyBytes)
+                        }
+                    } else {
+                        // Responses to our SENDs (handled inline by sendCpim today).
+                        runCatching { input.readLine() }
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // Socket closed — reader exits.
+        } finally {
+            reassembly.clear()
+            conn.close()
+        }
+    }
+
+    private fun isCompleteRange(range: String): Boolean {
+        // "1-N/N" with equal total and end, or "1-0/0" empty handshake.
+        val m = Regex("(\\d+)-(\\d+)/(\\d+)").find(range.trim()) ?: return true
+        val (_, end, total) = m.destructured
+        return end == total
+    }
+
+    private fun readFixed(input: java.io.BufferedReader, n: Int): ByteArray? {
+        if (n < 0 || n > 8 * 1024 * 1024) return null
+        return runCatching {
+            val chars = CharArray(n)
+            var read = 0
+            while (read < n) {
+                val r = input.read(chars, read, n - read)
+                if (r < 0) break
+                read += r
+            }
+            String(chars, 0, read).toByteArray(Charsets.UTF_8)
+        }.getOrNull()
+    }
+
+    private fun readToEndMarker(input: java.io.BufferedReader, txid: String): ByteArray? {
+        return runCatching {
+            val sb = StringBuilder()
+            while (true) {
+                val line = input.readLine() ?: break
+                if (line.startsWith("-------$txid")) break
+                sb.append(line).append("\r\n")
+            }
+            sb.toString().toByteArray(Charsets.UTF_8)
+        }.getOrNull()
+    }
+
+    private fun sendResponse(
+        socket: java.net.Socket,
+        txid: String,
+        code: Int,
+        reason: String,
+        conn: MsrpConnection,
+    ) {
+        runCatching {
+            val out = socket.getOutputStream()
+            out.write("MSRP $txid $code $reason\r\n".toByteArray(Charsets.UTF_8))
+            out.write("To-Path: placeholder\r\n\r\n".toByteArray(Charsets.UTF_8))
+            out.write("-------$txid\$\r\n".toByteArray(Charsets.UTF_8))
+            out.flush()
+        }
+    }
+
+    /** Minimal byte buffer (avoids java.io.ByteArrayOutputStream import weight). */
+    private class ByteArrayOutputStream2 {
+        private var buf = ByteArray(1024)
+        private var size = 0
+
+        fun write(bytes: ByteArray) {
+            ensure(bytes.size)
+            bytes.copyInto(buf, size)
+            size += bytes.size
+        }
+
+        fun toBytes(): ByteArray = buf.copyOf(size)
+
+        private fun ensure(extra: Int) {
+            if (size + extra <= buf.size) return
+            var next = buf.size * 2
+            while (next < size + extra) next *= 2
+            buf = buf.copyOf(next)
+        }
+    }
+
+    /**
      * Send [payload] (CPIM bytes) over an MSRP session bound to [session].
      * Opens a TCP socket to the remote path when needed. Returns true on a
      * 200 response to our SEND.
+     *
+     * One-shot fallback; prefer [connect] for established sessions.
      */
     suspend fun send(
         session: RcsSession,

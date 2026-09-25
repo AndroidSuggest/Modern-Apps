@@ -276,6 +276,43 @@ fun ConversationScreen(
                 modifier = Modifier.padding(padding),
             )
         }
+        // RCS encryption state: lock banner when the MLS group exists, pending
+        // notice while parked awaiting member keys.
+        if (line == CommunicateLine.Rcs &&
+            com.vayunmathur.communicate.data.rcs.RcsFeature.enabled
+        ) {
+            val convoId = remoteId?.takeIf { it.isNotBlank() } ?: address
+            var encryptedState by remember(convoId, refresh) { mutableStateOf<Boolean?>(null) }
+            androidx.compose.runtime.LaunchedEffect(line, convoId, refresh) {
+                encryptedState = try {
+                    withContext(Dispatchers.IO) {
+                        com.vayunmathur.communicate.data.rcs.e2e.RcsE2E
+                            .groupIdFor(context, convoId) != null
+                    }
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+            val isEncrypted = encryptedState
+            if (isEncrypted == true) {
+                EncryptedChatBanner(
+                    pending = false,
+                    modifier = Modifier.padding(padding),
+                )
+            } else if (isEncrypted == false) {
+                val isPending = try {
+                    com.vayunmathur.communicate.data.rcs.e2e.RcsPendingGroups.isPending(convoId)
+                } catch (_: Throwable) {
+                    false
+                }
+                if (isPending) {
+                    EncryptedChatBanner(
+                        pending = true,
+                        modifier = Modifier.padding(padding),
+                    )
+                }
+            }
+        }
         // Google Voice threads don't require the default-SMS role or READ_SMS; only SIM does.
         if (line == CommunicateLine.GoogleVoice) {
             MessagesList(padding, refresh) {

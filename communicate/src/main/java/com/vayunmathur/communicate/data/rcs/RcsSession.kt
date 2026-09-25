@@ -30,8 +30,21 @@ data class RcsSession(
     /** MSRP path negotiated via SDP (`a=path`). Null until bound. */
     val msrpLocalPath: String? = null,
     val msrpRemotePath: String? = null,
+    /**
+     * Peer's MSRP setup role from the SDP answer. ACTIVE-only: we always
+     * connect out, so a peer answering `active` keeps `msrpRemotePath`
+     * nulled (pager-mode fallback). Null = absent, treated as passive.
+     */
+    val msrpSetup: MsrpSetup? = null,
     val createdAt: Long = System.currentTimeMillis(),
 )
+
+/** MSRP connection roles (`a=setup:`). */
+enum class MsrpSetup {
+    ACTIVE,
+    PASSIVE,
+    ACTPASS,
+}
 
 /** IMDN disposition (RFC 5438) for delivery/display receipts. */
 enum class ImdnDisposition(val token: String) {

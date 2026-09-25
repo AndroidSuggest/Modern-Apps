@@ -54,13 +54,14 @@ internal fun NewMessagePicker(
     choices: List<LineChoice>,
     onDismiss: () -> Unit,
     onCompose: (LineChoice, String) -> Unit,
-    onCreateGroup: (LineChoice, String, List<String>) -> Unit,
+    onCreateGroup: (LineChoice, String, List<String>, Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val region = remember { deviceRegion(context) }
     var query by remember { mutableStateOf("") }
     var groupMode by remember { mutableStateOf(false) }
     var groupName by remember { mutableStateOf("") }
+    var encryptedGroup by remember { mutableStateOf(false) }
     // Selected recipients for group mode, keyed by phone number (value = display label).
     val selectedContacts = remember { mutableStateListOf<Pair<String, String>>() }
     // Lines that support group chats: WhatsApp, Signal, RCS, and SIM (MMS). GV is 1:1 only.
@@ -128,6 +129,35 @@ internal fun NewMessagePicker(
                         singleLine = true,
                     )
                     Spacer(Modifier.size(6.dp))
+                    // Closed-loop MLS encryption, RCS groups only (dev-gated,
+                    // needs the native library present).
+                    if (selected?.category == CommunicateLine.Rcs &&
+                        com.vayunmathur.communicate.data.rcs.RcsFeature.enabled &&
+                        com.vayunmathur.communicate.data.rcs.e2e.RustMlsCrypto.isAvailable
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.rcs_encrypted_group_toggle),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            Spacer(Modifier.weight(1f))
+                            com.vayunmathur.library.ui.Switch(
+                                checked = encryptedGroup,
+                                onCheckedChange = { encryptedGroup = it },
+                            )
+                        }
+                        if (encryptedGroup) {
+                            Text(
+                                stringResource(R.string.rcs_encrypted_group_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.size(6.dp))
+                        }
+                    }
                     if (selectedContacts.isNotEmpty()) {
                         LazyRow(
                             modifier = Modifier.fillMaxWidth(),
@@ -198,7 +228,9 @@ internal fun NewMessagePicker(
                     onClick = {
                         val choice = selected
                         if (choice != null && selectedContacts.isNotEmpty()) {
-                            onCreateGroup(choice, groupName.trim(), selectedContacts.map { it.first })
+                            // Encryption only applies to RCS (toggle is hidden otherwise).
+                            val encrypted = encryptedGroup && choice.category == CommunicateLine.Rcs
+                            onCreateGroup(choice, groupName.trim(), selectedContacts.map { it.first }, encrypted)
                         }
                     },
                     enabled = selected != null && selectedContacts.size >= 1,

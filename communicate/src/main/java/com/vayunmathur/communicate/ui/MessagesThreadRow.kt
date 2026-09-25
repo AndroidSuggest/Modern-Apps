@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +33,7 @@ import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Surface
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.sharedText
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun MessageThreadRow(thread: SmsThread, onClick: () -> Unit, onDelete: () -> Unit = {}) {
@@ -56,6 +58,26 @@ internal fun MessageThreadRow(thread: SmsThread, onClick: () -> Unit, onDelete: 
                         .sharedText("communicate-thread-title-${thread.threadId}"),
                 )
                 LineBadge(thread.line, thread.subscriptionId, modifier = Modifier.padding(start = 6.dp))
+                if (thread.line == com.vayunmathur.communicate.data.CommunicateLine.Rcs &&
+                    com.vayunmathur.communicate.data.rcs.RcsFeature.enabled
+                ) {
+                    val rowId = thread.remoteId ?: thread.address
+                    val encrypted by androidx.compose.runtime.produceState(
+                        initialValue = false, rowId,
+                    ) {
+                        value = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            com.vayunmathur.communicate.data.rcs.e2e.RcsE2E
+                                .groupIdFor(context, rowId) != null
+                        }
+                    }
+                    if (encrypted) {
+                        com.vayunmathur.library.ui.IconLock(
+                            modifier = Modifier
+                                .padding(start = 4.dp)
+                                .size(14.dp),
+                        )
+                    }
+                }
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 Text(

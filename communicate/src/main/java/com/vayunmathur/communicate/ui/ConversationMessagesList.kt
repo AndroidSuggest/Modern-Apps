@@ -90,3 +90,27 @@ internal fun SafetyNumberBanner(
         }
     }
 }
+
+/**
+ * RCS encryption state banner: locked once the MLS group exists, pending
+ * while parked awaiting member keys. Informational only (no action).
+ */
+@Composable
+internal fun EncryptedChatBanner(
+    pending: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Text(
+            stringResource(
+                if (pending) R.string.rcs_encrypted_pending else R.string.rcs_encrypted_banner,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+        )
+    }
+}

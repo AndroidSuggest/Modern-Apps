@@ -22,13 +22,16 @@ import com.vayunmathur.communicate.data.rcs.ImdnDisposition
 import com.vayunmathur.communicate.data.rcs.RcsFeature
 import com.vayunmathur.communicate.data.rcs.RcsFileTransferHttp
 import com.vayunmathur.communicate.data.rcs.RcsImdn
+import com.vayunmathur.communicate.data.rcs.RcsMsrp
 import com.vayunmathur.communicate.data.rcs.RcsRegistrationState
+import com.vayunmathur.communicate.data.rcs.RcsSession
 import com.vayunmathur.communicate.data.rcs.RcsSessionManager
 import com.vayunmathur.communicate.data.rcs.RcsSipTransport
 import com.vayunmathur.communicate.data.rcs.buildImdnBody
 import com.vayunmathur.communicate.data.rcs.e2e.RcsE2E
 import com.vayunmathur.communicate.data.rcs.e2e.RcsKeyDirectory
 import com.vayunmathur.communicate.data.rcs.e2e.RcsPeerKeys
+import com.vayunmathur.communicate.data.rcs.e2e.RcsPendingGroups
 import com.vayunmathur.communicate.data.rcs.e2e.RustMlsCrypto
 import com.vayunmathur.communicate.data.rcs.extractImdnMessageId
 import com.vayunmathur.communicate.data.rcs.parseImdnBody
@@ -51,6 +54,9 @@ import kotlinx.coroutines.launch
 class RcsSyncService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** MSRP connections per conversation, owned by this service's lifecycle. */
+    private val msrpConnections = java.util.concurrent.ConcurrentHashMap<String, RcsMsrp.MsrpConnection>()
 
     override fun onCreate() {
         super.onCreate()
@@ -87,6 +93,28 @@ class RcsSyncService : Service() {
                     updateSyncNotification(state)
                 }
             }
+            // Own MSRP connection lifecycle: when a session gains a usable
+            // remote path, connect out and feed inbound chunks to the inbox.
+            launch {
+                RcsSessionManager.sessions.collect { sessions ->
+                    for ((conversationId, session) in sessions) {
+                        if (session.msrpRemotePath == null || msrpConnections.containsKey(conversationId)) {
+                            continue
+                        }
+                        val conn = RcsMsrp.connect(session) { contentType, body ->
+                            serviceScope.launch { handleMsrpChunk(conversationId, session, contentType, body) }
+                        }
+                        if (conn != null) {
+                            msrpConnections[conversationId] = conn
+                        }
+                    }
+                    // Drop connections whose sessions went away.
+                    val live = sessions.keys
+                    msrpConnections.keys.filter { it !in live }.forEach { id ->
+                        msrpConnections.remove(id)?.close()
+                    }
+                }
+            }
         }
 
         return START_STICKY
@@ -96,6 +124,8 @@ class RcsSyncService : Service() {
 
     override fun onDestroy() {
         RcsSipTransport.onInboundMessage = null
+        msrpConnections.values.forEach { runCatching { it.close() } }
+        msrpConnections.clear()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -147,6 +177,53 @@ class RcsSyncService : Service() {
                 Unit
             }
         }
+    }
+
+    /**
+     * Inbound MSRP chunk: CPIM text becomes an inbox row (+ notification);
+     * IMDN/typing ride their trackers. Reuses the SIP parse helpers by
+     * synthesizing the CPIM text path.
+     */
+    private suspend fun handleMsrpChunk(
+        conversationId: String,
+        session: RcsSession,
+        contentType: String,
+        body: ByteArray,
+    ) {
+        if (!RcsFeature.enabled) return
+        val text = body.toString(Charsets.UTF_8)
+        if (contentType.contains("imdn", ignoreCase = true)) {
+            RcsImdn.onReportReceived(text)
+            return
+        }
+        if (contentType.contains("im-composing", ignoreCase = true)) {
+            RcsSessionManager.onSipRequest("MESSAGE", session.callId, conversationId, contentType, text)
+            return
+        }
+        val display = if (contentType.contains("cpim", ignoreCase = true)) {
+            extractTextBody(body) ?: text
+        } else {
+            text
+        }
+        if (display.isBlank()) return
+        val ft = RcsFileTransferHttp.parseFtBody(display)
+        CommunicateRepository.cacheInboundRcs(
+            context = this,
+            conversationId = conversationId,
+            body = ft?.let { display.substringAfter("\r\n").ifBlank { "[file]" } } ?: display,
+            senderId = conversationId,
+            messageId = "in-msrp-${display.hashCode()}-${System.currentTimeMillis()}",
+            ftUrl = ft?.url,
+            ftMime = ft?.mime,
+        )
+        showIncomingNotification(
+            InboundRcs(
+                conversationId = conversationId,
+                body = display,
+                senderId = conversationId,
+                messageId = "in-msrp-${display.hashCode()}",
+            ),
+        )
     }
 
     private suspend fun sendImdnReport(parsed: InboundRcs) {
@@ -268,17 +345,28 @@ class RcsSyncService : Service() {
             }
             return InboundRcs(from, "", from, "in-kreq-${System.currentTimeMillis()}", InboundKind.Typing)
         }
-        // Key package publication → stash, and create the group if none exists yet.
+        // Key package publication → stash, satisfy pending groups, and create
+        // the 1:1 group if none exists yet.
         if (contentType?.contains(RcsE2E.CT_KEY_PACKAGE, ignoreCase = true) == true ||
             body.contains(RcsE2E.CT_KEY_PACKAGE, ignoreCase = true)
         ) {
             RcsKeyDirectory.parsePublished(body)?.let { kp ->
                 RcsPeerKeys.store(this, from, kp)
-                // Auto-setup: first key package for a conversation with no group
-                // creates it and sends Welcome. Closed-loop peers opt in by
-                // running this code; no group forms with non-participants.
+                // Pending encrypted groups: create each ready one now.
+                for ((pendingId, packages) in RcsPendingGroups.readyFor(from)) {
+                    RcsE2E.localE164(this)?.let { local ->
+                        if (RcsE2E.setupEncryptedGroup(this, local, pendingId, packages)) {
+                            RcsPendingGroups.remove(pendingId)
+                        }
+                    }
+                }
+                // Auto-setup: first key package for a 1:1 conversation with no
+                // group creates it and sends Welcome. Closed-loop peers opt in
+                // by running this code; no group forms with non-participants.
                 val conversationId = from
-                if (RcsE2E.groupIdFor(this, conversationId) == null) {
+                if (RcsE2E.groupIdFor(this, conversationId) == null &&
+                    !RcsPendingGroups.isPending(conversationId)
+                ) {
                     RcsE2E.localE164(this)?.let { local ->
                         RcsE2E.setupGroupWithPeer(this, local, conversationId, from, kp)
                     }
@@ -457,6 +545,8 @@ class RcsSyncService : Service() {
 
     private fun shutdown() {
         RcsSipTransport.onInboundMessage = null
+        msrpConnections.values.forEach { runCatching { it.close() } }
+        msrpConnections.clear()
         runCatching { RcsSipTransport.tearDown(this) }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
