@@ -22,13 +22,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * established, exactly like ChatManager's session-init gate.
  */
 object RcsSessionManager {
-    private const val TAG = "RcsSession"
+    internal const val TAG = "RcsSession"
 
-    private val _sessions = MutableStateFlow<Map<String, RcsSession>>(emptyMap())
+    internal val _sessions = MutableStateFlow<Map<String, RcsSession>>(emptyMap())
     val sessions: StateFlow<Map<String, RcsSession>> = _sessions.asStateFlow()
 
     /** Transaction id (Via branch) → session, for response routing. */
-    private val transactions = ConcurrentHashMap<String, String>()
+    internal val transactions = ConcurrentHashMap<String, String>()
 
     /** Typing state per conversation: conversationId → (active, updatedAt). */
     private val _typing = MutableStateFlow<Map<String, Boolean>>(emptyMap())
@@ -114,91 +114,7 @@ object RcsSessionManager {
         return dialogId
     }
 
-    /**
-     * Host a group conference (focus role, UP 3.x conference model).
-     *
-     * Unlike joining a carrier focus via [startGroupSession], this makes US the
-     * focus: we allocate a local `conf:` URI, invite each participant with a
-     * REFER to it (their clients INVITE back and join — see the inbound
-     * INVITE-to-focus path in [onSipRequest]), and relay in-conference
-     * messages to the other participants (see
-     * [RcsSyncService.handleInbound] — relay happens there, keyed off the
-     * focus session map below).
-     *
-     * Focus INVITEs carry the `isfocus` Contact parameter (RFC 4354) + the CPM
-     * group tag so peers treat us as the conference server rather than a 1:1
-     * caller. Returns the focus URI on success, null otherwise.
-     *
-     * v1 limits: relay is pager-mode MESSAGE fan-out (no MSRP media mixing);
-     * MLS E2EE still terminates per-member via the conversation's MLS group —
-     * the focus relays opaque ciphertext, never plaintext.
-     */
-    suspend fun hostGroupFocus(
-        conversationId: String,
-        subject: String,
-        participants: List<String>,
-    ): String? {
-        if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return null
-        val distinct = participants.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (distinct.isEmpty()) return null
-        val focusUri = "conf:${UUID.randomUUID()}@rcs.local"
-        val localTag = UUID.randomUUID().toString().take(8)
-        _sessions.value = _sessions.value + (conversationId to RcsSession(
-            dialogId = "focus:$focusUri",
-            callId = "focus-${UUID.randomUUID()}",
-            localTag = localTag,
-            remoteTag = "",
-            remoteUri = focusUri,
-            conversationId = conversationId,
-            isGroup = true,
-            isFocus = true,
-        ))
-        _focusMembers[focusUri] = distinct.toMutableSet()
-        var invited = false
-        for (peer in distinct) {
-            if (sendReferToFocus(peer, focusUri, subject)) invited = true
-        }
-        if (!invited) {
-            _sessions.value = _sessions.value - conversationId
-            _focusMembers.remove(focusUri)
-            return null
-        }
-        Log.i(TAG, "Hosting focus $focusUri for $conversationId (${distinct.size} invited)")
-        return focusUri
-    }
-
-    /** Participants of hosted foci: focus URI → member E.164 set. */
-    private val _focusMembers = ConcurrentHashMap<String, MutableSet<String>>()
-
-    /** Members of the hosted focus [focusUri], or null when not ours. */
-    fun focusMembers(focusUri: String): Set<String>? = _focusMembers[focusUri]?.toSet()
-
-    /** Focus URI we host for [conversationId], or null when we don't host it. */
-    fun hostedFocusFor(conversationId: String): String? {
-        val session = _sessions.value[conversationId] ?: return null
-        return if (session.isFocus) session.remoteUri else null
-    }
-
-    /** Track a joiner that INVITEd our focus URI (no REFER needed — direct dial). */
-    fun noteFocusJoin(focusUri: String, member: String) {
-        _focusMembers[focusUri]?.add(member.trim())
-    }
-
-    /** Drop a member from a hosted focus (BYE / removal). */
-    fun noteFocusLeave(focusUri: String, member: String) {
-        _focusMembers[focusUri]?.remove(member.trim())
-    }
-
-    /** Tear down a hosted focus: BYE every joined member dialog, drop state. */
-    suspend fun destroyHostedFocus(conversationId: String): Boolean {
-        val session = _sessions.value[conversationId] ?: return true
-        if (!session.isFocus) return terminateSession(conversationId)
-        val focusUri = session.remoteUri
-        _focusMembers.remove(focusUri)
-        _sessions.value = _sessions.value - conversationId
-        RcsMsrpListen.dropPending(conversationId)
-        return true
-    }
+    /** Focus state + management live in `RcsSessionFocus.kt` (split for file length). */
 
     /**
      * Drop sessions that never completed (no remote tag after [maxAgeMs])
@@ -231,31 +147,6 @@ object RcsSessionManager {
             _sessions.value.values.none { it.dialogId == dialogId }
         }
         return dropped
-    }
-
-    /**
-     * REFER one peer to our hosted focus: `REFER sip:peer` with `Refer-To:
-     * <focusUri>` + `Referred-By` us. Their client INVITEs the focus URI back.
-     */
-    private suspend fun sendReferToFocus(peer: String, focusUri: String, subject: String): Boolean {
-        val cfg = RcsSipTransport.lastConfigSnapshot()
-        val from = cfg?.publicUserId?.takeIf { it.isNotBlank() } ?: "sip:local@rcs"
-        val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
-        val startLine = "REFER sip:$peer@rcs SIP/2.0"
-        val headers = buildString {
-            append("Via: SIP/2.0/TCP local;branch=$branch\r\n")
-            append("Max-Forwards: 70\r\n")
-            append("From: <$from>;tag=${UUID.randomUUID().toString().take(8)}\r\n")
-            append("To: <sip:$peer@rcs>\r\n")
-            append("Call-ID: ${UUID.randomUUID()}@rcs-refer\r\n")
-            append("CSeq: 1 REFER\r\n")
-            append("Refer-To: <$focusUri>\r\n")
-            append("Referred-By: <$from>\r\n")
-            if (subject.isNotBlank()) append("Subject: $subject\r\n")
-            append("Contact: <$from>;isfocus\r\n")
-            append("Content-Length: 0\r\n")
-        }
-        return RcsSipTransport.sendSipMessage(startLine, headers, ByteArray(0))
     }
 
     /**
@@ -379,7 +270,7 @@ object RcsSessionManager {
     }
 
     /** Inbound offer details stashed at INVITE time for [acceptIncoming]. */
-    private data class PendingOffer(
+    internal data class PendingOffer(
         val remotePath: String?,
         val setup: MsrpSetup?,
         /** Raw offer SDP (for TLS/fingerprint detection at answer time). */
@@ -388,27 +279,61 @@ object RcsSessionManager {
         val peerFingerprint: String? = null,
     )
 
-    private val _pendingOffers = ConcurrentHashMap<String, PendingOffer>()
+    internal val _pendingOffers = ConcurrentHashMap<String, PendingOffer>()
 
     /** Peer's SDP answer fingerprint for an outgoing session ([callId]). */
-    private val _answerFingerprints = ConcurrentHashMap<String, String>()
+    internal val _answerFingerprints = ConcurrentHashMap<String, String>()
 
     /** Stashed answer fingerprint for [callId], or null when absent. */
     fun peerFingerprint(callId: String): String? = _answerFingerprints[callId]
 
-    /** Tear down the session for [conversationId] with BYE. */
+    /**
+     * Send a MESSAGE inside [conversationId]'s confirmed dialog (in-dialog
+     * Request-URI + route set + next CSeq). Returns false when no confirmed
+     * session exists (caller uses pager-mode). Advances the dialog CSeq.
+     */
+    suspend fun sendInDialogMessage(
+        conversationId: String,
+        body: ByteArray,
+        contentType: String = "message/cpim",
+    ): Boolean {
+        if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return false
+        val session = _sessions.value[conversationId]
+            ?.takeIf { it.confirmed && it.remoteTag.isNotBlank() } ?: return false
+        val req = RcsSipDialog.buildInDialogMessage(session, body, contentType)
+        val ok = RcsSipTransport.sendSipMessage(req.startLine, req.headers, req.body)
+        if (ok) {
+            _sessions.value = _sessions.value + (
+                conversationId to session.copy(nextCseq = req.nextCseq)
+                )
+        }
+        return ok
+    }
+
+    /** Tear down the session for [conversationId] with in-dialog BYE. */
     suspend fun terminateSession(conversationId: String): Boolean {
         val session = _sessions.value[conversationId] ?: return true
-        val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
-        val startLine = "BYE sip:${session.remoteUri} SIP/2.0"
-        val headers = buildString {
-            append("Via: SIP/2.0/TCP local;branch=$branch\r\n")
-            append("Call-ID: ${session.callId}\r\n")
-            append("CSeq: 2 BYE\r\n")
-            append("Content-Length: 0\r\n")
+        val ok = if (session.confirmed && session.remoteTag.isNotBlank()) {
+            // Confirmed dialog: in-dialog BYE with next CSeq + route set.
+            val req = RcsSipDialog.buildInDialogBye(session)
+            val sent = RcsSipTransport.sendSipMessage(req.startLine, req.headers, req.body)
+            _sessions.value = _sessions.value + (
+                conversationId to session.copy(nextCseq = req.nextCseq)
+                )
+            sent
+        } else {
+            // Unconfirmed/early dialog: best-effort BYE as before.
+            val branch = RcsSipDialog.newBranch()
+            val startLine = "BYE sip:${session.remoteUri} SIP/2.0"
+            val headers = buildString {
+                append("Via: SIP/2.0/TCP local;branch=$branch\r\n")
+                append("Call-ID: ${session.callId}\r\n")
+                append("CSeq: 2 BYE\r\n")
+                append("Content-Length: 0\r\n")
+            }
+            RcsSipTransport.sendSipMessage(startLine, headers, ByteArray(0))
         }
-        val ok = RcsSipTransport.sendSipMessage(startLine, headers, ByteArray(0))
-        transactions.remove(branch)
+        transactions.entries.removeIf { it.value == session.dialogId }
         _sessions.value = _sessions.value - conversationId
         _pendingOffers.remove(session.callId)
         _answerFingerprints.remove(session.callId)
@@ -424,14 +349,24 @@ object RcsSessionManager {
     /**
      * Route an inbound SIP response (from the delegate message callback) to
      * its session: 200 OK to INVITE completes the dialog (remote tag + SDP
-     * answer), other finals tear the pending session down.
+     * answer + route set) and sends the ACK (RFC 3261 §13.2.2.4); other
+     * finals tear the pending session down.
+     *
+     * Suspend: the ACK goes through the transport. Never throws.
      */
-    fun onSipResponse(statusCode: Int, callId: String, remoteTag: String?, sdpAnswer: String?) {
+    suspend fun onSipResponse(
+        statusCode: Int,
+        callId: String,
+        remoteTag: String?,
+        sdpAnswer: String?,
+        responseHeaders: String = "",
+    ) {
         val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId } ?: return
         val session = entry.value
         if (statusCode in 200..299 && !remoteTag.isNullOrBlank()) {
             val (localPath, remotePath) = parseSdpPaths(sdpAnswer)
             val setup = parseSdpSetup(sdpAnswer)
+            val (contact, routeSet) = RcsSipDialog.parseDialogRoute(responseHeaders)
             // TLS sticks when WE offered secure and the answer keeps it
             // (secure answer SDP); a plaintext answer to our secure offer is
             // a downgrade — honor it and run plaintext.
@@ -442,13 +377,16 @@ object RcsSessionManager {
                 _answerFingerprints[callId] = fp
                 RcsMsrpListen.notePeerFingerprint(entry.key, fp)
             }
-            _sessions.value = _sessions.value + (entry.key to session.copy(
+            val established = session.copy(
                 remoteTag = remoteTag,
                 msrpLocalPath = localPath ?: session.msrpLocalPath,
                 msrpRemotePath = remotePath,
                 msrpSetup = setup,
                 msrpSecure = session.msrpSecure && answerSecure,
-            ))
+                remoteContact = contact ?: session.remoteContact,
+                routeSet = if (routeSet.isNotEmpty()) routeSet else session.routeSet,
+            )
+            _sessions.value = _sessions.value + (entry.key to established)
             // Usable when: peer is passive/actpass (we connect out, the v1
             // path), OR peer is active and we have a listen path (they
             // connect to us — the accept loop completes the session), OR our
@@ -457,20 +395,68 @@ object RcsSessionManager {
             val peerActive = setup == MsrpSetup.ACTIVE
             val usable = remotePath != null && (
                 !peerActive ||
-                    session.msrpLocalPath?.contains("msrp://") == true &&
+                    established.msrpLocalPath?.contains("msrp://") == true &&
                     RcsMsrpListen.isListening()
                 )
             Log.i(TAG, "Session established ${session.dialogId} setup=$setup usable=$usable")
             if (!usable) {
                 _sessions.value = _sessions.value + (entry.key to
-                    (_sessions.value[entry.key] ?: session).copy(msrpRemotePath = null))
+                    (_sessions.value[entry.key] ?: established).copy(msrpRemotePath = null))
             }
+            // ACK the 2xx (RFC 3261 §13): same CSeq number as the INVITE,
+            // Request-URI = answer Contact, confirmed dialog either way.
+            val acked = runCatching {
+                val (ackLine, ackHeaders) = RcsSipDialog.buildAck(
+                    (_sessions.value[entry.key] ?: established).copy(remoteTag = remoteTag),
+                )
+                RcsSipTransport.sendSipMessage(ackLine, ackHeaders, ByteArray(0))
+            }.getOrDefault(false)
+            _sessions.value = _sessions.value + (entry.key to
+                ((_sessions.value[entry.key] ?: established).copy(confirmed = true)))
+            if (!acked) Log.w(TAG, "ACK not accepted for $callId (dialog unconfirmed at SIP layer)")
         } else if (statusCode >= 300) {
             Log.w(TAG, "Session failed $callId code=$statusCode")
             transactions.entries.removeIf { it.value == session.dialogId }
             _sessions.value = _sessions.value - entry.key
+            _answerFingerprints.remove(callId)
+            RcsMsrpListen.dropPending(entry.key)
         }
     }
+
+    /**
+     * Dialog-mismatch recovery (§1.6): 481/408/480/486/603 against [callId].
+     * Closes MSRP state + framework dialog state, drops pending paths, and
+     * parks the conversation in backoff so the send path doesn't hammer
+     * session re-establishment. Never throws.
+     */
+    fun onDialogError(callId: String, statusCode: Int) {
+        val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId }
+        if (entry != null) {
+            _sessions.value = _sessions.value - entry.key
+            RcsMsrpListen.dropPending(entry.key)
+            backoffUntil[entry.key] = System.currentTimeMillis() + DIALOG_ERROR_BACKOFF_MS
+            Log.w(TAG, "Dialog error $statusCode for ${entry.key}; backing off")
+        }
+        _pendingOffers.remove(callId)
+        _answerFingerprints.remove(callId)
+        transactions.entries.removeIf { it.value.endsWith(callId) }
+        RcsSipTransport.cleanupSession(callId)
+    }
+
+    /** True when [conversationId] is in dialog-error backoff (skip fast re-INVITE). */
+    fun inDialogBackoff(conversationId: String): Boolean {
+        val until = backoffUntil[conversationId] ?: return false
+        if (System.currentTimeMillis() >= until) {
+            backoffUntil.remove(conversationId)
+            return false
+        }
+        return true
+    }
+
+    private val backoffUntil = ConcurrentHashMap<String, Long>()
+
+    /** Post-dialog-error quiet period before fast session re-establishment. */
+    private const val DIALOG_ERROR_BACKOFF_MS = 5 * 60 * 1000L
 
     /**
      * Route an inbound SIP request: INVITE stashes the offer and starts an
@@ -529,6 +515,17 @@ object RcsSessionManager {
             "BYE" -> {
                 val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId }
                 if (entry != null) _sessions.value = _sessions.value - entry.key
+                null
+            }
+            "ACK" -> {
+                // ACK to our 200 OK: the incoming dialog is confirmed. Match
+                // by Call-ID (the session was stored under the sender id).
+                val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId }
+                if (entry != null) {
+                    _sessions.value = _sessions.value + (
+                        entry.key to entry.value.copy(confirmed = true)
+                        )
+                }
                 null
             }
             "MESSAGE" -> {
@@ -604,7 +601,7 @@ object RcsSessionManager {
      * `TCP/MSRP`. The media proto/paths always agree (never a TLS path on a
      * plaintext `m=` line).
      */
-    private fun buildSdpOffer(
+    internal fun buildSdpOffer(
         localIp: String?,
         listenPath: String?,
         tlsFingerprint: String? = null,
@@ -647,7 +644,7 @@ object RcsSessionManager {
      * `msrps://`, or `a=fingerprint`) gets a TLS answer with our
      * fingerprint; otherwise plaintext.
      */
-    private fun buildSdpAnswer(
+    internal fun buildSdpAnswer(
         localIp: String?,
         passivePath: String? = null,
         secure: Boolean = false,
@@ -702,6 +699,63 @@ object RcsSessionManager {
         return sdp.contains("TCP/TLS/MSRP", ignoreCase = true) ||
             Regex("a=path:msrps://", RegexOption.IGNORE_CASE).containsMatchIn(sdp) ||
             RcsMsrpTls.parseFingerprint(sdp) != null
+    }
+
+    /** True when [callId] matches a live session dialog (re-INVITE/UPDATE target). */
+    fun isKnownDialog(callId: String): Boolean =
+        _sessions.value.values.any { it.callId == callId }
+
+    /**
+     * Apply a re-INVITE's SDP to a live dialog (§1.5): update the bound
+     * path/setup/TLS to the new offer. Media handover (socket swap) is the
+     * sync service's job — it observes the session map. Never throws.
+     */
+    fun onReInvite(callId: String, sdp: String) {
+        val entry = _sessions.value.entries.firstOrNull { it.value.callId == callId } ?: return
+        val session = entry.value
+        val (localPath, remotePath) = parseSdpPaths(sdp)
+        val setup = parseSdpSetup(sdp) ?: session.msrpSetup
+        val secure = isSecureSdp(sdp)
+        RcsMsrpTls.parseFingerprint(sdp)?.second?.let { fp ->
+            _answerFingerprints[callId] = fp
+            RcsMsrpListen.notePeerFingerprint(entry.key, fp)
+        }
+        _sessions.value = _sessions.value + (entry.key to session.copy(
+            msrpRemotePath = remotePath ?: session.msrpRemotePath,
+            msrpSetup = setup,
+            msrpSecure = secure,
+            msrpLocalPath = localPath ?: session.msrpLocalPath,
+        ))
+        Log.i(TAG, "Re-INVITE applied for ${entry.key} setup=$setup secure=$secure")
+    }
+
+    /**
+     * Current SDP for [conversationId]'s session (for UPDATE/re-INVITE
+     * answers, §1.5): re-emits our bound path + setup + TLS state. Null when
+     * no session exists.
+     */
+    fun currentSdpFor(conversationId: String): ByteArray? {
+        val session = _sessions.value[conversationId] ?: return null
+        val cfg = RcsSipTransport.lastConfigSnapshot()
+        val ip = cfg?.msrpLocalIp?.takeIf { it.isNotBlank() } ?: "0.0.0.0"
+        val path = session.msrpLocalPath ?: return null
+        val port = RcsMsrp.parseMsrpPath(path)?.second ?: 2855
+        // We are the answerer side here: our role is passive when the peer
+        // connects to us (their setup=active), else active (we connect out).
+        val setup = if (session.msrpSetup == MsrpSetup.ACTIVE) "passive" else "active"
+        val proto = if (session.msrpSecure) "TCP/TLS/MSRP" else "TCP/MSRP"
+        val sdp = buildString {
+            append("v=0\r\n")
+            append("o=- ${System.currentTimeMillis()} ${System.currentTimeMillis()} IN IP4 $ip\r\n")
+            append("s=-\r\n")
+            append("c=IN IP4 $ip\r\n")
+            append("t=0 0\r\n")
+            append("m=message $port $proto *\r\n")
+            append("a=path:$path\r\n")
+            append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
+            append("a=setup:$setup\r\n")
+        }
+        return sdp.toByteArray(Charsets.UTF_8)
     }
 
     /** Hosted-focus lookup: which focus a To-URI/SDP blob targets. */

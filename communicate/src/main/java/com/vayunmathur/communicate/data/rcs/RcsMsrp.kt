@@ -29,6 +29,14 @@ object RcsMsrp {
     private const val TAG = "RcsMsrp"
 
     /**
+     * Process-wide fallback for inbound MSRP chunks arriving on transient
+     * connections (e.g. FT-over-MSRP transfer sockets). The sync service sets
+     * this to route into the inbox; unset (null) drops.
+     */
+    @Volatile
+    var onInboundFallback: ((conversationId: String, contentType: String, body: ByteArray) -> Unit)? = null
+
+    /**
      * A persistent MSRP connection for one session: one socket, reused across
      * SENDs, with a reader loop feeding inbound chunks to [onChunk].
      * Create via [connect]; [close] on BYE / teardown.
@@ -44,39 +52,128 @@ object RcsMsrp {
         internal fun launchReader(block: suspend () -> Unit) {
             readerScope.launch { block() }
         }
+
+        /** Last I/O time (any direction); drives the keepalive (§2.5). */
+        @Volatile internal var lastActivityMs: Long = System.currentTimeMillis()
+
         /**
-         * Send one CPIM payload as an MSRP SEND chunk. Returns true on a 200
-         * response. Thread-safe (single-writer lock).
+         * Send one CPIM payload as chunked MSRP SENDs (§2.2): splits large
+         * payloads into `Byte-Range` slices sharing one Message-ID, awaiting
+         * a 2xx response per chunk. Returns true when every chunk was acked.
+         * Thread-safe (single-writer lock). Acks are completed by the reader
+         * loop ([pendingAcks]) — never read here, the stream is single-reader.
          */
         private val writeLock = Any()
 
-        fun sendCpim(payload: ByteArray, contentType: String = "message/cpim"): Boolean {
-            if (closed) return false
+        suspend fun sendCpim(payload: ByteArray, contentType: String = "message/cpim"): Boolean {
+            if (closed || payload.isEmpty()) return false
             return runCatching {
-                val txid = UUID.randomUUID().toString().replace("-", "").take(12)
-                val messageId = UUID.randomUUID().toString()
-                val head = buildString {
-                    append("MSRP $txid SEND\r\n")
-                    append("To-Path: $remotePath\r\n")
-                    append("From-Path: $localPath\r\n")
-                    append("Message-ID: $messageId\r\n")
-                    append("Byte-Range: 1-${payload.size}/${payload.size}\r\n")
-                    append("Failure-Report: yes\r\n")
-                    append("Success-Report: no\r\n")
-                    append("Content-Type: $contentType\r\n")
-                }
-                synchronized(writeLock) {
-                    val out = socket.getOutputStream()
-                    out.write(head.toByteArray(Charsets.UTF_8))
-                    out.write("\r\n".toByteArray(Charsets.UTF_8))
-                    out.write(payload)
-                    out.write("\r\n-------$txid\$\r\n".toByteArray(Charsets.UTF_8))
-                    out.flush()
+                val chunks = RcsMsrpFraming.splitSend(
+                    toPath = remotePath,
+                    fromPath = localPath,
+                    payload = payload,
+                    contentType = contentType,
+                )
+                for (chunk in chunks) {
+                    val ack = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                    synchronized(writeLock) {
+                        if (closed) return false
+                        pendingAcks[chunk.txid] = ack
+                        runCatching {
+                            val out = socket.getOutputStream()
+                            out.write(RcsMsrpFraming.serializeChunk(chunk))
+                            out.flush()
+                            lastActivityMs = System.currentTimeMillis()
+                        }.onFailure {
+                            pendingAcks.remove(chunk.txid)
+                            throw it
+                        }
+                    }
+                    val ok = try {
+                        kotlinx.coroutines.withTimeout(10_000L) { ack.await() }
+                    } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+                        false
+                    }
+                    pendingAcks.remove(chunk.txid)
+                    if (!ok) return false
                 }
                 true
             }.getOrElse {
                 Log.w(TAG, "MSRP chunk send failed", it)
                 false
+            }
+        }
+
+        /**
+         * Chunk ack futures, keyed by SEND txid. Completed by the reader loop
+         * when the matching response arrives; senders await with timeout.
+         */
+        internal val pendingAcks =
+            java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.CompletableDeferred<Boolean>>()
+
+        /** Inbound REPORT notifications: (messageId, ns, code, reason). */
+        internal val inboundReports =
+            java.util.concurrent.ConcurrentLinkedQueue<ReportNotice>()
+
+        internal data class ReportNotice(
+            val messageId: String,
+            val namespace: Int,
+            val code: Int,
+            val reason: String,
+        )
+
+        /** Send a keepalive empty SEND (§2.5). Best-effort. */
+        internal fun sendKeepalive(): Boolean {
+            if (closed) return false
+            return runCatching {
+                synchronized(writeLock) {
+                    val out = socket.getOutputStream()
+                    out.write(RcsMsrpFraming.buildKeepalive(remotePath, localPath))
+                    out.flush()
+                    lastActivityMs = System.currentTimeMillis()
+                }
+                true
+            }.getOrDefault(false)
+        }
+
+        /** Emit a REPORT for [messageId] (§2.1). Best-effort. */
+        internal fun sendReport(
+            messageId: String,
+            statusCode: Int,
+            reason: String,
+            byteRange: String,
+        ): Boolean {
+            if (closed) return false
+            return runCatching {
+                synchronized(writeLock) {
+                    val out = socket.getOutputStream()
+                    out.write(
+                        RcsMsrpFraming.buildReport(
+                            toPath = remotePath,
+                            fromPath = localPath,
+                            messageId = messageId,
+                            statusCode = statusCode,
+                            reason = reason,
+                            byteRange = byteRange,
+                        ),
+                    )
+                    out.flush()
+                    lastActivityMs = System.currentTimeMillis()
+                }
+                true
+            }.getOrDefault(false)
+        }
+
+        /** Start the idle keepalive job (§2.5): empty SEND when quiet >60s. */
+        internal fun launchKeepalive() {
+            readerScope.launch {
+                while (!closed) {
+                    kotlinx.coroutines.delay(30_000L)
+                    if (closed) break
+                    if (System.currentTimeMillis() - lastActivityMs >= 60_000L) {
+                        sendKeepalive()
+                    }
+                }
             }
         }
 
@@ -108,6 +205,7 @@ object RcsMsrp {
     ): MsrpConnection {
         val conn = MsrpConnection(socket, localPath, remotePath)
         conn.launchReader { readLoop(conn, socket, onChunk, head.replayBytes()) }
+        conn.launchKeepalive()
         return conn
     }
 
@@ -163,6 +261,7 @@ object RcsMsrp {
             // Reader loop: parse SEND chunks, auto-200 them, deliver bodies.
             // Owned by the connection; dies on close.
             conn.launchReader { readLoop(conn, socket, onChunk) }
+            conn.launchKeepalive()
             conn
         }.getOrElse {
             Log.w(TAG, "MSRP connect failed", it)
@@ -226,6 +325,13 @@ object RcsMsrp {
                         }
                         // Consume the end-marker line.
                         runCatching { input.readLine() }
+                        conn.lastActivityMs = System.currentTimeMillis()
+                        // Keepalive empty SEND (§2.5): ack quietly, no delivery.
+                        val range = headers["byte-range"]
+                        if (range == RcsMsrpFraming.KEEPALIVE_RANGE) {
+                            sendResponse(socket, txid, 200, "OK", headers["from-path"].orEmpty())
+                            continue
+                        }
                         // Auto-200 the peer SEND (RFC 4975 §7.1: To-Path echoes
                         // the sender's From-Path, From-Path is our path).
                         val peerFrom = headers["from-path"].orEmpty()
@@ -236,7 +342,6 @@ object RcsMsrp {
                             val buf = reassembly.getOrPut(msgId) { ByteArrayOutputStream2() }
                             buf.write(bodyBytes)
                             // Single-chunk fast path: Byte-Range 1-N/N delivers now.
-                            val range = headers["byte-range"]
                             if (range == null || isCompleteRange(range)) {
                                 reassembly.remove(msgId)
                                 val complete = buf.toBytes()
@@ -245,9 +350,52 @@ object RcsMsrp {
                         } else if (bodyBytes != null && bodyBytes.isNotEmpty()) {
                             onChunk(contentType, bodyBytes)
                         }
+                    } else if (method.equals("REPORT", ignoreCase = true)) {
+                        // Inbound REPORT (§2.1): consume through the end-marker,
+                        // queue the notice for the sync service (delivery
+                        // correlation), no auto-response needed.
+                        var guard = 0
+                        while (guard++ < 32) {
+                            val l = runCatching { input.readLine() }.getOrNull() ?: break
+                            if (l.startsWith("-------$txid")) break
+                        }
+                        conn.lastActivityMs = System.currentTimeMillis()
+                        val msgId = headers["message-id"].orEmpty()
+                        val status = headers["status"]?.let { RcsMsrpFraming.parseStatus(it) }
+                        if (msgId.isNotEmpty() && status != null) {
+                            conn.inboundReports.add(
+                                MsrpConnection.ReportNotice(
+                                    messageId = msgId,
+                                    namespace = status.first,
+                                    code = status.second,
+                                    reason = status.third,
+                                ),
+                            )
+                        }
+                    } else if (method.equals("AUTH", ignoreCase = true)) {
+                        // MSRP auth is not negotiated on this line (§2.3):
+                        // explicit 501, never silent. Consume the frame first.
+                        var guard = 0
+                        while (guard++ < 32) {
+                            val l = runCatching { input.readLine() }.getOrNull() ?: break
+                            if (l.startsWith("-------$txid")) break
+                        }
+                        val peerFrom = headers["from-path"].orEmpty()
+                        sendAuthNotImplemented(socket, txid, peerFrom)
                     } else {
-                        // Responses to our SENDs (handled inline by sendCpim today).
-                        runCatching { input.readLine() }
+                        // Responses to our SENDs: complete the chunk ack future
+                        // (§2.2). Consume through the end-marker.
+                        val parsed = RcsMsrpFraming.parseResponseStart(line)
+                        var guard = 0
+                        while (guard++ < 32) {
+                            val l = runCatching { input.readLine() }.getOrNull() ?: break
+                            if (l.startsWith("-------$txid")) break
+                        }
+                        conn.lastActivityMs = System.currentTimeMillis()
+                        if (parsed != null) {
+                            conn.pendingAcks.remove(parsed.first)
+                                ?.complete(parsed.second in 200..299)
+                        }
                     }
                 }
             }
@@ -309,6 +457,16 @@ object RcsMsrp {
         }
     }
 
+    /** 501 to an MSRP AUTH attempt (§2.3: auth is never negotiated here). */
+    private fun sendAuthNotImplemented(socket: java.net.Socket, txid: String, toPath: String) {
+        runCatching {
+            val out = socket.getOutputStream()
+            out.write(RcsMsrpFraming.buildErrorResponse(toPath, txid, 501, "Not Implemented"))
+            out.flush()
+        }
+        Log.i(TAG, "Rejected MSRP AUTH with 501 (tx=$txid)")
+    }
+
     /** Minimal byte buffer (avoids java.io.ByteArrayOutputStream import weight). */
     private class ByteArrayOutputStream2 {
         private var buf = ByteArray(1024)
@@ -332,9 +490,9 @@ object RcsMsrp {
 
     /**
      * Send [payload] (CPIM bytes) over an MSRP session bound to [session].
-     * Opens a TCP socket to the remote path when needed (IMS PDN preferred,
-     * see [connect]; TLS when [RcsSession.msrpSecure]). Returns true on a
-     * 200 response to our SEND.
+     * Opens a socket to the remote path when needed (IMS PDN preferred, TLS
+     * when [RcsSession.msrpSecure]), chunked per §2.2. Returns true when
+     * every chunk got a 2xx.
      *
      * One-shot fallback; prefer [connect] for established sessions.
      */
@@ -349,18 +507,13 @@ object RcsMsrp {
         val localPath = session.msrpLocalPath ?: "msrp://local.invalid/${UUID.randomUUID()};tcp"
         runCatching {
             val (host, port) = parseMsrpPath(remotePath) ?: return@runCatching false
-            val txid = UUID.randomUUID().toString().replace("-", "").take(12)
-            val messageId = UUID.randomUUID().toString()
-            val chunk = buildString {
-                append("MSRP $txid SEND\r\n")
-                append("To-Path: $remotePath\r\n")
-                append("From-Path: $localPath\r\n")
-                append("Message-ID: $messageId\r\n")
-                append("Byte-Range: 1-${payload.size}/${payload.size}\r\n")
-                append("Failure-Report: yes\r\n")
-                append("Success-Report: no\r\n")
-                append("Content-Type: $contentType\r\n")
-            }
+            val chunks = RcsMsrpFraming.splitSend(
+                toPath = remotePath,
+                fromPath = localPath,
+                payload = payload,
+                contentType = contentType,
+            )
+            if (chunks.isEmpty()) return@runCatching false
             val socket = if (session.msrpSecure) {
                 val peerFp = peerFingerprintFor(session) ?: return@runCatching false
                 RcsMsrpTls.clientSocket(context, host, port, peerFp)
@@ -370,15 +523,30 @@ object RcsMsrp {
                     ?: return@runCatching false
             }
             socket.use { s ->
+                s.soTimeout = 10_000
                 val out = s.getOutputStream()
-                out.write(chunk.toByteArray(Charsets.UTF_8))
-                out.write("\r\n".toByteArray(Charsets.UTF_8))
-                out.write(payload)
-                out.write("\r\n-------$txid\$\r\n".toByteArray(Charsets.UTF_8))
-                out.flush()
-                val reply = s.getInputStream().bufferedReader(Charsets.UTF_8).readLine()
-                    .orEmpty()
-                reply.contains(" 200 ")
+                val input = s.getInputStream().bufferedReader(Charsets.UTF_8)
+                for (chunk in chunks) {
+                    out.write(RcsMsrpFraming.serializeChunk(chunk))
+                    out.flush()
+                    // Await this chunk's response (responses are FIFO).
+                    var ok = false
+                    var guard = 0
+                    while (guard++ < 16) {
+                        val line = runCatching { input.readLine() }.getOrNull() ?: break
+                        val parsed = RcsMsrpFraming.parseResponseStart(line) ?: continue
+                        if (parsed.first != chunk.txid) continue
+                        var end = 0
+                        while (end++ < 32) {
+                            val l = runCatching { input.readLine() }.getOrNull() ?: break
+                            if (l.startsWith("-------${chunk.txid}")) break
+                        }
+                        ok = parsed.second in 200..299
+                        break
+                    }
+                    if (!ok) return@runCatching false
+                }
+                true
             }
         }.getOrElse {
             Log.w(TAG, "MSRP send failed", it)

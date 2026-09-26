@@ -45,8 +45,62 @@ object RcsCapabilityExchange {
      */
     suspend fun isContactRcsCapable(context: Context, e164: String): Boolean {
         if (!RcsFeature.enabled || e164.isBlank()) return false
+        // Fast path: single-contact availability (cheaper than capabilities,
+        // §7.3). Falls back to the full query when the bridge is missing.
+        if (runCatching { isContactAvailable(context, e164) }.getOrDefault(false)) return true
         val results = queryCapabilities(context, listOf(e164))
         return results[e164] == true
+    }
+
+    /**
+     * Single-contact availability via `requestAvailability` (§7.3): cheaper
+     * than `requestCapabilities` (presence-style, no feature-tag fetch).
+     * Fail-closed false on any error. Throws SecurityException/ImsException
+     * for the caller to map (mirrors the capabilities path).
+     */
+    private suspend fun isContactAvailable(context: Context, e164: String): Boolean {
+        val app = context.applicationContext
+        val subId = SubscriptionManager.getDefaultSmsSubscriptionId()
+        if (!SubscriptionManager.isValidSubscriptionId(subId)) return false
+        val ims = app.getSystemService(ImsManager::class.java) ?: return false
+        val adapter = runCatching { ims.getImsRcsManager(subId).getUceAdapter() }.getOrNull()
+            ?: return false
+        val uri = Uri.fromParts("tel", e164, null)
+        val caps: List<Map<String, Any?>> = suspendCancellableCoroutine { cont ->
+            val collected = mutableListOf<Map<String, Any?>>()
+            val bridged: Boolean = try {
+                RcsHiddenApi.requestUceAvailability(
+                    adapter = adapter,
+                    contactUri = uri,
+                    executor = executor,
+                    callback = object : RcsHiddenApi.UceCallback {
+                        override fun onCapabilitiesReceived(caps: List<*>) {
+                            for (cap in caps) {
+                                readCapability(cap)?.let { collected += it }
+                            }
+                        }
+
+                        override fun onComplete() {
+                            if (cont.isActive) cont.resume(collected.toList())
+                        }
+
+                        override fun onError(errorCode: Int, retryAfterMillis: Long) {
+                            Log.w(TAG, "UCE availability error code=$errorCode")
+                            if (cont.isActive) cont.resume(collected.toList())
+                        }
+                    },
+                )
+            } catch (e: SecurityException) {
+                uceAvailable = false
+                if (cont.isActive) cont.resume(emptyList())
+                false
+            } catch (e: ImsException) {
+                if (cont.isActive) cont.resume(emptyList())
+                false
+            }
+            if (!bridged && cont.isActive) cont.resume(collected.toList())
+        }
+        return caps.any { isStrictlyCapable(it) }
     }
 
     /**
@@ -151,5 +205,18 @@ object RcsCapabilityExchange {
             return tags.any { it.contains("cpm.session", ignoreCase = true) }
         }
         return true
+    }
+
+    /**
+     * Strict variant for the availability fast path (§7.3): presence-style
+     * FOUND without CPM tags does NOT short-circuit true (an RCS-presence
+     * contact may still lack the CPM session tag — the full query decides).
+     */
+    private fun isStrictlyCapable(cap: Map<String, Any?>): Boolean {
+        if (cap["result"] as? Int != REQUEST_RESULT_FOUND) return false
+        if (cap["mechanism"] as? Int != CAPABILITY_MECHANISM_OPTIONS) return false
+        @Suppress("UNCHECKED_CAST")
+        val tags = cap["tags"] as? Set<String> ?: emptySet()
+        return tags.any { it.contains("cpm.session", ignoreCase = true) }
     }
 }

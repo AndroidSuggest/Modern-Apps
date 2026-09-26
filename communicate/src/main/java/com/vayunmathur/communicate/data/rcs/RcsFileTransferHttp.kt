@@ -125,6 +125,11 @@ object RcsFileTransferHttp {
      * Send a file to [recipient]: upload, then a CPIM FT message carrying the
      * URL + metadata, then cache the outgoing row. Returns true when the SIP
      * leg was accepted.
+     *
+     * Prefers an established MSRP session (§4.4): the bytes ride chunked
+     * SENDs (with resume via REPORT correlation) and the descriptor carries
+     * a JPEG thumbnail for images, so the far end renders instantly without
+     * a download round-trip.
      */
     suspend fun sendFile(
         context: Context,
@@ -134,6 +139,10 @@ object RcsFileTransferHttp {
         caption: String = "",
     ): Boolean = withContext(Dispatchers.IO) {
         if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return@withContext false
+        // MSRP path first when a session is bound.
+        if (sendFileOverMsrp(context, repository, recipient, attachment, caption)) {
+            return@withContext true
+        }
         val url = upload(context, attachment) ?: return@withContext false
         val ftCpim = buildString {
             append("File-URL: $url\r\n")
@@ -159,6 +168,121 @@ object RcsFileTransferHttp {
             )
         }
         ok
+    }
+
+    /**
+     * FT-over-MSRP (§4.4): when [recipient] has a bound MSRP session, send
+     * the file bytes as chunked SENDs (resume via REPORT correlation is
+     * inherent — chunks ack individually in `sendCpim`) followed by a CPIM
+     * descriptor carrying metadata + a JPEG thumbnail for images. Falls back
+     * (false) when no session/connection exists so the caller tries HTTP.
+     */
+    private suspend fun sendFileOverMsrp(
+        context: Context,
+        repository: CommunicateRepository,
+        recipient: String,
+        attachment: CommunicateAttachment,
+        caption: String,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!RcsFeature.enabled) return@withContext false
+        val session = RcsSessionManager.sessionFor(recipient)
+            ?.takeIf { it.msrpRemotePath != null } ?: return@withContext false
+        val conn = RcsMsrpConnectionFor(context, session) ?: return@withContext false
+        runCatching {
+            val bytes = context.contentResolver.openInputStream(attachment.contentUri.toUri())
+                ?.use { it.readBytes() }?.takeIf { it.isNotEmpty() } ?: return@runCatching false
+            // 1. File bytes as application/octet-stream chunks.
+            val fileCpim = buildFileCpim(
+                fileName = attachment.fileName ?: "file",
+                mime = attachment.mimeType,
+                size = bytes.size.toLong(),
+                caption = caption,
+            ).toByteArray(Charsets.UTF_8)
+            // 2. Thumbnail for images (small JPEG, base64 in the descriptor).
+            val thumbB64 = if (attachment.mimeType.startsWith("image/", ignoreCase = true)) {
+                makeThumbnail(bytes)?.let {
+                    android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP)
+                }
+            } else {
+                null
+            }
+            val descriptor = buildString {
+                append("File-Name: ${attachment.fileName ?: "file"}\r\n")
+                append("File-MIME: ${attachment.mimeType}\r\n")
+                append("File-Size: ${bytes.size}\r\n")
+                if (!thumbB64.isNullOrBlank()) append("File-Thumb: $thumbB64\r\n")
+                if (caption.isNotBlank()) append("\r\n$caption")
+            }
+            if (!conn.sendCpim(fileCpim, "message/cpim")) return@runCatching false
+            if (!conn.sendCpim(descriptor.toByteArray(Charsets.UTF_8), "message/cpim")) {
+                return@runCatching false
+            }
+            repository.cacheOutgoingRcsFile(
+                context = context,
+                conversationId = recipient,
+                body = caption.ifBlank { attachment.fileName ?: "[file]" },
+                messageId = "local-msrp-ft-${UUID.randomUUID()}",
+                ftUrl = "msrp:${session.callId}",
+                ftMime = attachment.mimeType,
+            )
+            conn.close()
+            true
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Live MSRP connection for [session]'s conversation, or null. Reuses the
+     * sync service's connection when available is impossible here (no service
+     * reference) — so this opens a short-lived connection for the transfer.
+     * Prefer the persistent map when calling from service-owned code.
+     */
+    private suspend fun RcsMsrpConnectionFor(
+        context: Context,
+        session: com.vayunmathur.communicate.data.rcs.RcsSession,
+    ): RcsMsrp.MsrpConnection? = withContext(Dispatchers.IO) {
+        // One-shot connect for the transfer. Inbound chunks arriving on this
+        // socket during the transfer window forward to the process-wide
+        // dispatcher (set by the sync service) so nothing is dropped; the
+        // connection closes when the transfer scope ends (see caller).
+        val conversationId = session.conversationId
+        RcsMsrp.connect(session, context) { contentType, body ->
+            RcsMsrp.onInboundFallback?.invoke(conversationId, contentType, body)
+        }
+    }
+
+    /** CPIM file descriptor (RCC.07 file-selector style metadata block). */
+    internal fun buildFileCpim(fileName: String, mime: String, size: Long, caption: String): String =
+        buildString {
+            append("File-Name: $fileName\r\n")
+            append("File-MIME: $mime\r\n")
+            append("File-Size: $size\r\n")
+            append("Content-Type: application/octet-stream\r\n")
+            if (caption.isNotBlank()) append("\r\n$caption")
+        }
+
+    /**
+     * Downscale [imageBytes] to a ≤320px JPEG thumbnail. Null when undecodable
+     * or on any failure. Mirrors the WhatsApp avatar pattern (platform
+     * BitmapFactory, recycled).
+     */
+    internal fun makeThumbnail(imageBytes: ByteArray): ByteArray? {
+        return runCatching {
+            val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, opts)
+            if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
+            var sample = 1
+            while (opts.outWidth / sample > 320 || opts.outHeight / sample > 320) sample *= 2
+            val decode = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+            val bmp = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, decode)
+                ?: return null
+            val out = java.io.ByteArrayOutputStream()
+            try {
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
+                out.toByteArray().takeIf { it.isNotEmpty() }
+            } finally {
+                bmp.recycle()
+            }
+        }.getOrNull()
     }
 
     /** Parse an inbound FT CPIM body into [RcsFtInfo], or null. */
@@ -204,7 +328,8 @@ object RcsFileTransferHttp {
     /**
      * Digest Authorization header from a WWW-Authenticate challenge. [password]
      * is the GBA-derived base64 key when bootstrapped, empty otherwise (the
-     * plain-digest fallback).
+     * plain-digest fallback). Hash construction lives in [RcsGbaAuth] (shared
+     * with SIP challenge retries).
      */
     private fun digestAuthHeader(
         challenge: String,
@@ -212,19 +337,13 @@ object RcsFileTransferHttp {
         uri: String,
         username: String,
         password: String = "",
-    ): String {
-        if (!challenge.contains("Digest", ignoreCase = true)) return ""
-        fun param(name: String): String =
-            Regex("$name=\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(challenge)
-                ?.groupValues?.getOrNull(1).orEmpty()
-        val realm = param("realm")
-        val nonce = param("nonce")
-        if (realm.isBlank() || nonce.isBlank()) return ""
-        val cnonce = UUID.randomUUID().toString().replace("-", "").take(16)
-        val response = RcsGbaAuth.digestResponse(username, password, realm, nonce, method, uri, cnonce)
-        return "Digest username=\"$username\", realm=\"$realm\", nonce=\"$nonce\", uri=\"$uri\", " +
-            "response=\"$response\", qop=auth, nc=00000001, cnonce=\"$cnonce\""
-    }
+    ): String = RcsGbaAuth.digestAuthorizationHeader(
+        challenge = challenge,
+        method = method,
+        uri = uri,
+        username = username,
+        password = password,
+    )
 
     /** Pull the FT content-server URI out of RCS config XML (ftHTTPCSURI). */
     fun parseContentServer(configXml: ByteArray): String? {

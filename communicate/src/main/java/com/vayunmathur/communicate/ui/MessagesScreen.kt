@@ -25,6 +25,8 @@ import com.vayunmathur.communicate.data.createEncryptedRcsGroup
 import com.vayunmathur.communicate.data.createSignalGroup
 import com.vayunmathur.communicate.data.createWhatsAppGroup
 import com.vayunmathur.communicate.data.deleteConversation
+import com.vayunmathur.communicate.data.rcs.RcsSessionManager
+import com.vayunmathur.communicate.data.rcs.hostGroupFocus
 import com.vayunmathur.communicate.data.getOrCreateSmsGroupThreadId
 import com.vayunmathur.communicate.data.getOrCreateSmsThreadId
 import com.vayunmathur.communicate.data.isWhatsAppConnected
@@ -194,9 +196,7 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                                 // messages relay through us. Best-effort — the
                                 // thread still opens for 1:1 fan-out sends.
                                 withContext(Dispatchers.IO) {
-                                    com.vayunmathur.communicate.data.rcs.RcsSessionManager.hostGroupFocus(
-                                        groupId, subject, contacts,
-                                    )
+                                    RcsSessionManager.hostGroupFocus(groupId, subject, contacts)
                                 }
                             }
                             onOpenThread(thread)

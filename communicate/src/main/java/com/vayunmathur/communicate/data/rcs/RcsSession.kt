@@ -44,6 +44,22 @@ data class RcsSession(
      * on either side); plaintext otherwise. Both socket directions honor it.
      */
     val msrpSecure: Boolean = false,
+    /**
+     * Next CSeq number for in-dialog requests (RFC 3261 §12.2: each new
+     * request in the dialog increments; ACK reuses the INVITE's CSeq).
+     * Starts at 2 — CSeq 1 is the initial INVITE.
+     */
+    val nextCseq: Long = 2L,
+    /** Peer's Contact URI from the 200 OK (in-dialog Request-URI). */
+    val remoteContact: String? = null,
+    /** Recorded route set from the 200 OK (`Record-Route`, reversed). */
+    val routeSet: List<String> = emptyList(),
+    /** True once the dialog is confirmed (ACK sent for our INVITE's 2xx, or
+     * ACK received for an incoming INVITE we answered). Unconfirmed dialogs
+     * exist for in-dialog MESSAGE but not media. */
+    val confirmed: Boolean = false,
+    /** CSeq number of our initial INVITE (echoed by the ACK, RFC 3261 §13). */
+    val inviteCseq: Long = 1L,
     val createdAt: Long = System.currentTimeMillis(),
 )
 

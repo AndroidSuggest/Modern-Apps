@@ -51,6 +51,7 @@ fun ConversationScreen(
     participants: List<String> = emptyList(),
     groupTitle: String? = null,
     onBack: () -> Unit,
+    onOpenRcsVerify: (String) -> Unit = {}, onOpenRcsGroupMembers: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -157,6 +158,10 @@ fun ConversationScreen(
         onRefreshTick = { refresh++ },
     )
 
+    // RCS peer typing indicator (§4.1): collect the typing flow for 1:1
+    // threads (keyed by sender E.164 = remoteId/address).
+    val isPeerTyping = rememberRcsPeerTyping(line, isGroup, remoteId, address)
+
     AppScaffold(
         title = {
             ConversationTitle(
@@ -167,6 +172,7 @@ fun ConversationScreen(
                 groupSubtitle = groupSubtitle.value,
                 address = address,
                 line = line,
+                isPeerTyping = isPeerTyping,
             )
         },
         onNavigateBack = onBack,
@@ -181,12 +187,19 @@ fun ConversationScreen(
                 groupTitle = groupTitle,
                 isUnknownContact = isUnknownContact,
                 onBack = onBack,
+                onOpenRcsVerify = onOpenRcsVerify,
+                onOpenRcsGroupMembers = onOpenRcsGroupMembers,
             )
         },
         bottomBar = {
             ComposeSmsRow(
                 draft = draft,
-                onDraftChange = { draft = it },
+                onDraftChange = {
+                    draft = it
+                    // Outbound typing (§4.1): throttled active/idle reports
+                    // on the RCS 1:1 line only.
+                    scope.sendRcsTyping(context, line, isGroup, remoteId, address, it)
+                },
                 attachments = selectedAttachments,
                 // Media and documents both: every line's send path already accepts an arbitrary content type,
                 // only this filter was stopping documents from being picked.

@@ -45,6 +45,7 @@ internal fun ConversationTitle(
     groupSubtitle: String?,
     address: String,
     line: CommunicateLine,
+    isPeerTyping: Boolean = false,
 ) {
     val displayTitle = if (isGroup) (groupTitle ?: title) else title
     Column {
@@ -58,7 +59,15 @@ internal fun ConversationTitle(
             )
             LineBadge(line, modifier = Modifier.padding(start = 8.dp))
         }
-        if (isGroup) {
+        if (isPeerTyping && !isGroup) {
+            Text(
+                stringResource(com.vayunmathur.communicate.R.string.rcs_typing),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else if (isGroup) {
             groupSubtitle?.let { subtitle ->
                 Text(
                     subtitle,
@@ -91,6 +100,8 @@ internal fun ConversationActions(
     groupTitle: String?,
     isUnknownContact: Boolean,
     onBack: () -> Unit,
+    onOpenRcsVerify: (String) -> Unit = {},
+    onOpenRcsGroupMembers: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -218,6 +229,28 @@ internal fun ConversationActions(
                         )
                     }
                 },
+            )
+        }
+        // Safety-number verification (1:1 RCS only).
+        if (!isGroup && line == CommunicateLine.Rcs &&
+            com.vayunmathur.communicate.data.rcs.RcsFeature.enabled
+        ) {
+            val peer = remoteId?.takeIf { it.isNotBlank() } ?: address
+            Item(
+                text = stringResource(R.string.rcs_verify_title),
+                leadingIcon = { com.vayunmathur.library.ui.IconLock() },
+                onClick = { onOpenRcsVerify(peer) },
+            )
+        }
+        // Group member management (RCS groups only).
+        if (isGroup && line == CommunicateLine.Rcs &&
+            com.vayunmathur.communicate.data.rcs.RcsFeature.enabled
+        ) {
+            val cid = remoteId?.takeIf { it.isNotBlank() } ?: address
+            Item(
+                text = stringResource(R.string.rcs_group_members_title),
+                leadingIcon = { com.vayunmathur.library.ui.IconPerson() },
+                onClick = { onOpenRcsGroupMembers(cid) },
             )
         }
         Item(

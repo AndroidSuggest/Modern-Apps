@@ -77,6 +77,12 @@ sealed interface Route : NavKey {
     @Serializable data object RcsStatus : Route
 
     @Serializable
+    data class RcsVerify(val peerE164: String) : Route
+
+    @Serializable
+    data class RcsGroupMembers(val conversationId: String) : Route
+
+    @Serializable
     data class Conversation(
         val threadId: Long,
         val address: String,
@@ -291,6 +297,18 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
                 onBack = { backStack.pop() },
             )
         }
+        entry<Route.RcsVerify>(metadata = ListDetailPage()) { route ->
+            com.vayunmathur.communicate.ui.rcs.RcsVerifyScreen(
+                peerE164 = route.peerE164,
+                onBack = { backStack.pop() },
+            )
+        }
+        entry<Route.RcsGroupMembers>(metadata = ListDetailPage()) { route ->
+            com.vayunmathur.communicate.ui.rcs.RcsGroupMembersScreen(
+                conversationId = route.conversationId,
+                onBack = { backStack.pop() },
+            )
+        }
         entry<Route.Conversation>(metadata = ListDetailPage() + MorphPage()) { route ->
             ConversationScreen(
                 threadId = route.threadId,
@@ -302,6 +320,8 @@ private fun CommunicateApp(initialDeepLink: DeepLink? = null) {
                 participants = route.participants,
                 groupTitle = route.groupTitle,
                 onBack = { backStack.pop() },
+                onOpenRcsVerify = { peer -> backStack.add(Route.RcsVerify(peer)) },
+                onOpenRcsGroupMembers = { cid -> backStack.add(Route.RcsGroupMembers(cid)) },
             )
         }
     }

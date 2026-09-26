@@ -104,6 +104,61 @@ internal object RcsHiddenApi {
         fun onError(errorCode: Int, retryAfterMillis: Long)
     }
 
+    /**
+     * `RcsUceAdapter#requestAvailability(Uri, Executor, CapabilitiesCallback)`
+     * (`@SystemApi`, hidden; verified against frameworks/base on main).
+     * Same callback interface as `requestCapabilities`, single contact.
+     * Cheaper than a full capability fetch — use for the send-path
+     * pre-check; full capabilities stay for group setup. Returns false when
+     * the bridge itself fails.
+     */
+    fun requestUceAvailability(
+        adapter: Any,
+        contactUri: android.net.Uri,
+        executor: java.util.concurrent.Executor,
+        callback: UceCallback,
+    ): Boolean {
+        if (!RcsFeature.enabled) return false
+        return runCatching {
+            val callbackClass = Class.forName("android.telephony.ims.RcsUceAdapter\$CapabilitiesCallback")
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                adapter.javaClass.classLoader,
+                arrayOf(callbackClass),
+            ) { _, method, args ->
+                when (method.name) {
+                    "onCapabilitiesReceived" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val caps = (args?.getOrNull(0) as? List<*>) ?: emptyList<Any>()
+                        callback.onCapabilitiesReceived(caps)
+                    }
+                    "onComplete" -> callback.onComplete()
+                    "onError" -> callback.onError(
+                        (args?.getOrNull(0) as? Int) ?: -1,
+                        (args?.getOrNull(1) as? Long) ?: 0L,
+                    )
+                    "toString" -> "RcsUceAvailabilityProxy"
+                    "hashCode" -> System.identityHashCode(callback)
+                    "equals" -> args?.getOrNull(0) === callback
+                    else -> null
+                }
+            }
+            val method = adapter.javaClass.getMethod(
+                "requestAvailability",
+                android.net.Uri::class.java,
+                java.util.concurrent.Executor::class.java,
+                callbackClass,
+            )
+            method.invoke(adapter, contactUri, executor, proxy)
+            true
+        }.getOrElse {
+            val cause = (it as? java.lang.reflect.InvocationTargetException)?.cause ?: it
+            Log.w(TAG, "requestAvailability failed", cause)
+            if (cause is SecurityException) throw cause
+            if (cause is ImsException) throw cause
+            false
+        }
+    }
+
     /** Dynamic-dispatch target for the provisioning proxy (config is raw XML bytes). */
     interface ProvisioningCallback {
         fun onConfigurationChanged(configXml: ByteArray)

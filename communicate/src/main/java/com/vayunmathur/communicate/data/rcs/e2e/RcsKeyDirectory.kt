@@ -19,6 +19,15 @@ import kotlinx.coroutines.withContext
  * crate layer, so rotation-on-publish keeps adds working.
  */
 object RcsKeyDirectory {
+    /** Latest package WE published, per local E.164 (safety numbers, §5.4). */
+    private val lastPublished = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+
+    /** Our latest published package for [localE164], or null. */
+    fun lastPublishedFor(localE164: String): ByteArray? {
+        if (!RcsFeature.enabled) return null
+        return lastPublished[localE164]
+    }
+
     /**
      * Publish our fresh key package to [recipientE164]'s 1:1 thread
      * (unencrypted pager-mode CPIM). Returns true when the SIP leg accepted.
@@ -27,6 +36,7 @@ object RcsKeyDirectory {
         withContext(Dispatchers.IO) {
             if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return@withContext false
             val kp = RcsE2E.freshKeyPackage(context, localE164) ?: return@withContext false
+            lastPublished[localE164] = kp
             // Key package bytes are binary — base64 the payload into the CPIM text.
             val b64 = android.util.Base64.encodeToString(kp, android.util.Base64.NO_WRAP)
             val body = "Content-Type: ${RcsE2E.CT_KEY_PACKAGE}\r\n\r\n$b64"

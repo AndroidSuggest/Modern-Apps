@@ -9,6 +9,7 @@ import com.vayunmathur.communicate.data.rcs.RcsMlsIdentity
 import com.vayunmathur.communicate.data.rcs.RcsSipTransport
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -50,6 +51,120 @@ object RcsE2E {
     const val CT_KEY_REQUEST = "application/x-rcs-keyrequest"
 
     private fun ByteArray.hex(): String = joinToString("") { "%02x".format(it) }
+
+    /**
+     * Per-conversation commit locks (§5.3): concurrent commits from two
+     * members fork the epoch. Our own commits serialize per group so we
+     * never fork ourselves; inbound epoch mismatches get one re-sync attempt
+     * in [decryptFor] before the payload is dropped.
+     */
+    private val commitLocks = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+
+    private fun commitLockFor(conversationId: String): kotlinx.coroutines.sync.Mutex =
+        commitLocks.getOrPut(conversationId) { kotlinx.coroutines.sync.Mutex() }
+
+    /**
+     * Safety-number fingerprint for a conversation peer (§5.4): SHA-256 of
+     * the peer's latest cached key package, grouped `XXXX XXXX …`.
+     *
+     * Closed-loop comparable: both apps fingerprint the same package bytes
+     * (our latest publication ↔ their cached copy), so matching safety
+     * numbers mean no MITM on the key directory. Null when no package is
+     * cached yet. For our own side see [mySafetyFingerprint].
+     */
+    suspend fun safetyFingerprint(context: Context, peerE164: String): String? =
+        withContext(Dispatchers.IO) {
+            if (!RcsFeature.enabled) return@withContext null
+            val pkg = RcsPeerKeys.get(peerE164) ?: return@withContext null
+            formatSafetyNumber(pkg)
+        }
+
+    /**
+     * Our own safety number: fingerprint of our latest published package
+     * ([RcsKeyDirectory.lastPublishedFor]), same grouping. Null before our
+     * first publication.
+     */
+    suspend fun mySafetyFingerprint(context: Context, localE164: String): String? =
+        withContext(Dispatchers.IO) {
+            if (!RcsFeature.enabled) return@withContext null
+            val pkg = RcsKeyDirectory.lastPublishedFor(localE164) ?: return@withContext null
+            formatSafetyNumber(pkg)
+        }
+
+    private fun formatSafetyNumber(bytes: ByteArray): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+        return digest.joinToString("") { "%02d".format(it.toInt() and 0xFF) }
+            .chunked(4).joinToString(" ")
+    }
+
+    /**
+     * Whether [e164]'s identity is user-verified (§5.4).
+     */
+    suspend fun isVerified(context: Context, e164: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!RcsFeature.enabled) return@withContext false
+            RcsDatabase.getDatabase(context).mlsIdentityDao().get(e164)?.verified == true
+        }
+
+    /**
+     * Mark [e164]'s identity verified/unverified (from the verify screen).
+     */
+    suspend fun setVerified(context: Context, e164: String, verified: Boolean) {
+        withContext(Dispatchers.IO) {
+            if (!RcsFeature.enabled) return@withContext
+            val db = RcsDatabase.getDatabase(context)
+            db.mlsIdentityDao().get(e164)?.let {
+                db.mlsIdentityDao().upsert(it.copy(verified = verified))
+            }
+        }
+    }
+
+    /**
+     * Check a peer's key package against their verified identity (§5.4).
+     * Returns true when the peer was previously VERIFIED (via the verify
+     * screen) and this package differs from the one recorded at verify time
+     * — i.e. a possible re-install or MITM, exactly Signal's safety-number
+     * change warning. Verification is cleared so the user must re-verify.
+     * Unverified peers always return false (nothing to compare against).
+     */
+    suspend fun checkPeerIdentityChange(
+        context: Context,
+        peerE164: String,
+        keyPackage: ByteArray,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!RcsFeature.enabled || keyPackage.isEmpty()) return@withContext false
+        val db = RcsDatabase.getDatabase(context)
+        val record = db.mlsIdentityDao().get(peerE164) ?: return@withContext false
+        if (!record.verified) return@withContext false
+        val sketch = java.security.MessageDigest.getInstance("SHA-256").digest(keyPackage)
+        // The verified record stores the package sketch witnessed at verify
+        // time in its identity bytes (see setVerifiedWithPackage).
+        if (!record.identity.contentEquals(sketch)) {
+            db.mlsIdentityDao().upsert(record.copy(verified = false))
+            return@withContext true
+        }
+        false
+    }
+
+    /**
+     * Verify [peerE164] against the currently cached package sketch (from
+     * the verify screen after comparing safety numbers out-of-band).
+     */
+    suspend fun setVerifiedWithPackage(context: Context, peerE164: String, keyPackage: ByteArray) {
+        withContext(Dispatchers.IO) {
+            if (!RcsFeature.enabled || keyPackage.isEmpty()) return@withContext
+            val db = RcsDatabase.getDatabase(context)
+            val sketch = java.security.MessageDigest.getInstance("SHA-256").digest(keyPackage)
+            db.mlsIdentityDao().upsert(
+                RcsMlsIdentity(
+                    e164 = peerE164,
+                    identity = sketch,
+                    updatedAt = System.currentTimeMillis(),
+                    verified = true,
+                ),
+            )
+        }
+    }
 
     /**
      * Our identity bytes for [e164], generating + persisting on first use.
@@ -106,11 +221,11 @@ object RcsE2E {
      * Remove members from [conversationId]'s MLS group by leaf index (see the
      * `removeMembers` JNI contract: ASCII decimal CSV). Sends the commit to
      * the group thread so remaining members ratchet forward — removed members
-     * can no longer decrypt. Persists the evolved snapshot.
+     * can no longer decrypt. Persists the evolved snapshot + pruned member
+     * map. Serialized per group (§5.3).
      *
-     * Leaf indices are crate-internal (join order); callers that track
-     * membership should map E.164 → index at add time. Returns true when the
-     * commit was accepted by the transport.
+     * Prefer [removeMembersByE164]; use this only when indices are already
+     * known. Returns true when the commit was accepted by the transport.
      */
     suspend fun removeMembers(
         context: Context,
@@ -121,20 +236,96 @@ object RcsE2E {
         if (!RcsFeature.enabled || !RustMlsCrypto.isAvailable || leafIndices.isEmpty()) {
             return@withContext false
         }
-        val identity = identityFor(context, e164) ?: return@withContext false
+        commitLockFor(conversationId).withLock {
+            val identity = identityFor(context, e164) ?: return@withLock false
+            val db = RcsDatabase.getDatabase(context)
+            val group = db.mlsGroupDao().getByConversation(conversationId) ?: return@withLock false
+            if (group.groupIdHex.startsWith("pending:")) return@withLock false
+            val groupId = group.groupIdHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val csv = leafIndices.distinct().sorted().joinToString(",")
+                .toByteArray(Charsets.US_ASCII)
+            val out = runCatching {
+                RustMlsCrypto.removeMembers(group.storage, identity, groupId, csv)
+            }.getOrNull() ?: return@withLock false
+            val storageOut = out.getOrNull(0) ?: group.storage
+            val commit = out.getOrNull(1) ?: return@withLock false
+            val droppedIdx = leafIndices.toSet()
+            db.mlsGroupDao().upsert(
+                group.copy(
+                    storage = storageOut,
+                    updatedAt = System.currentTimeMillis(),
+                    members = pruneMembers(group.members, droppedIdx),
+                ),
+            )
+            sendMlsEnvelope(context, conversationId, commit, CT_COMMIT)
+        }
+    }
+
+    /**
+     * Remove members by E.164 using the tracked leaf map (§5.2). Unknown
+     * E.164s (never added through this client) are ignored. Returns true
+     * when at least one member was removed and committed.
+     */
+    suspend fun removeMembersByE164(
+        context: Context,
+        e164: String,
+        conversationId: String,
+        peers: List<String>,
+    ): Boolean {
+        if (!RcsFeature.enabled || peers.isEmpty()) return false
         val db = RcsDatabase.getDatabase(context)
-        val group = db.mlsGroupDao().getByConversation(conversationId) ?: return@withContext false
-        if (group.groupIdHex.startsWith("pending:")) return@withContext false
-        val groupId = group.groupIdHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        val csv = leafIndices.distinct().sorted().joinToString(",")
-            .toByteArray(Charsets.US_ASCII)
-        val out = runCatching {
-            RustMlsCrypto.removeMembers(group.storage, identity, groupId, csv)
-        }.getOrNull() ?: return@withContext false
-        val storageOut = out.getOrNull(0) ?: group.storage
-        val commit = out.getOrNull(1) ?: return@withContext false
-        db.mlsGroupDao().upsert(group.copy(storage = storageOut, updatedAt = System.currentTimeMillis()))
-        sendMlsEnvelope(context, conversationId, commit, CT_COMMIT)
+        val group = db.mlsGroupDao().getByConversation(conversationId) ?: return false
+        val indexByMember = parseMembers(group.members)
+        val indices = peers.mapNotNull { indexByMember[it.trim()] }
+        if (indices.isEmpty()) return false
+        return removeMembers(context, e164, conversationId, indices)
+    }
+
+    /** Leaf index of [peer] in [conversationId]'s group, or null. */
+    suspend fun leafIndexFor(context: Context, conversationId: String, peer: String): Int? =
+        withContext(Dispatchers.IO) {
+            if (!RcsFeature.enabled) return@withContext null
+            val group = RcsDatabase.getDatabase(context).mlsGroupDao()
+                .getByConversation(conversationId) ?: return@withContext null
+            parseMembers(group.members)[peer.trim()]
+        }
+
+    /** Parse the `e164=index` CSV member map. */
+    internal fun parseMembers(csv: String): Map<String, Int> {
+        if (csv.isBlank()) return emptyMap()
+        return csv.split(",").mapNotNull { entry ->
+            val (member, idx) = entry.split("=", limit = 2).takeIf { it.size == 2 } ?: return@mapNotNull null
+            val index = idx.trim().toIntOrNull() ?: return@mapNotNull null
+            member.trim().takeIf { it.isNotEmpty() }?.to(index)
+        }.toMap()
+    }
+
+    /** Drop [droppedIdx] leaves from a member map, re-encoding the CSV. */
+    internal fun pruneMembers(csv: String, droppedIdx: Set<Int>): String =
+        parseMembers(csv).filterValues { it !in droppedIdx }
+            .entries.joinToString(",") { "${it.key}=${it.value}" }
+
+    /**
+     * Record added members' leaf indices. The crate assigns leaves in join
+     * order starting after our own leaf 0: for an N-member add to a group
+     * whose current max leaf is M, new leaves are M+1..M+N in package order.
+     * Best-effort (crate-internal, but stable for add-order tracking).
+     */
+    internal fun trackAddedMembers(
+        csv: String,
+        peerE164s: List<String>,
+    ): String {
+        val current = parseMembers(csv).toMutableMap()
+        var next = (current.values.maxOrNull() ?: -1) + 1
+        // Our own leaf is 0 when the map is empty (creator).
+        if (current.isEmpty()) next = 1
+        for (peer in peerE164s) {
+            val member = peer.trim()
+            if (member.isNotEmpty() && member !in current) {
+                current[member] = next++
+            }
+        }
+        return current.entries.joinToString(",") { "${it.key}=${it.value}" }
     }
 
     /**
@@ -304,12 +495,16 @@ object RcsE2E {
         val (commit, welcome) = createEncryptedGroup(
             context, localE164, conversationId, peerPackages.values.toList(),
         ) ?: return false
+        // Track leaf indices for later removal (§5.2).
+        trackGroupMembers(context, conversationId, peerPackages.keys.toList())
         var ok = sendMlsEnvelope(context, conversationId, commit, CT_COMMIT)
         for ((peer, _) in peerPackages) {
             ok = sendMlsEnvelope(context, peer, welcome, CT_WELCOME) && ok
         }
         // Rotate our key package now that the previous one may be consumed.
         freshKeyPackage(context, localE164)
+        // Replenish the published pool (§5.1).
+        replenishKeyPackages(context, peerPackages.keys.toList(), localE164)
         return ok
     }
 
@@ -329,12 +524,44 @@ object RcsE2E {
         if (!RcsFeature.enabled || !RustMlsCrypto.isAvailable) return false
         val (commit, welcome) = createEncryptedGroup(context, localE164, conversationId, listOf(peerKeyPackage))
             ?: return false
+        trackGroupMembers(context, conversationId, listOf(peerE164))
         // Commit → the (new) group thread; Welcome → the peer 1:1.
         val commitOk = sendMlsEnvelope(context, conversationId, commit, CT_COMMIT)
         val welcomeOk = sendMlsEnvelope(context, peerE164, welcome, CT_WELCOME)
         // Rotate our key package now that the previous one may be consumed.
         freshKeyPackage(context, localE164)
+        replenishKeyPackages(context, listOf(peerE164), localE164)
         return commitOk && welcomeOk
+    }
+
+    /**
+     * Merge [peers] into the tracked member map for [conversationId]'s group
+     * (§5.2). Best-effort; never throws.
+     */
+    private suspend fun trackGroupMembers(context: Context, conversationId: String, peers: List<String>) {
+        if (!RcsFeature.enabled || peers.isEmpty()) return
+        runCatching {
+            val db = RcsDatabase.getDatabase(context)
+            val group = db.mlsGroupDao().getByConversation(conversationId) ?: return
+            db.mlsGroupDao().upsert(
+                group.copy(
+                    members = trackAddedMembers(group.members, peers),
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    /**
+     * Key-package replenishment (§5.1): after consuming our published package
+     * in a setup, immediately publish a fresh one to the same peers so their
+     * cached pool stays warm and the next add doesn't stall on a round trip.
+     */
+    private suspend fun replenishKeyPackages(context: Context, peers: List<String>, localE164: String) {
+        if (!RcsFeature.enabled || !RustMlsCrypto.isAvailable || peers.isEmpty()) return
+        for (peer in peers) {
+            runCatching { RcsKeyDirectory.publishTo(context, localE164, peer) }
+        }
     }
 
     private suspend fun sendMlsEnvelope(

@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -23,6 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.rcs.RcsCapabilityExchange
+import com.vayunmathur.communicate.data.rcs.RcsFeature
+import com.vayunmathur.communicate.data.rcs.RcsMsrpListen
+import com.vayunmathur.communicate.data.rcs.RcsMsrpTls
 import com.vayunmathur.communicate.data.rcs.RcsProvisioning
 import com.vayunmathur.communicate.data.rcs.RcsRegistrationState
 import com.vayunmathur.communicate.data.rcs.RcsSipTransport
@@ -140,6 +144,31 @@ fun RcsRegistrationScreen(
                 } else {
                     "Config server: $lastUrl"
                 },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        // Media transport diagnostics (§6.2): IMS-PDN listen state + TLS
+        // identity fingerprint for manual verification.
+        val mediaState by produceState<String?>(initialValue = null, transportState, probeRuns) {
+            value = withContext(Dispatchers.IO) {
+                if (!RcsFeature.enabled) return@withContext null
+                val listen = if (RcsMsrpListen.isListening()) {
+                    "listening ${RcsMsrpListen.listenIp()}:${RcsMsrpListen.listenPort()}"
+                } else {
+                    "not listening (active-only)"
+                }
+                val tls = runCatching {
+                    RcsMsrpTls.ensureIdentity(context)?.fingerprint
+                }.getOrNull()
+                "MSRP: $listen\nTLS identity: ${tls ?: "unavailable (plaintext only)"}"
+            }
+        }
+        if (mediaState != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                mediaState!!,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

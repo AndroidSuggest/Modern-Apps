@@ -28,8 +28,9 @@ import com.vayunmathur.library.util.DatabaseMigrations
         RcsCachedMessage::class,
         RcsMlsIdentity::class,
         RcsMlsGroup::class,
+        RcsOutboxMessage::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 @ColumnTypeConverters(RcsTypeConverters::class)
@@ -38,6 +39,7 @@ abstract class RcsDatabase : RoomDatabase() {
     abstract fun cachedMessageDao(): RcsCachedMessageDao
     abstract fun mlsIdentityDao(): RcsMlsIdentityDao
     abstract fun mlsGroupDao(): RcsMlsGroupDao
+    abstract fun outboxDao(): RcsOutboxDao
 
     companion object : DatabaseMigrations {
         /**
@@ -61,7 +63,35 @@ abstract class RcsDatabase : RoomDatabase() {
             }
         }
 
-        override val migrations = listOf(MIGRATION_1_2)
+        /**
+         * v2 → v3: display-receipt correlation (`imdnId` on cached rows),
+         * deferred-delivery outbox, identity verification flag, MLS member
+         * leaf-index tracking. Additive only; existing rows get defaults.
+         */
+        private val MIGRATION_2_3 = object : androidx.room3.migration.Migration(2, 3) {
+            override suspend fun migrate(connection: androidx.sqlite.SQLiteConnection) {
+                connection.execSQL(
+                    "ALTER TABLE `rcs_cached_message` ADD COLUMN `imdnId` TEXT NOT NULL DEFAULT ''",
+                )
+                connection.execSQL(
+                    "ALTER TABLE `rcs_mls_identity` ADD COLUMN `verified` INTEGER NOT NULL DEFAULT 0",
+                )
+                connection.execSQL(
+                    "ALTER TABLE `rcs_mls_group` ADD COLUMN `members` TEXT NOT NULL DEFAULT ''",
+                )
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `rcs_outbox` (" +
+                        "`messageId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, `body` TEXT NOT NULL, " +
+                        "`attachments` TEXT NOT NULL, `attempts` INTEGER NOT NULL, " +
+                        "`nextRetryMs` INTEGER NOT NULL, `expiryMs` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`messageId`))",
+                )
+            }
+        }
+
+        override val migrations = listOf(MIGRATION_1_2, MIGRATION_2_3)
 
         fun getDatabase(context: Context): RcsDatabase =
             RcsRepository.get(context).database()
@@ -148,6 +178,12 @@ data class RcsCachedMessage(
     val ftMime: String? = null,
     /** Outgoing delivery status ordinal (MessageStatus ordinal). */
     val status: Int = 0,
+    /**
+     * Inbound `imdn.Message-ID` for this row (outbound rows carry their own
+     * id in [messageId]; inbound rows store the sender's id here so
+     * display/read reports can reference it, §4.2).
+     */
+    val imdnId: String = "",
 )
 
 @Dao
@@ -198,12 +234,15 @@ data class RcsMlsIdentity(
     @PrimaryKey val e164: String,
     val identity: ByteArray,
     val updatedAt: Long = 0L,
+    /** User-verified safety number (§5.4). Unverified by default. */
+    val verified: Boolean = false,
 )
 
 /**
  * One MLS group, keyed by hex-encoded MLS group id bytes. [storage] is the
  * opaque provider snapshot the crate needs on every call; [conversationId]
- * maps back to the RCS thread.
+ * maps back to the RCS thread. [members] tracks E.164 → leaf index
+ * (`e164=index` CSV) for member removal (§5.2).
  */
 @Entity(tableName = "rcs_mls_group")
 data class RcsMlsGroup(
@@ -212,6 +251,7 @@ data class RcsMlsGroup(
     val conversationId: String,
     val storage: ByteArray,
     val updatedAt: Long = 0L,
+    val members: String = "",
 )
 
 @Dao
@@ -242,4 +282,49 @@ interface RcsMlsGroupDao {
 
     @Query("DELETE FROM rcs_mls_group WHERE conversationId = :conversationId")
     suspend fun deleteByConversation(conversationId: String)
+}
+
+// -- Deferred-delivery outbox (§4.3) --
+
+/**
+ * A message that failed to send and waits for retry: pager text, FT
+ * reference, or group fan-out remainder. [kind] is `text` / `file` / `group`;
+ * [body] carries the text (or caption); [attachments] the content URIs CSV
+ * for files. Retried with backoff until [expiryMs], then marked failed.
+ */
+@Entity(tableName = "rcs_outbox")
+data class RcsOutboxMessage(
+    @PrimaryKey val messageId: String,
+    val conversationId: String,
+    val kind: String,
+    val body: String,
+    val attachments: String = "",
+    val attempts: Int = 0,
+    val nextRetryMs: Long,
+    val expiryMs: Long,
+    val createdAt: Long = 0L,
+)
+
+@Dao
+interface RcsOutboxDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(message: RcsOutboxMessage)
+
+    @Query("SELECT * FROM rcs_outbox WHERE nextRetryMs <= :nowMs ORDER BY nextRetryMs ASC LIMIT :limit")
+    suspend fun dueForRetry(nowMs: Long, limit: Int = 20): List<RcsOutboxMessage>
+
+    @Query("SELECT * FROM rcs_outbox WHERE messageId = :messageId LIMIT 1")
+    suspend fun get(messageId: String): RcsOutboxMessage?
+
+    @Query("DELETE FROM rcs_outbox WHERE messageId = :messageId")
+    suspend fun delete(messageId: String)
+
+    @Query("DELETE FROM rcs_outbox WHERE conversationId = :conversationId")
+    suspend fun deleteConversation(conversationId: String)
+
+    @Query("DELETE FROM rcs_outbox")
+    suspend fun deleteAll()
+
+    @Query("SELECT COUNT(*) FROM rcs_outbox")
+    suspend fun count(): Int
 }

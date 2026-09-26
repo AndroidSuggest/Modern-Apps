@@ -141,19 +141,31 @@ object RcsProvisioning {
     }
 
     /**
-     * Optional TS.43 entitlement HTTP check against the carrier config server.
-     * Best-effort: any failure maps to `Unavailable`, never throws. The carrier
-     * URL is dynamic, so system trust is used.
+     * TS.43 entitlement check against the carrier config server (§7.1).
+     * Real flow: GET `<url>?vers=<version>&terminal=<model>` with the
+     * proper Accept header; a 200 whose body names an RCS config endpoint
+     * means entitled. Best-effort: any failure maps to false, never throws.
+     * The carrier URL is dynamic, so system trust is used.
      */
     suspend fun entitlementCheck(context: Context, url: String): Boolean {
         if (!RcsFeature.enabled || url.isBlank()) return false
         return runCatching {
+            val terminal = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+            val query = url + (if (url.contains("?")) "&" else "?") +
+                "vers=1.0&terminal=${java.net.URLEncoder.encode(terminal, "UTF-8")}"
             val response = NetworkClient.performRequest(
-                url = url,
+                url = query,
                 method = "GET",
+                headers = mapOf("Accept" to "text/xml, application/xml, text/plain"),
                 useSystemTrust = true,
             )
-            response.isSuccess
+            if (!response.isSuccess) return@runCatching false
+            // Entitled responses name the config server / token. Absent both
+            // but HTTP-200 → treat as entitled (some carriers return empty).
+            val body = response.body
+            body.isBlank() || body.contains("config", ignoreCase = true) ||
+                body.contains("token", ignoreCase = true) ||
+                body.contains("rcs", ignoreCase = true)
         }.getOrDefault(false)
     }
 

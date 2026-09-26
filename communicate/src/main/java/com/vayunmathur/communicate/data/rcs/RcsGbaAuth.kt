@@ -55,6 +55,33 @@ object RcsGbaAuth {
         return md5("$ha1:$nonce:00000001:$cnonce:auth:$ha2")
     }
 
+    /**
+     * Full digest `Authorization` header *value* from a `WWW-Authenticate` /
+     * `Proxy-Authenticate` challenge (RFC 2617 qop=auth). Shared by SIP
+     * challenge retries ([RcsSipTransport]) and FT-over-HTTP
+     * ([RcsFileTransferHttp]). Empty when the challenge isn't digest or
+     * lacks realm/nonce.
+     */
+    internal fun digestAuthorizationHeader(
+        challenge: String,
+        method: String,
+        uri: String,
+        username: String,
+        password: String = "",
+        cnonce: String = java.util.UUID.randomUUID().toString().replace("-", "").take(16),
+    ): String {
+        if (!challenge.contains("Digest", ignoreCase = true)) return ""
+        fun param(name: String): String =
+            Regex("$name=\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(challenge)
+                ?.groupValues?.getOrNull(1).orEmpty()
+        val realm = param("realm")
+        val nonce = param("nonce")
+        if (realm.isBlank() || nonce.isBlank()) return ""
+        val response = digestResponse(username, password, realm, nonce, method, uri, cnonce)
+        return "Digest username=\"$username\", realm=\"$realm\", nonce=\"$nonce\", uri=\"$uri\", " +
+            "response=\"$response\", qop=auth, nc=00000001, cnonce=\"$cnonce\""
+    }
+
     private fun md5(s: String): String {
         val md = java.security.MessageDigest.getInstance("MD5")
         return md.digest(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }

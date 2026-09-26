@@ -12,11 +12,14 @@ import com.vayunmathur.communicate.data.rcs.RcsFileTransferHttp
 import com.vayunmathur.communicate.data.rcs.RcsMsrp
 import com.vayunmathur.communicate.data.rcs.RcsSessionManager
 import com.vayunmathur.communicate.data.rcs.ImdnDisposition
+import com.vayunmathur.communicate.data.rcs.RcsOutbox
 import com.vayunmathur.communicate.data.rcs.RcsSipTransport
 import com.vayunmathur.communicate.data.rcs.buildEditBody
 import com.vayunmathur.communicate.data.rcs.buildGeopushBody
 import com.vayunmathur.communicate.data.rcs.buildRevokeBody
+import com.vayunmathur.communicate.data.rcs.cacheInboundRcsWithImdn
 import com.vayunmathur.communicate.data.rcs.chunkLargeMessage
+import com.vayunmathur.communicate.data.rcs.sendRcsDisplayReports
 import com.vayunmathur.library.util.AppMessages
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -182,7 +185,8 @@ suspend fun CommunicateRepository.sendRcsMessage(
         // Prefer an established session (MSRP) when one exists; else pager-mode CPIM.
         // When no session exists yet, kick off session establishment in the
         // background (best-effort — the pager send below still goes out now;
-        // later messages upgrade to MSRP once the dialog completes).
+        // later messages upgrade to MSRP once the dialog completes). Backoff
+        // after dialog errors (§1.6) skips the fast re-INVITE.
         val session = RcsSessionManager.sessionFor(recipient)
         if (session?.msrpRemotePath != null && attachments.isEmpty()) {
             val cpim = RcsSipTransport.buildCpimBody(body).toByteArray(Charsets.UTF_8)
@@ -194,7 +198,8 @@ suspend fun CommunicateRepository.sendRcsMessage(
             }
         }
         if (session == null && attachments.isEmpty() && !recipient.startsWith("rcs-group:") &&
-            !recipient.contains("@") && !recipient.contains(":")
+            !recipient.contains("@") && !recipient.contains(":") &&
+            !RcsSessionManager.inDialogBackoff(recipient)
         ) {
             val peer = recipient
             sendScope.launch {
@@ -223,8 +228,20 @@ suspend fun CommunicateRepository.sendRcsMessage(
         )
         // Large Message: chunk oversized bodies with a shared Message-ID so
         // the far end reassembles; cache one row per send (snippet = full text).
+        // Single-chunk 1:1 messages prefer the confirmed dialog (§1.4) when
+        // one exists; multi-chunk stays pager-mode (one dialog CSeq per
+        // chunk would serialize poorly and gain nothing).
         val messageId = "rcs-${UUID.randomUUID()}"
         val chunks = chunkLargeMessage(messageId, body)
+        if (chunks.size == 1) {
+            val inDialog = RcsSessionManager.sendInDialogMessage(recipient, content)
+            if (inDialog) {
+                if (body.isNotBlank()) {
+                    cacheOutgoingRcs(context, recipient, body, messageId)
+                }
+                return@withContext RcsSendResult.Sent
+            }
+        }
         var ok = true
         for ((index, chunk) in chunks.withIndex()) {
             val (line, head, payload) = if (chunks.size == 1) {
@@ -239,7 +256,14 @@ suspend fun CommunicateRepository.sendRcsMessage(
             }
             ok = RcsSipTransport.sendSipMessage(line, head, payload) && ok
         }
-        if (!ok) return@withContext RcsSendResult.FallbackSms
+        if (!ok) {
+            // Transport accepted the capability check but the SIP leg failed
+            // (transient): park for deferred retry (§4.3) AND report
+            // FallbackSms so the caller still sends SMS now. Duplicate risk
+            // (SMS now + RCS later) beats message loss on a dev-gated line.
+            RcsOutbox.enqueue(context, recipient, body)
+            return@withContext RcsSendResult.FallbackSms
+        }
         if (body.isNotBlank()) {
             cacheOutgoingRcs(context, recipient, body, messageId)
         }
@@ -380,6 +404,8 @@ suspend fun CommunicateRepository.markRcsRead(
             if (it.unreadCount != 0) db.conversationDao().upsert(it.copy(unreadCount = 0))
         }
     }
+    // Opening the thread displayed the messages — fire display IMDN (§4.2).
+    sendRcsDisplayReports(context, cid)
 }
 
 /** Surface the SMS-fallback notice on the caller's behalf (never `Toast`). */

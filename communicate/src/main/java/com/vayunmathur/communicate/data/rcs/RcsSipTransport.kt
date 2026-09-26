@@ -104,7 +104,15 @@ object RcsSipTransport {
     var onInboundMessage: ((SipMessage) -> Unit)? = null
 
     /** Pending outbound sends keyed by Via branch transaction id. */
-    private val pendingSends = ConcurrentHashMap<String, (Boolean) -> Unit>()
+    private data class PendingSend(
+        val callback: (Boolean) -> Unit,
+        val startLine: String,
+        val headers: String,
+        val body: ByteArray,
+        val authAttempts: Int = 0,
+    )
+
+    private val pendingSends = ConcurrentHashMap<String, PendingSend>()
 
     private val stateCallback = object : DelegateConnectionStateCallback {
         override fun onCreated(c: SipDelegateConnection) {
@@ -146,12 +154,12 @@ object RcsSipTransport {
         }
 
         override fun onMessageSent(viaTransactionId: String) {
-            pendingSends.remove(viaTransactionId)?.invoke(true)
+            pendingSends.remove(viaTransactionId)?.callback?.invoke(true)
         }
 
         override fun onMessageSendFailure(viaTransactionId: String, reason: Int) {
             Log.w(TAG, "Message send failed tx=$viaTransactionId reason=$reason")
-            pendingSends.remove(viaTransactionId)?.invoke(false)
+            pendingSends.remove(viaTransactionId)?.callback?.invoke(false)
         }
     }
 
@@ -224,6 +232,9 @@ object RcsSipTransport {
     /**
      * Send a SIP MESSAGE. Returns true on delegate ack, false otherwise
      * (caller falls back to SMS). Never throws.
+     *
+     * The full request is stashed per branch so 401/407 challenges can be
+     * retried with digest auth ([onSipResponseMessage]).
      */
     suspend fun sendSipMessage(startLine: String, headerSection: String, body: ByteArray): Boolean {
         val c = connection
@@ -233,13 +244,184 @@ object RcsSipTransport {
         return runCatching {
             val message = SipMessage(startLine, headerSection, body)
             suspendCancellableCoroutine { cont ->
-                pendingSends[message.getViaBranchParameter()] = { ok -> if (cont.isActive) cont.resume(ok) }
+                val branch = message.getViaBranchParameter()
+                pendingSends[branch] = PendingSend(
+                    callback = { ok -> if (cont.isActive) cont.resume(ok) },
+                    startLine = startLine,
+                    headers = headerSection,
+                    body = body,
+                )
                 runCatching { c.sendMessage(message, version) }.onFailure {
-                    pendingSends.remove(message.getViaBranchParameter())
+                    pendingSends.remove(branch)
                     if (cont.isActive) cont.resume(false)
                 }
             }
         }.getOrDefault(false)
+    }
+
+    /**
+     * Route an inbound SIP *response* (`SIP/2.0 xxx` start line). Returns
+     * true when the response was consumed (matched a pending transaction or
+     * a session dialog); false when the caller should treat it as an
+     * inbound MESSAGE.
+     *
+     * - 1xx → absorbed (retransmissions/100 Trying need no action).
+     * - 2xx to INVITE → session establishment + ACK (§1.1).
+     * - 401/407 → one digest-auth retry, then fail (§1.3).
+     * - 481/408/480/486/603 → dialog-mismatch recovery (§1.6).
+     * - 2xx to anything else → pending send succeeds.
+     * - anything else → pending send fails.
+     */
+    suspend fun onSipResponseMessage(message: SipMessage): Boolean {
+        if (!RcsFeature.enabled) return false
+        val parsed = RcsSipResponse.parse(message) ?: return false
+        // 2xx to our INVITE: complete the dialog + ACK, even if the original
+        // branch aged out of pendingSends (responses can arrive late).
+        if (parsed.statusCode in 200..299 && parsed.cseqMethod.equals("INVITE", ignoreCase = true)) {
+            pendingSends.remove(parsed.branch)?.callback?.invoke(true)
+            RcsSessionManager.onSipResponse(
+                statusCode = parsed.statusCode,
+                callId = parsed.callId,
+                remoteTag = parsed.toTag,
+                sdpAnswer = parsed.body,
+                responseHeaders = parsed.headers,
+            )
+            return true
+        }
+        val pending = pendingSends[parsed.branch]
+        if (pending == null) {
+            // Stray response (late duplicate, CANCEL race): still route
+            // dialog finals to the session manager by Call-ID.
+            if (parsed.statusCode >= 300) {
+                RcsSessionManager.onSipResponse(
+                    statusCode = parsed.statusCode,
+                    callId = parsed.callId,
+                    remoteTag = parsed.toTag,
+                    sdpAnswer = parsed.body,
+                    responseHeaders = parsed.headers,
+                )
+                return true
+            }
+            return false
+        }
+        when {
+            parsed.statusCode in 100..199 -> Unit // absorbed; ack comes later
+            parsed.statusCode in 200..299 -> {
+                pendingSends.remove(parsed.branch)?.callback?.invoke(true)
+            }
+            parsed.statusCode == 401 || parsed.statusCode == 407 -> {
+                if (!retryWithDigestAuth(parsed, pending)) {
+                    pendingSends.remove(parsed.branch)?.callback?.invoke(false)
+                }
+                // On retry the callback stays parked under the NEW branch.
+            }
+            parsed.statusCode == 481 || parsed.statusCode == 408 ||
+                parsed.statusCode == 480 || parsed.statusCode == 486 ||
+                parsed.statusCode == 603 -> {
+                pendingSends.remove(parsed.branch)?.callback?.invoke(false)
+                RcsSessionManager.onDialogError(parsed.callId, parsed.statusCode)
+            }
+            else -> {
+                pendingSends.remove(parsed.branch)?.callback?.invoke(false)
+                if (parsed.statusCode >= 300) {
+                    RcsSessionManager.onSipResponse(
+                        statusCode = parsed.statusCode,
+                        callId = parsed.callId,
+                        remoteTag = parsed.toTag,
+                        sdpAnswer = parsed.body,
+                        responseHeaders = parsed.headers,
+                    )
+                }
+            }
+        }
+        return true
+    }
+
+    /**
+     * Rebuild a challenged request with digest `Authorization` /
+     * `Proxy-Authorization` and resend under a fresh branch (RFC 3261
+     * §22.2: same Call-ID/CSeq/From-tag, new Via branch). One retry per
+     * transaction max. Returns true when a retry was issued.
+     */
+    private suspend fun retryWithDigestAuth(
+        parsed: RcsSipResponse.Parsed,
+        pending: PendingSend,
+    ): Boolean {
+        if (pending.authAttempts >= 1) return false
+        val proxy = parsed.statusCode == 407
+        val challengeHeader = if (proxy) "Proxy-Authenticate:" else "WWW-Authenticate:"
+        val challenge = RcsSipDialog.headerValue(parsed.headers, challengeHeader) ?: return false
+        val gba = RcsGbaAuth.injected
+        val username = gba?.btId
+            ?: lastConfigSnapshot()?.publicUserId?.substringAfter("sip:")?.substringBefore("@")
+                ?.takeIf { it.isNotBlank() } ?: return false
+        val password = gba?.let {
+            android.util.Base64.encodeToString(it.key, android.util.Base64.NO_WRAP)
+        }.orEmpty()
+        val method = pending.startLine.substringBefore(" ").trim().ifBlank { return false }
+        val uri = pending.startLine.substringAfter(" ").substringBefore(" SIP/").trim()
+            .ifBlank { return false }
+        val cnonce = UUID.randomUUID().toString().replace("-", "").take(16)
+        val authValue = RcsGbaAuth.digestAuthorizationHeader(
+            challenge = challenge,
+            method = method,
+            uri = uri,
+            username = username,
+            password = password,
+            cnonce = cnonce,
+        ).ifBlank { return false }
+        // Same request, fresh branch, auth header appended (replaces any
+        // stale Authorization/Proxy-Authorization from a previous attempt).
+        val newBranch = RcsSipDialog.newBranch()
+        val baseHeaders = pending.headers.lineSequence()
+            .filter { line ->
+                val t = line.trim()
+                !(t.startsWith("Via:", ignoreCase = true) ||
+                    t.startsWith("Authorization:", ignoreCase = true) ||
+                    t.startsWith("Proxy-Authorization:", ignoreCase = true))
+            }.joinToString("\r\n")
+        val viaHost = pending.headers.lineSequence()
+            .firstOrNull { it.trim().startsWith("Via:", ignoreCase = true) }
+            ?.substringAfter("SIP/2.0/TCP")?.substringBefore(";")?.trim()
+            ?.takeIf { it.isNotEmpty() } ?: "local"
+        val rebuilt = buildString {
+            append(baseHeaders)
+            if (baseHeaders.isNotEmpty()) append("\r\n")
+            append("Via: SIP/2.0/TCP $viaHost;branch=$newBranch\r\n")
+            append(if (proxy) "Proxy-Authorization: $authValue\r\n" else "Authorization: $authValue\r\n")
+        }
+        // Re-park the callback BEFORE sending (the ack may arrive inline).
+        val oldBranch = parsed.branch
+        pendingSends.remove(oldBranch)
+        val c = connection ?: run {
+            pending.callback(false)
+            return false
+        }
+        val version = configVersion
+        if (version < 0) {
+            pending.callback(false)
+            return false
+        }
+        var issued = false
+        runCatching {
+            val message = SipMessage(pending.startLine, rebuilt, pending.body)
+            // SipMessage computes its own branch from the header section;
+            // our rebuilt headers carry newBranch, so key on it.
+            pendingSends[newBranch] = pending.copy(
+                headers = rebuilt,
+                authAttempts = pending.authAttempts + 1,
+            )
+            runCatching { c.sendMessage(message, version) }.onFailure {
+                pendingSends.remove(newBranch)
+                pending.callback(false)
+            }
+            issued = true
+        }.onFailure {
+            pendingSends.remove(newBranch)
+            pending.callback(false)
+        }
+        Log.i(TAG, "Digest auth retry issued for ${parsed.statusCode} (proxy=$proxy)")
+        return issued
     }
 
     /**
