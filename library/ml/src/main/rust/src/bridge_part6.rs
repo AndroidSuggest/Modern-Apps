@@ -85,7 +85,38 @@ impl Gemma4Handle {
         if hidden.len() != gemma4::D_MODEL as usize {
             return Err(format!("hidden state of {} values, not {}", hidden.len(), gemma4::D_MODEL));
         }
-        Ok(Some(self.tied_head_logits(hidden)?))
+        Ok(Some(self.head_logits(hidden)?))
+    }
+
+    /// Logits for `hidden`, GPU head when the EMBED file carries chunks.
+    ///
+    /// The device runs the 16 fp16 chunk projections and the host
+    /// concatenates the splits, then the same softcap + argmax path as the
+    /// host head below. Falls back to `tied_head_logits` on files without
+    /// chunks (or when the head net failed to build).
+    fn head_logits(&mut self, hidden: &[f32]) -> Result<Vec<f32>, String> {
+        let Some(head) = self.head.as_mut() else {
+            return self.tied_head_logits(hidden);
+        };
+        let at = head.at(())?;
+        let out = at.infer_raw_many(&[hidden])?;
+        if out.len() != crate::nets::gemma4_head::HEAD_CHUNKS {
+            return Err(format!(
+                "the head returned {} splits, not {}",
+                out.len(),
+                crate::nets::gemma4_head::HEAD_CHUNKS
+            ));
+        }
+        let mut logits = Vec::with_capacity(gemma4::VOCAB as usize);
+        for split in &out {
+            if split.len() != crate::nets::gemma4_head::CLASSES_PER_CHUNK as usize {
+                return Err(format!("a head split of {} values, not {}", split.len(), crate::nets::gemma4_head::CLASSES_PER_CHUNK));
+            }
+            for &value in split {
+                logits.push(gemma4::LOGIT_CAP * (value / gemma4::LOGIT_CAP).tanh());
+            }
+        }
+        Ok(logits)
     }
 
     /// Tied-head logits on the host: `hidden @ H^T` over the raw-scale head table.
@@ -255,8 +286,25 @@ impl Gemma4Handle {
             ));
             self.position += width;
         }
-        Ok(())
+fn gemma4_plan(offsets: &Offsets, pass: gemma4::Pass) -> Result<Plan, String> {
+    gemma4::build(offsets, pass)
+}
+
+/// The GPU tied-head plan over an EMBED file, or `None` when the file has
+/// no head chunks (see `nets::gemma4_head`).
+fn gemma4_head_plan(embed: &Streamed) -> Option<Reshaped<()>> {
+    let offsets = embed.offsets();
+    if offsets.len() < crate::nets::gemma4_head::TENSORS_WITH_HEAD {
+        return None;
     }
+    Reshaped::streamed(
+        context::shared().ok()?,
+        offsets,
+        embed,
+        (),
+        |offsets, ()| crate::nets::gemma4_head::build_plan(offsets),
+    )
+    .ok()
 }
 
 /// Positions one prefill submit covers. Large enough that a prompt is **one** submit.
@@ -405,8 +453,15 @@ fn build_gemma4<'l>(
         gemma4::Mode::DecodeStep.at(gemma4::CONTEXT_TIERS[0]),
         gemma4_plan,
     )?;
+    // The GPU tied head, upload-once: a second net over the EMBED file that
+    // runs the 16 chunked fp16 head projections per token. `None` on files
+    // without the chunks (pre-head-split converts) — the caller falls back
+    // to the host head. Uploading the whole EMBED file is the price: there
+    // is no partial-upload path, so this is ~2.4 GB resident alongside TEXT.
+    let head = gemma4_head_plan(&embed);
     Ok(Gemma4Handle {
         net,
+        head,
         weights,
         embed,
         tokenizer,

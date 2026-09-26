@@ -109,6 +109,30 @@ fn main() {
             Err(why) => println!("  {label:<14} failed: {why}"),
         }
     }
+
+    // L0 tail bisect: the four branch vectors against the numpy-fp oracle, in
+    // tail order. The first label where the device drops below 0.99 while numpy
+    // holds is the divergence point (see `Mode::TraceTail`).
+    let tail_arg = std::env::args().nth(5);
+    let Some(tail_path) = tail_arg else { return };
+    let Ok(tail) = std::fs::read_to_string(&tail_path) else {
+        return println!("cannot read {tail_path}");
+    };
+    println!();
+    println!("L0 tail against the numpy oracle");
+    match tail_run(&context, &weights, &embed_weights, &tokens) {
+        Ok(branches) => {
+            for (label, got) in
+                ["attn_branch", "mlp_branch", "ple_branch", "l0_out"].into_iter().zip(branches.iter())
+            {
+                match field(&tail, label) {
+                    Some(want) => println!("  {label:<14} {}", compare(got, &want)),
+                    None => println!("  {label:<14} not in the tail file"),
+                }
+            }
+        }
+        Err(why) => println!("  the tail trace failed: {why}"),
+    }
 }
 
 /// Cosine and relative RMS between a device tensor and the reference's.
@@ -170,6 +194,54 @@ fn trace_run(
     Ok(last)
 }
 
+/// Layer 0's four tail branches at the last step, in tail order
+/// (`attn_branch`, `mlp_branch`, `ple_branch`, `l0_out`).
+///
+/// Same OOM-safe shape as [`trace_run`]: the KV cache fills one step at a time and only
+/// the last step's four 1536-float branches are kept.
+fn tail_run(
+    context: &Arc<context::Context>,
+    weights: &Streamed,
+    embed: &Streamed,
+    tokens: &[u32],
+) -> Result<[Vec<f32>; 4], String> {
+    let mode = gemma4::Mode::TraceTail.at(TIER);
+    let mut net = Reshaped::streamed(
+        Arc::clone(context),
+        weights.offsets(),
+        weights,
+        mode,
+        |offsets, mode| gemma4::build(offsets, mode),
+    )?;
+    let reader = embed.reader();
+    let rotary = weights.reader();
+    let mut last = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+    for (step, &token) in tokens.iter().enumerate() {
+        let position = u32::try_from(step).map_err(|_| "a step past u32")?;
+        let (hidden, per_layer) = gemma4::gather(&reader, token)?;
+        let angles_local = rotary_row(&rotary, gemma4::ROTARY_LOCAL, gemma4::HEAD_DIM, position)?;
+        let angles_global =
+            rotary_row(&rotary, gemma4::ROTARY_GLOBAL, gemma4::GLOBAL_HEAD_DIM, position)?;
+        let at = net.at(mode)?;
+        at.set_params(StepParams {
+            prefix: position,
+            window_start: position.saturating_sub(gemma4::WINDOW - 1),
+        })?;
+        let out = at.infer_raw_many(&[&hidden, &per_layer, &angles_local, &angles_global])?;
+        if out.len() != 4 {
+            return Err(format!("a tail step returned {} tensors, not the four branches", out.len()));
+        }
+        let mut it = out.into_iter();
+        last = [
+            it.next().unwrap_or_default(),
+            it.next().unwrap_or_default(),
+            it.next().unwrap_or_default(),
+            it.next().unwrap_or_default(),
+        ];
+    }
+    Ok(last)
+}
+
 /// Feed every token in order and return the last step's logits.
 ///
 /// The device returns the normed hidden state; the logits are
@@ -220,6 +292,46 @@ fn run(
     }
     if hidden.len() != gemma4::D_MODEL as usize {
         return Err(format!("hidden state of {} values, not {}", hidden.len(), gemma4::D_MODEL));
+    }
+    Ok(gpu_or_host_logits(context, embed, &reader, &hidden)?)
+}
+
+/// Logits for `hidden`: the GPU head when the EMBED file carries chunks.
+///
+/// The device runs the 16 fp16 chunk projections; the host concatenates the
+/// splits and softcaps. Falls back to the host tied head (`hidden @
+/// HEAD_TABLE^T` in `HEAD_SPLITS` quarters) on files without chunks, so this
+/// example keeps working against pre-head-split converts. Both paths must
+/// agree: the parity gate below compares against the golden either way.
+fn gpu_or_host_logits(
+    context: &Arc<context::Context>,
+    embed: &Streamed,
+    reader: &modelrunner::weights::Reader<'_>,
+    hidden: &[f32],
+) -> Result<Vec<f32>, String> {
+    use modelrunner::nets::gemma4_head;
+    if embed.offsets().len() >= gemma4_head::TENSORS_WITH_HEAD {
+        let mut head = Reshaped::streamed(
+            Arc::clone(context),
+            embed.offsets(),
+            embed,
+            (),
+            |offsets, ()| gemma4_head::build_plan(offsets),
+        )?;
+        let at = head.at(())?;
+        let out = at.infer_raw_many(&[hidden])?;
+        if out.len() == gemma4_head::HEAD_CHUNKS
+            && out.iter().all(|s| s.len() == gemma4_head::CLASSES_PER_CHUNK as usize)
+        {
+            let mut logits = Vec::with_capacity(gemma4::VOCAB as usize);
+            for split in &out {
+                for &value in split {
+                    logits.push(gemma4::LOGIT_CAP * (value / gemma4::LOGIT_CAP).tanh());
+                }
+            }
+            return Ok(logits);
+        }
+        // Wrong shape: fall through to the host head rather than failing.
     }
     // Tied head on the host, in vocabulary splits (see `gemma4::HEAD_SPLITS`).
     // Reads the raw-scale head table (`gemma4::embed::HEAD_TABLE`), not the

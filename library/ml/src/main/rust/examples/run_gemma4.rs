@@ -17,7 +17,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use modelrunner::nets::gemma4;
-use modelrunner::post::sentencepiece::{Table, GEMMA};
+use modelrunner::post::sentencepiece::Table;
+use modelrunner::post::sentencepiece_flavours::GEMMA;
 use modelrunner::vulkan::context;
 use modelrunner::vulkan::reshape::Reshaped;
 use modelrunner::vulkan::run::StepParams;
@@ -147,6 +148,61 @@ fn place(into: &mut [f32], values: &[f32], column: u32, width: u32) {
 /// on emitting turn markers until the token budget does the stopping instead.
 const STOP: [u32; 3] = [1, 106, 50];
 
+/// Logits for `hidden`: the GPU head when the EMBED file carries chunks.
+///
+/// The device runs the 16 fp16 chunk projections; the host concatenates the
+/// splits and softcaps, exactly as the host head does. Falls back to the
+/// host tied head (`hidden @ HEAD_TABLE^T` in `HEAD_SPLITS` quarters) on
+/// files without chunks.
+fn head_logits(
+    _context: &Arc<context::Context>,
+    head: &mut Option<Reshaped<()>>,
+    reader: &modelrunner::weights::Reader<'_>,
+    hidden: &[f32],
+) -> Result<Vec<f32>, String> {
+    use modelrunner::nets::gemma4_head;
+    if let Some(net) = head.as_mut() {
+        let at = net.at(())?;
+        let t = std::time::Instant::now();
+        let out = at.infer_raw_many(&[hidden])?;
+        eprintln!("head submit: {:.0} ms", t.elapsed().as_secs_f64() * 1000.0);
+        if out.len() == gemma4_head::HEAD_CHUNKS
+            && out.iter().all(|s| s.len() == gemma4_head::CLASSES_PER_CHUNK as usize)
+        {
+            let mut logits = Vec::with_capacity(gemma4::VOCAB as usize);
+            for split in &out {
+                for &value in split {
+                    logits.push(gemma4::LOGIT_CAP * (value / gemma4::LOGIT_CAP).tanh());
+                }
+            }
+            return Ok(logits);
+        }
+        // Wrong shape: the file's chunks do not match the plan. Fall through
+        // to the host head rather than failing the run.
+    }
+    // The tied head on the host, in vocabulary splits (see `gemma4::HEAD_SPLITS`).
+    // `Mode::DecodeStep` returns the normed hidden state, not logits: litertlm
+    // stores no logits head, so logits are hidden @ E^T over the raw-scale head
+    // table (`gemma4::embed::HEAD_TABLE`), softcapped. Mirrors
+    // `check_gemma4_parity::run`.
+    let mut logits = vec![0f32; gemma4::VOCAB as usize];
+    for split in 0..gemma4::HEAD_SPLITS {
+        let start = (split as u32) * gemma4::CLASSES_PER_SPLIT;
+        let block = reader.fp16_rows(
+            gemma4::embed::HEAD_TABLE,
+            &[gemma4::VOCAB, gemma4::D_MODEL],
+            start,
+            gemma4::CLASSES_PER_SPLIT,
+        )?;
+        for (offset, row) in block.chunks_exact(gemma4::D_MODEL as usize).enumerate() {
+            let dot: f32 = row.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum();
+            logits[start as usize + offset] =
+                gemma4::LOGIT_CAP * (dot / gemma4::LOGIT_CAP).tanh();
+        }
+    }
+    Ok(logits)
+}
+
 /// Feed the prompt, then sample greedily until `limit` new tokens or a stop id.
 fn generate(
     context: &Arc<context::Context>,
@@ -158,6 +214,19 @@ fn generate(
     let mut net = Reshaped::new(Arc::clone(context), weights, gemma4::Mode::DecodeStep.at(tier()), |o, m| {
         gemma4::build(o, m)
     })?;
+    // The GPU tied head over the EMBED file, upload-once. `None` on files
+    // without head chunks — the host head below covers those.
+    let mut head: Option<Reshaped<()>> = if embed.offsets().len() >= modelrunner::nets::gemma4_head::TENSORS_WITH_HEAD {
+        Reshaped::new(
+            Arc::clone(context),
+            embed,
+            (),
+            |o, ()| modelrunner::nets::gemma4_head::build_plan(o),
+        )
+        .ok()
+    } else {
+        None
+    };
     let reader = embed.reader();
     let rotary = weights.reader();
     // The tables are read once rather than per step: 2048 rows of fp16 is a few megabytes and
@@ -248,15 +317,23 @@ fn generate(
         if step + 1 < prompt_len {
             continue;
         }
+        if out.len() != 1 {
+            return Err(format!("a step returned {} tensors, not the hidden state", out.len()));
+        }
+        let hidden = &out[0];
+        if hidden.len() != gemma4::D_MODEL as usize {
+            return Err(format!(
+                "hidden state of {} values, not {}",
+                hidden.len(),
+                gemma4::D_MODEL
+            ));
+        }
+        let logits = head_logits(context, &mut head, &reader, hidden)?;
         let mut best = (f32::NEG_INFINITY, 0u32);
-        let mut base = 0u32;
-        for split in out.iter().take(gemma4::HEAD_SPLITS) {
-            for (offset, &value) in split.iter().enumerate() {
-                if value > best.0 {
-                    best = (value, base + offset as u32);
-                }
+        for (id, &value) in logits.iter().enumerate() {
+            if value > best.0 {
+                best = (value, id as u32);
             }
-            base += split.len() as u32;
         }
         if STOP.contains(&best.1) {
             break;
@@ -303,6 +380,19 @@ fn run_chat(
     ) {
         Ok(net) => net,
         Err(why) => return println!("the model did not open: {why}"),
+    };
+    // The GPU tied head over the EMBED file, upload-once (`None` on files
+    // without head chunks — `head_logits` falls back to the host head).
+    let mut head: Option<Reshaped<()>> = if embed.offsets().len() >= modelrunner::nets::gemma4_head::TENSORS_WITH_HEAD {
+        Reshaped::new(
+            std::sync::Arc::clone(&context),
+            embed,
+            (),
+            |o, ()| modelrunner::nets::gemma4_head::build_plan(o),
+        )
+        .ok()
+    } else {
+        None
     };
     let reader = embed.reader();
     let rotary = weights.reader();
@@ -383,15 +473,20 @@ fn run_chat(
         spent_infer += at_infer.elapsed();
 
         let at_argmax = Instant::now();
+        if out.len() != 1 || out[0].len() != gemma4::D_MODEL as usize {
+            break;
+        }
+        let hidden = &out[0];
+        let logits = match head_logits(&context, &mut head, &reader, hidden) {
+            Ok(logits) => logits,
+            Err(_) => break,
+        };
+        // Host argmax over the reassembled logits (GPU or host head alike).
         let mut best = (f32::NEG_INFINITY, 0u32);
-        let mut base = 0u32;
-        for split in out.iter().take(gemma4::HEAD_SPLITS) {
-            for (offset, &value) in split.iter().enumerate() {
-                if value > best.0 {
-                    best = (value, base + offset as u32);
-                }
+        for (id, &value) in logits.iter().enumerate() {
+            if value > best.0 {
+                best = (value, id as u32);
             }
-            base += split.len() as u32;
         }
         spent_argmax += at_argmax.elapsed();
 

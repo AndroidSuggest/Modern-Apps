@@ -45,6 +45,19 @@ pub mod embed {
     /// Raw-scale head table (see HEAD_TABLE): the last tensor in the file.
     pub const HEAD_TENSOR: usize = 7 + super::LAYERS * 3;
 
+    /// First tensor of the GPU-head chunks (kernel of chunk 0).
+    ///
+    /// The converter appends 16 rank-4 fp16 kernels + zero biases
+    /// after the legacy rank-2 table (`s10_to_maml.collect_embed`); see
+    /// `crate::nets::gemma4_head` for the pass that reads them.
+    pub const HEAD_CHUNKS: usize = HEAD_TABLE + 1;
+
+    /// Tensors the chunked GPU head adds: kernel + bias per chunk.
+    pub const HEAD_CHUNK_TENSORS: usize = super::super::gemma4_head::HEAD_CHUNKS * 2;
+
+    /// Tensors an EMBED file with GPU-head chunks holds.
+    pub const TENSORS_WITH_HEAD: usize = HEAD_TABLE + 1 + HEAD_CHUNK_TENSORS;
+
     /// Table triple for layer `i`.
     pub const fn table(i: usize) -> usize {
         TABLES + i * 3

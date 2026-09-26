@@ -34,6 +34,7 @@ pub mod reference;
 pub mod schedule;
 pub mod gemma4;
 pub mod gemma4_audio;
+pub mod gemma4_head;
 pub mod gemma4_vision;
 pub mod mobilefacenet;
 pub mod maia;
@@ -311,6 +312,12 @@ pub enum Kind {
     MulScalar,
     /// Clamp to a `[min, max]` pair held in the weights. See `shaders/clamp.comp`.
     Clamp,
+    /// `clamp(round(x / scale), -128, 127) * scale`, an int8 round-trip at a
+    /// per-layer scale. See `shaders/quantize.comp`.
+    ///
+    /// S10's live attention quantizes the mixture to int8 before the O projection
+    /// consumes it; the scale rides the push block like [`Kind::Softcap`]'s cap.
+    Quantize,
     /// `O[h][d][i] = sum_j S[h][i][j] * V[h][d][j]`, attention's weighted sum.
     ///
     /// `O[h][d][i] = sum_j S[h][i][j] * V[h][d][j]`, attention's weighted sum.

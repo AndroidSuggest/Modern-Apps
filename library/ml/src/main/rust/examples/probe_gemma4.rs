@@ -19,16 +19,13 @@
 //! It does **not** check the numbers. That needs a reference run, which needs the tokenizer and
 //! the embedding export; see `check_nllb_parity.rs` for the shape that takes.
 use std::path::PathBuf;
-
-use modelrunner::nets::{gemma4, gemma4_vision};
+use modelrunner::nets::{gemma4, gemma4_head, gemma4_vision};
 use modelrunner::weights::{graph, Blob, Weights};
-
 /// The cache these examples record against: the top tier, so a long prompt fits.
 const TIER: u32 = gemma4::MAX_CONTEXT;
-
 fn main() {
     let Some(path) = std::env::args().nth(1).map(PathBuf::from) else {
-        println!("usage: probe_gemma4 <gemma4_text.maml>");
+        println!("usage: probe_gemma4 <gemma4_text.maml> [gemma4_embed.maml]");
         return;
     };
     let bytes = match std::fs::read(&path) {
@@ -111,10 +108,22 @@ fn main() {
     println!();
     println!("embedding {}  {:.2} GB", embed_path.display(), embed_bytes.len() as f64 / 1e9);
     println!(
-        "tensors   {} (the module expects {})",
+        "tensors   {} (the module expects {} + {} head chunks = {})",
         embed.tensors().len(),
-        gemma4::embed::TENSORS
+        gemma4::embed::TENSORS,
+        gemma4_head::HEAD_CHUNK_TENSORS,
+        gemma4_head::TENSORS_WITH_HEAD,
     );
+    match gemma4_head::build_plan(&embed) {
+        Ok(plan) => {
+            println!("the GPU head plan builds against the real table");
+            println!("  {} ops, {} inputs, {} outputs", plan.ops.len(), plan.inputs.len(), plan.outputs.len());
+            let classes: u32 = plan.outputs.iter().map(|b| b.shape.c).sum();
+            println!("  {classes} logits over {} splits", plan.outputs.len());
+            println!("  {:.1} MB of arena", f64::from(plan.arena_elems) * 2.0 / 1e6);
+        }
+        Err(why) => println!("the GPU head plan does NOT build: {why}"),
+    }
 
     // The vision tower, if it is beside the other two.
     if let Some(path) = std::env::args().nth(3).map(PathBuf::from) {

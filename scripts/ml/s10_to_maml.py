@@ -38,6 +38,13 @@ from tflite.Model import Model
 S10 = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'analysis',
                    'base-sections', 'Section10_TFLiteModel_tf_lite_prefill_decode.tflite')
 
+# GPU tied-head chunking (2026-09-26): HEAD_SPLITS rank-4 fp16 chunks of the
+# head table, each small enough to fit one Vulkan segment window (~96 MiB at
+# guaranteed 128 MiB maxStorageBufferRange). 16 x 16384 x 1536 x 2B ~= 50 MB
+# per chunk. Overridable via GEMMA4_HEAD_SPLITS for devices whose
+# maxStorageBufferRange queries smaller (raise the count, shrink the chunk).
+HEAD_SPLITS = int(os.environ.get('GEMMA4_HEAD_SPLITS', '16'))
+
 
 def m_OperatorCode(sg, o):
     raise NotImplementedError
@@ -175,7 +182,26 @@ def collect_text(rdr):
     # (see nets::gemma4::ONE_SLIDING). Head-dim-wide: [256] and [512].
     emit_vec(layers, tensors, 'transformer.ones_sliding', np.ones(256, dtype=np.float32))
     emit_vec(layers, tensors, 'transformer.ones_full', np.ones(512, dtype=np.float32))
-    O_SCALE, FF1_SCALE, PL_SCALE = 4.0, 256.0, 4.0
+    # Track E proved the claimed runtime inverse gain does not exist for FF1
+    # (hence FF1_SCALE = 1.0 below). The o and pp /4s were the same shape of
+    # claim and equally uncompensated: no norm gamma in this file is
+    # multiplied, and the runtime applies no inverse gain. At /4 the branches
+    # ran at 1/4 trained magnitude on device; the post-branch norms erase the
+    # scale but the MM/qint grids then quantize the wrong magnitudes.
+    # (Proven at the o-tail: device o-quantize diverges, numpy
+    # exact-arithmetic does not.)
+    O_SCALE, FF1_SCALE, PL_SCALE = 1.0, 1.0, 1.0
+    # NOTE (Track E, 2026-09-24): FF1_SCALE was 256.0 with a comment claiming
+    # the runtime re-applies the inverse gain. That gain does not exist
+    # anywhere in library/ml/src/main/rust/ (no such const; norm gammas match
+    # S10 source exactly), so /256 silently ran every layer's up-path at 1/256
+    # trained magnitude on device. Full-scale re-measured safe (worst 21k vs
+    # fp16 max 65504).
+    # NOTE (parity closure, 2026-09-25): O_SCALE and PL_SCALE were 4.0 with a
+    # "Keep /4 on o/pp" note. Same finding as FF1: no compensating gain
+    # exists, and the int8 grids quantize absolute magnitudes, so /4 flipped
+    # codes at the o-tail. Both are 1.0 now; the quarantine record is in
+    # build/gemma4-s10-fullfix/BLESSED.txt.
     # norm tensor ids per layer_0; other layers resolved by name scan
     for index in range(35):
         at = f'layer_{index}'
@@ -392,11 +418,40 @@ def collect_embed(rdr):
     # Head table LAST (see TABLES): appended after the per-layer tables so
     # their file entries (7+i*3) match the artisan-path file exactly and old
     # files without a head table still parse for gather.
+    #
+    # GPU tied-head (2026-09-26): the head is ALSO emitted as HEAD_SPLITS
+    # rank-4 fp16 chunks ([N,1536,1,1] + zero [N] bias each) that
+    # Builder::conv binds directly (kernel+bias, no bias-free path exists).
+    # One 262144-wide fp16 tensor spans ~768 MiB, far over the ~96 MiB
+    # segment-window reach at guaranteed 128 MiB maxStorageBufferRange
+    # (vulkan/segment.rs `for_op` refuses it: "Split the tensor in the
+    # converter"). 16x16384 chunks are ~50 MB each — inside the window with
+    # margin on both host and P8. Chunk tensors follow the legacy rank-2
+    # table so old files (112 tensors, no head) still parse for gather and
+    # indices 0..111 are unchanged; the runtime binds chunks when present
+    # and falls back to the host head otherwise. Vocab order is preserved
+    # (chunk s holds classes [s*N,(s+1)*N)), so concat(chunks) == table.
     head = rdr.dequant2(2698, 262144, 1536)
-    tensors.append(np.ascontiguousarray(head, dtype=np.float32).astype(np.float16))
+    head = np.ascontiguousarray(head, dtype=np.float32).astype(np.float16)
+    tensors.append(head)
     layers.append(mc.Layer(len(layers), 'Embedding4', 'head_table',
                            'Embedding4 raw-scale S10 decode table fp16',
                            len(tensors) - 1, 1))
+    n = head.shape[0]
+    assert n == 262144, n
+    per = n // HEAD_SPLITS
+    assert per * HEAD_SPLITS == n, (n, HEAD_SPLITS)
+    for s in range(HEAD_SPLITS):
+        rows = head[s * per:(s + 1) * per].astype(np.float32)
+        assert rows.shape == (per, 1536), rows.shape
+        kernel = np.ascontiguousarray(rows.reshape(per, 1536, 1, 1))
+        bias = np.zeros(per, dtype=np.float32)
+        tensors.extend([kernel, bias])
+        layers.append(mc.Layer(len(layers), 'Linear', f'head_split_{s}',
+                               f'Linear w=[{per}, 1536, 1, 1] dtype=fp16 b=[{per}]',
+                               len(tensors) - 2, 2))
+    print(f'head_table: rank-2 fp16 [{n}, 1536] + {HEAD_SPLITS} rank-4 '
+          f'fp16 chunks of [{per}, 1536, 1, 1] (+ zero bias)')
     fid.report(mc.MIN_INT4_COSINE)
     return layers, tensors
 

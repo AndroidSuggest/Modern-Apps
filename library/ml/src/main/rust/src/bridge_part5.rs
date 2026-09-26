@@ -401,6 +401,9 @@ fn log(message: &str) {
 /// [`Streamed`] and is gathered on the host, exactly as NLLB's tied embedding is.
 struct Gemma4Handle {
     net: Reshaped<gemma4::Pass>,
+    /// The GPU tied head over the EMBED file, upload-once at construction.
+    /// `None` on files without head chunks — the host head covers those.
+    head: Option<Reshaped<()>>,
     /// The text model, retained for the rotary tables which are also host-read.
     weights: Streamed,
     /// The two embedding tables.
