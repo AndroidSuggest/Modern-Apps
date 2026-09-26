@@ -5,8 +5,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.telephony.euicc.DownloadableSubscription
-import android.telephony.euicc.EuiccManager
 import android.util.Patterns
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -33,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import com.vayunmathur.camera.R
+import com.vayunmathur.library.intents.euicc.EsimLink
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.CircularProgressIndicator
 import com.vayunmathur.library.ui.FilledTonalButton
@@ -151,13 +150,18 @@ internal fun QrResultOverlay(text: String, onDismiss: () -> Unit, context: Conte
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (isEsim) {
                 Button(onClick = {
-                    val subscription = DownloadableSubscription.forActivationCode(text)
-                    val intent = Intent(EuiccManager.ACTION_START_EUICC_ACTIVATION).putExtra(
-                        EuiccManager.EXTRA_EMBEDDED_SUBSCRIPTION_DOWNLOADABLE_SUBSCRIPTION,
-                        subscription
-                    )
+                    // Standard eSIM handoff: build the universal provisioning link
+                    // (https://esimsetup.android.com/esim_qrcode_provisioning?carddata=…)
+                    // from the scanned code and fire ACTION_VIEW. The intent is pinned
+                    // to our euicc app: a plain VIEW would otherwise resolve to the
+                    // browser (seen on-device), which cannot provision anything, and
+                    // we cannot claim verified App Links for a domain we don't own.
+                    // The data format stays standard — any handler could serve it.
+                    val link = EsimLink.provisioningUri(trimmed)
+                    val view = Intent(Intent.ACTION_VIEW, link)
+                        .setPackage(EsimLink.LPA_PACKAGE)
                     try {
-                        context.startActivity(intent)
+                        context.startActivity(view)
                         onDismiss()
                     } catch (e: ActivityNotFoundException) {
                         AppMessages.show(context.getString(R.string.no_app_to_add_esim))
