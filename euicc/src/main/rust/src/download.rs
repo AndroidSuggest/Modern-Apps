@@ -13,7 +13,7 @@
 use jni::JNIEnv;
 
 use crate::jni::store_data;
-use crate::{es10, es9p};
+use crate::{asn1, es10, es9p};
 
 /// A parsed SGP.22 activation code.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +48,24 @@ pub fn parse_activation_code(code: &str) -> Result<ActivationCode, String> {
     })
 }
 
+/// The key bytes of a CI public-key identifier field, unwrapping one DER TLV
+/// layer when the server sends the full TLV rather than the bare value.
+fn pkid_value(field: &[u8]) -> &[u8] {
+    asn1::parse(field)
+        .map(|(tlv, _)| tlv.value)
+        .unwrap_or(field)
+}
+
+/// Whether the server's chosen CI key appears in the eUICC's verification list
+/// (hex of the raw field or of its unwrapped value).
+fn ci_key_known(verification_list: &[String], field: &[u8]) -> bool {
+    let raw_hex = es10::hex(field);
+    let inner_hex = es10::hex(pkid_value(field));
+    verification_list
+        .iter()
+        .any(|k| *k == raw_hex || *k == inner_hex)
+}
+
 /// Runs the full download for an activation code, driving the eUICC over the
 /// already-open ISD-R channel (via [`store_data`]) and the SM-DP+ over HTTP.
 ///
@@ -65,6 +83,24 @@ pub fn download_profile(
 
     // 2. Server authentication material.
     let r1 = es9p::initiate_authentication(&ac.smdp, &challenge, &euicc_info1)?;
+
+    // The eUICC can only verify the server against a CI public key it holds;
+    // otherwise AuthenticateServer fails with SW 6A88. Compare the server's
+    // chosen key against the eUICC's own verification list first so the failure
+    // names the key instead of surfacing as a bare status word. PKIds are
+    // public key identifiers, safe to report. Skip the check when the eUICC
+    // gave no list (never block a download on a parser gap).
+    if let Ok(info) = es10::parse_euicc_info1(&euicc_info1) {
+        if !info.ci_pkid_verification.is_empty()
+            && !ci_key_known(&info.ci_pkid_verification, &r1.euicc_ci_pkid)
+        {
+            return Err(format!(
+                "server uses CI key {} unknown to this eUICC (eUICC trusts: {})",
+                es10::hex(&pkid_value(&r1.euicc_ci_pkid)),
+                info.ci_pkid_verification.join(", "),
+            ));
+        }
+    }
 
     // 3. eUICC authenticates the server and signs its own material.
     let ctx = es10::build_ctx_params1(&ac.matching_id, &[0, 0, 0, 0]);
@@ -127,5 +163,16 @@ mod tests {
     fn rejects_short_codes() {
         assert!(parse_activation_code("LPA:1$smdp.example.com").is_err());
         assert!(parse_activation_code("garbage").is_err());
+    }
+
+    #[test]
+    fn ci_key_match_accepts_bare_and_wrapped_forms() {
+        let list = vec!["aabbcc".to_string()];
+        assert!(ci_key_known(&list, &[0xAA, 0xBB, 0xCC]));
+        // Full DER TLV around the same value also matches.
+        let wrapped = crate::asn1::tlv(0x04, &[0xAA, 0xBB, 0xCC]);
+        assert!(ci_key_known(&list, &wrapped));
+        assert!(!ci_key_known(&list, &[0xDD]));
+        assert!(!ci_key_known(&[], &[0xAA, 0xBB, 0xCC]));
     }
 }

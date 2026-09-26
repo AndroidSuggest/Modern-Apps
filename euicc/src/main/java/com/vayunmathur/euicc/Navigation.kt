@@ -1,6 +1,7 @@
 package com.vayunmathur.euicc
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import com.vayunmathur.euicc.platform.EuiccViewModel
 import com.vayunmathur.euicc.ui.ActivationCodeScreen
 import com.vayunmathur.euicc.ui.AddSimScreen
@@ -16,8 +17,15 @@ import com.vayunmathur.library.util.MorphPage
 import com.vayunmathur.library.util.rememberNavBackStack
 
 @Composable
-fun Navigation(viewModel: EuiccViewModel) {
-    val backStack = rememberNavBackStack<Route>(Route.Home)
+fun Navigation(viewModel: EuiccViewModel, start: Route? = null) {
+    // A cross-app handoff (e.g. camera's "Add eSIM") lands mid-flow: seed Home underneath
+    // so back from the entry point reaches the profile list instead of an empty stack.
+    // Null means a plain launch — start on Home exactly as before.
+    val initial = remember(start) {
+        if (start == null || start == Route.Home) arrayOf<Route>(Route.Home)
+        else arrayOf(Route.Home, start)
+    }
+    val backStack = rememberNavBackStack(*initial)
 
     /**
      * Leaving the activation flow: drop every step of it at once rather than popping back

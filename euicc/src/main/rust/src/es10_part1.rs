@@ -101,6 +101,26 @@ mod tests {
     }
 
     #[test]
+    fn ctx_params1_tags_match_sgp22() {
+        // CtxParamsForCommonAuthentication: matchingId [0] IMPLICIT, deviceInfo
+        // [1] IMPLICIT (constructed). A bare SEQUENCE tag (0x30) on deviceInfo is
+        // malformed — the SM-DP+ cannot verify the AuthenticateServer response
+        // built over it (seen as an empty authenticateClient reply).
+        let ctx = build_ctx_params1("ABC", &[0x35, 0x29, 0x06, 0x11]);
+        let body = asn1::find(&ctx, TAG_CTX_PARAMS_COMMON).expect("outer A0");
+        let kids = asn1::children(body).expect("two children");
+        assert_eq!(kids.len(), 2);
+        assert_eq!(kids[0].tag, 0x80); // matchingId
+        assert_eq!(kids[0].value, b"ABC");
+        assert_eq!(kids[1].tag, 0xA1); // deviceInfo [1], NOT 0x30 SEQUENCE
+        let dev = asn1::children(kids[1].value).expect("deviceInfo children");
+        assert_eq!(dev.len(), 2);
+        assert_eq!(dev[0].tag, 0x80); // tac
+        assert_eq!(dev[0].value, &[0x35, 0x29, 0x06, 0x11]);
+        assert_eq!(dev[1].tag, 0xA1); // deviceCapabilities
+    }
+
+    #[test]
     fn parse_eid_from_response() {
         let mut inner = vec![0x5A, 0x10];
         let octets: [u8; 16] = [

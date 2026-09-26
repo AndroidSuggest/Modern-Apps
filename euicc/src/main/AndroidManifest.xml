@@ -51,6 +51,35 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Standard eSIM universal link handler:
+          https://esimsetup.android.com/esim_qrcode_provisioning?carddata=<code>.
+          Scanners fire ACTION_VIEW on this URL and the LPA declaring the host+path
+          receives it instead of a browser. Deliberately NOT gated by
+          BIND_EUICC_SERVICE: that permission constrains the caller, and a
+          third-party app holds no signature permission, so gating this would make
+          the handoff unopenable. It carries no eUICC capability itself — it only
+          seeds the normal AddSim/Download flow, which needs no privilege to
+          display and fails gracefully where there is no eUICC.
+        -->
+        <activity
+            android:configChanges="mcc|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:name=".platform.AddEsimActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.General">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="esimsetup.android.com"
+                    android:path="/esim_qrcode_provisioning" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".service.EuiccManagerService"
             android:exported="true"

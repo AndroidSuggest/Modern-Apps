@@ -46,7 +46,7 @@ pub fn initiate_authentication(
         "euiccChallenge": base64::encode(euicc_challenge),
         "euiccInfo1": base64::encode(euicc_info1),
     });
-    let v = post(&endpoint(smdp, "initiateAuthentication"), &body)?;
+    let v = post("initiateAuthentication", &endpoint(smdp, "initiateAuthentication"), &body, true)?;
     Ok(InitiateAuthResult {
         transaction_id: get_str(&v, "transactionId")?,
         server_signed1: get_b64(&v, "serverSigned1")?,
@@ -67,7 +67,7 @@ pub fn authenticate_client(
         "transactionId": transaction_id,
         "authenticateServerResponse": base64::encode(authenticate_server_response),
     });
-    let v = post(&endpoint(smdp, "authenticateClient"), &body)?;
+    let v = post("authenticateClient", &endpoint(smdp, "authenticateClient"), &body, true)?;
     Ok(AuthenticateClientResult {
         smdp_signed2: get_b64(&v, "smdpSigned2")?,
         smdp_signature2: get_b64(&v, "smdpSignature2")?,
@@ -86,7 +86,12 @@ pub fn get_bound_profile_package(
         "transactionId": transaction_id,
         "prepareDownloadResponse": base64::encode(prepare_download_response),
     });
-    let v = post(&endpoint(smdp, "getBoundProfilePackage"), &body)?;
+    let v = post(
+        "getBoundProfilePackage",
+        &endpoint(smdp, "getBoundProfilePackage"),
+        &body,
+        true,
+    )?;
     get_b64(&v, "boundProfilePackage")
 }
 
@@ -95,7 +100,7 @@ pub fn get_bound_profile_package(
 pub fn handle_notification(smdp: &str, pending_notification: &[u8]) -> Result<(), String> {
     let body = json!({ "pendingNotification": base64::encode(pending_notification) });
     // A 204/empty body is normal here; ignore the parsed value.
-    let _ = post(&endpoint(smdp, "handleNotification"), &body)?;
+    let _ = post("handleNotification", &endpoint(smdp, "handleNotification"), &body, false)?;
     Ok(())
 }
 
@@ -103,7 +108,7 @@ pub fn handle_notification(smdp: &str, pending_notification: &[u8]) -> Result<()
 // HTTP + helpers
 // ---------------------------------------------------------------------------
 
-fn post(url: &str, body: &Value) -> Result<Value, String> {
+fn post(function: &str, url: &str, body: &Value, expect_body: bool) -> Result<Value, String> {
     let headers = [
         ("Content-Type".to_string(), "application/json".to_string()),
         ("X-Admin-Protocol".to_string(), "gsma/rsp/v2.2.0".to_string()),
@@ -117,7 +122,16 @@ fn post(url: &str, body: &Value) -> Result<Value, String> {
         return Err(format!("SM-DP+ HTTP {} at {url}", resp.status));
     }
     if resp.body.is_empty() {
-        return Ok(Value::Null);
+        // HandleNotification answers 204/empty normally; every other function
+        // must return a JSON body, so an empty reply names the function and
+        // status instead of failing later on a missing field.
+        if !expect_body {
+            return Ok(Value::Null);
+        }
+        return Err(format!(
+            "SM-DP+ {function} returned HTTP {} with empty body",
+            resp.status
+        ));
     }
     let v: Value = serde_json::from_slice(&resp.body).map_err(|e| format!("parse response: {e}"))?;
     check_function_execution_status(&v)?;
@@ -125,20 +139,27 @@ fn post(url: &str, body: &Value) -> Result<Value, String> {
 }
 
 /// Surfaces an SM-DP+ ES9+ functionExecutionStatus error, if present.
+/// Like lpac, a missing `header`/`functionExecutionStatus` object is itself an
+/// error: per SGP.22 every ES9+ reply carries one, so its absence means the
+/// server did not answer the function at all (rather than a field-level gap).
 fn check_function_execution_status(v: &Value) -> Result<(), String> {
     let status = v
         .get("header")
         .and_then(|h| h.get("functionExecutionStatus"));
-    if let Some(status) = status {
-        let state = status.get("status").and_then(Value::as_str).unwrap_or("");
-        if !state.is_empty() && state != "Executed-Success" {
-            let reason = status
-                .get("statusCodeData")
-                .and_then(|d| d.get("reasonCode"))
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
-            return Err(format!("SM-DP+ {state} ({reason})"));
-        }
+    let Some(status) = status else {
+        return Err(describe_missing(v, "header.functionExecutionStatus"));
+    };
+    let state = status.get("status").and_then(Value::as_str).unwrap_or("");
+    if state.is_empty() {
+        return Err("SM-DP+ reply has functionExecutionStatus without status".to_string());
+    }
+    if state != "Executed-Success" {
+        let reason = status
+            .get("statusCodeData")
+            .and_then(|d| d.get("reasonCode"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        return Err(format!("SM-DP+ {state} ({reason})"));
     }
     Ok(())
 }
@@ -171,12 +192,40 @@ fn get_str(v: &Value, key: &str) -> Result<String, String> {
     v.get(key)
         .and_then(Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| format!("SM-DP+ response missing '{key}'"))
+        .ok_or_else(|| describe_missing(v, key))
 }
 
 fn get_b64(v: &Value, key: &str) -> Result<Vec<u8>, String> {
     let s = get_str(v, key)?;
     base64::decode(&s).ok_or_else(|| format!("SM-DP+ '{key}' is not valid base64"))
+}
+
+/// Names what the SM-DP+ actually returned when an expected field is absent:
+/// the top-level keys present (or the scalar it replied with), so the failure
+/// screen shows the server's real answer instead of just the missing key.
+fn describe_missing(v: &Value, key: &str) -> String {
+    match v {
+        Value::Object(map) => {
+            let mut keys: Vec<&str> = map.keys().map(String::as_str).collect();
+            keys.sort_unstable();
+            format!("SM-DP+ response missing '{key}' (has: {})", keys.join(", "))
+        }
+        Value::Null => format!("SM-DP+ response missing '{key}' (empty reply)"),
+        other => format!(
+            "SM-DP+ response missing '{key}' (non-object reply: {})",
+            summarize_scalar(other)
+        ),
+    }
+}
+
+fn summarize_scalar(v: &Value) -> String {
+    match v {
+        Value::String(s) => format!("string[{}]", s.len()),
+        Value::Array(a) => format!("array[{}]", a.len()),
+        Value::Bool(b) => format!("bool({b})"),
+        Value::Number(n) => format!("number({n})"),
+        _ => "null".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -209,6 +258,21 @@ mod tests {
     }
 
     #[test]
+    fn missing_field_names_present_keys() {
+        let v = json!({ "header": {}, "other": 1 });
+        let err = get_str(&v, "smdpSigned2").expect_err("must be missing");
+        assert!(err.contains("smdpSigned2"), "names the missing key: {err}");
+        assert!(err.contains("header"), "lists present keys: {err}");
+        assert!(err.contains("other"), "lists present keys: {err}");
+    }
+
+    #[test]
+    fn missing_field_on_empty_reply() {
+        let err = get_str(&Value::Null, "smdpSigned2").expect_err("must be missing");
+        assert!(err.contains("empty reply"), "says the reply was empty: {err}");
+    }
+
+    #[test]
     fn function_status_error_is_surfaced() {
         let v = json!({
             "header": { "functionExecutionStatus": {
@@ -217,5 +281,16 @@ mod tests {
             }}
         });
         assert!(check_function_execution_status(&v).is_err());
+    }
+
+    #[test]
+    fn missing_status_block_is_an_error() {
+        // lpac parity: a reply without header.functionExecutionStatus is not a
+        // function answer at all, even if data fields happen to be present.
+        let v = json!({ "smdpSigned2": "aGVsbG8=" });
+        let err = check_function_execution_status(&v).expect_err("must be missing");
+        assert!(err.contains("functionExecutionStatus"), "names it: {err}");
+        let empty = json!({});
+        assert!(check_function_execution_status(&empty).is_err());
     }
 }

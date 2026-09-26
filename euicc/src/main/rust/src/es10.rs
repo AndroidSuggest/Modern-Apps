@@ -64,7 +64,7 @@ const TAG_ERROR_RESULT: u32 = 0xA1; // [1] errorResult
 // ctxParams1 / DeviceInfo construction tags.
 const TAG_CTX_PARAMS_COMMON: u32 = 0xA0; // [0] ctxParamsForCommonAuthentication
 const TAG_MATCHING_ID: u32 = 0x80; // [0] matchingId UTF8String
-const TAG_DEVICE_INFO: u32 = 0x30; // DeviceInfo SEQUENCE
+const TAG_DEVICE_INFO: u32 = 0xA1; // [1] deviceInfo (IMPLICIT replaces SEQUENCE tag)
 const TAG_TAC: u32 = 0x80; // [0] tac Octet4
 const TAG_DEVICE_CAPS: u32 = 0xA1; // [1] deviceCapabilities SEQUENCE
 

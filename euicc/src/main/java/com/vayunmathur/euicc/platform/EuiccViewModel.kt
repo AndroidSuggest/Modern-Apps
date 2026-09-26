@@ -1,6 +1,7 @@
 package com.vayunmathur.euicc.platform
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,6 +12,8 @@ import com.vayunmathur.euicc.data.EuiccInfo
 import com.vayunmathur.euicc.data.Notification
 import com.vayunmathur.euicc.data.Profile
 import com.vayunmathur.euicc.telephony.EuiccChannelManager
+import com.vayunmathur.library.network.NetworkClient
+import com.vayunmathur.library.network.TrustBundle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,6 +35,8 @@ data class EuiccScreenState(
 @kotlinx.serialization.Serializable
 private data class DownloadResult(val success: Boolean = false, val message: String = "")
 
+private const val TAG = "EuiccViewModel"
+
 class EuiccViewModel(app: Application) : AndroidViewModel(app) {
     private val channelManager = EuiccChannelManager(app)
     private val json = Json { ignoreUnknownKeys = true }
@@ -48,6 +53,10 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     init {
+        // SM-DP+ servers authenticate TLS under the GSMA CI PKI as well as public
+        // CAs, so downloads need the ESIM bundle (system roots + GSMA CI root).
+        // Both entry activities create this ViewModel before any download runs.
+        NetworkClient.init(app, TrustBundle.ESIM)
         reload()
     }
 
@@ -73,12 +82,22 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
                 onSuccess = { raw ->
                     val result = runCatching { json.decodeFromString<DownloadResult>(raw) }.getOrNull()
                     when {
-                        result == null -> DownloadState.Failed(null)
+                        result == null -> {
+                            // Error strings only — no activation data or crypto material.
+                            Log.e(TAG, "download failed: unreadable native result")
+                            DownloadState.Failed(null)
+                        }
                         result.success -> DownloadState.Complete(null)
-                        else -> DownloadState.Failed(result.message.ifBlank { null })
+                        else -> {
+                            Log.e(TAG, "download failed: ${result.message.ifBlank { "<empty>" }}")
+                            DownloadState.Failed(result.message.ifBlank { null })
+                        }
                     }
                 },
-                onFailure = { DownloadState.Failed(it.message) },
+                onFailure = {
+                    Log.e(TAG, "download failed: ${it.message}", it)
+                    DownloadState.Failed(it.message)
+                },
             )
             // The eUICC changed either way: a success installed a profile, and a failure may
             // still have left a notification behind.
