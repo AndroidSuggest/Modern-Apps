@@ -4,7 +4,9 @@ import com.vayunmathur.communicate.data.rcs.ImdnDisposition
 import com.vayunmathur.communicate.data.rcs.MsrpSetup
 import com.vayunmathur.communicate.data.rcs.RcsFileTransferHttp
 import com.vayunmathur.communicate.data.rcs.RcsGbaAuth
+import com.vayunmathur.communicate.data.rcs.RcsMsrp
 import com.vayunmathur.communicate.data.rcs.RcsMsrpListen
+import com.vayunmathur.communicate.data.rcs.RcsMsrpTls
 import com.vayunmathur.communicate.data.rcs.RcsSessionManager
 import com.vayunmathur.communicate.data.rcs.buildEditBody
 import com.vayunmathur.communicate.data.rcs.buildGeopushBody
@@ -209,5 +211,74 @@ class RcsUpFramingTest {
     fun sweepDropsOnlyStale() {
         // Empty manager: nothing to drop, no crash.
         assertTrue(RcsSessionManager.sweepStaleSessions().isEmpty())
+    }
+
+    @Test
+    fun fingerprintParses() {
+        val sdp = "m=message 2855 TCP/TLS/MSRP *\r\n" +
+            "a=path:msrps://10.0.0.1:2855/abc;tcp\r\n" +
+            "a=fingerprint:SHA-256 AA:BB:CC:01\r\n"
+        val (hash, value) = RcsMsrpTls.parseFingerprint(sdp) ?: error("no fingerprint")
+        assertEquals("SHA-256", hash)
+        assertEquals("AA:BB:CC:01", value)
+        assertNull(RcsMsrpTls.parseFingerprint("m=message 2855 TCP/MSRP *"))
+        assertNull(RcsMsrpTls.parseFingerprint(null))
+    }
+
+    @Test
+    fun secureSdpDetection() {
+        assertTrue(
+            RcsSessionManager.isSecureSdp("m=message 2855 TCP/TLS/MSRP *\r\na=setup:actpass\r\n"),
+        )
+        assertTrue(
+            RcsSessionManager.isSecureSdp("a=path:msrps://10.0.0.1:9/x;tcp\r\n"),
+        )
+        assertTrue(
+            RcsSessionManager.isSecureSdp("a=fingerprint:SHA-256 AA:BB\r\n"),
+        )
+        assertFalse(
+            RcsSessionManager.isSecureSdp("m=message 2855 TCP/MSRP *\r\na=setup:active\r\n"),
+        )
+        assertFalse(RcsSessionManager.isSecureSdp(null))
+    }
+
+    @Test
+    fun securePathScheme() {
+        assertTrue(RcsMsrp.isSecurePath("msrps://10.0.0.1:2855/abc;tcp"))
+        assertTrue(RcsMsrp.isSecurePath("MSRPS://10.0.0.1:2855/abc;tcp"))
+        assertFalse(RcsMsrp.isSecurePath("msrp://10.0.0.1:2855/abc;tcp"))
+        assertFalse(RcsMsrp.isSecurePath(null))
+        assertFalse(RcsMsrp.isSecurePath(""))
+        // Scheme-agnostic host/port parsing still works for msrps.
+        assertEquals(
+            "10.0.0.1" to 2855,
+            RcsMsrp.parseMsrpPath("msrps://10.0.0.1:2855/abc;tcp"),
+        )
+    }
+
+    @Test
+    fun selfSignedCertParsesAndVerifies() {
+        // Hand-rolled DER must decode as X.509, verify with its own key, and
+        // fingerprint-match its DER bytes.
+        val kpg = java.security.KeyPairGenerator.getInstance("EC")
+        kpg.initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
+        val kp = kpg.generateKeyPair()
+        val now = System.currentTimeMillis()
+        val der = RcsMsrpTls.selfSignedCert(
+            publicKey = kp.public.encoded,
+            privateKey = kp.private,
+            notBeforeMs = now - 1000,
+            notAfterMs = now + 3600_000,
+            commonName = "test",
+        )
+        val cf = java.security.cert.CertificateFactory.getInstance("X.509")
+        val cert = cf.generateCertificate(der.inputStream()) as java.security.cert.X509Certificate
+        cert.verify(kp.public)
+        assertEquals("CN=test", cert.subjectX500Principal.name)
+        val fp = RcsMsrpTls.fingerprintOf(der)
+        assertTrue(fp.matches(Regex("([0-9A-F]{2}:){31}[0-9A-F]{2}")))
+        // Fingerprint binds the exact bytes: flipping one flips the print.
+        val mutated = der.copyOf().also { it[der.size - 1] = (it[der.size - 1] + 1).toByte() }
+        assertFalse(RcsMsrpTls.fingerprintOf(mutated) == fp)
     }
 }

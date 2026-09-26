@@ -48,11 +48,19 @@ object RcsMsrpListen {
     private var listen: RcsImsNetwork.ListenSocket? = null
 
     /**
-     * Pending listen paths: our advertised `a=path` → conversation id, for
+     * Pending listen paths: our advertised `a=path` → listen target, for
      * routing accepted sockets to sessions. Entries are consumed on first
      * match; stale entries are dropped by [stop] / session teardown.
      */
-    private val pendingPaths = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private data class PendingListen(
+        val conversationId: String,
+        /** True when the session negotiated TLS (accept must handshake). */
+        val secure: Boolean,
+        /** Peer's SDP fingerprint when known (verified at accept). */
+        var peerFingerprint: String? = null,
+    )
+
+    private val pendingPaths = java.util.concurrent.ConcurrentHashMap<String, PendingListen>()
 
     /** True when a listen socket is currently bound. */
     fun isListening(): Boolean =
@@ -80,6 +88,7 @@ object RcsMsrpListen {
         if (isListening()) return@withContext true
         val bound = RcsImsNetwork.listenSocket(context) ?: return@withContext false
         listen = bound
+        appContext = context.applicationContext
         Log.i(TAG, "Listening on ${bound.localIp}:${bound.localPort}")
         scope.launch { acceptLoop(bound, onAccepted) }
         true
@@ -90,29 +99,47 @@ object RcsMsrpListen {
      * value to put in our SDP offer/answer, binding the listen socket first
      * when needed. Null when listening is unavailable (caller falls back to
      * active-only offers).
+     *
+     * [secure] marks a TLS session (accept must TLS-handshake);
+     * [peerFingerprint] pins the peer when already known (incoming offers).
+     * For outgoing offers the peer fingerprint arrives with the SDP answer —
+     * record it via [notePeerFingerprint].
      */
     suspend fun advertisePath(
         context: Context,
         conversationId: String,
+        secure: Boolean = false,
+        peerFingerprint: String? = null,
         onAccepted: (String, java.net.Socket, AcceptedHead) -> Unit,
     ): String? = withContext(Dispatchers.IO) {
         if (!RcsFeature.enabled) return@withContext null
         if (!ensureListening(context, onAccepted)) return@withContext null
         val bound = listen ?: return@withContext null
         val path = bound.msrpPath("sess-${UUID.randomUUID().toString().take(8)}")
-        pendingPaths[path] = conversationId
+        pendingPaths[path] = PendingListen(conversationId, secure, peerFingerprint)
         path
+    }
+
+    /**
+     * Record the peer's SDP fingerprint for a pending listen path (arrives
+     * with the SDP answer to our outgoing offer). Best-effort no-op when no
+     * path is pending.
+     */
+    fun notePeerFingerprint(conversationId: String, fingerprint: String) {
+        pendingPaths.values.firstOrNull { it.conversationId == conversationId }
+            ?.let { it.peerFingerprint = fingerprint }
     }
 
     /** Drop the pending path for [conversationId] (session torn down). */
     fun dropPending(conversationId: String) {
-        pendingPaths.entries.removeIf { it.value == conversationId }
+        pendingPaths.entries.removeIf { it.value.conversationId == conversationId }
     }
 
     /** Close the listen socket + accept loop; drop pending paths. */
     fun stop() {
         runCatching { listen?.close() }
         listen = null
+        appContext = null
         pendingPaths.clear()
     }
 
@@ -143,62 +170,213 @@ object RcsMsrpListen {
     }
 
     /**
-     * Route one accepted socket: read the first SEND's To-Path, match it
-     * against pending listen paths, hand the socket + head to the session.
-     * Closes unmatched/failed sockets with a 481 when the framing allows.
+     * Route one accepted socket.
+     *
+     * TLS detection comes first: a TLS ClientHello record starts with 0x16,
+     * while plaintext MSRP starts with 'M'. Exactly one byte is peeked (then
+     * replayed), so:
+     * - 0x16 → TLS server handshake first, then the first SEND is read from
+     *   the decrypted stream and matched — the matched pending path must be
+     *   a secure one, and the peer fingerprint is verified when known.
+     * - otherwise → plaintext head peek as before; the matched path must be
+     *   a plaintext one (a peer skipping TLS on a secure path is rejected).
+     *
+     * Unmatched/failed sockets get a 481 when the framing allows, then close.
      */
-    private fun routeAccepted(
+    private suspend fun routeAccepted(
         socket: java.net.Socket,
         onAccepted: (String, java.net.Socket, AcceptedHead) -> Unit,
     ) {
         runCatching {
             socket.soTimeout = 15_000
-            val input = socket.getInputStream().bufferedReader(Charsets.UTF_8)
-            // Peek the first MSRP request head (bounded: 32 lines max).
-            val headLines = mutableListOf<String>()
-            var line = runCatching { input.readLine() }.getOrNull()
-            var guard = 0
-            while (line != null && line.isNotEmpty() && guard++ < 32) {
-                headLines.add(line)
-                line = runCatching { input.readLine() }.getOrNull()
-            }
-            if (line == null && headLines.isEmpty()) {
+            val raw = socket.getInputStream()
+            val firstByte = raw.read()
+            if (firstByte < 0) {
                 runCatching { socket.close() }
                 return
             }
-            val first = headLines.firstOrNull() ?: run {
-                runCatching { socket.close() }
+            if (firstByte == 0x16) {
+                routeTls(socket, raw, firstByte, onAccepted)
                 return
             }
-            if (!first.startsWith("MSRP ")) {
-                runCatching { socket.close() }
-                return
-            }
-            val toPath = headLines.firstOrNull { it.startsWith("To-Path:", ignoreCase = true) }
-                ?.substringAfter(":")?.trim()
-            val conversationId = toPath?.let { pendingPaths.remove(it) }
-            if (conversationId == null) {
-                // Unknown path: 481 per RFC 4975 §7.1, then close.
-                val txid = first.split(" ").getOrNull(1).orEmpty()
-                if (txid.isNotEmpty()) {
-                    runCatching {
-                        val out = socket.getOutputStream()
-                        out.write("MSRP $txid 481 Session Does Not Exist\r\n".toByteArray(Charsets.UTF_8))
-                        out.write("To-Path: $toPath\r\n\r\n".toByteArray(Charsets.UTF_8))
-                        out.write("-------$txid\$\r\n".toByteArray(Charsets.UTF_8))
-                        out.flush()
-                    }
-                }
-                runCatching { socket.close() }
-                Log.w(TAG, "Rejected inbound MSRP for unknown path $toPath")
-                return
-            }
-            // Matched: hand over the live socket + consumed head for replay.
-            socket.soTimeout = 0
-            onAccepted(conversationId, socket, AcceptedHead(headLines))
+            val input = java.io.SequenceInputStream(
+                java.io.ByteArrayInputStream(byteArrayOf(firstByte.toByte())),
+                raw,
+            ).bufferedReader(Charsets.UTF_8)
+            routePlain(socket, input, onAccepted)
         }.onFailure {
             Log.w(TAG, "Accept routing failed", it)
             runCatching { socket.close() }
         }
     }
+
+    /** Plaintext branch: peek the first SEND head, match To-Path, hand over. */
+    private fun routePlain(
+        socket: java.net.Socket,
+        input: java.io.BufferedReader,
+        onAccepted: (String, java.net.Socket, AcceptedHead) -> Unit,
+    ) {
+        // Peek the first MSRP request head (bounded: 32 lines max).
+        val headLines = mutableListOf<String>()
+        var line = runCatching { input.readLine() }.getOrNull()
+        var guard = 0
+        while (line != null && line.isNotEmpty() && guard++ < 32) {
+            headLines.add(line)
+            line = runCatching { input.readLine() }.getOrNull()
+        }
+        if (line == null && headLines.isEmpty()) {
+            runCatching { socket.close() }
+            return
+        }
+        val first = headLines.firstOrNull() ?: run {
+            runCatching { socket.close() }
+            return
+        }
+        if (!first.startsWith("MSRP ")) {
+            runCatching { socket.close() }
+            return
+        }
+        val toPath = headLines.firstOrNull { it.startsWith("To-Path:", ignoreCase = true) }
+            ?.substringAfter(":")?.trim()
+        val pending = toPath?.let { pendingPaths.remove(it) }
+        if (pending == null) {
+            send481(socket, first, toPath)
+            runCatching { socket.close() }
+            Log.w(TAG, "Rejected inbound MSRP for unknown path $toPath")
+            return
+        }
+        if (pending.secure) {
+            // Peer skipped TLS on a secure path — reject, don't downgrade
+            // silently (downgrade negotiation belongs in SDP, not here).
+            Log.w(TAG, "Rejected plaintext SEND on secure path $toPath")
+            runCatching { socket.close() }
+            return
+        }
+        // Matched: hand over the live socket + consumed head for replay
+        // (the live stream already consumed through the blank line, so the
+        // reader replays the full head ahead of it).
+        socket.soTimeout = 0
+        onAccepted(pending.conversationId, socket, AcceptedHead(headLines))
+    }
+
+    /**
+     * TLS branch: complete the server handshake over [tcp] (whose first
+     * ClientHello byte was consumed into [consumed]), then read + match the
+     * first SEND from the decrypted stream. The matched path must be secure;
+     * the peer fingerprint is verified when known.
+     */
+    private suspend fun routeTls(
+        tcp: java.net.Socket,
+        raw: java.io.InputStream,
+        consumed: Int,
+        onAccepted: (String, java.net.Socket, AcceptedHead) -> Unit,
+    ) {
+        // Rebuild the full stream: consumed byte + remainder, then handshake.
+        val replayed = java.io.SequenceInputStream(
+            java.io.ByteArrayInputStream(byteArrayOf(consumed.toByte())),
+            raw,
+        )
+        // Temporarily swap the socket's input for the handshake: SSLSocket
+        // wraps the TCP socket directly, so feed it a stream that starts
+        // with the consumed byte. Achieve this by layering TLS over a
+        // delegating socket whose getInputStream returns the replayed bytes.
+        val peekSocket = object : java.net.Socket() {
+            override fun getInputStream(): java.io.InputStream = replayed
+            override fun getOutputStream(): java.io.OutputStream = tcp.getOutputStream()
+            override fun getInetAddress(): java.net.InetAddress? = tcp.inetAddress
+            override fun getPort(): Int = tcp.port
+            override fun close() = tcp.close()
+            override fun isClosed(): Boolean = tcp.isClosed
+            override fun isConnected(): Boolean = tcp.isConnected
+        }
+        val ssl = acceptTls(peekSocket) ?: run {
+            runCatching { tcp.close() }
+            Log.w(TAG, "TLS accept failed")
+            return
+        }
+        // Handshake done — now read the first SEND head from TLS plaintext.
+        val input = ssl.getInputStream().bufferedReader(Charsets.UTF_8)
+        val headLines = mutableListOf<String>()
+        var line = runCatching { input.readLine() }.getOrNull()
+        var guard = 0
+        while (line != null && line.isNotEmpty() && guard++ < 32) {
+            headLines.add(line)
+            line = runCatching { input.readLine() }.getOrNull()
+        }
+        val first = headLines.firstOrNull()
+        if (first == null || !first.startsWith("MSRP ")) {
+            runCatching { ssl.close() }
+            return
+        }
+        val toPath = headLines.firstOrNull { it.startsWith("To-Path:", ignoreCase = true) }
+            ?.substringAfter(":")?.trim()
+        val pending = toPath?.let { pendingPaths.remove(it) }
+        if (pending == null) {
+            send481(ssl, first, toPath)
+            runCatching { ssl.close() }
+            Log.w(TAG, "Rejected inbound MSRP-TLS for unknown path $toPath")
+            return
+        }
+        if (!pending.secure) {
+            // Peer did TLS on a plaintext path: accept the media anyway (TLS
+            // is strictly stronger; the SDP answer just didn't advertise it).
+            Log.i(TAG, "Peer used TLS on plaintext path $toPath — accepting")
+        }
+        if (!RcsMsrpTls.verifyServerSide(ssl, pending.peerFingerprint)) {
+            Log.w(TAG, "TLS peer fingerprint mismatch for ${pending.conversationId}")
+            runCatching { ssl.close() }
+            return
+        }
+        ssl.soTimeout = 0
+        onAccepted(pending.conversationId, ssl, AcceptedHead(headLines))
+    }
+
+    /** 481 Session Does Not Exist, per RFC 4975 §7.1. */
+    private fun send481(socket: java.net.Socket, firstLine: String, toPath: String?) {
+        val txid = firstLine.split(" ").getOrNull(1).orEmpty()
+        if (txid.isEmpty()) return
+        runCatching {
+            val out = socket.getOutputStream()
+            out.write("MSRP $txid 481 Session Does Not Exist\r\n".toByteArray(Charsets.UTF_8))
+            out.write("To-Path: $toPath\r\n\r\n".toByteArray(Charsets.UTF_8))
+            out.write("-------$txid\$\r\n".toByteArray(Charsets.UTF_8))
+            out.flush()
+        }
+    }
+
+    /**
+     * TLS server handshake over an accepted [tcp] socket: present our cert,
+     * request the peer's. Returns the established `SSLSocket`, or null on
+     * handshake failure. Fingerprint verification happens in [routeTls]
+     * after To-Path matching (the expected value is per-session).
+     */
+    private suspend fun acceptTls(
+        tcp: java.net.Socket,
+    ): javax.net.ssl.SSLSocket? = withContext(Dispatchers.IO) {
+        val app = appContext ?: return@withContext null
+        val sslContext = RcsMsrpTls.serverContext(app) ?: return@withContext null
+        runCatching {
+            val ssl = sslContext.socketFactory.createSocket(
+                tcp,
+                tcp.inetAddress?.hostAddress,
+                tcp.port,
+                true,
+            ) as javax.net.ssl.SSLSocket
+            ssl.useClientMode = false
+            ssl.wantClientAuth = true
+            ssl.soTimeout = 15_000
+            ssl.startHandshake()
+            ssl.soTimeout = 0
+            Log.i(TAG, "TLS accept established")
+            ssl
+        }.getOrElse {
+            Log.w(TAG, "TLS accept handshake failed", it)
+            runCatching { tcp.close() }
+            null
+        }
+    }
+
+    /** App context for the TLS server context (set by ensureListening). */
+    @Volatile
+    private var appContext: Context? = null
 }

@@ -52,9 +52,14 @@ object RcsSessionManager {
         val callId = "${UUID.randomUUID()}@rcs"
         val localTag = UUID.randomUUID().toString().take(8)
         val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
-        val listenPath = listenPathFor(conversationId)
+        val tlsFingerprint = tlsFingerprintFor()
+        val secureOffer = tlsFingerprint != null
+        val listenPath = listenPathFor(conversationId, secureOffer)
         val (startLine, headers, content) =
-            buildInvite(remoteTelUri, callId, localTag, branch, conversationId, listenPath = listenPath)
+            buildInvite(
+                remoteTelUri, callId, localTag, branch, conversationId,
+                listenPath = listenPath, tlsFingerprint = tlsFingerprint,
+            )
         val ok = RcsSipTransport.sendSipMessage(startLine, headers, content)
         if (!ok) return null
         val dialogId = "$callId:$localTag"
@@ -66,6 +71,7 @@ object RcsSessionManager {
             remoteTag = "",
             remoteUri = remoteTelUri,
             conversationId = conversationId,
+            msrpSecure = secureOffer,
         ))
         return dialogId
     }
@@ -84,9 +90,13 @@ object RcsSessionManager {
         val callId = "${UUID.randomUUID()}@rcs"
         val localTag = UUID.randomUUID().toString().take(8)
         val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
-        val listenPath = listenPathFor(conversationId)
+        val tlsFingerprint = tlsFingerprintFor()
+        val listenPath = listenPathFor(conversationId, tlsFingerprint != null)
         val (startLine, headers, content) =
-            buildInvite(focusUri, callId, localTag, branch, conversationId, subject, listenPath)
+            buildInvite(
+                focusUri, callId, localTag, branch, conversationId, subject,
+                listenPath, tlsFingerprint,
+            )
         val ok = RcsSipTransport.sendSipMessage(startLine, headers, content)
         if (!ok) return null
         val dialogId = "$callId:$localTag"
@@ -99,6 +109,7 @@ object RcsSessionManager {
             remoteUri = focusUri,
             conversationId = conversationId,
             isGroup = true,
+            msrpSecure = tlsFingerprint != null,
         ))
         return dialogId
     }
@@ -211,6 +222,7 @@ object RcsSessionManager {
             if (incomplete || idle) {
                 _sessions.value = _sessions.value - conversationId
                 _pendingOffers.remove(session.callId)
+                _answerFingerprints.remove(session.callId)
                 RcsMsrpListen.dropPending(conversationId)
                 dropped += conversationId
             }
@@ -255,13 +267,28 @@ object RcsSessionManager {
      */
     var listenContextProvider: (() -> android.content.Context?)? = null
 
-    private suspend fun listenPathFor(conversationId: String): String? {
+    private suspend fun listenPathFor(
+        conversationId: String,
+        secure: Boolean = false,
+        peerFingerprint: String? = null,
+    ): String? {
         val context = listenContextProvider?.invoke() ?: return null
         // The accept callback is a no-op here: the sync service owns the real
         // accept loop (it calls ensureListening at startup). advertisePath
         // only registers the pending path when already listening.
         if (!RcsMsrpListen.isListening()) return null
-        return RcsMsrpListen.advertisePath(context, conversationId) { _, _, _ -> }
+        return RcsMsrpListen.advertisePath(
+            context, conversationId, secure, peerFingerprint,
+        ) { _, _, _ -> }
+    }
+
+    /**
+     * Our TLS fingerprint for SDP offers/answers, or null when the identity
+     * is unavailable (caller falls back to plaintext `msrp://`).
+     */
+    private suspend fun tlsFingerprintFor(): String? {
+        val context = listenContextProvider?.invoke() ?: return null
+        return RcsMsrpTls.ensureIdentity(context)?.fingerprint
     }
 
     /**
@@ -283,12 +310,22 @@ object RcsSessionManager {
         val from = cfg?.publicUserId?.takeIf { it.isNotBlank() } ?: "sip:local@rcs"
         val offered = _pendingOffers[session.callId]
         // Passive answer when the offerer is active-only and we can listen.
+        // The offer's fingerprint (when present) pins the accept-side TLS.
+        val offerSdp = offered?.sdp.orEmpty()
+        val answerSecure = isSecureSdp(offerSdp)
+        val tlsFingerprint = if (answerSecure) tlsFingerprintFor() else null
+        val useTls = answerSecure && tlsFingerprint != null
         val passivePath = if (offered?.setup == MsrpSetup.ACTIVE && !offered.remotePath.isNullOrBlank()) {
-            listenPathFor(conversationId)
+            listenPathFor(conversationId, useTls, offered.peerFingerprint)
         } else {
             null
         }
-        val sdp = buildSdpAnswer(cfg?.msrpLocalIp, passivePath)
+        // Offered TLS but identity unavailable: answer plaintext (downgrade)
+        // rather than failing the dialog — pager-mode still works.
+        val sdp = buildSdpAnswer(
+            cfg?.msrpLocalIp, passivePath,
+            secure = useTls, tlsFingerprint = tlsFingerprint,
+        )
         val bytes = sdp.toByteArray(Charsets.UTF_8)
         val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
         val startLine = "SIP/2.0 200 OK"
@@ -313,6 +350,7 @@ object RcsSessionManager {
                     msrpRemotePath = offer.remotePath,
                     msrpSetup = offer.setup,
                     msrpLocalPath = passivePath ?: session.msrpLocalPath,
+                    msrpSecure = useTls,
                 ))
             }
         }
@@ -341,9 +379,23 @@ object RcsSessionManager {
     }
 
     /** Inbound offer details stashed at INVITE time for [acceptIncoming]. */
-    private data class PendingOffer(val remotePath: String?, val setup: MsrpSetup?)
+    private data class PendingOffer(
+        val remotePath: String?,
+        val setup: MsrpSetup?,
+        /** Raw offer SDP (for TLS/fingerprint detection at answer time). */
+        val sdp: String = "",
+        /** Peer's SDP fingerprint value, when offered (for TLS pinning). */
+        val peerFingerprint: String? = null,
+    )
 
     private val _pendingOffers = ConcurrentHashMap<String, PendingOffer>()
+
+    /** Peer's SDP answer fingerprint for an outgoing session ([callId]). */
+    private val _answerFingerprints = ConcurrentHashMap<String, String>()
+
+    /** Stashed answer fingerprint for [callId], or null when absent. */
+    fun peerFingerprint(callId: String): String? = _answerFingerprints[callId]
+
     /** Tear down the session for [conversationId] with BYE. */
     suspend fun terminateSession(conversationId: String): Boolean {
         val session = _sessions.value[conversationId] ?: return true
@@ -359,6 +411,7 @@ object RcsSessionManager {
         transactions.remove(branch)
         _sessions.value = _sessions.value - conversationId
         _pendingOffers.remove(session.callId)
+        _answerFingerprints.remove(session.callId)
         RcsMsrpListen.dropPending(conversationId)
         if (session.remoteTag.isNotBlank()) {
             // Tell the framework the dialog is gone so it releases delegate
@@ -379,11 +432,22 @@ object RcsSessionManager {
         if (statusCode in 200..299 && !remoteTag.isNullOrBlank()) {
             val (localPath, remotePath) = parseSdpPaths(sdpAnswer)
             val setup = parseSdpSetup(sdpAnswer)
+            // TLS sticks when WE offered secure and the answer keeps it
+            // (secure answer SDP); a plaintext answer to our secure offer is
+            // a downgrade — honor it and run plaintext.
+            val answerSecure = isSecureSdp(sdpAnswer)
+            // Stash the answer's fingerprint for the TLS client pin check
+            // and the listen-side accept pin check.
+            RcsMsrpTls.parseFingerprint(sdpAnswer)?.second?.let { fp ->
+                _answerFingerprints[callId] = fp
+                RcsMsrpListen.notePeerFingerprint(entry.key, fp)
+            }
             _sessions.value = _sessions.value + (entry.key to session.copy(
                 remoteTag = remoteTag,
                 msrpLocalPath = localPath ?: session.msrpLocalPath,
                 msrpRemotePath = remotePath,
                 msrpSetup = setup,
+                msrpSecure = session.msrpSecure && answerSecure,
             ))
             // Usable when: peer is passive/actpass (we connect out, the v1
             // path), OR peer is active and we have a listen path (they
@@ -448,6 +512,8 @@ object RcsSessionManager {
                     remotePath = Regex("a=path:(\\S+)", RegexOption.IGNORE_CASE).find(body)
                         ?.groupValues?.getOrNull(1)?.trim(),
                     setup = parseSdpSetup(body),
+                    sdp = body,
+                    peerFingerprint = RcsMsrpTls.parseFingerprint(body)?.second,
                 )
                 val session = RcsSession(
                     dialogId = "$callId:in",
@@ -497,10 +563,11 @@ object RcsSessionManager {
         conversationId: String,
         subject: String? = null,
         listenPath: String? = null,
+        tlsFingerprint: String? = null,
     ): Triple<String, String, ByteArray> {
         val cfg = RcsSipTransport.lastConfigSnapshot()
         val from = cfg?.publicUserId?.takeIf { it.isNotBlank() } ?: "sip:local@rcs"
-        val sdp = buildSdpOffer(cfg?.msrpLocalIp, listenPath)
+        val sdp = buildSdpOffer(cfg?.msrpLocalIp, listenPath, tlsFingerprint)
         val bytes = sdp.toByteArray(Charsets.UTF_8)
         val startLine = "INVITE $targetUri SIP/2.0"
         val headers = buildString {
@@ -530,57 +597,89 @@ object RcsSessionManager {
      * SDP offer: `setup:actpass` + listen path when we can accept inbound
      * TCP ([listenPath] from [RcsMsrpListen]), else the v1 `setup:active`
      * connect-out offer with an unroutable placeholder path.
+     *
+     * TLS (RFC 4976): when our identity is available ([tlsFingerprint]
+     * non-null) the offer is `TCP/TLS/MSRP` with an `msrps://` path +
+     * `a=fingerprint`, so a TLS-capable peer answers secure; otherwise plain
+     * `TCP/MSRP`. The media proto/paths always agree (never a TLS path on a
+     * plaintext `m=` line).
      */
-    private fun buildSdpOffer(localIp: String?, listenPath: String?): String {
+    private fun buildSdpOffer(
+        localIp: String?,
+        listenPath: String?,
+        tlsFingerprint: String? = null,
+    ): String {
         val ip = localIp?.takeIf { it.isNotBlank() } ?: "0.0.0.0"
+        val secure = tlsFingerprint != null
         val (path, port, setup) = if (listenPath != null) {
-            Triple(listenPath, RcsMsrpListen.listenPort() ?: 2855, "actpass")
+            Triple(
+                if (secure) listenPath.withScheme("msrps") else listenPath,
+                RcsMsrpListen.listenPort() ?: 2855,
+                "actpass",
+            )
         } else {
             Triple(
-                "msrp://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp",
+                "${if (secure) "msrps" else "msrp"}://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp",
                 2855,
                 "active",
             )
         }
+        val proto = if (secure) "TCP/TLS/MSRP" else "TCP/MSRP"
         return buildString {
             append("v=0\r\n")
             append("o=- ${System.currentTimeMillis()} ${System.currentTimeMillis()} IN IP4 $ip\r\n")
             append("s=-\r\n")
             append("c=IN IP4 $ip\r\n")
             append("t=0 0\r\n")
-            append("m=message $port TCP/MSRP *\r\n")
+            append("m=message $port $proto *\r\n")
             append("a=path:$path\r\n")
             append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
             append("a=setup:$setup\r\n")
+            if (secure) append("a=fingerprint:${RcsMsrpTls.FINGERPRINT_HASH} $tlsFingerprint\r\n")
         }
     }
 
     /**
      * SDP answer: `setup:passive` + listen path when we are accepting the
      * offerer's TCP connection ([passivePath] non-null), else the v1
-     * `setup:active` answer (we connect out to the offerer).
+     * `setup:active` answer (we connect out to the offerer). [secure]
+     * mirrors the offerer's choice: a TLS offer (`TCP/TLS/MSRP`,
+     * `msrps://`, or `a=fingerprint`) gets a TLS answer with our
+     * fingerprint; otherwise plaintext.
      */
-    private fun buildSdpAnswer(localIp: String?, passivePath: String? = null): String {
+    private fun buildSdpAnswer(
+        localIp: String?,
+        passivePath: String? = null,
+        secure: Boolean = false,
+        tlsFingerprint: String? = null,
+    ): String {
         val ip = localIp?.takeIf { it.isNotBlank() } ?: "0.0.0.0"
+        val useTls = secure && tlsFingerprint != null
         val (path, port, setup) = if (passivePath != null) {
-            Triple(passivePath, RcsMsrpListen.listenPort() ?: 2855, "passive")
+            Triple(
+                if (useTls) passivePath.withScheme("msrps") else passivePath,
+                RcsMsrpListen.listenPort() ?: 2855,
+                "passive",
+            )
         } else {
             Triple(
-                "msrp://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp",
+                "${if (useTls) "msrps" else "msrp"}://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp",
                 2855,
                 "active",
             )
         }
+        val proto = if (useTls) "TCP/TLS/MSRP" else "TCP/MSRP"
         return buildString {
             append("v=0\r\n")
             append("o=- ${System.currentTimeMillis()} ${System.currentTimeMillis()} IN IP4 $ip\r\n")
             append("s=-\r\n")
             append("c=IN IP4 $ip\r\n")
             append("t=0 0\r\n")
-            append("m=message $port TCP/MSRP *\r\n")
+            append("m=message $port $proto *\r\n")
             append("a=path:$path\r\n")
             append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
             append("a=setup:$setup\r\n")
+            if (useTls) append("a=fingerprint:${RcsMsrpTls.FINGERPRINT_HASH} $tlsFingerprint\r\n")
         }
     }
 
@@ -591,9 +690,22 @@ object RcsSessionManager {
         return null to path
     }
 
+    /** Rewrite an `msrp(s)://` path's scheme (e.g. advertise `msrps://`). */
+    private fun String.withScheme(scheme: String): String {
+        val rest = substringAfter("://", missingDelimiterValue = this)
+        return if (rest === this) this else "$scheme://$rest"
+    }
+
+    /** True when the SDP negotiates TLS media (`TCP/TLS/MSRP`, `msrps`, or fingerprint). */
+    fun isSecureSdp(sdp: String?): Boolean {
+        if (sdp.isNullOrBlank()) return false
+        return sdp.contains("TCP/TLS/MSRP", ignoreCase = true) ||
+            Regex("a=path:msrps://", RegexOption.IGNORE_CASE).containsMatchIn(sdp) ||
+            RcsMsrpTls.parseFingerprint(sdp) != null
+    }
+
     /** Hosted-focus lookup: which focus a To-URI/SDP blob targets. */
     private data class HostedTarget(val focusUri: String, val conversationId: String)
-
     private fun hostedConversationFor(target: String): HostedTarget? {
         if (target.isBlank()) return null
         for ((conversationId, session) in _sessions.value) {

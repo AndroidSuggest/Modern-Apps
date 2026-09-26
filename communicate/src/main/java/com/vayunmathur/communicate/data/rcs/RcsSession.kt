@@ -38,6 +38,12 @@ data class RcsSession(
      * nulled (pager-mode fallback). Null = absent, treated as passive.
      */
     val msrpSetup: MsrpSetup? = null,
+    /**
+     * True when this session's MSRP media runs over TLS (`msrps://`,
+     * RFC 4976). Negotiated from the SDP (`TCP/TLS/MSRP` or `a=fingerprint`
+     * on either side); plaintext otherwise. Both socket directions honor it.
+     */
+    val msrpSecure: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
 )
 

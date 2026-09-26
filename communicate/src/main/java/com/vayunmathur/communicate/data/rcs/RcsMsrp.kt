@@ -94,15 +94,10 @@ object RcsMsrp {
      * listener already consumed the first SEND head ([head]) for To-Path
      * routing, so the reader replays it before the live stream. [localPath]
      * is our advertised path (matches the peer's To-Path); [remotePath] is
-     * the peer's From-Path, used for our SENDs back on this same socket.
-     */
-    /**
-     * Wrap an accepted (passive-side) socket as a session connection: the
-     * listener already consumed the first SEND head ([head]) for To-Path
-     * routing, so the reader replays it before the live stream. [localPath]
-     * is our advertised path (matches the peer's To-Path); [remotePath] is
      * the peer's From-Path, used for our SENDs back on this same socket
      * (RFC 4975 §5.4 — the passive side reuses the accepted connection).
+     * [socket] may already be a TLS `SSLSocket` (secure sessions) — the
+     * reader only needs the byte stream.
      */
     fun wrapAccepted(
         socket: java.net.Socket,
@@ -148,7 +143,22 @@ object RcsMsrp {
         val localPath = session.msrpLocalPath ?: "msrp://local.invalid/${UUID.randomUUID()};tcp"
         runCatching {
             val (host, port) = parseMsrpPath(remotePath) ?: return@runCatching null
-            val socket = RcsImsNetwork.createSocket(context, host, port) ?: return@runCatching null
+            val socket = if (session.msrpSecure) {
+                // TLS client: pin the peer against the fingerprint from its
+                // SDP answer (stashed at response time — see session lookup).
+                // Falls back to plaintext connect when no fingerprint is
+                // known (downgrade, never a hard failure here).
+                val peerFp = peerFingerprintFor(session)
+                if (peerFp != null) {
+                    RcsMsrpTls.clientSocket(context, host, port, peerFp)
+                        ?: return@runCatching null
+                } else {
+                    Log.w(TAG, "Secure session without peer fingerprint; downgrading to plaintext")
+                    RcsImsNetwork.createSocket(context, host, port) ?: return@runCatching null
+                }
+            } else {
+                RcsImsNetwork.createSocket(context, host, port) ?: return@runCatching null
+            }
             val conn = MsrpConnection(socket, localPath, remotePath)
             // Reader loop: parse SEND chunks, auto-200 them, deliver bodies.
             // Owned by the connection; dies on close.
@@ -159,6 +169,13 @@ object RcsMsrp {
             null
         }
     }
+
+    /**
+     * Peer's TLS fingerprint for an outgoing secure session, from the SDP
+     * answer stashed at response time. Null when unknown (caller downgrades).
+     */
+    private fun peerFingerprintFor(session: RcsSession): String? =
+        RcsSessionManager.peerFingerprint(session.callId)
 
     private fun readLoop(
         conn: MsrpConnection,
@@ -316,7 +333,8 @@ object RcsMsrp {
     /**
      * Send [payload] (CPIM bytes) over an MSRP session bound to [session].
      * Opens a TCP socket to the remote path when needed (IMS PDN preferred,
-     * see [connect]). Returns true on a 200 response to our SEND.
+     * see [connect]; TLS when [RcsSession.msrpSecure]). Returns true on a
+     * 200 response to our SEND.
      *
      * One-shot fallback; prefer [connect] for established sessions.
      */
@@ -343,8 +361,14 @@ object RcsMsrp {
                 append("Success-Report: no\r\n")
                 append("Content-Type: $contentType\r\n")
             }
-            val socket = RcsImsNetwork.createSocket(context, host, port)
-                ?: return@runCatching false
+            val socket = if (session.msrpSecure) {
+                val peerFp = peerFingerprintFor(session) ?: return@runCatching false
+                RcsMsrpTls.clientSocket(context, host, port, peerFp)
+                    ?: return@runCatching false
+            } else {
+                RcsImsNetwork.createSocket(context, host, port)
+                    ?: return@runCatching false
+            }
             socket.use { s ->
                 val out = s.getOutputStream()
                 out.write(chunk.toByteArray(Charsets.UTF_8))
@@ -363,8 +387,9 @@ object RcsMsrp {
     }
 
     /**
-     * Parse an `msrp://host[:port]/...` path into (host, port). Default MSRP
-     * port 2855 when absent.
+     * Parse an `msrp(s)://host[:port]/...` path into (host, port). Default
+     * MSRP port 2855 when absent. Scheme-agnostic (covers `msrps://`); use
+     * [isSecurePath] for the TLS decision.
      */
     fun parseMsrpPath(path: String): Pair<String, Int>? {
         return runCatching {
@@ -373,5 +398,12 @@ object RcsMsrp {
             val port = if (uri.port > 0) uri.port else 2855
             host to port
         }.getOrNull()
+    }
+
+    /** True when [path] uses the `msrps://` scheme (TLS media, RFC 4976). */
+    fun isSecurePath(path: String?): Boolean {
+        if (path.isNullOrBlank()) return false
+        return runCatching { android.net.Uri.parse(path).scheme }.getOrNull()
+            .equals("msrps", ignoreCase = true)
     }
 }
