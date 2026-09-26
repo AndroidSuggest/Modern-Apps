@@ -41,6 +41,20 @@ object BundledTrust {
             val ks = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
 
             var loaded = 0
+            if (bundle.includeSystemIssuers()) {
+                // Seed from the platform store so every public-CA host keeps
+                // validating; the bundled assets below only ADD ecosystem roots.
+                val systemTmf = TrustManagerFactory.getInstance(
+                    TrustManagerFactory.getDefaultAlgorithm(),
+                ).apply { init(null as KeyStore?) }
+                val systemIssuers = systemTmf.trustManagers
+                    .filterIsInstance<X509TrustManager>()
+                    .flatMap { it.acceptedIssuers.toList() }
+                for ((idx, cert) in systemIssuers.withIndex()) {
+                    ks.setCertificateEntry("system-$idx", cert)
+                    loaded++
+                }
+            }
             for ((idx, path) in assetPaths.withIndex()) {
                 try {
                     context.assets.open(path).use { ins ->

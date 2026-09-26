@@ -21,6 +21,16 @@ package com.vayunmathur.library.network
  *   as its own bundle rather than folded into STANDARD so the other STANDARD apps do not
  *   silently gain a root only musicbrainz needs.
  * - SYSTEM: platform default; email/web/vpn dynamic hosts.
+ * - ESIM: system roots PLUS the GSMA RSP2 CI root. SM-DP+ servers authenticate
+ *   their TLS layer with certificates issued under the GSMA CI PKI (a closed
+ *   eSIM-ecosystem PKI, e.g. Thales-hosted carrier endpoints chaining to
+ *   "GSM Association - RSP2 Root CI1"), which no platform store carries — so
+ *   system trust alone fails them with CertPathValidatorException while a
+ *   blanket trust-all would drop the only transport check. Seeding from the
+ *   platform issuers keeps every public-CA SM-DP+ working; the single extra
+ *   root only admits the eSIM ecosystem PKI. The eUICC itself still performs
+ *   the real mutual authentication (AuthenticateServer against its CI PKI), so
+ *   this bundle never vouches for a server the eUICC would reject.
  */
 enum class TrustBundle {
     FIRST_PARTY,
@@ -28,9 +38,13 @@ enum class TrustBundle {
     EXTENDED,
     MUSICBRAINZ,
     SYSTEM,
+    ESIM,
     ;
 
     fun assetPaths(): List<String> = when (this) {
+        ESIM -> listOf(
+            "ca/gsma-rsp2-root-ci1.der",
+        )
         FIRST_PARTY -> listOf(
             "ca/isrgrootx1.der",
             "ca/isrgrootx2.der",
@@ -68,4 +82,12 @@ enum class TrustBundle {
         )
         SYSTEM -> emptyList()
     }
+
+    /**
+     * Whether the bundle starts from the platform's own accepted issuers before
+     * adding [assetPaths]. Only ESIM does this: its hosts span arbitrary public
+     * CAs plus the GSMA CI root, and enumerating every public root they might
+     * use would just be a worse-maintained copy of the system store.
+     */
+    fun includeSystemIssuers(): Boolean = this == ESIM
 }
