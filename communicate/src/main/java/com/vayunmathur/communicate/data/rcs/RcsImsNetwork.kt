@@ -8,6 +8,8 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.util.Log
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.net.Socket
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -139,6 +141,57 @@ object RcsImsNetwork {
             props.linkAddresses.mapNotNull { it.address?.hostAddress }
                 .filter { !it.startsWith("127.") && it != "::1" }
         }.getOrDefault(emptyList())
+    }
+
+    /**
+     * Bound MSRP listen socket on the IMS PDN: a `ServerSocket` on an
+     * ephemeral port, bound to the IMS local address when known.
+     *
+     * Note: `Network` exposes a client `SocketFactory` but no server-socket
+     * factory, so this binds a plain `ServerSocket` explicitly to the IMS
+     * local address. Inbound TCP to that address arrives on the IMS PDN at
+     * the IP layer regardless of which `Network` created the socket — the
+     * routing decision is the peer's (it connects to the address we
+     * advertise in `a=path`), not ours.
+     *
+     * Returns the socket + the local (ip, port) to advertise in `a=path` and
+     * `c=`, or null when no IMS network / bind fails. The socket is NOT
+     * closed here — the caller owns the accept loop and closes on teardown.
+     * Plain-network fallback is deliberately absent: advertising an
+     * unroutable address is worse than offering active-only.
+     */
+    suspend fun listenSocket(context: Context): ListenSocket? {
+        if (!RcsFeature.enabled) return null
+        val ims = imsNetwork(context) ?: return null
+        return runCatching {
+            val localIp = lastLocalIp
+                ?.let { runCatching { InetAddress.getByName(it) }.getOrNull() }
+                ?: return null
+            val server = ServerSocket()
+            // Backlog sized for one peer per pending session plus slack.
+            server.bind(InetSocketAddress(localIp, 0), 16)
+            val port = server.localPort.takeIf { it > 0 } ?: run {
+                runCatching { server.close() }
+                return null
+            }
+            val ip = localIp.hostAddress ?: return null
+            ListenSocket(server = server, localIp = ip, localPort = port)
+        }.getOrElse {
+            Log.w(TAG, "IMS listen bind failed", it)
+            null
+        }
+    }
+
+    /** An owned IMS-PDN listen socket with its advertised address. */
+    data class ListenSocket(
+        val server: ServerSocket,
+        val localIp: String,
+        val localPort: Int,
+    ) {
+        /** `msrp://ip:port/<session>;tcp` path for `a=path`. */
+        fun msrpPath(sessionId: String): String = "msrp://$localIp:$localPort/$sessionId;tcp"
+
+        fun close() = runCatching { server.close() }
     }
 
     private fun localIpFor(context: Context, network: Network): String? =

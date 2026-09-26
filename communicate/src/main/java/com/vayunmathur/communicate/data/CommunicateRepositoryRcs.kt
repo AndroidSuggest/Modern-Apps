@@ -19,7 +19,10 @@ import com.vayunmathur.communicate.data.rcs.buildRevokeBody
 import com.vayunmathur.communicate.data.rcs.chunkLargeMessage
 import com.vayunmathur.library.util.AppMessages
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -39,6 +42,9 @@ enum class RcsSendResult {
     FallbackSms,
     Failed,
 }
+
+/** Fire-and-forget scope for background session establishment (never blocks sends). */
+private val sendScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 internal suspend fun CommunicateRepository.loadRcsThreads(context: Context): List<SmsThread> {
     if (!RcsFeature.enabled) return emptyList()
@@ -174,6 +180,9 @@ suspend fun CommunicateRepository.sendRcsMessage(
             return@withContext RcsSendResult.Sent
         }
         // Prefer an established session (MSRP) when one exists; else pager-mode CPIM.
+        // When no session exists yet, kick off session establishment in the
+        // background (best-effort — the pager send below still goes out now;
+        // later messages upgrade to MSRP once the dialog completes).
         val session = RcsSessionManager.sessionFor(recipient)
         if (session?.msrpRemotePath != null && attachments.isEmpty()) {
             val cpim = RcsSipTransport.buildCpimBody(body).toByteArray(Charsets.UTF_8)
@@ -182,6 +191,14 @@ suspend fun CommunicateRepository.sendRcsMessage(
                     cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
                 }
                 return@withContext RcsSendResult.Sent
+            }
+        }
+        if (session == null && attachments.isEmpty() && !recipient.startsWith("rcs-group:") &&
+            !recipient.contains("@") && !recipient.contains(":")
+        ) {
+            val peer = recipient
+            sendScope.launch {
+                runCatching { RcsSessionManager.startSession("sip:$peer@rcs", peer) }
             }
         }
         if (attachments.isNotEmpty()) {

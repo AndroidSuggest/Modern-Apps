@@ -44,7 +44,6 @@ object RcsMsrp {
         internal fun launchReader(block: suspend () -> Unit) {
             readerScope.launch { block() }
         }
-
         /**
          * Send one CPIM payload as an MSRP SEND chunk. Returns true on a 200
          * response. Thread-safe (single-writer lock).
@@ -91,10 +90,38 @@ object RcsMsrp {
     }
 
     /**
+     * Wrap an accepted (passive-side) socket as a session connection: the
+     * listener already consumed the first SEND head ([head]) for To-Path
+     * routing, so the reader replays it before the live stream. [localPath]
+     * is our advertised path (matches the peer's To-Path); [remotePath] is
+     * the peer's From-Path, used for our SENDs back on this same socket.
+     */
+    /**
+     * Wrap an accepted (passive-side) socket as a session connection: the
+     * listener already consumed the first SEND head ([head]) for To-Path
+     * routing, so the reader replays it before the live stream. [localPath]
+     * is our advertised path (matches the peer's To-Path); [remotePath] is
+     * the peer's From-Path, used for our SENDs back on this same socket
+     * (RFC 4975 §5.4 — the passive side reuses the accepted connection).
+     */
+    fun wrapAccepted(
+        socket: java.net.Socket,
+        head: RcsMsrpListen.AcceptedHead,
+        localPath: String,
+        remotePath: String,
+        onChunk: (contentType: String, body: ByteArray) -> Unit,
+    ): MsrpConnection {
+        val conn = MsrpConnection(socket, localPath, remotePath)
+        conn.launchReader { readLoop(conn, socket, onChunk, head.replayBytes()) }
+        return conn
+    }
+
+    /**
      * Open a persistent active connection for [session] and start the reader
      * loop on Dispatchers.IO. [onChunk] receives complete `message/cpim`
      * bodies (content type + bytes). Returns null when the session has no
-     * usable remote path or the peer expects us to listen (`setup=active`).
+     * usable remote path or when neither side can connect (peer is
+     * `setup=active` AND we have no listen socket — see [RcsMsrpListen]).
      *
      * The socket rides the IMS PDN when available ([RcsImsNetwork]) so
      * carrier MSRP peers (which only route IMS-subnet addresses) are
@@ -107,8 +134,15 @@ object RcsMsrp {
     ): MsrpConnection? = withContext(Dispatchers.IO) {
         if (!RcsFeature.enabled) return@withContext null
         val remotePath = session.msrpRemotePath ?: return@withContext null
+        if (session.msrpSetup == MsrpSetup.ACTIVE && !RcsMsrpListen.isListening()) {
+            // Peer connects to us, but we have no listen socket — nothing to do.
+            // (When listening, the accept loop owns this direction; connect-out
+            // is skipped and the session completes on accept.)
+            Log.w(TAG, "Peer is active and no listen socket; cannot establish media")
+            return@withContext null
+        }
         if (session.msrpSetup == MsrpSetup.ACTIVE) {
-            Log.w(TAG, "Peer is active; ACTIVE-only cannot listen")
+            // Listen-side session: media arrives on the accepted socket.
             return@withContext null
         }
         val localPath = session.msrpLocalPath ?: "msrp://local.invalid/${UUID.randomUUID()};tcp"
@@ -130,9 +164,17 @@ object RcsMsrp {
         conn: MsrpConnection,
         socket: java.net.Socket,
         onChunk: (String, ByteArray) -> Unit,
+        replayPrefix: ByteArray? = null,
     ) {
-        val input = runCatching { socket.getInputStream().bufferedReader(Charsets.UTF_8) }.getOrNull()
-            ?: return
+        val live = runCatching { socket.getInputStream() }.getOrNull() ?: return
+        // Accepted sockets already had their first SEND head consumed for
+        // To-Path routing — replay it ahead of the live stream.
+        val stream = if (replayPrefix != null && replayPrefix.isNotEmpty()) {
+            java.io.SequenceInputStream(java.io.ByteArrayInputStream(replayPrefix), live)
+        } else {
+            live
+        }
+        val input = stream.bufferedReader(Charsets.UTF_8)
         val pending = StringBuilder()
         // Reassembly buffer for multi-chunk SENDs, keyed by Message-ID.
         val reassembly = mutableMapOf<String, ByteArrayOutputStream2>()
@@ -167,8 +209,10 @@ object RcsMsrp {
                         }
                         // Consume the end-marker line.
                         runCatching { input.readLine() }
-                        // Auto-200 the peer SEND.
-                        sendResponse(socket, txid, 200, "OK", conn)
+                        // Auto-200 the peer SEND (RFC 4975 §7.1: To-Path echoes
+                        // the sender's From-Path, From-Path is our path).
+                        val peerFrom = headers["from-path"].orEmpty()
+                        sendResponse(socket, txid, 200, "OK", peerFrom)
                         val msgId = headers["message-id"].orEmpty()
                         val contentType = headers["content-type"] ?: "message/cpim"
                         if (msgId.isNotEmpty() && bodyBytes != null) {
@@ -236,12 +280,13 @@ object RcsMsrp {
         txid: String,
         code: Int,
         reason: String,
-        conn: MsrpConnection,
+        toPath: String = "",
     ) {
         runCatching {
             val out = socket.getOutputStream()
             out.write("MSRP $txid $code $reason\r\n".toByteArray(Charsets.UTF_8))
-            out.write("To-Path: placeholder\r\n\r\n".toByteArray(Charsets.UTF_8))
+            if (toPath.isNotBlank()) out.write("To-Path: $toPath\r\n".toByteArray(Charsets.UTF_8))
+            out.write("\r\n".toByteArray(Charsets.UTF_8))
             out.write("-------$txid\$\r\n".toByteArray(Charsets.UTF_8))
             out.flush()
         }

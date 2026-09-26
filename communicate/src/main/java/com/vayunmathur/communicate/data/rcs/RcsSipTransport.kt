@@ -174,6 +174,10 @@ object RcsSipTransport {
             if (subId == activeSubId && connection != null) return@launch
             if (subId != activeSubId) tearDown(app)
             activeSubId = subId
+            // Start the live provisioning watch before creating the delegate:
+            // config changes (FT server URI, re-provisioning) arrive via
+            // callback instead of waiting for the next probe.
+            RcsProvisioningWatcher.watch(app, subId)
             when (val probe = RcsProvisioning.probe(app, subId)) {
                 is RcsRegistrationState.Available -> createDelegate(app, subId)
                 is RcsRegistrationState.Unavailable -> {
@@ -194,6 +198,9 @@ object RcsSipTransport {
                 manager?.destroySipDelegate(c, SipDelegateManager.SIP_DELEGATE_DESTROY_REASON_REQUESTED_BY_APP)
             }
         }
+        RcsProvisioningWatcher.unwatch()
+        RcsMsrpListen.stop()
+        RcsImsNetwork.reset()
         connection = null
         configVersion = -1L
         activeSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID
@@ -202,6 +209,17 @@ object RcsSipTransport {
     /** True when a SIP MESSAGE can be sent right now. */
     fun canSend(): Boolean =
         RcsFeature.enabled && _state.value is RcsRegistrationState.Available && connection != null
+
+    /**
+     * Tell the framework to release delegate state for [callId]
+     * (`SipDelegateConnection#cleanupSession`). Best-effort: no connection
+     * or any failure is a silent no-op.
+     */
+    fun cleanupSession(callId: String) {
+        val c = connection ?: return
+        if (!RcsFeature.enabled || callId.isBlank()) return
+        runCatching { c.cleanupSession(callId) }
+    }
 
     /**
      * Send a SIP MESSAGE. Returns true on delegate ack, false otherwise

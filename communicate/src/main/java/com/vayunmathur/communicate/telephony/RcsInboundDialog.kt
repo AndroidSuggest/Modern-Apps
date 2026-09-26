@@ -5,10 +5,13 @@ import android.util.Log
 import com.vayunmathur.communicate.R
 import com.vayunmathur.communicate.data.CommunicateLine
 import com.vayunmathur.communicate.data.rcs.RcsFeature
+import com.vayunmathur.communicate.data.rcs.RcsMsrp
+import com.vayunmathur.communicate.data.rcs.RcsMsrpListen
 import com.vayunmathur.communicate.data.rcs.RcsSessionManager
 import com.vayunmathur.communicate.data.rcs.RcsSipTransport
 import com.vayunmathur.communicate.notifications.ConversationSpace
 import com.vayunmathur.communicate.notifications.ConversationTarget
+import kotlinx.coroutines.launch
 
 /**
  * Dialog-forming/method handlers for inbound SIP, split from
@@ -57,6 +60,48 @@ internal suspend fun RcsSyncService.handleInboundBye(message: SipMessage) {
     // Close connections whose sessions went away.
     closeDeadMsrpConnections()
     Log.i(RcsSyncService.TAG, "BYE processed callId=$callId")
+}
+
+/** Close MSRP connections whose sessions went away (+ drop listen paths). */
+internal fun RcsSyncService.closeDeadMsrpConnections() {
+    msrpConnections.keys.filter { RcsSessionManager.sessionFor(it) == null }.forEach { id ->
+        msrpConnections.remove(id)?.close()
+        RcsMsrpListen.dropPending(id)
+    }
+}
+
+/**
+ * Passive-side accept: the peer connected to our listen socket. Wrap it
+ * as the session's connection (reusing the accepted TCP per RFC 4975
+ * §5.4) and feed inbound chunks to the inbox. The session's local path is
+ * what we advertised; the remote path is the peer's From-Path from the
+ * first SEND.
+ */
+internal fun RcsSyncService.onMsrpAccepted(
+    conversationId: String,
+    socket: java.net.Socket,
+    head: RcsMsrpListen.AcceptedHead,
+) {
+    if (!RcsFeature.enabled) {
+        runCatching { socket.close() }
+        return
+    }
+    val session = RcsSessionManager.sessionFor(conversationId) ?: run {
+        runCatching { socket.close() }
+        return
+    }
+    // Replace any stale connection for this conversation.
+    msrpConnections.remove(conversationId)?.close()
+    val peerFrom = head.lines.firstOrNull { it.startsWith("From-Path:", ignoreCase = true) }
+        ?.substringAfter(":")?.trim().orEmpty()
+    val localPath = session.msrpLocalPath ?: head.lines.firstOrNull {
+        it.startsWith("To-Path:", ignoreCase = true)
+    }?.substringAfter(":")?.trim().orEmpty()
+    val conn = RcsMsrp.wrapAccepted(socket, head, localPath, peerFrom) { contentType, body ->
+        serviceScope.launch { handleMsrpChunk(conversationId, session, contentType, body) }
+    }
+    msrpConnections[conversationId] = conn
+    Log.i(RcsSyncService.TAG, "Passive MSRP accepted for $conversationId")
 }
 
 /**

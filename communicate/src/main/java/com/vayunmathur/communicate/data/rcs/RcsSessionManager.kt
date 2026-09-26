@@ -42,13 +42,19 @@ object RcsSessionManager {
      * `tel:` URI. Returns the dialog id on accept-tracked send, null when the
      * transport is unavailable. The 200 OK/ACK/MSRP bind completes
      * asynchronously via [onSipResponse]/[onSipRequest].
+     *
+     * The offer carries `setup:actpass` + our listen path when the passive
+     * listener is up ([RcsMsrpListen]), so the peer may connect to us;
+     * otherwise it is the v1 `setup:active` connect-out offer.
      */
     suspend fun startSession(remoteTelUri: String, conversationId: String): String? {
         if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return null
         val callId = "${UUID.randomUUID()}@rcs"
         val localTag = UUID.randomUUID().toString().take(8)
         val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
-        val (startLine, headers, content) = buildInvite(remoteTelUri, callId, localTag, branch, conversationId)
+        val listenPath = listenPathFor(conversationId)
+        val (startLine, headers, content) =
+            buildInvite(remoteTelUri, callId, localTag, branch, conversationId, listenPath = listenPath)
         val ok = RcsSipTransport.sendSipMessage(startLine, headers, content)
         if (!ok) return null
         val dialogId = "$callId:$localTag"
@@ -78,7 +84,9 @@ object RcsSessionManager {
         val callId = "${UUID.randomUUID()}@rcs"
         val localTag = UUID.randomUUID().toString().take(8)
         val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
-        val (startLine, headers, content) = buildInvite(focusUri, callId, localTag, branch, conversationId, subject)
+        val listenPath = listenPathFor(conversationId)
+        val (startLine, headers, content) =
+            buildInvite(focusUri, callId, localTag, branch, conversationId, subject, listenPath)
         val ok = RcsSipTransport.sendSipMessage(startLine, headers, content)
         if (!ok) return null
         val dialogId = "$callId:$localTag"
@@ -177,7 +185,40 @@ object RcsSessionManager {
         val focusUri = session.remoteUri
         _focusMembers.remove(focusUri)
         _sessions.value = _sessions.value - conversationId
+        RcsMsrpListen.dropPending(conversationId)
         return true
+    }
+
+    /**
+     * Drop sessions that never completed (no remote tag after [maxAgeMs])
+     * and completed sessions idle longer than [maxIdleMs] with no MSRP
+     * connection. Returns the dropped conversation ids so the caller can
+     * close their connections. Best-effort; never throws.
+     */
+    fun sweepStaleSessions(
+        nowMs: Long = System.currentTimeMillis(),
+        maxAgeMs: Long = 5 * 60 * 1000L,
+        maxIdleMs: Long = 30 * 60 * 1000L,
+    ): List<String> {
+        if (!RcsFeature.enabled) return emptyList()
+        val dropped = mutableListOf<String>()
+        for ((conversationId, session) in _sessions.value) {
+            if (session.isFocus) continue
+            val age = nowMs - session.createdAt
+            val incomplete = session.remoteTag.isBlank() && age > maxAgeMs
+            val idle = session.remoteTag.isNotBlank() &&
+                session.msrpRemotePath == null && age > maxIdleMs
+            if (incomplete || idle) {
+                _sessions.value = _sessions.value - conversationId
+                _pendingOffers.remove(session.callId)
+                RcsMsrpListen.dropPending(conversationId)
+                dropped += conversationId
+            }
+        }
+        transactions.entries.removeIf { (_, dialogId) ->
+            _sessions.value.values.none { it.dialogId == dialogId }
+        }
+        return dropped
     }
 
     /**
@@ -206,15 +247,32 @@ object RcsSessionManager {
     }
 
     /**
-     * Answer a pending incoming INVITE with 200 OK + SDP answer (passive —
-     * the caller connects to us... see ACTIVE-only note below).
+     * Advertise our listen path for [conversationId] when the passive
+     * listener can bind. Null when listening is unavailable — callers fall
+     * back to active-only offers. Needs a Context for the IMS request; the
+     * session manager is context-free, so the sync service injects it via
+     * [listenContextProvider] at startup (null = no passive offers).
+     */
+    var listenContextProvider: (() -> android.content.Context?)? = null
+
+    private suspend fun listenPathFor(conversationId: String): String? {
+        val context = listenContextProvider?.invoke() ?: return null
+        // The accept callback is a no-op here: the sync service owns the real
+        // accept loop (it calls ensureListening at startup). advertisePath
+        // only registers the pending path when already listening.
+        if (!RcsMsrpListen.isListening()) return null
+        return RcsMsrpListen.advertisePath(context, conversationId) { _, _, _ -> }
+    }
+
+    /**
+     * Answer a pending incoming INVITE with 200 OK + SDP answer.
      *
-     * ACTIVE-only reality: we cannot listen (no ServerSocket, unroutable
-     * offer IP), so our answer offers `setup:active` too and the session
-     * proceeds only if the caller tolerates dual-active or falls back. In
-     * practice acceptance means MSRP connect-out to the offerer's path when
-     * it answers `passive`/`actpass`; otherwise the dialog exists for
-     * in-dialog MESSAGE while media stays pager-mode.
+     * With the passive listener up and an offerer that wants us to listen
+     * (`setup:active` + usable path), we answer `setup:passive` with our
+     * listen path and their TCP connection completes the session. Otherwise
+     * the v1 behavior holds: answer `setup:active` and connect out when the
+     * offerer's path/setup allows, else keep the dialog for in-dialog
+     * MESSAGE with media on pager-mode.
      *
      * Returns true when the 200 OK was accepted by the transport.
      */
@@ -223,7 +281,14 @@ object RcsSessionManager {
         val session = _sessions.value[conversationId] ?: return false
         val cfg = RcsSipTransport.lastConfigSnapshot()
         val from = cfg?.publicUserId?.takeIf { it.isNotBlank() } ?: "sip:local@rcs"
-        val sdp = buildSdpAnswer(cfg?.msrpLocalIp)
+        val offered = _pendingOffers[session.callId]
+        // Passive answer when the offerer is active-only and we can listen.
+        val passivePath = if (offered?.setup == MsrpSetup.ACTIVE && !offered.remotePath.isNullOrBlank()) {
+            listenPathFor(conversationId)
+        } else {
+            null
+        }
+        val sdp = buildSdpAnswer(cfg?.msrpLocalIp, passivePath)
         val bytes = sdp.toByteArray(Charsets.UTF_8)
         val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
         val startLine = "SIP/2.0 200 OK"
@@ -239,12 +304,15 @@ object RcsSessionManager {
         }
         val ok = RcsSipTransport.sendSipMessage(startLine, headers, bytes)
         if (ok) {
-            // Record the offerer's path/setup for connect-out.
-            val offered = _pendingOffers.remove(session.callId)
-            if (offered != null) {
+            // Record the offerer's path/setup for connect-out — unless we
+            // answered passive, in which case THEY connect to our listen
+            // path and the accept loop completes the session.
+            val offer = _pendingOffers.remove(session.callId)
+            if (offer != null) {
                 _sessions.value = _sessions.value + (conversationId to session.copy(
-                    msrpRemotePath = offered.remotePath,
-                    msrpSetup = offered.setup,
+                    msrpRemotePath = offer.remotePath,
+                    msrpSetup = offer.setup,
+                    msrpLocalPath = passivePath ?: session.msrpLocalPath,
                 ))
             }
         }
@@ -290,6 +358,13 @@ object RcsSessionManager {
         val ok = RcsSipTransport.sendSipMessage(startLine, headers, ByteArray(0))
         transactions.remove(branch)
         _sessions.value = _sessions.value - conversationId
+        _pendingOffers.remove(session.callId)
+        RcsMsrpListen.dropPending(conversationId)
+        if (session.remoteTag.isNotBlank()) {
+            // Tell the framework the dialog is gone so it releases delegate
+            // state for this Call-ID (best-effort; stub-covered).
+            RcsSipTransport.cleanupSession(session.callId)
+        }
         return ok
     }
 
@@ -306,14 +381,21 @@ object RcsSessionManager {
             val setup = parseSdpSetup(sdpAnswer)
             _sessions.value = _sessions.value + (entry.key to session.copy(
                 remoteTag = remoteTag,
-                msrpLocalPath = localPath,
+                msrpLocalPath = localPath ?: session.msrpLocalPath,
                 msrpRemotePath = remotePath,
-                // ACTIVE-only: we connect out. A peer answering `active` means
-                // it expects US to listen, which we cannot — keep the remote
-                // path nulled so sends stay on pager-mode.
                 msrpSetup = setup,
             ))
-            val usable = remotePath != null && setup != MsrpSetup.ACTIVE
+            // Usable when: peer is passive/actpass (we connect out, the v1
+            // path), OR peer is active and we have a listen path (they
+            // connect to us — the accept loop completes the session), OR our
+            // offer carried a listen path and the answer kept any path
+            // (actpass negotiation leaves the direction to the answerer).
+            val peerActive = setup == MsrpSetup.ACTIVE
+            val usable = remotePath != null && (
+                !peerActive ||
+                    session.msrpLocalPath?.contains("msrp://") == true &&
+                    RcsMsrpListen.isListening()
+                )
             Log.i(TAG, "Session established ${session.dialogId} setup=$setup usable=$usable")
             if (!usable) {
                 _sessions.value = _sessions.value + (entry.key to
@@ -414,10 +496,11 @@ object RcsSessionManager {
         branch: String,
         conversationId: String,
         subject: String? = null,
+        listenPath: String? = null,
     ): Triple<String, String, ByteArray> {
         val cfg = RcsSipTransport.lastConfigSnapshot()
         val from = cfg?.publicUserId?.takeIf { it.isNotBlank() } ?: "sip:local@rcs"
-        val sdp = buildSdpOffer(cfg?.msrpLocalIp)
+        val sdp = buildSdpOffer(cfg?.msrpLocalIp, listenPath)
         val bytes = sdp.toByteArray(Charsets.UTF_8)
         val startLine = "INVITE $targetUri SIP/2.0"
         val headers = buildString {
@@ -443,40 +526,61 @@ object RcsSessionManager {
         return Triple(startLine, headers, bytes)
     }
 
-    private fun buildSdpOffer(localIp: String?): String {
+    /**
+     * SDP offer: `setup:actpass` + listen path when we can accept inbound
+     * TCP ([listenPath] from [RcsMsrpListen]), else the v1 `setup:active`
+     * connect-out offer with an unroutable placeholder path.
+     */
+    private fun buildSdpOffer(localIp: String?, listenPath: String?): String {
         val ip = localIp?.takeIf { it.isNotBlank() } ?: "0.0.0.0"
-        val path = "msrp://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp"
+        val (path, port, setup) = if (listenPath != null) {
+            Triple(listenPath, RcsMsrpListen.listenPort() ?: 2855, "actpass")
+        } else {
+            Triple(
+                "msrp://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp",
+                2855,
+                "active",
+            )
+        }
         return buildString {
             append("v=0\r\n")
             append("o=- ${System.currentTimeMillis()} ${System.currentTimeMillis()} IN IP4 $ip\r\n")
             append("s=-\r\n")
             append("c=IN IP4 $ip\r\n")
             append("t=0 0\r\n")
-            append("m=message 2855 TCP/MSRP *\r\n")
+            append("m=message $port TCP/MSRP *\r\n")
             append("a=path:$path\r\n")
             append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
-            append("a=setup:active\r\n")
+            append("a=setup:$setup\r\n")
         }
     }
 
     /**
-     * SDP answer for [acceptIncoming]: same media shape as the offer with our
-     * (unroutable-by-construction) path; the usable direction is connect-out
-     * to the offerer's path recorded in [_pendingOffers].
+     * SDP answer: `setup:passive` + listen path when we are accepting the
+     * offerer's TCP connection ([passivePath] non-null), else the v1
+     * `setup:active` answer (we connect out to the offerer).
      */
-    private fun buildSdpAnswer(localIp: String?): String {
+    private fun buildSdpAnswer(localIp: String?, passivePath: String? = null): String {
         val ip = localIp?.takeIf { it.isNotBlank() } ?: "0.0.0.0"
-        val path = "msrp://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp"
+        val (path, port, setup) = if (passivePath != null) {
+            Triple(passivePath, RcsMsrpListen.listenPort() ?: 2855, "passive")
+        } else {
+            Triple(
+                "msrp://${UUID.randomUUID()}.invalid:2855/${UUID.randomUUID()};tcp",
+                2855,
+                "active",
+            )
+        }
         return buildString {
             append("v=0\r\n")
             append("o=- ${System.currentTimeMillis()} ${System.currentTimeMillis()} IN IP4 $ip\r\n")
             append("s=-\r\n")
             append("c=IN IP4 $ip\r\n")
             append("t=0 0\r\n")
-            append("m=message 2855 TCP/MSRP *\r\n")
+            append("m=message $port TCP/MSRP *\r\n")
             append("a=path:$path\r\n")
             append("a=accept-types:message/cpim text/plain message/imdn+xml application/im-iscomposing+xml\r\n")
-            append("a=setup:active\r\n")
+            append("a=setup:$setup\r\n")
         }
     }
 

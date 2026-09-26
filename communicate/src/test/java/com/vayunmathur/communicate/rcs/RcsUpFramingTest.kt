@@ -1,7 +1,10 @@
 package com.vayunmathur.communicate.rcs
 
 import com.vayunmathur.communicate.data.rcs.ImdnDisposition
+import com.vayunmathur.communicate.data.rcs.MsrpSetup
+import com.vayunmathur.communicate.data.rcs.RcsFileTransferHttp
 import com.vayunmathur.communicate.data.rcs.RcsGbaAuth
+import com.vayunmathur.communicate.data.rcs.RcsMsrpListen
 import com.vayunmathur.communicate.data.rcs.RcsSessionManager
 import com.vayunmathur.communicate.data.rcs.buildEditBody
 import com.vayunmathur.communicate.data.rcs.buildGeopushBody
@@ -159,5 +162,52 @@ class RcsUpFramingTest {
         assertNull(RcsSessionManager.hostedFocusFor("nope"))
         assertNull(RcsSessionManager.focusMembers("conf:missing@rcs.local"))
         RcsSessionManager.noteFocusLeave("conf:missing@rcs.local", "+1555")
+    }
+
+    @Test
+    fun sdpSetupParsesAllRoles() {
+        assertEquals(
+            MsrpSetup.ACTIVE,
+            RcsSessionManager.parseSdpSetup("m=message 2855 TCP/MSRP *\r\na=setup:active\r\n"),
+        )
+        assertEquals(
+            MsrpSetup.PASSIVE,
+            RcsSessionManager.parseSdpSetup("a=setup:passive"),
+        )
+        assertEquals(
+            MsrpSetup.ACTPASS,
+            RcsSessionManager.parseSdpSetup("a=setup:actpass"),
+        )
+        assertNull(RcsSessionManager.parseSdpSetup("m=message 2855 TCP/MSRP *"))
+        assertNull(RcsSessionManager.parseSdpSetup(null))
+        assertNull(RcsSessionManager.parseSdpSetup("a=setup:bogus"))
+    }
+
+    @Test
+    fun acceptedHeadReplays() {
+        val head = RcsMsrpListen.AcceptedHead(
+            listOf("MSRP abc SEND", "To-Path: msrp://1.2.3.4:2855/x;tcp", "From-Path: msrp://5.6.7.8:9/y;tcp"),
+        )
+        val replayed = head.replayBytes().toString(Charsets.UTF_8)
+        assertTrue(replayed.startsWith("MSRP abc SEND\r\n"))
+        assertTrue(replayed.contains("To-Path: msrp://1.2.3.4:2855/x;tcp\r\n"))
+        assertTrue(replayed.endsWith("\r\n"))
+    }
+
+    @Test
+    fun contentServerParses() {
+        val xml = "<rcs><ftHTTPCSURI>https://ft.example.com/upload</ftHTTPCSURI></rcs>"
+            .toByteArray(Charsets.UTF_8)
+        assertEquals(
+            "https://ft.example.com/upload",
+            RcsFileTransferHttp.parseContentServer(xml),
+        )
+        assertNull(RcsFileTransferHttp.parseContentServer("<rcs/>".toByteArray(Charsets.UTF_8)))
+    }
+
+    @Test
+    fun sweepDropsOnlyStale() {
+        // Empty manager: nothing to drop, no crash.
+        assertTrue(RcsSessionManager.sweepStaleSessions().isEmpty())
     }
 }

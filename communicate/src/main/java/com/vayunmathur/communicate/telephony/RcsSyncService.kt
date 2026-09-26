@@ -25,6 +25,7 @@ import com.vayunmathur.communicate.data.rcs.RcsFeature
 import com.vayunmathur.communicate.data.rcs.RcsFileTransferHttp
 import com.vayunmathur.communicate.data.rcs.RcsImdn
 import com.vayunmathur.communicate.data.rcs.RcsMsrp
+import com.vayunmathur.communicate.data.rcs.RcsMsrpListen
 import com.vayunmathur.communicate.data.rcs.RcsRegistrationState
 import com.vayunmathur.communicate.data.rcs.RcsSession
 import com.vayunmathur.communicate.data.rcs.RcsSessionManager
@@ -59,17 +60,10 @@ import kotlinx.coroutines.launch
  */
 class RcsSyncService : Service() {
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    internal val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** MSRP connections per conversation, owned by this service's lifecycle. */
     internal val msrpConnections = java.util.concurrent.ConcurrentHashMap<String, RcsMsrp.MsrpConnection>()
-
-    /** Close MSRP connections whose sessions went away. */
-    internal fun closeDeadMsrpConnections() {
-        msrpConnections.keys.filter { RcsSessionManager.sessionFor(it) == null }.forEach { id ->
-            msrpConnections.remove(id)?.close()
-        }
-    }
 
     override fun onCreate() {
         super.onCreate()
@@ -98,18 +92,31 @@ class RcsSyncService : Service() {
             RcsSipTransport.onInboundMessage = { message ->
                 serviceScope.launch { handleInbound(message) }
             }
+            // Let the session manager offer/answer passive MSRP: the sync
+            // service owns the accept loop, so accepted sockets land here.
+            RcsSessionManager.listenContextProvider = { this@RcsSyncService }
+            RcsMsrpListen.ensureListening(this@RcsSyncService, ::onMsrpAccepted)
             // Watch for teardown: when the transport goes unavailable, reflect it
-            // in the sync notification and stop if the gate flips off.
+            // in the sync notification and stop if the gate flips off. On
+            // (re-)Availability, re-ensure the passive MSRP listener — a
+            // subId-switch teardown stops it (IMS PDN is per-sub).
             launch {
                 RcsSipTransport.state.collect { state ->
                     if (!RcsFeature.enabled) shutdown()
                     updateSyncNotification(state)
+                    if (state is RcsRegistrationState.Available) {
+                        RcsSessionManager.listenContextProvider = { this@RcsSyncService }
+                        RcsMsrpListen.ensureListening(this@RcsSyncService, ::onMsrpAccepted)
+                    }
                 }
             }
             // Own MSRP connection lifecycle: when a session gains a usable
             // remote path, connect out and feed inbound chunks to the inbox.
+            // Also sweep sessions that never completed or idled out, closing
+            // their connections so the map cannot leak.
             launch {
                 RcsSessionManager.sessions.collect { sessions ->
+                    val stale = RcsSessionManager.sweepStaleSessions()
                     for ((conversationId, session) in sessions) {
                         if (session.msrpRemotePath == null || msrpConnections.containsKey(conversationId)) {
                             continue
@@ -123,7 +130,7 @@ class RcsSyncService : Service() {
                     }
                     // Drop connections whose sessions went away.
                     val live = sessions.keys
-                    msrpConnections.keys.filter { it !in live }.forEach { id ->
+                    msrpConnections.keys.filter { it !in live || it in stale }.forEach { id ->
                         msrpConnections.remove(id)?.close()
                     }
                 }
@@ -137,6 +144,8 @@ class RcsSyncService : Service() {
 
     override fun onDestroy() {
         RcsSipTransport.onInboundMessage = null
+        RcsSessionManager.listenContextProvider = null
+        RcsMsrpListen.stop()
         msrpConnections.values.forEach { runCatching { it.close() } }
         msrpConnections.clear()
         serviceScope.cancel()
@@ -230,7 +239,7 @@ class RcsSyncService : Service() {
      * IMDN/typing ride their trackers. Reuses the SIP parse helpers by
      * synthesizing the CPIM text path.
      */
-    private suspend fun handleMsrpChunk(
+    internal suspend fun handleMsrpChunk(
         conversationId: String,
         session: RcsSession,
         contentType: String,
@@ -278,7 +287,7 @@ class RcsSyncService : Service() {
      * are the original wire body (CPIM + payload), so MLS ciphertext stays
      * opaque to us — E2EE terminates per-member, not at the focus.
      */
-    private suspend fun relayFocusMessage(parsed: InboundRcs, rawBody: String) {
+    internal suspend fun relayFocusMessage(parsed: InboundRcs, rawBody: String) {
         if (!RcsFeature.enabled) return
         val focusUri = RcsSessionManager.hostedFocusFor(parsed.conversationId) ?: return
         val members = RcsSessionManager.focusMembers(focusUri) ?: return
@@ -312,7 +321,7 @@ class RcsSyncService : Service() {
         }
     }
 
-    private enum class InboundKind { Text, Receipt, Typing }
+    internal enum class InboundKind { Text, Receipt, Typing }
 
     /** Raw envelope: repaired headers + sender + content type + body + ids. */
     private data class Envelope(
@@ -622,7 +631,7 @@ class RcsSyncService : Service() {
         return raw
     }
 
-    private data class InboundRcs(
+    internal data class InboundRcs(
         val conversationId: String,
         val body: String,
         val senderId: String,
@@ -720,6 +729,8 @@ class RcsSyncService : Service() {
 
     private fun shutdown() {
         RcsSipTransport.onInboundMessage = null
+        RcsSessionManager.listenContextProvider = null
+        RcsMsrpListen.stop()
         msrpConnections.values.forEach { runCatching { it.close() } }
         msrpConnections.clear()
         runCatching { RcsSipTransport.tearDown(this) }
