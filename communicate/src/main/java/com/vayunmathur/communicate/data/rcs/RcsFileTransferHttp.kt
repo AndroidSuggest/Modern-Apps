@@ -60,10 +60,10 @@ object RcsFileTransferHttp {
                 .firstOrNull { it.key.equals("WWW-Authenticate", ignoreCase = true) }
                 ?.value?.firstOrNull()
                 ?: return@runCatching null
-            // 2. Authenticated multipart POST (tid + File). GBA-shaped creds
-            // when a privileged build injected them, else the plain-digest
-            // fallback (empty password). Live GBA bootstrapping is unreachable
-            // from a non-privileged app (hidden API blocklist — see RcsGbaAuth).
+            // 2. Authenticated multipart POST (tid + File). Credentials, in
+            // preference order: live GBA bootstrap ([RcsGbaBootstrap], needs
+            // the SMS-role permission), injected creds (privileged push /
+            // tests), then the plain-digest fallback (empty password).
             val boundary = "rcsft${UUID.randomUUID().toString().replace("-", "").take(16)}"
             val tid = UUID.randomUUID().toString()
             val multipart = buildMultipart(
@@ -73,7 +73,8 @@ object RcsFileTransferHttp {
                 mime = attachment.mimeType,
                 bytes = bytes,
             )
-            val gba = RcsGbaAuth.injected
+            val gba = RcsGbaBootstrap.bootstrap(context, server, force = false)
+                ?: RcsGbaAuth.injected
             val auth = digestAuthHeader(
                 challenge = challenge,
                 method = "POST",
@@ -83,7 +84,7 @@ object RcsFileTransferHttp {
                     android.util.Base64.encodeToString(it.key, android.util.Base64.NO_WRAP)
                 }.orEmpty(),
             )
-            val response = NetworkClient.performRequest(
+            var response = NetworkClient.performRequest(
                 url = server,
                 method = "POST",
                 headers = mapOf(
@@ -94,6 +95,35 @@ object RcsFileTransferHttp {
                 body = multipart,
                 useSystemTrust = true,
             )
+            // 401 with a live bootstrap available: force re-bootstrapping and
+            // retry once (mirrors TestRcsApp's GbaRequestExecutor).
+            if (response.status == 401) {
+                val fresh = RcsGbaBootstrap.bootstrap(context, server, force = true)
+                if (fresh != null) {
+                    val retryAuth = digestAuthHeader(
+                        challenge = response.headers.entries
+                            .firstOrNull { it.key.equals("WWW-Authenticate", ignoreCase = true) }
+                            ?.value?.firstOrNull() ?: challenge,
+                        method = "POST",
+                        uri = server,
+                        username = fresh.btId,
+                        password = android.util.Base64.encodeToString(
+                            fresh.key, android.util.Base64.NO_WRAP,
+                        ),
+                    )
+                    response = NetworkClient.performRequest(
+                        url = server,
+                        method = "POST",
+                        headers = mapOf(
+                            "Content-Type" to "multipart/form-data; boundary=$boundary",
+                            "Authorization" to retryAuth,
+                            "User-Agent" to "Communicate-RCS/1.0",
+                        ),
+                        body = multipart,
+                        useSystemTrust = true,
+                    )
+                }
+            }
             if (!response.isSuccess) return@runCatching null
             // Server answers with the file URL (plain or XML-wrapped).
             Regex("https?://[^\\s\"'<>]+").find(response.body)?.value

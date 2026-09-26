@@ -4,27 +4,19 @@ package com.vayunmathur.communicate.data.rcs
  * GBA-shaped credentials + digest auth for FT-over-HTTP (3GPP TS 33.220 /
  * RFC 2617).
  *
- * Why there is no live GBA bootstrap here: TestRcsApp's
- * `GbaAuthenticationProvider` calls
- * `TelephonyManager.bootstrapAuthenticationRequest` directly, but that API is
- * `@SystemApi`/hidden — absent from the compile SDK, and the request path
- * goes through the internal `ITelephony.getITelephony()`, which is on the
- * hidden-API blocklist (enforced at runtime on Android 12+, and a lint error
- * on this target SDK). The callback is a hidden *class*, not an interface, so
- * the Proxy bridge used in [RcsHiddenApi] cannot reach it either. A
- * non-privileged app cannot bootstrap GBA keys, full stop.
+ * Live bootstrapping lives in [RcsGbaBootstrap] (stub-linked
+ * `TelephonyManager.bootstrapAuthenticationRequest`, SMS-role permission).
+ * This object holds:
+ * - [GbaCredentials]: bootstrapped NAF credentials (btId + key), from live
+ *   bootstrap or privileged injection ([injected]).
+ * - [digestResponse]/[digestAuthorizationHeader]: the qop=auth construction
+ *   both the GBA and the plain-digest paths share, unit-tested against the
+ *   RFC 2617 known-answer vector.
  *
- * What this object does instead:
- * - [GbaCredentials] carries bootstrapped NAF credentials (btId + key) for
- *   the day a privileged path provides them (system-permission build, carrier
- *   service injection). [RcsFileTransferHttp] prefers them when set.
- * - [digestResponse] is the qop=auth response hash both the GBA and the
- *   plain-digest paths share, unit-tested against the RFC 2617 known-answer
- *   vector.
- *
- * Until then uploads use the plain-digest fallback (empty password), exactly
- * like a client whose GBA challenge fails — the server either accepts or the
- * upload degrades, never crashes.
+ * When bootstrapping is unavailable (no privilege, modem refusal), uploads
+ * use the plain-digest fallback (empty password), exactly like a client
+ * whose GBA challenge fails — the server either accepts or the upload
+ * degrades, never crashes.
  */
 object RcsGbaAuth {
     /** Bootstrapped NAF credentials: digest username + raw key. */
