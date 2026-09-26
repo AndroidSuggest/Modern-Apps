@@ -42,6 +42,17 @@ pub enum Mode {
     /// `layers` of 0 stops before the first layer, which checks the embedding and the per-layer
     /// combination on their own.
     Trace { layers: usize },
+    /// Run layer 0 only and hand back its four tail branches: the attention branch
+    /// (post-`post_attention_norm`, pre-residual), the MLP branch (post-`post_ffw_norm`,
+    /// pre-residual), the per-layer branch (post-`post_per_layer_input_norm`, pre-residual),
+    /// and the layer output (post-`skip`).
+    ///
+    /// For `examples/check_gemma4_parity.rs`, which bisects the L0 device-vs-numpy gap by
+    /// comparing each branch against the numpy-fp oracle (`build/gemma4/l0_tail.json`):
+    /// the first branch where the device drops below 0.99 while numpy holds is the
+    /// divergence point. Computed by the same op sequence as [`layer`](super::layer),
+    /// so the KV cache it fills matches a decode step exactly.
+    TraceTail,
     /// Run every layer to fill the KV cache, with **no logits head**. `tokens` positions at once.
     ///
     /// # Why the head is skipped rather than ignored
@@ -116,6 +127,8 @@ pub fn build(weights: &dyn WeightSource, pass: Pass) -> Result<Plan, String> {
         }
         Mode::Trace { layers } if layers <= LAYERS => layers,
         Mode::Trace { layers } => return Err(format!("a trace of {layers} of {LAYERS} layers")),
+        // Layer 0 only; the branches come from that one layer.
+        Mode::TraceTail => 1,
     };
     let mut builder = Builder::new(weights);
     let b = &mut builder;
@@ -174,11 +187,19 @@ pub fn build(weights: &dyn WeightSource, pass: Pass) -> Result<Plan, String> {
     // decode path's `cache_source` mapping is honoured without a second transpose.
     let mut sliding_kv: Option<(Id, Id)> = None;
     let mut full_kv: Option<(Id, Id)> = None;
+    // TraceTail runs layer 0 through `layer_tail`, which returns the four branch
+    // intermediates alongside the output. Every other mode runs `layer`.
+    let mut tail: Option<[Id; 4]> = None;
     for index in 0..stop_after {
         let angles = if is_full_attention(index) { angles_global } else { angles_local };
         let (cache_k, cache_v) = *caches
             .get(cache_source(index))
             .ok_or_else(|| format!("layer {index} reads cache {}", cache_source(index)))?;
+        if matches!(mode, Mode::TraceTail) {
+            tail = Some(layer_tail(b, x, per_layer_inputs, angles, cache_k, cache_v)?);
+            x = tail.map(|t| t[3]).unwrap_or(x);
+            continue;
+        }
         if width == 1 {
             x = layer(b, index, x, per_layer_inputs, angles, cache_k, cache_v)?;
             continue;
@@ -194,6 +215,19 @@ pub fn build(weights: &dyn WeightSource, pass: Pass) -> Result<Plan, String> {
                 sliding_kv = Some(kv);
             }
         }
+    }
+
+    if let Mode::TraceTail = mode {
+        // Layers 1..35 are named rather than evaluated, exactly as `Trace` does.
+        for index in stop_after..LAYERS {
+            declare_layer(weights, index)?;
+            name_layer(b, index);
+        }
+        name_head(b);
+        let Some([attn_branch, mlp_branch, ple_branch, out]) = tail else {
+            return Err("a tail trace with no layer 0".into());
+        };
+        return builder.finish(&[attn_branch, mlp_branch, ple_branch, out]);
     }
 
     if let Mode::Trace { .. } = mode {
@@ -358,16 +392,22 @@ fn prefill_layer(
     }
 
     let normed = b.rms_norm(x, input_norm, EPSILON);
-    let q = point(b, q_proj, normed, HEADS * dim);
+    // The live int8 round-trips, as in [`super::layer`]: prefill computes the
+    // same mixtures a decode does, so they quantize identically.
+    let normed_q = b.quantize(normed, QI_SCALE[index]);
+    let q = point(b, q_proj, normed_q, HEADS * dim);
+    let q = b.quantize(q, QO_SCALE[index]);
     let q = b.rms_norm_grouped(q, q_norm_at, EPSILON, HEADS);
     let q = b.rotary(q, angles, HEADS);
 
     let mine = match (k_norm_at, k_proj, v_proj) {
         (Some(k_norm_at), Some(k_proj), Some(v_proj)) => {
-            let k = point(b, k_proj, normed, KV_HEADS * dim);
+            let k = point(b, k_proj, normed_q, KV_HEADS * dim);
+            let k = b.quantize(k, KO_SCALE[index]);
             let k = b.rms_norm_grouped(k, k_norm_at, EPSILON, KV_HEADS);
             let k = b.rotary(k, angles, KV_HEADS);
-            let v = point(b, v_proj, normed, KV_HEADS * dim);
+            let v = point(b, v_proj, normed_q, KV_HEADS * dim);
+            let v = b.quantize(v, VO_SCALE[index]);
             // S10's `value_norm`, as in [`super::layer`]: a parameter-free
             // RMS norm (all-ones gamma, [`ONE_SLIDING`]/[`ONE_FULL`]) before
             // the cache write. The decode path must read what this wrote.
@@ -392,24 +432,27 @@ fn prefill_layer(
     let slides = !is_full_attention(index);
     let probs = b.softmax_causal_windowed(scores, if slides { WINDOW } else { 0 });
     let mixed = b.attn_apply_grouped(probs, v, HEADS, KV_HEADS);
+    // The live int8 round-trip, as in [`super::layer`]: prefill fills the same
+    // caches a decode reads, so its mixtures quantize identically.
+    let mixed = b.quantize(mixed, MM_SCALE[index]);
     let attended = point(b, o_proj, mixed, D_MODEL);
+    let attended = b.quantize(attended, O_SCALE[index]);
     let attended = b_rms(b, attended, post_attention);
     let x = b.add(x, attended);
 
     let ff_in = b.rms_norm(x, pre_ff, EPSILON);
     // Split gate + up (litertlm stores them separately, not fused): gelu(gate) * up,
-    // the same GeGLU the fused path computed via one gated_activate.
-    let gate = point(b, gate_proj, ff_in, inner);
+    // the same GeGLU the fused path computed via one gated_activate. The GELU
+    // folds into the gate projection's store (single consumer: the mul below).
+    let gelu_gate = point_act(b, gate_proj, ff_in, inner, Act::Gelu);
     let up = point(b, ff1_proj, ff_in, inner);
-    let gelu_gate = b.activate(gate, Act::Gelu);
     let gated = b.mul(gelu_gate, up);
     let ff = point(b, down, gated, D_MODEL);
     let ff = b_rms(b, ff, post_ff);
     let x = b.add(x, ff);
 
     let mine_pl = b.slice_channels(per_layer_inputs, index as u32 * PER_LAYER, PER_LAYER);
-    let gate_out = point8(b, gate_at, x, PER_LAYER);
-    let gated_in = b.activate(gate_out, Act::Gelu);
+    let gated_in = point8_act(b, gate_at, x, PER_LAYER, Act::Gelu);
     let combined = b.mul(gated_in, mine_pl);
     let projected = point8(b, projection_at, combined, D_MODEL);
     let branch = b_rms(b, projected, post_per_layer);
@@ -422,10 +465,23 @@ fn prefill_layer(
 
 /// A `1 x 1` int4 convolution, which every large projection in this net is.
 fn point(b: &mut Builder, at: usize, x: Id, out: u32) -> Id {
-    b.conv_int4(x, at, out, Act::None)
+    point_act(b, at, x, out, Act::None)
+}
+
+/// [`point`] with a fused activation: the gate projections' GELU folds into
+/// the convolution's store (`fused_store` in `common.glsl`) instead of a
+/// separate `activate` dispatch. Only for single-consumer sites — the fused
+/// value replaces the projection output, so nothing else may read it.
+fn point_act(b: &mut Builder, at: usize, x: Id, out: u32, act: Act) -> Id {
+    b.conv_int4(x, at, out, act)
 }
 
 /// A `1 x 1` **int8** convolution, for the two per-layer projections. See [`projection8`].
 fn point8(b: &mut Builder, at: usize, x: Id, out: u32) -> Id {
-    b.conv_int8(x, at, out, (1, 1), (1, 1), (1, 1), (0, 0, 0, 0), 1, Act::None)
+    point8_act(b, at, x, out, Act::None)
+}
+
+/// [`point8`] with a fused activation (see [`point_act`]).
+fn point8_act(b: &mut Builder, at: usize, x: Id, out: u32, act: Act) -> Id {
+    b.conv_int8(x, at, out, (1, 1), (1, 1), (1, 1), (0, 0, 0, 0), 1, act)
 }

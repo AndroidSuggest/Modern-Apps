@@ -52,16 +52,24 @@ fn layer(
     }
 
     let normed = b.rms_norm(x, input_norm, EPSILON);
-    let q = point(b, q_proj, normed, HEADS * dim);
+    // Live round-trips every attention activation through int8 (the Track-16..20
+    // qint set): without these the device runs the attention at full precision
+    // while live quantizes, and small input perturbations survive to the softmax
+    // instead of being rounded away - see [`QI_SCALE`].
+    let normed_q = b.quantize(normed, QI_SCALE[index]);
+    let q = point(b, q_proj, normed_q, HEADS * dim);
+    let q = b.quantize(q, QO_SCALE[index]);
     // Per head, against one `head_dim`-long gamma. The scale is already inside that gamma.
     let q = b.rms_norm_grouped(q, q_norm_at, EPSILON, HEADS);
     let q = b.rotary(q, angles, HEADS);
 
     if let (Some(k_norm_at), Some(k_proj), Some(v_proj)) = (k_norm_at, k_proj, v_proj) {
-        let k = point(b, k_proj, normed, KV_HEADS * dim);
+        let k = point(b, k_proj, normed_q, KV_HEADS * dim);
+        let k = b.quantize(k, KO_SCALE[index]);
         let k = b.rms_norm_grouped(k, k_norm_at, EPSILON, KV_HEADS);
         let k = b.rotary(k, angles, KV_HEADS);
-        let v = point(b, v_proj, normed, KV_HEADS * dim);
+        let v = point(b, v_proj, normed_q, KV_HEADS * dim);
+        let v = b.quantize(v, VO_SCALE[index]);
         // S10's `value_norm`: a parameter-free RMS norm (all-ones gamma) over
         // the value row before the cache write (composite op23 for layer 0,
         // one per owning layer). It is not a stored tensor, so it is easy to
@@ -84,17 +92,24 @@ fn layer(
     let scores = b.attn_scores_cached_prescaled(q, cache_k, HEADS, KV_HEADS, slides);
     let probs = b.softmax_prefix(scores, slides);
     let mixed = b.attn_apply_cached_grouped(probs, cache_v, HEADS, KV_HEADS, slides);
+    // Live round-trips the mixture through int8 at the per-layer `MM_SCALE`
+    // before the O projection consumes it (S10's `attn_vec_einsum/composite`).
+    // Without this the O-tail runs at full precision and diverges from live
+    // past any cosine gate — see [`MM_SCALE`].
+    let mixed = b.quantize(mixed, MM_SCALE[index]);
     let attended = point(b, o_proj, mixed, D_MODEL);
+    // The O-input round-trip (`attn_vec_einsum/dot_general1`), same set.
+    let attended = b.quantize(attended, O_SCALE[index]);
     // Post-norm on the branch, then the residual: Gemma norms the sublayer's output rather than
     // its input alone, which is why there are five norms and not three.
     let attended = b_rms(b, attended, post_attention);
     let x = b.add(x, attended);
 
     // Gated feed-forward, split gate + up (litertlm stores them separately).
+    // The GELU folds into the gate projection's store (single consumer).
     let ff_in = b.rms_norm(x, pre_ff, EPSILON);
-    let gate = point(b, gate_proj, ff_in, inner);
+    let gelu_gate = point_act(b, gate_proj, ff_in, inner, Act::Gelu);
     let up = point(b, ff1_proj, ff_in, inner);
-    let gelu_gate = b.activate(gate, Act::Gelu);
     let gated = b.mul(gelu_gate, up);
     let ff = point(b, down, gated, D_MODEL);
     let ff = b_rms(b, ff, post_ff);
@@ -108,8 +123,7 @@ fn layer(
     // channel range. A `[256, 1, 35]` shape would need a slice along the width axis, which has no
     // builder and would buy nothing.
     let mine = b.slice_channels(per_layer_inputs, index as u32 * PER_LAYER, PER_LAYER);
-    let gate_out = point8(b, gate_at, x, PER_LAYER);
-    let gated_in = b.activate(gate_out, Act::Gelu);
+    let gated_in = point8_act(b, gate_at, x, PER_LAYER, Act::Gelu);
     let combined = b.mul(gated_in, mine);
     let projected = point8(b, projection_at, combined, D_MODEL);
     let branch = b_rms(b, projected, post_per_layer);
