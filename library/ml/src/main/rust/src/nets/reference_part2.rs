@@ -286,7 +286,16 @@
                 let value = self.load(p.in0, at)?;
                 // Gamma is indexed within the group, so every group shares one table.
                 let gamma = self.weight(p.weight, c)?;
-                self.store(p.out, at, value * inverse * gamma)?;
+                let normed = value * inverse * gamma;
+                // A residual addend folded by `Builder::finish` (see `Push::res`):
+                // the post-norm `add(x, branch)` the fusion moved into this
+                // store. Same contract as the convolution stores.
+                let folded = if p.res == super::NO_FUSE {
+                    normed
+                } else {
+                    normed + self.load(p.res, at)?
+                };
+                self.store(p.out, at, folded)?;
             }
         }
         Ok(())

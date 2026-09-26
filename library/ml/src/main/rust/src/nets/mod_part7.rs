@@ -320,6 +320,10 @@ impl<'a> Builder<'a> {
     /// never becomes a dispatch. Same for the timestep `AddBroadcast`: it adds one value per
     /// channel, so the store adds `arena[shift + channel]` alongside.
     ///
+    /// RmsNorm producers fold the same way: a post-norm residual (`add(x, rms(...))`)
+    /// stores `norm(input) + residual` directly. Only the `res` half applies (no
+    /// activation, no bias, no shift on a norm store).
+    ///
     /// Runs to fixpoint because the two chain: the residual add's output feeds the timestep
     /// shift, so the first iteration folds the add into the convolution and the second folds
     /// the shift into the same store. Runs before [`Builder::last_use`] so liveness, the
@@ -328,10 +332,10 @@ impl<'a> Builder<'a> {
     ///
     /// # What can fold, and what cannot
     ///
-    /// The producer must be a `Conv` or `ConvInt8` node whose output the binary is the only
+    /// The producer must be a `Conv`, `ConvInt8` or `RmsNorm` node whose output the binary is the only
     /// reader of — counted over node inputs *and* plan outputs, since an output tensor has to
     /// survive even when nothing downstream reads it. Anything else (a second reader, a plan
-    /// output, a non-convolution producer) keeps the add as its own op, which is always
+    /// output, a non-folding producer) keeps the add as its own op, which is always
     /// correct and merely one dispatch.
     ///
     /// Only `Add` and `AddBroadcast` fold. A fused multiply would have to round differently
@@ -420,8 +424,11 @@ impl<'a> Builder<'a> {
         let Some((i, index, residual, shift, out)) = folded else {
             return false;
         };
-        // The output tensor moves onto the convolution: it stores the sum directly, and
+        // The output tensor moves onto the producer: it stores the sum directly, and
         // the producer's old output — now unread by anything — is never allocated.
+        // A convolution stores `activate(acc + bias) + residual`; an RmsNorm
+        // stores `norm(input) + residual` (no activation, no bias, no shift —
+        // only the `res` half of the fold applies).
         match &mut self.nodes[index] {
             Node::Conv { out: conv_out, res, shift: fused_shift, .. } => {
                 *conv_out = out;
@@ -441,7 +448,16 @@ impl<'a> Builder<'a> {
                     *fused_shift = shift;
                 }
             }
-            // `producer_of` only returns convolution nodes, so reaching this means the
+            Node::RmsNorm { out: norm_out, res: fused_res, .. } => {
+                if shift.is_some() {
+                    return false;
+                }
+                *norm_out = out;
+                if residual.is_some() {
+                    *fused_res = residual;
+                }
+            }
+            // `producer_of` only returns convolution and norm nodes, so reaching this means the
             // predicate and the application disagree — a bug, and folding nothing is the
             // safe side of it.
             _ => return false,

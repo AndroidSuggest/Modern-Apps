@@ -27,6 +27,7 @@ impl Node {
             | Node::ConcatPositions { out, .. }
             | Node::Concat { out, .. } => *out,
             | Node::Softcap { out, .. } => *out,
+            | Node::Quantize { out, .. } => *out,
             | Node::Activate { out, .. }
             | Node::GatedActivate { out, .. } => *out,
             | Node::MulScalar { out, .. } => *out,
@@ -56,9 +57,9 @@ impl Node {
             | Node::Resize { input, .. }
             | Node::Affine { input, .. }
             | Node::LayerNorm { input, .. }
-            | Node::RmsNorm { input, .. }
             | Node::Softmax { input, .. }
             | Node::Softcap { input, .. }
+            | Node::Quantize { input, .. }
             | Node::GatedActivate { input, .. }
             | Node::Activate { input, .. }
             | Node::MulScalar { input, .. }
@@ -66,6 +67,11 @@ impl Node {
             | Node::Embed { ids: input, .. }
             | Node::SliceChannels { input, .. }
             | Node::GlobalAvgPool { input, .. } => vec![*input],
+            Node::RmsNorm { input, res, .. } => {
+                let mut reads = vec![*input];
+                reads.extend(res.iter().copied());
+                reads
+            }
             Node::Binary { a, b, .. } => vec![*a, *b],
             Node::Rotary { input, angles, .. } => vec![*input, *angles],
             Node::AttnScores { q: a, k: b, .. }
@@ -97,7 +103,10 @@ impl Node {
 /// binary as its own op.
 fn producer_of(nodes: &[Node], id: Id) -> Option<usize> {
     nodes.iter().position(|node| {
-        matches!(node, Node::Conv { .. } | Node::ConvInt8 { .. }) && node.out() == id
+        matches!(
+            node,
+            Node::Conv { .. } | Node::ConvInt8 { .. } | Node::RmsNorm { .. }
+        ) && node.out() == id
     })
 }
 

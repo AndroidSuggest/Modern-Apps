@@ -247,6 +247,8 @@ pub(crate) enum Node {
         epsilon: f32,
         /// Contiguous runs of channels normalised independently. One for a whole-axis norm.
         groups: u32,
+        /// A residual addend folded into the store. See [`Push::res`].
+        res: Option<Id>,
     },
     AttnScores {
         q: Id,
@@ -304,6 +306,12 @@ pub(crate) enum Node {
         input: Id,
         out: Id,
         cap: f32,
+    },
+    /// `clamp(round(x / scale), -128, 127) * scale`. See [`Kind::Quantize`].
+    Quantize {
+        input: Id,
+        out: Id,
+        scale: f32,
     },
     /// An activation on its own. See [`Kind::Activate`].
     Activate {

@@ -378,10 +378,17 @@ impl<'a> Builder<'a> {
                     invocations: positions,
                 });
             }
-            Node::RmsNorm { input, out, gamma, epsilon, groups } => {
+            Node::RmsNorm { input, out, gamma, epsilon, groups, res } => {
                 let so = shape(*out);
                 // One invocation per group per position, reducing over that group's channels.
                 let positions = so.h * so.w * groups.max(&1);
+                // A folded residual addend, or NO_FUSE. Same contract as the
+                // convolution kinds: `fused_store` in the shader adds
+                // `arena[res + index]`, and `arena_reads` covers the range.
+                let res_at = match res {
+                    Some(id) => at(*id)?,
+                    None => crate::nets::NO_FUSE,
+                };
                 ops.push(Op::Dispatch {
                     kind: Kind::RmsNorm,
                     push: Push {
@@ -397,6 +404,7 @@ impl<'a> Builder<'a> {
                         group: *groups,
                         param1_bits: epsilon.to_bits(),
                         count: positions,
+                        res: res_at,
                         ..Push::default()
                     },
                     invocations: positions,

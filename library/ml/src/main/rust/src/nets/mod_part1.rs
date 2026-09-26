@@ -320,6 +320,7 @@ impl Kind {
             | Kind::SoftmaxPrefix
             | Kind::CacheWrite
             | Kind::Softcap
+            | Kind::Quantize
             | Kind::GatedActivate => {}
             Kind::Activate
             | Kind::MulScalar
@@ -438,16 +439,25 @@ impl Kind {
             | Kind::ResizeNearest
             | Kind::GlobalAvgPool
             | Kind::LayerNorm
-            | Kind::RmsNorm
             | Kind::Softmax
             | Kind::SoftmaxCausal
             | Kind::SoftmaxPrefix
             | Kind::Affine
             | Kind::Softcap
+            | Kind::Quantize
             | Kind::Activate
             | Kind::GatedActivate
             | Kind::MulScalar
             | Kind::Clamp => one(push.in0, dense),
+            // As above, plus a folded residual addend (see `Push::res`): the
+            // post-norm `add(x, branch)` the fusion moved into this store.
+            Kind::RmsNorm => {
+                let mut ranges = vec![(push.in0, dense)];
+                if push.res != NO_FUSE {
+                    ranges.push((push.res, written));
+                }
+                Reads::Ranges(ranges)
+            }
         }
     }
 }

@@ -44,13 +44,20 @@ void main() {
     }
     // Epsilon is inside the square root, matching `torch.nn.RMSNorm`.
     float inverse = 1.0 / sqrt(squares / float(per_group) + epsilon);
-
     for (uint c = 0u; c < per_group; c++) {
         // Gamma is indexed *within* the group, so a per-head norm re-uses one `head_dim`-long
         // table across every head rather than needing one per head.
         uint at = (base + c) * stride + at_pos;
         float value = float(arena[p.in0 + at]);
         float gamma = float(weights[p.weight + c]);
-        arena[p.out_at + at] = float16_t(value * inverse * gamma);
+        float normed = value * inverse * gamma;
+        // A residual addend folded by `Builder::finish` (see `Push::res`): the
+        // post-norm `add(x, branch)` stores here instead of its own dispatch.
+        // Same contract as the convolution shaders' `fused_store`, minus the
+        // activation and bias they carry and this norm does not.
+        if (p.res != 0xFFFFFFFFu) {
+            normed += float(arena[p.res + at]);
+        }
+        arena[p.out_at + at] = float16_t(normed);
     }
 }
