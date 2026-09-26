@@ -34,8 +34,10 @@ internal suspend fun RcsSyncService.handleInboundInvite(message: SipMessage) {
         ?.trim()?.takeIf { it.isNotBlank() }
     val callId = message.getCallIdParameter() ?: return
     val body = message.getContent().toString(Charsets.UTF_8)
-    RcsSessionManager.onSipRequest("INVITE", callId, from, "application/sdp", body, fromTag)
-    val conversationId = from
+    val to = headerValue(headers, "To:")
+    val stashed = RcsSessionManager.onSipRequest("INVITE", callId, from, "application/sdp", body, fromTag, to)
+    // Focus join: route to the hosted group conversation, not the sender.
+    val conversationId = stashed?.conversationId ?: from
     // 488 only when there is no SDP offer at all; otherwise accept.
     val hasSdp = body.contains("m=message", ignoreCase = true)
     if (!hasSdp) {

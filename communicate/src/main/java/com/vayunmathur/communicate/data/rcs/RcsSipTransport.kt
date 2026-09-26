@@ -88,7 +88,9 @@ object RcsSipTransport {
                 version = cfg.getVersion(),
                 publicUserId = cfg.getPublicUserIdentifier(),
                 homeDomain = cfg.getHomeDomain(),
-                msrpLocalIp = null,
+                // IMS-PDN local address when known — routable by carrier peers,
+                // unlike the delegate config (which carries no local IP field).
+                msrpLocalIp = RcsImsNetwork.lastLocalIp,
                 serviceRoute = cfg.getSipServiceRouteHeader(),
                 pani = cfg.getSipPaniHeader(),
                 userAgent = cfg.getSipUserAgentHeader(),

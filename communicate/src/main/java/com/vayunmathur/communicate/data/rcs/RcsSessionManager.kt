@@ -96,6 +96,116 @@ object RcsSessionManager {
     }
 
     /**
+     * Host a group conference (focus role, UP 3.x conference model).
+     *
+     * Unlike joining a carrier focus via [startGroupSession], this makes US the
+     * focus: we allocate a local `conf:` URI, invite each participant with a
+     * REFER to it (their clients INVITE back and join — see the inbound
+     * INVITE-to-focus path in [onSipRequest]), and relay in-conference
+     * messages to the other participants (see
+     * [RcsSyncService.handleInbound] — relay happens there, keyed off the
+     * focus session map below).
+     *
+     * Focus INVITEs carry the `isfocus` Contact parameter (RFC 4354) + the CPM
+     * group tag so peers treat us as the conference server rather than a 1:1
+     * caller. Returns the focus URI on success, null otherwise.
+     *
+     * v1 limits: relay is pager-mode MESSAGE fan-out (no MSRP media mixing);
+     * MLS E2EE still terminates per-member via the conversation's MLS group —
+     * the focus relays opaque ciphertext, never plaintext.
+     */
+    suspend fun hostGroupFocus(
+        conversationId: String,
+        subject: String,
+        participants: List<String>,
+    ): String? {
+        if (!RcsFeature.enabled || !RcsSipTransport.canSend()) return null
+        val distinct = participants.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (distinct.isEmpty()) return null
+        val focusUri = "conf:${UUID.randomUUID()}@rcs.local"
+        val localTag = UUID.randomUUID().toString().take(8)
+        _sessions.value = _sessions.value + (conversationId to RcsSession(
+            dialogId = "focus:$focusUri",
+            callId = "focus-${UUID.randomUUID()}",
+            localTag = localTag,
+            remoteTag = "",
+            remoteUri = focusUri,
+            conversationId = conversationId,
+            isGroup = true,
+            isFocus = true,
+        ))
+        _focusMembers[focusUri] = distinct.toMutableSet()
+        var invited = false
+        for (peer in distinct) {
+            if (sendReferToFocus(peer, focusUri, subject)) invited = true
+        }
+        if (!invited) {
+            _sessions.value = _sessions.value - conversationId
+            _focusMembers.remove(focusUri)
+            return null
+        }
+        Log.i(TAG, "Hosting focus $focusUri for $conversationId (${distinct.size} invited)")
+        return focusUri
+    }
+
+    /** Participants of hosted foci: focus URI → member E.164 set. */
+    private val _focusMembers = ConcurrentHashMap<String, MutableSet<String>>()
+
+    /** Members of the hosted focus [focusUri], or null when not ours. */
+    fun focusMembers(focusUri: String): Set<String>? = _focusMembers[focusUri]?.toSet()
+
+    /** Focus URI we host for [conversationId], or null when we don't host it. */
+    fun hostedFocusFor(conversationId: String): String? {
+        val session = _sessions.value[conversationId] ?: return null
+        return if (session.isFocus) session.remoteUri else null
+    }
+
+    /** Track a joiner that INVITEd our focus URI (no REFER needed — direct dial). */
+    fun noteFocusJoin(focusUri: String, member: String) {
+        _focusMembers[focusUri]?.add(member.trim())
+    }
+
+    /** Drop a member from a hosted focus (BYE / removal). */
+    fun noteFocusLeave(focusUri: String, member: String) {
+        _focusMembers[focusUri]?.remove(member.trim())
+    }
+
+    /** Tear down a hosted focus: BYE every joined member dialog, drop state. */
+    suspend fun destroyHostedFocus(conversationId: String): Boolean {
+        val session = _sessions.value[conversationId] ?: return true
+        if (!session.isFocus) return terminateSession(conversationId)
+        val focusUri = session.remoteUri
+        _focusMembers.remove(focusUri)
+        _sessions.value = _sessions.value - conversationId
+        return true
+    }
+
+    /**
+     * REFER one peer to our hosted focus: `REFER sip:peer` with `Refer-To:
+     * <focusUri>` + `Referred-By` us. Their client INVITEs the focus URI back.
+     */
+    private suspend fun sendReferToFocus(peer: String, focusUri: String, subject: String): Boolean {
+        val cfg = RcsSipTransport.lastConfigSnapshot()
+        val from = cfg?.publicUserId?.takeIf { it.isNotBlank() } ?: "sip:local@rcs"
+        val branch = "z9hG4bK${UUID.randomUUID().toString().replace("-", "").take(16)}"
+        val startLine = "REFER sip:$peer@rcs SIP/2.0"
+        val headers = buildString {
+            append("Via: SIP/2.0/TCP local;branch=$branch\r\n")
+            append("Max-Forwards: 70\r\n")
+            append("From: <$from>;tag=${UUID.randomUUID().toString().take(8)}\r\n")
+            append("To: <sip:$peer@rcs>\r\n")
+            append("Call-ID: ${UUID.randomUUID()}@rcs-refer\r\n")
+            append("CSeq: 1 REFER\r\n")
+            append("Refer-To: <$focusUri>\r\n")
+            append("Referred-By: <$from>\r\n")
+            if (subject.isNotBlank()) append("Subject: $subject\r\n")
+            append("Contact: <$from>;isfocus\r\n")
+            append("Content-Length: 0\r\n")
+        }
+        return RcsSipTransport.sendSipMessage(startLine, headers, ByteArray(0))
+    }
+
+    /**
      * Answer a pending incoming INVITE with 200 OK + SDP answer (passive —
      * the caller connects to us... see ACTIVE-only note below).
      *
@@ -229,9 +339,26 @@ object RcsSessionManager {
         contentType: String?,
         body: String,
         fromTag: String? = null,
+        toUri: String? = null,
     ): RcsSession? {
         return when (method.uppercase()) {
             "INVITE" -> {
+                // INVITE to a focus URI we host: record the joiner, keyed to the
+                // hosted conversation (the caller answers with acceptIncoming on
+                // the hosted thread; relay fans their messages out).
+                val target = (toUri ?: "") + "\n" + body
+                hostedConversationFor(target)?.let { hosted ->
+                    noteFocusJoin(hosted.focusUri, fromUri)
+                    return RcsSession(
+                        dialogId = "$callId:focus-in",
+                        callId = callId,
+                        localTag = UUID.randomUUID().toString().take(8),
+                        remoteTag = fromTag.orEmpty(),
+                        remoteUri = fromUri,
+                        conversationId = hosted.conversationId,
+                        isGroup = true,
+                    )
+                }
                 val conversationId = fromUri.substringAfter("sip:").substringBefore("@")
                     .takeIf { it.isNotBlank() } ?: fromUri
                 // Stash the offerer's path/setup for acceptIncoming connect-out.
@@ -358,6 +485,20 @@ object RcsSessionManager {
         val path = Regex("a=path:(\\S+)", RegexOption.IGNORE_CASE).find(sdp)
             ?.groupValues?.getOrNull(1)?.trim()
         return null to path
+    }
+
+    /** Hosted-focus lookup: which focus a To-URI/SDP blob targets. */
+    private data class HostedTarget(val focusUri: String, val conversationId: String)
+
+    private fun hostedConversationFor(target: String): HostedTarget? {
+        if (target.isBlank()) return null
+        for ((conversationId, session) in _sessions.value) {
+            if (!session.isFocus) continue
+            if (target.contains(session.remoteUri, ignoreCase = true)) {
+                return HostedTarget(session.remoteUri, conversationId)
+            }
+        }
+        return null
     }
 
     /**

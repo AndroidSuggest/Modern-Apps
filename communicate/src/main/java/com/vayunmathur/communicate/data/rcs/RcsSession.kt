@@ -27,6 +27,8 @@ data class RcsSession(
     val remoteUri: String,
     val conversationId: String,
     val isGroup: Boolean = false,
+    /** True for the pseudo-session tracking a conference we host (focus role). */
+    val isFocus: Boolean = false,
     /** MSRP path negotiated via SDP (`a=path`). Null until bound. */
     val msrpLocalPath: String? = null,
     val msrpRemotePath: String? = null,

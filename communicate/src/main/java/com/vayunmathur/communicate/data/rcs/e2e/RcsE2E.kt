@@ -103,6 +103,41 @@ object RcsE2E {
         }
 
     /**
+     * Remove members from [conversationId]'s MLS group by leaf index (see the
+     * `removeMembers` JNI contract: ASCII decimal CSV). Sends the commit to
+     * the group thread so remaining members ratchet forward — removed members
+     * can no longer decrypt. Persists the evolved snapshot.
+     *
+     * Leaf indices are crate-internal (join order); callers that track
+     * membership should map E.164 → index at add time. Returns true when the
+     * commit was accepted by the transport.
+     */
+    suspend fun removeMembers(
+        context: Context,
+        e164: String,
+        conversationId: String,
+        leafIndices: List<Int>,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!RcsFeature.enabled || !RustMlsCrypto.isAvailable || leafIndices.isEmpty()) {
+            return@withContext false
+        }
+        val identity = identityFor(context, e164) ?: return@withContext false
+        val db = RcsDatabase.getDatabase(context)
+        val group = db.mlsGroupDao().getByConversation(conversationId) ?: return@withContext false
+        if (group.groupIdHex.startsWith("pending:")) return@withContext false
+        val groupId = group.groupIdHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val csv = leafIndices.distinct().sorted().joinToString(",")
+            .toByteArray(Charsets.US_ASCII)
+        val out = runCatching {
+            RustMlsCrypto.removeMembers(group.storage, identity, groupId, csv)
+        }.getOrNull() ?: return@withContext false
+        val storageOut = out.getOrNull(0) ?: group.storage
+        val commit = out.getOrNull(1) ?: return@withContext false
+        db.mlsGroupDao().upsert(group.copy(storage = storageOut, updatedAt = System.currentTimeMillis()))
+        sendMlsEnvelope(context, conversationId, commit, CT_COMMIT)
+    }
+
+    /**
      * Create an E2EE group for [conversationId] with our local identity, then
      * add [peerKeyPackages]. Returns the commit + welcome payloads to send
      * (commit → group thread, welcome → each joiner 1:1). Persists the group.

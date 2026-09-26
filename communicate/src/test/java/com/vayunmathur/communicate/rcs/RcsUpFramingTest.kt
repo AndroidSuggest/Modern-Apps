@@ -1,6 +1,8 @@
 package com.vayunmathur.communicate.rcs
 
 import com.vayunmathur.communicate.data.rcs.ImdnDisposition
+import com.vayunmathur.communicate.data.rcs.RcsGbaAuth
+import com.vayunmathur.communicate.data.rcs.RcsSessionManager
 import com.vayunmathur.communicate.data.rcs.buildEditBody
 import com.vayunmathur.communicate.data.rcs.buildGeopushBody
 import com.vayunmathur.communicate.data.rcs.buildImdnBody
@@ -132,5 +134,30 @@ class RcsUpFramingTest {
         assertEquals("orig-7", id)
         assertEquals("fixed", text)
         assertNull(parseEditBody("plain"))
+    }
+
+    @Test
+    fun gbaDigestKnownAnswer() {
+        // RFC 2617 §3.5 known-answer vector: user "Mufasa", password
+        // "Circle Of Life", realm "testrealm@host.com", nonce
+        // "dcd98b7102dd2f0e8b11d0f600bfb0c093".
+        val response = RcsGbaAuth.digestResponse(
+            username = "Mufasa",
+            password = "Circle Of Life",
+            realm = "testrealm@host.com",
+            nonce = "dcd98b7102dd2f0e8b11d0f600bfb0c093",
+            method = "GET",
+            uri = "/dir/index.html",
+            cnonce = "0a4f113b",
+        )
+        assertEquals("6629fae49393a05397450978507c4ef1", response)
+    }
+
+    @Test
+    fun focusBookkeepingTracksMembers() {
+        // No focus hosted: lookups are null, leave is a no-op.
+        assertNull(RcsSessionManager.hostedFocusFor("nope"))
+        assertNull(RcsSessionManager.focusMembers("conf:missing@rcs.local"))
+        RcsSessionManager.noteFocusLeave("conf:missing@rcs.local", "+1555")
     }
 }

@@ -188,6 +188,16 @@ fun MessagesScreen(onOpenThread: (SmsThread) -> Unit, onOpenAccounts: () -> Unit
                                 if (!ok) {
                                     AppMessages.show(context.getString(R.string.rcs_encrypted_failed))
                                 }
+                            } else if (com.vayunmathur.communicate.data.rcs.RcsFeature.enabled) {
+                                // Plaintext group: host the conference focus so
+                                // members' clients can join (REFER) and their
+                                // messages relay through us. Best-effort — the
+                                // thread still opens for 1:1 fan-out sends.
+                                withContext(Dispatchers.IO) {
+                                    com.vayunmathur.communicate.data.rcs.RcsSessionManager.hostGroupFocus(
+                                        groupId, subject, contacts,
+                                    )
+                                }
                             }
                             onOpenThread(thread)
                         }

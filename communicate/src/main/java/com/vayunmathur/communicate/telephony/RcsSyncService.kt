@@ -114,7 +114,7 @@ class RcsSyncService : Service() {
                         if (session.msrpRemotePath == null || msrpConnections.containsKey(conversationId)) {
                             continue
                         }
-                        val conn = RcsMsrp.connect(session) { contentType, body ->
+                        val conn = RcsMsrp.connect(session, this@RcsSyncService) { contentType, body ->
                             serviceScope.launch { handleMsrpChunk(conversationId, session, contentType, body) }
                         }
                         if (conn != null) {
@@ -202,6 +202,9 @@ class RcsSyncService : Service() {
                     ftUrl = parsed.ftUrl,
                     ftMime = parsed.ftMime,
                 )
+                // Hosted focus: relay the message to the other members
+                // (ciphertext passes through untouched when E2EE is on).
+                relayFocusMessage(parsed, envelope.raw)
                 // IMDN positive-delivery: the message reached us, so tell the sender.
                 sendImdnReport(parsed)
                 showIncomingNotification(parsed)
@@ -267,6 +270,32 @@ class RcsSyncService : Service() {
                 messageId = "in-msrp-${display.hashCode()}",
             ),
         )
+    }
+
+    /**
+     * Focus relay: when [parsed] arrived on a conversation we host the focus
+     * for, re-send the raw body to every other focus member. The relayed bytes
+     * are the original wire body (CPIM + payload), so MLS ciphertext stays
+     * opaque to us — E2EE terminates per-member, not at the focus.
+     */
+    private suspend fun relayFocusMessage(parsed: InboundRcs, rawBody: String) {
+        if (!RcsFeature.enabled) return
+        val focusUri = RcsSessionManager.hostedFocusFor(parsed.conversationId) ?: return
+        val members = RcsSessionManager.focusMembers(focusUri) ?: return
+        val others = members.filter { it != parsed.senderId && it.isNotBlank() }
+        if (others.isEmpty() || rawBody.isBlank()) return
+        for (peer in others) {
+            runCatching {
+                val (startLine, headers, content) = RcsSipTransport.buildChatMessage(
+                    fromUri = "sip:me@rcs",
+                    toUri = "sip:$peer@rcs",
+                    callId = "${java.util.UUID.randomUUID()}@rcs-relay",
+                    body = rawBody,
+                )
+                RcsSipTransport.sendSipMessage(startLine, headers, content)
+            }
+        }
+        Log.i(TAG, "Relayed focus message to ${others.size} members")
     }
 
     private suspend fun sendImdnReport(parsed: InboundRcs) {

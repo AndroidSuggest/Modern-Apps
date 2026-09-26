@@ -127,6 +127,25 @@ suspend fun CommunicateRepository.sendRcsMessage(
     if (!capable) return@withContext RcsSendResult.FallbackSms
     if (!RcsSipTransport.canSend()) return@withContext RcsSendResult.FallbackSms
     val repository = this@sendRcsMessage
+    // Group thread (remoteId `rcs-group:…`): fan out 1:1 per member. UP has no
+    // pager-mode group MESSAGE — groups are conference dialogs the carrier
+    // focus hosts, or our own hosted focus (see hostGroupFocus). Until the
+    // focus dialog is established, per-member 1:1 delivery keeps messages
+    // flowing; once a focus session exists, hosted-focus relay takes over
+    // inbound, and outbound still fans out (focus fan-out would double-send).
+    if (recipient.startsWith("rcs-group:") && participants.isNotEmpty()) {
+        var anyOk = false
+        for (member in participants.map { it.trim() }.filter { it.isNotEmpty() }.distinct()) {
+            val memberResult = sendRcsMessage(
+                context, member, body, member, attachments, emptyList(),
+            )
+            if (memberResult == RcsSendResult.Sent) anyOk = true
+        }
+        if (anyOk && body.isNotBlank()) {
+            cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
+        }
+        return@withContext if (anyOk) RcsSendResult.Sent else RcsSendResult.FallbackSms
+    }
     runCatching {
         // E2EE first: when the conversation has an MLS group, encrypt and send
         // the framed payload as an MLS content message. Falls through to the
@@ -158,7 +177,7 @@ suspend fun CommunicateRepository.sendRcsMessage(
         val session = RcsSessionManager.sessionFor(recipient)
         if (session?.msrpRemotePath != null && attachments.isEmpty()) {
             val cpim = RcsSipTransport.buildCpimBody(body).toByteArray(Charsets.UTF_8)
-            if (RcsMsrp.send(session, cpim)) {
+            if (RcsMsrp.send(session, context, cpim)) {
                 if (body.isNotBlank()) {
                     cacheOutgoingRcs(context, recipient, body, "local-${UUID.randomUUID()}")
                 }

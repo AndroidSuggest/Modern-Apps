@@ -1,5 +1,6 @@
 package com.vayunmathur.communicate.data.rcs
 
+import android.content.Context
 import android.util.Log
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -94,9 +95,14 @@ object RcsMsrp {
      * loop on Dispatchers.IO. [onChunk] receives complete `message/cpim`
      * bodies (content type + bytes). Returns null when the session has no
      * usable remote path or the peer expects us to listen (`setup=active`).
+     *
+     * The socket rides the IMS PDN when available ([RcsImsNetwork]) so
+     * carrier MSRP peers (which only route IMS-subnet addresses) are
+     * reachable; falls back to a plain socket otherwise.
      */
     suspend fun connect(
         session: RcsSession,
+        context: Context,
         onChunk: (contentType: String, body: ByteArray) -> Unit,
     ): MsrpConnection? = withContext(Dispatchers.IO) {
         if (!RcsFeature.enabled) return@withContext null
@@ -108,12 +114,7 @@ object RcsMsrp {
         val localPath = session.msrpLocalPath ?: "msrp://local.invalid/${UUID.randomUUID()};tcp"
         runCatching {
             val (host, port) = parseMsrpPath(remotePath) ?: return@runCatching null
-            val socket = runCatching {
-                val s = java.net.Socket()
-                s.connect(java.net.InetSocketAddress(host, port), 10_000)
-                s.soTimeout = 0
-                s
-            }.getOrNull() ?: return@runCatching null
+            val socket = RcsImsNetwork.createSocket(context, host, port) ?: return@runCatching null
             val conn = MsrpConnection(socket, localPath, remotePath)
             // Reader loop: parse SEND chunks, auto-200 them, deliver bodies.
             // Owned by the connection; dies on close.
@@ -269,13 +270,14 @@ object RcsMsrp {
 
     /**
      * Send [payload] (CPIM bytes) over an MSRP session bound to [session].
-     * Opens a TCP socket to the remote path when needed. Returns true on a
-     * 200 response to our SEND.
+     * Opens a TCP socket to the remote path when needed (IMS PDN preferred,
+     * see [connect]). Returns true on a 200 response to our SEND.
      *
      * One-shot fallback; prefer [connect] for established sessions.
      */
     suspend fun send(
         session: RcsSession,
+        context: Context,
         payload: ByteArray,
         contentType: String = "message/cpim",
     ): Boolean = withContext(Dispatchers.IO) {
@@ -296,12 +298,8 @@ object RcsMsrp {
                 append("Success-Report: no\r\n")
                 append("Content-Type: $contentType\r\n")
             }
-            val socket = runCatching {
-                val s = java.net.Socket()
-                s.connect(java.net.InetSocketAddress(host, port), 10_000)
-                s.soTimeout = 10_000
-                s
-            }.getOrNull() ?: return@runCatching false
+            val socket = RcsImsNetwork.createSocket(context, host, port)
+                ?: return@runCatching false
             socket.use { s ->
                 val out = s.getOutputStream()
                 out.write(chunk.toByteArray(Charsets.UTF_8))

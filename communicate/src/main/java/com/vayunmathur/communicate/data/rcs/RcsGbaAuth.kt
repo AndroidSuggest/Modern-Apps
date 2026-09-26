@@ -1,0 +1,62 @@
+package com.vayunmathur.communicate.data.rcs
+
+/**
+ * GBA-shaped credentials + digest auth for FT-over-HTTP (3GPP TS 33.220 /
+ * RFC 2617).
+ *
+ * Why there is no live GBA bootstrap here: TestRcsApp's
+ * `GbaAuthenticationProvider` calls
+ * `TelephonyManager.bootstrapAuthenticationRequest` directly, but that API is
+ * `@SystemApi`/hidden — absent from the compile SDK, and the request path
+ * goes through the internal `ITelephony.getITelephony()`, which is on the
+ * hidden-API blocklist (enforced at runtime on Android 12+, and a lint error
+ * on this target SDK). The callback is a hidden *class*, not an interface, so
+ * the Proxy bridge used in [RcsHiddenApi] cannot reach it either. A
+ * non-privileged app cannot bootstrap GBA keys, full stop.
+ *
+ * What this object does instead:
+ * - [GbaCredentials] carries bootstrapped NAF credentials (btId + key) for
+ *   the day a privileged path provides them (system-permission build, carrier
+ *   service injection). [RcsFileTransferHttp] prefers them when set.
+ * - [digestResponse] is the qop=auth response hash both the GBA and the
+ *   plain-digest paths share, unit-tested against the RFC 2617 known-answer
+ *   vector.
+ *
+ * Until then uploads use the plain-digest fallback (empty password), exactly
+ * like a client whose GBA challenge fails — the server either accepts or the
+ * upload degrades, never crashes.
+ */
+object RcsGbaAuth {
+    /** Bootstrapped NAF credentials: digest username + raw key. */
+    data class GbaCredentials(val btId: String, val key: ByteArray)
+
+    /**
+     * Injected GBA credentials (privileged builds only). Null in normal
+     * dev builds — the uploader falls back to plain digest.
+     */
+    @Volatile
+    var injected: GbaCredentials? = null
+
+    /**
+     * Digest `response` hash (RFC 2617 qop=auth) — pure, unit-tested against
+     * the RFC's known-answer vector.
+     */
+    internal fun digestResponse(
+        username: String,
+        password: String,
+        realm: String,
+        nonce: String,
+        method: String,
+        uri: String,
+        cnonce: String,
+    ): String {
+        val ha1 = md5("$username:$realm:$password")
+        val ha2 = md5("$method:$uri")
+        return md5("$ha1:$nonce:00000001:$cnonce:auth:$ha2")
+    }
+
+    private fun md5(s: String): String {
+        val md = java.security.MessageDigest.getInstance("MD5")
+        return md.digest(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    }
+}

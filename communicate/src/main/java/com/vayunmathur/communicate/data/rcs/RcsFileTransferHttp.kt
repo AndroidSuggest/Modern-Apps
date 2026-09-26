@@ -60,7 +60,10 @@ object RcsFileTransferHttp {
                 .firstOrNull { it.key.equals("WWW-Authenticate", ignoreCase = true) }
                 ?.value?.firstOrNull()
                 ?: return@runCatching null
-            // 2. Authenticated multipart POST (tid + File).
+            // 2. Authenticated multipart POST (tid + File). GBA-shaped creds
+            // when a privileged build injected them, else the plain-digest
+            // fallback (empty password). Live GBA bootstrapping is unreachable
+            // from a non-privileged app (hidden API blocklist — see RcsGbaAuth).
             val boundary = "rcsft${UUID.randomUUID().toString().replace("-", "").take(16)}"
             val tid = UUID.randomUUID().toString()
             val multipart = buildMultipart(
@@ -70,11 +73,15 @@ object RcsFileTransferHttp {
                 mime = attachment.mimeType,
                 bytes = bytes,
             )
+            val gba = RcsGbaAuth.injected
             val auth = digestAuthHeader(
                 challenge = challenge,
                 method = "POST",
                 uri = server,
-                username = "rcs",
+                username = gba?.btId ?: "rcs",
+                password = gba?.let {
+                    android.util.Base64.encodeToString(it.key, android.util.Base64.NO_WRAP)
+                }.orEmpty(),
             )
             val response = NetworkClient.performRequest(
                 url = server,
@@ -195,12 +202,17 @@ object RcsFileTransferHttp {
     }
 
     /**
-     * Minimal digest Authorization header from a WWW-Authenticate challenge.
-     * GBA bootstrapping (TestRcsApp GbaRequestExecutor) is out of scope —
-     * this covers plain digest; AKA/GBA challenges return an empty header and
-     * the upload degrades gracefully.
+     * Digest Authorization header from a WWW-Authenticate challenge. [password]
+     * is the GBA-derived base64 key when bootstrapped, empty otherwise (the
+     * plain-digest fallback).
      */
-    private fun digestAuthHeader(challenge: String, method: String, uri: String, username: String): String {
+    private fun digestAuthHeader(
+        challenge: String,
+        method: String,
+        uri: String,
+        username: String,
+        password: String = "",
+    ): String {
         if (!challenge.contains("Digest", ignoreCase = true)) return ""
         fun param(name: String): String =
             Regex("$name=\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(challenge)
@@ -209,14 +221,7 @@ object RcsFileTransferHttp {
         val nonce = param("nonce")
         if (realm.isBlank() || nonce.isBlank()) return ""
         val cnonce = UUID.randomUUID().toString().replace("-", "").take(16)
-        fun h(s: String): String {
-            val md = java.security.MessageDigest.getInstance("MD5")
-            return md.digest(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-        }
-        // Empty password: GBA-derived keys are unavailable outside the telephony stack.
-        val ha1 = h("$username:$realm:")
-        val ha2 = h("$method:$uri")
-        val response = h("$ha1:$nonce:00000001:$cnonce:auth:$ha2")
+        val response = RcsGbaAuth.digestResponse(username, password, realm, nonce, method, uri, cnonce)
         return "Digest username=\"$username\", realm=\"$realm\", nonce=\"$nonce\", uri=\"$uri\", " +
             "response=\"$response\", qop=auth, nc=00000001, cnonce=\"$cnonce\""
     }
