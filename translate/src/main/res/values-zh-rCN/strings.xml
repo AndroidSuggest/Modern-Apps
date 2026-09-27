@@ -10,4 +10,10 @@
     <string name="grant_camera_access">授予相机访问权限，以便翻译所见内容</string>
     <string name="install_voice">安装</string>
     <string name="no_voice_installed">未安装 %1$s 语音</string>
+    <string name="select_source_language">源语言</string>
+    <string name="select_target_language">目标语言</string>
+    <string name="search_languages">搜索语言</string>
+    <string name="recent_languages">最近使用的语言</string>
+    <string name="all_languages">所有语言</string>
+    <string name="no_languages_match">没有语言匹配“%1$s”</string>
 </resources>
