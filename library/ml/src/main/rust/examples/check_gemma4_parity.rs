@@ -93,6 +93,20 @@ fn main() {
         Ok(context) => context,
         Err(why) => return println!("no Vulkan device: {why}"),
     };
+    // `--time <repeats>`: decode-speed mode (no parity report). Runs the same
+    // streaming decode loop repeatedly over the golden's tokens and prints
+    // per-step ms: warmup vs steady-state separates upload-one-time from
+    // per-token cost. Crash-safe by construction: identical streaming I/O to
+    // the parity path (no whole-file reads), ~1.5 GB peak upload with the
+    // head file (TEXT 1.1 + head 0.4) or the 2.4 GB legacy flow — never the
+    // 4.7 GB TEXT+whole-EMBED upload that OOM-rebooted the P8 twice.
+    if let Some(repeats) = std::env::args()
+        .position(|a| a == "--time")
+        .and_then(|i| std::env::args().nth(i + 1))
+        .and_then(|n| n.parse::<usize>().ok())
+    {
+        return time_decode(&context, &weights, &embed_weights, head_weights.as_ref(), &tokens, repeats);
+    }
     match run(&context, &weights, &embed_weights, head_weights.as_ref(), &tokens) {
         Ok(logits) => report(&logits, &want_ids, &want_logits),
         Err(why) => println!("the decode failed: {why}"),
@@ -251,6 +265,92 @@ fn tail_run(
         ];
     }
     Ok(last)
+}
+
+/// Decode-speed probe: repeat the streaming decode loop and print per-step ms.
+///
+/// Builds the `DecodeStep` net ONCE (upload-one-time), then runs the loop
+/// `repeats` times over `tokens`, timing every step: the first pass includes
+/// upload + graph setup, later passes are pure steady-state decode. Prints
+/// per-step ms per pass plus the steady-state mean (everything after pass 0)
+/// as ms/token and tokens/s. Never computes logits — no head upload, no
+/// readback — so this isolates transformer decode from head cost.
+fn time_decode(
+    context: &Arc<context::Context>,
+    weights: &Streamed,
+    embed: &Streamed,
+    _head: Option<&Streamed>,
+    tokens: &[u32],
+    repeats: usize,
+) {
+    use std::time::Instant;
+    let mut net = match Reshaped::streamed(
+        Arc::clone(context),
+        weights.offsets(),
+        weights,
+        gemma4::Mode::DecodeStep.at(TIER),
+        |offsets, mode| gemma4::build(offsets, mode),
+    ) {
+        Ok(net) => net,
+        Err(why) => return println!("the net does not build: {why}"),
+    };
+    let reader = embed.reader();
+    let rotary = weights.reader();
+    let repeats = repeats.max(1);
+    let mut steady: Vec<f64> = Vec::new();
+    for pass in 0..repeats {
+        let mut step_ms: Vec<f64> = Vec::with_capacity(tokens.len());
+        for (step, &token) in tokens.iter().enumerate() {
+            let tick = Instant::now();
+            let position = match u32::try_from(step) {
+                Ok(p) => p,
+                Err(_) => return println!("a step past u32"),
+            };
+            let Ok((hidden_in, per_layer)) = gemma4::gather(&reader, token) else {
+                return println!("gather failed at step {step}");
+            };
+            let Ok(angles_local) =
+                rotary_row(&rotary, gemma4::ROTARY_LOCAL, gemma4::HEAD_DIM, position)
+            else {
+                return println!("rotary local failed at step {step}");
+            };
+            let Ok(angles_global) =
+                rotary_row(&rotary, gemma4::ROTARY_GLOBAL, gemma4::GLOBAL_HEAD_DIM, position)
+            else {
+                return println!("rotary global failed at step {step}");
+            };
+            let at = match net.at(gemma4::Mode::DecodeStep.at(TIER)) {
+                Ok(at) => at,
+                Err(why) => return println!("the net does not bind at step {step}: {why}"),
+            };
+            if at
+                .set_params(StepParams {
+                    prefix: position,
+                    window_start: position.saturating_sub(gemma4::WINDOW - 1),
+                })
+                .is_err()
+            {
+                return println!("params failed at step {step}");
+            }
+            match at.infer_raw_many(&[&hidden_in, &per_layer, &angles_local, &angles_global]) {
+                Ok(_) => {}
+                Err(why) => return println!("step {step} failed: {why}"),
+            }
+            step_ms.push(tick.elapsed().as_secs_f64() * 1000.0);
+        }
+        let mean = step_ms.iter().sum::<f64>() / step_ms.len().max(1) as f64;
+        println!("pass {pass}: {} steps, mean {mean:.1} ms/step", step_ms.len());
+        for (i, ms) in step_ms.iter().enumerate() {
+            println!("  step {i}: {ms:.1} ms");
+        }
+        if pass > 0 {
+            steady.extend(step_ms);
+        }
+    }
+    if !steady.is_empty() {
+        let mean = steady.iter().sum::<f64>() / steady.len() as f64;
+        println!("steady-state: {mean:.1} ms/token = {:.2} tok/s", 1000.0 / mean.max(1e-9));
+    }
 }
 
 /// Feed every token in order and return the last step's logits.
