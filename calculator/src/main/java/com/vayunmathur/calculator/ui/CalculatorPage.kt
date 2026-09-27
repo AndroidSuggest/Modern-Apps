@@ -52,9 +52,6 @@ fun CalculatorScreen(
     var showHistory by remember { mutableStateOf(initialShowHistory) }
     var second by remember { mutableStateOf(initialSecond) }
     var showUnitPicker by remember { mutableStateOf(initialShowUnitPicker) }
-    var picker by remember { mutableStateOf(CalculatorPicker.None) }
-    // The date chosen in the first step of the combined date-and-time flow (UTC midnight millis).
-    var dtDateMillis by remember { mutableStateOf<Long?>(null) }
 
     val rows: List<List<Key>> = remember(state.angleMode) { buildCalculatorRows(state.angleMode) }
 
@@ -74,37 +71,17 @@ fun CalculatorScreen(
             Row(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 DisplayColumn(state, actions, Modifier.weight(1f).fillMaxSize())
                 VerticalDivider()
-                KeypadColumn(rows, actions, second, { second = !second }, picker, { picker = it }, Modifier.weight(1f).widthIn(max = 560.dp).fillMaxSize())
+                KeypadColumn(rows, actions, second, { second = !second }, Modifier.weight(1f).widthIn(max = 560.dp).fillMaxSize())
             }
         } else {
             Column(Modifier.fillMaxSize().padding(padding)) {
                 DisplayColumn(state, actions, Modifier.fillMaxWidth().weight(1f))
                 HorizontalDivider()
-                KeypadColumn(rows, actions, second, { second = !second }, picker, { picker = it }, Modifier.fillMaxWidth())
+                KeypadColumn(rows, actions, second, { second = !second }, Modifier.fillMaxWidth())
             }
         }
     }
 
     if (showHistory) HistoryDialog(state.history, actions) { showHistory = false }
     if (showUnitPicker) UnitPickerSheet(state, actions) { showUnitPicker = false }
-
-    when (picker) {
-        CalculatorPicker.Date -> DatePickerModal(onDismiss = { picker = CalculatorPicker.None }) { millis ->
-            actions.insertInstant(localMidnightSeconds(millis))
-            picker = CalculatorPicker.None
-        }
-        CalculatorPicker.DtDate -> DatePickerModal(onDismiss = { picker = CalculatorPicker.None }) { millis ->
-            dtDateMillis = millis
-            picker = CalculatorPicker.DtTime
-        }
-        CalculatorPicker.Time -> TimePickerModal(onDismiss = { picker = CalculatorPicker.None }) { hour, minute ->
-            actions.insertDuration((hour * 3600 + minute * 60).toLong())
-            picker = CalculatorPicker.None
-        }
-        CalculatorPicker.DtTime -> TimePickerModal(onDismiss = { picker = CalculatorPicker.None }) { hour, minute ->
-            dtDateMillis?.let { actions.insertInstant(combineDateTimeSeconds(it, hour, minute)) }
-            picker = CalculatorPicker.None
-        }
-        CalculatorPicker.None -> {}
-    }
 }

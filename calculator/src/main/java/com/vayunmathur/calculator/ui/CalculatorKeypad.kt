@@ -3,6 +3,8 @@ package com.vayunmathur.calculator.ui
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -23,15 +25,11 @@ import com.vayunmathur.calculator.util.CalculatorActions
 import com.vayunmathur.calculator.util.CalculatorUiState
 import com.vayunmathur.library.ui.Button
 import com.vayunmathur.library.ui.ButtonDefaults
-import com.vayunmathur.library.ui.ButtonGroup
+import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
 
 internal enum class KeyEmphasis { Digit, Operator, Primary, Function, Toggle }
-
-/** Which date/time picker (if any) is currently open. `DtDate`/`DtTime` are the two steps of
- * the combined date-and-time flow. */
-internal enum class CalculatorPicker { None, Date, Time, DtDate, DtTime }
 
 /**
  * A keypad key. [second]/[secondPress] give an alternate label+action shown when the
@@ -144,21 +142,6 @@ internal fun buildCalculatorRows(angleMode: AngleMode): List<List<Key>> {
     )
 }
 
-/** A keypad button that opens a picker (styled like a Function key, but driven by screen state
- * rather than a [CalculatorActions] call, so it can toggle a dialog). */
-@Composable
-internal fun RowScope.PickerKey(label: String, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.weight(1f).height(50.dp).padding(2.dp),
-        shape = MaterialTheme.shapes.largeIncreased,
-        colors = ButtonDefaults.textButtonColors(),
-        contentPadding = PaddingValues(0.dp),
-    ) {
-        Text(label, fontSize = if (label.length >= 4) 13.sp else 18.sp, maxLines = 1)
-    }
-}
-
 /** The readout column: extracted so the compact (stacked) and expanded (side-by-side)
  * layouts share one implementation. */
 @Composable
@@ -190,29 +173,39 @@ internal fun DisplayColumn(state: CalculatorUiState, actions: CalculatorActions,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (state.unitOptions.isNotEmpty()) {
-            Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(R.string.convert_to),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // A wrapping row of filter chips rather than a ButtonGroup: the group is a
+            // single-row control whose measure policy throws IllegalArgumentException
+            // (maxWidth < minWidth) when the options overflow the available width, which
+            // crashes the app as soon as a unit-bearing result is previewed. Chips wrap
+            // to a second line instead and tolerate the narrow display column on both
+            // compact and expanded layouts.
+            UnitOptionsRow(state, actions)
+        }
+    }
+}
+
+/** The keypad column: extracted so the compact (stacked) and expanded (side-by-side)
+ * layouts share one implementation. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UnitOptionsRow(state: CalculatorUiState, actions: CalculatorActions) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text(
+            stringResource(R.string.convert_to),
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            state.unitOptions.forEach { unit ->
+                FilterChip(
+                    selected = unit == state.selectedUnit,
+                    onClick = { actions.selectOutputUnit(unit.token) },
+                    label = { Text(unit.symbol) },
                 )
-                // A ButtonGroup rather than a scrolling row of chips: picking the output
-                // unit is one choice, so the options should read as one control. The group
-                // moves anything that does not fit into its overflow menu, which is easier
-                // to find than a chip scrolled off the right edge.
-                ButtonGroup(Modifier.weight(1f)) {
-                    state.unitOptions.forEach { unit ->
-                        toggleableItem(
-                            checked = unit == state.selectedUnit,
-                            label = unit.symbol,
-                            onCheckedChange = { actions.selectOutputUnit(unit.token) },
-                        )
-                    }
-                }
             }
         }
     }
@@ -226,16 +219,9 @@ internal fun KeypadColumn(
     actions: CalculatorActions,
     second: Boolean,
     onToggleSecond: () -> Unit,
-    picker: CalculatorPicker,
-    onPickerChange: (CalculatorPicker) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.padding(4.dp)) {
-        Row(Modifier.fillMaxWidth()) {
-            PickerKey(stringResource(R.string.key_date)) { onPickerChange(CalculatorPicker.Date) }
-            PickerKey(stringResource(R.string.key_time)) { onPickerChange(CalculatorPicker.Time) }
-            PickerKey(stringResource(R.string.key_datetime)) { onPickerChange(CalculatorPicker.DtDate) }
-        }
         rows.forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { key -> KeyButton(key, actions, second) { onToggleSecond() } }

@@ -40,6 +40,7 @@ import com.vayunmathur.library.ui.Tab
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 
@@ -87,6 +88,15 @@ internal fun localMidnightSeconds(utcDateMillis: Long): Long =
 internal fun combineDateTimeSeconds(utcDateMillis: Long, hour: Int, minute: Int): Long =
     Instant.ofEpochMilli(utcDateMillis).atZone(ZoneOffset.UTC).toLocalDate()
         .atTime(hour, minute).atZone(ZoneId.systemDefault()).toEpochSecond()
+
+/**
+ * A time-of-day picked with no date: today at that local time. Kept absolute (an instant)
+ * rather than a duration so 2 AM never casts to 2 hours — `5 AM + 2 AM` errors, matching the
+ * engine's rule that two instants only subtract.
+ */
+internal fun todayAtTimeSeconds(hour: Int, minute: Int): Long =
+    LocalDate.now(ZoneId.systemDefault()).atTime(hour, minute)
+        .atZone(ZoneId.systemDefault()).toEpochSecond()
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

@@ -50,17 +50,26 @@ import com.vayunmathur.library.ui.appBarScrollBehavior
 
 /** Binds [CalculatorViewModel] to the stateless [UnitConverterScreen]. */
 @Composable
-fun UnitConverterPage(viewModel: CalculatorViewModel) {
-    UnitConverterScreen(state = viewModel.unitConverterUiState, actions = viewModel)
+fun UnitConverterPage(viewModel: CalculatorViewModel, onPickInstant: (Long) -> Unit = {}) {
+    UnitConverterScreen(state = viewModel.unitConverterUiState, actions = viewModel, onPickInstant = onPickInstant)
 }
 
 /**
  * The units tab: a plain from/to converter with no equations. The twenty-odd categories are picked
  * from a single collapsed dropdown, which keeps the converter itself the focus of the screen.
+ * The Absolute-time section is picker-only: date, time and date-and-time items that insert an
+ * instant into the keypad input (via [onPickInstant], which also navigates back to Calculator).
  * Stateless so it can be rendered from a `@Preview` — see `src/screenshotTest`.
  */
 @Composable
-fun UnitConverterScreen(state: UnitConverterUiState, actions: UnitConverterActions) {
+fun UnitConverterScreen(
+    state: UnitConverterUiState,
+    actions: UnitConverterActions,
+    onPickInstant: (Long) -> Unit = {},
+) {
+    var picker by remember { mutableStateOf(AbsoluteTimePicker.None) }
+    // The date chosen in the first step of the combined date-and-time flow (UTC midnight millis).
+    var dtDateMillis by remember { mutableStateOf<Long?>(null) }
     AppScaffold(
         title = stringResource(R.string.units),
         alignment = AppBarAlignment.Center,
@@ -82,7 +91,12 @@ fun UnitConverterScreen(state: UnitConverterUiState, actions: UnitConverterActio
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.lg, vertical = Spacing.xs),
             )
             if (category != null) {
-                if (state.isCurrencyCategory && category.units.isEmpty()) {
+                if (state.isAbsoluteTimeCategory) {
+                    AbsoluteTimeSection(
+                        onPick = { picker = it },
+                        modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+                    )
+                } else if (state.isCurrencyCategory && category.units.isEmpty()) {
                     CurrencyStatus(
                         loading = state.currencyLoading,
                         error = state.currencyError,
@@ -141,6 +155,54 @@ fun UnitConverterScreen(state: UnitConverterUiState, actions: UnitConverterActio
             }
         }
         }
+    }
+
+    when (picker) {
+        AbsoluteTimePicker.Date -> DatePickerModal(onDismiss = { picker = AbsoluteTimePicker.None }) { millis ->
+            onPickInstant(localMidnightSeconds(millis))
+            picker = AbsoluteTimePicker.None
+        }
+        AbsoluteTimePicker.DtDate -> DatePickerModal(onDismiss = { picker = AbsoluteTimePicker.None }) { millis ->
+            dtDateMillis = millis
+            picker = AbsoluteTimePicker.DtTime
+        }
+        // Time-of-day with no date: today at that time, kept absolute so 2 AM never casts
+        // to 2 hours — `5 AM + 2 AM` errors like any other instant + instant.
+        AbsoluteTimePicker.Time -> TimePickerModal(onDismiss = { picker = AbsoluteTimePicker.None }) { hour, minute ->
+            onPickInstant(todayAtTimeSeconds(hour, minute))
+            picker = AbsoluteTimePicker.None
+        }
+        AbsoluteTimePicker.DtTime -> TimePickerModal(onDismiss = { picker = AbsoluteTimePicker.None }) { hour, minute ->
+            dtDateMillis?.let { onPickInstant(combineDateTimeSeconds(it, hour, minute)) }
+            picker = AbsoluteTimePicker.None
+        }
+        AbsoluteTimePicker.None -> {}
+    }
+}
+
+/** Which absolute-time picker (if any) is currently open. `DtDate`/`DtTime` are the two steps
+ * of the combined date-and-time flow. */
+internal enum class AbsoluteTimePicker { None, Date, Time, DtDate, DtTime }
+
+/**
+ * The Absolute-time section: three full-width picker items (date, time, date & time) instead of
+ * a from/to converter form. Each inserts an `#<epoch>` instant into the keypad input.
+ */
+@Composable
+private fun AbsoluteTimeSection(onPick: (AbsoluteTimePicker) -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        OutlinedButton(
+            onClick = { onPick(AbsoluteTimePicker.Date) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(stringResource(R.string.key_date), modifier = Modifier.weight(1f), textAlign = TextAlign.Start) }
+        OutlinedButton(
+            onClick = { onPick(AbsoluteTimePicker.Time) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(stringResource(R.string.key_time), modifier = Modifier.weight(1f), textAlign = TextAlign.Start) }
+        OutlinedButton(
+            onClick = { onPick(AbsoluteTimePicker.DtDate) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(stringResource(R.string.key_datetime), modifier = Modifier.weight(1f), textAlign = TextAlign.Start) }
     }
 }
 

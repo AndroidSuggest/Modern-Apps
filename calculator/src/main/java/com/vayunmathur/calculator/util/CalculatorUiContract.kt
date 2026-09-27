@@ -106,8 +106,6 @@ interface CalculatorActions {
     fun append(text: String) {}
     /** Insert an absolute date/datetime (epoch seconds) chosen from a picker. */
     fun insertInstant(epochSeconds: Long) {}
-    /** Insert a duration in seconds (e.g. a time-of-day) chosen from a picker. */
-    fun insertDuration(seconds: Long) {}
     fun clear() {}
     fun backspace() {}
     fun evaluate() {}
@@ -164,6 +162,8 @@ data class UnitConverterUiState(
     val currencyError: String? = null,
     /** True once the selected category is the live Currency tab. */
     val isCurrencyCategory: Boolean = false,
+    /** True once the selected category is the Absolute-time picker section. */
+    val isAbsoluteTimeCategory: Boolean = false,
 )
 
 /** Unit-converter callbacks. Same no-op-default arrangement as [CalculatorActions]. */

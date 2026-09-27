@@ -106,6 +106,11 @@ fun Navigation(viewModel: CalculatorViewModel, unitsRequest: Int = 0) {
     ) {
         entry<Route.Calculator>(metadata = SiblingPage()) { CalculatorPage(viewModel) }
         entry<Route.Graph>(metadata = SiblingPage()) { GraphPage(viewModel) }
-        entry<Route.Units>(metadata = SiblingPage()) { UnitConverterPage(viewModel) }
+        entry<Route.Units>(metadata = SiblingPage()) {
+            UnitConverterPage(viewModel) { epochSeconds ->
+                viewModel.insertInstant(epochSeconds)
+                backStack.reset(Route.Calculator)
+            }
+        }
     }
 }
