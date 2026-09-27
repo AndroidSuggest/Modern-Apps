@@ -1,0 +1,62 @@
+#version 450
+//! GEMV-shaped sweep through a texel-buffer view: the texture-path half of the
+//! Phase-3 proof slice.
+//!
+//! # What this isolates that `probe_texel.comp` does not
+//!
+//! `probe_texel.comp` streams 256 MB with 1 XOR/16 B — a pure read-bandwidth
+//! ceiling. This runs the REAL gemv access pattern from `gemv_g_shape_full`
+//! (variant G: K=1, ROWS 2, 64 lanes, int4 unpack + activation fetch + FMA)
+//! with the weight fetch switched from SSBO `weights128[]` to
+//! `texelFetch(usamplerBuffer)`. Same launch, same arithmetic, same
+//! activation stream — the ONLY difference is the weight-fetch path.
+//!
+//! G-vs-TEX is therefore the texture-path value *inside the real kernel*,
+//! not inside a stream: if the kernel is shape-bound (bottleneck report says
+//! it is on host), texture fetch changes nothing and Phase 3 is abandoned.
+//! If TEX beats G on P8, the promotion path (image-backed weights) is real.
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform usamplerBuffer weights_tex;
+layout(set = 0, binding = 1) readonly buffer Acts { float16_t act[]; };
+layout(set = 0, binding = 2) buffer Sink { uint sink[]; };
+layout(push_constant) uniform Push {
+    uint quads;
+    uint in_c;
+    uint count;
+};
+#define ROWS 2u
+#define I4_BLOCK 32u
+#define LANES 64u
+void main() {
+    uint tile = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    if (tile >= count) {
+        return;
+    }
+    uint channel_base = tile * ROWS;
+    uint lane = gl_LocalInvocationID.x;
+    uint blocks = (in_c + I4_BLOCK - 1u) / I4_BLOCK;
+    float acc[ROWS];
+    for (uint r = 0u; r < ROWS; r++) {
+        acc[r] = 0.0;
+    }
+    // One K-iteration (matches G): each lane walks its share of blocks.
+    for (uint b = lane; b < blocks; b += LANES) {
+        // One uvec4 = 8 int4 weights = the same 32-tap block G reads, but via
+        // the texture unit instead of the SSBO load path.
+        uvec4 packed = texelFetch(weights_tex, int(b));
+        for (uint r = 0u; r < ROWS; r++) {
+            uint word = (r == 0u) ? packed.x : packed.y;
+            float wsum = float(word & 15u) + float((word >> 4u) & 15u)
+                + float((word >> 8u) & 15u) + float((word >> 12u) & 15u)
+                + float((word >> 16u) & 15u) + float((word >> 20u) & 15u)
+                + float((word >> 24u) & 15u) + float(word >> 28u);
+            acc[r] += wsum * float(act[(channel_base + r) * in_c + b * 32u]);
+        }
+    }
+    uint folded = uint(acc[0] * 1000.0) ^ uint(acc[1] * 1000.0) ^ tile;
+    if (folded == 0xFFFFFFFFu) {
+        sink[0] = folded;
+    }
+}
