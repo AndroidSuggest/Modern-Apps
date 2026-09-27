@@ -100,12 +100,14 @@ object EuiccNative {
 
     /**
      * Finishes an authenticated session (PrepareDownload with hashCc, BPP fetch,
-     * segment install with [callback] progress) and returns
-     * `{"success":Boolean,"message":String}`. Consumes the session.
+     * segment install with [callback] progress, then SetNickname from the carrier
+     * preview) and returns `{"success":Boolean,"message":String,"iccid":String}`.
+     * Consumes the session.
      */
     external fun nativeFinishDownload(
         transactionId: String,
         confirmationCode: String,
+        nickname: String,
         callback: DownloadProgressCallback,
     ): String
 

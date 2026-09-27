@@ -11,7 +11,7 @@
 use crate::asn1;
 use crate::es10::{
     TAG_ICCID, TAG_NOTIFICATION_ADDRESS, TAG_NOTIFICATION_LIST, TAG_NOTIFICATION_METADATA,
-    TAG_SEQ_NUMBER, decode_iccid, encode_int_minimal, first_byte, parse_int, utf8,
+    TAG_SEQ_NUMBER, decode_iccid, encode_int_minimal, first_byte, hex, parse_int, utf8,
 };
 
 // --- Tags (SGP.22) ---
@@ -71,6 +71,8 @@ pub struct InstallResult {
     pub message: String,
     /// Sequence number from the result's NotificationMetadata (for retrieve/remove).
     pub seq_number: i64,
+    /// Installed profile ICCID as raw hex (for the follow-up SetNickname).
+    pub installed_iccid: String,
     /// Failing BPP command id (0-5) on error, `None` on success.
     pub bpp_command_id: Option<i64>,
     /// SGP.22 install error reason on error, `None` on success.
@@ -207,21 +209,33 @@ pub fn build_prepare_download(
 /// Segments a Bound Profile Package (BF36) into the ordered list of TLVs the LPA
 /// must transmit to the eUICC via STORE DATA, mirroring lpac
 /// (`euicc/es10b.c:es10b_load_bound_profile_package_r`):
-/// `[BF23][A0 whole][A1 header + 88 elements...][A2 whole if present][A3
-/// header + 86 elements...]`.
+/// `[BF36hdr+BF23 verbatim][A0 whole][A1 header + 88 elements...][A2 whole if
+/// present][A3 header + 86 elements...]`.
 ///
-/// The wrapper TLVs are sent whole (tag + length + value); the `88…`/`86…`
-/// element sequences are sent header-first (tag + length, without the value)
-/// then element by element, because the eUICC uses the header as a length
-/// prefix for the stream that follows.
+/// The first segment is the BPP bytes from the outer BF36 tag through the end
+/// of BF23, verbatim: the outer header keeps its FULL body length and the
+/// eUICC reads the total BPP length from it — rewriting the length breaks the
+/// install with SW 6985. The remaining wrappers are sent whole (tag + length +
+/// value); the `88…`/`86…` element sequences are sent header-first (tag +
+/// length, without the value) then element by element, because the eUICC uses
+/// the header as a length prefix for the stream that follows.
 pub fn segment_bpp(bpp: &[u8]) -> Result<Vec<Vec<u8>>, String> {
     let body = asn1::find(bpp, TAG_BPP).ok_or("BoundProfilePackage: missing BF36")?;
     let mut segments = Vec::new();
 
-    // initialiseSecureChannelRequest (BF23): sent whole.
-    let isc = asn1::find(body, TAG_INITIALISE_SECURE_CHANNEL)
+    // First segment: the BPP bytes from the outer BF36 tag through the end of
+    // BF23, verbatim — including the outer header with its FULL body length
+    // (lpac sends `reqbuf_len = tmpnode.self.ptr -
+    // n_BoundProfilePackage.self.ptr + tmpnode.self.length`, i.e. the
+    // original header untouched). The eUICC reads the total BPP length from
+    // it; rewriting the length breaks the install with SW 6985.
+    let isc_value = asn1::find(body, TAG_INITIALISE_SECURE_CHANNEL)
         .ok_or("BoundProfilePackage: missing BF23")?;
-    segments.push(asn1::tlv(TAG_INITIALISE_SECURE_CHANNEL, isc));
+    let isc_start = find_child_offset(body, TAG_INITIALISE_SECURE_CHANNEL)
+        .ok_or("BoundProfilePackage: missing BF23")?;
+    let isc_tlv = asn1::tlv(TAG_INITIALISE_SECURE_CHANNEL, isc_value);
+    let prefix_len = bpp.len() - body.len();
+    segments.push(bpp[..prefix_len + isc_start + isc_tlv.len()].to_vec());
 
     // firstSequenceOf87 (A0): sent whole.
     let seq87 = asn1::find(body, TAG_BPP_SEQ_87).ok_or("BoundProfilePackage: missing A0")?;
@@ -249,6 +263,22 @@ pub fn segment_bpp(bpp: &[u8]) -> Result<Vec<Vec<u8>>, String> {
     Ok(segments)
 }
 
+/// Byte offset of the first child with `tag` inside a constructed value body.
+fn find_child_offset(body: &[u8], tag: u32) -> Option<usize> {
+    let mut offset = 0;
+    let mut rest = body;
+    while !rest.is_empty() {
+        let (tlv, next) = asn1::parse(rest)?;
+        if tlv.tag == tag {
+            return Some(offset);
+        }
+        let consumed = rest.len() - next.len();
+        offset += consumed;
+        rest = next;
+    }
+    None
+}
+
 /// Parses a ProfileInstallationResult (BF37) into an [`InstallResult`].
 ///
 /// Matches fields by tag — `bppCommandId 0x80`, `errorReason 0x81` — like lpac's
@@ -267,10 +297,18 @@ pub fn parse_install_result(response: &[u8]) -> Result<InstallResult, String> {
         .map(parse_int)
         .unwrap_or(-1);
 
+    // Installed profile ICCID (BCD in NotificationMetadata): needed to address
+    // the follow-up SetNickname, since the BPP result carries no ISD-P AID.
+    let installed_iccid = asn1::find(data, TAG_NOTIFICATION_METADATA)
+        .and_then(|m| asn1::find(m, TAG_ICCID))
+        .map(hex)
+        .unwrap_or_default();
+
     let base = InstallResult {
         success: false,
         message: String::new(),
         seq_number,
+        installed_iccid,
         bpp_command_id: None,
         error_reason: None,
         notification: response.to_vec(),

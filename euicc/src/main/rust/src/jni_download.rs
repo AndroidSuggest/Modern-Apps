@@ -32,8 +32,12 @@ thread_local! {
 }
 
 /// `nativeDownloadProfile(activationCode)` — runs the full SGP.22 download for
-/// an activation code and returns a JSON `{success, message}` string. Must be
-/// called while the ISD-R channel is open (inside `withIsdrChannel`).
+/// an activation code and returns a JSON `{success, message, iccid}` string.
+/// Must be called while the ISD-R channel is open (inside `withIsdrChannel`).
+///
+/// Kept for the `EuiccManagerService` platform path; the UI flow uses the
+/// split-phase entries. No nickname is applied here — Settings shows the
+/// carrier metadata, and the user can rename from the LUI.
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeDownloadProfile<'l>(
     mut env: JNIEnv<'l>,
@@ -49,7 +53,11 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeDownloadProf
     };
 
     let json = match crate::download::download_profile(&mut env, &code) {
-        Ok(result) => serde_json::json!({ "success": result.success, "message": result.message }),
+        Ok(result) => serde_json::json!({
+            "success": result.success,
+            "message": result.message,
+            "iccid": result.installed_iccid,
+        }),
         Err(message) => serde_json::json!({ "success": false, "message": message }),
     };
     new_jstring(&env, &json.to_string())
@@ -118,13 +126,17 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeAuthenticate
 
 /// `nativeFinishDownload(transactionId, confirmationCode)` — runs
 /// PrepareDownload (with `hashCc`) → GetBoundProfilePackage → BPP install with
-/// progress callbacks, returning `{success, message}`. Consumes the session.
+/// progress callbacks, returning `{success, message, iccid}`. Consumes the session.
+/// `nickname` (from the carrier preview) is applied via SetNickname while the
+/// channel is still open, so the profile shows a name immediately.
+/// `nativeFinishDownload(transactionId, confirmationCode, nickname, callback)`
 #[no_mangle]
 pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeFinishDownload<'l>(
     mut env: JNIEnv<'l>,
     _class: JClass<'l>,
     transaction_id: JString<'l>,
     confirmation_code: JString<'l>,
+    nickname: JString<'l>,
     callback: jni::objects::JObject<'l>,
 ) -> jstring {
     jni_http::init(&mut env);
@@ -133,6 +145,7 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeFinishDownlo
         return finish_json(&env, false, "Invalid download session");
     };
     let code = read_string(&mut env, &confirmation_code).filter(|c| !c.is_empty());
+    let nickname = read_string(&mut env, &nickname).filter(|c| !c.trim().is_empty());
     let session = SESSION.with(|s| s.borrow_mut().remove(&handle));
     let Some(session) = session else {
         return finish_json(&env, false, "Download session expired — start again");
@@ -143,7 +156,26 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeFinishDownlo
     };
     let json = match crate::download::finish_download(&mut env, &session, code.as_deref(), &mut progress)
     {
-        Ok(result) => serde_json::json!({ "success": result.success, "message": result.message }),
+        Ok(result) => {
+            // Seed the profile nickname from the carrier preview while the
+            // channel is open; best-effort (a rename can always be retried).
+            if result.success {
+                if let Some(name) = nickname.as_deref() {
+                    let iccid = crate::es10::hex_decode(&result.installed_iccid);
+                    if !iccid.is_empty() {
+                        let _ = crate::jni::store_data(
+                            &mut env,
+                            &crate::es10::build_set_nickname(&iccid, name.trim()),
+                        );
+                    }
+                }
+            }
+            serde_json::json!({
+                "success": result.success,
+                "message": result.message,
+                "iccid": result.installed_iccid,
+            })
+        }
         Err(message) => serde_json::json!({ "success": false, "message": message }),
     };
     new_jstring(&env, &json.to_string())

@@ -32,9 +32,13 @@ data class EuiccScreenState(
     val notifications: List<Notification> = emptyList(),
 )
 
-/** Native download outcome (`{success, message}`). */
+/** Native download outcome (`{success, message, iccid}`). */
 @kotlinx.serialization.Serializable
-private data class DownloadResult(val success: Boolean = false, val message: String = "")
+private data class DownloadResult(
+    val success: Boolean = false,
+    val message: String = "",
+    val iccid: String = "",
+)
 
 /** Native authenticate-session outcome (see `EuiccNative.nativeAuthenticate`). */
 @kotlinx.serialization.Serializable
@@ -177,13 +181,22 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
             }
             // Foreground guard for the eUICC write: keeps process importance up
             // (and the CPU awake) until the install settles either way.
+            // The nickname seeds from the carrier preview (profile name first,
+            // carrier second); native applies it via SetNickname while the
+            // channel is still open.
             val app = getApplication<Application>()
+            val nickname = when (val current = download) {
+                is DownloadState.Confirm ->
+                    current.profileName?.ifBlank { null } ?: current.carrier
+                is DownloadState.AwaitingConfirmationCode -> current.carrier
+                else -> pendingCarrier
+            }.orEmpty()
             DownloadService.start(app)
             val outcome = try {
                 withContext(Dispatchers.IO) {
                     runCatching {
                         channelManager.withIsdrChannel {
-                            EuiccNative.nativeFinishDownload(transactionId, code.orEmpty(), callback)
+                            EuiccNative.nativeFinishDownload(transactionId, code.orEmpty(), nickname, callback)
                         }
                     }
                 }

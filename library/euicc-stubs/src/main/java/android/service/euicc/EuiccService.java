@@ -49,6 +49,16 @@ public abstract class EuiccService extends Service {
 
     public abstract int onSwitchToSubscription(int slotId, String iccid, boolean forceDeactivateSim);
 
+    /**
+     * Port-aware switch (MEP devices). The framework's default throws
+     * {@code UnsupportedOperationException}, which crashes the LPA process when
+     * Settings calls it — every override must exist even on single-port eUICCs.
+     */
+    public int onSwitchToSubscriptionWithPort(
+            int slotId, int portIndex, String iccid, boolean forceDeactivateSim) {
+        throw new UnsupportedOperationException("LPA must override onSwitchToSubscriptionWithPort");
+    }
+
     public abstract int onUpdateSubscriptionNickname(int slotId, String iccid, String nickname);
 
     public abstract int onEraseSubscriptions(int slotId);

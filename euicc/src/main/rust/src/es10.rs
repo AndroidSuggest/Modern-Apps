@@ -39,6 +39,9 @@ const TAG_DELETE: u32 = 0xBF33; // ES10c DeleteProfile
 const TAG_SET_NICKNAME: u32 = 0xBF29; // ES10c SetNickname
 const TAG_REFRESH_FLAG: u32 = 0x81; // [1] refreshFlag BOOLEAN
 const TAG_RESULT: u32 = 0x80; // [0] result INTEGER (enable/disable/delete/setNickname)
+/// [0]-constructed profile-identifier choice wrapping ICCID (+refresh) in
+/// enable/disable/delete requests.
+const TAG_PROFILE_CHOICE: u32 = 0xA0;
 
 // Notification list/remove tags, shared with the es10b retrieve path.
 const TAG_LIST_NOTIFICATION: u32 = 0xBF28; // ES10b ListNotification
@@ -261,23 +264,28 @@ pub fn parse_profiles(response: &[u8]) -> Result<Vec<ProfileInfo>, String> {
 // ---------------------------------------------------------------------------
 
 /// Builds an EnableProfile request keyed by ICCID.
+///
+/// Per SGP.22 (and lpac's `es10c_enable_disable_delete_profile`), the
+/// ICCID + refresh flag ride inside the `[0]`-constructed `A0` choice:
+/// `BF31 { A0 { 5A iccid, 81 FF } }`. A bare `BF31 { 5A, 81 }` is rejected
+/// by the eUICC (surfaced as result code 127).
 pub fn build_enable(iccid: &[u8], refresh: bool) -> Vec<u8> {
     let mut v = asn1::tlv(TAG_ICCID, iccid);
     v.extend(asn1::tlv(TAG_REFRESH_FLAG, &[if refresh { 0xFF } else { 0x00 }]));
-    asn1::tlv(TAG_ENABLE, &v)
+    asn1::tlv(TAG_ENABLE, &asn1::tlv(TAG_PROFILE_CHOICE, &v))
 }
 
-/// Builds a DisableProfile request keyed by ICCID.
+/// Builds a DisableProfile request keyed by ICCID (same `A0` choice shape).
 pub fn build_disable(iccid: &[u8], refresh: bool) -> Vec<u8> {
     let mut v = asn1::tlv(TAG_ICCID, iccid);
     v.extend(asn1::tlv(TAG_REFRESH_FLAG, &[if refresh { 0xFF } else { 0x00 }]));
-    asn1::tlv(TAG_DISABLE, &v)
+    asn1::tlv(TAG_DISABLE, &asn1::tlv(TAG_PROFILE_CHOICE, &v))
 }
 
-/// Builds a DeleteProfile request keyed by ICCID.
+/// Builds a DeleteProfile request keyed by ICCID (same `A0` choice shape).
 pub fn build_delete(iccid: &[u8]) -> Vec<u8> {
     let inner = asn1::tlv(TAG_ICCID, iccid);
-    asn1::tlv(TAG_DELETE, &inner)
+    asn1::tlv(TAG_DELETE, &asn1::tlv(TAG_PROFILE_CHOICE, &inner))
 }
 
 /// Builds a SetNickname request for a profile keyed by ICCID.

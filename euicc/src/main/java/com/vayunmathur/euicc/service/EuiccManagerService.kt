@@ -83,9 +83,16 @@ class EuiccManagerService : EuiccService() {
         return runProfileOp(iccid) { raw -> EuiccNative.nativeEnableProfile(raw) }
     }
 
-    // Single-port eUICC: there is no onSwitchToSubscriptionWithPort in the
-    // framework base this module builds against, and the soldered eUICC has
-    // exactly one implicit port — the unported switch above is the whole API.
+    // Single-port eUICC with exactly one implicit port: the ported switch is the
+    // unported switch. This override must exist (not just a comment) because the
+    // framework calls it directly from Settings and the base throws
+    // UnsupportedOperationException — a missing override crashes the LPA process.
+    override fun onSwitchToSubscriptionWithPort(
+        slotId: Int,
+        portIndex: Int,
+        iccid: String?,
+        forceDeactivateSim: Boolean,
+    ): Int = onSwitchToSubscription(slotId, iccid, forceDeactivateSim)
 
     override fun onUpdateSubscriptionNickname(slotId: Int, iccid: String, nickname: String?): Int =
         runProfileOp(iccid) { raw -> EuiccNative.nativeSetNickname(raw, nickname.orEmpty()) }
@@ -168,7 +175,7 @@ class EuiccManagerService : EuiccService() {
 
     private fun Profile.toFrameworkProfileInfo(): EuiccProfileInfo =
         EuiccProfileInfo.Builder(iccidDisplay)
-            .setNickname(nickname)
+            .setNickname(displayName)
             .setServiceProviderName(serviceProvider)
             .setProfileName(name)
             .setState(

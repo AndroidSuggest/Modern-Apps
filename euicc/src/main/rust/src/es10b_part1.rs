@@ -54,7 +54,10 @@ mod tests {
 
     #[test]
     fn segment_bpp_wraps_and_splits_like_lpac() {
-        // lpac framing: [BF23][A0 whole][A1 header + 88s][A2 whole][A3 header + 86s].
+        // lpac framing: [BF36hdr+BF23 verbatim][A0 whole][A1 header + 88s]
+        // [A2 whole][A3 header + 86s]. The first segment keeps the outer
+        // header with its FULL body length — the eUICC reads the total BPP
+        // length from it.
         let isc = asn1::tlv(TAG_INITIALISE_SECURE_CHANNEL, &[0x01]);
         let seq87 = asn1::tlv(TAG_BPP_SEQ_87, &asn1::tlv(0x87, &[0x11]));
         let mut seq88_inner = asn1::tlv(0x88, &[0x33]);
@@ -63,7 +66,7 @@ mod tests {
         let seq87b = asn1::tlv(TAG_BPP_SEQ_87B, &asn1::tlv(0x87, &[0x66]));
         let seq86 = asn1::tlv(TAG_BPP_SEQ_86, &asn1::tlv(0x86, &[0x55]));
         let mut body = Vec::new();
-        body.extend(isc);
+        body.extend(isc.clone());
         body.extend(seq87);
         body.extend(seq88);
         body.extend(seq87b);
@@ -71,9 +74,12 @@ mod tests {
         let bpp = asn1::tlv(TAG_BPP, &body);
 
         let segments = segment_bpp(&bpp).unwrap();
-        // BF23, A0 whole, A1 header, 88, 88, A2 whole, A3 header, 86.
+        // BF36hdr+BF23 verbatim, A0 whole, A1 header, 88, 88, A2 whole,
+        // A3 header, 86.
         assert_eq!(segments.len(), 8);
-        assert_eq!(segments[0], vec![0xBF, 0x23, 0x01, 0x01]);
+        let mut expected_first = asn1::header(TAG_BPP, body.len());
+        expected_first.extend(isc);
+        assert_eq!(segments[0], expected_first);
         // A1 header: tag + length only, no value bytes.
         assert_eq!(segments[2], asn1::header(TAG_BPP_SEQ_88, seq88_inner.len()));
         assert_eq!(segments[3], vec![0x88, 0x01, 0x33]);

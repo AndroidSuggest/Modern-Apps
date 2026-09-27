@@ -205,8 +205,12 @@ pub fn authenticate(
     let ac = parse_activation_code(activation_code)?;
 
     // 1. eUICC challenge + info for the server's authentication.
-    let challenge = es10b::parse_euicc_challenge(&store_data(env, &es10b::build_get_euicc_challenge())?)?;
-    let euicc_info1 = store_data(env, &es10::build_get_euicc_info1())?;
+    let challenge = es10b::parse_euicc_challenge(
+        &store_data(env, &es10b::build_get_euicc_challenge())
+            .map_err(|e| format!("GetEUICCChallenge: {e}"))?,
+    )?;
+    let euicc_info1 = store_data(env, &es10::build_get_euicc_info1())
+        .map_err(|e| format!("GetEUICCInfo1: {e}"))?;
 
     // 2. Server authentication material.
     let r1 = es9p::initiate_authentication(&ac.smdp, &challenge, &euicc_info1)?;
@@ -240,7 +244,7 @@ pub fn authenticate(
         &r1.server_certificate,
         &ctx,
     );
-    let auth_resp = store_data(env, &auth_req)?;
+    let auth_resp = store_data(env, &auth_req).map_err(|e| format!("AuthenticateServer: {e}"))?;
 
     // Binary transaction id for hashCc / CancelSession (the JSON string form
     // stays the ES9+ correlator).
@@ -296,7 +300,7 @@ pub fn finish_download(
         hash_ref,
         &session.server_certificate2,
     );
-    let prep_resp = store_data(env, &prep_req)?;
+    let prep_resp = store_data(env, &prep_req).map_err(|e| format!("PrepareDownload: {e}"))?;
 
     // 6. Fetch the (encrypted) Bound Profile Package.
     let bpp = es9p::get_bound_profile_package(
@@ -313,7 +317,8 @@ pub fn finish_download(
     let total = segments.len();
     let mut last = Vec::new();
     for (i, segment) in segments.iter().enumerate() {
-        last = store_data(env, segment)?;
+        last = store_data(env, segment)
+            .map_err(|e| format!("LoadBoundProfilePackage segment {}/{total}: {e}", i + 1))?;
         if !progress.on_progress(env, i + 1, total) {
             return Err("Download cancelled".to_string());
         }

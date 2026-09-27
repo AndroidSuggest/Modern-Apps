@@ -80,10 +80,24 @@ pub(crate) fn store_data_chunked(
         let p1 = if i == last { 0x91 } else { 0x11 };
         let mut apdu = vec![0x80u8, 0xE2, p1, i as u8, block.len() as u8];
         apdu.extend_from_slice(block);
-        // Only the last block's response carries the ES10 reply: intermediate
-        // STORE DATA responses are per-block statuses (61xx chaining is
-        // already resolved per APDU by the Kotlin transport). Keep the last.
-        response = transmit_apdu(env, &apdu)?;
+        // Accumulate every block's response data like lpac's
+        // `iter_es10x_command` (the Kotlin transport already resolves 61xx
+        // per APDU, so intermediate bodies are normally empty — but when a
+        // card streams chained reply bytes, only concatenation reassembles
+        // them). Fail fast on a non-success status.
+        let mut block_resp = transmit_apdu(env, &apdu)?;
+        if block_resp.len() < 2 {
+            return Err("APDU response too short".into());
+        }
+        let sw = [block_resp[block_resp.len() - 2], block_resp[block_resp.len() - 1]];
+        block_resp.truncate(block_resp.len() - 2);
+        response.append(&mut block_resp);
+        if sw != [0x90, 0x00] {
+            return Err(format!("eUICC returned SW={:02X}{:02X}", sw[0], sw[1]));
+        }
+        if i == last {
+            response.extend_from_slice(&sw);
+        }
     }
 
     if response.len() < 2 {

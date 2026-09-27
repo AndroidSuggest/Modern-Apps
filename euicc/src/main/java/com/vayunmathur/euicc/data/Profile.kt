@@ -21,7 +21,17 @@ data class Profile(
 ) {
     val isEnabled: Boolean get() = state == "enabled"
 
-    /** Best label to show for this profile. */
+    /**
+     * Best label to show for this profile: nickname (seeded from the carrier
+     * preview at install, user-renamable after), then profile name, then
+     * carrier, then the ICCID tail as a last resort so the row is never blank.
+     */
     val displayName: String
-        get() = nickname.ifBlank { name.ifBlank { serviceProvider.ifBlank { iccidDisplay } } }
+        get() = nickname.ifBlank {
+            name.ifBlank {
+                serviceProvider.ifBlank {
+                    iccidDisplay.takeLast(4).let { if (it.isNotBlank()) "•••• $it" else "" }
+                }
+            }
+        }
 }
