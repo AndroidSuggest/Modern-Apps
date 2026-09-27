@@ -83,7 +83,7 @@ object RcsDirectSip {
         if (running) return true
         if (!SubscriptionManager.isValidSubscriptionId(subId)) return false
         val app = context.applicationContext
-        val network = RcsImsNetwork.imsNetwork(app) ?: run {
+        val network = RcsImsNetwork.imsNetwork(app, subId) ?: run {
             Log.w(TAG, "No IMS network for direct SIP")
             return false
         }

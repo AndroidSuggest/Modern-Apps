@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
+import android.telephony.SubscriptionManager
 import android.util.Log
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -49,18 +50,45 @@ object RcsImsNetwork {
     /**
      * The IMS PDN `Network`, requesting it when not cached. Null when
      * unavailable (no IMS PDN, timeout, or permission failure).
+     *
+     * Two paths: (1) scan already-up networks for IMS capability (no request
+     * needed — the PDN is typically already connected for VoLTE); (2) a
+     * specifier-pinned `requestNetwork` (CELLULAR + IMS + MMTEL +
+     * TelephonyNetworkSpecifier, mirroring the system's own IMS request —
+     * a bare IMS request doesn't match the specifier-gated NetworkAgent).
      */
-    suspend fun imsNetwork(context: Context): Network? {
+    suspend fun imsNetwork(context: Context, subId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID): Network? {
         if (!RcsFeature.enabled) return null
         cached?.let { return it }
         val cm = runCatching {
             context.applicationContext.getSystemService(ConnectivityManager::class.java)
         }.getOrNull() ?: return null
+        // Path 1: already-up scan (fast, no request).
+        scanForIms(cm)?.let { network ->
+            cached = network
+            lastLocalIp = localIpFor(context, network)
+            return network
+        }
+        // Path 2: pinned request.
         val network = withTimeoutOrNull(REQUEST_TIMEOUT_MS) {
             suspendCancellableCoroutine { cont ->
-                val request = NetworkRequest.Builder()
+                val builder = NetworkRequest.Builder()
+                    .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
                     .addCapability(NetworkCapabilities.NET_CAPABILITY_IMS)
-                    .build()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_MMTEL)
+                if (SubscriptionManager.isValidSubscriptionId(subId)) {
+                    runCatching {
+                        val specClass = Class.forName(
+                            "android.net.TelephonyNetworkSpecifier",
+                        )
+                        val ctor = specClass.getDeclaredConstructor(Int::class.javaPrimitiveType)
+                            .apply { isAccessible = true }
+                        builder.setNetworkSpecifier(ctor.newInstance(subId) as android.net.NetworkSpecifier)
+                    }.onFailure {
+                        Log.w(TAG, "TelephonyNetworkSpecifier unavailable", it)
+                    }
+                }
+                val request = builder.build()
                 val callback = object : ConnectivityManager.NetworkCallback() {
                     override fun onAvailable(network: Network) {
                         runCatching { cm.unregisterNetworkCallback(this) }
@@ -84,6 +112,16 @@ object RcsImsNetwork {
             lastLocalIp = localIpFor(context, network)
         }
         return network
+    }
+
+    /** Scan connected networks for IMS capability (no request needed). */
+    private fun scanForIms(cm: ConnectivityManager): Network? {
+        return runCatching {
+            cm.allNetworks.firstOrNull { network ->
+                val caps = cm.getNetworkCapabilities(network) ?: return@firstOrNull false
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_IMS)
+            }
+        }.getOrNull()
     }
 
     /**
