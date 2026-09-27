@@ -3,7 +3,7 @@ use ash::vk;
 use crate::nets::{Kind, Push};
 
 use super::context::Context;
-use super::pipeline::{Cleanup, Shaders, SPIRV, compute_pipeline};
+use super::pipeline::{Cleanup, Shaders, SPIRV};
 
 // The int8 round-trip shader, beside the table it joins (see `SPIRV`).
 // Lives here rather than in `pipeline.rs` so that file stays under the
@@ -323,4 +323,51 @@ impl Shaders {
         device.destroy_pipeline_layout(self.layout, None);
         device.destroy_descriptor_set_layout(self.descriptor_layout, None);
     }
+}
+
+// Pipeline/shader-module construction, moved out of `pipeline.rs` so that
+// file stays under the 500-line Rust limit. Called only by `Shaders::create`
+// above (plus `shader_module`, called only by `compute_pipeline`).
+
+pub(crate) unsafe fn compute_pipeline(
+    device: &ash::Device,
+    layout: vk::PipelineLayout,
+    spirv: &[u8],
+) -> Result<vk::Pipeline, String> {
+    let module = shader_module(device, spirv)?;
+    let stage = vk::PipelineShaderStageCreateInfo::default()
+        .stage(vk::ShaderStageFlags::COMPUTE)
+        .module(module)
+        .name(c"main");
+    let info = vk::ComputePipelineCreateInfo::default().stage(stage).layout(layout);
+    let result = device
+        .create_compute_pipelines(vk::PipelineCache::null(), std::slice::from_ref(&info), None)
+        .map_err(|(_, e)| format!("create_compute_pipelines {e:?}"))
+        .and_then(|pipelines| {
+            pipelines
+                .first()
+                .copied()
+                .ok_or_else(|| "create_compute_pipelines returned nothing".to_string())
+        });
+    // The module is only needed while the pipeline is being created.
+    device.destroy_shader_module(module, None);
+    result
+}
+
+unsafe fn shader_module(device: &ash::Device, spirv: &[u8]) -> Result<vk::ShaderModule, String> {
+    // SPIR-V is a stream of 32-bit words, and `vkShaderModuleCreateInfo` wants it as
+    // `*const u32`. Reassembling rather than casting the `&[u8]`: `include_bytes!` gives
+    // no alignment guarantee, and a misaligned `u32` read is undefined behaviour even
+    // where the hardware tolerates it. This is `library/map`'s approach, not
+    // `games/voxels`' pointer cast.
+    if !spirv.len().is_multiple_of(4) || spirv.len() < 20 {
+        return Err(format!("{} bytes is not a SPIR-V module", spirv.len()));
+    }
+    let mut words = Vec::with_capacity(spirv.len() / 4);
+    for chunk in spirv.chunks_exact(4) {
+        words.push(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    device
+        .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&words), None)
+        .map_err(|e| format!("create_shader_module {e:?}"))
 }
