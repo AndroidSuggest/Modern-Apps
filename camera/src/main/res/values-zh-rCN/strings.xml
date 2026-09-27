@@ -39,4 +39,18 @@
     <string name="audio_source_voice_communication_description">噪声和回声消除</string>
     <string name="audio_source_unprocessed_label">未处理</string>
     <string name="audio_source_unprocessed_description">原始，未经处理</string>
+    <string name="settings_mirror_front">自拍镜像</string>
+    <string name="settings_mirror_front_description">镜像前置摄像头预览和已保存的自拍照</string>
+    <string name="qr_scanning_paused">二维码扫描已暂停</string>
+    <string name="lens_ultrawide">超广角</string>
+    <string name="lens_wide">1×</string>
+    <string name="lens_tele">长焦</string>
+    <string name="lens_mono">单色</string>
+    <string name="lens_front">前置</string>
+    <string name="lens_picker_description">相机镜头</string>
+    <string name="settings_save_location">保存位置</string>
+    <string name="settings_save_location_default">DCIM/Camera</string>
+    <string name="settings_save_location_choose">选择文件夹</string>
+    <string name="settings_save_location_reset">重置为默认</string>
+    <string name="settings_save_location_error">无法使用该文件夹</string>
 </resources>
