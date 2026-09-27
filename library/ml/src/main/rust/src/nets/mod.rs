@@ -34,6 +34,7 @@ pub mod reference;
 pub mod schedule;
 pub mod gemma4;
 pub mod gemma4_audio;
+pub mod gemma4_gather;
 pub mod gemma4_head;
 pub mod gemma4_vision;
 pub mod mobilefacenet;

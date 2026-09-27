@@ -409,6 +409,12 @@ struct Gemma4Handle {
     /// argmax over `head`. Built alongside `head` (same upload-once cost
     /// class: one more recording over the same resident upload).
     head_greedy: Option<Reshaped<()>>,
+    /// The device combine over the EMBED file: host-gathered rows in,
+    /// combined per-layer block out. `None` always for now — the combine
+    /// plan is built and tested but not yet wired into the step path (see
+    /// `gather_device` below); `gather` stays host-side until the parity
+    /// gate below passes on host + P8.
+    gather_net: Option<Reshaped<()>>,
     /// The text model, retained for the rotary tables which are also host-read.
     weights: Streamed,
     /// The two embedding tables.

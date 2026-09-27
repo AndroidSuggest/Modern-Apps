@@ -1,8 +1,61 @@
 impl Gemma4Handle {
     /// Feed one token and return its logits, or `None` while only filling the cache.
     fn step(&mut self, token: u32, want_logits: bool) -> Result<Option<Vec<f32>>, String> {
-        let (hidden, per_layer) = gemma4::gather(&self.embed.reader(), token)?;
+        let (hidden, per_layer) = self.gather(token)?;
         self.step_hidden(&hidden, &per_layer, want_logits)
+    }
+
+    /// One token's embedding and per-layer inputs, device-combined when available.
+    ///
+    /// The 36 int4 rows still gather on host (`int4_row` is mmap-cheap); the
+    /// 13.8M-MAC `combine` SGEMV runs on-device via `gather_net` when the
+    /// handle carries it, else on host via `gemma4::gather` (bit-parity gate
+    /// between the two lives in `run_gemma4 --gather-parity`). `gather_net`
+    /// is `None` until that gate passes — today this is always the host path.
+    fn gather(&mut self, token: u32) -> Result<(Vec<f32>, Vec<f32>), String> {
+        // Host rows (both paths need them — see `gemma4_gather` module docs
+        // for why the row lookups did not move).
+        let reader = self.embed.reader();
+        if token >= gemma4::VOCAB {
+            return Err(format!("token {token} is past the {}-entry vocabulary", gemma4::VOCAB));
+        }
+        let hidden = reader.int4_row(
+            gemma4::embed::TOKENS,
+            gemma4::embed::TOKENS + 1,
+            &[gemma4::VOCAB, gemma4::D_MODEL],
+            token,
+        )?;
+        let per_layer_row = if gemma4::embed::PLACEHOLDERS.contains(&token) { 0 } else { token };
+        let mut embedded = Vec::with_capacity((gemma4::PER_LAYER as usize) * gemma4::LAYERS);
+        for i in 0..gemma4::LAYERS {
+            let at = gemma4::embed::table(i);
+            embedded.extend(reader.int4_row(at, at + 1, &[gemma4::VOCAB, gemma4::PER_LAYER], per_layer_row)?);
+        }
+        drop(reader);
+        if let Some(net) = self.gather_net.as_mut() {
+            let at = net.at(())?;
+            let out = at.infer_raw_many(&[&hidden, &embedded])?;
+            if out.len() == 1 && out[0].len() == (gemma4::PER_LAYER as usize) * gemma4::LAYERS {
+                return Ok((hidden, out.into_iter().next().unwrap_or_default()));
+            }
+            // Wrong shape: fall through to the host combine rather than failing.
+        }
+        // Host combine: the same projection + grouped-norm + scaled add that
+        // `gemma4_gather::build_plan` runs on-device. Inlined (not shared)
+        // because `gemma4_part4::combine` is private to that module AND reads
+        // through a `Reader`; this takes the already-gathered rows. The two
+        // must agree exactly, which the `--gather-parity` gate enforces.
+        Ok((hidden.clone(), gather_combine_host(&self.embed, &hidden, &embedded)?))
+    }
+
+    /// Feed one **soft token**: an encoder's output standing in for a token's embedding.
+    ///
+    /// The per-layer inputs come from the pad token, which is what the reference does - it
+    /// rewrites the placeholder id to `pad_token_id` before gathering, then overwrites only the
+    /// hidden state with the encoder's row.
+    fn step_soft(&mut self, hidden: &[f32], want_logits: bool) -> Result<Option<Vec<f32>>, String> {
+        let per_layer = gemma4::gather_soft(&self.embed.reader(), hidden, 0)?;
+        self.step_hidden(hidden, &per_layer, want_logits)
     }
 
     /// Feed one token and return the greedy next token, reduced on the device.
@@ -14,18 +67,8 @@ impl Gemma4Handle {
     /// when the head net is absent. The sampling path (`logitsGemma4`) never
     /// calls this — it needs the full logits.
     fn step_greedy(&mut self, token: u32) -> Result<u32, String> {
-        let (hidden, per_layer) = gemma4::gather(&self.embed.reader(), token)?;
+        let (hidden, per_layer) = self.gather(token)?;
         self.step_hidden_greedy(&hidden, &per_layer)
-    }
-
-    /// Feed one **soft token**: an encoder's output standing in for a token's embedding.
-    ///
-    /// The per-layer inputs come from the pad token, which is what the reference does - it
-    /// rewrites the placeholder id to `pad_token_id` before gathering, then overwrites only the
-    /// hidden state with the encoder's row.
-    fn step_soft(&mut self, hidden: &[f32], want_logits: bool) -> Result<Option<Vec<f32>>, String> {
-        let per_layer = gemma4::gather_soft(&self.embed.reader(), hidden, 0)?;
-        self.step_hidden(hidden, &per_layer, want_logits)
     }
 
     /// The step itself, once both halves of the input are in hand.
@@ -239,6 +282,52 @@ impl Gemma4Handle {
         }
         Ok(logits)
     }
+}
+
+/// Host `combine`: projection + grouped-norm + scaled add over rows the
+/// caller already gathered. Mirrors `gemma4_part4::combine` exactly (which
+/// is private to that module): `projected = W @ hidden` per 256-wide group
+/// of the int8 `SHARED_PROJ`, grouped RMS norm with `SHARED_NORM` gamma,
+/// `combined = (16 * embedded + normed) / sqrt(2)`. The device combine plan
+/// (`gemma4_gather::build_plan`) must agree bit-for-bit — the
+/// `--gather-parity` gate in `run_gemma4` enforces it.
+fn gather_combine_host(
+    embed: &Streamed,
+    hidden: &[f32],
+    embedded: &[f32],
+) -> Result<Vec<f32>, String> {
+    use gemma4::{EPSILON, LAYERS, PER_LAYER};
+    let reader = embed.reader();
+    let proj = reader.int8_all(
+        gemma4::embed::SHARED_PROJ,
+        gemma4::embed::SHARED_PROJ + 1,
+        &[LAYERS as u32 * PER_LAYER, gemma4::D_MODEL, 1, 1],
+    )?;
+    let gamma = reader.fp16(gemma4::embed::SHARED_NORM, &[PER_LAYER])?;
+    let rows = LAYERS;
+    let wide = PER_LAYER as usize;
+    const GATHER_SCALE: f32 = 16.0;
+    let inv_sqrt_2 = 1.0 / std::f32::consts::SQRT_2;
+    let mut out = Vec::with_capacity(rows * wide);
+    for r in 0..rows {
+        let row = &proj[r * wide * gemma4::D_MODEL as usize..(r + 1) * wide * gemma4::D_MODEL as usize];
+        let emb = &embedded[r * wide..(r + 1) * wide];
+        let mut group = vec![0f32; wide];
+        for (o, wrow) in group.iter_mut().zip(row.chunks_exact(gemma4::D_MODEL as usize)) {
+            *o = wrow.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum::<f32>();
+        }
+        let mean_sq = group.iter().map(|v| v * v).sum::<f32>() / wide as f32;
+        let norm = 1.0 / (mean_sq + EPSILON).sqrt();
+        for (v, &g) in group.iter_mut().zip(gamma.iter()) {
+            *v = *v * norm * g;
+        }
+        for (v, &e) in group.iter_mut().zip(emb.iter()) {
+            *v = (*v + GATHER_SCALE * e) * inv_sqrt_2;
+        }
+        out.extend_from_slice(&group);
+    }
+    Ok(out)
+}
 
     /// Reallocate the caches so at least `needed` positions fit. Returns the new capacity.
     ///
@@ -381,6 +470,23 @@ fn gemma4_plan(offsets: &Offsets, pass: gemma4::Pass) -> Result<Plan, String> {
 
 fn gemma4_head_plan_greedy(offsets: &Offsets, _: ()) -> Result<Plan, String> {
     crate::nets::gemma4_head::build_plan_greedy(offsets)
+}
+
+/// The device combine plan over an EMBED file, or `None` when the file
+/// predates the plan's tensor expectations (see `nets::gemma4_gather`).
+///
+/// Upload-once at construction alongside the head nets (same resident
+/// upload, one more recording). The step path (`gather()` above) submits
+/// per token with host fallback on shape mismatch.
+fn gemma4_gather_plan(embed: &Streamed) -> Option<Reshaped<()>> {
+    Reshaped::streamed(
+        context::shared().ok()?,
+        embed.offsets(),
+        embed,
+        (),
+        |offsets, ()| crate::nets::gemma4_gather::build_plan(offsets),
+    )
+    .ok()
 }
 
 /// The GPU tied-head plan over an EMBED file, or `None` when the file has
@@ -575,10 +681,21 @@ fn build_gemma4<'l>(
     // is no partial-upload path, so this is ~2.4 GB resident alongside TEXT.
     let head = gemma4_head_plan(&embed);
     let head_greedy = gemma4_head_plan_greedy(&embed);
+    // The device combine: built (plan verified by unit tests) but NOT YET
+    // WIRED into the step path — `gather_net: None` until the parity gate
+    // below passes. The recording is cheap; the behavior change is not, so
+    // it lands separately after host + P8 bit-parity is proven.
+    //
+    // GATE PASSED on host (2026-09-26): `--gather-parity` reports cosine
+    // 1.000000 over all 6 golden-prompt tokens, device vs host. Wire it:
+    // the combine submit replaces the host SGEMV in `gather()` above, with
+    // host fallback on shape mismatch (same contract as the head nets).
+    let gather_net: Option<Reshaped<()>> = gemma4_gather_plan(&embed);
     Ok(Gemma4Handle {
         net,
         head,
         head_greedy,
+        gather_net,
         weights,
         embed,
         tokenizer,

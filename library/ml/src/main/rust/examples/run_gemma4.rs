@@ -54,6 +54,11 @@ fn main() {
     // and an instruction-tuned Gemma answers most of those by ending the turn immediately - so
     // timings taken without it are not timings of a chat.
     let chat = std::env::args().any(|a| a == "--chat");
+    // `--gather-parity` runs the device-combine parity gate instead of generating:
+    // host rows in, device `combined` vs host `combine` per prompt token, cosine
+    // reported per token, nonzero exit on mismatch. The gate the device gather
+    // must pass before `Gemma4Handle.gather_net` is wired in.
+    let gather_parity = std::env::args().any(|a| a == "--gather-parity");
 
     let read = |p: &str| std::fs::read(PathBuf::from(p));
     let (Ok(text_bytes), Ok(embed_bytes), Ok(table_bytes)) =
@@ -85,6 +90,9 @@ fn main() {
     // shared and will drift. Refusing is what stops that drift from being drawn a conclusion from.
     if chat {
         return run_chat(&weights, &embed_weights, &table, &prompt, limit);
+    }
+    if gather_parity {
+        return gather_parity_gate(&weights, &embed_weights, &table, &prompt);
     }
     if prompt.contains("<|") || prompt.contains("|>") {
         println!(
@@ -147,6 +155,148 @@ fn place(into: &mut [f32], values: &[f32], column: u32, width: u32) {
 /// (106) and the tokenizer's `<eos>` almost never appears - stopping only on 1 lets the model run
 /// on emitting turn markers until the token budget does the stopping instead.
 const STOP: [u32; 3] = [1, 106, 50];
+
+/// Device-combine parity gate (`--gather-parity`).
+///
+/// For each prompt token: host rows in (the 36 `int4_row` reads, as today),
+/// device `combined` via `gemma4_gather::build_plan` vs host `combine`,
+/// cosine reported per token. Exit nonzero on the first mismatch below
+/// 0.9999. The gate `Gemma4Handle.gather_net` must pass before it is wired
+/// into the step path — until then the handle carries `None` and this is
+/// the only caller of the combine plan.
+fn gather_parity_gate(
+    _weights: &Weights,
+    embed: &Weights,
+    table: &Table<'_>,
+    prompt: &str,
+) -> () {
+    use modelrunner::nets::gemma4_gather;
+    let specials = ["<bos>", "<eos>", "<pad>", "<unk>"];
+    let mut tokens = vec![GEMMA.bos];
+    tokens.extend(table.encode_with_specials(prompt, &specials));
+    println!("prompt {prompt:?}");
+    println!("  {} tokens: {tokens:?}", tokens.len());
+    let context = match context::shared() {
+        Ok(context) => context,
+        Err(why) => return println!("no Vulkan device: {why}"),
+    };
+    let plan = match gemma4_gather::build_plan(&embed.offsets()) {
+        Ok(plan) => plan,
+        Err(why) => return println!("the combine plan does not build: {why}"),
+    };
+    println!("  combine plan: {} ops, {} inputs, {} outputs", plan.ops.len(), plan.inputs.len(), plan.outputs.len());
+    let mut net = match modelrunner::vulkan::run::Net::new(
+        std::sync::Arc::clone(&context),
+        plan,
+        embed,
+        modelrunner::preprocess::RESCALE_ONLY,
+    ) {
+        Ok(net) => net,
+        Err(why) => return println!("the combine net does not open: {why}"),
+    };
+    let reader = embed.reader();
+    let mut worst = 1.0f64;
+    for &token in &tokens {
+        let (hidden, embedded) = match gather_rows(&reader, token) {
+            Ok(rows) => rows,
+            Err(why) => return println!("token {token}: {why}"),
+        };
+        let host = match gather_combine_host(&reader, &hidden, &embedded) {
+            Ok(combined) => combined,
+            Err(why) => return println!("token {token} host combine: {why}"),
+        };
+        let out = match net.infer_raw_many(&[&hidden, &embedded]) {
+            Ok(out) => out,
+            Err(why) => return println!("token {token} device combine: {why}"),
+        };
+        if out.len() != 1 || out[0].len() != host.len() {
+            return println!("token {token}: device shape {:?}, host {}", out.iter().map(|v| v.len()).collect::<Vec<_>>(), host.len());
+        }
+        let dot: f64 = out[0].iter().zip(host.iter()).map(|(a, b)| f64::from(*a) * f64::from(*b)).sum();
+        let (na, nb): (f64, f64) = (
+            out[0].iter().map(|a| f64::from(*a) * f64::from(*a)).sum::<f64>().sqrt(),
+            host.iter().map(|b| f64::from(*b) * f64::from(*b)).sum::<f64>().sqrt(),
+        );
+        let cosine = dot / (na * nb).max(1e-30);
+        worst = worst.min(cosine);
+        println!("  token {token:>6}: device-vs-host cosine {cosine:.6}");
+        if cosine < 0.9999 {
+            println!();
+            println!("GATHER PARITY FAIL at token {token}: {cosine:.6} < 0.9999");
+            std::process::exit(1);
+        }
+    }
+    println!();
+    println!("GATHER PARITY PASS: worst cosine {worst:.6} over {} tokens", tokens.len());
+}
+
+/// Host rows + host combine for the parity gate (mirrors `gemma4::gather`
+/// without the bridge handle: 36 `int4_row` reads, then the same projection
+/// + grouped-norm + scaled add as `gemma4_part4::combine`).
+fn gather_rows(
+    reader: &modelrunner::weights::Reader<'_>,
+    token: u32,
+) -> Result<(Vec<f32>, Vec<f32>), String> {
+    if token >= gemma4::VOCAB {
+        return Err(format!("token {token} is past the {}-entry vocabulary", gemma4::VOCAB));
+    }
+    let hidden = reader.int4_row(
+        gemma4::embed::TOKENS,
+        gemma4::embed::TOKENS + 1,
+        &[gemma4::VOCAB, gemma4::D_MODEL],
+        token,
+    )?;
+    let per_layer_row = if gemma4::embed::PLACEHOLDERS.contains(&token) { 0 } else { token };
+    let mut embedded = Vec::with_capacity((gemma4::PER_LAYER as usize) * gemma4::LAYERS);
+    for i in 0..gemma4::LAYERS {
+        let at = gemma4::embed::table(i);
+        embedded.extend(reader.int4_row(at, at + 1, &[gemma4::VOCAB, gemma4::PER_LAYER], per_layer_row)?);
+    }
+    Ok((hidden, embedded))
+}
+
+/// Host combine over already-gathered rows (see `gather_rows`).
+///
+/// Mirrors `gemma4_part4::combine` exactly (private there): int8
+/// `SHARED_PROJ` projection, grouped RMS norm with `SHARED_NORM` gamma,
+/// `(16 * embedded + normed) / sqrt(2)`. Needs the EMBED reader for the
+/// projection table + gamma — passed by the gate caller.
+fn gather_combine_host(
+    reader: &modelrunner::weights::Reader<'_>,
+    hidden: &[f32],
+    embedded: &[f32],
+) -> Result<Vec<f32>, String> {
+    use modelrunner::nets::gemma4;
+    let proj = reader.int8_all(
+        gemma4::embed::SHARED_PROJ,
+        gemma4::embed::SHARED_PROJ + 1,
+        &[gemma4::LAYERS as u32 * gemma4::PER_LAYER, gemma4::D_MODEL, 1, 1],
+    )?;
+    let gamma = reader.fp16(gemma4::embed::SHARED_NORM, &[gemma4::PER_LAYER])?;
+    let rows = gemma4::LAYERS;
+    let wide = gemma4::PER_LAYER as usize;
+    const GATHER_SCALE: f32 = 16.0;
+    let inv_sqrt_2 = 1.0 / std::f32::consts::SQRT_2;
+    let mut out = Vec::with_capacity(rows * wide);
+    for r in 0..rows {
+        let row = &proj[r * wide * gemma4::D_MODEL as usize..(r + 1) * wide * gemma4::D_MODEL as usize];
+        let emb = &embedded[r * wide..(r + 1) * wide];
+        let mut group = vec![0f32; wide];
+        for (o, wrow) in group.iter_mut().zip(row.chunks_exact(gemma4::D_MODEL as usize)) {
+            *o = wrow.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum::<f32>();
+        }
+        let mean_sq = group.iter().map(|v| v * v).sum::<f32>() / wide as f32;
+        let norm = 1.0 / (mean_sq + gemma4::EPSILON).sqrt();
+        for (v, &g) in group.iter_mut().zip(gamma.iter()) {
+            *v = *v * norm * g;
+        }
+        for (v, &e) in group.iter_mut().zip(emb.iter()) {
+            *v = (*v + GATHER_SCALE * e) * inv_sqrt_2;
+        }
+        out.extend_from_slice(&group);
+    }
+    Ok(out)
+}
 
 /// Logits for `hidden`: the GPU head when the EMBED file carries chunks.
 ///
