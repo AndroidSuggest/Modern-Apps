@@ -195,6 +195,14 @@ object RcsProvisioning {
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) ==
             PackageManager.PERMISSION_GRANTED
 
+    /**
+     * Device-level single-reg feature flag (framework capability, not carrier
+     * verdict). True on your Pixel 8 even when the carrier profile reports
+     * single-reg NOT capable — that combination routes to direct SIP.
+     */
+    fun deviceSupportsSingleReg(context: Context): Boolean =
+        context.packageManager.hasSystemFeature(FEATURE_SINGLE_REG)
+
     // AOSP values from hidden surface (verified against frameworks/base main).
     private const val CAPABILITY_TYPE_CALL_COMPOSER = 1 shl 4
     private const val NETWORK_TYPE_LTE = 0

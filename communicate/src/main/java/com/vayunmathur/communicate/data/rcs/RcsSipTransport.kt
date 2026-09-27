@@ -189,7 +189,17 @@ object RcsSipTransport {
             when (val probe = RcsProvisioning.probe(app, subId)) {
                 is RcsRegistrationState.Available -> createDelegate(app, subId)
                 is RcsRegistrationState.Unavailable -> {
-                    _state.value = probe
+                    // Carrier says no to single-reg but the device supports
+                    // it: fall back to the direct SIP stack over the IMS PDN
+                    // (P-CSCF + ISIM AKA, no delegate). Any other Unavailable
+                    // reason stands.
+                    if (probe.reason == RcsUnavailableReason.NotSupported &&
+                        RcsProvisioning.deviceSupportsSingleReg(app)
+                    ) {
+                        startDirectSip(app, subId)
+                    } else {
+                        _state.value = probe
+                    }
                 }
                 else -> Unit
             }
@@ -197,6 +207,9 @@ object RcsSipTransport {
     }
 
     fun tearDown(context: Context? = null) {
+        directSipUp = false
+        RcsDirectSip.onInboundMessage = null
+        RcsDirectSip.stop()
         val c = connection
         if (c != null && context != null && RcsFeature.enabled) {
             runCatching {
@@ -214,9 +227,53 @@ object RcsSipTransport {
         activeSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID
     }
 
-    /** True when a SIP MESSAGE can be sent right now. */
+    /** True when a SIP MESSAGE can be sent right now (either leg). */
     fun canSend(): Boolean =
-        RcsFeature.enabled && _state.value is RcsRegistrationState.Available && connection != null
+        RcsFeature.enabled && (
+            (_state.value is RcsRegistrationState.Available && connection != null) ||
+                directSipUp
+            )
+
+    /** True when the direct-SIP fallback leg is REGISTERed. */
+    @Volatile
+    private var directSipUp: Boolean = false
+
+    /** Which leg carries traffic: delegate (carrier single-reg) or direct SIP. */
+    val activeLeg: String
+        get() = when {
+            !RcsFeature.enabled -> "none"
+            connection != null -> "single-reg delegate"
+            directSipUp -> "direct SIP (IMS PDN)"
+            else -> "none"
+        }
+
+    /**
+     * Start the direct-SIP fallback leg (IMS PDN → P-CSCF → AKA REGISTER).
+     * On success the transport reports `Available` with no delegate
+     * connection; sends route to [RcsDirectSip]. On failure the probe's
+     * original `Unavailable` stands.
+     */
+    private suspend fun startDirectSip(app: Context, subId: Int) {
+        _state.value = RcsRegistrationState.Provisioning
+        val ok = RcsDirectSip.start(app, subId)
+        if (ok) {
+            directSipUp = true
+            RcsDirectSip.onInboundMessage = { startLine, headers, body ->
+                // Reuse the delegate-path inbound pipeline: synthesize the
+                // SipMessage shape the sync service parses.
+                runCatching {
+                    val msg = SipMessage(startLine, headers, body)
+                    onInboundMessage?.invoke(msg)
+                }
+            }
+            _state.value = RcsRegistrationState.Available
+            Log.i(TAG, "Direct SIP leg up (fallback)")
+        } else {
+            directSipUp = false
+            Log.w(TAG, "Direct SIP leg failed; transport unavailable")
+            _state.value = RcsRegistrationState.Unavailable(RcsUnavailableReason.NotSupported)
+        }
+    }
 
     /**
      * Tell the framework to release delegate state for [callId]
@@ -237,6 +294,10 @@ object RcsSipTransport {
      * retried with digest auth ([onSipResponseMessage]).
      */
     suspend fun sendSipMessage(startLine: String, headerSection: String, body: ByteArray): Boolean {
+        // Direct-SIP leg: route to the P-CSCF socket (no delegate).
+        if (directSipUp && RcsFeature.enabled) {
+            return RcsDirectSip.sendMessage(startLine, headerSection, body)
+        }
         val c = connection
         if (!canSend() || c == null) return false
         val version = configVersion

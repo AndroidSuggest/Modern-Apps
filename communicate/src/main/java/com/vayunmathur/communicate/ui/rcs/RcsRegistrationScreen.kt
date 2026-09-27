@@ -79,6 +79,16 @@ fun RcsRegistrationScreen(
                         Text(statusSubtitle(transportState, provisioningState))
                     },
                 )
+                if (transportState is RcsRegistrationState.Available) {
+                    ListItem(
+                        content = {
+                            Text("Transport", fontWeight = FontWeight.SemiBold)
+                        },
+                        supportingContent = {
+                            Text(RcsSipTransport.activeLeg)
+                        },
+                    )
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
