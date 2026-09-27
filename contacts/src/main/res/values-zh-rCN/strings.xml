@@ -108,4 +108,9 @@
     <string name="no_contacts_yet_message">点按添加按钮创建您的第一个联系人。</string>
     <string name="no_groups_yet">尚无群组</string>
     <string name="no_groups_yet_message">点按添加按钮将联系人分组。</string>
+    <string name="name_prefix">前缀</string>
+    <string name="name_suffix">后缀</string>
+    <string name="name_affix_none">无</string>
+    <string name="sim_name_or_phone_required">输入名称或电话号码</string>
+    <string name="sim_slot_label">SIM 卡 %1$d</string>
 </resources>
