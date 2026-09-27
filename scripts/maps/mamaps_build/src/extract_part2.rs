@@ -523,45 +523,54 @@ fn materialise_ways(
     let mut built: Vec<Option<Geometry<(f64, f64)>>> = Vec::with_capacity(MATERIALISE_BATCH);
     loop {
         let more = reader.next(&mut refs)?;
+        // Moved out of `more` by value below, so named ways cost no `String` clone and
+        // turn-mask vectors move rather than copy: over ~1 B ways the allocator traffic
+        // of cloning is minutes, and the batch owns every field anyway.
+        let done = more.is_none();
         if let Some((id, class, name, lane_count, turn_fwd, turn_bwd, carriageway, building)) =
-            more.as_ref()
+            more
         {
-            let mut class = *class;
-            // The corridor's zoom, where it is shallower than this way's own.
-            if let Ok(at) = promoted.binary_search_by_key(id, |(id, _)| *id) {
-                class.min_zoom = promoted[at].1;
+            let mut class = class;
+            // The corridor's zoom, where it is shallower than this way's own. Corridors
+            // are built from numbered roads alone, so a non-road way can never have an
+            // entry — searching for one is ~17 wasted compares per boundary, building
+            // and waterway on a region build.
+            if class.layer == tilecodec::mamaps::dict::LAYER_ROADS {
+                if let Ok(at) = promoted.binary_search_by_key(&id, |(id, _)| *id) {
+                    class.min_zoom = promoted[at].1;
+                }
             }
             // A neighbour's lane count, where OSM tagged none on this way. Only ever consulted
             // for a way that has none of its own, so a tag is never overridden.
-            let lane_count = if *lane_count == 0 {
+            let lane_count = if lane_count == 0 {
                 inherited_lanes
-                    .binary_search_by_key(id, |(id, _)| *id)
+                    .binary_search_by_key(&id, |(id, _)| *id)
                     .map_or(0, |at| inherited_lanes[at].1)
             } else {
-                *lane_count
+                lane_count
             };
             // Only a label way carries its id onward. A road or a building is merged with its
             // neighbours by `coalesce`, which leaves the survivor's id arbitrary, and the id
             // table exists for `poi` and `places` alone.
             let id = if is_label(class.layer) {
-                tagged_id(*id, ELEMENT_WAY)
+                tagged_id(id, ELEMENT_WAY)
             } else {
                 tilecodec::mamaps::body::ID_NONE
             };
             batch.push((
                 class,
-                name.clone(),
+                name,
                 std::mem::take(&mut refs),
                 id,
                 lane_count,
-                turn_fwd.clone(),
-                turn_bwd.clone(),
-                *carriageway,
-                *building,
+                turn_fwd,
+                turn_bwd,
+                carriageway,
+                building,
             ));
         }
         // Flushed when full, and once more at the end with whatever is left.
-        if batch.len() >= MATERIALISE_BATCH || (more.is_none() && !batch.is_empty()) {
+        if batch.len() >= MATERIALISE_BATCH || (done && !batch.is_empty()) {
             built.clear();
             par::install(|| {
                 batch
@@ -624,7 +633,7 @@ fn materialise_ways(
             }
             batch.clear();
         }
-        if more.is_none() {
+        if done {
             break;
         }
     }
