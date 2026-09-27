@@ -244,13 +244,137 @@ fn open_ways_reader(
     WayReader::open_either(ways_path, ways_anon)
 }
 
+/// One named, non-link road way held for parallel coordinate resolve.
+///
+/// Owns its refs and name: the spill cursor cannot be re-read, so a batch row carries
+/// everything the serial push needs after the parallel phase hands the geometry back.
+struct LaneRow {
+    id: i64,
+    /// The class flags: the link test already passed, but the one-way bit rides here for
+    /// the segment the push builds.
+    flags: u8,
+    name: String,
+    lanes: u8,
+    refs: Vec<i64>,
+}
+
+/// The region bbox expanded for the lane join, in degrees.
+///
+/// A recipient is at most 50 m long (`lanefill::MAX_STUB_M`, enforced again in `push`),
+/// and a donor must share an endpoint node with it — so the shared node sits within ~50 m
+/// of the recipient, and any donor that can pair with a kept recipient touches the bbox
+/// expanded by a small margin. 0.1° (~11 km) is two orders of magnitude past the ~100 m
+/// worst case (a 50 m recipient straddling the border sharing its far endpoint), so the
+/// fringe keeps every pair materialise can consult while dropping the rest of the planet.
+/// `None` (world) disables the filter: every way can pair, everything resolves.
+fn expanded_fringe(region: &osm_ingest::bbox::BBox) -> osm_ingest::bbox::BBox {
+    const MARGIN_DEG: f64 = 0.1;
+    osm_ingest::bbox::BBox {
+        min_lon: (region.min_lon - MARGIN_DEG).max(-180.0),
+        min_lat: (region.min_lat - MARGIN_DEG).max(-90.0),
+        max_lon: (region.max_lon + MARGIN_DEG).min(180.0),
+        max_lat: (region.max_lat + MARGIN_DEG).min(90.0),
+    }
+}
+
+/// Whether the resolved line touches the fringe box. `None` (world) is always true.
+fn fringe_touches(
+    fringe: Option<&osm_ingest::bbox::BBox>,
+    line: &[(f64, f64)],
+) -> bool {
+    let Some(fringe) = fringe else {
+        return true;
+    };
+    line.iter().any(|&(lon, lat)| fringe.contains(lon, lat))
+}
+
+#[cfg(test)]
+mod fringe_tests {
+    use super::*;
+
+    fn california() -> osm_ingest::bbox::BBox {
+        osm_ingest::bbox::BBox {
+            min_lon: -124.5,
+            min_lat: 32.5,
+            max_lon: -114.0,
+            max_lat: 42.0,
+        }
+    }
+
+    #[test]
+    fn the_fringe_is_the_bbox_expanded_a_hair_in_every_direction() {
+        let fringe = expanded_fringe(&california());
+        assert!((fringe.min_lon - (-124.6)).abs() < 1e-9);
+        assert!((fringe.min_lat - 32.4).abs() < 1e-9);
+        assert!((fringe.max_lon - (-113.9)).abs() < 1e-9);
+        assert!((fringe.max_lat - 42.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_fringe_clamps_at_the_world_edges() {
+        let world = osm_ingest::bbox::BBox {
+            min_lon: -180.0,
+            min_lat: -90.0,
+            max_lon: 180.0,
+            max_lat: 90.0,
+        };
+        assert_eq!(expanded_fringe(&world), world, "clamped, not wrapped");
+    }
+
+    #[test]
+    fn world_keeps_everything_and_the_fringe_keeps_only_what_touches() {
+        let fringe = expanded_fringe(&california());
+        let inside = vec![(-122.4, 37.8)];
+        let straddling = vec![(-124.55, 39.0)];
+        let far = vec![(-100.0, 40.0)];
+        assert!(fringe_touches(None, &far), "world disables the filter");
+        assert!(fringe_touches(Some(&fringe), &inside));
+        assert!(
+            fringe_touches(Some(&fringe), &straddling),
+            "a border-straddling recipient is within the margin",
+        );
+        assert!(!fringe_touches(Some(&fringe), &far), "Nevada never pairs with California");
+        assert!(
+            !fringe_touches(Some(&fringe), &[]),
+            "a way with no resolved geometry joins nothing",
+        );
+    }
+
+    /// The soundness case: a ≤50 m recipient straddling the border and its donor's
+    /// endpoint at their shared node — both within the margin, so the pair survives.
+    #[test]
+    fn a_border_pair_survives_the_fringe() {
+        let fringe = expanded_fringe(&california());
+        // Recipient crossing the western edge; shared node 20 m outside.
+        let recipient = vec![(-124.52, 39.0), (-124.4999, 39.0)];
+        // Donor running outward from the shared node.
+        let donor = vec![(-124.52, 39.0), (-124.53, 39.001)];
+        assert!(fringe_touches(Some(&fringe), &recipient));
+        assert!(fringe_touches(Some(&fringe), &donor));
+    }
+}
+
 /// Lane inheritance over the ways spill. Moved whole from `extract`.
+///
+/// The scan is batched: the expensive per-way work (coordinate lookup through the node
+/// table — a rank-bitset search plus a mapped-file read per node) runs on the pool, while
+/// the collector push stays serial in spill order. `table.line` is shared-read-only (the
+/// materialise pass already calls it from `par_iter`), and the collector's output order
+/// never reaches the archive — `finish` sorts every partition — so the bytes are identical.
+/// What this buys: the scan is ~1.1 B sequential ways on a planet input, each paying ~10
+/// node lookups; serially that is tens of minutes of mapped-file random reads.
+///
+/// `region` limits the join to the ways that can pair with a materialised way (see
+/// [`fringe_touches`]): on a `--region` build over a larger input, the ways outside the
+/// fringe can never share an endpoint node with a kept recipient, so resolving them would
+/// be pure waste. `None` (world) disables the filter entirely.
 fn inherit_lane_counts(
     spill_path: &Path,
     ways_path: &Path,
     ways_anon: &Option<std::sync::Arc<tile_build::anon::AnonStore>>,
     table: &NodeLocations,
     ways_classified: usize,
+    region: Option<&osm_ingest::bbox::BBox>,
 ) -> Result<Vec<(i64, u8)>> {
     // --- lane inheritance -------------------------------------------------------------------
     //
@@ -258,6 +382,7 @@ fn inherit_lane_counts(
     // the renderer's flat `oneway ? 1 : 2`. See [`crate::lanefill`] for the conditions and the
     // measurements behind each of them. It runs here rather than in pass 1 because the conditions
     // are geometric — a length and a turn angle — and coordinates are only resolved above.
+    let fringe = region.map(expanded_fringe);
     let inherited_lanes = {
         let mut collector = crate::lanefill::Collector::create(spill_path)?;
         let mut reader = open_ways_reader(ways_path, &ways_anon)?;
@@ -268,28 +393,78 @@ fn inherit_lane_counts(
             "way(s)",
             true,
         );
-        while let Some((id, class, name, lane_count, _, _, _, _)) = reader.next(&mut refs)? {
-            bar.tick("way(s)");
-            // Roads, and not slip roads. A ramp leaves a junction carrying its parent's name on
-            // very nearly its parent's heading, so it would inherit the mainline's width onto a
-            // single-lane ramp; `corridor` leaves links out of a corridor for the same reason.
-            if class.layer != tilecodec::mamaps::dict::LAYER_ROADS
-                || class.flags & tilecodec::mamaps::body::FLAG_IS_LINK != 0
-            {
-                continue;
+        // One batch of spill rows at a time: 64 Ki ways at ~10 nodes each is a few tens of
+        // MB of geometry in flight, the same budget the materialise pass uses.
+        const LANE_BATCH: usize = 64 * 1024;
+        let mut batch: Vec<LaneRow> = Vec::with_capacity(LANE_BATCH);
+        let mut lines: Vec<Vec<(f64, f64)>> = Vec::with_capacity(LANE_BATCH);
+        let mut exhausted = false;
+        loop {
+            batch.clear();
+            // Serial fill: the spill is a sequential varint stream — one cursor, no seeking.
+            // The bar ticks here, per way read, so it still spans the whole spill exactly as
+            // before — the batching below must not move the tick or the count drifts.
+            while batch.len() < LANE_BATCH {
+                let Some((id, class, name, lane_count, _, _, _, _)) = reader.next(&mut refs)?
+                else {
+                    exhausted = true;
+                    break;
+                };
+                bar.tick("way(s)");
+                // Roads, and not slip roads. A ramp leaves a junction carrying its parent's name on
+                // very nearly its parent's heading, so it would inherit the mainline's width onto a
+                // single-lane ramp; `corridor` leaves links out of a corridor for the same reason.
+                if class.layer != tilecodec::mamaps::dict::LAYER_ROADS
+                    || class.flags & tilecodec::mamaps::body::FLAG_IS_LINK != 0
+                {
+                    continue;
+                }
+                let Some(name) = name else { continue };
+                batch.push(LaneRow {
+                    id,
+                    flags: class.flags,
+                    name,
+                    lanes: lane_count,
+                    refs: std::mem::take(&mut refs),
+                });
             }
-            let Some(name) = name.as_deref() else {
-                continue;
-            };
-            let line = table.line(&refs);
-            collector.push(&crate::lanefill::Segment {
-                id,
-                name,
-                lanes: lane_count,
-                oneway: class.flags & tilecodec::mamaps::body::FLAG_IS_ONEWAY != 0,
-                nodes: &refs,
-                line: &line,
-            })?;
+            if batch.is_empty() {
+                debug_assert!(exhausted, "an empty batch means the spill is done");
+                break;
+            }
+            // Parallel resolve: the dominant cost, shared-read-only.
+            lines.clear();
+            par::install(|| {
+                batch
+                    .par_iter()
+                    .map(|row| table.line(&row.refs))
+                    .collect_into_vec(&mut lines)
+            });
+            // Serial push, in spill order: the collector's file order never reaches the
+            // archive (`finish` sorts), but keeping it ordered keeps the temp bytes — and
+            // any future debugging of them — deterministic.
+            for (row, line) in batch.iter().zip(lines.drain(..)) {
+                // A region build only joins the fringe: a recipient is at most 50 m long, so
+                // a donor sharing an endpoint node with a kept recipient always touches the
+                // expanded box (see `expanded_fringe`). Anything else can pair only with
+                // ways materialise drops — work with no reader.
+                if !fringe_touches(fringe.as_ref(), &line) {
+                    continue;
+                }
+                let oneway =
+                    row.flags & tilecodec::mamaps::body::FLAG_IS_ONEWAY != 0;
+                collector.push(&crate::lanefill::Segment {
+                    id: row.id,
+                    name: &row.name,
+                    lanes: row.lanes,
+                    oneway,
+                    nodes: &row.refs,
+                    line: &line,
+                })?;
+            }
+            if exhausted {
+                break;
+            }
         }
         bar.finish("way(s)");
         collector.finish()?

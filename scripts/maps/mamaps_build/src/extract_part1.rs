@@ -114,6 +114,7 @@ pub fn extract(
         &ways_anon,
         &table,
         stats.ways_classified as usize,
+        region.as_ref(),
     )?;
     stats.lanes_inherited = inherited_lanes.len() as u64;
     mark("lane counts inherited");
