@@ -103,6 +103,24 @@ internal fun createGemma4Handle(directory: File): Long {
             return 0L
         }
     }
+    // Optional GPU head (third file). Absent on old downloads — native falls
+    // back to the host head, so this stays warning-free by design.
+    val head = File(directory, Gemma4Handle.HEAD)
+    val headFd: Int
+    val headLen: Long
+    if (head.isFile) {
+        headFd = runCatching {
+            ParcelFileDescriptor.open(head, ParcelFileDescriptor.MODE_READ_ONLY)
+                .use { it.detachFd() }
+        }.getOrElse {
+            Log.w(Gemma4Handle.TAG, "cannot open ${Gemma4Handle.HEAD}: $it")
+            return 0L
+        }
+        headLen = head.length()
+    } else {
+        headFd = -1
+        headLen = 0L
+    }
     val table = runCatching { tokenizer.readBytes() }.getOrElse {
         Log.w(Gemma4Handle.TAG, "cannot read ${Gemma4Handle.TOKENIZER}: $it")
         return 0L
@@ -127,6 +145,7 @@ internal fun createGemma4Handle(directory: File): Long {
         val live = MlNative.createGemma4(
             textFd, 0L, text.length(),
             embedFd, 0L, embed.length(),
+            headFd, 0L, headLen,
             table,
             gemma4CacheBudget(),
         )
@@ -136,6 +155,7 @@ internal fun createGemma4Handle(directory: File): Long {
         if (!handed) {
             closeGemma4Fd(textFd)
             closeGemma4Fd(embedFd)
+            if (headFd >= 0) closeGemma4Fd(headFd)
         }
     }
 }

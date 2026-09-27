@@ -570,11 +570,19 @@ class Gemma4Handle private constructor(internal val directory: File) : AutoClose
         /** The two embedding tables, host-gathered. */
         const val EMBED = "gemma4_embed.maml"
 
+        /** The GPU logits head (16 int8 chunks alone). Optional: native falls
+         * back to the host head when it is absent, so old downloads without
+         * it keep working — they just pay the ~2 s/token host SGEMV. */
+        const val HEAD = "gemma4_head.maml"
+
         /** `scripts/ml/gemma4_tokenizer.py`'s output. */
         const val TOKENIZER = "gemma4_tokenizer.spm1"
 
         /** The files [inDirectory] needs, for a caller checking a download is complete. */
         val FILES: List<String> = listOf(TEXT, EMBED, TOKENIZER)
+
+        /** The full set including the optional head, for a caller warming the download. */
+        val FILES_WITH_HEAD: List<String> = listOf(TEXT, EMBED, HEAD, TOKENIZER)
 
         /** Positions the runtime offers. Mirrors `nets::gemma4::MAX_CONTEXT`. */
         const val MAX_CONTEXT = 16384

@@ -240,6 +240,17 @@ pub mod graph {
     /// after Gemma 4's audio tower at 24, with 7..10 and 15 staying retired.
     /// `maml_convert.py` has `GRAPHS["madlad400"]` at the same number.
     pub const MADLAD: u32 = 25;
+
+    /// Gemma 4's GPU logits head: the 16 int8 head chunks alone in their own file.
+    ///
+    /// The next free id after MADLAD's 25, with 7..10 and 15 staying retired.
+    /// `maml_convert.py` has `GRAPHS["gemma4_head"]` at the same number. See
+    /// [`crate::nets::gemma4_head`].
+    ///
+    /// Its own file because the head `Net` uploads its whole `Blob` verbatim:
+    /// with the chunks inside EMBED that upload was 3.6 GB (TEXT 1.1 GB +
+    /// EMBED 3.6 GB = OOM-reboot on a Pixel 8). The head file is ~402 MB.
+    pub const GEMMA4_HEAD: u32 = 26;
 }
 
 /// One tensor's entry in the table: where it is and what shape it is.

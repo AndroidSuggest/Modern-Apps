@@ -282,52 +282,7 @@ impl Gemma4Handle {
         }
         Ok(logits)
     }
-}
 
-/// Host `combine`: projection + grouped-norm + scaled add over rows the
-/// caller already gathered. Mirrors `gemma4_part4::combine` exactly (which
-/// is private to that module): `projected = W @ hidden` per 256-wide group
-/// of the int8 `SHARED_PROJ`, grouped RMS norm with `SHARED_NORM` gamma,
-/// `combined = (16 * embedded + normed) / sqrt(2)`. The device combine plan
-/// (`gemma4_gather::build_plan`) must agree bit-for-bit — the
-/// `--gather-parity` gate in `run_gemma4` enforces it.
-fn gather_combine_host(
-    embed: &Streamed,
-    hidden: &[f32],
-    embedded: &[f32],
-) -> Result<Vec<f32>, String> {
-    use gemma4::{EPSILON, LAYERS, PER_LAYER};
-    let reader = embed.reader();
-    let proj = reader.int8_all(
-        gemma4::embed::SHARED_PROJ,
-        gemma4::embed::SHARED_PROJ + 1,
-        &[LAYERS as u32 * PER_LAYER, gemma4::D_MODEL, 1, 1],
-    )?;
-    let gamma = reader.fp16(gemma4::embed::SHARED_NORM, &[PER_LAYER])?;
-    let rows = LAYERS;
-    let wide = PER_LAYER as usize;
-    const GATHER_SCALE: f32 = 16.0;
-    let inv_sqrt_2 = 1.0 / std::f32::consts::SQRT_2;
-    let mut out = Vec::with_capacity(rows * wide);
-    for r in 0..rows {
-        let row = &proj[r * wide * gemma4::D_MODEL as usize..(r + 1) * wide * gemma4::D_MODEL as usize];
-        let emb = &embedded[r * wide..(r + 1) * wide];
-        let mut group = vec![0f32; wide];
-        for (o, wrow) in group.iter_mut().zip(row.chunks_exact(gemma4::D_MODEL as usize)) {
-            *o = wrow.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum::<f32>();
-        }
-        let mean_sq = group.iter().map(|v| v * v).sum::<f32>() / wide as f32;
-        let norm = 1.0 / (mean_sq + EPSILON).sqrt();
-        for (v, &g) in group.iter_mut().zip(gamma.iter()) {
-            *v = *v * norm * g;
-        }
-        for (v, &e) in group.iter_mut().zip(emb.iter()) {
-            *v = (*v + GATHER_SCALE * e) * inv_sqrt_2;
-        }
-        out.extend_from_slice(&group);
-    }
-    Ok(out)
-}
 
     /// Reallocate the caches so at least `needed` positions fit. Returns the new capacity.
     ///
@@ -464,11 +419,56 @@ fn gather_combine_host(
             ));
             self.position += width;
         }
-fn gemma4_plan(offsets: &Offsets, pass: gemma4::Pass) -> Result<Plan, String> {
-    gemma4::build(offsets, pass)
+        Ok(())
+    }
+} // close impl Gemma4Handle: everything below is a free function.
+
+/// Host `combine`: projection + grouped-norm + scaled add over rows the
+/// caller already gathered. Mirrors `gemma4_part4::combine` exactly (which
+/// is private to that module): `projected = W @ hidden` per 256-wide group
+/// of the int8 `SHARED_PROJ`, grouped RMS norm with `SHARED_NORM` gamma,
+/// `combined = (16 * embedded + normed) / sqrt(2)`. The device combine plan
+/// (`gemma4_gather::build_plan`) must agree bit-for-bit — the
+/// `--gather-parity` gate in `run_gemma4` enforces it.
+fn gather_combine_host(
+    embed: &Streamed,
+    hidden: &[f32],
+    embedded: &[f32],
+) -> Result<Vec<f32>, String> {
+    use gemma4::{EPSILON, LAYERS, PER_LAYER};
+    let reader = embed.reader();
+    let proj = reader.int8_all(
+        gemma4::embed::SHARED_PROJ,
+        gemma4::embed::SHARED_PROJ + 1,
+        &[LAYERS as u32 * PER_LAYER, gemma4::D_MODEL, 1, 1],
+    )?;
+    let gamma = reader.fp16(gemma4::embed::SHARED_NORM, &[PER_LAYER])?;
+    let rows = LAYERS;
+    let wide = PER_LAYER as usize;
+    const GATHER_SCALE: f32 = 16.0;
+    let inv_sqrt_2 = 1.0 / std::f32::consts::SQRT_2;
+    let mut out = Vec::with_capacity(rows * wide);
+    for r in 0..rows {
+        let row = &proj[r * wide * gemma4::D_MODEL as usize..(r + 1) * wide * gemma4::D_MODEL as usize];
+        let emb = &embedded[r * wide..(r + 1) * wide];
+        let mut group = vec![0f32; wide];
+        for (o, wrow) in group.iter_mut().zip(row.chunks_exact(gemma4::D_MODEL as usize)) {
+            *o = wrow.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum::<f32>();
+        }
+        let mean_sq = group.iter().map(|v| v * v).sum::<f32>() / wide as f32;
+        let norm = 1.0 / (mean_sq + EPSILON).sqrt();
+        for (v, &g) in group.iter_mut().zip(gamma.iter()) {
+            *v = *v * norm * g;
+        }
+        for (v, &e) in group.iter_mut().zip(emb.iter()) {
+            *v = (*v + GATHER_SCALE * e) * inv_sqrt_2;
+        }
+        out.extend_from_slice(&group);
+    }
+    Ok(out)
 }
 
-fn gemma4_head_plan_greedy(offsets: &Offsets, _: ()) -> Result<Plan, String> {
+fn gemma4_head_greedy_plan(offsets: &Offsets, _: ()) -> Result<Plan, String> {
     crate::nets::gemma4_head::build_plan_greedy(offsets)
 }
 
@@ -489,8 +489,52 @@ fn gemma4_gather_plan(embed: &Streamed) -> Option<Reshaped<()>> {
     .ok()
 }
 
+/// The standalone head plan over a head file (`graph::GEMMA4_HEAD`).
+///
+/// `None` when no head file was opened. The head file holds ONLY the 48
+/// int8 triples (~402 MB), so this upload replaces the 3.6 GB EMBED upload
+/// on memory-constrained devices (Pixel 8 OOM-reboot, twice, 2026-09-26:
+/// TEXT 1.1 GB + EMBED 3.6 GB vs ~2.6 GB free). Preferred over
+/// `gemma4_head_plan` whenever present — same numerics, one-ninth the bytes.
+fn gemma4_head_file_plan(head: &Streamed) -> Option<Reshaped<()>> {
+    let offsets = head.offsets();
+    if offsets.len() != crate::nets::gemma4_head::HEAD_FILE_TENSORS {
+        return None;
+    }
+    Reshaped::streamed(
+        context::shared().ok()?,
+        offsets,
+        head,
+        (),
+        |offsets, ()| crate::nets::gemma4_head::build_plan_standalone(offsets, false),
+    )
+    .ok()
+}
+
+/// The greedy standalone head plan: 16 splits + device argmax id.
+/// See `gemma4_head_file_plan` (file-size rationale) and `build_plan_greedy`.
+fn gemma4_head_file_plan_greedy(head: &Streamed) -> Option<Reshaped<()>> {
+    let offsets = head.offsets();
+    if offsets.len() != crate::nets::gemma4_head::HEAD_FILE_TENSORS {
+        return None;
+    }
+    Reshaped::streamed(
+        context::shared().ok()?,
+        offsets,
+        head,
+        (),
+        |offsets, ()| crate::nets::gemma4_head::build_plan_standalone(offsets, true),
+    )
+    .ok()
+}
+
 /// The GPU tied-head plan over an EMBED file, or `None` when the file has
 /// no head chunks (see `nets::gemma4_head`).
+///
+/// Prefer the standalone head file when one was opened (see
+/// `gemma4_head_file_plan`): its 402 MB upload replaces the 3.6 GB EMBED
+/// upload the EMBED-resident chunks would force. Falls back to the
+/// EMBED-resident chunks (host flow) when no head file is present.
 fn gemma4_head_plan(embed: &Streamed) -> Option<Reshaped<()>> {
     let offsets = embed.offsets();
     if offsets.len() < crate::nets::gemma4_head::TENSORS_WITH_HEAD {
@@ -523,7 +567,7 @@ fn gemma4_head_plan_greedy(embed: &Streamed) -> Option<Reshaped<()>> {
         offsets,
         embed,
         (),
-        gemma4_head_plan_greedy,
+        gemma4_head_greedy_plan,
     )
     .ok()
 }
@@ -592,13 +636,16 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createGemma4<'l>
     embed_fd: jint,
     embed_offset: jlong,
     embed_length: jlong,
+    head_fd: jint,
+    head_offset: jlong,
+    head_length: jlong,
     tokenizer: JByteArray<'l>,
     // Bytes of KV cache this device will spend. See `gemma4::tier_for`.
     budget: jlong,
 ) -> jlong {
     // Both descriptors are adopted before anything may fail. The caller detached them, so a path
-    // that returns without wrapping one leaks it for the life of the process - and there are two
-    // here, so the usual single-`fd` shape is not enough.
+    // that returns without wrapping one leaks it for the life of the process - and there are
+    // three here (the head is optional), so the usual single-`fd` shape is not enough.
     if text_fd < 0 || embed_fd < 0 {
         log(&format!("gemma4 is unavailable: descriptors {text_fd} and {embed_fd}"));
         return 0;
@@ -607,15 +654,25 @@ pub extern "system" fn Java_com_vayunmathur_library_ml_MlNative_createGemma4<'l>
     // including on every failure path below.
     let text = unsafe { File::from_raw_fd(text_fd) };
     let embed = unsafe { File::from_raw_fd(embed_fd) };
+    // The head file is optional: -1 means absent (old downloads), and native
+    // falls back to the host head. A non-negative fd is adopted like the rest.
+    let head: Option<File> = if head_fd >= 0 {
+        // SAFETY: same contract as text/embed above.
+        Some(unsafe { File::from_raw_fd(head_fd) })
+    } else {
+        None
+    };
     let spans = (
         u64::try_from(text_offset),
         u64::try_from(text_length),
         u64::try_from(embed_offset),
         u64::try_from(embed_length),
+        u64::try_from(head_offset),
+        u64::try_from(head_length),
     );
     let built = match spans {
-        (Ok(ta), Ok(tl), Ok(ea), Ok(el)) => {
-            build_gemma4(&mut env, text, ta, tl, embed, ea, el, &tokenizer, budget.max(0) as u64)
+        (Ok(ta), Ok(tl), Ok(ea), Ok(el), Ok(ha), Ok(hl)) => {
+            build_gemma4(&mut env, text, ta, tl, embed, ea, el, head, ha, hl, &tokenizer, budget.max(0) as u64)
         }
         _ => Err("a graph span that is not a positive offset and length".to_string()),
     };
@@ -637,11 +694,21 @@ fn build_gemma4<'l>(
     embed: File,
     embed_at: u64,
     embed_len: u64,
+    head: Option<File>,
+    head_at: u64,
+    head_len: u64,
     tokenizer: &JByteArray<'l>,
     budget: u64,
 ) -> Result<Gemma4Handle, String> {
     let weights = Streamed::open(text, text_at, text_len, graph::GEMMA4_TEXT)?;
     let embed = Streamed::open(embed, embed_at, embed_len, graph::GEMMA4_EMBED)?;
+    // The optional head file: opened (header-checked against GEMMA4_HEAD)
+    // only when the caller passed a live descriptor. `None` keeps the old
+    // two-file behavior exactly — host head, no third upload.
+    let head_file: Option<Streamed> = match head {
+        Some(file) => Some(Streamed::open(file, head_at, head_len, graph::GEMMA4_HEAD)?),
+        None => None,
+    };
     let tokenizer = env
         .convert_byte_array(tokenizer)
         .map_err(|e| format!("cannot read the tokenizer table: {e}"))?;
@@ -674,13 +741,15 @@ fn build_gemma4<'l>(
         gemma4::Mode::DecodeStep.at(gemma4::CONTEXT_TIERS[0]),
         gemma4_plan,
     )?;
-    // The GPU tied head, upload-once: a second net over the EMBED file that
-    // runs the 16 chunked fp16 head projections per token. `None` on files
-    // without the chunks (pre-head-split converts) — the caller falls back
-    // to the host head. Uploading the whole EMBED file is the price: there
-    // is no partial-upload path, so this is ~2.4 GB resident alongside TEXT.
-    let head = gemma4_head_plan(&embed);
-    let head_greedy = gemma4_head_plan_greedy(&embed);
+    // The GPU tied head, upload-once. Prefer the standalone head file when
+    // one was opened: its ~402 MB upload replaces the 3.6 GB EMBED upload
+    // (TEXT 1.1 GB + EMBED 3.6 GB = OOM-reboot on a Pixel 8, twice,
+    // 2026-09-26). Falls back to the EMBED-resident chunks, then the host
+    // head, when no head file is present.
+    let (head, head_greedy) = match &head_file {
+        Some(file) => (gemma4_head_file_plan(file), gemma4_head_file_plan_greedy(file)),
+        None => (gemma4_head_plan(&embed), gemma4_head_plan_greedy(&embed)),
+    };
     // The device combine: built (plan verified by unit tests) but NOT YET
     // WIRED into the step path — `gather_net: None` until the parity gate
     // below passes. The recording is cheap; the behavior change is not, so
@@ -698,6 +767,7 @@ fn build_gemma4<'l>(
         gather_net,
         weights,
         embed,
+        head_file,
         tokenizer,
         local,
         global,

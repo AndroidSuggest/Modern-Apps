@@ -593,13 +593,15 @@ internal object MlNative {
     external fun destroySupertonic(handle: Long)
 
     /**
-     * Bring up Gemma 4 E2B from its two `.maml`s and its tokenizer table. Returns 0 on failure.
+     * Bring up Gemma 4 E2B from its `.maml`s and its tokenizer table. Returns 0 on failure.
      *
      * The decoder and the embedding are separate files (graph ids 20 and 21) because nothing on
      * the device reads the embedding: a decode step needs one row of a 262144-row table, so it
-     * is gathered on the host and streamed, exactly as NLLB's tied embedding is. Native adopts
-     * **both** descriptors and closes them on every path including failure, so the caller must
-     * detach both and must not close either. [tokenizer] stays a byte array.
+     * is gathered on the host and streamed, exactly as NLLB's tied embedding is. The GPU
+     * logits head is an optional third file (graph id 26, `gemma4_head.maml`): pass -1/0/0
+     * when it is absent and native falls back to the host head. Native adopts **all**
+     * descriptors and closes them on every path including failure, so the caller must
+     * detach all and must not close any. [tokenizer] stays a byte array.
      *
      * Freed by [destroyGemma4], not [destroy], [destroyOcr], [destroySupertonic],
      * [destroyTinyclip] or [destroyNllb].
@@ -611,6 +613,9 @@ internal object MlNative {
         embedFd: Int,
         embedOffset: Long,
         embedLength: Long,
+        headFd: Int,
+        headOffset: Long,
+        headLength: Long,
         tokenizer: ByteArray,
         cacheBudgetBytes: Long,
     ): Long

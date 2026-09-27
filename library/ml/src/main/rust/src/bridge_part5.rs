@@ -419,6 +419,13 @@ struct Gemma4Handle {
     weights: Streamed,
     /// The two embedding tables.
     embed: Streamed,
+    /// The standalone GPU head file (48 int8 triples, ~402 MB). `None` on
+    /// old downloads — the EMBED-resident chunks (or host head) cover those.
+    /// Retained so the head `Net`s' uploads stay valid for the handle's life:
+    /// `Reshaped::streamed` copies the blob to device memory at construction,
+    /// but the `Offsets` table borrows nothing — retention is for clarity
+    /// and for future re-record paths, matching `weights`/`embed`.
+    head_file: Option<Streamed>,
     /// `scripts/ml/gemma4_tokenizer.py`'s table.
     tokenizer: Vec<u8>,
     /// Rotary angles for the sliding layers, `[MAX_CONTEXT, HEAD_DIM]`, read once.

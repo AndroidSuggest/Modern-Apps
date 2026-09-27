@@ -55,6 +55,9 @@ pub const TENSORS_WITH_HEAD: usize = embed::TENSORS_WITH_HEAD;
 /// Layout after the fp16 chunks: chunk `s` owns `HEAD8_BASE + s * 3` (int8
 /// kernel `[CLASSES_PER_CHUNK, 1536, 1, 1]`), `+ 1` (fp16 per-channel scale
 /// `[CLASSES_PER_CHUNK]`), `+ 2` (fp16 zero bias `[CLASSES_PER_CHUNK]`).
+///
+/// In the standalone head file (`graph::GEMMA4_HEAD`, 48 tensors) the chunks
+/// start at 0: chunk `s` owns `s * 3 .. s * 3 + 2`. See `build_plan_standalone`.
 pub const HEAD8_BASE: usize = embed::HEAD8_CHUNKS;
 
 /// Tensors the int8 chunked head adds: kernel + scale + bias per chunk.
@@ -124,6 +127,9 @@ fn build_plan_inner(weights: &dyn WeightSource, greedy: bool) -> Result<Plan, St
     build_plan_fp16(weights, greedy)
 }
 
+/// Tensors the standalone head file holds: 16 int8 triples, nothing else.
+pub const HEAD_FILE_TENSORS: usize = HEAD_CHUNKS * 3;
+
 /// The int8 head pass. See [`build_plan`].
 fn build_plan8(weights: &dyn WeightSource, greedy: bool) -> Result<Plan, String> {
     let mut builder = Builder::new(weights);
@@ -147,15 +153,22 @@ fn build_plan8(weights: &dyn WeightSource, greedy: bool) -> Result<Plan, String>
         return Err(format!("the int8 head claims {} tensors, not {HEAD8_CHUNK_TENSORS}", next - HEAD8_BASE));
     }
     if greedy {
-        // Concatenate the 16 splits on-device (channel Concat lowers to
-        // copies within the arena — no extra allocation) and reduce to one
-        // greedy id. The split outputs stay too, so the Kotlin sampling path
-        // keeps working from the same recording.
-        let row = b.concat(&outs);
-        let id = b.argmax(row);
-        outs.push(id);
+        finish_greedy(b, &mut outs);
     }
     builder.finish(&outs)
+}
+
+/// Append the on-device concat + argmax to `outs`. Shared by the int8,
+/// fp16 and standalone passes (the tail is identical; only the chunk base
+/// differs).
+fn finish_greedy(b: &mut Builder, outs: &mut Vec<Id>) {
+    // Concatenate the 16 splits on-device (channel Concat lowers to
+    // copies within the arena — no extra allocation) and reduce to one
+    // greedy id. The split outputs stay too, so the Kotlin sampling path
+    // keeps working from the same recording.
+    let row = b.concat(&outs);
+    let id = b.argmax(row);
+    outs.push(id);
 }
 
 /// The fp16 head pass. See [`build_plan`].
@@ -182,9 +195,27 @@ fn build_plan_fp16(weights: &dyn WeightSource, greedy: bool) -> Result<Plan, Str
         return Err(format!("the head claims {} tensors, not {HEAD_CHUNK_TENSORS}", next - HEAD_BASE));
     }
     if greedy {
-        let row = b.concat(&outs);
-        let id = b.argmax(row);
-        outs.push(id);
+        finish_greedy(b, &mut outs);
+    }
+    builder.finish(&outs)
+}
+
+/// The standalone head pass over the head file (`graph::GEMMA4_HEAD`).
+///
+/// Same 16 int8 triples as `build_plan8`, but the file holds NOTHING else:
+/// chunk `s` owns tensors `s * 3 .. s * 3 + 2` (no `host_tensor` companions
+/// needed — `finish` sees every tensor read). `greedy` appends the same
+/// on-device concat + argmax tail.
+pub fn build_plan_standalone(weights: &dyn WeightSource, greedy: bool) -> Result<Plan, String> {
+    let mut builder = Builder::new(weights);
+    let b = &mut builder;
+    let x = b.input(Shape::new(D_MODEL, 1, 1));
+    let mut outs = Vec::with_capacity(HEAD_CHUNKS);
+    for s in 0..HEAD_CHUNKS {
+        outs.push(point8(b, s * 3, x, CLASSES_PER_CHUNK));
+    }
+    if greedy {
+        finish_greedy(b, &mut outs);
     }
     builder.finish(&outs)
 }

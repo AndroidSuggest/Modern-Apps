@@ -220,6 +220,18 @@ GRAPHS = {
     # id after Gemma 4's audio tower at 24, with 7..10 and 15 staying retired.
     # `weights.rs` has `graph::MADLAD` at the same number.
     "madlad400": 25,
+    # Gemma 4's GPU logits head: the 16 int8 head chunks (kernel, scale, bias
+    # each) ALONE in their own file. Next free id after MADLAD's 25, with 7..10
+    # and 15 staying retired. `weights.rs` has `graph::GEMMA4_HEAD` at the same
+    # number.
+    #
+    # Why a third file: the head `Net` uploads its whole `Blob` verbatim, and
+    # the EMBED file grew to 3.6 GB with the chunks inside (TEXT 1.1 GB + EMBED
+    # 3.6 GB = 4.7 GB uploaded vs ~2.6 GB free on a Pixel 8 = OOM-reboot,
+    # twice, 2026-09-26). The head file is ~402 MB: TEXT + HEAD = ~1.5 GB
+    # uploaded, back under the 3.5 GB the old harness proved safe. The EMBED
+    # file itself is never uploaded — host gathers only, as before.
+    "gemma4_head": 26,
     # The Q2_K port of the same net, from `model-q2k.gguf`. SAME graph id: the tensor
     # order is identical (684 layers, 1724 tensors, same names) and only the payloads
     # differ (Q2_K verbatim vs int8 requantised), so the Rust forward pass reads either
@@ -260,10 +272,13 @@ EXPECTED_DIGEST = {
     "gemma4_vision": "a942080007f7ca9d8fa38a0812a4f858ff1c31afb7c4e94d105428da5fa56f19",
     # Gemma 4 E2B text decoder converted DIRECTLY from the litertlm GPU bundle
     # (scripts/ml/litertlm_to_maml.py; the ONNX export is a different model).
-    # 538 layers, 1088 tensors (rotary thetas read off the base bundle's own
+    # 540 layers, 1090 tensors (rotary thetas read off the base bundle's own
     # Section 10 `maybe_rope` constants: 1e4 sliding / 1e6 full;
-    # --rope-theta overrides both; per-layer `skip` whole-residual scalars),
-    # fidelity worst 0.9988. Pinned 2026-09-17.
+    # --rope-theta overrides both; per-layer `skip` whole-residual scalars;
+    # plus the two shared ones-vectors), fidelity worst 0.9988.
+    # Pinned 2026-09-25 (full-scale O/PL; the 2026-09-17 pin was 538/1088,
+    # pre-ones-vectors and pre-fullfix — see
+    # build/gemma4-s10-fullfix/BLESSED.txt).
     "gemma4_text": "20262c74605b0c121220cdb25f4c92d8f26607b4d548781035dcdc91209a2c26",
     # Gemma 4 E2B embedder from the same bundle: 2-bit working table + shared
     # [8960,1536] INT8 + 35xINT4 mmap tables. 38 layers, 112 tensors,

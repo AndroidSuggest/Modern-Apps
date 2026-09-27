@@ -57,7 +57,7 @@ fn main() {
     let (Some(text), Some(embed), Some(golden)) =
         (args.next().map(PathBuf::from), args.next().map(PathBuf::from), args.next())
     else {
-        println!("usage: check_gemma4_parity <text.maml> <embed.maml> <golden.json>");
+        println!("usage: check_gemma4_parity <text.maml> <embed.maml> <golden.json> [head.maml]");
         return;
     };
     let weights = match open_streamed(&text, graph::GEMMA4_TEXT) {
@@ -67,6 +67,17 @@ fn main() {
     let embed_weights = match open_streamed(&embed, graph::GEMMA4_EMBED) {
         Ok(w) => w,
         Err(why) => return println!("the embedding does not stream: {why}"),
+    };
+    // Optional standalone head file (4th arg): the 48 int8 triples alone
+    // (~402 MB upload instead of the whole EMBED file). Absent on old flows
+    // — the EMBED-resident chunks (or host head) cover those.
+    let head_path: Option<PathBuf> = std::env::args().nth(6).map(PathBuf::from);
+    let head_weights: Option<Streamed> = match &head_path {
+        Some(path) => match open_streamed(path, graph::GEMMA4_HEAD) {
+            Ok(w) => Some(w),
+            Err(why) => return println!("the head file does not stream: {why}"),
+        },
+        None => None,
     };
     let golden = match std::fs::read_to_string(&golden) {
         Ok(text) => text,
@@ -82,7 +93,7 @@ fn main() {
         Ok(context) => context,
         Err(why) => return println!("no Vulkan device: {why}"),
     };
-    match run(&context, &weights, &embed_weights, &tokens) {
+    match run(&context, &weights, &embed_weights, head_weights.as_ref(), &tokens) {
         Ok(logits) => report(&logits, &want_ids, &want_logits),
         Err(why) => println!("the decode failed: {why}"),
     }
@@ -253,6 +264,7 @@ fn run(
     context: &Arc<context::Context>,
     weights: &Streamed,
     embed: &Streamed,
+    head: Option<&Streamed>,
     tokens: &[u32],
 ) -> Result<Vec<f32>, String> {
     let mut net = Reshaped::streamed(
@@ -293,23 +305,53 @@ fn run(
     if hidden.len() != gemma4::D_MODEL as usize {
         return Err(format!("hidden state of {} values, not {}", hidden.len(), gemma4::D_MODEL));
     }
-    Ok(gpu_or_host_logits(context, embed, &reader, &hidden)?)
+    Ok(gpu_or_host_logits(context, embed, head, &reader, &hidden)?)
 }
 
-/// Logits for `hidden`: the GPU head when the EMBED file carries chunks.
+/// Logits for `hidden`: the standalone head file first, then the GPU head
+/// in EMBED, then the host tied head.
 ///
-/// The device runs the 16 fp16 chunk projections; the host concatenates the
-/// splits and softcaps. Falls back to the host tied head (`hidden @
-/// HEAD_TABLE^T` in `HEAD_SPLITS` quarters) on files without chunks, so this
-/// example keeps working against pre-head-split converts. Both paths must
-/// agree: the parity gate below compares against the golden either way.
+/// The standalone head file (4th CLI arg, ~402 MB upload instead of the
+/// whole EMBED file) is preferred whenever present — same numerics as the
+/// EMBED-resident int8 chunks, one-ninth the upload bytes. Falls back to the
+/// EMBED-resident chunks (`hidden @ chunks`), then the host tied head
+/// (`hidden @ HEAD_TABLE^T` in `HEAD_SPLITS` quarters) on files without
+/// chunks, so this example keeps working against pre-head-split converts.
+/// All paths must agree: the parity gate below compares against the golden
+/// either way.
 fn gpu_or_host_logits(
     context: &Arc<context::Context>,
     embed: &Streamed,
+    head: Option<&Streamed>,
     reader: &modelrunner::weights::Reader<'_>,
     hidden: &[f32],
 ) -> Result<Vec<f32>, String> {
     use modelrunner::nets::gemma4_head;
+    if let Some(head_file) = head {
+        if head_file.offsets().len() == gemma4_head::HEAD_FILE_TENSORS {
+            let mut net = Reshaped::streamed(
+                Arc::clone(context),
+                head_file.offsets(),
+                head_file,
+                (),
+                |offsets, ()| gemma4_head::build_plan_standalone(offsets, false),
+            )?;
+            let at = net.at(())?;
+            let out = at.infer_raw_many(&[hidden])?;
+            if out.len() == gemma4_head::HEAD_CHUNKS
+                && out.iter().all(|s| s.len() == gemma4_head::CLASSES_PER_CHUNK as usize)
+            {
+                let mut logits = Vec::with_capacity(gemma4::VOCAB as usize);
+                for split in &out {
+                    for &value in split {
+                        logits.push(gemma4::LOGIT_CAP * (value / gemma4::LOGIT_CAP).tanh());
+                    }
+                }
+                return Ok(logits);
+            }
+            // Wrong shape: fall through to the EMBED-resident chunks.
+        }
+    }
     if embed.offsets().len() >= gemma4_head::TENSORS_WITH_HEAD {
         let mut head = Reshaped::streamed(
             Arc::clone(context),

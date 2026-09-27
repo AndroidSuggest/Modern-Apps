@@ -342,6 +342,18 @@ def main():
     eout = os.path.join(args.outdir, 'gemma4_embed.maml')
     open(eout, 'wb').write(eblob)
     print(f'wrote {eout} ({len(eblob)} bytes)')
+    # GPU head file (2026-09-27 OOM fix): the 48 int8 head triples ALONE.
+    # The head `Net` uploads its whole `Blob` verbatim; with the chunks inside
+    # EMBED that upload was 3.6 GB (TEXT 1.1 + EMBED 3.6 = OOM-reboot on P8).
+    # The head file is ~402 MB. `collect_head` re-derives the chunks from the
+    # same S10 table (no new numerics — same `fid.quantise` calls, same rows).
+    hlayers, htensors = collect_head(rdr)
+    hdigest = mc.layer_table_digest(hlayers)
+    print(f's10_head: {len(hlayers)} layers, {len(htensors)} tensors, digest {hdigest}')
+    hblob, _ = mc.build(hlayers, htensors, mc.GRAPHS['gemma4_head'], sha)
+    hout = os.path.join(args.outdir, 'gemma4_head.maml')
+    open(hout, 'wb').write(hblob)
+    print(f'wrote {hout} ({len(hblob)} bytes)')
 
 
 def collect_embed(rdr):
@@ -474,6 +486,37 @@ def collect_embed(rdr):
                                len(tensors) - 3, 3))
     print(f'head_table int8: {HEAD_SPLITS} chunks of [{per}, 1536, 1, 1] '
           f'int8 (+ [per] scale, zero bias)')
+    fid.report(mc.MIN_INT4_COSINE)
+    return layers, tensors
+
+
+def collect_head(rdr):
+    """gemma4_head: the 48 int8 head triples ALONE (OOM fix, 2026-09-27).
+
+    Same S10 t2698 source, same `fid.quantise` calls, same row order as the
+    int8 chunks `collect_embed` appends — factored so the head `Net` uploads
+    ~402 MB instead of the whole 3.6 GB EMBED file. Chunk `s` owns tensors
+    `s * 3 .. s * 3 + 2` (kernel `[per, 1536, 1, 1]` int8, scale `[per]`
+    fp16, bias `[per]` fp16); vocab order preserved.
+    """
+    layers, tensors = [], []
+    fid = mc.Fidelity()
+    head = rdr.dequant2(2698, 262144, 1536)
+    n = head.shape[0]
+    assert n == 262144, n
+    per = n // HEAD_SPLITS
+    assert per * HEAD_SPLITS == n, (n, HEAD_SPLITS)
+    for s in range(HEAD_SPLITS):
+        rows = head[s * per:(s + 1) * per].astype(np.float32)
+        kernel8, scale8 = fid.quantise(f'head_split8_{s}',
+                                       np.ascontiguousarray(rows).reshape(per, 1536, 1, 1))
+        bias8 = np.zeros(per, dtype=np.float32)
+        tensors.extend([kernel8, scale8, bias8])
+        layers.append(mc.Layer(len(layers), 'Linear8', f'head_split8_{s}',
+                               f'Linear8 w=[{per}, 1536, 1, 1] dtype=int8 b=[{per}]',
+                               len(tensors) - 3, 3))
+    print(f'head file: {HEAD_SPLITS} int8 chunks of [{per}, 1536, 1, 1] '
+          f'(+ [per] scale, zero bias)')
     fid.report(mc.MIN_INT4_COSINE)
     return layers, tensors
 
