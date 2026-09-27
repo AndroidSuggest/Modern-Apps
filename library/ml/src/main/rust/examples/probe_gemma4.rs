@@ -108,11 +108,10 @@ fn main() {
     println!();
     println!("embedding {}  {:.2} GB", embed_path.display(), embed_bytes.len() as f64 / 1e9);
     println!(
-        "tensors   {} (the module expects {} + {} head chunks = {})",
+        "tensors   {} (fp16 chunks: {} / int8 chunks: {})",
         embed.tensors().len(),
-        gemma4::embed::TENSORS,
-        gemma4_head::HEAD_CHUNK_TENSORS,
         gemma4_head::TENSORS_WITH_HEAD,
+        gemma4_head::TENSORS_WITH_HEAD8,
     );
     match gemma4_head::build_plan(&embed) {
         Ok(plan) => {

@@ -58,6 +58,19 @@ pub mod embed {
     /// Tensors an EMBED file with GPU-head chunks holds.
     pub const TENSORS_WITH_HEAD: usize = HEAD_TABLE + 1 + HEAD_CHUNK_TENSORS;
 
+    /// First tensor of the int8 GPU-head chunks (kernel of chunk 0).
+    ///
+    /// The converter appends `HEAD_CHUNKS` int8 triples (kernel, per-channel
+    /// scale, bias) after the fp16 chunks (`s10_to_maml.collect_embed`); see
+    /// `crate::nets::gemma4_head` for the pass that reads them.
+    pub const HEAD8_CHUNKS: usize = TENSORS_WITH_HEAD;
+
+    /// Tensors the int8 chunked GPU head adds: kernel + scale + bias per chunk.
+    pub const HEAD8_CHUNK_TENSORS: usize = super::super::gemma4_head::HEAD_CHUNKS * 3;
+
+    /// Tensors an EMBED file with int8 GPU-head chunks holds.
+    pub const TENSORS_WITH_HEAD8: usize = HEAD8_CHUNKS + HEAD8_CHUNK_TENSORS;
+
     /// Table triple for layer `i`.
     pub const fn table(i: usize) -> usize {
         TABLES + i * 3

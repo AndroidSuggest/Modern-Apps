@@ -7,23 +7,26 @@
 // `[1536, 1, 1]` hidden input in, one `[16384, 1, 1]` logits split per chunk
 // out, upload-once and submit-per-token.
 //
+// Two precisions, selected at build time by which chunks the file carries:
+// int8 chunks (3 tensors each: kernel, per-channel scale, bias) bind via
+// `conv_int8` and auto-route to `ConvVecInt8` at 1 position — ~402 MB total,
+// the production path. fp16 chunks (2 tensors: kernel, bias) bind via `conv`
+// and route to `ConvPoint` — the fallback that files without int8 chunks
+// still satisfy. The runtime prefers int8 when present (see `build_plan`).
+//
 // The head table lives in the EMBED file, so this plan builds over the
 // EMBED offsets (one file per plan — see `Builder::new`), with every other
 // EMBED tensor named via `host_tensor` (same complement pattern as
-// `nllb::name_host_tensors`). The converter emits the chunks as 16 rank-4
-// fp16 kernels + zero biases after the legacy rank-2 table
-// (`s10_to_maml.collect_embed`); indices 0..111 are unchanged so old files
-// without chunks still parse for gather — this plan then fails its `shaped`
-// checks and the caller falls back to the host head.
+// `nllb::name_host_tensors`). The converter emits int8 chunks after the fp16
+// ones (`s10_to_maml.collect_embed`); indices 0..144 are unchanged so older
+// files still parse — this plan then fails its `shaped` checks and the
+// caller falls back (first to the fp16-chunk plan, then the host head).
 //
 // One 262144-wide fp16 tensor spans ~768 MiB, far over the ~96 MiB
 // segment-window reach at guaranteed 128 MiB `maxStorageBufferRange`
 // (`vulkan::segment::for_op` refuses it: "Split the tensor in the
-// converter"). 16x16384 chunks are ~50 MB each — inside the window with
-// margin on host and P8. Each chunk lowers to `Kind::ConvPoint`
-// (`conv_point.comp`); there is no fp16 `ConvVec`, so the 1-position tiles
-// run ~93.75% idle lanes — correct but wasteful, and `ConvVecF16` is the
-// follow-up, not this pass.
+// converter"). 16x16384 int8 chunks are ~25 MB each — inside the window with
+// margin on host and P8.
 use super::{Act, Builder, Id, Plan, Shape, WeightSource};
 use super::gemma4::{D_MODEL, LAYERS, PER_LAYER, VOCAB};
 use super::gemma4::embed;
@@ -34,18 +37,31 @@ pub const CLASSES_PER_CHUNK: u32 = 16384;
 /// Head chunks the converter emits. Must match `GEMMA4_HEAD_SPLITS`.
 pub const HEAD_CHUNKS: usize = 16;
 
-/// First tensor of the chunked head: kernel of chunk 0.
+/// First tensor of the fp16 chunked head: kernel of chunk 0.
 ///
 /// Layout after the legacy rank-2 table (tensor 112): chunk `s` owns
 /// `HEAD_BASE + s * 2` (fp16 kernel `[CLASSES_PER_CHUNK, 1536, 1, 1]`) and
 /// `HEAD_BASE + s * 2 + 1` (fp16 zero bias `[CLASSES_PER_CHUNK]`).
 pub const HEAD_BASE: usize = embed::HEAD_CHUNKS;
 
-/// Tensors the chunked head adds: kernel + bias per chunk.
+/// Tensors the fp16 chunked head adds: kernel + bias per chunk.
 pub const HEAD_CHUNK_TENSORS: usize = HEAD_CHUNKS * 2;
 
-/// Tensors an EMBED file with GPU-head chunks holds.
+/// Tensors an EMBED file with fp16 GPU-head chunks holds.
 pub const TENSORS_WITH_HEAD: usize = embed::TENSORS_WITH_HEAD;
+
+/// First tensor of the int8 chunked head: kernel of chunk 0.
+///
+/// Layout after the fp16 chunks: chunk `s` owns `HEAD8_BASE + s * 3` (int8
+/// kernel `[CLASSES_PER_CHUNK, 1536, 1, 1]`), `+ 1` (fp16 per-channel scale
+/// `[CLASSES_PER_CHUNK]`), `+ 2` (fp16 zero bias `[CLASSES_PER_CHUNK]`).
+pub const HEAD8_BASE: usize = embed::HEAD8_CHUNKS;
+
+/// Tensors the int8 chunked head adds: kernel + scale + bias per chunk.
+pub const HEAD8_CHUNK_TENSORS: usize = HEAD_CHUNKS * 3;
+
+/// Tensors an EMBED file with int8 GPU-head chunks holds.
+pub const TENSORS_WITH_HEAD8: usize = embed::TENSORS_WITH_HEAD8;
 
 /// A `1 x 1` fp16 convolution: the device-side dot of one vocab chunk.
 fn point(b: &mut Builder, at: usize, x: Id, out: u32) -> Id {
@@ -62,17 +78,67 @@ fn point(b: &mut Builder, at: usize, x: Id, out: u32) -> Id {
     )
 }
 
+/// A `1 x 1` **int8** convolution: the device-side dot of one vocab chunk.
+///
+/// Same geometry as [`point`], over the int8 triple (kernel, per-channel
+/// scale, bias). Auto-routes to `ConvVecInt8` at 1 position — the fix for
+/// the fp16 `ConvPoint` 93.75% idle-lane waste, with no code change.
+fn point8(b: &mut Builder, at: usize, x: Id, out: u32) -> Id {
+    b.conv_int8(x, at, out, (1, 1), (1, 1), (1, 1), (0, 0, 0, 0), 1, Act::None)
+}
+
 /// Build the head pass over the EMBED file's offsets.
 ///
 /// One `[1536, 1, 1]` hidden-state input, one `[CLASSES_PER_CHUNK, 1, 1]`
-/// fp16 output per chunk, in vocab order. The host concatenates the 16
-/// splits and runs the existing softcap + argmax, exactly as it does for
-/// the host-computed logits today.
+/// fp16 output per chunk, in vocab order. Prefers the int8 chunks when the
+/// file carries them (fewer bytes, vector routing); falls back to fp16
+/// chunks; fails the `shaped` checks (and the caller falls back to the host
+/// head) when the file carries neither. The host concatenates the 16 splits
+/// and runs the existing softcap + argmax, exactly as it does for the
+/// host-computed logits today.
 pub fn build_plan(weights: &dyn WeightSource) -> Result<Plan, String> {
+    // Probe for int8 chunks without marking anything read: `count()` is the
+    // file's tensor total, which is exact (145 fp16-only, 193 with int8).
+    if weights.count() >= TENSORS_WITH_HEAD8 {
+        if let Ok(plan) = build_plan8(weights) {
+            return Ok(plan);
+        }
+        // Wrong shapes: fall through to the fp16 chunks rather than failing.
+    }
+    build_plan_fp16(weights)
+}
+
+/// The int8 head pass. See [`build_plan`].
+fn build_plan8(weights: &dyn WeightSource) -> Result<Plan, String> {
     let mut builder = Builder::new(weights);
     let b = &mut builder;
     // Every EMBED tensor this pass does not read, named so `finish` accepts
-    // the plan. The chunks are the only tensors read; the legacy rank-2
+    // the plan. The int8 chunks are the only tensors read.
+    for index in 0..TENSORS_WITH_HEAD8 {
+        if index < HEAD8_BASE || index >= HEAD8_BASE + HEAD8_CHUNK_TENSORS {
+            b.host_tensor(index, &dims_of(index));
+        }
+    }
+    let x = b.input(Shape::new(D_MODEL, 1, 1));
+    let mut outs = Vec::with_capacity(HEAD_CHUNKS);
+    let mut next = HEAD8_BASE;
+    for _ in 0..HEAD_CHUNKS {
+        let at = next;
+        next += 3;
+        outs.push(point8(b, at, x, CLASSES_PER_CHUNK));
+    }
+    if next != HEAD8_BASE + HEAD8_CHUNK_TENSORS {
+        return Err(format!("the int8 head claims {} tensors, not {HEAD8_CHUNK_TENSORS}", next - HEAD8_BASE));
+    }
+    builder.finish(&outs)
+}
+
+/// The fp16 head pass. See [`build_plan`].
+fn build_plan_fp16(weights: &dyn WeightSource) -> Result<Plan, String> {
+    let mut builder = Builder::new(weights);
+    let b = &mut builder;
+    // Every EMBED tensor this pass does not read, named so `finish` accepts
+    // the plan. The fp16 chunks are the only tensors read; the legacy rank-2
     // table (tensor 112) stays host-side for gather-time fallback.
     for index in 0..TENSORS_WITH_HEAD {
         if index < HEAD_BASE || index >= HEAD_BASE + HEAD_CHUNK_TENSORS {
@@ -138,11 +204,19 @@ pub fn dims_of(index: usize) -> Vec<u32> {
         // Legacy rank-2 fp16 head table (host path).
         return vec![VOCAB, D_MODEL];
     }
-    // Chunked head: kernel, bias alternating.
-    if (index - HEAD_BASE) % 2 == 0 {
-        vec![CLASSES_PER_CHUNK, D_MODEL, 1, 1]
-    } else {
-        vec![CLASSES_PER_CHUNK]
+    if index < HEAD8_BASE {
+        // fp16 chunked head: kernel, bias alternating.
+        return if (index - HEAD_BASE) % 2 == 0 {
+            vec![CLASSES_PER_CHUNK, D_MODEL, 1, 1]
+        } else {
+            vec![CLASSES_PER_CHUNK]
+        };
+    }
+    // int8 chunked head: kernel, per-channel scale, bias.
+    match (index - HEAD8_BASE) % 3 {
+        0 => vec![CLASSES_PER_CHUNK, D_MODEL, 1, 1],
+        1 => vec![CLASSES_PER_CHUNK],
+        _ => vec![CLASSES_PER_CHUNK],
     }
 }
 
@@ -154,8 +228,9 @@ mod tests {
     #[test]
     fn the_head_layout_matches_the_converter() {
         // `s10_to_maml.collect_embed` head section: legacy rank-2 fp16 table
-        // at 112, then 16 rank-4 fp16 kernels + zero biases. Indices 0..111
-        // unchanged so old files still parse for gather.
+        // at 112, then 16 rank-4 fp16 kernels + zero biases, then 16 int8
+        // triples (kernel, scale, bias). Indices 0..111 unchanged so old
+        // files still parse for gather.
         assert_eq!(embed::HEAD_TABLE, 112);
         assert_eq!(HEAD_BASE, 113);
         assert_eq!(HEAD_CHUNKS, 16);
@@ -164,6 +239,10 @@ mod tests {
         assert_eq!(HEAD_CHUNK_TENSORS, 32);
         assert_eq!(TENSORS_WITH_HEAD, 145);
         assert_eq!(embed::TENSORS_WITH_HEAD, 145);
+        assert_eq!(HEAD8_BASE, 145);
+        assert_eq!(HEAD8_CHUNK_TENSORS, 48);
+        assert_eq!(TENSORS_WITH_HEAD8, 193);
+        assert_eq!(embed::TENSORS_WITH_HEAD8, 193);
     }
 
     #[test]
@@ -171,15 +250,46 @@ mod tests {
         // One hidden input in, 16 vocab splits out, against the stub source
         // so `Builder::finish`'s unread-tensor invariant does the work: every
         // EMBED tensor is either a chunk this pass reads or named host-side.
-        let source = Shapes::new(TENSORS_WITH_HEAD);
-        let plan = build_plan(&source).expect("the head pass builds");
+        // The int8 pass is the production one (fp16 covered below).
+        let source = Shapes::new(TENSORS_WITH_HEAD8);
+        let plan = build_plan(&source).expect("the int8 head pass builds");
         assert_eq!(plan.inputs.len(), 1);
         assert_eq!(plan.inputs[0].shape, Shape::new(D_MODEL, 1, 1));
         assert_eq!(plan.outputs.len(), HEAD_CHUNKS);
         for output in &plan.outputs {
             assert_eq!(output.shape, Shape::new(CLASSES_PER_CHUNK, 1, 1));
         }
-        // 16 fp16 1x1 convolutions, one per chunk.
+        // 16 int8 1x1 convolutions, one per chunk (vector-routed at 1 pos).
+        let mut convs = 0;
+        for op in &plan.ops {
+            if let crate::nets::Op::Dispatch { kind, .. } = op {
+                if matches!(
+                    kind,
+                    crate::nets::Kind::ConvInt8
+                        | crate::nets::Kind::ConvPointInt8
+                        | crate::nets::Kind::ConvVecInt8
+                ) {
+                    convs += 1;
+                }
+            }
+        }
+        assert_eq!(convs, HEAD_CHUNKS, "one int8 conv per chunk");
+        crate::nets::tests::assert_no_aliasing(&plan);
+        let sched = crate::nets::schedule::schedule(&plan);
+        crate::nets::schedule::is_sound(&plan, &sched).expect("the head schedule is sound");
+    }
+
+    #[test]
+    fn the_fp16_head_pass_builds_and_reads_every_chunk() {
+        // Same coverage for the fp16 fallback path.
+        let source = Shapes::new(TENSORS_WITH_HEAD);
+        let plan = build_plan(&source).expect("the fp16 head pass builds");
+        assert_eq!(plan.inputs.len(), 1);
+        assert_eq!(plan.inputs[0].shape, Shape::new(D_MODEL, 1, 1));
+        assert_eq!(plan.outputs.len(), HEAD_CHUNKS);
+        for output in &plan.outputs {
+            assert_eq!(output.shape, Shape::new(CLASSES_PER_CHUNK, 1, 1));
+        }
         let mut convs = 0;
         for op in &plan.ops {
             if let crate::nets::Op::Dispatch { kind, .. } = op {
@@ -191,7 +301,7 @@ mod tests {
         assert_eq!(convs, HEAD_CHUNKS, "one fp16 conv per chunk");
         crate::nets::tests::assert_no_aliasing(&plan);
         let sched = crate::nets::schedule::schedule(&plan);
-        crate::nets::schedule::is_sound(&plan, &sched).expect("the head schedule is sound");
+        crate::nets::schedule::is_sound(&plan, &sched).expect("the fp16 head schedule is sound");
     }
 
     #[test]

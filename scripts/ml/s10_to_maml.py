@@ -452,6 +452,28 @@ def collect_embed(rdr):
                                len(tensors) - 2, 2))
     print(f'head_table: rank-2 fp16 [{n}, 1536] + {HEAD_SPLITS} rank-4 '
           f'fp16 chunks of [{per}, 1536, 1, 1] (+ zero bias)')
+    # int8 GPU-head chunks (Phase 2, 2026-09-26): the same rows quantised
+    # per-channel (`fid.quantise`, symmetric int8 * fp16 scale), 3 tensors
+    # per chunk (kernel, scale, bias). ~25 MB/chunk vs ~50 MB fp16 (~2x
+    # bandwidth), and chunks auto-route to `ConvVecInt8` at 1 position
+    # (mod_part9.rs), fixing the fp16 `ConvPoint` 93.75% idle-lane waste with
+    # no code change. The fp16 chunks above stay in-file during transition:
+    # the runtime binds int8 when present, fp16 otherwise.
+    # CAUTION (binding): int8-per-channel over an S10-2-bit source is a
+    # requant — must pass the argmax-9079 gate before shipping, never cosine
+    # alone. Do NOT use the WORKING int4 table as head even with /39.25
+    # (wrong source + LOGIT_CAP saturation).
+    for s in range(HEAD_SPLITS):
+        rows = head[s * per:(s + 1) * per].astype(np.float32)
+        kernel8, scale8 = fid.quantise(f'head_split8_{s}',
+                                       np.ascontiguousarray(rows).reshape(per, 1536, 1, 1))
+        bias8 = np.zeros(per, dtype=np.float32)
+        tensors.extend([kernel8, scale8, bias8])
+        layers.append(mc.Layer(len(layers), 'Linear8', f'head_split8_{s}',
+                               f'Linear8 w=[{per}, 1536, 1, 1] dtype=int8 b=[{per}]',
+                               len(tensors) - 3, 3))
+    print(f'head_table int8: {HEAD_SPLITS} chunks of [{per}, 1536, 1, 1] '
+          f'int8 (+ [per] scale, zero bias)')
     fid.report(mc.MIN_INT4_COSINE)
     return layers, tensors
 
