@@ -471,6 +471,11 @@ def collect_embed(rdr):
     # (mod_part9.rs), fixing the fp16 `ConvPoint` 93.75% idle-lane waste with
     # no code change. The fp16 chunks above stay in-file during transition:
     # the runtime binds int8 when present, fp16 otherwise.
+    # INVARIANT (byte-identity with the head file, 2026-09-27): these rows
+    # are the fp16-rounded `head` table, NOT fp32-direct dequant — keep it
+    # that way. `collect_head` rounds identically so its 48 triples are
+    # byte-identical to these chunks (quantising fp32-direct flips ~6-11%
+    # of codes by ±1, a second numerics variant for 0.00002 fidelity).
     # CAUTION (binding): int8-per-channel over an S10-2-bit source is a
     # requant — must pass the argmax-9079 gate before shipping, never cosine
     # alone. Do NOT use the WORKING int4 table as head even with /39.25
@@ -493,15 +498,26 @@ def collect_embed(rdr):
 def collect_head(rdr):
     """gemma4_head: the 48 int8 head triples ALONE (OOM fix, 2026-09-27).
 
-    Same S10 t2698 source, same `fid.quantise` calls, same row order as the
-    int8 chunks `collect_embed` appends — factored so the head `Net` uploads
-    ~402 MB instead of the whole 3.6 GB EMBED file. Chunk `s` owns tensors
-    `s * 3 .. s * 3 + 2` (kernel `[per, 1536, 1, 1]` int8, scale `[per]`
-    fp16, bias `[per]` fp16); vocab order preserved.
+    Same S10 t2698 source, same fp16-rounded rows, same `fid.quantise`
+    calls, same row order as the int8 chunks `collect_embed` appends —
+    factored so the head `Net` uploads ~402 MB instead of the whole
+    3.6 GB EMBED file. The fp16 rounding mirrors `collect_embed`'s head
+    section exactly (quantising the same rows the fp16 chunks store), so
+    the head file's 48 triples are byte-identical to the EMBED int8
+    chunks — one numerics variant in the field, byte-comparable.
+    Chunk `s` owns tensors `s * 3 .. s * 3 + 2` (kernel
+    `[per, 1536, 1, 1]` int8, scale `[per]` fp16, bias `[per]` fp16);
+    vocab order preserved.
     """
     layers, tensors = [], []
     fid = mc.Fidelity()
     head = rdr.dequant2(2698, 262144, 1536)
+    # fp16 round FIRST, exactly as `collect_embed` does before its int8
+    # chunks: quantising fp32-direct flips ~6-11% of codes by ±1 (measured
+    # 2026-09-27, scales ~0.05%), a second numerics variant for no gain
+    # (direct-fp32 fidelity 0.999922 vs fp16-rounded 0.999900, both far
+    # above MIN_INT8_COSINE 0.999).
+    head = np.ascontiguousarray(head, dtype=np.float32).astype(np.float16)
     n = head.shape[0]
     assert n == 262144, n
     per = n // HEAD_SPLITS

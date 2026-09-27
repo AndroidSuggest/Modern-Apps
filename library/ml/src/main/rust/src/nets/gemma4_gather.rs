@@ -57,7 +57,7 @@
 // A full on-device row gather (dedicated `GatherRows` Kind over int4 tables)
 // is the follow-up, not this pass: it needs a new Kind + shader + reference
 // oracle, and the remaining host half is small and page-cache friendly.
-use super::{Builder, Id, Plan, Shape, WeightSource};
+use super::{Builder, Plan, Shape, WeightSource};
 
 /// Per-layer input width. Mirrors `gemma4::PER_LAYER`.
 pub const PER_LAYER: u32 = 256;
