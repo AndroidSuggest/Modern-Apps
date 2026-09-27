@@ -250,13 +250,33 @@ def collect_text(rdr, rope_theta_local=10000.0, rope_theta_global=1000000.0):
     # ff1 -> mul -> down -> post_ffw_norm, pl proj -> post_per_layer norm),
     # and an RMS norm erases uniform input scaling exactly, so pow2 weight
     # scaling is computation-neutral: it only shrinks what fp16 must hold.
-    # Track-3 fidelity justification: O/FF1/PL constants (4/256/4) are pure
-    # powers of two (exact in fp16, no rounding of the stored weights), the
-    # gate stays full-scale (gelu is nonlinear; scaling it would move the
+    # The gate stays full-scale (gelu is nonlinear; scaling it would move the
     # operating point), and scaling the LINEAR up-path is exact. The runtime
     # re-applies the inverse gain on the norm side (see nets::gemma4 rescale
     # consts), so end-to-end numerics are unchanged up to fp16 rounding.
-    O_SCALE, FF1_SCALE, PL_SCALE = 4.0, 256.0, 4.0
+    #
+    # TRACK-E CORRECTION (verified 2026-09-24): the claimed runtime inverse
+    # gain DOES NOT EXIST - no O_SCALE/FF1_SCALE/PL_SCALE const exists anywhere
+    # in library/ml/src/main/rust/, and post_ffw norm gammas match S10 source
+    # at cos 1.000000 (no hidden gain). The /256 on `up` therefore ran every
+    # layer's up-path at 1/256 trained magnitude on device (staged-maml weights
+    # reproduce the exact device failure signature 7001/3; S10-source gives
+    # 9079/6; only S10_up restore flips it). Full-scale safety re-measured
+    # under TRUE 6-token chained inputs: worst |gelu*up| 21k, worst |down_out|
+    # 14k (both L0), 3-4x headroom under fp16 max 65504 - no overflow risk.
+    # So FF1_SCALE = 1.0: emit `up` at FULL scale. Keep /4 on o/pp (harmless
+    # through their norms, no breakage observed).
+    #
+    # PARITY-CLOSURE CORRECTION (2026-09-25): the /4 on o/pp is NOT harmless.
+    # The post-branch norms erase uniform scale, but the live int8 MM/qint
+    # grids quantize absolute magnitudes: a /4 weight table makes the device
+    # round-trip at 1/4 the trained grid step, flipping codes the live model
+    # never flips. The device `quantize` op reproduces live exactly only at
+    # full-scale tables (proven: mm-only device-vs-numpy 0.9943 with FF1 at
+    # 1.0; the o-tail diverges with o at /4). So O_SCALE = PL_SCALE = 1.0:
+    # emit o/pp at FULL scale. fp16 headroom re-verified (worst |down_out|
+    # 14k vs fp16 max 65504).
+    O_SCALE, FF1_SCALE, PL_SCALE = 1.0, 1.0, 1.0
     for index in range(35):
         at = f'transformer.layer_{index}'
         full = index % 5 == 4

@@ -1,0 +1,35 @@
+#version 450
+//! `clamp(round(x / scale), -128, 127) * scale`, S10's per-tensor int8 round-trip.
+//!
+//! # Why an op and not a fold
+//!
+//! The live model quantizes the attention mixture (`Mm`) to int8 at a per-layer
+//! scale (the `attn_vec_einsum/composite` tensor: layer 0's is 0.03026575781404972)
+//! before the O projection consumes it. Without this the device runs the O-tail at
+//! full precision while the reference rounds to 1/128 steps, and the two diverge
+//! past any cosine gate (fp `Mm` vs live: 0.67; round-tripped: 0.97865 at L0).
+//! Rounding is not a scale and cannot fold into either neighbouring convolution.
+//!
+//! # Why the scale is a push constant
+//!
+//! One float per owning layer, fixed by the S10 bundle (see `MM_SCALE` in
+//! `nets::gemma4`). Like `softcap`'s cap it rides `p.param0_bits` as raw f32 bits
+//! rather than a weight tensor: no file-format change, no re-push of the 1 GB text
+//! model. The parity harness guards drift — a bundle change fails it loudly.
+//!
+//! # Push fields
+//!
+//! `p.in0` is the input, `p.out_at` the output, `p.param0_bits` the scale as raw
+//! f32 bits, and `p.count` the element count. Shapes are irrelevant: elementwise.
+//! Ties round half up (`floor(x + 0.5)`); live ties are measure-zero either way.
+#include "common.glsl"
+void main() {
+    uint index = global_index();
+    if (index >= p.count) {
+        return;
+    }
+    float scale = uintBitsToFloat(p.param0_bits);
+    float q = floor(float(arena[p.in0 + index]) / scale + 0.5);
+    q = clamp(q, -128.0, 127.0);
+    arena[p.out_at + index] = float16_t(q * scale);
+}
