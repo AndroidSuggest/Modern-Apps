@@ -1,5 +1,9 @@
 //! ES10 local ISD-R command builders and response parsers (SGP.22).
 //!
+//! The ES10c local ops (EID, info, profiles, enable/disable/delete/nickname)
+//! plus the ES10b notification list/remove helpers. The ES10b download flow
+//! (challenge → install → metadata → cancel) lives in [`crate::es10b`].
+//!
 //! Pure protocol logic: each function either builds a request TLV (to be wrapped
 //! in STORE DATA APDUs and transmitted by the transport layer) or parses a
 //! response TLV. No JNI or transport here, so it is fully host-testable.
@@ -21,7 +25,7 @@ const TAG_CI_PKID_SIGNING: u32 = 0xAA; // [10] SEQUENCE OF SubjectKeyIdentifier
 const TAG_PROFILE_INFO_LIST: u32 = 0xBF2D; // ES10c GetProfilesInfo request/response
 const TAG_PROFILE_LIST_OK: u32 = 0xA0; // [0] SEQUENCE OF ProfileInfo
 const TAG_PROFILE_INFO: u32 = 0xE3; // [PRIVATE 3] ProfileInfo
-const TAG_ICCID: u32 = 0x5A; // [APPLICATION 26] ICCID (same numeric tag as EID)
+pub(crate) const TAG_ICCID: u32 = 0x5A; // [APPLICATION 26] ICCID (shared with es10b metadata)
 const TAG_ISDP_AID: u32 = 0x4F; // [APPLICATION 15] ISD-P AID
 const TAG_PROFILE_STATE: u32 = 0x9F70; // [112] ProfileState
 const TAG_NICKNAME: u32 = 0x90; // [16] profileNickname UTF8String
@@ -36,37 +40,72 @@ const TAG_SET_NICKNAME: u32 = 0xBF29; // ES10c SetNickname
 const TAG_REFRESH_FLAG: u32 = 0x81; // [1] refreshFlag BOOLEAN
 const TAG_RESULT: u32 = 0x80; // [0] result INTEGER (enable/disable/delete/setNickname)
 
+// Notification list/remove tags, shared with the es10b retrieve path.
 const TAG_LIST_NOTIFICATION: u32 = 0xBF28; // ES10b ListNotification
-const TAG_NOTIFICATION_LIST: u32 = 0xA0; // [0] SEQUENCE OF NotificationMetadata
-const TAG_NOTIFICATION_METADATA: u32 = 0xBF2F; // [47] NotificationMetadata
-const TAG_SEQ_NUMBER: u32 = 0x80; // [0] seqNumber INTEGER
+pub(crate) const TAG_NOTIFICATION_LIST: u32 = 0xA0; // [0] SEQUENCE OF NotificationMetadata
+pub(crate) const TAG_NOTIFICATION_METADATA: u32 = 0xBF2F; // [47] NotificationMetadata
+pub(crate) const TAG_SEQ_NUMBER: u32 = 0x80; // [0] seqNumber INTEGER
 const TAG_NOTIFICATION_EVENT: u32 = 0x81; // [1] profileManagementOperation BIT STRING
-const TAG_NOTIFICATION_ADDRESS: u32 = 0x82; // [2] notificationAddress UTF8String
+// notificationAddress UTF8String. SGP.22 tags it 0x0C (like lpac parses); it is
+// NOT context-[2] despite sitting in second position of NotificationMetadata.
+pub(crate) const TAG_NOTIFICATION_ADDRESS: u32 = 0x0C;
 const TAG_REMOVE_NOTIFICATION: u32 = 0xBF30; // ES10b RemoveNotificationFromList
 
-const TAG_GET_EUICC_CHALLENGE: u32 = 0xBF2E; // ES10b GetEUICCChallenge
-const TAG_EUICC_CHALLENGE: u32 = 0x80; // [0] euiccChallenge Octet16
-const TAG_AUTHENTICATE_SERVER: u32 = 0xBF38; // ES10b AuthenticateServer
-const TAG_PREPARE_DOWNLOAD: u32 = 0xBF21; // ES10b PrepareDownload
-const TAG_HASH_CC: u32 = 0x04; // hashCc Octet32 (confirmation code)
-const TAG_BPP: u32 = 0xBF36; // BoundProfilePackage
-const TAG_INITIALISE_SECURE_CHANNEL: u32 = 0xBF23; // initialiseSecureChannelRequest
-const TAG_BPP_SEQ_87: u32 = 0xA0; // firstSequenceOf87
-const TAG_BPP_SEQ_88: u32 = 0xA1; // sequenceOf88
-const TAG_BPP_SEQ_87B: u32 = 0xA2; // secondSequenceOf87
-const TAG_BPP_SEQ_86: u32 = 0xA3; // sequenceOf86
-const TAG_PROFILE_INSTALL_RESULT: u32 = 0xBF37; // ProfileInstallationResult
-const TAG_PIR_DATA: u32 = 0xBF27; // profileInstallationResultData
-const TAG_FINAL_RESULT: u32 = 0xA2; // [2] finalResult
-const TAG_SUCCESS_RESULT: u32 = 0xA0; // [0] successResult
-const TAG_ERROR_RESULT: u32 = 0xA1; // [1] errorResult
+/// ASN.1 scalar helpers shared with [`crate::es10b`].
+pub(crate) fn first_byte(v: &[u8]) -> Option<u8> {
+    v.first().copied()
+}
 
-// ctxParams1 / DeviceInfo construction tags.
-const TAG_CTX_PARAMS_COMMON: u32 = 0xA0; // [0] ctxParamsForCommonAuthentication
-const TAG_MATCHING_ID: u32 = 0x80; // [0] matchingId UTF8String
-const TAG_DEVICE_INFO: u32 = 0xA1; // [1] deviceInfo (IMPLICIT replaces SEQUENCE tag)
-const TAG_TAC: u32 = 0x80; // [0] tac Octet4
-const TAG_DEVICE_CAPS: u32 = 0xA1; // [1] deviceCapabilities SEQUENCE
+pub(crate) fn utf8(v: &[u8]) -> String {
+    String::from_utf8_lossy(v).into_owned()
+}
+
+/// Parses a (short) two's-complement BER INTEGER into i64.
+pub(crate) fn parse_int(v: &[u8]) -> i64 {
+    if v.is_empty() {
+        return 0;
+    }
+    let mut acc: i64 = if v[0] & 0x80 != 0 { -1 } else { 0 };
+    for &b in v {
+        acc = (acc << 8) | b as i64;
+    }
+    acc
+}
+
+/// Minimal unsigned big-endian INTEGER encoding (always at least one byte, with
+/// a leading zero when the top bit would otherwise make it negative).
+pub(crate) fn encode_int_minimal(mut v: u32) -> Vec<u8> {
+    if v == 0 {
+        return vec![0];
+    }
+    let mut bytes = Vec::new();
+    while v > 0 {
+        bytes.insert(0, (v & 0xFF) as u8);
+        v >>= 8;
+    }
+    if bytes[0] & 0x80 != 0 {
+        bytes.insert(0, 0x00);
+    }
+    bytes
+}
+
+/// Decodes an SGP.22 ICCID (BCD, nibble-swapped, F-padded) into decimal digits.
+pub(crate) fn decode_iccid(raw: &[u8]) -> String {
+    let mut s = String::with_capacity(raw.len() * 2);
+    for &b in raw {
+        let lo = b & 0x0F;
+        let hi = b >> 4;
+        for nib in [lo, hi] {
+            if nib == 0x0F {
+                continue;
+            }
+            if nib < 10 {
+                s.push((b'0' + nib) as char);
+            }
+        }
+    }
+    s
+}
 
 /// Parsed subset of EUICCInfo1 useful for display.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -308,144 +347,5 @@ pub fn parse_remove_result(response: &[u8]) -> Result<i64, String> {
     Ok(parse_int(code))
 }
 
-// ---------------------------------------------------------------------------
-// Download flow (ES10b): challenge, AuthenticateServer, PrepareDownload,
-// LoadBoundProfilePackage
-// ---------------------------------------------------------------------------
-
-/// Outcome of installing a Bound Profile Package.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstallResult {
-    pub success: bool,
-    pub message: String,
-    /// The raw ProfileInstallationResult (BF37) to deliver via HandleNotification.
-    pub notification: Vec<u8>,
-}
-
-/// Builds the ES10b GetEUICCChallenge request (empty BF2E).
-pub fn build_get_euicc_challenge() -> Vec<u8> {
-    asn1::tlv(TAG_GET_EUICC_CHALLENGE, &[])
-}
-
-/// Parses a GetEUICCChallenge response into the 16-byte challenge.
-pub fn parse_euicc_challenge(response: &[u8]) -> Result<Vec<u8>, String> {
-    let body = asn1::find(response, TAG_GET_EUICC_CHALLENGE).ok_or("GetEUICCChallenge: missing BF2E")?;
-    let challenge = asn1::find(body, TAG_EUICC_CHALLENGE).ok_or("GetEUICCChallenge: missing challenge")?;
-    Ok(challenge.to_vec())
-}
-
-/// Builds ctxParams1 for common authentication: matchingId + a minimal DeviceInfo.
-///
-/// `tac` is the 4-byte Type Allocation Code; deviceCapabilities is sent empty.
-pub fn build_ctx_params1(matching_id: &str, tac: &[u8; 4]) -> Vec<u8> {
-    let mut device_info_val = asn1::tlv(TAG_TAC, tac);
-    device_info_val.extend(asn1::tlv(TAG_DEVICE_CAPS, &[])); // empty DeviceCapabilities
-    let device_info = asn1::tlv(TAG_DEVICE_INFO, &device_info_val);
-
-    let mut common = asn1::tlv(TAG_MATCHING_ID, matching_id.as_bytes());
-    common.extend(device_info);
-    asn1::tlv(TAG_CTX_PARAMS_COMMON, &common)
-}
-
-/// Builds the ES10b AuthenticateServer request by concatenating the server blobs
-/// (each already a complete DER TLV) with ctxParams1, wrapped in BF38.
-pub fn build_authenticate_server(
-    server_signed1: &[u8],
-    server_signature1: &[u8],
-    euicc_ci_pkid: &[u8],
-    server_certificate: &[u8],
-    ctx_params1: &[u8],
-) -> Vec<u8> {
-    let mut v = Vec::new();
-    v.extend_from_slice(server_signed1);
-    v.extend_from_slice(server_signature1);
-    v.extend_from_slice(euicc_ci_pkid);
-    v.extend_from_slice(server_certificate);
-    v.extend_from_slice(ctx_params1);
-    asn1::tlv(TAG_AUTHENTICATE_SERVER, &v)
-}
-
-/// Builds the ES10b PrepareDownload request from the SM-DP+ blobs (each a
-/// complete DER TLV), wrapped in BF21.
-pub fn build_prepare_download(
-    smdp_signed2: &[u8],
-    smdp_signature2: &[u8],
-    hash_cc: Option<&[u8]>,
-    smdp_certificate: &[u8],
-) -> Vec<u8> {
-    let mut v = Vec::new();
-    v.extend_from_slice(smdp_signed2);
-    v.extend_from_slice(smdp_signature2);
-    if let Some(cc) = hash_cc {
-        v.extend(asn1::tlv(TAG_HASH_CC, cc));
-    }
-    v.extend_from_slice(smdp_certificate);
-    asn1::tlv(TAG_PREPARE_DOWNLOAD, &v)
-}
-
-/// Segments a Bound Profile Package (BF36) into the ordered list of TLVs the LPA
-/// must transmit to the eUICC via STORE DATA: the initialiseSecureChannelRequest
-/// followed by each element of the 87/88/87/86 sequences.
-pub fn segment_bpp(bpp: &[u8]) -> Result<Vec<Vec<u8>>, String> {
-    let body = asn1::find(bpp, TAG_BPP).ok_or("BoundProfilePackage: missing BF36")?;
-    let mut segments = Vec::new();
-    for child in asn1::children(body).ok_or("BoundProfilePackage: malformed")? {
-        match child.tag {
-            TAG_INITIALISE_SECURE_CHANNEL => {
-                segments.push(asn1::tlv(child.tag, child.value));
-            }
-            TAG_BPP_SEQ_87 | TAG_BPP_SEQ_88 | TAG_BPP_SEQ_87B | TAG_BPP_SEQ_86 => {
-                for element in asn1::children(child.value).ok_or("BPP: malformed sequence")? {
-                    segments.push(asn1::tlv(element.tag, element.value));
-                }
-            }
-            other => {
-                // Unknown top-level element: forward it verbatim to be safe.
-                segments.push(asn1::tlv(other, child.value));
-            }
-        }
-    }
-    Ok(segments)
-}
-
-/// Parses a ProfileInstallationResult (BF37) into an [`InstallResult`].
-pub fn parse_install_result(response: &[u8]) -> Result<InstallResult, String> {
-    let body = asn1::find(response, TAG_PROFILE_INSTALL_RESULT)
-        .ok_or("ProfileInstallationResult: missing BF37")?;
-    let data = asn1::find(body, TAG_PIR_DATA).ok_or("ProfileInstallationResult: missing BF27")?;
-    let final_result = asn1::find(data, TAG_FINAL_RESULT)
-        .ok_or("ProfileInstallationResult: missing finalResult")?;
-
-    let (success, message) = if asn1::find(final_result, TAG_SUCCESS_RESULT).is_some() {
-        (true, "Profile installed".to_string())
-    } else if let Some(err) = asn1::find(final_result, TAG_ERROR_RESULT) {
-        // errorResult ::= SEQUENCE { bppCommandId INTEGER, errorReason ENUMERATED, ... }
-        let reason = asn1::children(err)
-            .and_then(|kids| kids.get(1).map(|k| parse_int(k.value)))
-            .unwrap_or(-1);
-        (false, format!("Install failed (errorReason {reason})"))
-    } else {
-        (false, "Install failed (unknown result)".to_string())
-    };
-
-    Ok(InstallResult {
-        success,
-        message,
-        notification: response.to_vec(),
-    })
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Lowercase hex encoding.
-pub fn hex(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        s.push_str(&format!("{b:02x}"));
-    }
-    s
-}
 
 include!("es10_part1.rs");

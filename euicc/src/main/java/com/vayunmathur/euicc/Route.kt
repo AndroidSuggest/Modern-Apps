@@ -39,7 +39,15 @@ sealed interface Route : NavKey {
      * than places the user can navigate between. Which one shows is decided by
      * [com.vayunmathur.euicc.platform.DownloadState], so the screen cannot drift out of
      * sync with the session driving it.
+     *
+     * [imei] and [confirmationCode] come from the wizard (manual entry collects them
+     * up front); QR/universal-link entries leave them null and the flow collects the
+     * confirmation code mid-download when the SM-DP+ demands one.
      */
     @Serializable
-    data class Download(val activationCode: String) : Route
+    data class Download(
+        val activationCode: String,
+        val imei: String? = null,
+        val confirmationCode: String? = null,
+    ) : Route
 }

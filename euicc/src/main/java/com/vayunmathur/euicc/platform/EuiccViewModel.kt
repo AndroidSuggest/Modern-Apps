@@ -11,6 +11,7 @@ import com.vayunmathur.euicc.EuiccNative
 import com.vayunmathur.euicc.data.EuiccInfo
 import com.vayunmathur.euicc.data.Notification
 import com.vayunmathur.euicc.data.Profile
+import com.vayunmathur.euicc.service.DownloadService
 import com.vayunmathur.euicc.telephony.EuiccChannelManager
 import com.vayunmathur.library.network.NetworkClient
 import com.vayunmathur.library.network.TrustBundle
@@ -35,7 +36,26 @@ data class EuiccScreenState(
 @kotlinx.serialization.Serializable
 private data class DownloadResult(val success: Boolean = false, val message: String = "")
 
+/** Native authenticate-session outcome (see `EuiccNative.nativeAuthenticate`). */
+@kotlinx.serialization.Serializable
+private data class AuthSession(
+    val error: String? = null,
+    val transactionId: String? = null,
+    val carrier: String? = null,
+    val profileName: String? = null,
+    val iccid: String? = null,
+    val ccRequired: Boolean = false,
+)
+
 private const val TAG = "EuiccViewModel"
+
+/** Switch focus to the confirmation-code screen after a `8.2.7` refusal. */
+private fun isConfirmationCodeRefusal(message: String?): Boolean =
+    message != null && (
+        "Confirmation Code is refused" in message ||
+            "maximum number of retries for the Confirmation Code" in message ||
+            "Confirmation Code is missing" in message
+        )
 
 class EuiccViewModel(app: Application) : AndroidViewModel(app) {
     private val channelManager = EuiccChannelManager(app)
@@ -52,6 +72,19 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
     var download by mutableStateOf<DownloadState>(DownloadState.Idle)
         private set
 
+    /**
+     * Authenticated-but-unfinished SM-DP+ session (opaque transaction handle
+     * from `nativeAuthenticate`), plus the inputs that produced it. Kept so
+     * Confirm → finish, confirmation-code resume, and cancel can all address
+     * the same server session.
+     */
+    private var pendingTransaction: String? = null
+    private var pendingActivation: String? = null
+    private var pendingImei: String? = null
+    private var pendingConfirmationCode: String? = null
+    /** Carrier preview from AuthenticateClient, for Complete after install. */
+    private var pendingCarrier: String? = null
+
     init {
         // SM-DP+ servers authenticate TLS under the GSMA CI PKI as well as public
         // CAs, so downloads need the ESIM bundle (system roots + GSMA CI root).
@@ -61,23 +94,103 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Runs the download for [activationCode].
+     * Runs the download for [activationCode] in split phases, mirroring the
+     * lpac-jni `downloadProfile` state split:
+     * authenticate → [DownloadState.Confirm] → optional
+     * [DownloadState.AwaitingConfirmationCode] → [DownloadState.Installing]
+     * (with progress) → [DownloadState.Complete]/[DownloadState.Failed].
      *
-     * Goes straight from [DownloadState.Preparing] to [DownloadState.Installing] because
-     * `nativeDownloadProfile` is atomic - it authenticates, binds and installs in one call,
-     * with no point in between where it can report the carrier or ask for a confirmation
-     * code. Splitting it is what makes those states reachable.
+     * Nothing is written to the eUICC's profile store before the user confirms;
+     * cancelling from Confirm (or a confirm timeout) frees the server session
+     * via `nativeCancelDownload` instead of orphaning it.
+     *
+     * @param imei device IMEI for ctxParams1 (user-editable, optional).
+     * @param confirmationCode already-known confirmation code, or null.
      */
-    fun startDownload(activationCode: String) {
-        if (download is DownloadState.Preparing || download is DownloadState.Installing) return
+    fun startDownload(activationCode: String, imei: String? = null, confirmationCode: String? = null) {
+        // A session is already driving the flow in every non-terminal state;
+        // Failed/Complete/Idle are the only re-entry points (retry / fresh start).
+        if (download !is DownloadState.Idle &&
+            download !is DownloadState.Failed &&
+            download !is DownloadState.Complete
+        ) {
+            return
+        }
         download = DownloadState.Preparing
         viewModelScope.launch {
-            download = DownloadState.Installing()
-            val outcome = withContext(Dispatchers.IO) {
+            val session = withContext(Dispatchers.IO) {
                 runCatching {
-                    channelManager.withIsdrChannel { EuiccNative.nativeDownloadProfile(activationCode) }
+                    channelManager.withIsdrChannel {
+                        EuiccNative.nativeAuthenticate(
+                            activationCode,
+                            confirmationCode.orEmpty(),
+                            tacHex = "",
+                            imei = imei.orEmpty(),
+                        )
+                    }
                 }
             }
+            val auth = session.fold(
+                onSuccess = { raw ->
+                    runCatching { json.decodeFromString<AuthSession>(raw) }.getOrNull()
+                },
+                onFailure = {
+                    Log.e(TAG, "download authenticate failed: ${it.message}", it)
+                    null
+                },
+            )
+            if (auth == null || auth.transactionId == null) {
+                val message = auth?.error
+                Log.e(TAG, "download failed: ${message.ifNullOrBlank()}")
+                download = DownloadState.Failed(message?.ifBlank { null })
+                reload()
+                return@launch
+            }
+            // Stash the handle for confirm / finish / cancel.
+            pendingTransaction = auth.transactionId
+            pendingActivation = activationCode
+            pendingImei = imei
+            pendingCarrier = auth.carrier
+            if (auth.ccRequired && confirmationCode.isNullOrEmpty()) {
+                download = DownloadState.AwaitingConfirmationCode(auth.carrier)
+            } else {
+                download = DownloadState.Confirm(auth.carrier, auth.profileName)
+            }
+        }
+    }
+
+    /** The user accepted the carrier preview: run PrepareDownload → BPP → install. */
+    fun confirmDownload(confirmationCode: String? = null) {
+        val transactionId = pendingTransaction ?: return
+        val code = confirmationCode ?: pendingConfirmationCode
+        if (download !is DownloadState.Confirm && download !is DownloadState.AwaitingConfirmationCode) return
+        download = DownloadState.Installing(0f)
+        viewModelScope.launch {
+            val callback = object : EuiccNative.DownloadProgressCallback {
+                override fun onProgress(done: Int, total: Int): Boolean {
+                    // Progress 0.5 → 0.95 across the segment stream; the
+                    // authenticate half already accounts for the first 0.5.
+                    val fraction = if (total <= 0) 0f else done.toFloat() / total.toFloat()
+                    download = DownloadState.Installing(0.5f + 0.45f * fraction)
+                    return true
+                }
+            }
+            // Foreground guard for the eUICC write: keeps process importance up
+            // (and the CPU awake) until the install settles either way.
+            val app = getApplication<Application>()
+            DownloadService.start(app)
+            val outcome = try {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        channelManager.withIsdrChannel {
+                            EuiccNative.nativeFinishDownload(transactionId, code.orEmpty(), callback)
+                        }
+                    }
+                }
+            } finally {
+                DownloadService.stop(app)
+            }
+            pendingTransaction = null
             download = outcome.fold(
                 onSuccess = { raw ->
                     val result = runCatching { json.decodeFromString<DownloadResult>(raw) }.getOrNull()
@@ -87,7 +200,14 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
                             Log.e(TAG, "download failed: unreadable native result")
                             DownloadState.Failed(null)
                         }
-                        result.success -> DownloadState.Complete(null)
+                        result.success -> DownloadState.Complete(pendingCarrier)
+                        isConfirmationCodeRefusal(result.message) -> {
+                            // A wrong code is retryable without re-authenticating
+                            // only when the session survives; ours is consumed,
+                            // so re-authenticate and land back on the code screen.
+                            Log.e(TAG, "download failed: ${result.message}")
+                            relaunchForConfirmationCode(result.message)
+                        }
                         else -> {
                             Log.e(TAG, "download failed: ${result.message.ifBlank { "<empty>" }}")
                             DownloadState.Failed(result.message.ifBlank { null })
@@ -105,10 +225,77 @@ class EuiccViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Clears the activation flow, so leaving and re-entering it starts clean. */
-    fun clearDownload() {
+    /** The user submitted a confirmation code: resume the install with it. */
+    fun submitConfirmationCode(code: String) {
+        pendingConfirmationCode = code
+        confirmDownload(code)
+    }
+
+    /**
+     * Cancels an in-flight download: frees the server session (when one is
+     * authenticated but unfinished) and returns to idle. Safe to call from any
+     * state; a no-op without a pending transaction.
+     */
+    fun cancelDownload(reason: Int = 0) {
+        val transactionId = pendingTransaction
+        pendingTransaction = null
+        pendingConfirmationCode = null
+        if (transactionId != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching {
+                    channelManager.withIsdrChannel {
+                        EuiccNative.nativeCancelDownload(transactionId, reason)
+                    }
+                }
+            }
+        }
         download = DownloadState.Idle
     }
+
+    /** Clears the activation flow, so leaving and re-entering it starts clean. */
+    fun clearDownload() {
+        // Leaving mid-authentication orphans the server session unless freed.
+        if (pendingTransaction != null) cancelDownload()
+        pendingActivation = null
+        pendingImei = null
+        pendingConfirmationCode = null
+        pendingCarrier = null
+        download = DownloadState.Idle
+    }
+
+    /**
+     * Re-authenticates after a confirmation-code refusal and lands back on the
+     * code screen with the server's wording. The refused session is consumed,
+     * so a fresh AuthenticateClient round trip is required before retrying —
+     * retrying finish on the dead handle would only report "session expired".
+     */
+    private suspend fun relaunchForConfirmationCode(serverMessage: String): DownloadState {
+        val activation = pendingActivation
+        pendingTransaction = null
+        if (activation == null) return DownloadState.Failed(serverMessage)
+        val raw = withContext(Dispatchers.IO) {
+            runCatching {
+                channelManager.withIsdrChannel {
+                    EuiccNative.nativeAuthenticate(
+                        activation,
+                        pendingConfirmationCode.orEmpty(),
+                        tacHex = "",
+                        imei = pendingImei.orEmpty(),
+                    )
+                }
+            }.getOrNull()
+        }
+        val auth = raw?.let { runCatching { json.decodeFromString<AuthSession>(it) }.getOrNull() }
+        if (auth?.transactionId == null) {
+            return DownloadState.Failed(auth?.error ?: serverMessage)
+        }
+        pendingTransaction = auth.transactionId
+        pendingConfirmationCode = null
+        pendingCarrier = auth.carrier ?: pendingCarrier
+        return DownloadState.AwaitingConfirmationCode(pendingCarrier, error = true)
+    }
+
+    private fun String?.ifNullOrBlank(): String = if (this.isNullOrBlank()) "<empty>" else this
 
     /** Reads EID, eUICC info, profiles, and notifications in one channel session. */
     fun reload() {

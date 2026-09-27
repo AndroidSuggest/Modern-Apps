@@ -20,18 +20,24 @@ import com.vayunmathur.library.util.NavBackStack
  * steps of a single eUICC session: going "back" from installing to the carrier
  * confirmation would leave the session running with nothing driving it. Back is suppressed
  * outright while the eUICC is being written to, which is the one point where interrupting
- * can leave a half-installed profile behind.
+ * can leave a half-installed profile behind. Cancelling from Confirm (or from the
+ * confirmation-code screen) frees the server session via `onCancelSession`.
  */
 @Composable
 fun DownloadScreen(
     activationCode: String,
+    imei: String?,
+    confirmationCode: String?,
     state: DownloadState,
     backStack: NavBackStack<Route>,
-    onStart: (String) -> Unit,
+    onStart: (String, String?, String?) -> Unit,
+    onConfirm: (String?) -> Unit,
+    onSubmitCode: (String) -> Unit,
+    onCancelSession: () -> Unit,
     onDone: () -> Unit,
 ) {
     LaunchedEffect(activationCode) {
-        if (state is DownloadState.Idle) onStart(activationCode)
+        if (state is DownloadState.Idle) onStart(activationCode, imei, confirmationCode)
     }
 
     val busy = state is DownloadState.Preparing || state is DownloadState.Installing
@@ -48,19 +54,16 @@ fun DownloadScreen(
                 ConfirmCarrierContent(
                     carrier = current.carrier,
                     profileName = current.profileName,
-                    onConfirm = { onStart(activationCode) },
-                    onCancel = onDone,
+                    onConfirm = { onConfirm(null) },
+                    onCancel = onCancelSession,
                 )
 
             is DownloadState.AwaitingConfirmationCode ->
                 ConfirmationCodeContent(
                     carrier = current.carrier,
                     error = current.error,
-                    // The code is accepted by the UI but has nowhere to go until the native
-                    // core can resume a paused download with it; retrying the whole
-                    // activation code is the only thing that exists today.
-                    onSubmit = { onStart(activationCode) },
-                    onCancel = onDone,
+                    onSubmit = onSubmitCode,
+                    onCancel = onCancelSession,
                 )
 
             is DownloadState.Installing -> InstallingContent(progress = current.progress)
@@ -74,7 +77,7 @@ fun DownloadScreen(
             is DownloadState.Failed ->
                 FailedContent(
                     message = current.message,
-                    onRetry = { onStart(activationCode) },
+                    onRetry = { onStart(activationCode, imei, confirmationCode) },
                     onCancel = onDone,
                 )
         }

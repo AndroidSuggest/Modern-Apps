@@ -35,7 +35,14 @@ class AddEsimActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val code = intent?.data?.getQueryParameter(EsimLink.CARDDATA_PARAM)?.trim().orEmpty()
+        // Universal link (`...?carddata=<code>`) or raw `lpa:<code>` deep link.
+        val carddata = intent?.data?.getQueryParameter(EsimLink.CARDDATA_PARAM)?.trim().orEmpty()
+        val rawLpa = if (intent?.data?.scheme.equals("lpa", ignoreCase = true)) {
+            intent?.data?.schemeSpecificPart?.trim().orEmpty()
+        } else {
+            ""
+        }
+        val code = carddata.ifEmpty { rawLpa }
         val start: Route =
             if (looksLikeActivationCode(code)) Route.Download(code) else Route.AddSim
         setContent { DynamicTheme { Navigation(viewModel, start) } }

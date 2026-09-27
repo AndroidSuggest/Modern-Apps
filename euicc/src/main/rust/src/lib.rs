@@ -20,8 +20,10 @@ mod asn1;
 mod base64;
 mod download;
 mod es10;
+mod es10b;
 mod es9p;
 mod jni;
+mod jni_download;
 
 /// Version string reported by the native core.
 pub const VERSION: &str = concat!("euicc-core ", env!("CARGO_PKG_VERSION"));

@@ -76,9 +76,17 @@ fun Navigation(viewModel: EuiccViewModel, start: Route? = null) {
         entry<Route.Download> { route ->
             DownloadScreen(
                 activationCode = route.activationCode,
+                imei = route.imei,
+                confirmationCode = route.confirmationCode,
                 state = viewModel.download,
                 backStack = backStack,
                 onStart = viewModel::startDownload,
+                onConfirm = viewModel::confirmDownload,
+                onSubmitCode = viewModel::submitConfirmationCode,
+                onCancelSession = {
+                    viewModel.cancelDownload()
+                    finishActivation()
+                },
                 onDone = ::finishActivation,
             )
         }

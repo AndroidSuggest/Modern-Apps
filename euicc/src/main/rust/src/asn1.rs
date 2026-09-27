@@ -132,6 +132,26 @@ pub fn tlv(tag: u32, value: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Builds a bare TLV header: `tag || len(value_len)` with no value bytes.
+///
+/// Used when streaming constructed sequences (the BPP `88…`/`86…` element
+/// lists) whose header the eUICC treats as a length prefix for the elements
+/// that follow as separate STORE DATA payloads — mirroring lpac's split of
+/// the A1/A3 header from its children.
+pub fn header(tag: u32, value_len: usize) -> Vec<u8> {
+    let mut out = encode_tag(tag);
+    out.extend_from_slice(&encode_len(value_len));
+    out
+}
+
+/// Re-wraps an already-parsed value in its tag+length header (`tag || len ||
+/// value`). The encoder is canonical DER (minimal length form), so re-wrapping
+/// a value taken from canonical eUICC output reproduces the original bytes —
+/// what lpac's `pack_alloc` round trip also yields.
+pub fn wrap(tag: u32, value: &[u8]) -> Vec<u8> {
+    tlv(tag, value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

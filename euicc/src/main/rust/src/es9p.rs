@@ -29,6 +29,8 @@ pub struct InitiateAuthResult {
 
 /// Result of ES9+.AuthenticateClient.
 pub struct AuthenticateClientResult {
+    /// Raw StoreMetadata (BF25) DER for the carrier-confirm preview.
+    pub profile_metadata: Vec<u8>,
     pub smdp_signed2: Vec<u8>,
     pub smdp_signature2: Vec<u8>,
     pub smdp_certificate: Vec<u8>,
@@ -57,7 +59,8 @@ pub fn initiate_authentication(
 }
 
 /// AuthenticateClient: forwards the eUICC's AuthenticateServer response; gets the
-/// SM-DP+'s signed profile-binding material.
+/// SM-DP+'s signed profile-binding material plus the `profileMetadata` preview
+/// (like lpac's `es9p_authenticate_client_r`, which requests all four fields).
 pub fn authenticate_client(
     smdp: &str,
     transaction_id: &str,
@@ -69,6 +72,7 @@ pub fn authenticate_client(
     });
     let v = post("authenticateClient", &endpoint(smdp, "authenticateClient"), &body, true)?;
     Ok(AuthenticateClientResult {
+        profile_metadata: get_b64(&v, "profileMetadata")?,
         smdp_signed2: get_b64(&v, "smdpSigned2")?,
         smdp_signature2: get_b64(&v, "smdpSignature2")?,
         smdp_certificate: get_b64(&v, "smdpCertificate")?,
@@ -95,13 +99,44 @@ pub fn get_bound_profile_package(
     get_b64(&v, "boundProfilePackage")
 }
 
+/// ES9+ cancelSession: frees the server-side RSP session identified by
+/// `transaction_id` after a failed, cancelled, or superseded download, mirroring
+/// lpac's `es9p_cancel_session_r` (`{transactionId, cancelSessionResponse}`).
+/// Best-effort: a failure to cancel must not mask the download's own outcome.
+pub fn cancel_session(
+    smdp: &str,
+    transaction_id: &str,
+    cancel_session_response: &[u8],
+) -> Result<(), String> {
+    let body = json!({
+        "transactionId": transaction_id,
+        "cancelSessionResponse": base64::encode(cancel_session_response),
+    });
+    let _ = post("cancelSession", &endpoint(smdp, "cancelSession"), &body, false)?;
+    Ok(())
+}
 /// HandleNotification: delivers a pending notification to the SM-DP+. Best-effort;
 /// the eUICC keeps the notification until acknowledged, so a failure is not fatal.
-pub fn handle_notification(smdp: &str, pending_notification: &[u8]) -> Result<(), String> {
+///
+/// The caller resolves the delivery address from the notification itself (lpac's
+/// `notification process` reads it out of RetrieveNotificationsList and posts
+/// there, not to the download's SM-DP+), falling back to the download server.
+pub fn handle_notification_at(address: &str, pending_notification: &[u8]) -> Result<(), String> {
     let body = json!({ "pendingNotification": base64::encode(pending_notification) });
     // A 204/empty body is normal here; ignore the parsed value.
-    let _ = post("handleNotification", &endpoint(smdp, "handleNotification"), &body, false)?;
+    let _ = post(
+        "handleNotification",
+        &endpoint(address, "handleNotification"),
+        &body,
+        false,
+    )?;
     Ok(())
+}
+
+/// HandleNotification to the download's own SM-DP+ (the common case when the
+/// notification carries no explicit address).
+pub fn handle_notification(smdp: &str, pending_notification: &[u8]) -> Result<(), String> {
+    handle_notification_at(smdp, pending_notification)
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +146,9 @@ pub fn handle_notification(smdp: &str, pending_notification: &[u8]) -> Result<()
 fn post(function: &str, url: &str, body: &Value, expect_body: bool) -> Result<Value, String> {
     let headers = [
         ("Content-Type".to_string(), "application/json".to_string()),
-        ("X-Admin-Protocol".to_string(), "gsma/rsp/v2.2.0".to_string()),
+        // lpac sends v2.2.2 (`euicc/es9p.c:lpa_header`); behaviour-gating
+        // SM-DP+ servers key off this version.
+        ("X-Admin-Protocol".to_string(), "gsma/rsp/v2.2.2".to_string()),
         ("User-Agent".to_string(), "gsma-rsp-lpad".to_string()),
         ("Accept".to_string(), "application/json".to_string()),
     ];
@@ -142,6 +179,10 @@ fn post(function: &str, url: &str, body: &Value, expect_body: bool) -> Result<Va
 /// Like lpac, a missing `header`/`functionExecutionStatus` object is itself an
 /// error: per SGP.22 every ES9+ reply carries one, so its absence means the
 /// server did not answer the function at all (rather than a field-level gap).
+///
+/// On failure the message keeps the server's `subjectCode / subjectIdentifier /
+/// message` wording (with lpac's `es9p_error_message` table as fallback) so
+/// triage sees the real cause instead of just `{state} ({reasonCode})`.
 fn check_function_execution_status(v: &Value) -> Result<(), String> {
     let status = v
         .get("header")
@@ -154,14 +195,86 @@ fn check_function_execution_status(v: &Value) -> Result<(), String> {
         return Err("SM-DP+ reply has functionExecutionStatus without status".to_string());
     }
     if state != "Executed-Success" {
-        let reason = status
-            .get("statusCodeData")
-            .and_then(|d| d.get("reasonCode"))
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        return Err(format!("SM-DP+ {state} ({reason})"));
+        return Err(format!("SM-DP+ {state}: {}", status_detail(status)));
     }
     Ok(())
+}
+
+/// Renders an ES9+ status block as
+/// `subjectCode X / subjectIdentifier Y / reasonCode Z: message`, pulling the
+/// human wording from the server's `message` field or lpac's
+/// `es9p_errors` table when the server sends none.
+fn status_detail(status: &Value) -> String {
+    let data = status.get("statusCodeData");
+    let field = |key: &str| {
+        data.and_then(|d| d.get(key))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+    };
+    let (subject, identifier, reason, message) = (
+        field("subjectCode"),
+        field("subjectIdentifier"),
+        field("reasonCode"),
+        field("message"),
+    );
+    let wording = if message.is_empty() {
+        es9p_error_message(subject, reason).unwrap_or("unknown error")
+    } else {
+        message
+    };
+    format!("subjectCode {subject} / subjectIdentifier {identifier} / reasonCode {reason}: {wording}")
+}
+
+/// lpac's `es9p_errors` table (`euicc/es9p_errors.c`): (subjectCode,
+/// reasonCode) → human cause. Consulted when the server sends no `message`.
+fn es9p_error_message(subject: &str, reason: &str) -> Option<&'static str> {
+    match (subject, reason) {
+        ("8.1", "4.8") => Some("eUICC does not have sufficient space for this Profile"),
+        ("8.1", "6.1") => Some("eUICC signature is invalid or serverChallenge is invalid"),
+        ("8.1.1", "2.2") => Some("EID is missing (SM-DS address provided or MatchingID empty)"),
+        ("8.1.1", "3.1") => Some("a different EID is already associated with this ICCID"),
+        ("8.1.1", "3.8") => Some("EID doesn't match the expected value"),
+        ("8.1.2", "6.1") => Some("EUM Certificate is invalid"),
+        ("8.1.2", "6.3") => Some("EUM Certificate has expired"),
+        ("8.1.3", "6.1") => Some("eUICC Certificate is invalid"),
+        ("8.1.3", "6.3") => Some("eUICC Certificate has expired"),
+        ("8.2", "1.2") => Some("Profile has not yet been released"),
+        ("8.2", "3.7") => Some("BPP is not available for a new binding"),
+        ("8.2.1", "1.2") => Some("caller is not allowed to perform this function on the target Profile"),
+        ("8.2.1", "3.1") => Some("a different EID is associated with this ICCID"),
+        ("8.2.1", "3.3") => Some("the Profile identified by the provided ICCID is not available"),
+        ("8.2.1", "3.5") => Some("the target Profile cannot be released"),
+        ("8.2.1", "3.9") => Some("the Profile Type is unknown to the SM-DP+"),
+        ("8.2.5", "1.2") => Some("caller is not allowed to perform this function on the Profile Type"),
+        ("8.2.5", "3.7") => Some("No more Profile available for the requested Profile Type"),
+        ("8.2.5", "3.8") => Some("Profile Type is not aligned with the Profile identified by the ICCID"),
+        ("8.2.5", "3.9") => Some("the Profile Type is unknown to the SM-DP+"),
+        ("8.2.5", "4.3") => Some("No eligible Profile for this eUICC/Device"),
+        ("8.2.6", "3.1") => Some("a different MatchingID is associated with this ICCID"),
+        ("8.2.6", "3.3") => Some("Conflicting MatchingID value"),
+        ("8.2.6", "3.8") => Some("MatchingID (AC_Token or EventID) is refused"),
+        ("8.2.7", "2.2") => Some("Confirmation Code is missing"),
+        ("8.2.7", "3.8") => Some("Confirmation Code is refused"),
+        ("8.2.7", "6.4") => Some("The maximum number of retries for the Confirmation Code has been exceeded"),
+        ("8.8", "3.1") => Some("The provided SM-DP+ OID is invalid"),
+        ("8.8.1", "3.8") => Some("Invalid SM-DP+ Address"),
+        ("8.8.2", "3.1") => Some("None of the proposed Public Key Identifiers is supported by the SM-DP+"),
+        ("8.8.3", "3.1") => Some("The Specification Version Number indicated by the eUICC is not supported by the SM-DP+"),
+        ("8.8.4", "3.7") => Some("The SM-DP+ has no CERT.DPauth.ECDSA signed by one of the CI Public Key supported by the eUICC"),
+        ("8.8.5", "4.1") => Some("The Download order has expired"),
+        ("8.8.5", "6.4") => Some("The maximum number of retries for the Profile download order has been exceeded"),
+        ("8.9", "4.2") => Some("Root SM-DS has raised an error"),
+        ("8.9", "5.1") => Some("Root SM-DS was unavailable"),
+        ("8.9.1", "3.8") => Some("Invalid SM-DS Address"),
+        ("8.9.2", "3.1") => Some("None of the proposed Public Key Identifiers is supported by the SM-DS"),
+        ("8.9.3", "3.1") => Some("The Specification Version Number indicated by the eUICC is not supported by the SM-DS"),
+        ("8.9.4", "3.7") => Some("The SM-DS has no CERT.DS.ECDSA signed by one of the GSMA CI Public Key supported by the eUICC"),
+        ("8.9.5", "3.3") => Some("The Event Record already exists in the SM-DS (EventID duplicated)"),
+        ("8.9.5", "3.9") => Some("No Event identified by the Event ID for the EID exists"),
+        ("8.10.1", "3.9") => Some("The RSP session identified by the TransactionID is unknown"),
+        ("8.11.1", "3.9") => Some("Unknown CI Public Key. The CI used by the EUM Certificate is not a trusted root."),
+        _ => None,
+    }
 }
 
 /// Builds the full ES9+ endpoint URL for a function.

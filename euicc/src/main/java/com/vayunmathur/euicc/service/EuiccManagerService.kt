@@ -67,9 +67,25 @@ class EuiccManagerService : EuiccService() {
     }
 
     override fun onSwitchToSubscription(slotId: Int, iccid: String?, forceDeactivateSim: Boolean): Int {
-        if (iccid == null) return RESULT_FIRST_USER
+        // Null ICCID means "disable the active profile" (OpenEUICC parity).
+        if (iccid == null) {
+            return runCatching {
+                channelManager.withIsdrChannel {
+                    val active = EuiccNative.nativeGetProfiles()
+                        ?.let { json.decodeFromString<List<Profile>>(it) }
+                        ?.firstOrNull { it.isEnabled }
+                        ?: return@withIsdrChannel RESULT_FIRST_USER
+                    if (EuiccNative.nativeDisableProfile(active.iccid) == 0) RESULT_OK
+                    else RESULT_FIRST_USER
+                }
+            }.getOrDefault(RESULT_FIRST_USER)
+        }
         return runProfileOp(iccid) { raw -> EuiccNative.nativeEnableProfile(raw) }
     }
+
+    // Single-port eUICC: there is no onSwitchToSubscriptionWithPort in the
+    // framework base this module builds against, and the soldered eUICC has
+    // exactly one implicit port — the unported switch above is the whole API.
 
     override fun onUpdateSubscriptionNickname(slotId: Int, iccid: String, nickname: String?): Int =
         runProfileOp(iccid) { raw -> EuiccNative.nativeSetNickname(raw, nickname.orEmpty()) }
@@ -81,11 +97,20 @@ class EuiccManagerService : EuiccService() {
         forceDeactivateSim: Boolean,
     ): Int {
         val code = subscription.encodedActivationCode ?: return RESULT_FIRST_USER
-        return runCatching {
+        val downloaded = runCatching {
             val raw = channelManager.withIsdrChannel { EuiccNative.nativeDownloadProfile(code) }
-            val result = json.decodeFromString<DownloadOutcome>(raw)
-            if (result.success) RESULT_OK else RESULT_FIRST_USER
-        }.getOrDefault(RESULT_FIRST_USER)
+            json.decodeFromString<DownloadOutcome>(raw)
+        }.getOrNull() ?: return RESULT_FIRST_USER
+        if (!downloaded.success) return RESULT_FIRST_USER
+        // Honor switch-after-download when the caller asked for it; the LUI
+        // flow leaves the profile disabled for the user to enable in Settings.
+        if (switchAfterDownload && !forceDeactivateSim && hasActiveProfile()) {
+            return RESULT_MUST_DEACTIVATE_SIM
+        }
+        if (switchAfterDownload) {
+            enableNewestProfile()
+        }
+        return RESULT_OK
     }
 
     override fun onEraseSubscriptions(slotId: Int): Int = RESULT_FIRST_USER
@@ -113,6 +138,21 @@ class EuiccManagerService : EuiccService() {
         channelManager.withIsdrChannel {
             EuiccNative.nativeGetProfiles()?.let { json.decodeFromString<List<Profile>>(it) } ?: emptyList()
         }
+
+    /** Whether any profile is currently enabled (for MUST_DEACTIVATE_SIM). */
+    private fun hasActiveProfile(): Boolean =
+        runCatching { loadProfiles() }.getOrNull()?.any { it.isEnabled } == true
+
+    /** Enables the most recently added profile (best-effort, for switch-after-download). */
+    private fun enableNewestProfile() {
+        runCatching {
+            channelManager.withIsdrChannel {
+                val profiles = EuiccNative.nativeGetProfiles()
+                    ?.let { json.decodeFromString<List<Profile>>(it) } ?: emptyList()
+                profiles.lastOrNull()?.let { EuiccNative.nativeEnableProfile(it.iccid) }
+            }
+        }
+    }
 
     /** Resolves the framework ICCID to our raw ICCID and runs [op] in one channel session. */
     private fun runProfileOp(iccid: String, op: (String) -> Int): Int = runCatching {

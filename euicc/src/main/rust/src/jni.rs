@@ -46,14 +46,31 @@ fn transmit_apdu(env: &mut JNIEnv, apdu: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 /// Sends an ES10 command TLV to the ISD-R via GlobalPlatform STORE DATA,
-/// splitting into ≤255-byte blocks, and returns the final response TLV with the
+/// splitting into small blocks, and returns the final response TLV with the
 /// trailing `90 00` status stripped.
+///
+/// Block size is 63 bytes like OpenEUICC's default chunk (`PreferenceUtils`;
+/// lpac's `euicc_init` falls back to 120) rather than the APDU maximum: only
+/// multi-KB download payloads stress this path, and conservative chunking is
+/// what the reference LPAs ship.
 pub(crate) fn store_data(env: &mut JNIEnv, command: &[u8]) -> Result<Vec<u8>, String> {
+    store_data_chunked(env, command, STORE_DATA_CHUNK)
+}
+
+/// STORE DATA payload bytes per APDU. OpenEUICC default; see [`store_data`].
+pub(crate) const STORE_DATA_CHUNK: usize = 63;
+
+pub(crate) fn store_data_chunked(
+    env: &mut JNIEnv,
+    command: &[u8],
+    chunk: usize,
+) -> Result<Vec<u8>, String> {
+    let chunk = chunk.clamp(1, 255);
     // A zero-length command still sends one (empty) block.
     let blocks: Vec<&[u8]> = if command.is_empty() {
         vec![&command[0..0]]
     } else {
-        command.chunks(255).collect()
+        command.chunks(chunk).collect()
     };
     let last = blocks.len() - 1;
 
@@ -63,6 +80,9 @@ pub(crate) fn store_data(env: &mut JNIEnv, command: &[u8]) -> Result<Vec<u8>, St
         let p1 = if i == last { 0x91 } else { 0x11 };
         let mut apdu = vec![0x80u8, 0xE2, p1, i as u8, block.len() as u8];
         apdu.extend_from_slice(block);
+        // Only the last block's response carries the ES10 reply: intermediate
+        // STORE DATA responses are per-block statuses (61xx chaining is
+        // already resolved per APDU by the Kotlin transport). Keep the last.
         response = transmit_apdu(env, &apdu)?;
     }
 
@@ -77,7 +97,7 @@ pub(crate) fn store_data(env: &mut JNIEnv, command: &[u8]) -> Result<Vec<u8>, St
 }
 
 /// Returns `s` as a new Java string, or null (used on the error path).
-fn new_jstring(env: &JNIEnv, s: &str) -> jstring {
+pub(crate) fn new_jstring(env: &JNIEnv, s: &str) -> jstring {
     match env.new_string(s) {
         Ok(js) => js.into_raw(),
         Err(_) => std::ptr::null_mut(),
@@ -85,7 +105,7 @@ fn new_jstring(env: &JNIEnv, s: &str) -> jstring {
 }
 
 /// Reads a Java string into a Rust `String`, or `None` on error.
-fn read_string(env: &mut JNIEnv, s: &JString) -> Option<String> {
+pub(crate) fn read_string(env: &mut JNIEnv, s: &JString) -> Option<String> {
     env.get_string(s).ok().map(|js| js.into())
 }
 
@@ -232,29 +252,6 @@ pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeRemoveNotifi
     }
 }
 
-/// `nativeDownloadProfile(activationCode)` — runs the full SGP.22 download for
-/// an activation code and returns a JSON `{success, message}` string. Must be
-/// called while the ISD-R channel is open (inside `withIsdrChannel`).
-#[no_mangle]
-pub extern "system" fn Java_com_vayunmathur_euicc_EuiccNative_nativeDownloadProfile<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    activation_code: JString<'l>,
-) -> jstring {
-    // Resolve the HTTP bridge (library:network) once; harmless if already done.
-    jni_http::init(&mut env);
-
-    let Some(code) = read_string(&mut env, &activation_code) else {
-        let json = serde_json::json!({ "success": false, "message": "Invalid activation code" });
-        return new_jstring(&env, &json.to_string());
-    };
-
-    let json = match crate::download::download_profile(&mut env, &code) {
-        Ok(result) => serde_json::json!({ "success": result.success, "message": result.message }),
-        Err(message) => serde_json::json!({ "success": false, "message": message }),
-    };
-    new_jstring(&env, &json.to_string())
-}
 
 /// `nativeVersion()` — native core version string.
 #[no_mangle]

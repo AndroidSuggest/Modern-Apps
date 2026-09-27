@@ -18,57 +18,11 @@ pub fn hex_decode(s: &str) -> Vec<u8> {
     out
 }
 
-fn first_byte(v: &[u8]) -> Option<u8> {
-    v.first().copied()
-}
-
-fn utf8(v: &[u8]) -> String {
-    String::from_utf8_lossy(v).into_owned()
-}
-
-/// Parses a (short) two's-complement BER INTEGER into i64.
-fn parse_int(v: &[u8]) -> i64 {
-    if v.is_empty() {
-        return 0;
-    }
-    let mut acc: i64 = if v[0] & 0x80 != 0 { -1 } else { 0 };
-    for &b in v {
-        acc = (acc << 8) | b as i64;
-    }
-    acc
-}
-
-/// Minimal unsigned big-endian INTEGER encoding (always at least one byte, with
-/// a leading zero when the top bit would otherwise make it negative).
-fn encode_int_minimal(mut v: u32) -> Vec<u8> {
-    if v == 0 {
-        return vec![0];
-    }
-    let mut bytes = Vec::new();
-    while v > 0 {
-        bytes.insert(0, (v & 0xFF) as u8);
-        v >>= 8;
-    }
-    if bytes[0] & 0x80 != 0 {
-        bytes.insert(0, 0x00);
-    }
-    bytes
-}
-
-/// Decodes an SGP.22 ICCID (BCD, nibble-swapped, F-padded) into decimal digits.
-fn decode_iccid(raw: &[u8]) -> String {
-    let mut s = String::with_capacity(raw.len() * 2);
-    for &b in raw {
-        let lo = b & 0x0F;
-        let hi = b >> 4;
-        for nib in [lo, hi] {
-            if nib == 0x0F {
-                continue;
-            }
-            if nib < 10 {
-                s.push((b'0' + nib) as char);
-            }
-        }
+/// Lowercase hex encoding.
+pub fn hex(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push_str(&format!("{b:02x}"));
     }
     s
 }
@@ -98,26 +52,6 @@ mod tests {
     #[test]
     fn get_eid_request_bytes() {
         assert_eq!(build_get_eid(), vec![0xBF, 0x3E, 0x03, 0x5C, 0x01, 0x5A]);
-    }
-
-    #[test]
-    fn ctx_params1_tags_match_sgp22() {
-        // CtxParamsForCommonAuthentication: matchingId [0] IMPLICIT, deviceInfo
-        // [1] IMPLICIT (constructed). A bare SEQUENCE tag (0x30) on deviceInfo is
-        // malformed — the SM-DP+ cannot verify the AuthenticateServer response
-        // built over it (seen as an empty authenticateClient reply).
-        let ctx = build_ctx_params1("ABC", &[0x35, 0x29, 0x06, 0x11]);
-        let body = asn1::find(&ctx, TAG_CTX_PARAMS_COMMON).expect("outer A0");
-        let kids = asn1::children(body).expect("two children");
-        assert_eq!(kids.len(), 2);
-        assert_eq!(kids[0].tag, 0x80); // matchingId
-        assert_eq!(kids[0].value, b"ABC");
-        assert_eq!(kids[1].tag, 0xA1); // deviceInfo [1], NOT 0x30 SEQUENCE
-        let dev = asn1::children(kids[1].value).expect("deviceInfo children");
-        assert_eq!(dev.len(), 2);
-        assert_eq!(dev[0].tag, 0x80); // tac
-        assert_eq!(dev[0].value, &[0x35, 0x29, 0x06, 0x11]);
-        assert_eq!(dev[1].tag, 0xA1); // deviceCapabilities
     }
 
     #[test]
@@ -232,6 +166,8 @@ mod tests {
         let mut m = Vec::new();
         m.extend(asn1::tlv(TAG_SEQ_NUMBER, &[0x03]));
         m.extend(asn1::tlv(TAG_NOTIFICATION_EVENT, &[0x00, 0x40])); // enable
+        // notificationAddress is tag 0x0C per SGP.22 (not context-[2]).
+        assert_eq!(TAG_NOTIFICATION_ADDRESS, 0x0C);
         m.extend(asn1::tlv(TAG_NOTIFICATION_ADDRESS, "smdp.example.com".as_bytes()));
         let meta = asn1::tlv(TAG_NOTIFICATION_METADATA, &m);
         let list = asn1::tlv(TAG_NOTIFICATION_LIST, &meta);
@@ -242,73 +178,5 @@ mod tests {
         assert_eq!(notes[0].seq_number, 3);
         assert_eq!(notes[0].operation, "enable");
         assert_eq!(notes[0].address, "smdp.example.com");
-    }
-
-    #[test]
-    fn euicc_challenge_roundtrip() {
-        assert_eq!(build_get_euicc_challenge(), vec![0xBF, 0x2E, 0x00]);
-        let challenge = [0x11u8; 16];
-        let inner = asn1::tlv(TAG_EUICC_CHALLENGE, &challenge);
-        let resp = asn1::tlv(TAG_GET_EUICC_CHALLENGE, &inner);
-        assert_eq!(parse_euicc_challenge(&resp).unwrap(), challenge.to_vec());
-    }
-
-    #[test]
-    fn ctx_params1_shape() {
-        let ctx = build_ctx_params1("MID-123", &[0, 0, 0, 0]);
-        // A0 { 80 <mid> 30 { 80 04 <tac> A1 00 } }
-        let common = asn1::find(&ctx, TAG_CTX_PARAMS_COMMON).unwrap();
-        assert_eq!(asn1::find(common, TAG_MATCHING_ID).unwrap(), b"MID-123");
-        let di = asn1::find(common, TAG_DEVICE_INFO).unwrap();
-        assert_eq!(asn1::find(di, TAG_TAC).unwrap(), &[0, 0, 0, 0]);
-        assert_eq!(asn1::find(di, TAG_DEVICE_CAPS).unwrap(), &[] as &[u8]);
-    }
-
-    #[test]
-    fn authenticate_server_concatenates_blobs() {
-        let req = build_authenticate_server(&[0x30, 0x01, 0xAA], &[0x5F, 0x37, 0x01, 0xBB], &[0x04, 0x01, 0xCC], &[0x30, 0x01, 0xDD], &[0xA0, 0x00]);
-        let body = asn1::find(&req, TAG_AUTHENTICATE_SERVER).unwrap();
-        assert_eq!(body, &[0x30, 0x01, 0xAA, 0x5F, 0x37, 0x01, 0xBB, 0x04, 0x01, 0xCC, 0x30, 0x01, 0xDD, 0xA0, 0x00]);
-    }
-
-    #[test]
-    fn segment_bpp_orders_elements() {
-        let isc = asn1::tlv(TAG_INITIALISE_SECURE_CHANNEL, &[0x01]);
-        let seq87 = asn1::tlv(TAG_BPP_SEQ_87, &asn1::tlv(0x87, &[0x11, 0x22]));
-        let mut seq88_inner = asn1::tlv(0x88, &[0x33]);
-        seq88_inner.extend(asn1::tlv(0x88, &[0x44]));
-        let seq88 = asn1::tlv(TAG_BPP_SEQ_88, &seq88_inner);
-        let seq86 = asn1::tlv(TAG_BPP_SEQ_86, &asn1::tlv(0x86, &[0x55]));
-        let mut body = Vec::new();
-        body.extend(isc);
-        body.extend(seq87);
-        body.extend(seq88);
-        body.extend(seq86);
-        let bpp = asn1::tlv(TAG_BPP, &body);
-
-        let segments = segment_bpp(&bpp).unwrap();
-        assert_eq!(segments.len(), 5); // BF23, 87, 88, 88, 86
-        assert_eq!(segments[0], vec![0xBF, 0x23, 0x01, 0x01]);
-        assert_eq!(segments[1], vec![0x87, 0x02, 0x11, 0x22]);
-        assert_eq!(segments[2], vec![0x88, 0x01, 0x33]);
-        assert_eq!(segments[3], vec![0x88, 0x01, 0x44]);
-        assert_eq!(segments[4], vec![0x86, 0x01, 0x55]);
-    }
-
-    #[test]
-    fn install_result_success_and_error() {
-        let ok_final = asn1::tlv(TAG_FINAL_RESULT, &asn1::tlv(TAG_SUCCESS_RESULT, &[]));
-        let ok_data = asn1::tlv(TAG_PIR_DATA, &ok_final);
-        let ok = asn1::tlv(TAG_PROFILE_INSTALL_RESULT, &ok_data);
-        assert!(parse_install_result(&ok).unwrap().success);
-
-        let mut err_inner = asn1::tlv(TAG_RESULT, &[0x00]); // bppCommandId
-        err_inner.extend(asn1::tlv(0x81, &[0x05])); // errorReason = 5
-        let err_final = asn1::tlv(TAG_FINAL_RESULT, &asn1::tlv(TAG_ERROR_RESULT, &err_inner));
-        let err_data = asn1::tlv(TAG_PIR_DATA, &err_final);
-        let err = asn1::tlv(TAG_PROFILE_INSTALL_RESULT, &err_data);
-        let r = parse_install_result(&err).unwrap();
-        assert!(!r.success);
-        assert!(r.message.contains('5'));
     }
 }

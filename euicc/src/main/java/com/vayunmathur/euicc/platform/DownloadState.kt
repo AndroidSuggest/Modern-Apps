@@ -8,11 +8,9 @@ package com.vayunmathur.euicc.platform
  * exactly one download in flight at a time, and the screen has to show whichever phase it
  * is actually in.
  *
- * [Confirm] and [AwaitingConfirmationCode] are declared but unreachable until the native
- * core can report profile metadata and pause for a confirmation code - today's
- * `nativeDownloadProfile` is a single atomic call, so a download runs
- * [Preparing] -> [Installing] -> [Complete]/[Failed]. They are here now so the UI that
- * renders them is written once.
+ * [Confirm] slows the flow after AuthenticateClient so the user accepts the
+ * carrier the SM-DP+ named before anything is written; [AwaitingConfirmationCode]
+ * collects the second secret for `ccRequiredFlag` profiles.
  */
 sealed interface DownloadState {
     /** No download in flight. */
@@ -23,13 +21,14 @@ sealed interface DownloadState {
 
     /**
      * The SM-DP+ has named the profile and is waiting for the user to accept it.
-     * Unreachable until the native core parses ProfileMetadata.
+     * Reached after AuthenticateClient parses ProfileMetadata; cancelling here
+     * frees the server session.
      */
     data class Confirm(val carrier: String?, val profileName: String?) : DownloadState
 
     /**
      * The profile is confirmation-code protected. [error] is set after a rejected attempt.
-     * Unreachable until the native core threads a confirmation code into PrepareDownload.
+     * Reached when the activation code or the SM-DP+ sets `ccRequiredFlag`.
      */
     data class AwaitingConfirmationCode(
         val carrier: String?,
@@ -37,8 +36,8 @@ sealed interface DownloadState {
     ) : DownloadState
 
     /**
-     * The profile is being written to the eUICC. [progress] is null while the native core
-     * reports no progress, which is every download until the BPP segment loop calls back.
+     * The profile is being written to the eUICC. [progress] is null during
+     * authentication, then 0..1 across the BPP segment stream.
      */
     data class Installing(val progress: Float? = null) : DownloadState
 

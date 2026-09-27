@@ -68,6 +68,53 @@ object EuiccNative {
      * Runs the full SGP.22 download for an activation code and returns a JSON
      * `{"success":Boolean,"message":String}` string. Must be called while the
      * ISD-R channel is open (inside `withIsdrChannel`).
+     *
+     * Kept for the `EuiccManagerService` platform path; the UI flow uses the
+     * split-phase [nativeAuthenticate] / [nativeFinishDownload] /
+     * [nativeCancelDownload] entries so it can preview the carrier, confirm,
+     * and collect a confirmation code mid-download.
      */
     external fun nativeDownloadProfile(activationCode: String): String
+
+    /**
+     * Authenticates both sides up to AuthenticateClient and returns a JSON session:
+     * `{"error":String?, "transactionId":String?, "carrier":String?,
+     * "profileName":String?, "iccid":String?, "ccRequired":Boolean}`.
+     * No eUICC profile-store write has happened; cancel via [nativeCancelDownload].
+     *
+     * @param confirmationCode already-known confirmation code, or "" when unknown.
+     * @param tacHex 8 hex digits of the device TAC, or "" for the default.
+     * @param imei device IMEI digits for ctxParams1, or "" to omit.
+     */
+    external fun nativeAuthenticate(
+        activationCode: String,
+        confirmationCode: String,
+        tacHex: String,
+        imei: String,
+    ): String
+
+    /** Progress sink for [nativeFinishDownload]: return false to abort the install. */
+    interface DownloadProgressCallback {
+        fun onProgress(done: Int, total: Int): Boolean
+    }
+
+    /**
+     * Finishes an authenticated session (PrepareDownload with hashCc, BPP fetch,
+     * segment install with [callback] progress) and returns
+     * `{"success":Boolean,"message":String}`. Consumes the session.
+     */
+    external fun nativeFinishDownload(
+        transactionId: String,
+        confirmationCode: String,
+        callback: DownloadProgressCallback,
+    ): String
+
+    /**
+     * Cancels an authenticated-but-unfinished session (ES10 CancelSession + ES9+
+     * cancelSession). Best-effort; always consumes the session.
+     *
+     * @param reason 0 end-user rejection, 1 postponed, 2 timeout, 3 PPR,
+     * 4 metadata mismatch, 5 BPP execution error.
+     */
+    external fun nativeCancelDownload(transactionId: String, reason: Int): Boolean
 }
