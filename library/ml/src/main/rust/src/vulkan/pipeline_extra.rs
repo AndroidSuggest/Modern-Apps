@@ -5,6 +5,19 @@ use crate::nets::{Kind, Push};
 use super::context::Context;
 use super::pipeline::{Cleanup, Shaders, SPIRV, compute_pipeline};
 
+// The int8 round-trip shader, beside the table it joins (see `SPIRV`).
+// Lives here rather than in `pipeline.rs` so that file stays under the
+// 500-line Rust limit.
+pub(crate) const QUANTIZE: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/quantize.comp.spv"));
+
+// The Q2_K pair, beside the table they join (see `SPIRV`). Same reason as
+// `QUANTIZE` above: `pipeline.rs` must stay under the 500-line Rust limit.
+pub(crate) const CONV_POINT_Q2K: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/conv_point_q2k.comp.spv"));
+pub(crate) const CONV_Q2K: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/conv_q2k.comp.spv"));
+
 impl Shaders {
     /// Compile every shader and build the two layouts. Called once per device.
     pub fn new(context: &Context) -> Result<Shaders, String> {
@@ -140,6 +153,8 @@ impl Shaders {
             conv_vec_q2k,
             conv_point_q2k,
             conv_q2k,
+            quantize,
+            argmax,
         ] = match <[vk::Pipeline; SPIRV.len()]>::try_from(built) {
             Ok(all) => all,
             Err(built) => {
@@ -197,6 +212,8 @@ impl Shaders {
             conv_vec_q2k,
             conv_point_q2k,
             conv_q2k,
+            quantize,
+            argmax,
         })
     }
 
@@ -246,6 +263,8 @@ impl Shaders {
             Kind::Constant => self.constant,
             Kind::AddBroadcast => self.add_bcast,
             Kind::Rotary => self.rotary,
+            Kind::Quantize => self.quantize,
+            Kind::Argmax => self.argmax,
         }
     }
 
@@ -296,6 +315,8 @@ impl Shaders {
             self.conv_q2k,
             self.mul_scalar,
             self.clamp,
+            self.quantize,
+            self.argmax,
         ] {
             device.destroy_pipeline(pipeline, None);
         }

@@ -253,6 +253,27 @@
         Ok(())
     }
 
+    /// The argmax of a logits row, as the host reads it back.
+    ///
+    /// Mirrors `shaders/argmax.comp`: strict `>` over the row keeps the FIRST
+    /// index on ties, stored as `lo = id % 2048`, `hi = id / 2048` fp16
+    /// values. See `Builder::argmax`.
+    fn argmax(&mut self, p: &Push) -> Result<(), String> {
+        let len = (p.in_c * p.in_h * p.in_w).max(1);
+        let mut top_val = f32::NEG_INFINITY;
+        let mut top_idx = 0u32;
+        for i in 0..len {
+            let value = self.load(p.in0, i)?;
+            if value > top_val {
+                top_val = value;
+                top_idx = i;
+            }
+        }
+        self.store(p.out, 0, (top_idx % 2048) as f32)?;
+        self.store(p.out, 1, (top_idx / 2048) as f32)?;
+        Ok(())
+    }
+
     /// Root-mean-square normalisation over the channel axis, per spatial position.
     ///
     /// [`Reference::layer_norm`] without the mean and without beta, and so one pass over

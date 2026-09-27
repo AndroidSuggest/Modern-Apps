@@ -25,6 +25,7 @@ use ash::vk;
 use crate::nets::Kind;
 
 use super::context::Context;
+use super::pipeline_extra::{CONV_POINT_Q2K, CONV_Q2K, QUANTIZE};
 use super::segment::Segment;
 
 const CONV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/conv.comp.spv"));
@@ -83,12 +84,10 @@ const CONV_VEC_INT4: &[u8] =
 const CONV_POINT_INT4: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/conv_point_int4.comp.spv"));
 const CONV_VEC_Q2K: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/conv_vec_q2k.comp.spv"));
-const CONV_POINT_Q2K: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/conv_point_q2k.comp.spv"));
-const CONV_Q2K: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/conv_q2k.comp.spv"));
-
-/// Every shader, in the order [`Pipelines::create`] destructures them.
-pub(crate) const SPIRV: [&[u8]; 43] = [
+const ARGMAX: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/argmax.comp.spv"));
+/// Every shader, in the order `Shaders::create` destructures them (the Q2_K pair and
+/// `QUANTIZE` live in `pipeline_extra.rs` for length).
+pub(crate) const SPIRV: [&[u8]; 45] = [
     CONV,
     CONV_TRANSPOSE,
     MAXPOOL,
@@ -132,6 +131,8 @@ pub(crate) const SPIRV: [&[u8]; 43] = [
     CONV_VEC_Q2K,
     CONV_POINT_Q2K,
     CONV_Q2K,
+    QUANTIZE,
+    ARGMAX,
 ];
 
 /// Descriptors in one set: the arena, the weights as fp16, the weights as words, the step params.
@@ -209,6 +210,8 @@ pub struct Shaders {
     pub(crate) mul_scalar: vk::Pipeline,
     pub(crate) clamp: vk::Pipeline,
     pub(crate) rmsnorm: vk::Pipeline,
+    pub(crate) quantize: vk::Pipeline,
+    pub(crate) argmax: vk::Pipeline,
 }
 
 /// One net's descriptor sets, over the device-wide [`Shaders`].

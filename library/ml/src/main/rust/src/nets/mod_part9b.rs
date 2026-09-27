@@ -288,6 +288,48 @@ impl<'a> Builder<'a> {
                     invocations: so.len(),
                 });
             }
+            Node::Argmax { input, out } => {
+                let si = shape(*input);
+                // One scalar out: the winning index as fp16 bits. The input
+                // is the concatenated logits row (all chunks, vocab-wide).
+                ops.push(Op::Dispatch {
+                    kind: Kind::Argmax,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        in_c: si.c,
+                        in_h: si.h,
+                        in_w: si.w,
+                        out_c: 1,
+                        out_h: 1,
+                        out_w: 1,
+                        count: si.len(),
+                        ..Push::default()
+                    },
+                    // 64 lanes per workgroup, grid-stride over the row.
+                    invocations: 64,
+                });
+            }
+            Node::Quantize { input, out, scale } => {
+                let so = shape(*out);
+                ops.push(Op::Dispatch {
+                    kind: Kind::Quantize,
+                    push: Push {
+                        in0: at(*input)?,
+                        out: at(*out)?,
+                        in_c: so.c,
+                        in_h: so.h,
+                        in_w: so.w,
+                        out_c: so.c,
+                        out_h: so.h,
+                        out_w: so.w,
+                        param0_bits: scale.to_bits(),
+                        count: so.len(),
+                        ..Push::default()
+                    },
+                    invocations: so.len(),
+                });
+            }
             Node::Softmax { input, out, mode, sliding, window } => {
                 let so = shape(*out);
                 // One invocation per row of the last axis, each normalising `out_w`

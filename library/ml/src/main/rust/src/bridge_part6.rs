@@ -5,6 +5,19 @@ impl Gemma4Handle {
         self.step_hidden(&hidden, &per_layer, want_logits)
     }
 
+    /// Feed one token and return the greedy next token, reduced on the device.
+    ///
+    /// Same transformer step as [`step`](Self::step) but the head runs
+    /// through the greedy plan (`build_plan_greedy`): 16 splits concatenate
+    /// on-device, one `Argmax` reduces to the winning index, and 1 value
+    /// crosses back instead of 262144 logits. Falls back to the host argmax
+    /// when the head net is absent. The sampling path (`logitsGemma4`) never
+    /// calls this — it needs the full logits.
+    fn step_greedy(&mut self, token: u32) -> Result<u32, String> {
+        let (hidden, per_layer) = gemma4::gather(&self.embed.reader(), token)?;
+        self.step_hidden_greedy(&hidden, &per_layer)
+    }
+
     /// Feed one **soft token**: an encoder's output standing in for a token's embedding.
     ///
     /// The per-layer inputs come from the pad token, which is what the reference does - it
@@ -88,12 +101,53 @@ impl Gemma4Handle {
         Ok(Some(self.head_logits(hidden)?))
     }
 
+    /// The greedy step itself, once both halves of the input are in hand.
+    ///
+    /// Same transformer submit as [`step_hidden`](Self::step_hidden) with
+    /// `want_logits`, then the device argmax via
+    /// [`head_greedy`](Self::head_greedy): 1 value back, no 512 KB readback,
+    /// no host scan. `stepGemma4` calls this; `logitsGemma4` keeps calling
+    /// `step_hidden` for the full logits.
+    fn step_hidden_greedy(
+        &mut self,
+        hidden: &[f32],
+        per_layer: &[f32],
+    ) -> Result<u32, String> {
+        // The transformer half is identical to the logits path: DecodeStep,
+        // same params, same cache discipline. Only the head differs.
+        if self.position >= self.context {
+            return Err(format!("the cache is full at {} positions", self.context));
+        }
+        let row = |table: &[f32], width: u32| -> Vec<f32> {
+            let from = (self.position * width) as usize;
+            table[from..from + width as usize].to_vec()
+        };
+        let local = row(&self.local, gemma4::HEAD_DIM);
+        let global = row(&self.global, gemma4::GLOBAL_HEAD_DIM);
+        let mode = gemma4::Mode::DecodeStep.at(self.context);
+        let at = self.net.at(mode)?;
+        at.set_params(StepParams {
+            prefix: self.position,
+            window_start: self.position.saturating_sub(gemma4::WINDOW - 1),
+        })?;
+        let out = at.infer_raw_many(&[hidden, per_layer, &local, &global])?;
+        self.position += 1;
+        if out.len() != 1 {
+            return Err(format!("a step returned {} tensors, not 1 hidden state", out.len()));
+        }
+        let hidden = &out[0];
+        if hidden.len() != gemma4::D_MODEL as usize {
+            return Err(format!("hidden state of {} values, not {}", hidden.len(), gemma4::D_MODEL));
+        }
+        self.head_greedy(hidden)
+    }
+
     /// Logits for `hidden`, GPU head when the EMBED file carries chunks.
     ///
-    /// The device runs the 16 fp16 chunk projections and the host
-    /// concatenates the splits, then the same softcap + argmax path as the
-    /// host head below. Falls back to `tied_head_logits` on files without
-    /// chunks (or when the head net failed to build).
+    /// The device runs the 16 chunk projections and the host concatenates
+    /// the splits, then the same softcap path as the host head below. Falls
+    /// back to the host head on files without chunks (or when the head net
+    /// failed to build).
     fn head_logits(&mut self, hidden: &[f32]) -> Result<Vec<f32>, String> {
         let Some(head) = self.head.as_mut() else {
             return self.tied_head_logits(hidden);
@@ -117,6 +171,41 @@ impl Gemma4Handle {
             }
         }
         Ok(logits)
+    }
+
+    /// The greedy next token for `hidden`, reduced on the device.
+    ///
+    /// Same head submit through the greedy plan (`build_plan_greedy`): the 16
+    /// splits concatenate on-device and one `Argmax` op reduces to a single
+    /// scalar holding the winning index as fp16 bits. Reads back 1 value
+    /// instead of 262144 — no 512 KB readback, no host scan. Falls back to
+    /// the host argmax over [`head_logits`](Self::head_logits) when the head
+    /// net is absent. The full-logits path (`logitsGemma4`) never calls this.
+    ///
+    /// NOTE: the greedy plan has a different output signature (16 splits + 1
+    /// id) from the logits plan, so it runs on the dedicated `head_greedy`
+    /// handle (same EMBED upload, separate recording). Falls back to the
+    /// host argmax when that handle is absent (no int8 chunks in file).
+    fn head_greedy(&mut self, hidden: &[f32]) -> Result<u32, String> {
+        use crate::nets::gemma4_head;
+        let Some(greedy) = self.head_greedy.as_mut() else {
+            let logits = self.head_logits(hidden)?;
+            return Ok(argmax(&logits));
+        };
+        let at = greedy.at(())?;
+        let out = at.infer_raw_many(&[hidden])?;
+        if out.len() != gemma4_head::HEAD_CHUNKS + 1 {
+            return Err(format!(
+                "greedy head returned {} outputs, not {}",
+                out.len(),
+                gemma4_head::HEAD_CHUNKS + 1
+            ));
+        }
+        let id_out = &out[gemma4_head::HEAD_CHUNKS];
+        if id_out.len() != 2 {
+            return Err(format!("greedy id holds {} values, not 2", id_out.len()));
+        }
+        Ok(id_out[1] as u32 * 2048 + id_out[0] as u32)
     }
 
     /// Tied-head logits on the host: `hidden @ H^T` over the raw-scale head table.
@@ -290,6 +379,10 @@ fn gemma4_plan(offsets: &Offsets, pass: gemma4::Pass) -> Result<Plan, String> {
     gemma4::build(offsets, pass)
 }
 
+fn gemma4_head_plan_greedy(offsets: &Offsets, _: ()) -> Result<Plan, String> {
+    crate::nets::gemma4_head::build_plan_greedy(offsets)
+}
+
 /// The GPU tied-head plan over an EMBED file, or `None` when the file has
 /// no head chunks (see `nets::gemma4_head`).
 fn gemma4_head_plan(embed: &Streamed) -> Option<Reshaped<()>> {
@@ -303,6 +396,28 @@ fn gemma4_head_plan(embed: &Streamed) -> Option<Reshaped<()>> {
         embed,
         (),
         |offsets, ()| crate::nets::gemma4_head::build_plan(offsets),
+    )
+    .ok()
+}
+
+/// The greedy head plan over an EMBED file: 16 splits + device argmax id.
+///
+/// `None` on files without int8 chunks (the greedy path needs the vector
+/// routing; fp16 `ConvPoint` at 1 position is correct but the extra dispatch
+/// mix is unmeasured — greedy stays on the int8 plan). The caller reads back
+/// 17 outputs (16 splits for the sampling path + 1 two-lane id) and takes
+/// the id for greedy decoding.
+fn gemma4_head_plan_greedy(embed: &Streamed) -> Option<Reshaped<()>> {
+    let offsets = embed.offsets();
+    if offsets.len() < crate::nets::gemma4_head::TENSORS_WITH_HEAD8 {
+        return None;
+    }
+    Reshaped::streamed(
+        context::shared().ok()?,
+        offsets,
+        embed,
+        (),
+        gemma4_head_plan_greedy,
     )
     .ok()
 }
@@ -459,9 +574,11 @@ fn build_gemma4<'l>(
     // to the host head. Uploading the whole EMBED file is the price: there
     // is no partial-upload path, so this is ~2.4 GB resident alongside TEXT.
     let head = gemma4_head_plan(&embed);
+    let head_greedy = gemma4_head_plan_greedy(&embed);
     Ok(Gemma4Handle {
         net,
         head,
+        head_greedy,
         weights,
         embed,
         tokenizer,

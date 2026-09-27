@@ -150,12 +150,87 @@ const STOP: [u32; 3] = [1, 106, 50];
 
 /// Logits for `hidden`: the GPU head when the EMBED file carries chunks.
 ///
-/// The device runs the 16 fp16 chunk projections; the host concatenates the
+/// The device runs the 16 chunk projections; the host concatenates the
 /// splits and softcaps, exactly as the host head does. Falls back to the
 /// host tied head (`hidden @ HEAD_TABLE^T` in `HEAD_SPLITS` quarters) on
 /// files without chunks.
+///
+/// `GEMMA4_GREEDY=1` instead reduces on the device: the greedy plan
+/// (`build_plan_greedy`) concatenates the 16 splits on-device and one
+/// `Argmax` op returns the winning index as fp16 bits — 1 value back instead
+/// of 262144, no 512 KB readback, no host scan. The returned id is checked
+/// against the host argmax every token (greedy parity gate); any mismatch
+/// fails the run loudly rather than generating from the wrong token.
 fn head_logits(
     _context: &Arc<context::Context>,
+    head: &mut Option<Reshaped<()>>,
+    reader: &modelrunner::weights::Reader<'_>,
+    hidden: &[f32],
+    head_embed: Option<&Weights>,
+) -> Result<Vec<f32>, String> {
+    use modelrunner::nets::gemma4_head;
+    if std::env::var("GEMMA4_GREEDY").is_ok() {
+        if let Some(embed) = head_embed {
+            if let Some(id) = head_greedy_id(_context, embed, hidden)? {
+                // Greedy parity gate: the device id must equal the host argmax.
+                // Falls through to the full path below on mismatch (loud, not silent).
+                let full = head_logits_full(head, reader, hidden)?;
+                let host = full
+                    .iter()
+                    .enumerate()
+                    .max_by(|(_, a), (_, b)| a.total_cmp(b))
+                    .map(|(i, _)| i as u32);
+                if host != Some(id) {
+                    return Err(format!("greedy parity: device id {id} vs host {host:?}"));
+                }
+                return Ok(full);
+            }
+        }
+    }
+    head_logits_full(head, reader, hidden)
+}
+
+/// The device greedy id, or `None` when the head net is absent.
+///
+/// The greedy plan (`build_plan_greedy`) is a different output signature
+/// (16 splits + 1 id), so it needs its own recording alongside the logits
+/// plan. SIMPLIFICATION for the parity gate: rebuild a dedicated `Net` per
+/// call (correct; one extra upload+record per token while proving
+/// bit-identity). The cached second handle lands once parity is proven.
+fn head_greedy_id(
+    context: &Arc<context::Context>,
+    embed: &Weights,
+    hidden: &[f32],
+) -> Result<Option<u32>, String> {
+    use modelrunner::nets::gemma4_head;
+    use modelrunner::vulkan::run::Net;
+    if embed.offsets().len() < gemma4_head::TENSORS_WITH_HEAD {
+        return Ok(None);
+    }
+    let plan = gemma4_head::build_plan_greedy(&embed.offsets())?;
+    let mut net = Net::new(
+        Arc::clone(context),
+        plan,
+        embed,
+        modelrunner::preprocess::RESCALE_ONLY,
+    )?;
+    let out = net.infer_raw_many(&[hidden])?;
+    if out.len() != gemma4_head::HEAD_CHUNKS + 1 {
+        return Err(format!("greedy head returned {} outputs, not {}", out.len(), gemma4_head::HEAD_CHUNKS + 1));
+    }
+    let id_out = &out[gemma4_head::HEAD_CHUNKS];
+    if id_out.len() != 2 {
+        return Err(format!("greedy id output holds {} values, not 2", id_out.len()));
+    }
+    // The shader stored `lo = id % 2048`, `hi = id / 2048` as fp16 values
+    // (both exactly representable) — reconstruct exactly.
+    let lo = id_out[0] as u32;
+    let hi = id_out[1] as u32;
+    Ok(Some(hi * 2048 + lo))
+}
+
+/// Full logits via the GPU head (or host fallback). See [`head_logits`].
+fn head_logits_full(
     head: &mut Option<Reshaped<()>>,
     reader: &modelrunner::weights::Reader<'_>,
     hidden: &[f32],
@@ -328,7 +403,7 @@ fn generate(
                 gemma4::D_MODEL
             ));
         }
-        let logits = head_logits(context, &mut head, &reader, hidden)?;
+        let logits = head_logits(context, &mut head, &reader, hidden, Some(embed))?;
         let mut best = (f32::NEG_INFINITY, 0u32);
         for (id, &value) in logits.iter().enumerate() {
             if value > best.0 {
@@ -477,7 +552,7 @@ fn run_chat(
             break;
         }
         let hidden = &out[0];
-        let logits = match head_logits(&context, &mut head, &reader, hidden) {
+        let logits = match head_logits(&context, &mut head, &reader, hidden, Some(embed)) {
             Ok(logits) => logits,
             Err(_) => break,
         };

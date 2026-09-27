@@ -404,6 +404,11 @@ struct Gemma4Handle {
     /// The GPU tied head over the EMBED file, upload-once at construction.
     /// `None` on files without head chunks — the host head covers those.
     head: Option<Reshaped<()>>,
+    /// The greedy head over the EMBED file: 16 splits + device argmax id.
+    /// `None` on files without int8 chunks — greedy falls back to the host
+    /// argmax over `head`. Built alongside `head` (same upload-once cost
+    /// class: one more recording over the same resident upload).
+    head_greedy: Option<Reshaped<()>>,
     /// The text model, retained for the rotary tables which are also host-read.
     weights: Streamed,
     /// The two embedding tables.

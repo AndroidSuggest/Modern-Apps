@@ -1,0 +1,60 @@
+#version 450
+//! Greedy argmax over a logits row: the winning index as two fp16 values.
+//!
+//! # Why on the device
+//!
+//! The 262,144-logit host scan costs ~14 ms a token (plus the 512 KB
+//! readback it implies when logits otherwise stay on the device). This
+//! reduces on the device and reads back 2 values instead of 262144 — no
+//! 512 KB readback, no host scan. The full-logits path (Kotlin sampling)
+//! is untouched — this serves greedy decoding only, which is what
+//! `bridge_part6::argmax` does on the host.
+//!
+//! # How
+//!
+//! 64 lanes grid-stride over `p.count` logits (the concatenated head splits,
+//! vocab-wide). Each lane keeps its local (value, index) maximum; a shared
+//! 64-entry reduction folds them; lane 0 stores the winner as TWO fp16
+//! values: `lo = id % 2048`, `hi = id / 2048`. Both are exactly
+//! representable (fp16 integers are exact to 2048; ids < 262144 give
+//! hi < 128); the host reconstructs `hi * 2048 + lo`. A single fp16 slot
+//! cannot hold the id either way: as a value it rounds past 2048, and as
+//! bits `uintBitsToFloat` produces a denormal that `float16_t()` converts
+//! (not bitcasts) to zero.
+//!
+//! Ties keep the FIRST index (strict `>`), matching the host loop's
+//! `value > best.0`.
+#include "common.glsl"
+shared uint best_idx[64];
+shared float best_val[64];
+void main() {
+    uint lane = gl_LocalInvocationID.x;
+    uint lanes = 64u;
+    // Grid-stride over the row: with one workgroup this is one pass.
+    float mine_val = -65504.0;
+    uint mine_idx = 0u;
+    for (uint i = lane; i < p.count; i += lanes) {
+        float v = float(arena[p.in0 + i]);
+        if (v > mine_val) {
+            mine_val = v;
+            mine_idx = i;
+        }
+    }
+    best_val[lane] = mine_val;
+    best_idx[lane] = mine_idx;
+    barrier();
+    // Lane 0 folds the 64 lane-maxima. Strict `>` keeps the FIRST index on
+    // ties, matching the host `argmax` loop.
+    if (lane == 0u) {
+        float top_val = best_val[0];
+        uint top_idx = best_idx[0];
+        for (uint l = 1u; l < 64u; l++) {
+            if (best_val[l] > top_val) {
+                top_val = best_val[l];
+                top_idx = best_idx[l];
+            }
+        }
+        arena[p.out_at] = float16_t(float(top_idx % 2048u));
+        arena[p.out_at + 1u] = float16_t(float(top_idx / 2048u));
+    }
+}

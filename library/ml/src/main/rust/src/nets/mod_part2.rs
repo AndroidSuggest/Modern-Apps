@@ -307,6 +307,12 @@ pub(crate) enum Node {
         out: Id,
         cap: f32,
     },
+    /// The argmax of a logits row: the winning index as two fp16 lanes
+    /// (`lo = id % 2048`, `hi = id / 2048`). See [`Kind::Argmax`].
+    Argmax {
+        input: Id,
+        out: Id,
+    },
     /// `clamp(round(x / scale), -128, 127) * scale`. See [`Kind::Quantize`].
     Quantize {
         input: Id,

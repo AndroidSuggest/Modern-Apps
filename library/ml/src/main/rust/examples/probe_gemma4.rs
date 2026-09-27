@@ -123,6 +123,16 @@ fn main() {
         }
         Err(why) => println!("the GPU head plan does NOT build: {why}"),
     }
+    match gemma4_head::build_plan_greedy(&embed) {
+        Ok(plan) => {
+            println!("the greedy head plan builds against the real table");
+            println!("  {} ops, {} inputs, {} outputs", plan.ops.len(), plan.inputs.len(), plan.outputs.len());
+            for (i, o) in plan.outputs.iter().enumerate() {
+                println!("  out[{i}]: c={} h={} w={}", o.shape.c, o.shape.h, o.shape.w);
+            }
+        }
+        Err(why) => println!("the greedy head plan does NOT build: {why}"),
+    }
 
     // The vision tower, if it is beside the other two.
     if let Some(path) = std::env::args().nth(3).map(PathBuf::from) {

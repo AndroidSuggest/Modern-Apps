@@ -321,6 +321,7 @@ impl Kind {
             | Kind::CacheWrite
             | Kind::Softcap
             | Kind::Quantize
+            | Kind::Argmax
             | Kind::GatedActivate => {}
             Kind::Activate
             | Kind::MulScalar
@@ -448,6 +449,7 @@ impl Kind {
             | Kind::Activate
             | Kind::GatedActivate
             | Kind::MulScalar
+            | Kind::Argmax
             | Kind::Clamp => one(push.in0, dense),
             // As above, plus a folded residual addend (see `Push::res`): the
             // post-norm `add(x, branch)` the fusion moved into this store.

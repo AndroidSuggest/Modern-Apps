@@ -96,20 +96,36 @@ fn point8(b: &mut Builder, at: usize, x: Id, out: u32) -> Id {
 /// head) when the file carries neither. The host concatenates the 16 splits
 /// and runs the existing softcap + argmax, exactly as it does for the
 /// host-computed logits today.
+///
+/// `with_argmax` appends a device-side greedy sampler: the 16 splits are
+/// concatenated on-device (channel Concat lowers to copies within the arena)
+/// and one `Argmax` op reduces to the winning index as two fp16 lanes
+/// (`lo = id % 2048`, `hi = id / 2048` — see `Builder::argmax`). The caller
+/// reads back 2 values instead of 262144. The full-logits outputs stay too
+/// (the Kotlin sampling path still needs them); the argmax output is last.
 pub fn build_plan(weights: &dyn WeightSource) -> Result<Plan, String> {
+    build_plan_inner(weights, false)
+}
+
+/// [`build_plan`] with the device argmax appended. See [`build_plan`].
+pub fn build_plan_greedy(weights: &dyn WeightSource) -> Result<Plan, String> {
+    build_plan_inner(weights, true)
+}
+
+fn build_plan_inner(weights: &dyn WeightSource, greedy: bool) -> Result<Plan, String> {
     // Probe for int8 chunks without marking anything read: `count()` is the
     // file's tensor total, which is exact (145 fp16-only, 193 with int8).
     if weights.count() >= TENSORS_WITH_HEAD8 {
-        if let Ok(plan) = build_plan8(weights) {
+        if let Ok(plan) = build_plan8(weights, greedy) {
             return Ok(plan);
         }
         // Wrong shapes: fall through to the fp16 chunks rather than failing.
     }
-    build_plan_fp16(weights)
+    build_plan_fp16(weights, greedy)
 }
 
 /// The int8 head pass. See [`build_plan`].
-fn build_plan8(weights: &dyn WeightSource) -> Result<Plan, String> {
+fn build_plan8(weights: &dyn WeightSource, greedy: bool) -> Result<Plan, String> {
     let mut builder = Builder::new(weights);
     let b = &mut builder;
     // Every EMBED tensor this pass does not read, named so `finish` accepts
@@ -130,11 +146,20 @@ fn build_plan8(weights: &dyn WeightSource) -> Result<Plan, String> {
     if next != HEAD8_BASE + HEAD8_CHUNK_TENSORS {
         return Err(format!("the int8 head claims {} tensors, not {HEAD8_CHUNK_TENSORS}", next - HEAD8_BASE));
     }
+    if greedy {
+        // Concatenate the 16 splits on-device (channel Concat lowers to
+        // copies within the arena — no extra allocation) and reduce to one
+        // greedy id. The split outputs stay too, so the Kotlin sampling path
+        // keeps working from the same recording.
+        let row = b.concat(&outs);
+        let id = b.argmax(row);
+        outs.push(id);
+    }
     builder.finish(&outs)
 }
 
 /// The fp16 head pass. See [`build_plan`].
-fn build_plan_fp16(weights: &dyn WeightSource) -> Result<Plan, String> {
+fn build_plan_fp16(weights: &dyn WeightSource, greedy: bool) -> Result<Plan, String> {
     let mut builder = Builder::new(weights);
     let b = &mut builder;
     // Every EMBED tensor this pass does not read, named so `finish` accepts
@@ -155,6 +180,11 @@ fn build_plan_fp16(weights: &dyn WeightSource) -> Result<Plan, String> {
     }
     if next != HEAD_BASE + HEAD_CHUNK_TENSORS {
         return Err(format!("the head claims {} tensors, not {HEAD_CHUNK_TENSORS}", next - HEAD_BASE));
+    }
+    if greedy {
+        let row = b.concat(&outs);
+        let id = b.argmax(row);
+        outs.push(id);
     }
     builder.finish(&outs)
 }

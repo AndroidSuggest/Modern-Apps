@@ -180,6 +180,11 @@ pub const LOGIT_CAP: f32 = 30.0;
 /// the shapes agree and every logit merely saturates at `LOGIT_CAP`.
 pub const EMBED_GAIN: f32 = 39.25;
 
+/// Live int8 round-trip scales for the attention path.
+///
+/// Moved to gemma4_part5.rs (module-length lint): [MM_SCALE],
+/// [QI_SCALE], [QO_SCALE], [KO_SCALE], [VO_SCALE], [O_SCALE].
+
 /// Whether `q_norm`'s gamma already carries `1 / sqrt(head_dim)`.
 ///
 /// True for a file `maml_convert.py` wrote without dividing it out, in which case the forward pass
@@ -427,3 +432,5 @@ include!("gemma4_part1.rs");
 include!("gemma4_part2.rs");
 include!("gemma4_part3.rs");
 include!("gemma4_part4.rs");
+include!("gemma4_part5.rs");
+include!("gemma4_part6.rs");

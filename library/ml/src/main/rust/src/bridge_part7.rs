@@ -124,11 +124,10 @@ pub unsafe extern "system" fn Java_com_vayunmathur_library_ml_MlNative_stepGemma
             return -1;
         }
     };
-    match handle.step(token, true) {
-        Ok(Some(logits)) => jint::try_from(argmax(&logits)).unwrap_or(-1),
-        Ok(None) => -1,
+    match handle.step_greedy(token) {
+        Ok(id) => jint::try_from(id).unwrap_or(-1),
         Err(e) => {
-            log(&format!("gemma4 step failed: {e}"));
+            log(&format!("gemma4 greedy step failed: {e}"));
             -1
         }
     }

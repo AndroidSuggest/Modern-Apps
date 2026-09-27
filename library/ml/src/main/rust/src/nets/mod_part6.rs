@@ -221,6 +221,36 @@ impl<'a> Builder<'a> {
         out
     }
 
+    /// The argmax of a logits row: the winning index as two fp16 lanes.
+    ///
+    /// A device-side greedy sampler (see [`Kind::Argmax`]). The output is a
+    /// `[2, 1, 1]` tensor holding `lo = id % 2048` and `hi = id / 2048` as
+    /// fp16 values (both exactly representable; a single fp16 slot can hold
+    /// neither the value nor the bits past id 2048). The host reconstructs
+    /// `hi * 2048 + lo`. Ties keep the FIRST index (strict `>` in the
+    /// shader), matching the host `argmax` loop.
+    pub fn argmax(&mut self, input: Id) -> Id {
+        let out = self.tensor(Shape::new(2, 1, 1));
+        self.nodes.push(Node::Argmax { input, out });
+        out
+    }
+
+    /// `clamp(round(x / scale), -128, 127) * scale`, elementwise. See [`Kind::Quantize`].
+    ///
+    /// S10's per-tensor int8 round-trip, applied where the live graph quantizes an
+    /// activation (the attention mixture before the O projection). The scale is a
+    /// compile-time constant like [`Builder::softcap`]'s cap, for the same reason:
+    /// one float per layer, fixed by the source bundle (see `MM_SCALE`).
+    pub fn quantize(&mut self, input: Id, scale: f32) -> Id {
+        if !(scale > 0.0) {
+            self.fail(format!("a quantize of {scale}, whose scale must be positive"));
+        }
+        let shape = self.shape_of(input);
+        let out = self.tensor(shape);
+        self.nodes.push(Node::Quantize { input, out, scale });
+        out
+    }
+
     /// Softmax over the last axis, which for a score map is one query's distribution.
     pub fn softmax(&mut self, input: Id) -> Id {
         let shape = self.shape_of(input);

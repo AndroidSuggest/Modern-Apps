@@ -86,6 +86,20 @@
         Ok(())
     }
 
+    /// S10's int8 round-trip. See `shaders/quantize.comp`.
+    fn quantize(&mut self, p: &Push) -> Result<(), String> {
+        let scale = f32::from_bits(p.param0_bits);
+        if !(scale > 0.0) {
+            return Err(format!("a quantize of {scale}"));
+        }
+        for index in 0..p.count {
+            let value = self.load(p.in0, index)?;
+            let q = ((value / scale + 0.5).floor()).clamp(-128.0, 127.0);
+            self.store(p.out, index, q * scale)?;
+        }
+        Ok(())
+    }
+
     /// Copy one position into a KV cache at the step's prefix. See `shaders/cache_write.comp`.
     ///
     /// The one op whose destination depends on the step rather than the recording, which is why

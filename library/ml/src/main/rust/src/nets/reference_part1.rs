@@ -64,6 +64,8 @@
                     Kind::SoftmaxPrefix => self.softmax(push, SoftmaxMode::Prefix),
                     Kind::CacheWrite => self.cache_write(push),
                     Kind::Softcap => self.softcap(push),
+                    Kind::Argmax => self.argmax(push),
+                    Kind::Quantize => self.quantize(push),
                     Kind::Activate => self.activate(push),
                     Kind::GatedActivate => self.gated_activate(push),
                     Kind::MulScalar => self.mul_scalar(push),

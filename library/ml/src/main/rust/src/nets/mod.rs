@@ -298,6 +298,13 @@ pub enum Kind {
     CacheWrite,
     /// `tanh(x / cap) * cap`, Gemma's `final_logit_softcapping`. See `shaders/softcap.comp`.
     Softcap,
+    /// The argmax of a logits row: index of the maximum value as a scalar.
+    ///
+    /// A device-side greedy sampler. The 262,144-logit host scan costs ~14 ms
+    /// a token; this reduces on the device and reads back one value instead
+    /// of 512 KB of logits. See `shaders/argmax.comp`. The full-logits path
+    /// (Kotlin sampling) is untouched — this serves greedy decoding only.
+    Argmax,
     /// An [`Act`] applied on its own, for a value no convolution produced. See
     /// `shaders/activate.comp`.
     ///

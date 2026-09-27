@@ -93,6 +93,22 @@ mod tests {
     }
 
     #[test]
+    fn the_tail_trace_builds_and_reads_every_tensor() {
+        // Layer 0 through `layer_tail`, for the L0 device-vs-numpy bisect: the four
+        // branch intermediates plus the layer output, so `finish`'s unread-tensor
+        // invariant polices the same span the decode pass walks.
+        let source = Shapes::new(TENSORS);
+        let plan = build(&source, Mode::TraceTail.at(TEST_CONTEXT)).expect("the tail trace builds");
+        assert_eq!(plan.outputs.len(), 4);
+        for output in &plan.outputs {
+            assert_eq!(output.shape, Shape::new(D_MODEL, 1, 1));
+        }
+        crate::nets::tests::assert_no_aliasing(&plan);
+        let sched = crate::nets::schedule::schedule(&plan);
+        crate::nets::schedule::is_sound(&plan, &sched).expect("the tail schedule is sound");
+    }
+
+    #[test]
     fn the_decode_plan_does_not_depend_on_the_step() {
         // One recording for a whole generation, as for NLLB and whisper.
         let first = build(&Shapes::new(TENSORS), Mode::DecodeStep.at(TEST_CONTEXT)).expect("builds");
@@ -158,6 +174,15 @@ mod tests {
         assert_eq!(count(Kind::MulScalar), LAYERS, "one skip multiply per layer");
         // No tied head on the device means no softcap either: the host caps.
         assert_eq!(count(Kind::Softcap), 0, "softcapping moved to the host with the head");
+        // The live int8 round-trips of the attention path (S10's qint set):
+        // qi + qo + mm + o on every layer, plus ko + vo where a layer owns
+        // its cache - 15 * 6 + 20 * 4. (The `o` grid matches live exactly
+        // only at full-scale O tables: the /4-rescaled build flipped codes.)
+        assert_eq!(
+            count(Kind::Quantize),
+            OWNS_CACHE_LAYERS * 6 + (LAYERS - OWNS_CACHE_LAYERS) * 4,
+            "one Mm round-trip per layer"
+        );
     }
 
     #[test]
