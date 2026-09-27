@@ -37,7 +37,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use modelrunner::nets::gemma4;
-use modelrunner::post::sentencepiece::{Table, GEMMA};
+use modelrunner::post::sentencepiece::Table;
+use modelrunner::post::sentencepiece_flavours::GEMMA;
 use modelrunner::vulkan::context;
 use modelrunner::vulkan::reshape::Reshaped;
 use modelrunner::vulkan::run::StepParams;

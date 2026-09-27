@@ -18,7 +18,8 @@
 //! were trained with, and what `Flavour::tidy_whitespace` exists to distinguish.
 use std::path::PathBuf;
 
-use modelrunner::post::sentencepiece::{Table, GEMMA};
+use modelrunner::post::sentencepiece::Table;
+use modelrunner::post::sentencepiece_flavours::GEMMA;
 
 /// One `{ "text": ..., "ids": [...] }` from the golden file.
 struct Case {
