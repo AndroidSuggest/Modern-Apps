@@ -1,7 +1,7 @@
 //! Surface lifecycle: create, resize, destroy, online flag, frame scheduling.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
-use super::handle::{handle_mut, MapHandle, OnlineFlag, TileResult, ZoomRange, WORKER_COUNT};
+use super::handle::{handle_mut, AbsentSet, MapHandle, OnlineFlag, RetryMap, TileResult, ZoomRange, WORKER_COUNT};
 use super::log::log;
 use super::workers::spawn_worker;
 use crate::style::{self, LayerToggles, Palette, SharedToggles};
@@ -12,7 +12,7 @@ use crate::vulkan::renderer::Renderer;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jlong};
 use jni::JNIEnv;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::os::raw::c_void;
 use std::sync::{Arc, Mutex};
 /// Create the renderer for `surface`. Returns 0 on failure, having logged why.
@@ -130,13 +130,15 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_create<'l>(
         finished: finished_rx,
         wanted: wanted_tx,
         in_flight: HashSet::new(),
-        absent: HashSet::new(),
-        retry: HashMap::new(),
+        absent: AbsentSet::new(),
+        retry: RetryMap::new(),
         online,
         palette: Palette::new(dark != 0, muted != 0),
         toggles,
         zoom_range,
         density: 1.0,
+        last_zoom: None,
+        absent_build_id: 0,
     });
     Box::into_raw(handle) as jlong
 }

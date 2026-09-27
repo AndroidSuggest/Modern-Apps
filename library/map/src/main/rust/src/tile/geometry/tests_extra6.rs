@@ -8,16 +8,17 @@ use tilecodec::mamaps::body::{
 };
 use tilecodec::mamaps::dict;
 
-/// A representative v7 body: one `earth` polygon, one `major_road` LineString
-/// (kind 45) and one `water` polygon — the same layers the old MVT fixture
-/// carried, built directly as a body so the tests no longer depend on the
-/// MVT→body converter.
+/// A representative v8 body: one `landtype` layer holding a kind-less mainland
+/// polygon, one `major_road` LineString (kind 45) and one `lake` polygon — the
+/// same shapes the old MVT fixture carried, built directly as a body so the
+/// tests no longer depend on the MVT→body converter.
 fn real() -> Body {
+    use tilecodec::mamaps::dict::NONE;
     let mut body = Body::new(4096);
-    let mut earth = BodyLayer::new(dict::LAYER_EARTH);
-    earth.features.push(Feature {
-        kind: 1,
-        kind_detail: dict::NONE,
+    let mut landtype = BodyLayer::new(dict::LAYER_LANDTYPE);
+    landtype.features.push(Feature {
+        kind: NONE,
+        kind_detail: NONE,
         geom_type: GEOM_POLYGON,
         flags: 0,
         name_idx: NAME_NONE,
@@ -29,13 +30,35 @@ fn real() -> Body {
         transit_taper: 0,
         lane_count: 0,
     });
-    earth.parts.push(Part {
+    landtype.parts.push(Part {
         coord_start: 0,
         point_count: 4,
         winding: WINDING_OUTER,
     });
-    earth.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
-    body.layers.push(earth);
+    landtype.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
+    landtype.features.push(Feature {
+        kind: crate::style::kind_id_for_test("lake"),
+        kind_detail: NONE,
+        geom_type: GEOM_POLYGON,
+        flags: 0,
+        name_idx: NAME_NONE,
+        parts_offset: 1,
+        part_count: 1,
+        transit_color: 0,
+        transit_ordinal: 0,
+        transit_lanes: 0,
+        transit_taper: 0,
+        lane_count: 0,
+    });
+    landtype.parts.push(Part {
+        coord_start: 4,
+        point_count: 4,
+        winding: WINDING_OUTER,
+    });
+    landtype
+        .coords
+        .extend_from_slice(&[(500, 3000), (1100, 3000), (1100, 3400), (500, 3400)]);
+    body.layers.push(landtype);
     let mut roads = BodyLayer::new(dict::LAYER_ROADS);
     roads.features.push(Feature {
         kind: crate::style::kind_id_for_test("major_road"),
@@ -58,28 +81,6 @@ fn real() -> Body {
     });
     roads.coords = vec![(100, 100), (1500, 900), (2600, 1800), (3900, 2700)];
     body.layers.push(roads);
-    let mut water = BodyLayer::new(dict::LAYER_WATER);
-    water.features.push(Feature {
-        kind: 4,
-        kind_detail: dict::NONE,
-        geom_type: GEOM_POLYGON,
-        flags: 0,
-        name_idx: NAME_NONE,
-        parts_offset: 0,
-        part_count: 1,
-        transit_color: 0,
-        transit_ordinal: 0,
-        transit_lanes: 0,
-        transit_taper: 0,
-        lane_count: 0,
-    });
-    water.parts.push(Part {
-        coord_start: 0,
-        point_count: 4,
-        winding: WINDING_OUTER,
-    });
-    water.coords = vec![(500, 3000), (1100, 3000), (1100, 3400), (500, 3400)];
-    body.layers.push(water);
     body
 }
 
@@ -92,8 +93,8 @@ fn a_line_layer_also_strokes_polygon_outlines() {
     // A lake shoreline and an administrative boundary are lines over area features.
     let outline = vec![Layer {
         id: "water-edge".to_string(),
-        source_layer: "water".to_string(),
-        source_layer_id: tilecodec::mamaps::dict::LAYER_WATER,
+        source_layer: "landtype".to_string(),
+        source_layer_id: tilecodec::mamaps::dict::LAYER_LANDTYPE,
         kind: LayerKind::Line,
         kinds: Vec::new(),
         kind_ids: Vec::new(),
@@ -129,7 +130,7 @@ fn a_line_layer_also_strokes_polygon_outlines() {
         authored: "water".to_string(),
     }];
     let mesh = build(&real(), &outline, 11, 339, 770, false);
-    assert_eq!(mesh.meshes.len(), 1, "the water polygons' outlines stroke");
+    assert_eq!(mesh.meshes.len(), 1, "the landtype polygons' outlines stroke");
     assert!(!mesh.meshes[0].indices.is_empty());
 }
 /// **The Phase 4 milestone, end to end inside this crate.** A `.mamaps` archive is built,

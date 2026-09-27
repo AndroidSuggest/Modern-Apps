@@ -9,17 +9,19 @@ use tilecodec::mamaps::body::{
 };
 use tilecodec::mamaps::dict;
 
-/// A representative v7 body: one `earth` polygon and one `water` polygon —
-/// the same layers the old MVT fixture carried, built directly as a body so
-/// the tests no longer depend on the MVT→body converter.
+/// A representative v8 body: one `landtype` layer holding a kind-less mainland
+/// polygon and one `lake` polygon — the same shapes the old MVT fixture
+/// carried, built directly as a body so the tests no longer depend on the
+/// MVT→body converter.
 /// (Duplicated from `tests_extra3`: sibling `#[cfg(test)]` modules cannot
 /// see each other's private items.)
 fn real() -> Body {
+    use tilecodec::mamaps::dict::NONE;
     let mut body = Body::new(4096);
-    let mut earth = BodyLayer::new(dict::LAYER_EARTH);
-    earth.features.push(Feature {
-        kind: 1,
-        kind_detail: dict::NONE,
+    let mut landtype = BodyLayer::new(dict::LAYER_LANDTYPE);
+    landtype.features.push(Feature {
+        kind: NONE,
+        kind_detail: NONE,
         geom_type: GEOM_POLYGON,
         flags: 0,
         name_idx: NAME_NONE,
@@ -31,21 +33,19 @@ fn real() -> Body {
         transit_taper: 0,
         lane_count: 0,
     });
-    earth.parts.push(Part {
+    landtype.parts.push(Part {
         coord_start: 0,
         point_count: 4,
         winding: WINDING_OUTER,
     });
-    earth.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
-    body.layers.push(earth);
-    let mut water = BodyLayer::new(dict::LAYER_WATER);
-    water.features.push(Feature {
-        kind: 4,
-        kind_detail: dict::NONE,
+    landtype.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
+    landtype.features.push(Feature {
+        kind: crate::style::kind_id_for_test("lake"),
+        kind_detail: NONE,
         geom_type: GEOM_POLYGON,
         flags: 0,
         name_idx: NAME_NONE,
-        parts_offset: 0,
+        parts_offset: 1,
         part_count: 1,
         transit_color: 0,
         transit_ordinal: 0,
@@ -53,13 +53,15 @@ fn real() -> Body {
         transit_taper: 0,
         lane_count: 0,
     });
-    water.parts.push(Part {
-        coord_start: 0,
+    landtype.parts.push(Part {
+        coord_start: 4,
         point_count: 4,
         winding: WINDING_OUTER,
     });
-    water.coords = vec![(500, 3000), (1100, 3000), (1100, 3400), (500, 3400)];
-    body.layers.push(water);
+    landtype
+        .coords
+        .extend_from_slice(&[(500, 3000), (1100, 3000), (1100, 3400), (500, 3400)]);
+    body.layers.push(landtype);
     body
 }
 
@@ -129,6 +131,51 @@ fn a_tile_without_a_heightmap_stays_flat() {
     assert!(
         mesh_for(&mesh, &layers, "earth").is_some(),
         "and keeps its flat earth fill"
+    );
+}
+
+/// Open sea builds no relief even when a DEM is attached: a tile with no kind-less land
+/// base is water (or off the land product), so the land mask is all-false and the grid
+/// drops out completely. Relief drawn there would paint shaded earth over the ocean —
+/// the dark-palette black sea.
+#[test]
+fn open_sea_with_a_heightmap_builds_no_terrain() {
+    use tilecodec::mamaps::dict::NONE;
+    let layers = style::layers();
+    let mut body = Body::new(4096);
+    // Water only: no NONE-kind mainland, so this tile is sea.
+    let mut water = BodyLayer::new(dict::LAYER_LANDTYPE);
+    water.features.push(Feature {
+        kind: crate::style::kind_id_for_test("ocean"),
+        kind_detail: NONE,
+        geom_type: GEOM_POLYGON,
+        flags: 0,
+        name_idx: NAME_NONE,
+        parts_offset: 0,
+        part_count: 1,
+        transit_color: 0,
+        transit_ordinal: 0,
+        transit_lanes: 0,
+        transit_taper: 0,
+        lane_count: 0,
+    });
+    water.parts.push(Part {
+        coord_start: 0,
+        point_count: 4,
+        winding: WINDING_OUTER,
+    });
+    water.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
+    body.layers.push(water);
+    // A flat sea-level DEM, exactly what coastal tiles carry over their water half.
+    body.heightmap = Some(heightmap(9, |_, _| 0));
+    let mesh = build(&body, &layers, 4, 2, 5, false);
+    assert!(
+        mesh.terrain.indices.is_empty(),
+        "open sea builds no relief grid, or shaded earth covers the ocean"
+    );
+    assert!(
+        mesh_for(&mesh, &layers, "water").is_some(),
+        "the water fill still draws flat over the clear"
     );
 }
 

@@ -104,6 +104,36 @@ fn land_mask(tile: &Body, dim: usize) -> Vec<bool> {
                 point_in_rings(u, v, &land_rings) && !point_in_rings(u, v, &water_rings);
         }
     }
+    // Erode one DEM cell: a sample stays land only when its 4-neighbours are land too.
+    // Coarse tiles simplify the coastline aggressively, so a cell that is mostly ocean can
+    // still test inside — and relief drawn there paints shaded earth over open sea, which in
+    // the dark palette reads as a black ocean. Eroding the shore back by half a DEM cell
+    // errs toward water, which is the safe direction: the flat `earth` fill still draws
+    // underneath (so no hole opens), only the relief withholds, and at worst a shoreline
+    // loses its shading for half a cell rather than the sea gaining a continent.
+    //
+    // Off-grid neighbours read as land, so a land-only tile keeps its full grid (its edge
+    // ring would otherwise erode against nothing) and the erosion only ever bites where
+    // in-tile water was actually seen.
+    let raw = mask.clone();
+    let at = |row: usize, col: usize| -> bool {
+        if row >= dim || col >= dim {
+            return true;
+        }
+        raw[row * dim + col]
+    };
+    for row in 0..dim {
+        for col in 0..dim {
+            if raw[row * dim + col]
+                && !(at(row.saturating_sub(1), col)
+                    && at(row + 1, col)
+                    && at(row, col.saturating_sub(1))
+                    && at(row, col + 1))
+            {
+                mask[row * dim + col] = false;
+            }
+        }
+    }
     mask
 }
 

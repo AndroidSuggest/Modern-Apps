@@ -77,36 +77,14 @@ pub(crate) fn spawn_worker(
             // Single open: the header prefix is fetched *once per surface* (the first worker
             // fetches, the rest block on `header`), then the `build_id` is read out of it and the
             // cache opens once per worker with the full origin marker — wiping on mismatch up
-            // front. No two-step reset. A failed fetch poisons the lock for every worker, so one
-            // dead network kills the surface's workers once instead of logging four times.
-            let build_id =
-                *header.get_or_init(
-                    || match JniRangeFetcher.fetch(&archive_url, "bytes=0-127") {
-                        Ok(r)
-                            if r.status == 206
-                                && r.body.len() == tilecodec::mamaps::header::HEADER_LEN =>
-                        {
-                            match Header::parse(&r.body) {
-                                Ok(h) => Some(h.build_id),
-                                Err(e) => {
-                                    log(&format!("cannot parse the mamaps header: {e}"));
-                                    None
-                                }
-                            }
-                        }
-                        Ok(r) => {
-                            log(&format!(
-                                "cannot fetch the mamaps header: HTTP {}",
-                                r.status
-                            ));
-                            None
-                        }
-                        Err(e) => {
-                            log(&format!("cannot fetch the mamaps header: {e}"));
-                            None
-                        }
-                    },
-                );
+            // front. No two-step reset.
+            //
+            // Retried with backoff, not once: a single failed fetch used to poison the lock for
+            // every worker, so one transient network blip at startup killed the surface's workers
+            // and stuck every in-flight tile for the session. A header that keeps failing past
+            // `HEADER_RETRIES` still kills them once instead of logging four times — but only
+            // after the network has had its chance to come back.
+            let build_id = *header.get_or_init(|| fetch_header_with_retry(&archive_url));
             let Some(build_id) = build_id else { return };
             let cache = RangeCache::open(
                 cache_dir,
@@ -138,7 +116,67 @@ pub(crate) fn spawn_worker(
     }
 }
 
-/// Serve tile requests from `archive` until the queue closes.
+/// How many times the cold-start header fetch is retried before the workers give up.
+///
+/// The fetch runs once per surface (not once per worker), so these retries are the surface's
+/// whole startup budget: a few seconds of tunnel against giving up for the session. Past this
+/// the lock holds `None` and every worker returns, as before.
+#[cfg(target_os = "android")]
+const HEADER_RETRIES: u32 = 5;
+
+/// One attempt at the archive header's `build_id`: `Some` on a parsed 128-byte 206,
+/// `None` on any transport failure, unexpected status or unparseable body.
+#[cfg(target_os = "android")]
+fn fetch_header_once(archive_url: &str) -> Option<u64> {
+    use crate::tile::source::JniRangeFetcher;
+    use crate::tile::source::RangeFetcher;
+    match JniRangeFetcher.fetch(archive_url, "bytes=0-127") {
+        Ok(r)
+            if r.status == 206 && r.body.len() == tilecodec::mamaps::header::HEADER_LEN =>
+        {
+            match Header::parse(&r.body) {
+                Ok(h) => Some(h.build_id),
+                Err(e) => {
+                    log(&format!("cannot parse the mamaps header: {e}"));
+                    None
+                }
+            }
+        }
+        Ok(r) => {
+            log(&format!(
+                "cannot fetch the mamaps header: HTTP {}",
+                r.status
+            ));
+            None
+        }
+        Err(e) => {
+            log(&format!("cannot fetch the mamaps header: {e}"));
+            None
+        }
+    }
+}
+
+/// Fetch the archive header's `build_id`, retrying transient failures with backoff.
+///
+/// A `Some` is the build id; `None` means the header never arrived and the caller returns.
+/// Parse failures are not retried — a body that will not parse now will not parse in a
+/// second — but transport failures and non-206 statuses are, because those are what a
+/// tunnel, a captive portal and a cold radio look like.
+#[cfg(target_os = "android")]
+fn fetch_header_with_retry(archive_url: &str) -> Option<u64> {
+    use crate::tile::source::retry_delay_ms;
+    let mut attempt = 0u32;
+    loop {
+        match fetch_header_once(archive_url) {
+            Some(id) => return Some(id),
+            None if attempt >= HEADER_RETRIES => return None,
+            None => {
+                attempt += 1;
+                std::thread::sleep(std::time::Duration::from_millis(retry_delay_ms(attempt)));
+            }
+        }
+    }
+}
 ///
 /// Generic over the reader so the same loop drives both the URL-backed
 /// [`CachingRangeReader`] and the disk-backed [`FileRangeReader`]: only how the archive
@@ -153,8 +191,9 @@ fn serve<R: RangeReader>(
 ) {
     // Publish the real range. Until this lands the renderer works from a guess, and
     // a guess that is too high asks for a zoom the archive does not contain and
-    // silently gets nothing back.
-    zoom_range.set(archive.header.min_zoom, archive.header.max_zoom);
+    // silently gets nothing back. The build id rides with it so the frame can clear
+    // absences recorded against a previous publish (see `absent_build_id`).
+    zoom_range.set(archive.header.min_zoom, archive.header.max_zoom, archive.header.build_id);
     let layers = style::layers();
     // Read once from the header rather than per tile: it is a property of the archive.
     let rings_validated = archive.header.rings_validated();

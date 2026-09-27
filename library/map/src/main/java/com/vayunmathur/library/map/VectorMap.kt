@@ -356,13 +356,15 @@ private val POI_LAYER_IDS = setOf(
 )
 
 /**
- * Shown before any tile has loaded. Matches the renderer's own backdrop, so the surface
- * appearing does not flash a different colour.
+ * Shown before any tile has loaded. Matches the renderer's own clear colour (the water-blue
+ * `background` in `style/basemap.flat.json`: `#80deea` light, `#0d1b2a` dark), so the surface
+ * appearing does not flash a different colour — and so an unloaded ocean viewport reads as
+ * ocean in both layers rather than beige-grey behind blue.
  */
-private const val LIGHT_BACKGROUND = 0xFFE9E7E2
+private const val LIGHT_BACKGROUND = 0xFF80DEEA
 
-/** `BasemapPalette.Fill.Background`, so this and `maps` agree in the dark. */
-private const val DARK_BACKGROUND = 0xFF1B1D22
+/** The renderer's dark clear, so this and the surface agree in the dark. */
+private const val DARK_BACKGROUND = 0xFF0D1B2A
 
 /**
  * The attribution text the overlay used to draw: "© OpenStreetMap contributors · Protomaps".

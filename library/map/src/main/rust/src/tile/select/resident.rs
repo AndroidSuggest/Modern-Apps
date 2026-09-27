@@ -4,6 +4,18 @@ use super::coverage::visible;
 
 use super::tile_id::TileId;
 
+/// Whether this frame deserves the zoom-out upload burst: the first frame, or any frame
+/// whose camera zoom decreased since the last.
+///
+/// Zoom-out invalidates the whole viewport at once while its replacements are usually
+/// already finished (ancestors fetched ahead, resident descendants standing in), so the
+/// steady-state smoothing only stretches the coarse interval. A pure function of the two
+/// zooms so the drain policy is host-testable; the render thread threads its `last_zoom`
+/// through it (see `MapHandle::upload_budget`).
+pub fn zoom_out_burst(last_zoom: Option<f64>, zoom: f64) -> bool {
+    last_zoom.is_none_or(|last| zoom < last)
+}
+
 /// How many levels of descendant to *keep* when they are already resident.
 ///
 /// The mirror of [`ANCESTOR_DEPTH`], and the reason zooming out no longer blanks the map. An

@@ -31,5 +31,5 @@ pub use coverage::{bound, visible};
 pub use fade::{
     fade_in_progress, has_resident_ancestor, lod_fade_alpha, tile_lod_alpha, LOD_FADE_SECONDS,
 };
-pub use resident::{resident_set, stands_in_for_visible, ANCESTOR_DEPTH, DESCENDANT_DEPTH};
+pub use resident::{resident_set, stands_in_for_visible, zoom_out_burst, ANCESTOR_DEPTH, DESCENDANT_DEPTH};
 pub use tile_id::TileId;

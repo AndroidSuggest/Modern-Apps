@@ -87,6 +87,7 @@ fn named_road_body(name: &str, pts: &[(i16, i16)]) -> Body {
         heightmap: None,
         carriageways: Vec::new(),
         convention: None,
+        region_links: Vec::new(),
     }
 }
 
@@ -190,6 +191,7 @@ fn hill_building_body(
         heightmap,
         carriageways: Vec::new(),
         convention: None,
+        region_links: Vec::new(),
     }
 }
 

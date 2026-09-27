@@ -65,6 +65,7 @@ fn traffic_body(ids: &[Option<u64>], id_table: bool) -> Body {
         heightmap: None,
         carriageways: Vec::new(),
         convention: None,
+        region_links: Vec::new(),
     }
 }
 
@@ -290,6 +291,7 @@ fn building_body(attrs: Option<tilecodec::mamaps::body::BuildingAttrs>) -> Body 
         heightmap: None,
         carriageways: Vec::new(),
         convention: None,
+        region_links: Vec::new(),
     }
 }
 

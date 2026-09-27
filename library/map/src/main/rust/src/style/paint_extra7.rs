@@ -22,7 +22,21 @@ fn the_kinds_each_authored_layer_admits_are_all_drawn_and_no_others() {
             families.push(&layer.authored);
         }
     }
+    // App-only v8 families with no authored counterpart (see
+    // `every_authored_layer_a_flat_layer_names_exists`): their kind whitelists
+    // are pinned by `the_interned_whitelist_is_the_authored_one`, not here.
+    const APP_ONLY_FAMILIES: &[&str] = &[
+        "landuse_orchard",
+        "landuse_vineyard",
+        "landuse_quarry",
+        "landuse_swimming_pool",
+        "landuse_residential",
+        "landuse_commercial",
+    ];
     for family in families {
+        if APP_ONLY_FAMILIES.contains(&family) {
+            continue;
+        }
         let authored = authored_layer(&root, family);
         let mut admitted = authored_filter_kinds(authored.get("filter"));
         let mut drawn: Vec<String> = layers()
@@ -33,10 +47,22 @@ fn the_kinds_each_authored_layer_admits_are_all_drawn_and_no_others() {
         if admitted.is_empty() {
             // An unrestricted authored layer needs an unfiltered flat layer, or the kinds
             // its colour expression does not name would stop being drawn at all.
+            //
+            // v8 merges the wash sources: authored `earth` and `water` are both type-only
+            // filters over their own sources, while every flat arm reads merged
+            // `landtype`. Flat `earth` (empty whitelist — matches every kind) is the
+            // unfiltered member for both families: it draws the mainland and every
+            // water kind, and flat `water` repaints the water kinds over it. So family
+            // `water` is covered without its own unfiltered arm.
+            let covered = layers().iter().any(|l| {
+                l.kinds.is_empty()
+                    && (l.authored == family
+                        || (family == "water"
+                            && l.authored == "earth"
+                            && l.source_layer == "landtype"))
+            });
             assert!(
-                layers()
-                    .iter()
-                    .any(|l| l.authored == family && l.kinds.is_empty()),
+                covered,
                 "`{family}` admits every kind but no flat layer draws them",
             );
             continue;
@@ -76,6 +102,10 @@ fn the_kinds_each_authored_layer_admits_are_all_drawn_and_no_others() {
 
 /// Every authored layer a flat layer names has to exist, or the cross-check silently stops
 /// checking that layer.
+///
+/// The six v8 landtype arms (`landuse_orchard` … `landuse_commercial`) are exempt: the
+/// reference style has no such arms, so there is nothing to name. Their sources and kind
+/// whitelists are pinned by `the_interned_whitelist_is_the_authored_one` instead.
 #[test]
 fn every_authored_layer_a_flat_layer_names_exists() {
     let root = basemap();
@@ -86,7 +116,19 @@ fn every_authored_layer_a_flat_layer_names_exists() {
         .iter()
         .filter_map(|layer| layer.get("id").and_then(Json::as_str))
         .collect();
+    // App-only flat layers with no authored counterpart (see above).
+    const APP_ONLY: &[&str] = &[
+        "landuse_orchard",
+        "landuse_vineyard",
+        "landuse_quarry",
+        "landuse_swimming_pool",
+        "landuse_residential",
+        "landuse_commercial",
+    ];
     for layer in layers() {
+        if APP_ONLY.contains(&layer.authored.as_str()) {
+            continue;
+        }
         assert!(
             ids.contains(&layer.authored.as_str()),
             "`{}` names authored layer `{}`, which is not in basemap.json",

@@ -339,8 +339,21 @@ fn rings_overlap(
         || b.iter().filter(|&&p| point_in_ring(p, a, a_box)).count() > 1
 }
 
-/// Even-odd ray cast. On the boundary counts as outside, which is what makes `strictly_inside`
-/// strict.
+/// Even-odd ray cast, with the boundary counting as inside.
+///
+/// That last clause is what keeps clipped islands: the tile clipper emits exterior and hole
+/// vertices onto the same tile-edge lines, so a hole clipped onto the tile edge touches its
+/// exterior there. Reading those vertices as outside dropped the hole — an island filled in
+/// solid on the fine tile while the coarse tile (hole fully inside) stayed pixel-perfect.
+/// The renderer's `tess::fill::geom::point_within_ring` already counts the boundary as inside
+/// for exactly this reason; stage C runs first and bakes its drops into the archive, so it
+/// has to agree with it — a stricter rule here deletes islands the renderer would otherwise
+/// have kept.
+///
+/// The leniency admits exactly coincident edges — a vertex ON the exterior — never a vertex
+/// genuinely outside it: those still fail every edge test and the hole still goes. And it is
+/// safe in this direction only: a hole the tiler keeps but the renderer drops costs one
+/// island, while a hole the tiler drops is gone for every reader.
 fn point_in_ring((x, y): (i16, i16), ring: &[(i16, i16)], ring_box: (i16, i16, i16, i16)) -> bool {
     // A point outside the box is outside the ring, for the cost of four comparisons rather than a
     // walk of every edge.
@@ -359,7 +372,31 @@ fn point_in_ring((x, y): (i16, i16), ring: &[(i16, i16)], ring_box: (i16, i16, i
             }
         }
     }
-    inside
+    inside || on_boundary((x, y), ring)
+}
+
+/// Is the point exactly on one of the ring's edges?
+///
+/// The tile clipper emits exterior and hole vertices onto the same tile-edge lines, quantised
+/// to the same `i16` grid — a hole clipped onto the tile edge shares exact coordinates with
+/// the exterior's clipped edge there. An exact integer cross product (no division, so no
+/// truncation putting the two sides of one edge in disagreement), mirroring the renderer's
+/// `tess::fill::geom::on_boundary`.
+fn on_boundary((x, y): (f64, f64), ring: &[(i16, i16)]) -> bool {
+    for pair in ring.windows(2) {
+        let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
+        let (x0, y0, x1, y1) = (x0 as f64, y0 as f64, x1 as f64, y1 as f64);
+        let cross = (x - x0) * (y1 - y0) - (y - y0) * (x1 - x0);
+        if cross == 0.0
+            && x >= x0.min(x1)
+            && x <= x0.max(x1)
+            && y >= y0.min(y1)
+            && y <= y0.max(y1)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// **Verification item 6 of the plan's list.** Every ring of a layer must satisfy all five

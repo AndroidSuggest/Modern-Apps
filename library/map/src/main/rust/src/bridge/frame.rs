@@ -1,7 +1,7 @@
 //! One frame from a camera snapshot.
 //!
 //! Pure move out of `bridge.rs`; no logic changes.
-use super::handle::{handle_mut, TileResult, RESIDENT_TILE_CAP, UPLOADS_PER_FRAME};
+use super::handle::{handle_mut, TileResult, RESIDENT_TILE_CAP, UPLOADS_PER_FRAME, WASH_MAX_ZOOM};
 use super::log::{log, log_info};
 use crate::camera::Camera;
 use crate::style;
@@ -71,7 +71,8 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // Task-17 pick needs the frame's density for Dp→device-px; remember it.
     map.density = density;
 
-    // Upload whatever the workers finished, up to `UPLOADS_PER_FRAME`. Doing it here rather than
+    // Upload whatever the workers finished, up to the frame's budget (see
+    // `upload_budget`: a zoom-out drains faster). Doing it here rather than
     // on a worker keeps every Vulkan call on one thread; bounding it keeps a burst of finished
     // tiles from landing in a single frame.
     //
@@ -83,9 +84,14 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
     // The drain sample below still records (zero elapsed on Moon frames) so the
     // frame-time rollup keeps its shape.
     let drain_start = std::time::Instant::now();
-    if !crate::camera::moon_active(&camera) {
+    if crate::camera::moon_active(&camera) {
+        // No selection runs for the Moon, so no zoom is recorded — and the Earth set
+        // resumes mid-stream when the body switches back, which deserves the burst path.
+        map.forget_zoom();
+    } else {
+    let budget = map.upload_budget(camera.zoom);
     let mut uploads = 0usize;
-    while uploads < UPLOADS_PER_FRAME {
+    while uploads < budget {
         let Ok((key, result)) = map.finished.try_recv() else {
             break;
         };
@@ -141,6 +147,17 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
         .record(Step::UploadDrain, nanos_since(drain_start));
     let select_start = std::time::Instant::now();
     let (min_zoom, max_zoom) = map.zoom_range.get();
+    // A republish under the stable URL moves every byte offset: absences and backoffs
+    // recorded against the previous build would refuse or delay tiles that exist now.
+    // The worker publishes the real build id with the range; a change clears both sets.
+    // (0 is "header not yet fetched" — nothing is cleared until the first real id lands,
+    // so cold-start absences recorded under the guessed range survive the header.)
+    let build_id = map.zoom_range.build_id();
+    if build_id != 0 && build_id != map.absent_build_id {
+        map.absent.clear();
+        map.retry.clear();
+        map.absent_build_id = build_id;
+    }
     // A tile is "had" only if it was tessellated at the current toggle generation, so a
     // toggle change re-requests the resident set through this same loop rather than
     // needing a path of its own. The stale mesh keeps drawing until its replacement
@@ -160,25 +177,25 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
         (visible, keep)
     };
     let now = std::time::Instant::now();
-    // Wash overzoom: the four fill layers stop at z12 (`MAX_ZOOM_PER_LAYER`),
-    // so past z12 nothing `visible` carries them. Their z12 ancestors are kept
+    // Wash overzoom: the `landtype` wash tiles to z14 (`mamaps_build::DEFAULT_MAX_ZOOM`),
+    // so past z14 nothing `visible` carries it. Its z14 ancestors are kept
     // resident by `resident_set` — but kept is not fetched, so a cold start at
-    // z13+ would show no wash until the user zooms through z12. Fetch the z12
+    // z15+ would show no wash until the user zooms through z14. Fetch the z14
     // covering tiles alongside the visible ones; the draw loop already draws
-    // every resident tile, so the wash shows through where z13+ have none.
-    // Bounded: one z12 tile covers 2^(z-12) visible tiles, so this adds at most
+    // every resident tile, so the wash shows through where z15+ have none.
+    // Bounded: one z14 tile covers 2^(z-14) visible tiles, so this adds at most
     // a quarter of the visible count, and the existing has_tile/absent/retry
     // gates dedup it exactly like a visible fetch.
-    let wash_extra: Vec<select::TileId> = if camera.zoom > 12.0 {
+    let wash_extra: Vec<select::TileId> = if camera.zoom > WASH_MAX_ZOOM as f64 {
         let mut seen = std::collections::HashSet::new();
         let mut extra = Vec::new();
         for tile in &visible {
-            if tile.z <= 12 {
+            if tile.z <= WASH_MAX_ZOOM {
                 continue;
             }
-            let shift = tile.z - 12;
+            let shift = tile.z - WASH_MAX_ZOOM;
             let ancestor = select::TileId {
-                z: 12,
+                z: WASH_MAX_ZOOM,
                 x: tile.x >> shift,
                 y: tile.y >> shift,
             };
@@ -202,27 +219,23 @@ pub extern "system" fn Java_com_vayunmathur_library_map_MapNative_render<'l>(
             continue;
         }
         // A closed channel means every worker died; the map keeps drawing what it has.
-        let _ = map.wanted.send(*tile);
+        // The key is removed again on failure: it is only taken out of `in_flight` when a
+        // result is drained, so a dropped send would otherwise stick the tile there for
+        // the rest of the session and it would never be re-requested.
+        if map.wanted.send(*tile).is_err() {
+            map.in_flight.remove(&key);
+        }
     }
-    // Drop backoffs for tiles that are no longer visible. Not just housekeeping: an entry whose
-    // deadline has passed but which nothing re-requests would make `nextFrameDelayMillis`
-    // answer "draw now" forever, spinning the on-demand loop at 60fps for a tile that is off
-    // screen. Only the visible set is ever fetched, so only the visible set may hold a backoff.
+    // Drop backoffs for tiles that are no longer visible (see
+    // `RetryMap::retain_visible` for why this is load-bearing, not housekeeping).
     //
     // Skipped on Moon frames along with the fetch above: `visible` is empty, and
     // retaining against it would drop every Earth backoff (harmless but wasteful)
     // — worse, `retain` below with an empty keep would EVICT the Earth set. The
     // Moon guard keeps both calls out.
-    //
-    // Linear rather than a `HashSet` of the visible keys, deliberately: this runs per frame,
-    // `retry` is empty in the ordinary case (so the closure never runs), and a viewport is a
-    // couple of dozen tiles. Building a set here would allocate every frame to save nothing.
     let moon = crate::camera::moon_active(&camera);
     if !moon {
-        if !map.retry.is_empty() {
-            map.retry
-                .retain(|key, _| visible.iter().any(|t| t.key() == *key));
-        }
+        map.retry.retain_visible(&visible);
         map.renderer.retain(&keep, &visible, RESIDENT_TILE_CAP);
     }
     map.renderer

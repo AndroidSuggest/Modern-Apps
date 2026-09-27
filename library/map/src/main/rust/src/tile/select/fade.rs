@@ -11,11 +11,18 @@ pub const LOD_FADE_SECONDS: f32 = 0.3;
 /// The per-tile opacity of a tile `now - uploaded_at` seconds after its GPU buffers landed: 0 at
 /// upload, ramping linearly to 1 over `duration` (WS-D LOD cross-fade). Both times share the
 /// `Camera::time_seconds` epoch. A non-positive `duration` disables the fade (opaque at once).
+///
+/// The elapsed time is taken **modulo [`CLOCK_WRAP_SECONDS`]** like
+/// [`fade_in_progress`]: the shared clock wraps hourly, and a plain subtraction across a wrap
+/// is wrong by an entire period — a tile stamped at 3599.9 against a clock just wrapped to 0.1
+/// would read as −3599.8 s, clamp to 0, and sit transparent for the remaining hour whenever a
+/// coarse ancestor is resident. The wrap is exact here (not an approximation): both stamps
+/// come from the same bounded clock.
 pub fn lod_fade_alpha(now: f32, uploaded_at: f32, duration: f32) -> f32 {
     if duration <= 0.0 {
         return 1.0;
     }
-    ((now - uploaded_at) / duration).clamp(0.0, 1.0)
+    ((now - uploaded_at).rem_euclid(crate::camera::CLOCK_WRAP_SECONDS) / duration).clamp(0.0, 1.0)
 }
 
 /// Whether a tile stamped `uploaded_at` is still inside its cross-fade, and so would draw

@@ -37,8 +37,11 @@ fn a_fresh_tile_ramps_zero_to_one_over_the_duration() {
         1.0,
         "opaque at the end"
     );
-    // Before upload (clock races the stamp) and long after both clamp.
-    assert_eq!(lod_fade_alpha(uploaded_at - 1.0, uploaded_at, d), 0.0);
+    // Before upload (clock races the stamp) reads as long-resident: the elapsed time is
+    // modulo the hourly wrap, so a `now` behind the stamp is indistinguishable from a stamp
+    // nearly an hour old. Opaque is the safe direction — a race must never make a tile
+    // transparent — and it agrees with `fade_in_progress`, which already wraps.
+    assert_eq!(lod_fade_alpha(uploaded_at - 1.0, uploaded_at, d), 1.0);
     assert_eq!(lod_fade_alpha(uploaded_at + 10.0, uploaded_at, d), 1.0);
 }
 
@@ -48,6 +51,26 @@ fn a_long_resident_tile_is_fully_opaque() {
     let now = 5000.0;
     let uploaded_at = now - 100.0;
     assert_eq!(lod_fade_alpha(now, uploaded_at, LOD_FADE_SECONDS), 1.0);
+}
+
+/// Across the hourly clock wrap a young tile stays young: a tile stamped at 3599.9 against a
+/// clock just wrapped to 0.1 is 0.2 s old, ramping — never stuck transparent for the hour.
+/// The plain subtraction read −3599.8 s, clamped to 0, and pinned the tile invisible while a
+/// coarse ancestor was resident. `fade_in_progress` already wrapped; this makes the alpha
+/// agree with it.
+#[test]
+fn the_fade_survives_the_hourly_clock_wrap() {
+    use crate::camera::CLOCK_WRAP_SECONDS;
+    let d = LOD_FADE_SECONDS;
+    let uploaded_at = CLOCK_WRAP_SECONDS - 0.1;
+    let now = 0.1;
+    let alpha = lod_fade_alpha(now, uploaded_at, d);
+    assert!(
+        (alpha - 0.2 / d).abs() < 1e-3,
+        "0.2 s into the fade, not stuck at 0: got {alpha}",
+    );
+    // And the progress gate agrees it is mid-fade, so the frame loop keeps running.
+    assert!(fade_in_progress(now, uploaded_at, d));
 }
 
 /// The coarse ancestor stays fully opaque underneath a fading finer child: the child ramps
@@ -113,6 +136,22 @@ fn a_lone_fresh_tile_does_not_fade() {
         1.0,
         "no ancestor underneath — draw opaque, never fade over the background",
     );
+}
+
+/// The zoom-out upload burst: the first frame and any frame whose zoom decreased drain
+/// finished tiles faster, so a zoom-out that invalidates the whole viewport refills in a
+/// frame or two instead of trickling at the steady rate while the east half of the map
+/// waits lineless.
+#[test]
+fn the_first_frame_and_any_zoom_out_take_the_burst_path() {
+    assert!(zoom_out_burst(None, 10.0), "the first frame bursts");
+    assert!(zoom_out_burst(Some(10.0), 4.0), "a zoom-out bursts");
+    assert!(
+        zoom_out_burst(Some(10.0), 9.99),
+        "even a fractional step out bursts",
+    );
+    assert!(!zoom_out_burst(Some(4.0), 10.0), "a zoom-in keeps the steady rate");
+    assert!(!zoom_out_burst(Some(10.0), 10.0), "a pan at the same zoom keeps it");
 }
 
 /// The fade window is open for exactly as long as the fade runs, so the on-demand frame

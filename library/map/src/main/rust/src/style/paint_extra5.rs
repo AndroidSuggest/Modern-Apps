@@ -34,6 +34,11 @@ fn the_flat_style_agrees_with_basemap_json() {
         // reference style has no orchard/vineyard/quarry/pool/residential/commercial arms,
         // so there is nothing to cross-check their colours or ramps against. Their sources
         // and kind whitelists are pinned by `the_interned_whitelist_is_the_authored_one`.
+        //
+        // `landuse_pier` is app-only for its colour alone: commit f3ee7d62 deliberately
+        // paints piers with the industrial fill (`#d1dde1`, water-adjacent — a pier sits
+        // over water) rather than the authored neutral `#e0e0e0`. Its source, kinds and
+        // ramps are still cross-checked below; only the fill-colour arm is skipped.
         if layer.carriageway
             || matches!(
                 layer.id.as_str(),
@@ -87,26 +92,30 @@ fn the_flat_style_agrees_with_basemap_json() {
         }
         match layer.kind {
             LayerKind::Fill => {
-                // The light colour has to be one the authored `fill-color` can produce.
-                let mut colors = Vec::new();
-                colors_in(
-                    authored
-                        .get("paint")
-                        .and_then(|p| p.get("fill-color"))
-                        .expect("a colour"),
-                    &mut colors,
-                );
-                assert!(
-                    colors.contains(&layer.light),
-                    "`{}`'s {:#010X} is not a colour `{}`'s fill-color paints: {:?}",
-                    layer.id,
-                    layer.light,
-                    layer.authored,
-                    colors
-                        .iter()
-                        .map(|c| format!("{c:#010X}"))
-                        .collect::<Vec<_>>(),
-                );
+                // The light colour has to be one the authored `fill-color` can produce —
+                // except `landuse_pier`, whose industrial-fill colour is a deliberate
+                // divergence (see the skip-list comment above).
+                if layer.id != "landuse_pier" {
+                    let mut colors = Vec::new();
+                    colors_in(
+                        authored
+                            .get("paint")
+                            .and_then(|p| p.get("fill-color"))
+                            .expect("a colour"),
+                        &mut colors,
+                    );
+                    assert!(
+                        colors.contains(&layer.light),
+                        "`{}`'s {:#010X} is not a colour `{}`'s fill-color paints: {:?}",
+                        layer.id,
+                        layer.light,
+                        layer.authored,
+                        colors
+                            .iter()
+                            .map(|c| format!("{c:#010X}"))
+                            .collect::<Vec<_>>(),
+                    );
+                }
                 let authored_opacity = authored_property(&authored, "fill-opacity")
                     .unwrap_or_else(|| Ramp::constant(1.0));
                 assert_ramps_agree(&layer.id, "opacity", &layer.opacity, &authored_opacity);

@@ -196,9 +196,9 @@ fn a_degenerate_heightmap_keeps_the_flat_earth_fill() {
     use tilecodec::mamaps::body::{NAME_NONE, WINDING_OUTER};
     let layers = crate::style::layers();
     let mut body = Body::new(4096);
-    let mut earth = BodyLayer::new(tilecodec::mamaps::dict::LAYER_EARTH);
-    earth.features.push(Feature {
-        kind: 1,
+    let mut landtype = BodyLayer::new(tilecodec::mamaps::dict::LAYER_LANDTYPE);
+    landtype.features.push(Feature {
+        kind: tilecodec::mamaps::dict::NONE,
         kind_detail: tilecodec::mamaps::dict::NONE,
         geom_type: GEOM_POLYGON,
         flags: 0,
@@ -211,13 +211,13 @@ fn a_degenerate_heightmap_keeps_the_flat_earth_fill() {
         transit_taper: 0,
         lane_count: 0,
     });
-    earth.parts.push(tilecodec::mamaps::body::Part {
+    landtype.parts.push(tilecodec::mamaps::body::Part {
         coord_start: 0,
         point_count: 4,
         winding: WINDING_OUTER,
     });
-    earth.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
-    body.layers.push(earth);
+    landtype.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
+    body.layers.push(landtype);
     body.heightmap = Some(Heightmap {
         dim: 1,
         samples: vec![32768],

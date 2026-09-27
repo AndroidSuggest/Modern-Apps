@@ -20,7 +20,7 @@ fn the_vendored_flat_style_parses() {
     // that says what it is, instead of nudging a basemap total that then no longer
     // states what the basemap is.
     //
-    // Basemap: 24 fills, 24 lines and 7 symbols. The 24 lines are the 12
+    // Basemap: 30 fills, 24 lines and 7 symbols. The 24 lines are the 12
     // surface/link layers, 10 bridge layers (5 casings + 5 fills), and the two app-only
     // carriageway layers that draw a road's surface and its lane markings at z16+ —
     // `roads-carriageway` and `junction-connector`, which continues the same surface
@@ -45,13 +45,17 @@ fn the_vendored_flat_style_parses() {
             .filter(|l| l.kind == kind && l.toggle.is_some() == optional)
             .count()
     };
+    // The 30 fills are `earth`, `landcover` + 5 covers, 11 `landuse_*` greens,
+    // `water`, 6 v8 landuse arms (pedestrian/orchard/vineyard/quarry/
+    // swimming_pool/residential/commercial), pier, and buildings. Six more than
+    // the v7 count: the v8 `landtype` merge carries what the wash used to drop.
     assert_eq!(
         (
             count(LayerKind::Fill, false),
             count(LayerKind::Line, false),
             count(LayerKind::Symbol, false)
         ),
-        (24, 24, 7),
+        (30, 24, 7),
         "the basemap layer set",
     );
     assert_eq!(

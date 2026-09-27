@@ -133,6 +133,36 @@ mod tests {
         assert!(check(&layer).is_empty(), "{:?}", check(&layer));
     }
 
+    /// **The zoom-in island flooding.** A hole clipped onto the tile edge shares exact
+    /// vertices with its exterior's clipped edge there. The boundary counts as inside, so
+    /// the hole is kept — reading it as outside dropped real islands on fine tiles while
+    /// the coarse tile (hole fully inside) stayed pixel-perfect.
+    #[test]
+    fn a_hole_touching_its_exterior_is_kept() {
+        // Left and right edges of the hole sit exactly on the exterior's edges: the shape
+        // the tile clipper emits when both rings reach the same tile edge.
+        let exterior = vec![(0i16, 0i16), (100, 0), (100, 100), (0, 100), (0, 0)];
+        let touching = vec![(0i16, 40i16), (100, 40), (100, 60), (0, 60), (0, 40)];
+        let mut layer = layer_of(&[exterior, touching]);
+        let stats = normalise(&mut layer);
+        assert_eq!(stats.holes_dropped, 0, "an edge-touching hole is not a straddle");
+        assert_eq!(layer.features[0].part_count, 2);
+        assert!(check(&layer).is_empty(), "{:?}", check(&layer));
+    }
+
+    /// The complement: a hole with a vertex genuinely outside the exterior still goes.
+    /// One vertex at 130 against an exterior ending at 100 is outside, not on the edge,
+    /// so no boundary rule rescues it.
+    #[test]
+    fn a_hole_crossing_its_exterior_by_one_vertex_is_still_dropped() {
+        let exterior = vec![(0i16, 0i16), (100, 0), (100, 100), (0, 100), (0, 0)];
+        let crossing = vec![(40i16, 30i16), (40, 70), (70, 70), (130, 50), (70, 30), (40, 30)];
+        let mut layer = layer_of(&[exterior, crossing]);
+        let stats = normalise(&mut layer);
+        assert_eq!(stats.holes_dropped, 1);
+        assert_eq!(layer.features[0].part_count, 1);
+    }
+
     #[test]
     fn a_zero_area_ring_goes_and_takes_nothing_with_it() {
         // A degenerate hole.
@@ -318,5 +348,96 @@ mod tests {
                 acc
             });
         assert!(!corrected.clean(), "stage C corrected nothing: {corrected:?}");
+    }
+
+    /// **The zoom-in island flooding, end to end.** One island (exterior + lake hole) sized
+    /// to span several tiles at z14: the hole must survive at mid zoom AND in the z14
+    /// tiles. Before the boundary rule, the fine tiles clipped the hole onto the tile edge
+    /// and stage C dropped it — the coarse tile pixel-perfect, the fine tile a solid land
+    /// cell.
+    ///
+    /// Mid zoom is z5, not z0: a 0.1° lake is sub-pixel at z0 and legitimately simplified
+    /// away there. At z5 it is ~36 extent units — comfortably above every tolerance — so a
+    /// missing hole there is the bug, not the filter.
+    #[test]
+    fn an_island_hole_survives_coarse_and_fine() {
+        use crate::schema::Class;
+        use tilecodec::mamaps::body::Body;
+        use tilecodec::mamaps::dict;
+
+        // A ~0.5° island with a ~0.1° lake: several z14 tiles across, one z0 tile.
+        let ring = |x: f64, y: f64, size: f64| {
+            vec![(x, y), (x + size, y), (x + size, y + size), (x, y + size), (x, y)]
+        };
+        let features = vec![crate::extract::Feature {
+            class: Class::area(dict::LAYER_LANDTYPE, dict::NONE, 0),
+            geometry: tile_build::geom::Geometry::Polygons(vec![vec![
+                ring(-120.5, 35.0, 0.5),
+                ring(-120.32, 35.18, 0.1),
+            ]]),
+            name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
+                        turn_fwd: Vec::new(),
+            turn_bwd: Vec::new(),
+            carriageway: tilecodec::mamaps::body::Carriageway::default(),
+            building: None,
+        }];
+        let settings = crate::tiler::Settings {
+            build_id: 1,
+            scratch: std::env::temp_dir()
+                .join(format!("mamaps_island_{}.tilechunks", std::process::id())),
+            force_chunk_spill_file: false,
+            dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
+            region_links: std::collections::HashMap::new(),
+        };
+        let store = crate::store::Store::of(&features).expect("spill");
+        let (bytes, stats) = crate::tiler::build(&store, &settings).expect("build");
+
+        // Discriminating assertion: this build holds one island with one lake and no
+        // overlaps, so stage C has nothing legitimate to drop. Without the boundary rule
+        // the fine tiles clip the hole onto the tile edge and drop it there.
+        let dropped: u64 = stats.iter().map(|z| z.rings.holes_dropped).sum();
+        assert_eq!(
+            dropped, 0,
+            "stage C dropped {dropped} hole(s) from a single island — the clipped \
+             edge-touching hole must be kept, not straddled out"
+        );
+
+        // The z5 tile and a z14 tile over the island must both carry the exterior AND
+        // its hole: two parts, first outer, second hole.
+        let mut saw_coarse = false;
+        let mut saw_fine = false;
+        for (id, _, body) in tilecodec::mamaps::read::read_all(&bytes).expect("read") {
+            let (z, _, _) = tilecodec::pmtiles::tile_zxy(id);
+            if z != 5 && z != 14 {
+                continue;
+            }
+            let body = Body::parse(&body).expect("parse");
+            let Some(layer) = body.layer(dict::LAYER_LANDTYPE) else {
+                continue;
+            };
+            for feature in &layer.features {
+                if feature.geom_type != tilecodec::mamaps::body::GEOM_POLYGON
+                    || feature.part_count != 2
+                {
+                    continue;
+                }
+                let parts = layer.parts_of(feature);
+                if parts[0].winding == tilecodec::mamaps::body::WINDING_OUTER
+                    && parts[1].winding == tilecodec::mamaps::body::WINDING_HOLE
+                {
+                    if z == 5 {
+                        saw_coarse = true;
+                    } else {
+                        saw_fine = true;
+                    }
+                }
+            }
+        }
+        assert!(saw_coarse, "the z5 tile kept the island's hole");
+        assert!(
+            saw_fine,
+            "a z14 tile kept the island's hole — without the boundary rule the \
+             clipped hole was dropped and the cell filled solid land"
+        );
     }
 }

@@ -212,6 +212,7 @@ fn a_label_carries_its_own_kind_and_id_not_its_layers() {
         heightmap: None,
         carriageways: Vec::new(),
         convention: None,
+        region_links: Vec::new(),
     };
     // A layer whose whitelist lists `restaurant` first, exactly as `poi-food` does.
     let layer = food_layer();
