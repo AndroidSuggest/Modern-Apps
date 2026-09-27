@@ -149,7 +149,13 @@ pub fn coalesce_lines_with_ids(
     let lines = layer.features.iter().filter(|f| f.geom_type == GEOM_LINE).count();
     // One line feature cannot be merged with anything, and a layer of pure polygons is the common
     // case: both would only pay for a rebuild that changes nothing.
-    if lines < 2 {
+    //
+    // Boundaries are never merged at all: their relations arrive one feature per member way,
+    // and merging them by class would chain the US-Canada border to the US-Mexico border
+    // across the continent into one part — destroying the per-way tile locality that keeps
+    // border tiles small and complete. The u16 feature cap this exists to relieve does not
+    // bind here (relations are already merged); roads are the layer that needs it.
+    if lines < 2 || layer.layer_id == tilecodec::mamaps::dict::LAYER_BOUNDARIES {
         stats.features_after = stats.features_before;
         stats.parts_after = stats.parts_before;
         return stats;
