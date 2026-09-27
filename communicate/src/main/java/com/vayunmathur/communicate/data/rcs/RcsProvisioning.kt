@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.telephony.CarrierConfigManager
 import android.telephony.SubscriptionManager
 import android.telephony.ims.ImsManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.vayunmathur.library.network.NetworkClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -100,9 +101,17 @@ object RcsProvisioning {
             return RcsRegistrationState.Unavailable(RcsUnavailableReason.ServiceUnavailable)
         }
         lastConfigServerUrl = url.ifEmpty { null }
+        // NOTE: an empty config URL no longer hard-blocks. MVNOs/Jibe-backed
+        // carriers (e.g. US Mobile) routinely leave `rcs_config_server_url`
+        // empty while still accepting a single-reg delegate; the delegate
+        // request itself is the real test (denial surfaces as
+        // TransportDenied via onFeatureTagStatusChanged). The URL is still
+        // recorded for the status screen + TS.43 entitlement.
         if (url.isBlank()) {
-            // Unprovisioned SIM (e.g. Astound): no entitlement server, no RCS.
-            return RcsRegistrationState.Unavailable(RcsUnavailableReason.NoEntitlementUrl)
+            Log.i(
+                "RcsProvisioning",
+                "No carrier RCS config URL; attempting delegate creation anyway",
+            )
         }
         // Secondary signal: the provisioning manager's RCS status. Capability/tech
         // constants live in hidden ImsFeature/MmTelFeature surface, so this uses the

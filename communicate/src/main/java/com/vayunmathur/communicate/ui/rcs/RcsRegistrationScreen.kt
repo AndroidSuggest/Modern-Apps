@@ -140,7 +140,7 @@ fun RcsRegistrationScreen(
             Spacer(Modifier.height(8.dp))
             Text(
                 if (lastUrl.isNullOrBlank()) {
-                    "No carrier RCS config URL (SIM not provisioned for RCS)"
+                    "No carrier RCS config URL (common on MVNO/Jibe carriers — delegate creation attempted anyway)"
                 } else {
                     "Config server: $lastUrl"
                 },

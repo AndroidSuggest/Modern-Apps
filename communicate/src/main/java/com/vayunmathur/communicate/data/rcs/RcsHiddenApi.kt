@@ -201,8 +201,11 @@ internal object RcsHiddenApi {
 
     /**
      * `setRcsClientConfiguration` + `registerRcsProvisioningCallback` (hidden).
-     * The callback interface is hidden, so it is delivered through a Proxy
-     * like the UCE path. Returns false when the bridge itself fails.
+     * The callback is a concrete hidden *class*, not an interface — Proxy
+     * cannot implement it (verified on-device), so [callback] is delivered
+     * through a concrete subclass resolved against the same-FQN stub (same
+     * mechanism as the GBA bootstrap path). Returns false when the bridge
+     * itself fails.
      */
     fun registerProvisioningCallback(
         provisioningManager: Any,
@@ -215,32 +218,38 @@ internal object RcsHiddenApi {
         return runCatching {
             val pmClass = provisioningManager.javaClass
             val configClass = Class.forName("android.telephony.ims.RcsClientConfiguration")
-            val callbackClass = Class.forName("android.telephony.ims.ProvisioningManager\$RcsProvisioningCallback")
+            val callbackClass = Class.forName(
+                "android.telephony.ims.ProvisioningManager\$RcsProvisioningCallback",
+            )
             val config = configClass
                 .getConstructor(String::class.java, String::class.java, String::class.java, String::class.java)
                 .newInstance(rcsVersion, rcsProfile, "Vayun", "Communicate-1.0")
             pmClass.getMethod("setRcsClientConfiguration", configClass).invoke(provisioningManager, config)
-            val proxy = java.lang.reflect.Proxy.newProxyInstance(
-                pmClass.classLoader,
-                arrayOf(callbackClass),
-            ) { _, method, args ->
-                when (method.name) {
-                    "onConfigurationChanged" -> callback.onConfigurationChanged(
-                        (args?.getOrNull(0) as? ByteArray) ?: ByteArray(0),
-                    )
-                    "onConfigurationReset" -> callback.onConfigurationReset()
-                    "onRemoved" -> callback.onRemoved()
-                    "toString" -> "RcsProvisioningCallbackProxy"
-                    "hashCode" -> System.identityHashCode(callback)
-                    "equals" -> args?.getOrNull(0) === callback
-                    else -> null
+            // Concrete subclass (dynamic proxy cannot implement a class).
+            // The anonymous object extends the stub, which binary-links to the
+            // framework nested class at runtime.
+            val subclass = object : android.telephony.ims.`ProvisioningManager$RcsProvisioningCallback`() {
+                override fun onConfigurationChanged(configXml: ByteArray) {
+                    callback.onConfigurationChanged(configXml)
+                }
+
+                override fun onAutoConfigurationErrorReceived(errorCode: Int, errorString: String) {
+                    Log.w(TAG, "RCS auto-config error $errorCode: $errorString")
+                }
+
+                override fun onConfigurationReset() {
+                    callback.onConfigurationReset()
+                }
+
+                override fun onRemoved() {
+                    callback.onRemoved()
                 }
             }
             pmClass.getMethod(
                 "registerRcsProvisioningCallback",
                 java.util.concurrent.Executor::class.java,
                 callbackClass,
-            ).invoke(provisioningManager, executor, proxy)
+            ).invoke(provisioningManager, executor, subclass)
             true
         }.getOrElse {
             val cause = (it as? java.lang.reflect.InvocationTargetException)?.cause ?: it
