@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.telephony.CarrierConfigManager
 import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import android.telephony.ims.ImsManager
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -143,8 +144,22 @@ object RcsProvisioning {
             RcsHiddenApi.isSingleRegCapable(pm)
         }.getOrDefault(null)
         if (singleRegCapable == false) {
-            Log.i(TAG, "probe: framework reports single-reg NOT capable for subId=$subscriptionId")
-            return RcsRegistrationState.Unavailable(RcsUnavailableReason.NotSupported)
+            // Framework verdict is negative: distinguish "device can't" from
+            // "carrier won't". Carrier privilege decides which: without it
+            // the carrier blocks every IMS path (delegate SecurityException,
+            // direct-socket EPERM, no GBA). hasCarrierPrivileges is public API.
+            val privileged = runCatching {
+                val tm = context.getSystemService(TelephonyManager::class.java)
+                val subTm = runCatching { tm?.createForSubscriptionId(subscriptionId) }
+                    .getOrNull() ?: tm
+                subTm?.hasCarrierPrivileges() == true
+            }.getOrDefault(false)
+            Log.i(TAG, "probe: single-reg verdict=false privileged=$privileged subId=$subscriptionId")
+            return if (privileged) {
+                RcsRegistrationState.Unavailable(RcsUnavailableReason.NotSupported)
+            } else {
+                RcsRegistrationState.Unavailable(RcsUnavailableReason.NoCarrierPrivilege)
+            }
         }
         // Single-registration support gate: without it there is no delegate to create.
         // The feature constant is @SystemApi/hidden; the AOSP value is used directly.

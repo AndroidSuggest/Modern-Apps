@@ -205,7 +205,7 @@ private fun statusSubtitle(
 
 private fun reasonText(reason: RcsUnavailableReason): String = when (reason) {
     RcsUnavailableReason.NoEntitlementUrl -> "carrier did not provision RCS (no config URL)"
-    RcsUnavailableReason.NoCarrierPrivilege -> "no carrier privilege for single registration"
+    RcsUnavailableReason.NoCarrierPrivilege -> "carrier blocked IMS access (no carrier privilege for this SIM)"
     RcsUnavailableReason.NotSupported -> "device does not support single registration"
     RcsUnavailableReason.NoSubscription -> "no active subscription"
     RcsUnavailableReason.ProvisioningRequired -> "carrier provisioning required"
