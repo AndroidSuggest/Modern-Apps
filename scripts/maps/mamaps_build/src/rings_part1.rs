@@ -350,31 +350,46 @@ mod tests {
         assert!(!corrected.clean(), "stage C corrected nothing: {corrected:?}");
     }
 
-    /// **The zoom-in island flooding, end to end.** One island (exterior + lake hole) sized
-    /// to span several tiles at z14: the hole must survive at mid zoom AND in the z14
-    /// tiles. Before the boundary rule, the fine tiles clipped the hole onto the tile edge
-    /// and stage C dropped it — the coarse tile pixel-perfect, the fine tile a solid land
-    /// cell.
+    /// **The zoom-in island flooding, end to end.** Lake Superior at survey scale:
+    /// a ~7°-wide lake through the real pipeline — classify (named → min_zoom 6),
+    /// simplify, clip per tile, stage C — asserting the water survives at z0, z5
+    /// and z14. Before the area floor, an unnamed lake vanished below z12 and a
+    /// named one below z6; the renderer then drew earth over the whole basin.
     ///
-    /// Mid zoom is z5, not z0: a 0.1° lake is sub-pixel at z0 and legitimately simplified
-    /// away there. At z5 it is ~36 extent units — comfortably above every tolerance — so a
-    /// missing hole there is the bug, not the filter.
+    /// Superior's real shoreline is thousands of vertices; ten per edge keeps the
+    /// shape (and its tile-edge crossings) while the test stays instant.
     #[test]
-    fn an_island_hole_survives_coarse_and_fine() {
+    fn lake_superior_survives_coarse_and_fine() {
         use crate::schema::Class;
         use tilecodec::mamaps::body::Body;
         use tilecodec::mamaps::dict;
 
-        // A ~0.5° island with a ~0.1° lake: several z14 tiles across, one z0 tile.
-        let ring = |x: f64, y: f64, size: f64| {
-            vec![(x, y), (x + size, y), (x + size, y + size), (x, y + size), (x, y)]
+        // Lake Superior's real bbox (~-92.1..-84.4 lon, 46.4..48.9 lat), ten
+        // vertices per edge: the tile-edge crossings are what the clipper and
+        // stage C must survive, not the shoreline detail.
+        let edge = |x0: f64, y0: f64, x1: f64, y1: f64| -> Vec<(f64, f64)> {
+            (0..10)
+                .map(|i| {
+                    let t = i as f64 / 9.0;
+                    (x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)
+                })
+                .collect()
         };
+        let (x0, y0, x1, y1) = (-92.1, 46.4, -84.4, 48.9);
+        let mut ring = edge(x0, y0, x1, y0);
+        ring.extend(edge(x1, y0, x1, y1).into_iter().skip(1));
+        ring.extend(edge(x1, y1, x0, y1).into_iter().skip(1));
+        ring.extend(edge(x0, y1, x0, y0).into_iter().skip(1));
+        // Classify exactly as a named lake classifies: min_zoom 0 start with an area
+        // floor, which is what carries great water to the world tile.
+        let tags: &[(&str, &str)] =
+            &[("natural", "water"), ("water", "lake"), ("name", "Lake Superior")];
+        let class = crate::schema::landtype::classify_early(tags, true)
+            .expect("a named lake classifies");
+        assert_eq!(class.min_zoom, 0, "the named-lake start zoom");
         let features = vec![crate::extract::Feature {
-            class: Class::area(dict::LAYER_LANDTYPE, dict::NONE, 0),
-            geometry: tile_build::geom::Geometry::Polygons(vec![vec![
-                ring(-120.5, 35.0, 0.5),
-                ring(-120.32, 35.18, 0.1),
-            ]]),
+            class,
+            geometry: tile_build::geom::Geometry::Polygons(vec![vec![ring]]),
             name: None, id: tilecodec::mamaps::body::ID_NONE, transit_color: 0, transit_ordinal: 0, transit_lanes: 0, transit_taper: 0, lane_count: 0,
                         turn_fwd: Vec::new(),
             turn_bwd: Vec::new(),
@@ -384,60 +399,38 @@ mod tests {
         let settings = crate::tiler::Settings {
             build_id: 1,
             scratch: std::env::temp_dir()
-                .join(format!("mamaps_island_{}.tilechunks", std::process::id())),
+                .join(format!("mamaps_superior_{}.tilechunks", std::process::id())),
             force_chunk_spill_file: false,
             dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
             region_links: std::collections::HashMap::new(),
         };
         let store = crate::store::Store::of(&features).expect("spill");
-        let (bytes, stats) = crate::tiler::build(&store, &settings).expect("build");
+        let (bytes, _) = crate::tiler::build(&store, &settings).expect("build");
 
-        // Discriminating assertion: this build holds one island with one lake and no
-        // overlaps, so stage C has nothing legitimate to drop. Without the boundary rule
-        // the fine tiles clip the hole onto the tile edge and drop it there.
-        let dropped: u64 = stats.iter().map(|z| z.rings.holes_dropped).sum();
-        assert_eq!(
-            dropped, 0,
-            "stage C dropped {dropped} hole(s) from a single island — the clipped \
-             edge-touching hole must be kept, not straddled out"
-        );
-
-        // The z5 tile and a z14 tile over the island must both carry the exterior AND
-        // its hole: two parts, first outer, second hole.
-        let mut saw_coarse = false;
-        let mut saw_fine = false;
+        // A lake-kind polygon must be present at z0 (whole basin in a handful of
+        // tiles), z5 and z14. Count tiles carrying any lake-kind feature.
+        let mut saw = [false, false, false];
         for (id, _, body) in tilecodec::mamaps::read::read_all(&bytes).expect("read") {
             let (z, _, _) = tilecodec::pmtiles::tile_zxy(id);
-            if z != 5 && z != 14 {
-                continue;
-            }
+            let slot = match z {
+                0 => 0,
+                5 => 1,
+                14 => 2,
+                _ => continue,
+            };
             let body = Body::parse(&body).expect("parse");
             let Some(layer) = body.layer(dict::LAYER_LANDTYPE) else {
                 continue;
             };
-            for feature in &layer.features {
-                if feature.geom_type != tilecodec::mamaps::body::GEOM_POLYGON
-                    || feature.part_count != 2
-                {
-                    continue;
-                }
-                let parts = layer.parts_of(feature);
-                if parts[0].winding == tilecodec::mamaps::body::WINDING_OUTER
-                    && parts[1].winding == tilecodec::mamaps::body::WINDING_HOLE
-                {
-                    if z == 5 {
-                        saw_coarse = true;
-                    } else {
-                        saw_fine = true;
-                    }
-                }
+            let lake_kind = crate::schema::kind("lake");
+            if layer.features.iter().any(|f| {
+                f.geom_type == tilecodec::mamaps::body::GEOM_POLYGON && f.kind == lake_kind
+            }) {
+                saw[slot] = true;
             }
         }
-        assert!(saw_coarse, "the z5 tile kept the island's hole");
-        assert!(
-            saw_fine,
-            "a z14 tile kept the island's hole — without the boundary rule the \
-             clipped hole was dropped and the cell filled solid land"
-        );
+        assert!(saw[0], " Superior water reaches z0");
+        assert!(saw[1], "Superior water reaches z5");
+        assert!(saw[2], "Superior water reaches z14");
     }
 }

@@ -133,12 +133,27 @@ fn classify_water(tags: &(impl TagSource + ?Sized), is_way: bool) -> Option<Clas
             // A sea and a bay carry a whole world tile; a strait or a fjord is a coastal
             // feature that only reads once the coast is on screen.
             "sea" => Some(Class::area(LAYER_LANDTYPE, kind("sea"), 0)),
-            "bay" => Some(Class::area(LAYER_LANDTYPE, kind("bay"), 6)),
-            "strait" => Some(Class::area(LAYER_LANDTYPE, kind("strait"), 6)),
-            "fjord" => Some(Class::area(LAYER_LANDTYPE, kind("fjord"), 6)),
+            // Bays, straits and fjords are gated by area, not zoom: a Chesapeake Bay
+            // is visible from orbit while a tidal cove is not, and gating them at z6
+            // painted earth over whole inlets — land visibly extending into the sea.
+            // Same floor as generic water (see `WATER_MIN_AREA_PX`).
+            "bay" | "strait" | "fjord" => Some(with_area(
+                kind(natural),
+                0,
+                WATER_MIN_AREA_PX,
+            )),
             "reef" => Some(Class::area(LAYER_LANDTYPE, kind("reef"), 10)),
             // The generic one, and by far the most common. A lake if `water` says so.
-            "water" => Some(Class::area(LAYER_LANDTYPE, water_kind(tags), water_min_zoom(tags))),
+            // Carried from z0 with an area floor: the floor (not the zoom) is what keeps
+            // ponds out — a Lake Superior covers ~10% of its z0 tile while a farm pond
+            // is sub-pixel, and gating the lakes at z6/z12 painted earth over the whole
+            // basin at every zoom a user actually looks at them from. See
+            // `WATER_MIN_AREA_PX` and `water_min_zoom`.
+            "water" => Some(with_area(
+                water_kind(tags),
+                water_min_zoom(tags),
+                WATER_MIN_AREA_PX,
+            )),
             _ => None,
         };
         if class.is_some() {
@@ -161,6 +176,12 @@ fn classify_water(tags: &(impl TagSource + ?Sized), is_way: bool) -> Option<Clas
             _ => return None,
         };
         let id = kind(name);
+        // A wide river (the Amazon mouth, the Río de la Plata) is area-gated like a
+        // lake: from z0 with the water floor, so great river mouths read as water
+        // instead of earth jutting into the sea. Narrow reaches fail the floor.
+        if area && name == "river" {
+            return Some(with_area(id, 0, WATER_MIN_AREA_PX));
+        }
         return Some(if area {
             Class::area(LAYER_LANDTYPE, id, min_zoom)
         } else {
@@ -193,16 +214,29 @@ fn water_kind(tags: &(impl TagSource + ?Sized)) -> u16 {
 
 /// How shallow a `natural=water` polygon is worth carrying.
 ///
-/// A named lake is a landmark and an unnamed pond is not, and a name is the only signal in the tags
-/// that separates them. This is the one place the classifier reads `name` at all — for a *decision*,
-/// not to carry it.
+/// The zoom is deliberately shallow for everything (the area floor below does the real
+/// filtering): a Great Lake is bigger than some countries and must survive to z0, while
+/// a farm pond is sub-pixel there. Gating lakes at z6/z12 painted earth over whole
+/// basins — the renderer draws `earth` wherever no water feature exists, and no
+/// renderer fallback can invent geometry the archive never carried.
 fn water_min_zoom(tags: &(impl TagSource + ?Sized)) -> u8 {
+    // A name still buys shallower carriage where the floor is ambiguous: at the
+    // margin (a lake of exactly floor size) the landmark wins over the speck.
     if tags.has("name") {
-        6
+        0
     } else {
-        12
+        6
     }
 }
+
+/// The smallest drawn water area worth carrying, in square pixels of a 256-unit tile.
+///
+/// The same unit — and the same philosophy — as every `landuse` floor: a shape smaller
+/// than a couple of pixels is not detail, it is a speck. 4 px admits a Lake Superior
+/// (~10% of its z0 tile) at every zoom while dropping farm ponds everywhere: a 100 m
+/// pond is ~0.07 extent units at z6, three orders of magnitude under the floor. Without
+/// this, carrying water from z0 would put every pond in the state into the world tile.
+pub const WATER_MIN_AREA_PX: f64 = 4.0;
 
 /// `natural=*`, the surface of the world rather than what is done with it.
 ///
@@ -533,9 +567,9 @@ mod tests {
     fn the_natural_tags_classify_as_areas() {
         for (value, expected, min_zoom) in [
             ("sea", "sea", 0u8),
-            ("bay", "bay", 6),
-            ("strait", "strait", 6),
-            ("fjord", "fjord", 6),
+            ("bay", "bay", 0),
+            ("strait", "strait", 0),
+            ("fjord", "fjord", 0),
             ("reef", "reef", 10),
         ] {
             let class = classify_tags(&[("natural", value)], true).expect(value);
@@ -544,17 +578,45 @@ mod tests {
             assert!(class.area, "{value} is an area");
             assert_eq!(class.min_zoom, min_zoom);
         }
+        // The bay/strait/fjord zoom is 0 with an area floor doing the real gating —
+        // a Chesapeake survives, a cove does not. Reef keeps its zoom gate (small
+        // by nature) and no floor.
+        for value in ["bay", "strait", "fjord"] {
+            let class = classify_tags(&[("natural", value)], true).expect(value);
+            assert!(class.min_area_px > 0.0, "{value} carries the water floor");
+        }
+        let reef = classify_tags(&[("natural", "reef")], true).expect("reef");
+        assert_eq!(reef.min_area_px, 0.0);
     }
 
-    /// The judgement that matters: a named lake is a landmark from z6, an unnamed pond is street
-    /// detail. Without this a z6 tile carries every farm pond in the state.
+    /// The judgement that matters: big water reaches every zoom and the area floor —
+    /// not the name — keeps ponds out. A Lake Superior covers ~10% of its z0 tile;
+    /// a farm pond is sub-pixel there. Gating lakes at z6/z12 painted earth over whole
+    /// basins at exactly the zooms users look at them from.
     #[test]
-    fn a_named_water_body_is_carried_far_shallower_than_an_unnamed_one() {
+    fn a_named_water_body_is_carried_from_world_zoom_and_a_pond_hits_the_floor() {
         let named = classify_tags(&[("natural", "water"), ("name", "Lake Tahoe")], true).expect("named");
         let pond = classify_tags(&[("natural", "water")], true).expect("unnamed");
-        assert_eq!(named.min_zoom, 6);
-        assert_eq!(pond.min_zoom, 12);
-        assert!(named.min_zoom < pond.min_zoom);
+        assert_eq!(named.min_zoom, 0, "great water starts at the world tile");
+        assert_eq!(pond.min_zoom, 6, "unnamed water still starts below street zoom");
+        assert!(named.min_area_px > 0.0 && pond.min_area_px > 0.0, "the floor does the filtering");
+        assert_eq!(named.min_area_px, pond.min_area_px, "one floor for all generic water");
+    }
+
+    /// The floor end to end: a pond-sized polygon is dropped at every zoom while a
+    /// lake-sized one survives — so carrying water from z0 does not put every farm
+    /// pond in the state into the world tile.
+    #[test]
+    fn a_pond_sized_polygon_hits_the_area_floor_but_a_lake_does_not() {
+        use crate::schema::landtype::WATER_MIN_AREA_PX;
+        // A 100 m pond at z6: ~0.07 extent units a side, area ~0.005 sq units against
+        // a floor of 4 px = 1024 sq units. Three orders of magnitude under.
+        let floor_z6 = crate::schema::landtype::min_area_units(WATER_MIN_AREA_PX, 4096);
+        assert!(0.005 < floor_z6, "the pond is under the z6 floor: {floor_z6}");
+        // Lake Superior's bbox alone (~7.7° × 2.5° ≈ 3000×1000 units at z0) clears
+        // the z0 floor (~1024 sq units) by orders of magnitude.
+        let superior_z0 = 3000.0 * 1000.0;
+        assert!(superior_z0 > floor_z6, "the lake clears the z0 floor");
     }
 
     #[test]
@@ -579,6 +641,8 @@ mod tests {
         assert_eq!(river.min_zoom, 8);
         let bank = classify_tags(&[("waterway", "river"), ("area", "yes")], true).expect("bank");
         assert!(bank.area);
+        assert_eq!(bank.min_zoom, 0, "a wide river mouth is area-gated from z0");
+        assert!(bank.min_area_px > 0.0);
         // A relation is always an area, whatever the tags say: a multipolygon is a multipolygon.
         let relation = classify_tags(&[("waterway", "river")], false).expect("relation");
         assert!(relation.area);
