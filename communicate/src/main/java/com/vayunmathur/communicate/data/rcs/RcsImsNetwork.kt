@@ -143,6 +143,7 @@ object RcsImsNetwork {
             val bound = runCatching {
                 val factory = ims.getSocketFactory()
                 val local = lastLocalIp?.let { runCatching { InetAddress.getByName(it) }.getOrNull() }
+                Log.i(TAG, "IMS socket to $host:$port via ${ims} local=$local")
                 val socket = if (local != null) {
                     factory.createSocket(host, port, local, 0)
                 } else {
@@ -152,9 +153,13 @@ object RcsImsNetwork {
                 }
                 socket.soTimeout = 0
                 socket
-            }.getOrNull()
-            if (bound != null && bound.isConnected) return bound
-            runCatching { bound?.close() }
+            }
+            val socket = bound.getOrElse {
+                Log.w(TAG, "IMS socket bind failed to $host:$port", it)
+                null
+            }
+            if (socket != null && socket.isConnected) return socket
+            runCatching { socket?.close() }
             // IMS network went stale — drop it so the next call re-requests.
             cached = null
             Log.w(TAG, "IMS socket bind failed; falling back to plain socket")
