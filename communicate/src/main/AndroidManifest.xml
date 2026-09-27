@@ -213,6 +213,22 @@
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
 
+        <!-- Carrier service for the MA-OS privilege grant (UiccCarrierPrivilegeRules
+             reports this app as privileged): lets the platform select us as the carrier
+             service, which unblocks IMS socket bind + single-reg delegate on carriers
+             whose UICC profiles carry no rules. -->
+        <service
+            android:name=".telephony.CommunicateCarrierService"
+            android:exported="true"
+            android:permission="android.permission.BIND_CARRIER_SERVICES">
+            <intent-filter>
+                <action android:name="android.service.carrier.CarrierService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.carrier.LONG_LIVED_BINDING"
+                android:value="true" />
+        </service>
+
         <service
             android:name=".telephony.GoogleVoiceCallForegroundService"
             android:exported="false"
