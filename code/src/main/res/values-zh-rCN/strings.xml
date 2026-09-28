@@ -31,4 +31,10 @@
     <string name="delete_title">要删除%1$s吗？</string>
     <string name="font_size">字体大小</string>
     <string name="all_languages">所有语言</string>
+    <string name="delete_message">该操作不能撤回。</string>
+    <string name="appearance">外观</string>
+    <string name="editor">编辑器</string>
+    <string name="tab_width">制表符宽</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
 </resources>
