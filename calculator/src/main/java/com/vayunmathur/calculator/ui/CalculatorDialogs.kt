@@ -1,8 +1,11 @@
 package com.vayunmathur.calculator.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -30,15 +33,16 @@ import com.vayunmathur.calculator.R
 import com.vayunmathur.calculator.util.CalculatorActions
 import com.vayunmathur.calculator.util.CalculatorUiState
 import com.vayunmathur.calculator.util.HistoryEntry
+import com.vayunmathur.calculator.util.UnitCategory
 import com.vayunmathur.library.ui.R as UiR
 import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.AssistChip
 import com.vayunmathur.library.ui.Card
 import com.vayunmathur.library.ui.ModalBottomSheet
-import com.vayunmathur.library.ui.PrimaryScrollableTabRow
-import com.vayunmathur.library.ui.Tab
+import com.vayunmathur.library.ui.NavigationDrawerItem
 import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.ui.TextButton
+import com.vayunmathur.library.ui.VerticalDivider
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -105,8 +109,26 @@ internal fun UnitPickerSheet(
     actions: CalculatorActions,
     onDismiss: () -> Unit,
 ) {
-    val categories = state.unitCategories.filter { it.inEquations }
+    // The insert sheet mirrors the registry's equation-usable categories, plus a synthetic
+    // "Absolute time" tab right after Time that holds the date/time pickers. It is picker-only
+    // (empty units mark it as such below), so it lives here rather than in UnitRegistry — the
+    // parser, output selector and widget never see it.
+    val absoluteTimeName = stringResource(R.string.absolute_time)
+    val categories = remember(state.unitCategories, absoluteTimeName) {
+        val list = state.unitCategories.filter { it.inEquations }.toMutableList()
+        val timeIndex = list.indexOfFirst { it.name == "Time" }
+        list.add(
+            if (timeIndex >= 0) timeIndex + 1 else list.size,
+            UnitCategory(absoluteTimeName, emptyList(), inEquations = false),
+        )
+        list
+    }
     var categoryIndex by remember { mutableStateOf(0) }
+    // Which absolute-time picker (if any) is open. DtDate/DtTime are the two steps of the
+    // combined date-and-time flow.
+    var absPicker by remember { mutableStateOf(AbsoluteTimePicker.None) }
+    // The date chosen in the first step of the combined date-and-time flow (UTC midnight millis).
+    var dtDateMillis by remember { mutableStateOf<Long?>(null) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text(
             stringResource(R.string.insert_unit),
@@ -114,33 +136,91 @@ internal fun UnitPickerSheet(
             fontSize = 20.sp,
         )
         if (categories.isNotEmpty()) {
-            PrimaryScrollableTabRow(selectedTabIndex = categoryIndex) {
-                categories.forEachIndexed { index, category ->
-                    Tab(
-                        selected = index == categoryIndex,
-                        onClick = { categoryIndex = index },
-                        text = { Text(category.name) },
-                    )
-                }
-            }
-            categories.getOrNull(categoryIndex)?.let { category ->
-                FlowRow(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 360.dp)
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            Row(Modifier.fillMaxWidth().heightIn(min = 240.dp, max = 480.dp)) {
+                // The category list owns the vertical space: a full-height column of rows
+                // rather than a horizontal tab strip, so no category hides off the edge.
+                LazyColumn(
+                    Modifier.weight(0.45f).padding(vertical = 8.dp),
                 ) {
-                    category.units.forEach { unit ->
-                        AssistChip(
-                            onClick = { actions.append(unit.token); onDismiss() },
-                            label = { Text(unit.symbol) },
+                    items(categories.size) { index ->
+                        NavigationDrawerItem(
+                            label = { Text(categories[index].name, maxLines = 1) },
+                            selected = index == categoryIndex,
+                            onClick = { categoryIndex = index },
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                         )
+                    }
+                }
+                VerticalDivider()
+                Box(Modifier.weight(0.55f).fillMaxHeight()) {
+                    categories.getOrNull(categoryIndex)?.let { category ->
+                        if (category.units.isEmpty()) {
+                            AbsoluteTimePickers(
+                                onPick = { absPicker = it },
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            )
+                        } else {
+                            FlowRow(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(16.dp),
+                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                            ) {
+                                category.units.forEach { unit ->
+                                    AssistChip(
+                                        onClick = { actions.append(unit.token); onDismiss() },
+                                        label = { Text(unit.symbol) },
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    when (absPicker) {
+        AbsoluteTimePicker.Date -> DatePickerModal(onDismiss = { absPicker = AbsoluteTimePicker.None }) { millis ->
+            actions.insertInstant(localMidnightSeconds(millis))
+            onDismiss()
+        }
+        AbsoluteTimePicker.DtDate -> DatePickerModal(onDismiss = { absPicker = AbsoluteTimePicker.None }) { millis ->
+            dtDateMillis = millis
+            absPicker = AbsoluteTimePicker.DtTime
+        }
+        // Time-of-day with no date: today at that time, kept absolute so 2 AM never casts
+        // to 2 hours — `5 AM + 2 AM` errors like any other instant + instant.
+        AbsoluteTimePicker.Time -> TimePickerModal(onDismiss = { absPicker = AbsoluteTimePicker.None }) { hour, minute ->
+            actions.insertInstant(todayAtTimeSeconds(hour, minute))
+            onDismiss()
+        }
+        AbsoluteTimePicker.DtTime -> TimePickerModal(onDismiss = { absPicker = AbsoluteTimePicker.None }) { hour, minute ->
+            dtDateMillis?.let { actions.insertInstant(combineDateTimeSeconds(it, hour, minute)) }
+            onDismiss()
+        }
+        AbsoluteTimePicker.None -> {}
+    }
+}
+
+/** Which absolute-time picker (if any) is currently open. `DtDate`/`DtTime` are the two steps
+ * of the combined date-and-time flow. */
+internal enum class AbsoluteTimePicker { None, Date, Time, DtDate, DtTime }
+
+/**
+ * The Absolute-time tab's content: date, time-of-day and combined pickers that insert
+ * `#<epoch>` instants into the keypad input.
+ */
+@Composable
+private fun AbsoluteTimePickers(onPick: (AbsoluteTimePicker) -> Unit, modifier: Modifier = Modifier) {
+    FlowRow(
+        modifier,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+    ) {
+        AssistChip(onClick = { onPick(AbsoluteTimePicker.Date) }, label = { Text(stringResource(R.string.key_date)) })
+        AssistChip(onClick = { onPick(AbsoluteTimePicker.Time) }, label = { Text(stringResource(R.string.key_time)) })
+        AssistChip(onClick = { onPick(AbsoluteTimePicker.DtDate) }, label = { Text(stringResource(R.string.key_datetime)) })
     }
 }
 

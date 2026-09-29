@@ -28,6 +28,7 @@ import com.vayunmathur.library.ui.ButtonDefaults
 import com.vayunmathur.library.ui.FilterChip
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.rememberHaptics
 
 internal enum class KeyEmphasis { Digit, Operator, Primary, Function, Toggle }
 
@@ -52,6 +53,9 @@ internal fun RowScope.KeyButton(key: Key, actions: CalculatorActions, second: Bo
     val showSecond = second && key.second != null
     val label = if (showSecond) key.second else key.label
     val secondActive = key.emphasis == KeyEmphasis.Toggle && second
+    // A light key tick on every press. Scoped to KeyButton so only the keypad keys tick —
+    // the toolbar, dialogs and unit chips stay silent.
+    val haptics = rememberHaptics()
     val colors = when (key.emphasis) {
         KeyEmphasis.Digit -> ButtonDefaults.filledTonalButtonColors()
         KeyEmphasis.Operator -> ButtonDefaults.buttonColors(
@@ -64,6 +68,7 @@ internal fun RowScope.KeyButton(key: Key, actions: CalculatorActions, second: Bo
     }
     Button(
         onClick = {
+            haptics.keyPress()
             when {
                 key.emphasis == KeyEmphasis.Toggle -> onToggleSecond()
                 showSecond -> key.secondPress?.invoke(actions)

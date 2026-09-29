@@ -277,18 +277,9 @@ class CalculatorViewModel(application: Application) :
      */
     private val lastUnits = mutableMapOf<String, Pair<String, String>>()
 
-    /** Static physical-unit categories, the Absolute-time picker section (right after Time),
-     * plus the (possibly still-empty) live Currency tab. Absolute time is a picker section, not a
-     * unit category: it is kept out of UnitRegistry so the parser, output selector and widget never
-     * see it — the converter screen renders it as date/time pickers instead of a from/to form. */
+    /** Static physical-unit categories plus the (possibly still-empty) live Currency tab. */
     private val converterCategories: List<UnitCategory>
-        get() {
-            val static = UnitRegistry.categories.toMutableList()
-            val timeIndex = static.indexOfFirst { it.name == TIME_CATEGORY_NAME }
-            static.add(if (timeIndex >= 0) timeIndex + 1 else static.size, ABSOLUTE_TIME_CATEGORY)
-            static.add(currencyCategory ?: EMPTY_CURRENCY_CATEGORY)
-            return static
-        }
+        get() = UnitRegistry.categories + (currencyCategory ?: EMPTY_CURRENCY_CATEGORY)
 
     private val currencyIndex: Int get() = converterCategories.lastIndex
 
@@ -296,19 +287,16 @@ class CalculatorViewModel(application: Application) :
         get() {
             val categories = converterCategories
             val index = converterCategoryIndex.coerceIn(categories.indices)
-            val category = categories[index]
-            val isAbsoluteTime = category.name == ABSOLUTE_TIME_CATEGORY_NAME
             return UnitConverterUiState(
                 categories = categories,
                 selectedCategoryIndex = index,
                 fromToken = converterFromToken,
                 toToken = converterToToken,
                 inputText = converterValueText,
-                outputText = if (isAbsoluteTime) "" else convert(category),
+                outputText = convert(categories[index]),
                 currencyLoading = currencyLoading,
                 currencyError = currencyError,
                 isCurrencyCategory = index == currencyIndex,
-                isAbsoluteTimeCategory = isAbsoluteTime,
             )
         }
 
@@ -323,13 +311,9 @@ class CalculatorViewModel(application: Application) :
         val categories = converterCategories
         if (index !in categories.indices) return
         converterCategoryIndex = index
-        val category = categories[index]
-        // Absolute time has no from/to pair to remember — it is three pickers, not a conversion.
-        if (category.name != ABSOLUTE_TIME_CATEGORY_NAME) {
-            applyRememberedUnits(category)
-            persist(KEY_UNITS_CATEGORY, category.name)
-            refreshUnitsWidget()
-        }
+        applyRememberedUnits(categories[index])
+        persist(KEY_UNITS_CATEGORY, categories[index].name)
+        refreshUnitsWidget()
     }
 
     /**
@@ -357,10 +341,7 @@ class CalculatorViewModel(application: Application) :
 
     private fun rememberUnits() {
         val categories = converterCategories
-        val category = categories[converterCategoryIndex.coerceIn(categories.indices)]
-        // Absolute time and Currency have no from/to pair to remember.
-        if (category.name == ABSOLUTE_TIME_CATEGORY_NAME || category.units.isEmpty()) return
-        val name = category.name
+        val name = categories[converterCategoryIndex.coerceIn(categories.indices)].name
         lastUnits[name] = converterFromToken to converterToToken
         persist(unitsFromKey(name), converterFromToken)
         persist(unitsToKey(name), converterToToken)
@@ -389,9 +370,7 @@ class CalculatorViewModel(application: Application) :
     override fun setConverterInput(text: String) { converterValueText = text }
     override fun swapUnits() {
         val categories = converterCategories
-        val category = categories[converterCategoryIndex.coerceIn(categories.indices)]
-        if (category.name == ABSOLUTE_TIME_CATEGORY_NAME || category.units.isEmpty()) return
-        val swappedInput = convert(category)
+        val swappedInput = convert(categories[converterCategoryIndex.coerceIn(categories.indices)])
         val from = converterFromToken
         converterFromToken = converterToToken
         converterToToken = from
@@ -438,14 +417,12 @@ class CalculatorViewModel(application: Application) :
     private fun restoreConverterSelection() {
         viewModelScope.launch {
             val name = dataStore.getStringAwait(KEY_UNITS_CATEGORY) ?: return@launch
-            // Absolute time is never persisted as the selected category; fall back to Time.
-            val resolvedName = if (name == ABSOLUTE_TIME_CATEGORY_NAME) TIME_CATEGORY_NAME else name
-            val from = dataStore.getStringAwait(unitsFromKey(resolvedName))
-            val to = dataStore.getStringAwait(unitsToKey(resolvedName))
-            if (from != null && to != null) lastUnits.putIfAbsent(resolvedName, from to to)
+            val from = dataStore.getStringAwait(unitsFromKey(name))
+            val to = dataStore.getStringAwait(unitsToKey(name))
+            if (from != null && to != null) lastUnits.putIfAbsent(name, from to to)
 
             val categories = converterCategories
-            val index = categories.indexOfFirst { it.name == resolvedName }
+            val index = categories.indexOfFirst { it.name == name }
             if (index < 0) return@launch
             converterCategoryIndex = index
             // Currency has no units until rates arrive; loadCurrencyRates applies them then.
@@ -493,25 +470,6 @@ class CalculatorViewModel(application: Application) :
         /** The Currency tab's stand-in before rates load: present so the tab shows, but empty. */
         private val EMPTY_CURRENCY_CATEGORY =
             UnitCategory("Currency", emptyList(), inEquations = false)
-
-        /**
-         * The name of the built-in Time category the Absolute-time section follows. Matched by
-         * name (rather than position) because the registry owns the ordering.
-         */
-        internal const val TIME_CATEGORY_NAME = "Time"
-
-        /** Name of the Absolute-time picker section appended after [TIME_CATEGORY_NAME]. */
-        internal const val ABSOLUTE_TIME_CATEGORY_NAME = "Absolute time"
-
-        /**
-         * The Absolute-time picker section: date, time-of-day and combined pickers that insert
-         * `#<epoch>` instants into the keypad input. Empty units mark it as picker-only — the
-         * converter screen renders pickers instead of a from/to form, and `convert` is never
-         * called on it. Kept out of [UnitRegistry] so the parser, output selector and widget
-         * never see it.
-         */
-        internal val ABSOLUTE_TIME_CATEGORY =
-            UnitCategory(ABSOLUTE_TIME_CATEGORY_NAME, emptyList(), inEquations = false)
 
         // Not private: the units widget reads these same preferences, and a second copy of the
         // key names is a copy that can drift.

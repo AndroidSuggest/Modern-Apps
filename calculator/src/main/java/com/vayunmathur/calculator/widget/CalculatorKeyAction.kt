@@ -1,6 +1,9 @@
 package com.vayunmathur.calculator.widget
 
 import android.content.Context
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -77,6 +80,12 @@ class CalculatorKeyAction : ActionCallback {
         parameters: ActionParameters,
     ) {
         val command = parameters[CalculatorKeyParam] ?: return
+        // Glance has no LocalHapticFeedback, so tick directly — same EFFECT_TICK the
+        // keyboard service uses. Fires before the state write so a slow update can't eat it.
+        runCatching {
+            context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+                ?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+        }
         updateAppWidgetState(context, glanceId) { prefs ->
             val input = prefs[CalculatorInputKey].orEmpty()
             when {
