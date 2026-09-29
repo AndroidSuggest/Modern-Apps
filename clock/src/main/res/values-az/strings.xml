@@ -1,3 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Saat</string>
+    <string name="label_alarm">Siqnal</string>
+    <string name="label_clock">Saat</string>
+    <string name="label_timer">Taymer</string>
+    <string name="label_stopwatch">Saniyəölçən</string>
+    <string name="set_an_alarm">Siqnal qurun</string>
+    <string name="button_stop">Dayan</string>
+    <string name="button_snooze">Təxirə sal (5 dəq.)</string>
+    <string name="alarm_notification_wake_up">Oyan!</string>
+    <string name="alarm_ringing_notification_title">Siqnal səslənir</string>
+    <string name="channel_ongoing_timers_name">Davam edən taymerlər</string>
+    <string name="channel_ongoing_timers_description">Davam edən geri sayımlar</string>
+    <string name="channel_completed_timers_name">Tamamlanmış taymerlər</string>
+    <string name="channel_completed_timers_description">Taymerlər bitdikdə xəbərdarlıq edir</string>
+    <string name="channel_alarms_name">Siqnallar</string>
+    <string name="channel_alarms_description">Planlaşdırılmış siqnallar üçün bildirişlər</string>
+    <string name="channel_alarm_playing_name">Siqnal işə düşüb</string>
+    <string name="channel_alarm_playing_description">Siqnal səslənərkən göstərilir</string>
+    <string name="channel_stopwatch_name">Saniyəölçən</string>
+    <string name="channel_stopwatch_description">Saniyəölçən idarəetmələri</string>
+    <string name="header_laps">Dairələr</string>
+    <string name="lap_number_format"># <xliff:g id="lap_number" example="1">%1$d</xliff:g></string>
+    <string name="duration_ms_format"><xliff:g id="saniyə" nümunəsi="12">%1$d</xliff:g>.<xliff:g id="santisaniyə" nümunəsi="34">%2$02d</xliff:g></string>
+    <string name="duration_m_s_ms_format"><xliff:g id="dəqiqə" nümunəsi="1">%1$d</xliff:g>:<xliff:g id="saniyə" nümunəsi="23">%2$02d</xliff:g>.<xliff:g id="santisaniyə" nümunəsi="45">%3$02d</xliff:g></string>
+    <string name="header_split">Bölünmə</string>
+    <string name="header_total">Cəmi</string>
+    <string name="stopwatch_time_format"><xliff:g id="dəqiqə" nümunəsi="1">%1$d</xliff:g>:<xliff:g id="saniyə" nümunəsi="05">%2$02d</xliff:g></string>
+    <string name="button_add_minute">+ 1:00</string>
+    <string name="timer_finished_title">Taymer bitdi</string>
+    <string name="timer_finished_text"><xliff:g id="timer_name" example="Tea">%1$s</xliff:g> bitdi!</string>
+    <string name="action_pause">Fasilə</string>
+    <string name="action_resume">Dayandır</string>
+    <string name="action_cancel">Ləğv et</string>
+    <string name="action_reset">Sıfırla</string>
+    <string name="action_lap">Dövrə</string>
+    <string name="action_stop">Dayan</string>
+    <string name="label_new_timer">Yeni taymer</string>
+    <string name="field_label">Etiket</string>
+    <string name="button_cancel">Ləğv et</string>
+    <string name="button_save">Yadda saxla</string>
+    <string name="select_cities_title">Şəhərləri seçin</string>
 </resources>
