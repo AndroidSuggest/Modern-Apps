@@ -16,6 +16,7 @@ import com.vayunmathur.library.ui.ExperimentalMaterial3Api
 import com.vayunmathur.library.ui.HorizontalDivider
 import com.vayunmathur.library.ui.IconAdd
 import com.vayunmathur.library.ui.IconCopy
+import com.vayunmathur.library.ui.IconGlobe
 import com.vayunmathur.library.ui.IconShare
 import com.vayunmathur.library.ui.ListItem
 import com.vayunmathur.library.ui.MaterialTheme
@@ -31,7 +32,8 @@ fun LinkContextMenu(
     onDismiss: () -> Unit,
     onCopyLink: () -> Unit,
     onShareLink: () -> Unit,
-    onOpenInNewTab: () -> Unit,
+    onOpenInNewTab: (() -> Unit)? = null,
+    onOpenLink: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -78,16 +80,30 @@ fun LinkContextMenu(
                         onDismiss()
                     },
             )
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.open_in_new_tab)) },
-                leadingContent = { IconAdd() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        onOpenInNewTab()
-                        onDismiss()
-                    },
-            )
+            onOpenLink?.let { open ->
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.open_link)) },
+                    leadingContent = { IconGlobe() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            open()
+                            onDismiss()
+                        },
+                )
+            }
+            onOpenInNewTab?.let { openInNewTab ->
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.open_in_new_tab)) },
+                    leadingContent = { IconAdd() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            openInNewTab()
+                            onDismiss()
+                        },
+                )
+            }
         }
     }
 }

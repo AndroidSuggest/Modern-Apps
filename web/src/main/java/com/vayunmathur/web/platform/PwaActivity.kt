@@ -39,14 +39,19 @@ import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import com.vayunmathur.library.ui.DynamicTheme
+import com.vayunmathur.library.ui.ExternalIntents
 import com.vayunmathur.library.ui.openAppSettings
 import com.vayunmathur.library.ui.rememberMultiplePermissionRequest
 import com.vayunmathur.library.ui.rememberPermissionRequest
+import com.vayunmathur.library.util.AppMessages
+import com.vayunmathur.web.R
 import com.vayunmathur.web.platform.shields.FarblingConfig
 import com.vayunmathur.web.platform.shields.ShieldsEngine
 import com.vayunmathur.web.platform.shields.ShieldsServiceWorkerClient
 import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
+import com.vayunmathur.web.ui.LinkContextMenu
 import com.vayunmathur.web.ui.applySystemDarkMode
+import com.vayunmathur.web.ui.linkUrlFromHitTest
 import com.vayunmathur.web.domain.EffectiveShields
 import com.vayunmathur.web.domain.ShieldsSettings
 
@@ -149,6 +154,7 @@ private fun PwaBrowser(
 
     var currentTitle by remember { mutableStateOf(title ?: "") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var linkMenuUrl by remember { mutableStateOf<String?>(null) }
 
     // For permission handling
     var pendingSysPermissionRequest by remember { mutableStateOf<PermissionRequest?>(null) }
@@ -267,6 +273,17 @@ private fun PwaBrowser(
                     settings.setSupportMultipleWindows(true)
                     settings.mediaPlaybackRequiresUserGesture = false
                     settings.applySystemDarkMode()
+
+                    // Long-press on a link: mirror WebViewBrowser's hit-test pattern.
+                    setOnLongClickListener {
+                        val hit = hitTestResult
+                        val url = linkUrlFromHitTest(hit?.type, hit?.extra)
+                        if (url != null) {
+                            linkMenuUrl = url
+                            return@setOnLongClickListener true
+                        }
+                        false
+                    }
                     try {
                         val compat = Class.forName("androidx.webkit.WebSettingsCompat")
                         val feature = Class.forName("androidx.webkit.WebViewFeature")
@@ -425,5 +442,28 @@ private fun PwaBrowser(
                 }
             }
         )
+
+        linkMenuUrl?.let { linkUrl ->
+            LinkContextMenu(
+                url = linkUrl,
+                onDismiss = { linkMenuUrl = null },
+                onCopyLink = {
+                    ExternalIntents.copyToClipboard(
+                        context,
+                        linkUrl,
+                        linkUrl,
+                    )
+                    AppMessages.show(context.getString(R.string.link_copied))
+                },
+                onShareLink = {
+                    ExternalIntents.shareText(
+                        context,
+                        linkUrl,
+                        context.getString(R.string.share_link),
+                    )
+                },
+                onOpenLink = { webViewRef?.loadUrl(linkUrl) },
+            )
+        }
     }
 }
