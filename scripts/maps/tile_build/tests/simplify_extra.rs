@@ -342,5 +342,34 @@ mod tests {
             assert_eq!(kept(&small, tol), kept(&big, tol * 8.0), "at tolerance {tol}");
         }
     }
+
+    /// A coincident shore and its water edge must thin to the SAME vertices, or the
+    /// two drift apart and the renderer paints earth over sea between them. Both rings
+    /// carry the same boundary crossings (ALWAYS), which the filter must respect.
+    #[test]
+    fn coincident_rings_thin_to_the_same_vertices() {
+        use tile_build::clip::clip_ring;
+        use tile_build::geom::Rect;
+        // A land edge and a water edge sharing the segment x=0..20 at y=0.
+        let rect = Rect { min_x: 0.0, min_y: -10.0, max_x: 20.0, max_y: 10.0 };
+        let land = vec![(0.0, -10.0), (20.0, -10.0), (20.0, 0.0), (0.0, 0.0), (0.0, -10.0)];
+        let water = vec![(0.0, 10.0), (20.0, 10.0), (20.0, 0.0), (0.0, 0.0), (0.0, 10.0)];
+        let land_ring: Vec<SigPt> =
+            clip_ring(&land.iter().map(|&(x, y)| SigPt::new(x, y)).collect::<Vec<_>>(), &rect);
+        let water_ring: Vec<SigPt> =
+            clip_ring(&water.iter().map(|&(x, y)| SigPt::new(x, y)).collect::<Vec<_>>(), &rect);
+        let mut land_g = Geometry::Polygons(vec![vec![land_ring]]);
+        let mut water_g = Geometry::Polygons(vec![vec![water_ring]]);
+        annotate(&mut land_g);
+        annotate(&mut water_g);
+        let Geometry::Polygons(land_out) = filter(&land_g, 5.0) else { panic!() };
+        let Geometry::Polygons(water_out) = filter(&water_g, 5.0) else { panic!() };
+        // The shared edge y=0 survives identically in both: same vertices, so no
+        // sliver opens between them at any zoom.
+        let edge_of = |rings: &[Vec<Vec<SigPt>>]| -> Vec<Pt> {
+            rings[0][0].iter().filter(|v| v.y == 0.0).map(|v| v.xy()).collect()
+        };
+        assert_eq!(edge_of(&land_out), edge_of(&water_out), "shared edge diverged");
+    }
 }
 

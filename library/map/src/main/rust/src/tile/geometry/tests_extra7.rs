@@ -208,3 +208,67 @@ fn terrain_height_is_normalised_from_the_dem() {
         peak_m as f32 / ground as f32,
     );
 }
+
+/// A coastal tile keeps relief off its water half: land on one side, lake water on
+/// the other, one DEM. Cells reaching the water drop out while land cells stay —
+/// so zooming into a coastline never paves the sea with shaded earth, whatever
+/// the mainland polygon covers.
+#[test]
+fn a_coastal_tile_withholds_terrain_from_its_water_half() {
+    use tilecodec::mamaps::dict::NONE;
+    let layers = style::layers();
+    let mut body = Body::new(4096);
+    let mut landtype = BodyLayer::new(dict::LAYER_LANDTYPE);
+    // Mainland west half; lake east half, sharing the x=2048 edge exactly — the
+    // shape a clipped shoreline has in the tile.
+    for (kind, x0) in [(NONE, 0), (crate::style::kind_id_for_test("lake"), 2048)] {
+        landtype.features.push(Feature {
+            kind,
+            kind_detail: NONE,
+            geom_type: GEOM_POLYGON,
+            flags: 0,
+            name_idx: NAME_NONE,
+            parts_offset: landtype.parts.len() as u32,
+            part_count: 1,
+            transit_color: 0,
+            transit_ordinal: 0,
+            transit_lanes: 0,
+            transit_taper: 0,
+            lane_count: 0,
+        });
+        let base = landtype.coords.len() as u32;
+        landtype.parts.push(Part {
+            coord_start: base,
+            point_count: 4,
+            winding: WINDING_OUTER,
+        });
+        landtype.coords.extend_from_slice(&[
+            (x0, 0),
+            (x0 + 2048, 0),
+            (x0 + 2048, 4096),
+            (x0, 4096),
+        ]);
+    }
+    body.layers.push(landtype);
+    // Hilly DEM: relief must appear west, never east.
+    body.heightmap = Some(heightmap(9, |c, r| (c as i32 + r as i32) * 20));
+    let mesh = build(&body, &layers, 11, 339, 770, false);
+    assert!(
+        !mesh.terrain.indices.is_empty(),
+        "the land half still builds relief"
+    );
+    // Every terrain triangle sits west of the shoreline (u < 0.5 in tile-local).
+    for t in mesh.terrain.indices.chunks_exact(3) {
+        for &i in t {
+            let u = mesh.terrain.vertices[i as usize * terrain::FLOATS_PER_VERTEX];
+            assert!(
+                u < 0.5,
+                "a terrain vertex at u={u} sits over the water half"
+            );
+        }
+    }
+    assert!(
+        mesh_for(&mesh, &layers, "water").is_some(),
+        "the water fill still draws flat over the withheld grid"
+    );
+}
