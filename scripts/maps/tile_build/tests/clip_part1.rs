@@ -251,6 +251,29 @@ mod tests {
         assert_eq!(area(&out[0]), 100.0);
     }
 
+    /// A hole straddling the tile edge must survive as a hole, not vanish and not
+    /// escape its exterior. The tile clip cuts both rings against the same rect, so
+    /// a hole poking outside is truncated to the rect — but it must still lie inside
+    /// the clipped exterior, or stage C drops it and the island floods.
+    #[test]
+    fn a_hole_straddling_the_tile_edge_stays_inside_its_exterior() {
+        // Exterior covers the rect's west half and beyond; hole crosses the east edge.
+        let exterior = vec![(-5.0, 2.0), (15.0, 2.0), (15.0, 8.0), (-5.0, 8.0), (-5.0, 2.0)];
+        let hole = vec![(5.0, 4.0), (15.0, 4.0), (15.0, 6.0), (5.0, 6.0), (5.0, 4.0)];
+        let out = clip_polygon(&[exterior, hole], &r());
+        assert_eq!(out.len(), 2, "exterior plus its truncated hole: {out:?}");
+        // The hole's clipped area is the 5x2 rect surviving inside: 5..10 x 4..6.
+        assert!((area(&out[1]) - 10.0).abs() < 1e-9, "hole area {} from {out:?}", area(&out[1]));
+        // Every hole vertex is inside (or on) the clipped exterior: the exact
+        // invariant stage C's strictly_inside demands before the boundary rule.
+        for &(x, y) in &out[1] {
+            assert!(
+                x >= 0.0 && x <= 10.0 && y >= 2.0 && y <= 8.0,
+                "hole vertex ({x}, {y}) escaped the clipped exterior"
+            );
+        }
+    }
+
     #[test]
     fn losing_the_exterior_ring_drops_the_holes_too() {
         // A hole with no surrounding area is not a shape. Emitting it would render
