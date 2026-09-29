@@ -114,4 +114,34 @@
     <string name="store_rule_fail_blocks_title">Una verifica fallita blocca, una mancante avvisa</string>
     <string name="source_chip_grapheneos">GrapheneOS</string>
     <string name="source_chip_accrescent">Accrescent</string>
+    <string name="action_install_all">Installa tutto</string>
+    <string name="play_rate_limited">Il Play Store sta limitando le richieste — attendere prima di riprovare…</string>
+    <string name="setting_auto_install_updates_title">Installa automaticamente gli aggiornamenti</string>
+    <plurals name="updates_confirm_count">
+        <item quantity="one">%1$d aggiornamento richiede la tua conferma</item>
+        <item quantity="many">%1$d aggiornamenti richiedono la tua conferma</item>
+        <item quantity="other">%1$d aggiornamenti richiedono la tua conferma</item>
+    </plurals>
+    <plurals name="updates_installing">
+        <item quantity="one">Installando %1$d aggiornamento…</item>
+        <item quantity="many">Installando %1$d aggiornamenti…</item>
+        <item quantity="other">Installando %1$d aggiornamenti…</item>
+    </plurals>
+    <plurals name="updates_installed">
+        <item quantity="one">%1$d aggiornamento installato</item>
+        <item quantity="many">%1$d aggiornamenti installati</item>
+        <item quantity="other">%1$d aggiornamenti installati</item>
+    </plurals>
+    <string name="updates_progress">Aggiornando %1$s —%2$d di %3$d</string>
+    <plurals name="updates_batch_installed">
+        <item quantity="one">%1$d app aggiornata</item>
+        <item quantity="many">%1$d app aggiornate</item>
+        <item quantity="other">%1$d app aggiornate</item>
+    </plurals>
+    <string name="updates_batch_partial">Aggiornati %1$d di %2$d. %3$s falliti</string>
+    <string name="install_failure_incompatible">Non compatibile con questo dispositivo</string>
+    <string name="install_failure_storage">Spazio insufficiente</string>
+    <string name="install_failure_conflict">In conflitto con una versione già installata</string>
+    <string name="install_failure_unknown">Il sistema lo ha rifiutato</string>
+    <string name="version_update">%1$s → %2$s</string>
 </resources>
