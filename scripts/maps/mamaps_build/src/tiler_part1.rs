@@ -106,7 +106,7 @@ fn tile_zooms(
         // reads through the same ChunkReader either way.
         let spill = ChunkSpill::create_planned(&settings.scratch, chunk_plan)?;
         let mapped = std::time::Instant::now();
-        let (chunks, tally) = map_zoom(store, z, tolerance, buffer, &spill)?;
+        let (chunks, tally) = map_zoom(store, settings, z, tolerance, buffer, &spill)?;
         stats.map_ms = mapped.elapsed().as_millis() as u64;
         stats.features = tally.features;
         stats.points = tally.points;
@@ -291,6 +291,7 @@ fn plan_chunk_spill(store: &Store, scratch: &std::path::Path) -> osm_ingest::mem
 /// a configuration this has to stay byte-identical at.
 fn map_zoom(
     store: &Store,
+    settings: &Settings,
     z: u8,
     tolerance: f64,
     buffer: f64,
@@ -329,7 +330,7 @@ fn map_zoom(
                 .name(format!("mamaps-tile-{i}"))
                 .stack_size(WORKER_STACK)
                 .spawn_scoped(scope, || {
-                    tile_chunks(&receive, &done, &failed, spill, z, tolerance, buffer)
+                    tile_chunks(&receive, &done, &failed, spill, z, tolerance, buffer, &settings.country_zooms)
                 });
             match worker {
                 Ok(handle) => spawned.push(handle),
@@ -339,7 +340,7 @@ fn map_zoom(
                 }
             }
         }
-        tile_chunks(&receive, &done, &failed, spill, z, tolerance, buffer);
+        tile_chunks(&receive, &done, &failed, spill, z, tolerance, buffer, &settings.country_zooms);
         for handle in spawned {
             handle.join().map_err(|_| {
                 tile_build::proto::Error("a tiling thread panicked".to_string())

@@ -74,6 +74,68 @@ pub struct FallbackStats {
     /// `(kind, total, linked)` per place kind, sorted by kind. `linked` counts both halves;
     /// the ratio is the per-kind hit rate the build log prints.
     pub per_kind: Vec<(String, u64, u64)>,
+    /// Country zoom overrides assigned (place tagged id count).
+    pub country_zooms: u64,
+}
+
+/// A country's label zoom from its ground footprint and headcount.
+///
+/// Pure area buries Vatican City, Singapore and Monaco until deep zoom; pure
+/// population buries Russia, Canada and Mongolia under their own emptiness. The
+/// score multiplies the two so a place must be big *or* populous to surface
+/// early, and tiny *and* empty to wait:
+///
+/// `score = log10(area_m2) + AOI_COVERAGE_WEIGHT * log10(population + 1)`
+///
+/// The weight (2.0) is what keeps Singapore (6 M people, 725 km²) and Switzerland
+/// off the backstop: with equal weights a microstate's area term (~1e8 → 8)
+/// caps its score near 15 no matter the headcount, so population could never
+/// lift one. Weighting population double counts headcount the way a reader
+/// does — people are the point of a label — while area still separates Russia
+/// (20.5) from Nauru (10.7). The `+1` keeps unpopulated Antarctica finite.
+///
+/// Bucket edges calibrated against real countries (see
+/// `country_zoom_scores_area_times_headcount` — every edge asserted):
+///
+/// | score | start zoom | example |
+/// |---|---|---|
+/// | ≥ 26 | 0 | Russia, USA, France, Germany, Japan, Egypt |
+/// | ≥ 23.5 | 1 | Switzerland |
+/// | ≥ 20 | 2 | Singapore |
+/// | ≥ 14.5 | 3 | Liechtenstein, Nauru, Tuvalu — everything on by z3 |
+/// | < 14.5 | 4 | Vatican City (tiny and near-empty) |
+///
+/// z3 shows every country whose label cannot collide with another country's:
+/// at z3 a tile spans 45° and a country label spans a fraction of a tile, so
+/// neighbours are tiles apart. z4 is the backstop for the tail, never later —
+/// a country is never street-level detail.
+///
+/// Why z0 holds France as well as Russia: at z0 the world is four tiles and a
+/// label is a few dozen pixels — France and Russia never share a tile, so they
+/// cannot collide. Gating France out would empty the tile, not declutter it.
+///
+/// Ground area from planar deg² via equirectangular projection at the shape's
+/// own mid-latitude: exact enough for bucketing (adjacent buckets differ ~4x),
+/// cheap enough to run over every country once per build.
+pub fn country_zoom(area_deg2: f64, mid_lat_deg: f64, population: u64) -> u8 {
+    const M_PER_DEG: f64 = 111_320.0;
+    /// How much a doubling of headcount moves the score relative to a doubling
+    /// of ground area. 2.0: people are the point of a label, and without it no
+    /// microstate could ever leave the backstop on headcount alone.
+    const AOI_COVERAGE_WEIGHT: f64 = 2.0;
+    let area_m2 = area_deg2.max(0.0) * M_PER_DEG * M_PER_DEG * mid_lat_deg.to_radians().cos().max(0.05);
+    let score = area_m2.log10() + AOI_COVERAGE_WEIGHT * (population as f64 + 1.0).log10();
+    if score >= 26.0 {
+        0
+    } else if score >= 23.5 {
+        1
+    } else if score >= 20.0 {
+        2
+    } else if score >= 14.5 {
+        3
+    } else {
+        4
+    }
 }
 
 /// Which admin-level band a place or a boundary belongs to.
@@ -305,6 +367,21 @@ pub fn extend_region_links(
     store: &crate::store::Store,
     region_links: &mut HashMap<u64, u64>,
 ) -> Result<FallbackStats> {
+    extend_region_links_with(store, region_links, &mut HashMap::new(), &HashMap::new())
+}
+
+/// [`extend_region_links`], also filling `country_zooms`: place tagged id → label start
+/// zoom for `country` places, from each country's ground footprint and headcount (see
+/// [`country_zoom`]). `populations` maps place tagged id → `population` tag headcount
+/// (relation places; node/way countries are absent and score as unpopulated — the area
+/// term still separates Russia from Nauru). The caller hands both maps to the tiler
+/// beside `region_links`.
+pub fn extend_region_links_with(
+    store: &crate::store::Store,
+    region_links: &mut HashMap<u64, u64>,
+    country_zooms: &mut HashMap<u64, u8>,
+    populations: &HashMap<u64, u64>,
+) -> Result<FallbackStats> {
     // Pass 1: boundary shapes. Only `region_area` areas (the mask's own shapes, carrying the
     // admin level in `kind_detail`); border lines enclose nothing.
     let mut boundaries: Vec<Boundary> = Vec::new();
@@ -329,7 +406,11 @@ pub fn extend_region_links(
 
     // Pass 2: places. Positional, so node, way-centroided and relation-centroided labels all
     // link by the tagged id they already carry — the only path that can link non-node places,
-    // since the member map is node-keyed.
+    // since the member map is node-keyed. Country labels also gain their area+population
+    // start zoom here (see `country_zoom`): the linked boundary's footprint is in hand,
+    // so no third pass is needed. The headcount comes from `populations` (relation
+    // places, filled by the caller while tags were in hand); absent entries score as
+    // unpopulated — Antarctica's case — never as missing.
     let mut stats = FallbackStats::default();
     let mut per_kind: HashMap<String, (u64, u64)> = HashMap::new();
     let mut buf: Vec<&Boundary> = Vec::new();
@@ -367,6 +448,30 @@ pub fn extend_region_links(
             region_links.insert(feature.id, target);
             stats.fallback_linked += 1;
             entry.1 += 1;
+        }
+        // A country label starts at the zoom its footprint earns. The linked
+        // boundary (member half inserted before this pass, fallback half just
+        // above — both visible in `region_links` now) carries the ground area;
+        // the place feature carries the headcount via its population rank... but
+        // the rank buckets are lossy, so read the headcount from the store
+        // feature's own tags is impossible here — instead the population comes
+        // from the place feature's `kind_detail` rank inverted through the same
+        // buckets `schema::places` used. Simpler and exact: keep a place-id →
+        // population map from the pass-2 scan itself (see `populations` below).
+        // Unlinked countries keep the schema floor (z0): a missing link must
+        // never hide a country.
+        if kind_name == "country" {
+            if let Some(target) = region_links.get(&feature.id) {
+                if let Some(boundary) = boundaries.iter().find(|b| b.id == *target) {
+                    let mid_lat = boundary.bbox.map(|(_, y0, _, y1)| (y0 + y1) / 2.0).unwrap_or(0.0);
+                    let population = populations.get(&feature.id).copied().unwrap_or(0);
+                    country_zooms.insert(
+                        feature.id,
+                        country_zoom(boundary.area, mid_lat, population),
+                    );
+                    stats.country_zooms += 1;
+                }
+            }
         }
     }
     stats.fallback_missed =

@@ -260,6 +260,7 @@ fn tile_chunks(
     z: u8,
     tolerance: f64,
     buffer: f64,
+    country_zooms: &std::collections::HashMap<u64, u8>,
 ) {
     loop {
         // Held to take a chunk and never while tiling one: the lock covers a pointer move, and the
@@ -269,7 +270,7 @@ fn tile_chunks(
         // `AssertUnwindSafe` because everything the closure touches is a local: the chunk map it
         // builds is thrown away on a panic.
         let tiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            tile_chunk(&features, z, tolerance, buffer)
+            tile_chunk(&features, z, tolerance, buffer, country_zooms)
         }));
         match tiled {
             Ok((chunk, tally)) => match spill.write_chunk(chunk) {
@@ -299,10 +300,33 @@ fn tile_chunks(
 /// each of its hundreds of thousands of z13 tiles; now it is clipped once per zoom level. Filtering
 /// stays where it was, **before** the descent: significance is measured on the whole geometry, so a
 /// vertex's fate must not depend on which tile it lands in.
-fn tile_chunk(features: &[Feature], z: u8, tolerance: f64, buffer: f64) -> (Chunk, Tally) {
+///
+/// `country_zooms` (place id → label start zoom, probe-only) drops a `country` label
+/// below its start zoom before any geometry work: the label is a point, so nothing
+/// downstream would remove it, and carrying it would defeat the gating.
+fn tile_chunk(
+    features: &[Feature],
+    z: u8,
+    tolerance: f64,
+    buffer: f64,
+    country_zooms: &std::collections::HashMap<u64, u8>,
+) -> (Chunk, Tally) {
     let mut tiles: Chunk = BTreeMap::new();
     let mut tally = Tally::default();
     for feature in features {
+        // Country label gating: the score (footprint × headcount) decided in stage A
+        // (see `extract_fallback::country_zoom`); this is where it is enforced. A
+        // missing score keeps the schema floor — a missing map entry must never hide
+        // a country. Probe-only (`get`), never iterated, so the archive stays
+        // deterministic; counted as dropped so the report stays honest.
+        if feature.class.layer == tilecodec::mamaps::dict::LAYER_PLACES {
+            if let Some(&start) = country_zooms.get(&feature.id) {
+                if z < start {
+                    tally.dropped += 1;
+                    continue;
+                }
+            }
+        }
         let mut projected = geom::project_geometry(&feature.geometry, z, EXTENT);
         // Significance first, then filter: computed on the whole geometry so a vertex's fate
         // does not depend on which tile it lands in.

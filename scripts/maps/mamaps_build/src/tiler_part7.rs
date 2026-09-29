@@ -73,6 +73,7 @@ mod tests {
             force_chunk_spill_file: false,
             dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
             region_links: std::collections::HashMap::new(),
+            country_zooms: std::collections::HashMap::new(),
         }
     }
 

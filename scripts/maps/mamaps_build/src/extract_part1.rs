@@ -15,7 +15,7 @@ pub fn extract(
     graph: &Path,
     spill_path: &Path,
     region: Option<osm_ingest::bbox::BBox>,
-) -> Result<(Store, Stats, HashMap<u64, u64>)> {
+) -> Result<(Store, Stats, HashMap<u64, u64>, HashMap<u64, u64>)> {
     // Stage A's boundaries are printed with their elapsed time so an external RSS sampler can say
     // which of them the peak belongs to. Three candidates sit within seconds of each other -- the ref
     // vector, the id index built beside it, and the node pass's per-chunk accumulators -- and
@@ -151,6 +151,19 @@ pub fn extract(
         &mut sink,
         &mut stats,
     )?;
+    // Country headcounts for label zoom scoring (see `extract_fallback::country_zoom`):
+    // relation id (tagged) -> `population` tag. Node/way countries have no relation to
+    // read it from and score as unpopulated; the area term still separates Russia from
+    // Nauru. Built BEFORE `relations` is dropped below (it dies at "OSM tables freed").
+    let country_populations: HashMap<u64, u64> = relations
+        .iter()
+        .filter_map(|r| {
+            r.population.and_then(|pop| {
+                (r.class.layer == tilecodec::mamaps::dict::LAYER_PLACES)
+                    .then(|| (tagged_id(r.id, ELEMENT_RELATION), pop))
+            })
+        })
+        .collect();
     // The OSM tables are dead from here: relations, member refs and the coordinate table serve
     // only materialisation. Dropping them before the externals (coastline, transit, graph)
     // keeps the RankIndex bitset (~1.5 GB on planet), the resolved bitset and the mapped locs
@@ -176,7 +189,7 @@ pub fn extract(
         .iter()
         .map(|(&node, &rel)| (tagged_id(node, ELEMENT_NODE), tagged_id(rel, ELEMENT_RELATION)))
         .collect();
-    Ok((store, stats, region_links))
+    Ok((store, stats, region_links, country_populations))
 }
 
 /// Spill bytes per classified feature, calibrated from measured builds.
@@ -546,6 +559,7 @@ fn run_pass1(
                                     name: name.clone(),
                                     id: relation.id,
                                     building: None,
+                                    population: None,
                                     iso: iso.clone(),
                                 });
                             }
@@ -556,6 +570,7 @@ fn run_pass1(
                                 name,
                                 id: relation.id,
                                 building,
+                                population: Some(schema::places::population_of(&relation.tags)),
                                 iso: None,
                             });
                         }

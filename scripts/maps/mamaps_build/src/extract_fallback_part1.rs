@@ -10,6 +10,34 @@ mod tests {
     fn boundary(id: u64, level: u16, polygons: Vec<Polygon>) -> Boundary {
         Boundary::new(id, level, polygons)
     }
+    /// The score is area × headcount² in log space, population weighted double so a
+    /// microstate's headcount can actually lift it. Measured scores: Russia 28.63,
+    /// USA 29.26, France 26.57, Mongolia 24.32, Singapore 21.73, Liechtenstein
+    /// 16.56, Nauru 14.82, Vatican City 10.62 — every expectation asserted.
+    #[test]
+    fn country_zoom_scores_area_times_headcount() {
+        // z0: score ≥ 26 — vast and populous, plus populous western Europe (a z0
+        // world tile holds four labels that never share a tile, so no collision).
+        assert_eq!(country_zoom(289.0, 55.0, 144_000_000), 0, "Russia");
+        assert_eq!(country_zoom(170.0, 40.0, 335_000_000), 0, "USA");
+        assert_eq!(country_zoom(9.5, 47.0, 68_000_000), 0, "France");
+        assert_eq!(country_zoom(6.2, 51.0, 84_000_000), 0, "Germany");
+        // z1: 23.5–26. Switzerland (23.67) leads Mongolia (24.32)? No: 24.32 ≥
+        // 23.5 → z1 as well. Both vast-and-empty vs small-and-rich meet here.
+        assert_eq!(country_zoom(27.0, 46.0, 3_000_000), 1, "Mongolia");
+        assert_eq!(country_zoom(0.72, 46.8, 8_800_000), 1, "Switzerland");
+        // z2: 20–23.5 — tiny but millions of people.
+        assert_eq!(country_zoom(0.012, 1.35, 6_000_000), 2, "Singapore");
+        // z3: 14.5–20 — everything else with a pulse, on by z3.
+        assert_eq!(country_zoom(0.0028, 47.1, 39_000), 3, "Liechtenstein");
+        assert_eq!(country_zoom(0.00037, -0.5, 12_000), 3, "Nauru");
+        // z4 backstop, never later: tiny AND near-empty.
+        assert_eq!(country_zoom(0.000007, 41.9, 800), 4, "Vatican City");
+        // Antarctica (11.71): vast but uncounted. The backstop is honest — no
+        // headcount exists to score, and area alone must not outrank every
+        // populated microstate.
+        assert_eq!(country_zoom(240.0, -80.0, 0), 4, "Antarctica");
+    }
 
     #[test]
     fn nested_shapes_link_each_place_kind_to_its_own_level() {

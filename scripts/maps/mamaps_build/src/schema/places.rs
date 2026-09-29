@@ -147,7 +147,12 @@ fn rank_of(tags: &(impl TagSource + ?Sized)) -> u16 {
         .unwrap_or(0)
 }
 
-fn population_of(tags: &(impl TagSource + ?Sized)) -> u64 {
+/// A `population` tag as a headcount: commas and spaces stripped, unparseable or
+/// absent as zero (nobody counted — Antarctica's case, not an error).
+///
+/// `pub` for pass 1, which reads it off place relations while the tags are in hand
+/// (country label zoom scoring); the spill record never carries tags.
+pub fn population_of(tags: &(impl TagSource + ?Sized)) -> u64 {
     tags
         .get("population")
         .map(str::trim)

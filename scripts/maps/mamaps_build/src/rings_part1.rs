@@ -324,6 +324,7 @@ mod tests {
             force_chunk_spill_file: false,
             dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
             region_links: std::collections::HashMap::new(),
+            country_zooms: std::collections::HashMap::new(),
         };
         let store = crate::store::Store::of(&features).expect("spill");
         let (bytes, stats) = crate::tiler::build(&store, &settings).expect("build");
@@ -403,6 +404,7 @@ mod tests {
             force_chunk_spill_file: false,
             dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
             region_links: std::collections::HashMap::new(),
+            country_zooms: std::collections::HashMap::new(),
         };
         let store = crate::store::Store::of(&features).expect("spill");
         let (bytes, _) = crate::tiler::build(&store, &settings).expect("build");
@@ -432,5 +434,98 @@ mod tests {
         assert!(saw[0], " Superior water reaches z0");
         assert!(saw[1], "Superior water reaches z5");
         assert!(saw[2], "Superior water reaches z14");
+    }
+
+    /// **Country label gating, end to end.** Two `country` places through the real
+    /// pipeline with scored start zooms: a Russia-scale label (z0) and a Vatican-scale
+    /// label (z4). The z0 tile carries only Russia; the z4 tile carries both. A third
+    /// unscored country keeps the schema floor and rides every zoom — a missing score
+    /// must never hide a country.
+    #[test]
+    fn country_labels_start_at_their_scored_zoom() {
+        use crate::schema::Class;
+        use tilecodec::mamaps::body::Body;
+        use tilecodec::mamaps::dict;
+
+        fn country(id: u64) -> crate::extract::Feature {
+            let class = crate::schema::places::classify(
+                &[("place", "country"), ("name", "Test")] as &[(&str, &str)],
+            )
+            .expect("classified");
+            crate::extract::Feature {
+                class,
+                geometry: tile_build::geom::Geometry::Points(vec![(10.0, 10.0)]),
+                name: Some("Test".to_string()),
+                id,
+                transit_color: 0,
+                transit_ordinal: 0,
+                transit_lanes: 0,
+                transit_taper: 0,
+                lane_count: 0,
+                turn_fwd: Vec::new(),
+                turn_bwd: Vec::new(),
+                carriageway: tilecodec::mamaps::body::Carriageway::default(),
+                building: None,
+            }
+        }
+
+        let russia = 1001u64;
+        let vatican = 1002u64;
+        let unscored = 1003u64;
+        let features = vec![country(russia), country(vatican), country(unscored)];
+        let mut zooms: std::collections::HashMap<u64, u8> = std::collections::HashMap::new();
+        zooms.insert(russia, 0);
+        zooms.insert(vatican, 4);
+        let settings = crate::tiler::Settings {
+            build_id: 1,
+            scratch: std::env::temp_dir()
+                .join(format!("mamaps_countries_{}.tilechunks", std::process::id())),
+            force_chunk_spill_file: false,
+            dem: crate::dem::Dem::from_grids(14, 17, Vec::new()),
+            region_links: std::collections::HashMap::new(),
+            country_zooms: zooms,
+        };
+        let store = crate::store::Store::of(&features).expect("spill");
+        let (bytes, _) = crate::tiler::build(&store, &settings).expect("build");
+
+        // Which ids does each zoom's `places` layer carry?
+        let mut at_zoom: std::collections::HashMap<u8, Vec<u64>> =
+            std::collections::HashMap::new();
+        for (id, _, body) in tilecodec::mamaps::read::read_all(&bytes).expect("read") {
+            let (z, _, _) = tilecodec::pmtiles::tile_zxy(id);
+            if z != 0 && z != 4 {
+                continue;
+            }
+            let body = Body::parse(&body).expect("parse");
+            let Some(layer) = body.layer(dict::LAYER_PLACES) else {
+                continue;
+            };
+            let country_kind = crate::schema::kind("country");
+            let has = |want: u64| {
+                layer
+                    .features
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, f)| f.kind == country_kind)
+                    .any(|(i, _)| body.feature_id(dict::LAYER_PLACES, i) == Some(want))
+            };
+            for want in [russia, vatican, unscored] {
+                if has(want) {
+                    at_zoom.entry(z).or_default().push(want);
+                }
+            }
+        }
+        let mut z0 = at_zoom.get(&0).cloned().unwrap_or_default();
+        let mut z4 = at_zoom.get(&4).cloned().unwrap_or_default();
+        z0.sort_unstable();
+        z4.sort_unstable();
+        z0.dedup();
+        z4.dedup();
+        assert_eq!(z0, vec![russia, unscored], "z0 carries Russia and the unscored country");
+        assert_eq!(
+            z4,
+            vec![russia, vatican, unscored],
+            "z4 carries all three — Vatican joins, nothing leaves"
+        );
     }
 }

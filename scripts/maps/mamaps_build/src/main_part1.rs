@@ -55,7 +55,7 @@ fn run(
     // an empty graph dir with no `metadata.bin`, paid for in full.
     check_graph_dir(&graph_dir, run.region)?;
 
-    let (store, stats, mut region_links) = extract::extract(
+    let (store, stats, mut region_links, country_populations) = extract::extract(
         input,
         layers,
         &run.coastline,
@@ -68,7 +68,15 @@ fn run(
     // The containment fallback: member-less place labels gain links from the whole-polygon
     // shapes above, never overwriting a member link. Runs here — after the store is sealed
     // and before the tiler reads the map — because only whole rings answer containment.
-    match crate::extract_fallback::extend_region_links(&store, &mut region_links) {
+    // It also assigns country label start zooms from footprint × headcount (same pass,
+    // footprints in hand).
+    let mut country_zooms: std::collections::HashMap<u64, u8> = std::collections::HashMap::new();
+    match crate::extract_fallback::extend_region_links_with(
+        &store,
+        &mut region_links,
+        &mut country_zooms,
+        &country_populations,
+    ) {
         Ok(fallback) => {
             if fallback.places_total > 0 {
                 println!(
@@ -82,6 +90,13 @@ fn run(
                     let rate = *linked as f64 / (*total).max(1) as f64 * 100.0;
                     println!("    {kind}: {linked}/{total} ({rate:.0}%)");
                 }
+            }
+            if fallback.country_zooms > 0 {
+                println!(
+                    "  country label zooms: {} countr{} scored by footprint x headcount",
+                    fallback.country_zooms,
+                    if fallback.country_zooms == 1 { "y" } else { "ies" },
+                );
             }
         }
         Err(e) => return Err(format!("region fallback: {e}")),
@@ -155,6 +170,7 @@ fn run(
         scratch: scratch_path(out),
         dem,
         region_links,
+        country_zooms,
         // Honour the operator's backend choice: `MAPS_ANON_SPILL=1` (or any truthy value) stages
         // the tile-chunk spill in pagefile-backed anonymous memory instead of the scratch file
         // beside the output. Same chunks, same offsets, same bytes -- the merge reads through the

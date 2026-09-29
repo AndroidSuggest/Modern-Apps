@@ -196,6 +196,10 @@ struct Relation {
     id: i64,
     /// A building relation's S3DB attributes (a multipolygon `building=*`), `None` otherwise.
     building: Option<BuildingAttrs>,
+    /// A `place` relation's headcount (`population` tag), for country label zoom scoring
+    /// (see `extract_fallback::country_zoom`). Read in pass 1 while the tags are in hand;
+    /// `None` for every non-place relation and for places nobody counted (Antarctica).
+    population: Option<u64>,
     /// The ISO 3166-1 code of an `admin_level=2` relation, `None` for every other relation. What
     /// the tile's marking convention is resolved from — see [`crate::schema::boundaries::Conventions`].
     iso: Option<String>,

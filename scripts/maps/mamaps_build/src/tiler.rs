@@ -268,6 +268,12 @@ pub struct Settings {
     /// the body's region-link table, so a tap on the label outlines that exact region. Empty when no
     /// links were found (the section is then omitted from every tile).
     pub region_links: std::collections::HashMap<u64, u64>,
+    /// Place-label id (tagged, `country` places only) -> the label's start zoom, from
+    /// footprint × headcount (see `extract_fallback::country_zoom`). The tiler drops the
+    /// label below its start zoom — same shape as `region_links`, probe-only so the
+    /// archive stays deterministic. Absent ids keep the schema floor (z0): a missing
+    /// score must never hide a country.
+    pub country_zooms: std::collections::HashMap<u64, u8>,
 }
 
 /// One chunk's share of a zoom, keyed on `(tile id, layer id)`.
