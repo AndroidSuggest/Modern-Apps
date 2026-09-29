@@ -118,4 +118,7 @@
     <string name="cleartext_blocked_message">%1$s 是通过普通 HTTP 请求的。未加密的连接仅允许与本地网络上的设备建立。</string>
     <string name="local_network_title">允许本地网络访问吗？</string>
     <string name="local_network_message">%1$s 似乎是您网络上的设备。Android 需要本地网络权限才能加载此页面。</string>
+    <string name="toolbar_at_bottom">底部工具栏</string>
+    <string name="keeps_the_address_bar_within_thumb_reach">让地址栏触手可及</string>
+    <string name="content_filter_blocked_html"><![CDATA[<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:sans-serif;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#111;color:#eee}main{max-width:22rem;padding:2rem;text-align:center}h1{font-size:1.25rem;font-weight:600;margin:0 0 .5rem}p{margin:0;opacity:.7;line-height:1.5}</style></head><body><main><h1>网站被屏蔽</h1><p>此设备已启用网页内容过滤功能。如果您认为这是错误，请联系设置家长控制功能的人员。</p></main></body></html>]]></string>
 </resources>
