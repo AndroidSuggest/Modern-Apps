@@ -6,6 +6,9 @@ import com.android.tools.screenshot.PreviewTest
 import com.vayunmathur.files.platform.FileBrowserItem
 import com.vayunmathur.files.platform.FilesActions
 import com.vayunmathur.files.platform.FilesUiState
+import com.vayunmathur.files.platform.TrashUiState
+import com.vayunmathur.files.ui.DirectoryScreen
+import com.vayunmathur.files.ui.TrashScreen
 import com.vayunmathur.library.ui.DynamicTheme
 import java.io.File
 
@@ -136,6 +139,23 @@ class MetadataPreviews {
                         zipFile("manifest.json", 2_048),
                         zipFile("notes.md", 9_512),
                         zipFile("settings.xml", 1_204),
+                    ),
+                ),
+                actions = FilesActions.Noop,
+            )
+        }
+    }
+
+    @PreviewTest
+    @Preview(name = "4-trash", device = PHONE, showSystemUi = true)
+    @Composable
+    fun Preview4Trash() {
+        DynamicTheme(darkTheme = true) {
+            TrashScreen(
+                state = TrashUiState(
+                    items = listOf(
+                        file("$ROOT/Download/receipts-june.pdf", 184_320),
+                        file("$ROOT/DCIM/IMG_2481.jpg", 3_145_728),
                     ),
                 ),
                 actions = FilesActions.Noop,

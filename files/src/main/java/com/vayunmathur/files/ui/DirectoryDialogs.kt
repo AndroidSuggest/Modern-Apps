@@ -72,3 +72,27 @@ internal fun SectionHeader(text: String) {
         modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
     )
 }
+
+/**
+ * Confirms permanent deletion of items the system trash cannot take (folders, files with no
+ * MediaStore entry). Shared between the directory flow and the trash screen's empty-trash
+ * path, so it lives here next to [NameDialog].
+ */
+@Composable
+internal fun PermanentDeleteDialog(
+    count: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.delete_permanently_title, count)) },
+        text = { Text(stringResource(R.string.delete_permanently_message)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.delete)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(UiR.string.cancel)) }
+        },
+    )
+}

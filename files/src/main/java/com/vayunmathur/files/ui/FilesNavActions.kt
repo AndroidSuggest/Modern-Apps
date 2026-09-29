@@ -47,6 +47,10 @@ internal fun filesNavActions(
         }
     }
 
+    override fun openTrash() {
+        backStack.reset(Route.Home, Route.Trash)
+    }
+
     /**
      * Serves both descending into a child folder and tapping an ancestor in the breadcrumb bar. A
      * target already on the stack is popped back to, so jumping up does not stack a second copy of a

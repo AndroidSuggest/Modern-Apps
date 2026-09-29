@@ -1382,6 +1382,11 @@ fun IconBluetooth(modifier: Modifier = Modifier, tint: Color = LocalContentColor
 fun IconUninstall(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
     AppIcon(Icons.Filled.DeleteForever, "Uninstall", modifier, tint)
 
+/** Permanently deleting a trashed file, as opposed to [IconDelete], which moves it to trash. */
+@Composable
+fun IconDeleteForever(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    AppIcon(Icons.Filled.DeleteForever, "Delete forever", modifier, tint)
+
 // --- Email composer rich formatting ---
 @Composable
 fun IconFormatQuote(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =

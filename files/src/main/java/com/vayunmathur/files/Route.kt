@@ -30,6 +30,13 @@ sealed interface Route : NavKey {
     data class Category(val category: FileCategory) : Route
 
     /**
+     * The system trash. Like [Category], a flat listing with no parent folder, so it always
+     * sits directly on top of [Home].
+     */
+    @Serializable
+    data object Trash : Route
+
+    /**
      * Inside an archive. [internalPath] is empty at the archive root and gains one entry per folder
      * within it, so Back walks out of the archive the same way it walks up a directory.
      */

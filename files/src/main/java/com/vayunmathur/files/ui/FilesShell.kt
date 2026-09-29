@@ -112,8 +112,38 @@ fun FilesShell(
         }
     } else {
         val bookmarks by viewModel.bookmarks.collectAsState()
+        val pendingPermanentDelete by viewModel.pendingPermanentDelete.collectAsState()
         val drawerState = rememberDrawerState(DrawerValue.Closed)
         val scope = rememberCoroutineScope()
+
+        // Exactly one collector for the system trash-consent dialogs, above the nav host:
+        // both the directory delete flow and the trash screen emit into the same flow.
+        val trashConsentLauncher =
+            rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+                viewModel.onTrashConsentResult(result.resultCode == android.app.Activity.RESULT_OK)
+            }
+        LaunchedEffect(Unit) {
+            viewModel.trashConsentRequests.collect { pendingIntent ->
+                try {
+                    trashConsentLauncher.launch(
+                        androidx.activity.result.IntentSenderRequest.Builder(pendingIntent.intentSender).build(),
+                    )
+                } catch (_: Exception) {
+                    viewModel.showMessage(context.getString(R.string.trash_request_failed))
+                }
+            }
+        }
+
+        // Permanent-delete confirmation for items the system trash cannot take (folders,
+        // unindexed files). Shared by the directory and trash flows, so it sits above both.
+        pendingPermanentDelete?.let { pending ->
+            PermanentDeleteDialog(
+                count = pending.size,
+                onConfirm = { actions.confirmPermanentDelete() },
+                onDismiss = { actions.dismissPermanentDelete() },
+            )
+        }
+
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
@@ -188,6 +218,12 @@ private fun FilesDrawer(
             icon = { IconDownload(tint = COLOR_APK) },
             selected = false,
             onClick = { go { actions.openCategory(FileCategory.DOWNLOADS) } },
+        )
+        NavigationDrawerItem(
+            label = { Text(stringResource(R.string.trash)) },
+            icon = { IconDelete() },
+            selected = false,
+            onClick = { go { actions.openTrash() } },
         )
         if (bookmarks.isNotEmpty()) {
             HomeSectionHeader(stringResource(R.string.bookmarks))

@@ -85,6 +85,10 @@ interface FilesActions {
 
     fun rename(item: FileBrowserItem, newName: String) {}
     fun deleteSelection() {}
+    /** Confirms permanent deletion of items the system trash cannot take (folders, unindexed). */
+    fun confirmPermanentDelete() {}
+    /** Dismisses the permanent-delete confirmation without deleting. */
+    fun dismissPermanentDelete() {}
     fun moveInto(sources: List<File>, target: File) {}
     fun moveToBreadcrumb(sources: List<File>, target: File) {}
 
@@ -125,6 +129,14 @@ interface FilesActions {
     fun openBookmark(path: File) {}
     fun addBookmark(item: FileBrowserItem) {}
     fun removeBookmark(path: File) {}
+
+    // ---- System trash ----
+    fun openTrash() {}
+    fun toggleTrashSelection(item: FileBrowserItem) {}
+    fun clearTrashSelection() {}
+    fun restoreTrashSelection() {}
+    fun deleteForeverTrashSelection() {}
+    fun emptyTrash() {}
 
     companion object {
         val Noop: FilesActions = object : FilesActions {}

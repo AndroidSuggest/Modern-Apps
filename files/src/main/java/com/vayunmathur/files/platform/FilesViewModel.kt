@@ -1,13 +1,13 @@
 package com.vayunmathur.files.platform
 
 import android.app.Application
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.os.FileObserver
 import android.os.StatFs
-import android.provider.OpenableColumns
 import android.text.format.Formatter
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
@@ -44,6 +44,11 @@ data class FileBrowserItem(
     val zipInnerPath: String?,
     val key: String,
     val lastModified: Long = 0L,
+    /**
+     * MediaStore content URI, set only for items listed from the system trash. Lets the
+     * trash screen restore / delete them without re-resolving the path.
+     */
+    val mediaUri: Uri? = null,
 )
 
 class FilesViewModel(application: Application) : AndroidViewModel(application), FilesActions {
@@ -285,6 +290,8 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         _zipPath.value = null
         _zipInternalPath.value = ""
         clearSelection()
+        _trashSelection.value = emptySet()
+        _pendingPermanentDelete.value = null
         observerJob?.cancel()
         loadHome()
     }
@@ -382,14 +389,14 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         com.vayunmathur.files.platform.uniqueDestination(dir, name)
 
     // ---- Share URIs ----
-    private val _incomingUris = MutableStateFlow<List<Uri>?>(null)
+    internal val _incomingUris = MutableStateFlow<List<Uri>?>(null)
     val incomingUris: StateFlow<List<Uri>?> = _incomingUris.asStateFlow()
 
     fun setIncomingUris(uris: List<Uri>) { _incomingUris.value = uris }
     fun clearIncomingUris() { _incomingUris.value = null }
 
     // ---- Events ----
-    private val _snackbarMessages = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    internal val _snackbarMessages = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val snackbarMessages: SharedFlow<String> = _snackbarMessages.asSharedFlow()
 
     internal val _intents = MutableSharedFlow<Intent>(extraBufferCapacity = 4)
@@ -465,6 +472,8 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         _currentDirectory.value = path
         applyDirDefaults(path)
         clearSelection()
+        _trashSelection.value = emptySet()
+        _pendingPermanentDelete.value = null
         loadDirectory()
         restartObserver()
     }
@@ -521,13 +530,49 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
 
     override fun deleteSelection() {
         if (isZipMode()) return
-        val selection = _selectedPaths.value.mapNotNull { it.realFile }
-        viewModelScope.launch(Dispatchers.IO) {
-            selection.forEach { it.deleteRecursively() }
-            clearSelection()
-            loadDirectory()
+        trashSelection()
+    }
+
+    override fun confirmPermanentDelete() {
+        if (isZipMode()) return
+        confirmPendingPermanentDelete()
+    }
+
+    override fun dismissPermanentDelete() {
+        _pendingPermanentDelete.value = null
+    }
+
+    /** Reloads the system-trash listing. Called by the navigation layer for a `Route.Trash`. */
+    fun showTrash() {
+        _categoryTitle.value = null
+        _zipPath.value = null
+        _zipInternalPath.value = ""
+        clearSelection()
+        observerJob?.cancel()
+        loadTrash()
+    }
+
+    override fun toggleTrashSelection(item: FileBrowserItem) {
+        val current = _trashSelection.value
+        _trashSelection.value = if (current.any { it.key == item.key }) {
+            current.filterNot { it.key == item.key }.toSet()
+        } else {
+            current + item
         }
     }
+
+    override fun clearTrashSelection() {
+        if (_trashSelection.value.isNotEmpty()) _trashSelection.value = emptySet()
+    }
+
+    override fun restoreTrashSelection() = restoreTrashed()
+
+    override fun deleteForeverTrashSelection() = deleteTrashedForever()
+
+    override fun emptyTrash() = emptySystemTrash()
+
+    /** Called after a trash/restore/delete consent dialog resolves; refreshes both listings. */
+    fun onTrashConsentResult(granted: Boolean) = onTrashConsentResolved(granted)
 
     override fun moveInto(sources: List<File>, target: File) {
         if (isZipMode()) return
@@ -630,26 +675,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
         }
     }
 
-    override fun saveIncomingUris() {
-        if (isZipMode()) return
-        val ctx = getApplication<Application>()
-        val uris = _incomingUris.value ?: return
-        val target = _currentDirectory.value
-        viewModelScope.launch(Dispatchers.IO) {
-            var lastError: Exception? = null
-            uris.forEach { uri ->
-                try {
-                    saveUriToPath(ctx, uri, target)
-                } catch (e: Exception) {
-                    lastError = e
-                }
-            }
-            clearIncomingUris()
-            loadDirectory()
-            lastError?.let { emitMoveFailed(it) }
-                ?: viewModelScope.launch { _snackbarMessages.emit(ctx.getString(R.string.files_saved)) }
-        }
-    }
+    override fun saveIncomingUris() = saveSharedUrisHere()
 
     override fun openFile(item: FileBrowserItem) {
         val ctx = getApplication<Application>()
@@ -675,79 +701,42 @@ class FilesViewModel(application: Application) : AndroidViewModel(application), 
 
     // ---- APK install ----
     /** The APK waiting to be installed once the user grants the "install unknown apps" permission. */
-    private var pendingApkInstall: File? = null
+    internal var pendingApkInstall: File? = null
 
-    private val _installPermissionRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    internal val _installPermissionRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     /** Emitted when an APK was tapped but Files lacks permission to install; UI opens settings. */
     val installPermissionRequests: SharedFlow<Unit> = _installPermissionRequests.asSharedFlow()
 
-    override fun installApk(item: FileBrowserItem) {
-        val ctx = getApplication<Application>()
-        if (isZipMode()) {
-            emit(ctx.getString(R.string.zip_browse_only))
-            return
-        }
-        val file = item.realFile ?: return
-        if (ctx.packageManager.canRequestPackageInstalls()) {
-            launchApkInstall(file)
-        } else {
-            pendingApkInstall = file
-            emit(ctx.getString(R.string.install_permission_needed))
-            _installPermissionRequests.tryEmit(Unit)
-        }
-    }
+    // ---- System trash ----
+    internal val _trashedItems = MutableStateFlow<List<FileBrowserItem>>(emptyList())
+    val trashedItems: StateFlow<List<FileBrowserItem>> = _trashedItems.asStateFlow()
+
+    internal val _trashSelection = MutableStateFlow<Set<FileBrowserItem>>(emptySet())
+    val trashSelection: StateFlow<Set<FileBrowserItem>> = _trashSelection.asStateFlow()
+
+    internal val _pendingPermanentDelete = MutableStateFlow<List<FileBrowserItem>?>(null)
+    val pendingPermanentDelete: StateFlow<List<FileBrowserItem>?> = _pendingPermanentDelete.asStateFlow()
+
+    /**
+     * System trash/restore/delete consent requests. Every MediaStore trash mutation needs a
+     * user-confirmed PendingIntent, so the UI fires these via StartIntentSenderForResult —
+     * same shape as [installPermissionRequests].
+     */
+    internal val _trashConsentRequests = MutableSharedFlow<PendingIntent>(extraBufferCapacity = 4)
+    val trashConsentRequests: SharedFlow<PendingIntent> = _trashConsentRequests.asSharedFlow()
+
+    /** Snackbar for the operation whose consent dialog just resolved. Set before emitting. */
+    internal var _pendingTrashMessage: String? = null
+
+    override fun installApk(item: FileBrowserItem) = installApkFile(item)
 
     /** Called by the UI after returning from the "install unknown apps" settings screen. */
-    fun onInstallPermissionResult() {
-        val ctx = getApplication<Application>()
-        val file = pendingApkInstall ?: return
-        pendingApkInstall = null
-        if (ctx.packageManager.canRequestPackageInstalls()) {
-            launchApkInstall(file)
-        } else {
-            emit(ctx.getString(R.string.install_permission_denied))
-        }
-    }
-
-    private fun launchApkInstall(file: File) {
-        val ctx = getApplication<Application>()
-        val uri = try {
-            FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
-        } catch (e: Exception) {
-            emitMoveFailed(e)
-            return
-        }
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-        }
-        viewModelScope.launch { _intents.emit(intent) }
-    }
+    fun onInstallPermissionResult() = onApkInstallPermissionResult()
 
     fun showMessage(message: String) { emit(message) }
     internal fun emit(message: String) { viewModelScope.launch { _snackbarMessages.emit(message) } }
     internal fun emitMoveFailed(e: Exception) {
         emit(getApplication<Application>().getString(R.string.move_failed, e.localizedMessage))
-    }
-
-    private fun saveUriToPath(context: Context, uri: Uri, targetDir: File) {
-        val name = getFileName(context, uri) ?: "shared_file_${System.currentTimeMillis()}"
-        val targetFile = File(targetDir, name)
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            targetFile.outputStream().use { out -> input.copyTo(out) }
-        }
-    }
-
-    private fun getFileName(context: Context, uri: Uri): String? {
-        if (uri.scheme == "content") {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex != -1) return cursor.getString(nameIndex)
-                }
-            }
-        }
-        return uri.path?.substringAfterLast('/')
     }
 
     private fun listRealDir(dir: File): Pair<List<FileBrowserItem>, List<FileBrowserItem>> =

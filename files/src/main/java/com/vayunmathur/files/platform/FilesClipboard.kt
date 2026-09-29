@@ -1,7 +1,10 @@
 package com.vayunmathur.files.platform
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewModelScope
@@ -118,4 +121,45 @@ internal fun FilesViewModel.archiveSelection(archiveName: String) {
     WorkManager.getInstance(ctx).enqueue(zipWork)
     clearSelection()
     emit(ctx.getString(R.string.archiving_started))
+}
+
+internal fun FilesViewModel.saveSharedUrisHere() {
+    if (isZipMode()) return
+    val ctx = getApplication<Application>()
+    val uris = _incomingUris.value ?: return
+    val target = _currentDirectory.value
+    viewModelScope.launch(Dispatchers.IO) {
+        var lastError: Exception? = null
+        uris.forEach { uri ->
+            try {
+                saveUriToPath(ctx, uri, target)
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        clearIncomingUris()
+        loadDirectory()
+        lastError?.let { emitMoveFailed(it) }
+            ?: viewModelScope.launch { _snackbarMessages.emit(ctx.getString(R.string.files_saved)) }
+    }
+}
+
+private fun saveUriToPath(context: Context, uri: Uri, targetDir: File) {
+    val name = getSharedFileName(context, uri) ?: "shared_file_${System.currentTimeMillis()}"
+    val targetFile = File(targetDir, name)
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        targetFile.outputStream().use { out -> input.copyTo(out) }
+    }
+}
+
+private fun getSharedFileName(context: Context, uri: Uri): String? {
+    if (uri.scheme == "content") {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex != -1) return cursor.getString(nameIndex)
+            }
+        }
+    }
+    return uri.path?.substringAfterLast('/')
 }

@@ -52,6 +52,15 @@ fun HomeScreen(
             )
         }
 
+        item {
+            HomeRow(
+                leading = { IconDelete(tint = MaterialTheme.colorScheme.outline) },
+                title = stringResource(R.string.trash),
+                subtitle = stringResource(R.string.trash_auto_delete_note),
+                onClick = { actions.openTrash() },
+            )
+        }
+
         item { HomeSectionHeader(stringResource(R.string.categories)) }
         item {
             Row(

@@ -151,4 +151,31 @@
     <string name="saf_save">Save</string>
     <!-- Button confirming a multi-file selection. %1$d = number selected -->
     <string name="saf_select_count">Select (<xliff:g id="count" example="3">%1$d</xliff:g>)</string>
+
+    <!-- Navigation drawer + Home entry for the system trash -->
+    <string name="trash">Trash</string>
+    <!-- Trash screen: empty-state placeholder -->
+    <string name="trash_empty">Trash is empty</string>
+    <!-- Trash screen: caption explaining the system trash auto-deletes. Noun phrase -->
+    <string name="trash_auto_delete_note">Items are permanently deleted after 30 days</string>
+    <!-- Selection action: restore trashed items to their original location -->
+    <string name="restore">Restore</string>
+    <!-- Selection action: permanently delete trashed items -->
+    <string name="delete_forever">Delete forever</string>
+    <!-- Trash screen action: permanently delete everything in the trash -->
+    <string name="empty_trash">Empty trash</string>
+    <!-- Permanent-delete confirmation dialog title. %1$d = item count -->
+    <string name="delete_permanently_title">Delete <xliff:g id="count" example="3">%1$d</xliff:g> item(s) permanently?</string>
+    <!-- Permanent-delete confirmation dialog body: folders cannot use the system trash -->
+    <string name="delete_permanently_message">This cannot be undone. Folders and some files cannot be moved to the trash.</string>
+    <!-- Generic verb. Confirm permanent deletion -->
+    <string name="delete">Delete</string>
+    <!-- Snackbar after moving items to the system trash. %1$d = item count -->
+    <string name="moved_to_trash"><xliff:g id="count" example="3">%1$d</xliff:g> item(s) moved to trash</string>
+    <!-- Snackbar after restoring trashed items. %1$d = item count -->
+    <string name="restored_n">Restored <xliff:g id="count" example="3">%1$d</xliff:g> item(s)</string>
+    <!-- Snackbar after permanently deleting trashed items. %1$d = item count -->
+    <string name="deleted_forever_n">Deleted <xliff:g id="count" example="3">%1$d</xliff:g> item(s) permanently</string>
+    <!-- Snackbar when the system trash-consent dialog cannot be shown -->
+    <string name="trash_request_failed">Could not open the trash request</string>
 </resources>

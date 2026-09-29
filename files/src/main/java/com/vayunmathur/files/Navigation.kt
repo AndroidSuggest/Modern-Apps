@@ -7,6 +7,7 @@ import com.vayunmathur.files.platform.FilesViewModel
 import com.vayunmathur.files.ui.DirectoryPage
 import com.vayunmathur.files.ui.FilesShell
 import com.vayunmathur.files.ui.HomeScreenBinder
+import com.vayunmathur.files.ui.TrashPage
 import com.vayunmathur.files.ui.filesNavActions
 import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.rememberNavBackStack
@@ -58,6 +59,15 @@ fun Navigation(viewModel: FilesViewModel) {
                     if (isCurrent) viewModel.showZip(File(route.zipPath), route.internalPath)
                 }
                 DirectoryPage(viewModel, actions, isCurrent, openDrawer)
+            }
+            // The system trash is a flat listing like a category: nowhere to go "up" to, so it
+            // always sits directly on Home rather than on the folder it was opened from.
+            entry<Route.Trash> {
+                val isCurrent = backStack.last() == Route.Trash
+                LaunchedEffect(isCurrent) {
+                    if (isCurrent) viewModel.showTrash()
+                }
+                TrashPage(viewModel, actions, isCurrent, openDrawer)
             }
         }
     }
