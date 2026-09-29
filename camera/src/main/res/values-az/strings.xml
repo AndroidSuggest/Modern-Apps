@@ -1,4 +1,56 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">Kamera</string>
+    <string name="night">Gecə</string>
+    <string name="open_gallery">Qalereya</string>
+    <string name="grant_camera_permission">Kameraya icazə verin</string>
+    <string name="settings_aspect_ratio">Tərəflərin nisbəti</string>
+    <string name="settings_location">Yer</string>
+    <string name="settings_location_description">Məkanı foto metadatalarında saxla</string>
+    <string name="settings_mirror_front">Selfi güzgü əksi</string>
+    <string name="settings_mirror_front_description">Ön kamera önizləməsini və yadda saxlanılan selfiləri güzgü effekti ilə əks etdirin</string>
+    <string name="settings_video_codec">Video kodek</string>
+    <string name="settings_video_codec_label">Video kodek</string>
+    <string name="codec_avc_label">H.264 / AVC</string>
+    <string name="codec_avc_description">Ən uyğun</string>
+    <string name="codec_hevc_label">H.265 / HEVC</string>
+    <string name="codec_hevc_description">Daha səmərəli</string>
+    <string name="codec_av1_label">AV1</string>
+    <string name="codec_av1_description">Ən səmərəli</string>
+    <string name="settings_audio_source">Audio giriş mənbəyi</string>
+    <string name="settings_audio_source_label">Audio giriş mənbəyi</string>
+    <string name="audio_source_camcorder_label">Video kamera</string>
+    <string name="audio_source_camcorder_description">Standart, video üçün tənzimlənib</string>
+    <string name="audio_source_mic_label">Mikrofon</string>
+    <string name="audio_source_mic_description">Əsas mikrofon</string>
+    <string name="audio_source_voice_communication_label">Səs</string>
+    <string name="audio_source_voice_communication_description">Səs-küyün və əks-sədanın ləğvi</string>
+    <string name="audio_source_unprocessed_label">Emal olunmamış</string>
+    <string name="audio_source_unprocessed_description">Xam, emal olunmamış</string>
+    <string name="qr_result">QR kodu</string>
+    <string name="open_url">URL aç</string>
+    <string name="no_app_to_open_url">Heç bir tətbiq bu linki aça bilmir</string>
+    <string name="copy_text">Kopyalayın</string>
+    <string name="qr_scanning_paused">QR skaneri dayandırıldı</string>
+    <string name="blur">Bulanıqlıq</string>
+    <string name="not_available">N/A</string>
+    <string name="burst_count">Partlayış <xliff:g id="count" example="12">%1$d</xliff:g></string>
+    <string name="ae_af_lock">AE/AF kilidi</string>
+    <string name="processing_panorama_u2026">Panorama emal edilir…</string>
+    <string name="auto">Avto</string>
+    <string name="night_2">Gecə %1$s%%</string>
+    <string name="brightness">Parlaqlıq</string>
+    <string name="shadows">Kölgələr</string>
+    <string name="warmth">İstilik</string>
+    <string name="lens_ultrawide">UW</string>
+    <string name="lens_wide">1x</string>
+    <string name="lens_tele">Tele</string>
+    <string name="lens_mono">Mono</string>
+    <string name="lens_front">Ön</string>
+    <string name="lens_picker_description">Kamera obyektivi</string>
+    <string name="settings_save_location">Məkanı yadda saxla</string>
+    <string name="settings_save_location_default">DCIM/Kamera</string>
+    <string name="settings_save_location_choose">Qovluq seçin</string>
+    <string name="settings_save_location_reset">Standart parametrlərə qaytar</string>
+    <string name="settings_save_location_error">Həmin qovluqdan istifadə etmək mümkün olmadı</string>
 </resources>
