@@ -35,6 +35,7 @@ import com.vayunmathur.library.ui.Text
  */
 @Composable
 fun EmojiSearchBar(height: Dp, query: String, onClose: () -> Unit) {
+    val tick = rememberKeyHapticTick()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -63,7 +64,10 @@ fun EmojiSearchBar(height: Dp, query: String, onClose: () -> Unit) {
         Box(
             modifier = Modifier
                 .fillMaxHeight()
-                .clickable(onClick = onClose)
+                .clickable {
+                    tick()
+                    onClose()
+                }
                 .padding(horizontal = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -78,6 +82,7 @@ fun EmojiSearchBar(height: Dp, query: String, onClose: () -> Unit) {
 /** The matches for the current query, scrolling sideways. Tapping one commits it. */
 @Composable
 fun EmojiSearchResults(height: Dp, results: List<String>, onPick: (String) -> Unit) {
+    val tick = rememberKeyHapticTick()
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -88,7 +93,10 @@ fun EmojiSearchResults(height: Dp, results: List<String>, onPick: (String) -> Un
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .clickable { onPick(emoji) }
+                    .clickable {
+                        tick()
+                        onPick(emoji)
+                    }
                     .padding(horizontal = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {

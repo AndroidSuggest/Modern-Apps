@@ -61,6 +61,7 @@ fun ClipboardStrip(
     onPaste: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val tick = rememberKeyHapticTick()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -72,7 +73,10 @@ fun ClipboardStrip(
             modifier = Modifier
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onOpen)
+                .clickable {
+                    tick()
+                    onOpen()
+                }
                 .padding(horizontal = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -87,7 +91,10 @@ fun ClipboardStrip(
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .clickable(onClick = onPaste)
+                .clickable {
+                    tick()
+                    onPaste()
+                }
                 .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -97,7 +104,10 @@ fun ClipboardStrip(
             modifier = Modifier
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onDelete)
+                .clickable {
+                    tick()
+                    onDelete()
+                }
                 .padding(horizontal = 6.dp),
             contentAlignment = Alignment.Center,
         ) {

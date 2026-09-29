@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Dictation (long-press on enter). Requested at that point by VoicePermissionActivity,
          never at startup: an IME cannot show a runtime permission dialog itself. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

@@ -122,6 +122,10 @@ fun RowScope.CharKey(
         val full = with(density) { AlternateWidth.toPx() }
         if (options.isEmpty()) full else minOf(full, screenWidth / options.length)
     }
+    // Key tick at each commit site below — the gesture runs in pointerInput where
+    // LocalHapticFeedback can't be read, so it comes through this captured lambda.
+    val tick = rememberKeyHapticTick()
+    val currentTick by rememberUpdatedState(tick)
 
     // The gesture below reads all of these through snapshots rather than capturing them, so it
     // never has to be restarted to pick up a new value. See the note on `pointerInput(Unit)`.
@@ -187,7 +191,10 @@ fun RowScope.CharKey(
                             if (!change.pressed) up = change
                         }
                         if (up != null) {
-                            if (up.position.isInside(size)) currentOnClick()
+                            if (up.position.isInside(size)) {
+                                currentTick()
+                                currentOnClick()
+                            }
                             return@awaitEachGesture
                         }
                         val opts = currentOptions
@@ -195,6 +202,7 @@ fun RowScope.CharKey(
                         if (opts.isEmpty() || onAlt == null) {
                             // A hold with nothing to offer still types the key; the old
                             // code waited for the lift and then committed nothing.
+                            currentTick()
                             currentOnClick()
                             return@awaitEachGesture
                         }
@@ -214,6 +222,7 @@ fun RowScope.CharKey(
                                 continue
                             }
                             if (!change.pressed) {
+                                currentTick()
                                 onAlt(opts[picked].toString())
                                 break
                             }

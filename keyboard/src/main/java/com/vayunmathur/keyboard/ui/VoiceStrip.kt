@@ -99,11 +99,15 @@ fun VoiceStrip(
 
 @Composable
 private fun StripButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+    val tick = rememberKeyHapticTick()
     Box(
         modifier = Modifier
             .fillMaxHeight()
             .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
+            .clickable {
+                tick()
+                onClick()
+            }
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) { content() }

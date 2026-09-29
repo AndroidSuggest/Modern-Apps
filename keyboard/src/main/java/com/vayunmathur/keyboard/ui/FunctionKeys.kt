@@ -56,6 +56,7 @@ fun RowScope.SpecialKey(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val tick = rememberKeyHapticTick()
     Box(
         modifier = Modifier
             .weight(weight)
@@ -64,8 +65,14 @@ fun RowScope.SpecialKey(
                 interactionSource = interaction,
                 indication = null,
                 onLongClickLabel = onLongClickLabel,
-                onLongClick = onLongClick,
-                onClick = onClick,
+                onLongClick = {
+                    tick()
+                    onLongClick?.invoke()
+                },
+                onClick = {
+                    tick()
+                    onClick()
+                },
             )
             .padding(KeyPadding)
             .clip(KeyShape)
@@ -91,6 +98,7 @@ fun RowScope.SpaceKey(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val tick = rememberKeyHapticTick()
     Box(
         modifier = Modifier
             .weight(weight)
@@ -98,7 +106,10 @@ fun RowScope.SpaceKey(
             .clickable(
                 interactionSource = interaction,
                 indication = null,
-                onClick = onSpace,
+                onClick = {
+                    tick()
+                    onSpace()
+                },
             )
             .padding(KeyPadding)
             .clip(KeyShape)
@@ -126,6 +137,8 @@ fun RowScope.RepeatKey(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // Captured for the pointerInput block below, which can't read CompositionLocals itself.
+    val currentTick by androidx.compose.runtime.rememberUpdatedState(rememberKeyHapticTick())
     Box(
         modifier = Modifier
             .weight(weight)
@@ -134,6 +147,9 @@ fun RowScope.RepeatKey(
                 detectTapGestures(onPress = { offset ->
                     val press = PressInteraction.Press(offset)
                     interaction.emit(press)
+                    // Once per press, not per repeat: holding backspace buzzes once, then
+                    // deletes silently the way Gboard does.
+                    currentTick()
                     onRepeat()
                     val job = scope.launch {
                         delay(350)
@@ -179,6 +195,8 @@ fun RowScope.ShiftKey(
         active -> MaterialTheme.colorScheme.onPrimaryContainer
         else -> MaterialTheme.colorScheme.onSurface
     }
+    // Captured for the pointerInput block below, which can't read CompositionLocals itself.
+    val currentTick by androidx.compose.runtime.rememberUpdatedState(rememberKeyHapticTick())
     Box(
         modifier = Modifier
             .weight(weight)
@@ -194,7 +212,10 @@ fun RowScope.ShiftKey(
                         interaction.emit(
                             if (released) PressInteraction.Release(press) else PressInteraction.Cancel(press),
                         )
-                        if (released) onShift()
+                        if (released) {
+                            currentTick()
+                            onShift()
+                        }
                     },
                 )
             }

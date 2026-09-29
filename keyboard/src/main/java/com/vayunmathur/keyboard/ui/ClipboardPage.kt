@@ -85,6 +85,7 @@ fun ClipboardPage(
 
 @Composable
 private fun ClipRow(clip: ClipItem, onPaste: () -> Unit, onDelete: () -> Unit) {
+    val tick = rememberKeyHapticTick()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -97,7 +98,10 @@ private fun ClipRow(clip: ClipItem, onPaste: () -> Unit, onDelete: () -> Unit) {
             modifier = Modifier
                 .weight(1f)
                 .height(52.dp)
-                .clickable(onClick = onPaste)
+                .clickable {
+                    tick()
+                    onPaste()
+                }
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -106,7 +110,10 @@ private fun ClipRow(clip: ClipItem, onPaste: () -> Unit, onDelete: () -> Unit) {
         Box(
             modifier = Modifier
                 .height(52.dp)
-                .clickable(onClick = onDelete)
+                .clickable {
+                    tick()
+                    onDelete()
+                }
                 .padding(horizontal = 12.dp),
             contentAlignment = Alignment.Center,
         ) {

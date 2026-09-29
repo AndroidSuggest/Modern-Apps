@@ -34,6 +34,7 @@ fun CandidateStrip(
     candidates: List<String>,
     onPick: (String) -> Unit,
 ) {
+    val tick = rememberKeyHapticTick()
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -51,7 +52,10 @@ fun CandidateStrip(
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .clickable { onPick(candidate) }
+                    .clickable {
+                        tick()
+                        onPick(candidate)
+                    }
                     .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -82,6 +86,7 @@ fun SuggestionStrip(
     suggestions: List<String>,
     onPick: (String) -> Unit,
 ) {
+    val tick = rememberKeyHapticTick()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -104,7 +109,10 @@ fun SuggestionStrip(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clickable { onPick(word) }
+                    .clickable {
+                        tick()
+                        onPick(word)
+                    }
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {

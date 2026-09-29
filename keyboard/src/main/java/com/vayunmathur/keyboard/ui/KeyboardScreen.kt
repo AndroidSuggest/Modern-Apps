@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -54,6 +55,9 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
     // and only arriving at or leaving search should rearrange the keyboard.
     val searching by remember(state) { derivedStateOf { state.emojiQuery != null } }
     val voice = state.voice
+    // Key ticks are gated by the app's haptic setting; LocalHapticFeedback adds the system
+    // setting on top. Provided here so no key or strip component needs the flag threaded in.
+    CompositionLocalProvider(LocalKeyHapticsEnabled provides state.settings.haptic) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(
             modifier = Modifier
@@ -86,6 +90,7 @@ fun KeyboardScreen(state: KeyboardState, actions: ImeActions) {
                 }
             }
         }
+    }
     }
 }
 
@@ -160,11 +165,15 @@ private fun Strip(state: KeyboardState, actions: ImeActions) {
         // space bar and its neighbours back a key's width, and this row is present on the
         // symbol pages too, so the clipboard does not vanish behind ?123.
         if (clipboard) {
+            val stripTick = rememberKeyHapticTick()
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { actions.setPage(KeyboardPage.CLIPBOARD) }
+                    .clickable {
+                        stripTick()
+                        actions.setPage(KeyboardPage.CLIPBOARD)
+                    }
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center,
             ) {

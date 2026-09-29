@@ -58,6 +58,9 @@ fun EmojiPage(
     // Not keyed on `recents`, so picking an emoji never yanks the tab out from under you.
     var category by remember(data) { mutableIntStateOf(if (recents.isEmpty()) 1 else 0) }
     val selected = categories.getOrNull(category) ?: categories.first()
+    // Ticks for grid commits and tab switches below — captured here since LazyVerticalGrid
+    // item content can't read CompositionLocals through its own remember scope cleanly.
+    val tick = rememberKeyHapticTick()
     if (selected.emojis.isEmpty()) {
         Box(
             modifier = Modifier
@@ -82,7 +85,10 @@ fun EmojiPage(
                 Box(
                     modifier = Modifier
                         .aspectRatio(1f)
-                        .clickable { onEmoji(emoji) },
+                        .clickable {
+                            tick()
+                            onEmoji(emoji)
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = emoji, fontSize = 24.sp)
@@ -102,7 +108,10 @@ fun EmojiPage(
             CategoryTab(
                 label = cat.label,
                 selected = index == category,
-                onClick = { category = index },
+                onClick = {
+                    tick()
+                    category = index
+                },
             )
         }
         RepeatKey(height = keyHeight, weight = 1.3f, onRepeat = onBackspace) {

@@ -23,6 +23,9 @@ class Haptics internal constructor(private val feedback: HapticFeedback) {
     /** Something has been picked up: a long press has taken the gesture. */
     fun longPress() = feedback.performHapticFeedback(HapticFeedbackType.LongPress)
 
+    /** A virtual key was pressed: a keyboard or keypad key committed. */
+    fun keyPress() = feedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
+
     /**
      * A boundary was crossed - a new drop target, a slider notch. The lightest thing available,
      * because this fires repeatedly while the finger is moving.

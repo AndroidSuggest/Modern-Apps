@@ -8,9 +8,6 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.provider.Settings
 import android.text.InputType
 import android.view.KeyEvent
@@ -163,8 +160,6 @@ class KeyboardService : InputMethodService(),
     private var editorActionId = EditorInfo.IME_ACTION_UNSPECIFIED
     private var enterSendsAction = false
 
-    private var vibrator: Vibrator? = null
-
     private val voiceInput by lazy { VoiceInput(this) }
 
     /** Clears a dictation failure from the strip after a while; cancelled by the next change. */
@@ -193,7 +188,6 @@ class KeyboardService : InputMethodService(),
 
         ds = DataStoreUtils.getInstance(this, deviceProtected = true)
         kbState.settings = KeyboardSettings.load(ds)
-        vibrator = getSystemService(VibratorManager::class.java)?.defaultVibrator
 
         // Load the dictionary off the main thread; suggestions stay empty until it is ready.
         scope.launch { dictionary = Dictionary.load(this@KeyboardService) }
@@ -1250,17 +1244,13 @@ class KeyboardService : InputMethodService(),
     // --- Feedback ---
 
     /**
-     * A light key "tick" (like the stock keyboard), not a full-strength buzz. Built once:
-     * this runs before the edit on every single keypress, and both the effect and the
-     * service lookup were being redone each time.
+     * Keypress sound only. Haptics moved to the press site in the key composables
+     * ([rememberKeyHapticTick]): a service has no CompositionLocal, and ticking where the
+     * press commits keeps keys, strips and pages from ever double-ticking one tap.
      */
-    private val keyTick by lazy { VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK) }
     private val audio by lazy { getSystemService(AudioManager::class.java) }
 
     private fun feedback() {
-        if (kbState.settings.haptic) {
-            vibrator?.vibrate(keyTick)
-        }
         if (kbState.settings.sound) {
             audio?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD)
         }
