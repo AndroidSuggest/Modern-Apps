@@ -121,6 +121,7 @@ import com.vayunmathur.camera.util.VideoCodec
         cameraMode == CameraMode.PHOTO || cameraMode == CameraMode.PORTRAIT -> when (aspectRatio) {
             AspectRatioOption.RATIO_16_9 -> 9f / 16f
             AspectRatioOption.RATIO_4_3 -> 3f / 4f
+            AspectRatioOption.RATIO_3_2 -> 2f / 3f
             AspectRatioOption.RATIO_1_1 -> 1f
         }
         else -> 3f / 4f

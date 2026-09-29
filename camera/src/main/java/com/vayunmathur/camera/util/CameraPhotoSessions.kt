@@ -91,7 +91,7 @@ suspend fun CameraViewModel.setupPhotoSession(): Boolean {
                 }
                 val capture = captureBuilder.build()
                 imageCapture = capture
-                // Crop stills to the selected aspect ratio (1:1 / 16:9 / 4:3). CameraX crops
+                // Crop stills to the selected aspect ratio (1:1 / 3:2 / 16:9 / 4:3). CameraX crops
                 // OutputFileOptions saves to this and exposes it as cropRect for in-memory shots.
                 capture.setCropAspectRatio(currentCropAspectRatio())
                 // Cap the analysis stream at ~1.2 MP, independently of [maxRes] (which stays
@@ -483,7 +483,7 @@ suspend fun CameraViewModel.setupPortraitSession(): Boolean {
                 }
                 val capture = captureBuilder.build()
                 imageCapture = capture
-                // Crop stills to the selected aspect ratio (1:1 / 16:9 / 4:3). CameraX crops
+                // Crop stills to the selected aspect ratio (1:1 / 3:2 / 16:9 / 4:3). CameraX crops
                 // OutputFileOptions saves to this and exposes it as cropRect for in-memory shots.
                 capture.setCropAspectRatio(currentCropAspectRatio())
 

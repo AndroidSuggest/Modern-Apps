@@ -206,7 +206,7 @@ internal fun BoxWithConstraintsScope.CameraPreviewBox(
             coordinateTransformer = coordinateTransformer,
             alignment = Alignment.Center,
             // Crop (fill) so the camera feed fills the ratio-shaped box for the
-            // selected aspect ratio (1:1 / 16:9 / 4:3). Fit letterboxed the native
+            // selected aspect ratio (1:1 / 3:2 / 16:9 / 4:3). Fit letterboxed the native
             // 4:3 frame inside the box, making the preview shrink instead of reshape.
             contentScale = ContentScale.Crop,
             // Built-in tap-to-focus and pinch-to-zoom (1.7.0-alpha02). The viewfinder

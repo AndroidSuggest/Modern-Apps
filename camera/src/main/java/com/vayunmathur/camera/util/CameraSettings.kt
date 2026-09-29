@@ -73,10 +73,11 @@ fun CameraViewModel.setAspectRatio(ratio: AspectRatioOption) {
     viewModelScope.launch { ds.setString("camera_aspect_ratio", ratio.name) }
 }
 
-/** Cycles the aspect ratio 4:3 → 16:9 → 1:1 → 4:3 (top-bar icon). */
+/** Cycles the aspect ratio 4:3 → 3:2 → 16:9 → 1:1 → 4:3 (top-bar icon). */
 fun CameraViewModel.cycleAspectRatio() {
     val order = listOf(
         AspectRatioOption.RATIO_4_3,
+        AspectRatioOption.RATIO_3_2,
         AspectRatioOption.RATIO_16_9,
         AspectRatioOption.RATIO_1_1
     )

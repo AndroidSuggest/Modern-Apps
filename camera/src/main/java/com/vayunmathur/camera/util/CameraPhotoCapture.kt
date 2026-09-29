@@ -51,7 +51,7 @@ internal fun CameraViewModel.capturePhoto() {
         // Motion Photo for plain PHOTO captures (no warmth/shadows bake, not capturing for a
         // caller). Only at the native 4:3 ratio: the motion still is saved as raw JPEG bytes
         // (to preserve the Ultra HDR gain map + motion trailer), which can't carry CameraX's
-        // crop. For 1:1/16:9 fall through to the single-shot path, which saves a cropped JPEG.
+        // crop. For other ratios fall through to the single-shot path, which saves a cropped JPEG.
         _cameraMode.value == CameraMode.PHOTO && !captureForResult &&
             _warmth.value == 0f && _shadows.value == 0f &&
             _aspectRatio.value == AspectRatioOption.RATIO_4_3 -> captureMotionPhoto()

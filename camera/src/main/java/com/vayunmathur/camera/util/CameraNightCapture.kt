@@ -63,7 +63,7 @@ internal suspend fun CameraViewModel.captureNightPhotoExtension() {
             .setFlashMode(getImageCaptureFlashMode())
             .build()
         imageCapture = capture
-        // Match the still crop the normal photo session uses (1:1 / 16:9 / 4:3), or
+        // Match the still crop the normal photo session uses (1:1 / 3:2 / 16:9 / 4:3), or
         // night-extension shots always save full-frame while the preview shows cropped.
         capture.setCropAspectRatio(currentCropAspectRatio())
         boundCamera = bindSession(provider, owner, nightSelector, preview, capture)
@@ -218,7 +218,7 @@ internal fun CameraViewModel.captureNightBurst(exposure: NightExposure, onDone: 
                     try {
                         // toBitmap() is provided by CameraX (used also in BokehAnalyzer).
                         // Apply the session's cropRect (setCropAspectRatio): the raw frame is
-                        // always full-frame, so without this the burst ignores the 1:1/16:9 crop.
+                        // always full-frame, so without this the burst ignores the non-4:3 crop.
                         val cropRect = android.graphics.Rect(image.cropRect)
                         val raw = cropToRect(image.toBitmap(), cropRect)
                         val matrix = Matrix().apply {

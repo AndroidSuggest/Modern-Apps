@@ -87,7 +87,7 @@ import kotlin.math.roundToInt
 enum class CameraMode { PHOTO, PORTRAIT, PANORAMA, PHOTOSPHERE, VIDEO, SLOW_MO, TIMELAPSE, CINEMATIC }
 enum class FlashMode { ON, OFF, AUTO }
 enum class TimerDuration(val seconds: Int) { NONE(0), THREE(3), FIVE(5), TEN(10) }
-enum class AspectRatioOption(val label: String) { RATIO_16_9("16:9"), RATIO_4_3("4:3"), RATIO_1_1("1:1") }
+enum class AspectRatioOption(val label: String) { RATIO_16_9("16:9"), RATIO_4_3("4:3"), RATIO_3_2("3:2"), RATIO_1_1("1:1") }
 enum class VideoCodec(@StringRes val labelRes: Int, @StringRes val descriptionRes: Int) {
     AVC(R.string.codec_avc_label, R.string.codec_avc_description),
     HEVC(R.string.codec_hevc_label, R.string.codec_hevc_description),
@@ -639,6 +639,7 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
     internal fun currentCropAspectRatio(): android.util.Rational = when (_aspectRatio.value) {
         AspectRatioOption.RATIO_1_1 -> Rational(1, 1)
         AspectRatioOption.RATIO_4_3 -> Rational(3, 4)
+        AspectRatioOption.RATIO_3_2 -> Rational(2, 3)
         AspectRatioOption.RATIO_16_9 -> Rational(9, 16)
     }
 
@@ -659,17 +660,6 @@ class CameraViewModel(internal val app: Application) : AndroidViewModel(app) {
         if (!levelSensorRegistered) return
         sensorManager.unregisterListener(levelListener)
         levelSensorRegistered = false
-    }
-
-    /** Cycles the aspect ratio 4:3 → 16:9 → 1:1 → 4:3 (top-bar icon). */
-    fun cycleAspectRatio() {
-        val order = listOf(
-            AspectRatioOption.RATIO_4_3,
-            AspectRatioOption.RATIO_16_9,
-            AspectRatioOption.RATIO_1_1
-        )
-        val next = order[(order.indexOf(_aspectRatio.value) + 1) % order.size]
-        setAspectRatio(next)
     }
 
     // Night luminance/override handling lives in CameraNightMode.kt as extensions.

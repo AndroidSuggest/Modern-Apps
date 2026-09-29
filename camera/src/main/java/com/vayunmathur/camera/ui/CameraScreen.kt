@@ -24,6 +24,7 @@ import com.vayunmathur.camera.util.CameraViewModel
 import com.vayunmathur.camera.util.FlashMode
 import com.vayunmathur.camera.util.TimerDuration
 import com.vayunmathur.camera.util.capturePhotoForResult
+import com.vayunmathur.camera.util.cycleAspectRatio
 import com.vayunmathur.camera.util.setFlashMode
 import com.vayunmathur.camera.util.setQrResult
 import com.vayunmathur.camera.util.setTimerDuration
