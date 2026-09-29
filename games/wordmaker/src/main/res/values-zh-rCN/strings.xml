@@ -28,4 +28,10 @@
     <string name="daily_streak">连续 <xliff:g id="days" example="5">%1$d</xliff:g> 天</string>
     <string name="mode_daily">每日</string>
     <string name="daily_come_back_tomorrow">已解决！明天再来。</string>
+    <string name="wheel_spacing">字母转盘间距</string>
+    <string name="wheel_spacing_default">默认</string>
+    <string name="wheel_spacing_wide">宽</string>
+    <string name="wheel_spacing_wider">更宽</string>
+    <string name="wheel_spacing_widest">最宽</string>
+    <string name="no_definition_available">这个词没有定义。</string>
 </resources>
