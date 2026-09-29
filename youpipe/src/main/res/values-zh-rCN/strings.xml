@@ -136,4 +136,12 @@
     <string name="label_player">播放器</string>
     <string name="label_keep_controls_visible">保持播放器控制按钮可见</string>
     <string name="label_keep_controls_visible_description">控制按钮将始终显示在屏幕上，而不是在 2 秒后隐藏。这对无障碍功能很有用。</string>
+    <string name="playback_error">播放意外停止。请重试。</string>
+    <string name="restore_unsupported_format">不支持此备份文件格式。</string>
+    <string name="cast_to_tv">投屏到电视</string>
+    <string name="cast_playing_on">正在 %1$s 上播放</string>
+    <string name="cast_stop">停止投屏</string>
+    <string name="cast_install_prompt">未安装 MA Cast。请打开其列表以便您安装。</string>
+    <string name="cast_update_prompt">MA Cast 太旧，无法在您的电视上播放视频。请打开其列表以便您更新。</string>
+    <string name="cast_failed">无法开始投屏到您的电视</string>
 </resources>
