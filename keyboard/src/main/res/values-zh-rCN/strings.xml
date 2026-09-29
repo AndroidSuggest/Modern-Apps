@@ -17,4 +17,15 @@
     <string name="clear_clipboard">全部清除</string>
     <string name="clear_clipboard_history">清除剪贴板历史记录</string>
     <string name="copied_text_shows_up_here">已复制的文本和图片会显示在此处</string>
+    <string name="voice_input">语音输入</string>
+    <string name="voice_listening">正在听…</string>
+    <string name="voice_transcribing">正在转录…</string>
+    <string name="voice_unavailable">未安装语音识别应用</string>
+    <string name="voice_permission_denied">语音输入需要使用麦克风</string>
+    <string name="voice_permission_blocked">请在设置中允许使用麦克风</string>
+    <string name="voice_network">语音输入需要网络连接</string>
+    <string name="voice_no_speech">没听清</string>
+    <string name="voice_busy">语音识别器正忙</string>
+    <string name="voice_audio_error">无法录制音频</string>
+    <string name="voice_failed">语音输入失败</string>
 </resources>
