@@ -5,6 +5,7 @@ import android.webkit.WebView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.updateStorageFootprint
 
 /**
  * Forwards the system light/dark setting to page content as `prefers-color-scheme`.

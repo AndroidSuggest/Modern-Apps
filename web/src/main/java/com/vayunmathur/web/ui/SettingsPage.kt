@@ -49,6 +49,8 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.platform.CacheMode
 import com.vayunmathur.web.platform.SearchEngine
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.clearAllDownloads
+import com.vayunmathur.web.platform.clearAllSiteData
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

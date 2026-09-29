@@ -32,6 +32,7 @@ dependencies {
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.brotli.dec) // shields filter lists ship brotli-compressed
     implementation(project(":library:image"))
     // Browser must allow all certs (any host + corp proxies via user CAs) — SYSTEM permissive, documents intent.

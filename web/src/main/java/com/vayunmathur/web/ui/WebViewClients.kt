@@ -20,6 +20,9 @@ import com.vayunmathur.web.platform.BrowserUtils
 import com.vayunmathur.web.platform.PwaHelper
 import com.vayunmathur.web.platform.SitePermissionType
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.requestFileChooser
+import com.vayunmathur.web.platform.requestGeolocation
+import com.vayunmathur.web.platform.requestWebPermission
 import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
 
 internal const val WebViewBrowserTag = "WebViewBrowser"

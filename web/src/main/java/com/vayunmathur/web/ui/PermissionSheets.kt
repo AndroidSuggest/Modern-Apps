@@ -50,6 +50,9 @@ import com.vayunmathur.web.data.StorageInfo
 import com.vayunmathur.web.platform.BrowserUtils
 import com.vayunmathur.web.platform.SitePermissionType
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.clearAllSiteData
+import com.vayunmathur.web.platform.clearSiteData
+import com.vayunmathur.web.platform.revokePermission
 
 @Composable
 fun PermissionPromptSheet(

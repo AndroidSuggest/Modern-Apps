@@ -38,6 +38,7 @@ import com.vayunmathur.library.ui.appBarScrollBehavior
 import com.vayunmathur.web.Route
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.clearAllDownloads
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

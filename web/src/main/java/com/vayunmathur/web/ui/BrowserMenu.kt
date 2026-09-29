@@ -50,7 +50,7 @@ internal fun BrowserMenu(
     onReload: () -> Unit,
 ) {
     val context = LocalContext.current
-    val bookmarks by collectAsStateWithLifecycle(viewModel.bookmarks)
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val activeTab = viewModel.activeTab
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         if (!isNewTabActive) {

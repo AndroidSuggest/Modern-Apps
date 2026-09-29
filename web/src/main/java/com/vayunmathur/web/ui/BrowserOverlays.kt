@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.layout.Box
 import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
@@ -18,6 +20,11 @@ import com.vayunmathur.web.Route
 import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.platform.BrowserTab
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.clearFileChooser
+import com.vayunmathur.web.platform.clearPermissionPrompt
+import com.vayunmathur.web.platform.deliverFileChooserResult
+import com.vayunmathur.web.platform.denyGeolocation
+import com.vayunmathur.web.platform.grantGeolocation
 import com.vayunmathur.web.platform.isNewTab
 import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
 
@@ -192,8 +199,8 @@ internal fun BrowserContent(
     onLinkLongPress: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val bookmarks by androidx.lifecycle.compose.collectAsStateWithLifecycle(viewModel.bookmarks)
-    val history by androidx.lifecycle.compose.collectAsStateWithLifecycle(viewModel.history)
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val history by viewModel.history.collectAsStateWithLifecycle()
     Column(modifier.fillMaxSize()) {
         if (isNewTabActive) {
             DesktopMaxWidthContainer {

@@ -31,6 +31,9 @@ import com.vayunmathur.library.ui.rememberPermissionRequest
 import com.vayunmathur.web.platform.shields.FarblingConfig
 import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.addDownload
+import com.vayunmathur.web.platform.denyGeolocation
+import com.vayunmathur.web.platform.grantGeolocation
 
 /**
  * Core WebView with:

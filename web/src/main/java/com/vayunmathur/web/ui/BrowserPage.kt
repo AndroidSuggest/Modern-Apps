@@ -27,6 +27,7 @@ import com.vayunmathur.library.util.NavBackStack
 import com.vayunmathur.web.platform.BrowserUtils
 import com.vayunmathur.web.platform.WebPermissions
 import com.vayunmathur.web.platform.WebViewModel
+import com.vayunmathur.web.platform.deliverFileChooserResult
 import com.vayunmathur.web.platform.isNewTab
 
 @Composable
