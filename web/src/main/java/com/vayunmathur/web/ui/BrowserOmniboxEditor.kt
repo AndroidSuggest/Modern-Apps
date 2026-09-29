@@ -10,13 +10,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.DesktopMaxWidthContainer
@@ -25,6 +31,7 @@ import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconSearch
+import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Scaffold
 import com.vayunmathur.library.ui.Surface
@@ -61,24 +68,42 @@ internal fun OmniboxEditor(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val effectiveAtBottom = viewModel.searchBarAtBottom && maxHeight >= 480.dp
+        // TextFieldValue so entering the field selects everything: the first
+        // keystroke replaces the URL instead of appending to it.
+        var fieldValue by remember(viewModel.searchDraft) {
+            mutableStateOf(TextFieldValue(viewModel.searchDraft, TextRange(viewModel.searchDraft.length)))
+        }
         val omniboxField: @Composable (Modifier) -> Unit = { fieldModifier ->
             OutlinedTextField(
-                value = viewModel.searchDraft,
-                onValueChange = { viewModel.searchDraft = it },
-                modifier = fieldModifier.focusRequester(searchFocusRequester),
-                placeholder = { Text(stringResource(R.string.search_or_enter_address)) },
+                value = fieldValue,
+                onValueChange = {
+                    fieldValue = it
+                    viewModel.searchDraft = it.text
+                },
+                modifier = fieldModifier
+                    .focusRequester(searchFocusRequester)
+                    .onFocusChanged { focus ->
+                        if (focus.isFocused) {
+                            fieldValue = fieldValue.copy(selection = TextRange(0, fieldValue.text.length))
+                        }
+                    },
+                textStyle = MaterialTheme.typography.bodySmall,
+                placeholder = { Text(stringResource(R.string.search_or_enter_address), style = MaterialTheme.typography.bodySmall) },
                 leadingIcon = { IconSearch() },
-                trailingIcon = if (viewModel.searchDraft.isNotEmpty()) {
+                trailingIcon = if (fieldValue.text.isNotEmpty()) {
                     {
-                        IconButton(onClick = { viewModel.searchDraft = "" }) { IconClose() }
+                        IconButton(onClick = {
+                            fieldValue = TextFieldValue("")
+                            viewModel.searchDraft = ""
+                        }) { IconClose() }
                     }
                 } else null,
                 shape = RoundedCornerShape(28.dp),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = {
-                    if (viewModel.searchDraft.isNotBlank()) {
-                        onNavigate(viewModel.searchDraft)
+                    if (fieldValue.text.isNotBlank()) {
+                        onNavigate(fieldValue.text)
                     }
                 })
             )

@@ -181,12 +181,14 @@ private fun DisplayOnlyAddressPill(
     modifier: Modifier = Modifier,
 ) {
     // Now matches CommonSearchBar visually: OutlinedTextField 28dp rounded, search icon, same padding.
+    // bodySmall keeps the bar slim so more of the URL fits horizontally.
     Box(modifier = modifier) {
         OutlinedTextField(
             value = fullUrl,
             onValueChange = {},
             readOnly = true,
-            placeholder = { Text(stringResource(R.string.search_or_enter_address)) },
+            textStyle = MaterialTheme.typography.bodySmall,
+            placeholder = { Text(stringResource(R.string.search_or_enter_address), style = MaterialTheme.typography.bodySmall) },
             leadingIcon = { IconSearch() },
             singleLine = true,
             shape = RoundedCornerShape(28.dp),
