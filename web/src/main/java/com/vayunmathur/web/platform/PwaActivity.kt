@@ -50,6 +50,7 @@ import com.vayunmathur.web.platform.shields.ShieldsEngine
 import com.vayunmathur.web.platform.shields.ShieldsServiceWorkerClient
 import com.vayunmathur.web.platform.shields.ShieldsWebViewClient
 import com.vayunmathur.web.ui.LinkContextMenu
+import com.vayunmathur.web.ui.WebFullscreenHost
 import com.vayunmathur.web.ui.applySystemDarkMode
 import com.vayunmathur.web.ui.linkUrlFromHitTest
 import com.vayunmathur.web.domain.EffectiveShields
@@ -155,6 +156,7 @@ private fun PwaBrowser(
     var currentTitle by remember { mutableStateOf(title ?: "") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var linkMenuUrl by remember { mutableStateOf<String?>(null) }
+    val fullscreenHost = remember(context) { WebFullscreenHost(context) }
 
     // For permission handling
     var pendingSysPermissionRequest by remember { mutableStateOf<PermissionRequest?>(null) }
@@ -231,10 +233,10 @@ private fun PwaBrowser(
 
     BackHandler {
         val wv = webViewRef
-        if (wv != null && wv.canGoBack()) {
-            wv.goBack()
-        } else {
-            activity?.finish()
+        when {
+            fullscreenHost.isFullscreen -> fullscreenHost.onHideCustomView()
+            wv != null && wv.canGoBack() -> wv.goBack()
+            else -> activity?.finish()
         }
     }
 
@@ -348,6 +350,14 @@ private fun PwaBrowser(
                     webChromeClient = object : WebChromeClient() {
                         override fun onReceivedTitle(view: WebView, t: String?) {
                             if (!t.isNullOrBlank()) currentTitle = t
+                        }
+
+                        override fun onShowCustomView(view: android.view.View, callback: CustomViewCallback) {
+                            fullscreenHost.onShowCustomView(view, callback)
+                        }
+
+                        override fun onHideCustomView() {
+                            if (!fullscreenHost.onHideCustomView()) super.onHideCustomView()
                         }
 
                         override fun onGeolocationPermissionsShowPrompt(

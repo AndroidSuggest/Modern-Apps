@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
@@ -131,6 +132,7 @@ internal fun createBrowserWebChromeClient(
     isPrivateTab: Boolean,
     deps: WebViewClientDeps,
     onRequestNewTab: (String) -> Unit,
+    fullscreenHost: WebFullscreenHost? = null,
 ): WebChromeClient = object : WebChromeClient() {
     override fun onProgressChanged(view: WebView, newProgress: Int) {
         viewModel.onTabProgress(tabId, newProgress / 100f)
@@ -234,6 +236,14 @@ internal fun createBrowserWebChromeClient(
     ): Boolean {
         viewModel.requestFileChooser(filePathCallback, fileChooserParams)
         return true
+    }
+
+    override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+        fullscreenHost?.onShowCustomView(view, callback) ?: super.onShowCustomView(view, callback)
+    }
+
+    override fun onHideCustomView() {
+        if (fullscreenHost?.onHideCustomView() != true) super.onHideCustomView()
     }
 
     override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?): Boolean {

@@ -194,6 +194,7 @@ internal fun BrowserContent(
     activeTab: BrowserTab?,
     isNewTabActive: Boolean,
     webViewPool: MutableMap<String, WebView>,
+    fullscreenHost: WebFullscreenHost,
     onOpenUrl: (BrowserTab, String) -> Unit,
     onRequestNewTab: (BrowserTab, String) -> Unit,
     onLinkLongPress: (String) -> Unit,
@@ -227,6 +228,7 @@ internal fun BrowserContent(
                         initialUrl = activeTab.url,
                         viewModel = viewModel,
                         webViewPool = webViewPool,
+                        fullscreenHost = fullscreenHost,
                         onRequestNewTab = { url -> onRequestNewTab(activeTab, url) },
                         onLinkLongPress = onLinkLongPress,
                         modifier = Modifier.fillMaxSize()

@@ -86,13 +86,16 @@ fun BrowserPage(
     var showInstallDialog by remember { mutableStateOf(false) }
     var linkContextMenuUrl by remember { mutableStateOf<String?>(null) }
     val searchFocusRequester = remember { FocusRequester() }
+    // Activity-wide: fullscreen video survives tab switches until dismissed.
+    val fullscreenHost = remember(context) { WebFullscreenHost(context) }
 
-    BackHandler(enabled = viewModel.showTabSwitcher) { viewModel.showTabSwitcher = false }
-    BackHandler(enabled = !viewModel.showTabSwitcher && viewModel.omniboxFocused) {
+    BackHandler(enabled = fullscreenHost.isFullscreen) { fullscreenHost.onHideCustomView() }
+    BackHandler(enabled = !fullscreenHost.isFullscreen && viewModel.showTabSwitcher) { viewModel.showTabSwitcher = false }
+    BackHandler(enabled = !fullscreenHost.isFullscreen && !viewModel.showTabSwitcher && viewModel.omniboxFocused) {
         viewModel.omniboxFocused = false
         focusManager.clearFocus()
     }
-    BackHandler(enabled = !viewModel.showTabSwitcher && !viewModel.omniboxFocused && canGoBack) {
+    BackHandler(enabled = !fullscreenHost.isFullscreen && !viewModel.showTabSwitcher && !viewModel.omniboxFocused && canGoBack) {
         activeTab?.let { tab -> webViewPool[tab.id]?.goBack() }
     }
 
@@ -172,6 +175,7 @@ fun BrowserPage(
                     activeTab = activeTab,
                     isNewTabActive = isNewTabActive,
                     webViewPool = webViewPool,
+                    fullscreenHost = fullscreenHost,
                     onOpenUrl = { tab, url ->
                         viewModel.markFreshNavigation(tab.id)
                         viewModel.onTabUrlChange(tab.id, url)

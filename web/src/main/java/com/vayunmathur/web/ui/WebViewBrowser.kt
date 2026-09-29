@@ -53,6 +53,7 @@ fun WebViewBrowser(
     modifier: Modifier = Modifier,
     onRequestNewTab: (String) -> Unit = {},
     webViewPool: MutableMap<String, WebView>,
+    fullscreenHost: WebFullscreenHost? = null,
     onLinkLongPress: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -208,7 +209,7 @@ fun WebViewBrowser(
                 })
 
                 webViewClient = createBrowserWebViewClient(ctx, tabId, viewModel, isPrivateTab)
-                webChromeClient = createBrowserWebChromeClient(tabId, viewModel, isPrivateTab, clientDeps, onRequestNewTab)
+                webChromeClient = createBrowserWebChromeClient(tabId, viewModel, isPrivateTab, clientDeps, onRequestNewTab, fullscreenHost)
 
                 val toLoad = if (initialUrl.isBlank()) "about:blank" else initialUrl
                 // Before the first load: document-start scripts do not apply retroactively.
