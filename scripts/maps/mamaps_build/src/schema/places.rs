@@ -22,6 +22,12 @@
 //! that: capitals and millions-strong cities at z2–z4, towns at z6–z8, suburbs at z10+. The
 //! numeric `kind_detail` carries the population rank the style's symbol-sort uses, so a later
 //! renderer can order labels without re-reading OSM.
+//!
+//! Country labels are deliberately NOT gated by area here: `classify` sees tags only, and a
+//! country's ground area is known only after its boundary relation is stitched (see
+//! `extract_fallback::Boundary::area`). Per-country zoom gating by size would ride a
+//! place-id → min_zoom side map (same shape as `region_links`) computed from those areas
+//! and consulted at tile-chunk time — not a change to this function.
 
 use tilecodec::mamaps::body::FLAG_DETAIL_NUMERIC;
 use tilecodec::mamaps::dict::LAYER_PLACES;
