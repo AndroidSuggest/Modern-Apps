@@ -7,7 +7,7 @@ impl<'a> Builder<'a> {
         ops: &mut Vec<Op>,
     ) -> Result<(), String> {
         match node {
-            Node::AttnApplyCached { probs, cache, out, heads, kv_heads, dynamic, sliding } => {
+            Node::AttnApplyCached { probs, cache, out, heads, kv_heads, dynamic, sliding, quant_scale } => {
                 let (sc, so) = (shape(*cache), shape(*out));
                 ops.push(Op::Dispatch {
                     kind: Kind::AttnApplyCached,
@@ -30,6 +30,10 @@ impl<'a> Builder<'a> {
                         dyn_keys: u32::from(*dynamic),
                         kv_heads: *kv_heads,
                         sliding: u32::from(*sliding),
+                        // A folded int8 round-trip scale, or zero for none. Free on
+                        // this kind (it carries no other scalar); `quant_store`
+                        // in the shader reads it.
+                        param0_bits: quant_scale.map_or(0, f32::to_bits),
                         ..Push::default()
                     },
                     invocations: so.len(),

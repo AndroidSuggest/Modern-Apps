@@ -389,6 +389,7 @@ impl<'a> Builder<'a> {
             quant,
             res: None,
             shift: None,
+            quant_scale: None,
         });
         out
     }

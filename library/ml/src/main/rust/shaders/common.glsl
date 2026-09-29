@@ -373,3 +373,27 @@ float fused_store(float acc, uint act, uint channel, uint index) {
     }
     return value;
 }
+
+// The int8 round-trip folded into a producer's store: `quant_store` is the
+// outermost operation, after `fused_store`.
+//
+// `Builder::fuse_quantize` absorbs a single-consumer `Quantize` into the store
+// that produced its input, so the store keeps
+// `quantize(activate(acc + bias) + res + shift)` and the round-trip never
+// becomes a dispatch. `p.param0_bits` carries the scale as raw f32 bits — the
+// same convention as `quantize.comp`'s — and zero bits mean unfused, which is
+// what `Push::default` leaves on every op the fold did not touch.
+//
+// The fused form rounds once (here) where the unfolded pair would round twice
+// (the producer's fp16 store, then the quantize's). That is the same contract
+// as `fused_store`'s own single rounding: the reference implements this form,
+// and parity is against live, not against the unfolded pair.
+float quant_store(float value) {
+    if (p.param0_bits == 0u) {
+        return value;
+    }
+    float scale = uintBitsToFloat(p.param0_bits);
+    float q = floor(value / scale + 0.5);
+    q = clamp(q, -128.0, 127.0);
+    return q * scale;
+}

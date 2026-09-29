@@ -159,7 +159,9 @@ mod tests {
     fn every_layer_gates_its_feed_forward_twice() {
         // Two gates a layer, both split (litertlm stores gate and up separately,
         // not fused): the MLP's `gelu(gate) * up` and the per-layer input's
-        // `gelu(x @ gate) * per_layer[layer]`. Each is an `Activate` plus a `Mul`.
+        // `gelu(x @ gate) * per_layer[layer]`. The GELU folds into the gate
+        // projection's store (`point_act`, so no `Activate` dispatch survives);
+        // each gate is a fused conv store plus a `Mul`.
         let plan = build(&Shapes::new(TENSORS), Mode::DecodeStep.at(TEST_CONTEXT)).expect("builds");
         let count = |want: Kind| {
             plan.ops
@@ -167,7 +169,7 @@ mod tests {
                 .filter(|op| matches!(op, Op::Dispatch { kind, .. } if *kind == want))
                 .count()
         };
-        assert_eq!(count(Kind::Activate), LAYERS * 2, "two gelu gates per layer");
+        assert_eq!(count(Kind::Activate), 0, "the gelu folds into the gate store");
         assert_eq!(count(Kind::Mul), LAYERS * 2, "two gated products per layer");
         // The whole residual is scaled by `skip` after add2, one scalar multiply
         // a layer (`_maybe_apply_skip_scale/mul` in the portable graph).
@@ -176,13 +178,11 @@ mod tests {
         assert_eq!(count(Kind::Softcap), 0, "softcapping moved to the host with the head");
         // The live int8 round-trips of the attention path (S10's qint set):
         // qi + qo + mm + o on every layer, plus ko + vo where a layer owns
-        // its cache - 15 * 6 + 20 * 4. (The `o` grid matches live exactly
-        // only at full-scale O tables: the /4-rescaled build flipped codes.)
-        assert_eq!(
-            count(Kind::Quantize),
-            OWNS_CACHE_LAYERS * 6 + (LAYERS - OWNS_CACHE_LAYERS) * 4,
-            "one Mm round-trip per layer"
-        );
+        // its cache - 15 * 6 + 20 * 4. Every one folds into its producer's
+        // store (`fuse_quantize`, Phase 1 of the 10-tok/s plan), so no
+        // `Quantize` dispatch survives: 1076 ops become 906.
+        assert_eq!(count(Kind::Quantize), 0, "every round-trip folds into its producer");
+        assert_eq!(plan.ops.len(), 906, "1076 - 170 fused quantizes");
     }
 
     #[test]

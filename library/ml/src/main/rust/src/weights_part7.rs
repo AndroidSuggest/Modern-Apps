@@ -184,10 +184,16 @@ impl Graph {
                     quant,
                     res,
                     shift,
+                    quant_scale,
                 } => {
                     if res.is_some() || shift.is_some() {
                         return Err(format!(
                             "emitter: node {i} carries a fused addend; emit before fusion"
+                        ));
+                    }
+                    if quant_scale.is_some() {
+                        return Err(format!(
+                            "emitter: node {i} carries a fused quantize; emit before fusion"
                         ));
                     }
                     if matches!(act, Act::PRelu(_)) {

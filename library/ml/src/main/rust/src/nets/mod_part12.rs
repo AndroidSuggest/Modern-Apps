@@ -131,3 +131,216 @@
         bytes[52..56].copy_from_slice(&(data_len as u32).to_le_bytes());
         bytes
     }
+
+    /// The fallback flag parses without touching the environment.
+    ///
+    /// `quant_fold_on` takes the raw setting value so this test pins the
+    /// default-on contract with no `set_var`: fusion is the shipping path,
+    /// and only an explicit opt-out disables it.
+    #[test]
+    fn the_quantize_fold_is_on_unless_explicitly_disabled() {
+        use crate::nets::quant_fold_on;
+        assert!(quant_fold_on(None));
+        assert!(quant_fold_on(Some("1".into())));
+        assert!(quant_fold_on(Some("yes".into())));
+        assert!(!quant_fold_on(Some("0".into())));
+        assert!(!quant_fold_on(Some("off".into())));
+        assert!(!quant_fold_on(Some("false".into())));
+    }
+
+    /// A single-consumer quantize folds into its producing convolution.
+    ///
+    /// `conv_int8 -> quantize`: one convolution dispatch carrying the scale in
+    /// `param0_bits`, and no `Quantize` op. The fused convolution writes the
+    /// quantize's own output tensor.
+    #[test]
+    fn a_single_consumer_quantize_folds_into_the_producing_store() {
+        use crate::nets::Kind;
+        use crate::nets::tests::Shapes;
+        let source = Shapes::new(4);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let projected = builder.conv_int8(x, 0, 4, (1, 1), (1, 1), (1, 1), (0, 0, 0, 0), 1, Act::None);
+        let out = builder.quantize(projected, 0.5);
+        // Tensor 3 is the file's spare: `finish` refuses an unread tensor.
+        builder.host_tensor(3, &[1]);
+        let plan = builder.finish(&[out]).expect("builds");
+        assert!(
+            plan.ops.iter().all(|op| !matches!(op, Op::Dispatch { kind: Kind::Quantize, .. })),
+            "the quantize should have folded: {:?}",
+            plan.ops
+        );
+        let fused = plan
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Dispatch { push, .. } if push.param0_bits != 0 => Some(push),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(fused.len(), 1, "exactly one quant-fused store: {fused:?}");
+        assert_eq!(fused[0].out, plan.outputs[0].at);
+        assert_eq!(f32::from_bits(fused[0].param0_bits), 0.5);
+    }
+
+    /// A quantize whose input has a second reader stays its own dispatch.
+    ///
+    /// Folding it would leave the other reader with no writer: the producer's
+    /// old output tensor is never allocated once the fold moves the rounding.
+    #[test]
+    fn a_shared_convolution_output_keeps_its_quantize() {
+        use crate::nets::Kind;
+        use crate::nets::tests::Shapes;
+        let source = Shapes::new(5);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let projected = builder.conv_int8(x, 0, 4, (1, 1), (1, 1), (1, 1), (0, 0, 0, 0), 1, Act::None);
+        let rounded = builder.quantize(projected, 0.5);
+        // A second reader of the convolution's output: the folded store would orphan it.
+        let mixed = builder.mul(rounded, projected);
+        builder.host_tensor(3, &[1]);
+        builder.host_tensor(4, &[1]);
+        let plan = builder.finish(&[mixed]).expect("builds");
+        assert_eq!(
+            plan.ops.iter().filter(|op| matches!(op, Op::Dispatch { kind: Kind::Quantize, .. })).count(),
+            1,
+            "the shared quantize must survive: {:?}",
+            plan.ops
+        );
+    }
+
+    /// A quantize held as a plan output stays its own dispatch.
+    ///
+    /// Nothing downstream reads the producer's output, but the host does — via
+    /// the quantize, which folding would remove.
+    #[test]
+    fn a_quantize_that_is_a_plan_output_keeps_its_dispatch() {
+        use crate::nets::Kind;
+        use crate::nets::tests::Shapes;
+        let source = Shapes::new(5);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let projected = builder.conv_int8(x, 0, 4, (1, 1), (1, 1), (1, 1), (0, 0, 0, 0), 1, Act::None);
+        let rounded = builder.quantize(projected, 0.5);
+        builder.host_tensor(3, &[1]);
+        builder.host_tensor(4, &[1]);
+        let plan = builder.finish(&[projected, rounded]).expect("builds");
+        assert_eq!(
+            plan.ops.iter().filter(|op| matches!(op, Op::Dispatch { kind: Kind::Quantize, .. })).count(),
+            1,
+            "the output quantize must survive: {:?}",
+            plan.ops
+        );
+    }
+
+    /// A chained `quantize(quantize(x))` folds only the inner one.
+    ///
+    /// The outer scale would otherwise be dropped: the producer carries one
+    /// `quant_scale`, so the second fold finds it occupied and stops.
+    #[test]
+    fn a_chained_quantize_folds_once_and_keeps_the_outer() {
+        use crate::nets::Kind;
+        use crate::nets::tests::Shapes;
+        let source = Shapes::new(4);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let projected = builder.conv_int8(x, 0, 4, (1, 1), (1, 1), (1, 1), (0, 0, 0, 0), 1, Act::None);
+        let inner = builder.quantize(projected, 0.5);
+        let out = builder.quantize(inner, 0.25);
+        builder.host_tensor(3, &[1]);
+        let plan = builder.finish(&[out]).expect("builds");
+        assert_eq!(
+            plan.ops.iter().filter(|op| matches!(op, Op::Dispatch { kind: Kind::Quantize, .. })).count(),
+            1,
+            "the outer quantize must survive: {:?}",
+            plan.ops
+        );
+    }
+
+    /// A quantize after a norm folds into the norm's store.
+    ///
+    /// The QI shape: `rms_norm -> quantize`, one dispatch carrying the scale.
+    #[test]
+    fn a_quantize_after_a_norm_folds_into_the_norm_store() {
+        use crate::nets::Kind;
+        use crate::nets::tests::Shapes;
+        let source = Shapes::new(2);
+        let mut builder = Builder::new(&source);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let normed = builder.rms_norm(x, 0, 1e-6);
+        let out = builder.quantize(normed, 0.25);
+        builder.host_tensor(1, &[1]);
+        let plan = builder.finish(&[out]).expect("builds");
+        assert!(
+            plan.ops.iter().all(|op| !matches!(op, Op::Dispatch { kind: Kind::Quantize, .. })),
+            "the norm-fed quantize should have folded: {:?}",
+            plan.ops
+        );
+        let fused = plan
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Dispatch { kind: Kind::RmsNorm, push, .. } => Some(push),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(fused.len(), 1, "one norm: {fused:?}");
+        assert_eq!(f32::from_bits(fused[0].param0_bits), 0.25);
+    }
+
+    /// A fused quantize store computes what the unfolded pair computes.
+    ///
+    /// The reference serves fused pushes from the same arms as unfolded ones,
+    /// so this runs a folded `rms_norm -> quantize` plan (one dispatch) over
+    /// a real weights file and checks the outputs against hand-computed
+    /// norm-then-round-trip values. The fused form rounds once where the
+    /// unfolded pair would round twice, so this asserts close agreement
+    /// (well inside half an int8 step), not bit-identity. Bit-identity
+    /// against live is the parity harness's job.
+    #[test]
+    fn a_fused_quantize_store_matches_its_unfolded_numbers() {
+        use crate::nets::reference;
+        // Two tensors: the norm gamma and the file's spare. Built directly —
+        // `Offsets` has no public constructor — by parsing a hand-made `.maml`
+        // header, which also exercises the real `WeightSource` path.
+        let header = maml_header(&[
+            (&[4], crate::weights::DTYPE_F16),
+            (&[1], crate::weights::DTYPE_F16),
+        ]);
+        let parsed = crate::weights::Weights::parse(&header, crate::weights::graph::SELFIE)
+            .expect("the hand-made header parses");
+        let table = parsed.offsets();
+        let mut builder = Builder::new(&table);
+        let x = builder.input(Shape::new(4, 1, 4));
+        let normed = builder.rms_norm(x, 0, 1e-6);
+        let out = builder.quantize(normed, 0.25);
+        builder.host_tensor(1, &[1]);
+        let plan = builder.finish(&[out]).expect("builds");
+        // Gamma all ones. Inputs exactly representable in fp16, so the upload
+        // round-trips losslessly and the hand computation below is in f64.
+        let half = |v: f32| crate::preprocess::f32_to_f16(v).to_le_bytes();
+        let mut blob = vec![0u8; 16];
+        for e in 0..4 {
+            blob[e * 2..e * 2 + 2].copy_from_slice(&half(1.0));
+        }
+        // Channel-major `[c, 1, w]`: channel c holds `x_values[c] + position`.
+        let x_values = [0.5f64, 1.5, -2.0, 3.0];
+        let input: Vec<f32> =
+            x_values.iter().flat_map(|&c| (0..4).map(move |p| (c + p as f64 * 0.5) as f32)).collect();
+        let outputs = reference::run_multi(&plan, &blob, &[&input]).expect("runs");
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].len(), 16);
+        for (c, &base) in x_values.iter().enumerate() {
+            for p in 0..4 {
+                let column: Vec<f64> =
+                    x_values.iter().map(|&cc| cc + p as f64 * 0.5).collect();
+                let mean_sq = column.iter().map(|v| v * v).sum::<f64>() / 4.0;
+                let normed = (base + p as f64 * 0.5) / (mean_sq + 1e-6).sqrt();
+                let q = ((normed / 0.25 + 0.5).floor()).clamp(-128.0, 127.0);
+                let want = q * 0.25;
+                let got = outputs[0][c * 4 + p] as f64;
+                assert!((got - want).abs() < 0.06, "channel {c} position {p}: got {got}, want {want}");
+            }
+        }
+    }
+

@@ -4,7 +4,7 @@
 // `createGemma4` / `encodeGemma4` JNI entry points with their builder.
 //
 // Same module scope via `bridge.rs` (`include!`), so item order is
-// irrelevant — e.g. `CHUNK` here is read by `prefill` in part6.
+// irrelevant â€” e.g. `CHUNK` here is read by `prefill` in part6.
 
 /// Host `combine`: projection + grouped-norm + scaled add over rows the
 /// caller already gathered. Mirrors `gemma4_part4::combine` exactly (which

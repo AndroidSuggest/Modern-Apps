@@ -53,7 +53,7 @@ impl<'a> Builder<'a> {
         // that, so taking the width from the cache would silently produce a shorter tensor.
         let head_dim = sc.w.checked_div(kv_heads.max(1)).unwrap_or(0);
         let out = self.tensor(Shape::new(heads * head_dim, 1, 1));
-        self.nodes.push(Node::AttnApplyCached { probs, cache, out, heads, kv_heads, dynamic, sliding });
+        self.nodes.push(Node::AttnApplyCached { probs, cache, out, heads, kv_heads, dynamic, sliding, quant_scale: None });
         out
     }
 

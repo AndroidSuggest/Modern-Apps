@@ -275,7 +275,7 @@ impl<'a> Builder<'a> {
         let per_group = shape.c.checked_div(groups.max(1)).unwrap_or(0);
         let gamma = self.weight(weight_index, &[per_group]);
         let out = self.tensor(shape);
-        self.nodes.push(Node::RmsNorm { input, out, gamma, epsilon, groups, res: None });
+        self.nodes.push(Node::RmsNorm { input, out, gamma, epsilon, groups, res: None, quant_scale: None });
         out
     }
 

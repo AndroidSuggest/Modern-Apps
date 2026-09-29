@@ -50,7 +50,12 @@ void main() {
         uint at = (base + c) * stride + at_pos;
         float value = float(arena[p.in0 + at]);
         float gamma = float(weights[p.weight + c]);
-        float normed = value * inverse * gamma;
+        // A folded int8 round-trip (`quant_store`) applies to the norm output
+        // itself — the `Quantize` this norm's consumer was — before the
+        // residual below: the unfolded graph is `add(res, rmsnorm(quantize))`,
+        // and the add-fold already proved exact, so rounding the norm output
+        // first is too.
+        float normed = quant_store(value * inverse * gamma);
         // A residual addend folded by `Builder::finish` (see `Push::res`): the
         // post-norm `add(x, branch)` stores here instead of its own dispatch.
         // Same contract as the convolution shaders' `fused_store`, minus the

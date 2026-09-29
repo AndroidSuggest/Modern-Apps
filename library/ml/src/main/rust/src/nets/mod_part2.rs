@@ -249,6 +249,14 @@ pub(crate) enum Node {
         groups: u32,
         /// A residual addend folded into the store. See [`Push::res`].
         res: Option<Id>,
+        /// An int8 round-trip scale folded into the store, or `None` for none.
+        ///
+        /// [`Builder::quantize`]'s consumer is this norm: the store keeps
+        /// `quantize(norm(input))` and the `Quantize` node never becomes a
+        /// dispatch. The scale rides [`Push::param0_bits`], which no norm
+        /// otherwise reads; bits of zero mean unfused. See `quant_store` in
+        /// `shaders/common.glsl`.
+        quant_scale: Option<f32>,
     },
     AttnScores {
         q: Id,
@@ -285,6 +293,12 @@ pub(crate) enum Node {
         dynamic: bool,
         /// Whether this layer's window applies. See [`Push::sliding`].
         sliding: bool,
+        /// An int8 round-trip scale folded into the store, or `None` for none.
+        ///
+        /// As on [`Node::RmsNorm::quant_scale`]: the attention mixture's
+        /// `Quantize` folds into this cached apply, which stores
+        /// `quantize(mixed)` directly.
+        quant_scale: Option<f32>,
     },
     Softmax {
         input: Id,
@@ -390,6 +404,12 @@ pub(crate) enum Node {
         res: Option<Id>,
         /// A per-channel shift folded into the store. See [`Push::shift`].
         shift: Option<Id>,
+        /// An int8 round-trip scale folded into the store, or `None` for none.
+        ///
+        /// As on [`Node::RmsNorm::quant_scale`]: a `Quantize` whose input this
+        /// convolution produced folds into the store, which keeps
+        /// `quantize(activate(acc + bias))` and never dispatches it.
+        quant_scale: Option<f32>,
     },
     AttnApply {
         probs: Id,

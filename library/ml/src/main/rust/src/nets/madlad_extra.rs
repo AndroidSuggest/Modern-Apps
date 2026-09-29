@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::tests::{assert_no_aliasing, Shapes};
-    use super::super::{Kind, Op};
+    use super::super::{Kind, Op, Plan, Shape};
     use super::super::madlad::*;
     use super::super::madlad_part1::{relative_bucket, split_of};
 

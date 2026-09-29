@@ -22,6 +22,7 @@ impl<'a> Builder<'a> {
                 quant,
                 res,
                 shift,
+                quant_scale,
             } => {
                 let (si, so) = (shape(*input), shape(*out));
                 // The same test `Node::Conv` applies below, less the two cases that cannot arise
@@ -109,6 +110,10 @@ impl<'a> Builder<'a> {
                         count,
                         res: Self::fuse_offset(*res, &at)?,
                         shift: Self::fuse_offset(*shift, &at)?,
+                        // A folded int8 round-trip scale, or zero for none. `param0_bits`
+                        // is free on the quantised convolutions (their dequantisation
+                        // scale rides `act_weight`); `quant_store` in the shader reads it.
+                        param0_bits: quant_scale.map_or(0, f32::to_bits),
                         ..Push::default()
                     },
                     // One workgroup of 64 per unit for the staged shaders; one invocation per
@@ -378,7 +383,7 @@ impl<'a> Builder<'a> {
                     invocations: positions,
                 });
             }
-            Node::RmsNorm { input, out, gamma, epsilon, groups, res } => {
+            Node::RmsNorm { input, out, gamma, epsilon, groups, res, quant_scale } => {
                 let so = shape(*out);
                 // One invocation per group per position, reducing over that group's channels.
                 let positions = so.h * so.w * groups.max(&1);
@@ -402,6 +407,7 @@ impl<'a> Builder<'a> {
                         out_h: so.h,
                         out_w: so.w,
                         group: *groups,
+                        param0_bits: quant_scale.map_or(0, f32::to_bits),
                         param1_bits: epsilon.to_bits(),
                         count: positions,
                         res: res_at,

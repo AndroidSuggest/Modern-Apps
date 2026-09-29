@@ -1,3 +1,4 @@
+impl Reference {
 
     /// Average pooling over an explicit window, floored and unpadded.
     ///
@@ -119,7 +120,7 @@
                 let index = channel * positions + position;
                 let folded =
                     activate(total + bias, p.act, 0.0) + self.fused_res(p, index)? + shift;
-                self.store(p.out, index, folded)?;
+                self.store(p.out, index, self.fused_quant(p, folded)?)?;
             }
         }
         Ok(())
@@ -307,7 +308,10 @@
                 let value = self.load(p.in0, at)?;
                 // Gamma is indexed within the group, so every group shares one table.
                 let gamma = self.weight(p.weight, c)?;
-                let normed = value * inverse * gamma;
+                // A folded int8 round-trip applies to the norm output itself,
+                // before the residual below — mirroring `quant_store` in
+                // `rmsnorm.comp`, which rounds before adding `p.res`.
+                let normed = self.fused_quant(p, value * inverse * gamma)?;
                 // A residual addend folded by `Builder::finish` (see `Push::res`):
                 // the post-norm `add(x, branch)` the fusion moved into this
                 // store. Same contract as the convolution stores.
@@ -355,6 +359,25 @@
         } else {
             self.load(p.shift, channel)
         }
+    }
+
+    /// A folded int8 round-trip scale applied to the stored value, or the value
+    /// unchanged when the op stores unfolded.
+    ///
+    /// Mirrors `quant_store` in `shaders/common.glsl`: the outermost store
+    /// operation, after the activation and the folded addends. `param0_bits`
+    /// of zero is the unfused default every push carries unless the
+    /// quantize fold set a scale. Same arithmetic as [`Self::quantize`].
+    fn fused_quant(&self, p: &Push, value: f32) -> Result<f32, String> {
+        if p.param0_bits == 0 {
+            return Ok(value);
+        }
+        let scale = f32::from_bits(p.param0_bits);
+        if !(scale > 0.0) {
+            return Err(format!("a fused quantize of {scale}"));
+        }
+        let q = ((value / scale + 0.5).floor()).clamp(-128.0, 127.0);
+        Ok(q * scale)
     }
 
     /// `S[h][i][j] = scale * sum_d Q[h][d][i] * K[h][d][j]`.
@@ -469,3 +492,4 @@
         }
         Ok(())
     }
+}

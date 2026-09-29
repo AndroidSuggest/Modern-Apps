@@ -71,5 +71,5 @@ void main() {
         }
     }
     float offset = float(weights[p.bias + channel]);
-    arena[p.out_at + index] = float16_t(fused_store(total + offset, p.act, channel, index));
+    arena[p.out_at + index] = float16_t(quant_store(fused_store(total + offset, p.act, channel, index)));
 }

@@ -1,3 +1,4 @@
+impl Reference {
     fn new(plan: &Plan, weights: &[u8], inputs: &[&[f32]]) -> Result<Reference, String> {
         if inputs.len() != plan.inputs.len() {
             return Err(format!(
@@ -189,7 +190,7 @@
                     let index = nchw(p, oc, oy, ox);
                     let folded =
                         activate(acc, p.act, slope) + self.fused_res(p, index)? + shift;
-                    self.store(p.out, index, folded)?;
+                    self.store(p.out, index, self.fused_quant(p, folded)?)?;
                 }
             }
         }
@@ -239,7 +240,7 @@
                     // PRelu is refused at build time for int8, so the slope is never read.
                     let folded =
                         activate(biased, p.act, 0.0) + self.fused_res(p, index)? + shift;
-                    self.store(p.out, index, folded)?;
+                    self.store(p.out, index, self.fused_quant(p, folded)?)?;
                 }
             }
         }
@@ -271,7 +272,7 @@
                 let index = oc * positions + position;
                 let folded =
                     activate(biased, p.act, 0.0) + self.fused_res(p, index)? + shift;
-                self.store(p.out, index, folded)?;
+                self.store(p.out, index, self.fused_quant(p, folded)?)?;
             }
         }
         Ok(())
@@ -314,14 +315,14 @@
                     let q = f32::from((qb >> (lane * 2)) & 3);
                     let dm = self.weight(p.act_weight, (oc * blocks + block) * 2)?;
                     let dn = self.weight(p.act_weight, (oc * blocks + block) * 2 + 1)?;
-                    acc += self.load(p.in0, k * positions + position)?
+                acc += self.load(p.in0, k * positions + position)?
                         * (dm * dm * q * lo - dn * dm * hi);
                 }
                 let biased = acc + self.weight(p.bias, oc)?;
                 let index = oc * positions + position;
                 let folded =
                     activate(biased, p.act, 0.0) + self.fused_res(p, index)? + shift;
-                self.store(p.out, index, folded)?;
+                self.store(p.out, index, self.fused_quant(p, folded)?)?;
             }
         }
         Ok(())
@@ -426,7 +427,7 @@
                                 }
                             }
                         }
-                        self.store(p.out, nchw(p, oc, oy, ox), activate(acc, p.act, slope))?;
+                        self.store(p.out, nchw(p, oc, oy, ox), self.fused_quant(p, activate(acc, p.act, slope))?)?;
                     }
                 }
             }
@@ -460,7 +461,7 @@
                     let index = nchw(p, oc, oy, ox);
                     let folded =
                         activate(acc, p.act, slope) + self.fused_res(p, index)? + shift;
-                    self.store(p.out, index, folded)?;
+                    self.store(p.out, index, self.fused_quant(p, folded)?)?;
                 }
             }
         }
@@ -496,3 +497,4 @@
         }
         Ok(())
     }
+}

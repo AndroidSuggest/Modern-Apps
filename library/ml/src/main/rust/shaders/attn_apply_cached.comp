@@ -61,5 +61,7 @@ void main() {
     for (uint j = attn_first(); j <= attn_last(stride); j++) {
         total += float(arena[row + j]) * float(arena[value + j * vstride]);
     }
-    arena[p.out_at + channel] = float16_t(total);
+    // A folded int8 round-trip: the attention mixture's `Quantize` (live's
+    // `Mm` round-trip at `MM_SCALE`) stores here instead of its own dispatch.
+    arena[p.out_at + channel] = float16_t(quant_store(total));
 }

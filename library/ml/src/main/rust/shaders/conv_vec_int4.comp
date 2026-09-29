@@ -192,5 +192,5 @@ void main() {
     }
     // Already scaled inside the loop, so only the bias is left.
     float offset = float(weights[p.bias + channel]);
-    arena[p.out_at + channel] = float16_t(fused_store(total + offset, p.act, channel, channel));
+    arena[p.out_at + channel] = float16_t(quant_store(fused_store(total + offset, p.act, channel, channel)));
 }

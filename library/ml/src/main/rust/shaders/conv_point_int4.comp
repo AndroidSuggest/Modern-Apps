@@ -86,7 +86,7 @@ void main() {
             }
             // Already scaled in the staging above, so only the bias is left.
             uint index = channel * positions + position;
-            float value = fused_store(acc[i][j] + offset, p.act, channel, index);
+            float value = quant_store(fused_store(acc[i][j] + offset, p.act, channel, index));
             arena[p.out_at + index] = float16_t(value);
         }
     }

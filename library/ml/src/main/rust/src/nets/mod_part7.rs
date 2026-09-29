@@ -228,6 +228,12 @@ impl<'a> Builder<'a> {
         }
 
         self.fuse_elementwise(outputs);
+        // The quantize fold second: it removes no addends, so it enables no
+        // further elementwise fold, and running it after keeps the existing
+        // fusion's behaviour first. Gated by the phase fallback flag.
+        if quant_fold_on(crate::knobs::get("quant_fold")) {
+            self.fuse_quantize(outputs);
+        }
 
         let plan = self.emit_all(outputs)?;
         Ok(Recorded {

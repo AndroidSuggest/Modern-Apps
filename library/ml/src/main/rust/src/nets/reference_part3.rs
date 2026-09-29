@@ -1,3 +1,4 @@
+impl Reference {
 
     /// Keys an op attends over, as an inclusive `[first, last]` range.
     ///
@@ -207,7 +208,7 @@
                 total += self.load(p.in0, row + key)?
                     * self.load(p.in1, value + key * vstride)?;
             }
-            self.store(p.out, nchw(p, channel, 0, 0), total)?;
+            self.store(p.out, nchw(p, channel, 0, 0), self.fused_quant(p, total)?)?;
         }
         Ok(())
     }
@@ -373,3 +374,4 @@
         }
         Ok(())
     }
+}

@@ -163,11 +163,9 @@ pub struct Reference {
     window_start: u32,
 }
 
-impl Reference {
 include!("reference_part1.rs");
 include!("reference_part2.rs");
 include!("reference_part3.rs");
-}
 include!("reference_part4.rs");
 #[cfg(test)]
 mod tests {
