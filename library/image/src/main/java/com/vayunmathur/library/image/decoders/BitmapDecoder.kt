@@ -9,6 +9,17 @@ import java.nio.ByteBuffer
 
 object BitmapDecoder {
 
+    /**
+     * Longest edge an unconstrained ("original size") decode may produce.
+     *
+     * Requests without `.size(...)` used to decode at full resolution, so one
+     * panorama or high-MP photo became a ~500 MB bitmap that crashed in
+     * `RecordingCanvas.throwIfCannotDraw` as soon as it was drawn (files #768).
+     * 4096 keeps full-screen viewers sharp while a square 4096x4096 ARGB_8888
+     * bitmap is 64 MB, comfortably under Canvas's draw limit.
+     */
+    const val MAX_ORIGINAL_DIMENSION = 4096
+
     fun isSvg(bytes: ByteArray): Boolean {
         if (bytes.size < 5) return false
         val head = String(bytes.take(1024).toByteArray()).trimStart()
@@ -57,6 +68,17 @@ object BitmapDecoder {
                     if (ratio > 1f) {
                         decoder.setTargetSize((w / ratio).toInt().coerceAtLeast(1), (h / ratio).toInt().coerceAtLeast(1))
                     }
+                } else if (targetW <= 0 || targetH <= 0) {
+                    // Unconstrained request: never hand back a bitmap larger than
+                    // MAX_ORIGINAL_DIMENSION on its longest edge (see files #768).
+                    val longest = maxOf(w, h)
+                    if (longest > MAX_ORIGINAL_DIMENSION) {
+                        val ratio = longest.toFloat() / MAX_ORIGINAL_DIMENSION
+                        decoder.setTargetSize(
+                            (w / ratio).toInt().coerceAtLeast(1),
+                            (h / ratio).toInt().coerceAtLeast(1),
+                        )
+                    }
                 }
                 decoder.isUnpremultipliedRequired = false
                 decoder.allocator = if (allowHardware) {
@@ -70,6 +92,30 @@ object BitmapDecoder {
         }
     }
 
+    /**
+     * Power-of-two downsampling for the `BitmapFactory` fallback, pure arithmetic
+     * so it is unit-testable without Android bitmaps.
+     *
+     * A sized request samples to roughly the target; an unconstrained request
+     * ("original size") still caps the longest edge at [MAX_ORIGINAL_DIMENSION]
+     * so no caller can produce a Canvas-crashing bitmap (files #768).
+     */
+    internal fun sampleSizeFor(srcW: Int, srcH: Int, reqW: Int, reqH: Int): Int {
+        var sample = 1
+        if (reqW > 0 && reqH > 0 && srcW > 0 && srcH > 0) {
+            val halfW = srcW / 2
+            val halfH = srcH / 2
+            while (halfW / sample >= reqW && halfH / sample >= reqH) {
+                sample *= 2
+            }
+        } else if (srcW > 0 && srcH > 0 && (srcW > MAX_ORIGINAL_DIMENSION || srcH > MAX_ORIGINAL_DIMENSION)) {
+            while (srcW / sample > MAX_ORIGINAL_DIMENSION || srcH / sample > MAX_ORIGINAL_DIMENSION) {
+                sample *= 2
+            }
+        }
+        return sample.coerceAtLeast(1)
+    }
+
     private fun decodeWithBitmapFactory(
         bytes: ByteArray,
         reqW: Int,
@@ -80,14 +126,7 @@ object BitmapDecoder {
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
         val (w, h) = boundsOpts.outWidth to boundsOpts.outHeight
 
-        var sample = 1
-        if (reqW > 0 && reqH > 0 && w > 0 && h > 0) {
-            var halfW = w / 2
-            var halfH = h / 2
-            while (halfW / sample >= reqW && halfH / sample >= reqH) {
-                sample *= 2
-            }
-        }
+        val sample = sampleSizeFor(w, h, reqW, reqH)
 
         val opts = BitmapFactory.Options().apply {
             inSampleSize = sample.coerceAtLeast(1)

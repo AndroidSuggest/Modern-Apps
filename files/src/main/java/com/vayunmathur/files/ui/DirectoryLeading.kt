@@ -7,9 +7,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.files.platform.FileBrowserItem
+import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.image.compose.AsyncImage
 import com.vayunmathur.library.ui.IconArchive
 import com.vayunmathur.library.ui.IconCode
@@ -39,13 +41,27 @@ internal val COLOR_ARCHIVE = Color(0xFFB28500)
 internal val COLOR_APK = Color(0xFF009688)
 internal val COLOR_CODE = Color(0xFF607D8B)
 
+/**
+ * Pixel edge requested for file-browser thumbnails. The tiles paint at 40-56 dp,
+ * so 256 px stays sharp on xxxhdpi and matches the Photos grid size.
+ */
+internal const val THUMBNAIL_SIZE_PX = 256
+
 /** Leading visual for a browser item: an image thumbnail, or a type-colored icon. */
 @Composable
 internal fun FileLeading(item: FileBrowserItem, isSelected: Boolean, sizeDp: Dp) {
+    val context = LocalContext.current
     val ext = item.name.substringAfterLast('.', "").lowercase()
     if (!item.isDirectory && item.realFile != null && ext in IMAGE_EXTS) {
         AsyncImage(
-            model = item.realFile,
+            // Explicit thumbnail size: decoding a 40-56 dp tile at full
+            // resolution produced ~500 MB bitmaps that crashed Canvas on draw
+            // (files #768). 256 px matches the Photos grid and also keys the
+            // cache per size instead of colliding with full-res entries.
+            model = ImageRequest.Builder(context)
+                .data(item.realFile)
+                .size(THUMBNAIL_SIZE_PX)
+                .build(),
             contentDescription = null,
             modifier = Modifier
                 .size(sizeDp)
