@@ -74,6 +74,8 @@ impl Net {
             command_pool,
             command_buffer: vk::CommandBuffer::null(),
             fence: vk::Fence::null(),
+            query_pool: vk::QueryPool::null(),
+            query_count: 0,
             poisoned: false,
             input_scratch: vec![0u16; input_elems],
             output_scratch: vec![0u16; output_elems],
@@ -91,6 +93,7 @@ impl Net {
         // Written before the first record so a shader reading it never sees uninitialised
         // memory, even on a plan that never calls `set_params`.
         net.set_params(StepParams::default())?;
+        net.reset_query_pool()?;
         let staged = std::time::Instant::now();
         net.record()?;
         timing!(
@@ -190,6 +193,7 @@ impl Net {
         self.input_scratch.resize(input_elems, 0);
         self.output_scratch.resize(output_elems, 0);
         self.plan = plan;
+        self.reset_query_pool()?;
 
         // A `record` that fails leaves the command buffer part-written, and submitting that is
         // not something a later caller may be allowed to do. There is no way back — both of its
@@ -329,6 +333,56 @@ impl Net {
                 .device
                 .create_fence(&vk::FenceCreateInfo::default(), None)
                 .map_err(|e| format!("create_fence {e:?}"))
+        }
+    }
+
+    /// Size the timestamp query pool to this plan, or leave it uncreated.
+    ///
+    /// Called before every `record`: a rebuild may have changed the dispatch
+    /// count, and a pool sized for another plan would overrun or waste. When
+    /// timestamps are disabled — or the device reports no timestamp bits —
+    /// any existing pool is destroyed and the recording stays exactly what it
+    /// always was. Idempotent for repeated records of one plan.
+    fn reset_query_pool(&mut self) -> Result<(), String> {
+        // SAFETY: plain object creation/destruction on this net's device, with
+        // nothing in flight: `new` has submitted nothing yet, and `rebuild`
+        // waited for idle before reaching here.
+        unsafe {
+            let device = &self.context.device;
+            if self.query_pool != vk::QueryPool::null() {
+                device.destroy_query_pool(self.query_pool, None);
+                self.query_pool = vk::QueryPool::null();
+                self.query_count = 0;
+            }
+            if !timestamps_enabled() {
+                return Ok(());
+            }
+            if self.context.limits.timestamp_valid_bits == 0 {
+                timing!(
+                    "timestamps requested but the compute family reports no timestamp bits"
+                );
+                return Ok(());
+            }
+            let dispatches = self
+                .plan
+                .ops
+                .iter()
+                .filter(|op| matches!(op, Op::Dispatch { .. }))
+                .count();
+            let count = match u32::try_from(dispatches) {
+                Ok(n) => n.checked_mul(2).ok_or_else(|| "a query count overflowed".to_string())?,
+                Err(_) => return Err("a plan with more dispatches than u32".to_string()),
+            };
+            if count == 0 {
+                return Ok(());
+            }
+            let info = vk::QueryPoolCreateInfo::default()
+                .query_type(vk::QueryType::TIMESTAMP)
+                .query_count(count);
+            self.query_pool =
+                device.create_query_pool(&info, None).map_err(|e| format!("create_query_pool {e:?}"))?;
+            self.query_count = count;
+            Ok(())
         }
     }
 }

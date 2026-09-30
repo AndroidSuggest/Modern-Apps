@@ -297,7 +297,17 @@ fn time_decode(
     let reader = embed.reader();
     let rotary = weights.reader();
     let repeats = repeats.max(1);
+    // Per-op device times, read once from the last step's submit when the
+    // timestamps knob is set. Hoisted: a property lookup per step would be
+    // noise in what is being timed.
+    let stamps = modelrunner::knobs::is_set("timestamps");
+    let mut op_report: Option<Vec<(String, f64, f64)>> = None;
     let mut steady: Vec<f64> = Vec::new();
+    // Host-side split: gather+rotary file reads vs device infer per step.
+    // Accumulated over steady-state passes only, reported once.
+    let mut host_ms = 0.0;
+    let mut infer_ms = 0.0;
+    let mut host_steps = 0usize;
     for pass in 0..repeats {
         let mut step_ms: Vec<f64> = Vec::with_capacity(tokens.len());
         for (step, &token) in tokens.iter().enumerate() {
@@ -306,6 +316,7 @@ fn time_decode(
                 Ok(p) => p,
                 Err(_) => return println!("a step past u32"),
             };
+            let host_tick = Instant::now();
             let Ok((hidden_in, per_layer)) = gemma4::gather(&reader, token) else {
                 return println!("gather failed at step {step}");
             };
@@ -319,6 +330,7 @@ fn time_decode(
             else {
                 return println!("rotary global failed at step {step}");
             };
+            let host_done = host_tick.elapsed().as_secs_f64() * 1000.0;
             let at = match net.at(gemma4::Mode::DecodeStep.at(TIER)) {
                 Ok(at) => at,
                 Err(why) => return println!("the net does not bind at step {step}: {why}"),
@@ -332,9 +344,23 @@ fn time_decode(
             {
                 return println!("params failed at step {step}");
             }
+            let infer_tick = Instant::now();
             match at.infer_raw_many(&[&hidden_in, &per_layer, &angles_local, &angles_global]) {
                 Ok(_) => {}
                 Err(why) => return println!("step {step} failed: {why}"),
+            }
+            if pass > 0 {
+                host_ms += host_done;
+                infer_ms += infer_tick.elapsed().as_secs_f64() * 1000.0;
+                host_steps += 1;
+            }
+            // The query pool holds this submit's timestamps once the fence
+            // waited above returns; the last step's is the steady-state plan.
+            if stamps && pass + 1 == repeats && step + 1 == tokens.len() {
+                match at.op_times() {
+                    Ok(report) => op_report = Some(report),
+                    Err(why) => println!("timestamps unreadable: {why}"),
+                }
             }
             step_ms.push(tick.elapsed().as_secs_f64() * 1000.0);
         }
@@ -350,6 +376,53 @@ fn time_decode(
     if !steady.is_empty() {
         let mean = steady.iter().sum::<f64>() / steady.len() as f64;
         println!("steady-state: {mean:.1} ms/token = {:.2} tok/s", 1000.0 / mean.max(1e-9));
+    }
+    if host_steps > 0 {
+        println!(
+            "host split per step: gather+rotary {:.1} ms, infer {:.1} ms ({} steps)",
+            host_ms / host_steps as f64,
+            infer_ms / host_steps as f64,
+            host_steps
+        );
+    }
+    // Per-op device times, hottest first, then aggregated by Kind. The table
+    // that splits a step into kernel execution: it answers whether GEMV ALU,
+    // occupancy-shaped small dispatches, or barriers own the 574 ms.
+    if let Some(report) = op_report {
+        println!();
+        println!("{:>6} {:>10} {:>10}  {}", "step", "us", "gap-us", "kind");
+        let mut per_kind: Vec<(String, usize, f64, f64)> = Vec::new();
+        let mut total = 0.0;
+        let mut gaps = 0.0;
+        for (label, us, gap) in &report {
+            println!("{label:>6} {us:>10.1} {gap:>10.1}");
+            total += us;
+            gaps += gap;
+            let kind = label.split(':').nth(1).unwrap_or("?").trim().to_string();
+            match per_kind.iter_mut().find(|(k, _, _, _)| *k == kind) {
+                Some((_, n, t, g)) => {
+                    *n += 1;
+                    *t += us;
+                    *g += gap;
+                }
+                None => per_kind.push((kind, 1, *us, *gap)),
+            }
+        }
+        per_kind.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        println!();
+        println!("{:>6} {:>10} {:>10} {:>10}  {}", "count", "total-ms", "mean-us", "gap-ms", "kind");
+        for (kind, n, us, gap) in &per_kind {
+            println!(
+                "{n:>6} {:>10.1} {:>10.1} {:>10.1}  {kind}",
+                us / 1000.0,
+                us / *n as f64,
+                gap / 1000.0
+            );
+        }
+        println!();
+        println!("timestamped device total: {:.1} ms against the step mean above", total / 1000.0);
+        println!("barrier/bind gaps total: {:.1} ms", gaps / 1000.0);
+        println!("(copies and host work are not timestamped)");
     }
 }
 

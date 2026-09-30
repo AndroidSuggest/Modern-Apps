@@ -69,6 +69,19 @@ use crate::timing;
 /// floor of 2%. Cost is also not proportional to the byte range — [`Formulation::Global`] names no
 /// range at all and [`Formulation::Whole`] names the entire arena, and they land 4 ms apart. The
 /// knob is kept so the sweep can be re-run on a new device, not because a winner is expected.
+/// Whether per-op timestamp queries are recorded, read once.
+///
+/// `MODELRUNNER_TIMESTAMPS` or `debug.modelrunner.timestamps`, defaulting to
+/// off. When on, `record` brackets every dispatch with timestamp writes and
+/// [`Net::op_times`] reports each op's device time; when off, no pool exists
+/// and the recording is byte-identical to what it always was. Same run-time
+/// knob rationale as [`Formulation::selected`]: comparing two builds is how an
+/// earlier attempt attributed a shader regression to the barrier.
+fn timestamps_enabled() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| crate::knobs::is_set("timestamps"))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Formulation {
     /// A buffer barrier over the op's own output range. The default and the historical behaviour.
@@ -272,6 +285,17 @@ pub struct Net {
     command_pool: vk::CommandPool,
     command_buffer: vk::CommandBuffer,
     fence: vk::Fence,
+    /// Timestamp query pool for per-op timings, or null when disabled.
+    ///
+    /// Created in [`Net::new`] and [`Net::rebuild`] when [`timestamps_enabled`]
+    /// holds and the device reports timestamp bits; sized at two queries per
+    /// dispatch op. `record` writes a timestamp before and after every dispatch
+    /// into it, and [`Net::op_times`] reads the pairs back after a submit.
+    /// Null means no timestamps were recorded and `op_times` refuses.
+    query_pool: vk::QueryPool,
+    /// Dispatch ops the pool was sized for. A rebuild with a different plan
+    /// recreates the pool; anything else reuses it.
+    query_count: u32,
     /// Set when a submission was left pending, or a recording left part-written, after which
     /// this net is unusable.
     ///
@@ -292,3 +316,4 @@ pub struct Net {
 include!("run_part1.rs");
 include!("run_part2.rs");
 include!("run_part3.rs");
+include!("run_part4.rs");

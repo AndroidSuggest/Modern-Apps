@@ -121,6 +121,19 @@ pub struct Limits {
     pub min_storage_buffer_offset_alignment: u64,
     /// `VkPhysicalDeviceMaintenance3Properties::maxMemoryAllocationSize`. At least 1 GiB.
     pub max_memory_allocation_size: u64,
+    /// `VkPhysicalDeviceLimits::timestampPeriod`. Nanoseconds per timestamp tick.
+    ///
+    /// Always present: every device has a timestamp counter. Read by
+    /// [`Net::op_times`](super::run::Net::op_times).
+    pub timestamp_period: f32,
+    /// Timestamp bits of the compute queue family, or zero when timestamps
+    /// are not implemented there.
+    ///
+    /// Vulkan 1.3 moved `timestampValidBits` from the device limits to
+    /// [`VkQueueFamilyProperties`](ash::vk::QueueFamilyProperties): validity
+    /// is per queue family, not per device. Zero means the query pool must
+    /// stay uncreated and `op_times` refuses.
+    pub timestamp_valid_bits: u32,
 }
 
 /// Forces [`Limits::max_storage_buffer_range`] down, so the segmented path can be exercised.
@@ -142,12 +155,27 @@ impl Limits {
         unsafe { instance.get_physical_device_properties2(physical_device, &mut properties) };
         let device = properties.properties.limits;
         let forced = std::env::var(FORCED_RANGE).ok().and_then(|v| v.parse::<u64>().ok());
+        // Timestamp validity lives on the queue family in Vulkan 1.3, not on
+        // the device: the best any compute family offers is what the query
+        // pool can rely on.
+        //
+        // SAFETY: a plain property query; the returned vec is owned.
+        let families =
+            unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
+        let timestamp_valid_bits = families
+            .iter()
+            .filter(|f| f.queue_flags.contains(vk::QueueFlags::COMPUTE))
+            .map(|f| f.timestamp_valid_bits)
+            .max()
+            .unwrap_or(0);
         Limits {
             max_storage_buffer_range: forced
                 .filter(|&v| v > 0)
                 .unwrap_or_else(|| u64::from(device.max_storage_buffer_range)),
             min_storage_buffer_offset_alignment: device.min_storage_buffer_offset_alignment,
             max_memory_allocation_size: maintenance3.max_memory_allocation_size,
+            timestamp_period: device.timestamp_period,
+            timestamp_valid_bits,
         }
     }
 }

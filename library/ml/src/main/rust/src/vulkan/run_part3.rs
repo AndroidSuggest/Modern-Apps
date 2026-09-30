@@ -371,6 +371,9 @@ impl Drop for Net {
             drop(guard);
             device.destroy_fence(self.fence, None);
             device.destroy_command_pool(self.command_pool, None);
+            if self.query_pool != vk::QueryPool::null() {
+                device.destroy_query_pool(self.query_pool, None);
+            }
             self.pipelines.destroy(device);
         }
     }

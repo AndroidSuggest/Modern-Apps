@@ -34,6 +34,13 @@ impl Net {
                 std::slice::from_ref(&weights_visible),
                 &[],
             );
+            // Timestamps start clean: a query pool left over from an earlier
+            // recording would otherwise report a previous submit's times.
+            // A null pool is the disabled path, and nothing below is recorded.
+            let stamps = self.query_pool != vk::QueryPool::null();
+            if stamps {
+                device.cmd_reset_query_pool(buffer, self.query_pool, 0, self.query_count);
+            }
 
             // One copy per input, packed end to end in the staging buffer in declaration
             // order. Both shipping nets have exactly one; SCRFD's nine outputs come back
@@ -55,9 +62,28 @@ impl Net {
             }
             self.barrier(buffer);
 
+            let mut stamp_next = 0u32;
             for (step, op) in self.plan.ops.iter().enumerate() {
+                // Timestamp pairs count dispatches, not ops: copies take no
+                // queries, so the pair index is separate from the step.
                 match *op {
                     Op::Dispatch { kind, push, invocations } => {
+                        // Bracket the dispatch: query 2i before the bind, 2i+1
+                        // after the dispatch returns, both at COMPUTE_SHADER so
+                        // the delta is the dispatch's device time.
+                        let stamp = if stamps {
+                            let n = stamp_next;
+                            stamp_next += 1;
+                            device.cmd_write_timestamp(
+                                buffer,
+                                vk::PipelineStageFlags::COMPUTE_SHADER,
+                                self.query_pool,
+                                2 * n,
+                            );
+                            Some(n)
+                        } else {
+                            None
+                        };
                         device.cmd_bind_pipeline(
                             buffer,
                             vk::PipelineBindPoint::COMPUTE,
@@ -100,6 +126,17 @@ impl Net {
                             groups.div_ceil(MAX_WORKGROUPS_PER_DIM),
                             1,
                         );
+                        // Close the bracket opened above, before the barrier:
+                        // with the barrier between every op, the delta covers
+                        // the dispatch's execution and nothing else's.
+                        if let Some(n) = stamp {
+                            device.cmd_write_timestamp(
+                                buffer,
+                                vk::PipelineStageFlags::COMPUTE_SHADER,
+                                self.query_pool,
+                                2 * n + 1,
+                            );
+                        }
                     }
                     Op::Copy { src, dst, elems } => {
                         // Same buffer for source and destination. The spec allows that as
