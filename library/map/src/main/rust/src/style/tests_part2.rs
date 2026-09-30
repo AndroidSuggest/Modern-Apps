@@ -127,6 +127,26 @@ fn the_kind_filter_is_a_whitelist_and_empty_means_everything() {
     // Interning the whitelist is what turns that from a silent miss into an impossibility.
     assert!(!earth.matches(Some("not_a_kind")));
 
+    // The marine exclusion: a sanctuary polygon over open water must not paint as
+    // land. `earth` stays match-all for the kind-less mainland, but `protected_area`
+    // and `nature_reserve` are forbidden kinds — the sea is the clear colour there,
+    // not a fill. This is the Monterey Bay tile at z12 (100.5% `protected_area`,
+    // no water polygon): without the exclusion the whole tile drew earth tan.
+    for kind in ["protected_area", "nature_reserve"] {
+        assert!(
+            !earth.matches(Some(kind)),
+            "earth must not claim `{kind}` — it is drawn over open water"
+        );
+        assert!(
+            !find("landcover").matches(Some(kind)),
+            "landcover must not claim `{kind}` either"
+        );
+    }
+    // Untouched: everything else the match-all arms used to draw still draws.
+    for kind in ["island", "ocean", "forest", "residential", "beach"] {
+        assert!(earth.matches(Some(kind)), "earth must still draw `{kind}`");
+    }
+
     // The water arm is whitelisted since v8 (one `landtype` layer now returns everything):
     // it draws true water and nothing else.
     let water = find("water");
@@ -149,6 +169,18 @@ fn the_interned_whitelist_is_the_authored_one() {
         );
         for name in &l.kinds {
             assert!(l.matches(Some(name)), "`{}` should draw `{name}`", l.id);
+        }
+        // The match-all exclusion rides out of band (see `forbid_kind_ids`): it is
+        // interned and validated like the whitelist, but it is NOT part of it, so
+        // the count above cannot see it. Check it separately: sorted, and every
+        // forbidden kind really is refused.
+        assert!(
+            l.forbid_kind_ids.windows(2).all(|p| p[0] < p[1]),
+            "`{}` forbids unsorted kinds",
+            l.id
+        );
+        for id in &l.forbid_kind_ids {
+            assert!(!l.matches_id(*id), "`{}` forbids a kind it still draws", l.id);
         }
         assert!(
             l.kind_ids.windows(2).all(|p| p[0] < p[1]),

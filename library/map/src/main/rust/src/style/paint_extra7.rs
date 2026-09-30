@@ -74,13 +74,15 @@ fn the_kinds_each_authored_layer_admits_are_all_drawn_and_no_others() {
         // for — a silent one would mean a kind quietly stopped rendering.
         //
         // `protected_area` and `nature_reserve` are the tags the world's MARINE protected
-        // areas carry. The sea has no geometry, so nothing is drawn over them, and on a planet
-        // build they painted green across open water — the reported bug. Deriving sea geometry
-        // to cover them was attempted twice and failed twice; see `mamaps_build`'s
-        // `tiler::add_ocean` for both failure modes. Not drawing them is the fix that works.
+        // areas carry (Monterey Bay tile 12/659/1595: 100.5% `protected_area`, no water
+        // polygon). The sea has no geometry, so drawing them paints green across open
+        // water; and the match-all `earth`/`landcover` arms used to claim them, painting
+        // the ocean as *land*. Both arms now carry `forbid_kinds` for these two, so no
+        // fill arm draws them at all and the sea stays the water-blue clear colour.
         //
-        // The cost, stated plainly: a protected area or nature reserve *on land* is no longer
-        // green. Restore them here the day the sea can paint over them.
+        // The cost, stated plainly: a protected area or nature reserve *on land* is no
+        // longer green either (no arm draws them anywhere). Restoring land green needs
+        // a layer that draws them only where land is — i.e. sea geometry to paint over.
         const NOT_DRAWN: &[&str] = &["protected_area", "nature_reserve"];
         let (skipped, admitted): (Vec<String>, Vec<String>) = admitted
             .into_iter()

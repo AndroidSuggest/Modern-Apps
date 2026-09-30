@@ -186,6 +186,7 @@ fn major_road_at_min_zoom(min_zoom: u8) -> Layer {
         forbid_flags: 0,
         detail_ids: Vec::new(),
         forbid_details: Vec::new(),
+        forbid_kind_ids: Vec::new(),
         light: 0xFFFFFFFF,
         dark: 0xFF000000,
         opacity: Ramp::constant(1.0),

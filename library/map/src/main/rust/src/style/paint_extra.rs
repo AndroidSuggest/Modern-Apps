@@ -27,6 +27,7 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
         "source",
         "type",
         "kinds",
+        "forbid_kinds",
         "require_flags",
         "forbid_flags",
         "details",
@@ -128,6 +129,24 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
     // Sorted so the render path's membership test is a binary search over a `u16` slice.
     kind_ids.sort_unstable();
     kind_ids.dedup();
+    // The match-all exclusion (see `Layer::forbid_kind_ids`): kinds this arm must
+    // never claim even though its whitelist is empty. Interned and validated like
+    // the whitelist, so a misspelling fails the load rather than silently matching
+    // nothing.
+    let mut forbid_kind_ids: Vec<u16> = match json.get("forbid_kinds") {
+        None => Vec::new(),
+        Some(Json::Array(names)) => names
+            .iter()
+            .map(|name| {
+                name.as_str().and_then(super::kind_id).ok_or_else(|| {
+                    format!("`{id}` forbids kind `{name}`, which the schema cannot emit")
+                })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(_) => return Err(format!("`{id}`'s forbid_kinds must be an array")),
+    };
+    forbid_kind_ids.sort_unstable();
+    forbid_kind_ids.dedup();
     // The road flag/detail filters, as interned ids and bitmasks. `require_flags` names
     // features that must carry a bit (`["link"]`); `forbid_flags` names bits that must be
     // absent (`["bridge", "tunnel"]` on a surface layer). `details`/`forbid_details` are
@@ -211,6 +230,7 @@ pub(crate) fn layer(json: &Json) -> Result<Layer, String> {
         kind,
         kinds,
         kind_ids,
+        forbid_kind_ids,
         require_flags: flag_bits("require_flags")?,
         forbid_flags: flag_bits("forbid_flags")?,
         detail_ids: detail_ids_of("details")?,

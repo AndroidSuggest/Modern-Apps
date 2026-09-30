@@ -272,3 +272,48 @@ fn a_coastal_tile_withholds_terrain_from_its_water_half() {
         "the water fill still draws flat over the withheld grid"
     );
 }
+
+/// A marine protected area over open water draws nothing land-coloured: the
+/// Monterey Bay tile at z12 (a `protected_area` polygon over the whole tile,
+/// no water polygon, a land sliver at the edge). The sanctuary must match no
+/// fill arm, so the sea stays the water-blue clear colour — not earth tan.
+#[test]
+fn a_marine_sanctuary_over_open_water_draws_no_land_fill() {
+    use tilecodec::mamaps::dict::NONE;
+    let layers = style::layers();
+    let mut body = Body::new(4096);
+    let mut landtype = BodyLayer::new(dict::LAYER_LANDTYPE);
+    // The sanctuary: full tile, like the real tile 12/659/1595 (100.5% cover).
+    landtype.features.push(Feature {
+        kind: crate::style::kind_id_for_test("protected_area"),
+        kind_detail: NONE,
+        geom_type: GEOM_POLYGON,
+        flags: 0,
+        name_idx: NAME_NONE,
+        parts_offset: 0,
+        part_count: 1,
+        transit_color: 0,
+        transit_ordinal: 0,
+        transit_lanes: 0,
+        transit_taper: 0,
+        lane_count: 0,
+    });
+    landtype.parts.push(Part {
+        coord_start: 0,
+        point_count: 4,
+        winding: WINDING_OUTER,
+    });
+    landtype.coords = vec![(0, 0), (4096, 0), (4096, 4096), (0, 4096)];
+    body.layers.push(landtype);
+    let mesh = build(&body, &layers, 12, 659, 1595, false);
+    for id in ["earth", "landcover"] {
+        assert!(
+            mesh_for(&mesh, &layers, id).is_none(),
+            "{id} must not tessellate the sanctuary — it is open water",
+        );
+    }
+    assert!(
+        mesh.meshes.is_empty(),
+        "no fill arm claims the sanctuary, so the clear colour (water-blue) shows",
+    );
+}

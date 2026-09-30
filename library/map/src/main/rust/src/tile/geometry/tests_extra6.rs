@@ -102,6 +102,7 @@ fn a_line_layer_also_strokes_polygon_outlines() {
         forbid_flags: 0,
         detail_ids: Vec::new(),
         forbid_details: Vec::new(),
+        forbid_kind_ids: Vec::new(),
         light: 0xFF000000,
         dark: 0xFF000000,
         opacity: Ramp::constant(1.0),

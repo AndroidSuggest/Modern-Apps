@@ -7,6 +7,7 @@
       "authored": "earth",
       "source": "landtype",
       "type": "fill",
+      "forbid_kinds": ["protected_area", "nature_reserve"],
       "light": "#e2dfda",
       "dark": "#24262c"
     },
@@ -15,6 +16,7 @@
       "authored": "landcover",
       "source": "landtype",
       "type": "fill",
+      "forbid_kinds": ["protected_area", "nature_reserve"],
       "light": "#c4e7d2",
       "dark": "#262b2a",
       "opacity": { "interpolate": "linear", "stops": [[5, 1], [7, 0]] }

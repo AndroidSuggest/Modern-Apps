@@ -21,6 +21,7 @@ fn roads_label_layer() -> Layer {
         forbid_flags: 0,
         detail_ids: Vec::new(),
         forbid_details: Vec::new(),
+        forbid_kind_ids: Vec::new(),
         light: 0xFF3B3B3B,
         dark: 0xFFEDEDED,
         opacity: Ramp::constant(1.0),

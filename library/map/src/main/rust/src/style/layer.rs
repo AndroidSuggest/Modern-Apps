@@ -37,6 +37,13 @@ pub struct Layer {
     /// this, and reading a `kind` used to mean a `String` allocation per feature per tile. A name
     /// the schema cannot emit fails the load rather than silently drawing nothing.
     pub kind_ids: Vec<u16>,
+    /// Interned `kind` values explicitly excluded even when `kind_ids` is empty.
+    ///
+    /// A match-all arm (empty whitelist) draws every kind, including ones no other arm
+    /// claims — which is how the Monterey Bay sanctuary painted the ocean as land: the
+    /// `protected_area` polygon over open water matched `earth` because nothing excluded
+    /// it. `forbid_kinds` states that exclusion, mirroring [`forbid_details`](Self::forbid_details).
+    pub forbid_kind_ids: Vec<u16>,
     /// Which of the tiler's road flags a feature must (not) carry to be drawn here.
     ///
     /// The authored style filters every road layer on `is_bridge`/`is_tunnel`/`is_link`
@@ -193,6 +200,13 @@ impl Layer {
         if !self.matches_id(feature.kind) {
             return false;
         }
+        // The match-all exclusion: a kind named here is never drawn by this
+        // layer, even when the whitelist is empty. See `forbid_kind_ids`.
+        if !self.forbid_kind_ids.is_empty()
+            && self.forbid_kind_ids.binary_search(&feature.kind).is_ok()
+        {
+            return false;
+        }
         if feature.flags & self.require_flags != self.require_flags {
             return false;
         }
@@ -221,6 +235,10 @@ impl Layer {
     /// diagnostics name kinds without a feature to hand.
     /// The whole of the attribute filtering the renderer does, and all the style asks for.
     pub fn matches_id(&self, kind: u16) -> bool {
+        if !self.forbid_kind_ids.is_empty() && self.forbid_kind_ids.binary_search(&kind).is_ok()
+        {
+            return false;
+        }
         self.kind_ids.is_empty() || self.kind_ids.binary_search(&kind).is_ok()
     }
 
