@@ -257,4 +257,26 @@
     <string name="video_edit_with_label">使用我的应用编辑视频</string>
     <string name="live_wallpaper_unavailable">此设备不支持动态壁纸</string>
     <string name="live_wallpaper_description">来自您照片的动画壁纸</string>
+    <string name="label_albums">专辑</string>
+    <string name="albums_empty">尚无相册。照片同步完成后，相册将显示在此处。</string>
+    <string name="albums_unknown">未知</string>
+    <plurals name="album_photo_count">
+        <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> 张照片</item>
+    </plurals>
+    <string name="label_add_to_album">添加到相册</string>
+    <string name="album_name_hint">相册名称</string>
+    <string name="album_create">创建</string>
+    <string name="album_rename">重命名</string>
+    <string name="album_delete">删除相册</string>
+    <string name="album_delete_confirm">移除相册“<xliff:g id="name" example="Beach">%1$s</xliff:g>”？照片将被保留并返回到您的图库中。</string>
+    <string name="action_cancel">取消</string>
+    <string name="vault_viewer_decrypt_failed">无法打开此项目</string>
+    <string name="vault_viewer_not_found">此项目已不在安全文件夹中</string>
+    <string name="play_motion_photo">播放动态照片</string>
+    <string name="stop_motion_photo">停止动态</string>
+    <string name="motion_badge">动态</string>
+    <string name="motion_photo_failed">无法播放动态照片。</string>
+    <string name="secure_folder_relock_title">安全文件夹设置</string>
+    <string name="secure_folder_relock_label">离开时锁定</string>
+    <string name="secure_folder_relock_description">开启后，安全文件夹会在您每次离开时锁定，并在每次打开时要求解锁。</string>
 </resources>
