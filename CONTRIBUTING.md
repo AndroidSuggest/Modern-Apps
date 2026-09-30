@@ -477,8 +477,8 @@ lint check would be the wrong way round.
 
 ## Store metadata
 
-Every app module needs a `metadata_data/<module-key>.md`. `./release` (`release.bat` on Windows) and the release workflow
-take line 1 as the store short description and the whole file as the full description, so the
+Every app module needs a `metadata_data/<module-key>.md`. Line 1 is the store short
+description and the whole file is the full description, so the
 format is strict and `./gradlew checkMetadata` enforces it both ways — a missing file and an
 orphaned file are both errors.
 
@@ -619,16 +619,3 @@ Drop the issue number if there isn't one. Use the module or area as the prefix.
 `.gitattributes` normalises the whole tree to LF, so you should never see a line-ending diff. If
 `git diff --stat` reports far more changed lines than you actually touched, your editor rewrote
 the file's line endings — fix that rather than committing the churn.
-
----
-
-## Release
-
-Releases are manual: the `🚀 Publish Next Release` workflow is `workflow_dispatch` only.
-`version.txt` holds the version code on line 1 and the version name on line 2, and both are
-injected into every app module at release time. `./release` (`release.bat` on Windows) does the same locally and refuses
-to run on a dirty tree.
-
-Reproducible output is a standing requirement — archives use fixed timestamps and ordering,
-`SOURCE_DATE_EPOCH` comes from the last commit, and dependency metadata is stripped from the
-APK.

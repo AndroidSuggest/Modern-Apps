@@ -301,16 +301,16 @@ build (see Verification status).
 
 ---
 
-## 6. CI and release pipeline
+## 6. CI pipeline
 
-Four workflows: `android.yml` (release), `pr-compile-check.yml`, `cargo-deny.yml`, and
-`issue_labeler.yml`.
+Three workflows: `pr-compile-check.yml`, `cargo-deny.yml`, and
+`issue_labeler.yml`. Releases are built outside CI.
 
 ### 6.1 Third-party action pinning — control in place
 
-Every third-party action across all four workflows is pinned to a full commit SHA with the tag in a
+Every third-party action across all three workflows is pinned to a full commit SHA with the tag in a
 trailing comment: `actions/checkout`, `actions/setup-java`, `actions/github-script`,
-`softprops/action-gh-release`, and `taiki-e/install-action`. A repointed upstream tag therefore
+and `taiki-e/install-action`. A repointed upstream tag therefore
 cannot change what runs.
 
 Mitigation: keep the SHA form on every bump. The `github-actions` Dependabot ecosystem (§6.4)
@@ -318,23 +318,23 @@ proposes them.
 
 ### 6.2 Signing key handling — control in place
 
-In `android.yml`, workflow-level `env:` holds only the non-secret keystore filename. `KS_STORE_PASS`,
-`KS_ALIAS` and `KS_ALIAS_PASS` are step-level `env:` on the single "Build and Sign APKs" step, so
-they are not in the environment of any other step. That step deletes the decoded keystore
-immediately after collecting the APKs — before `softprops/action-gh-release` runs — and an
-`if: always()` cleanup step is a backstop for a build that fails earlier.
+Only the non-secret keystore filename is shared build state. The store password,
+key alias and key password exist only in the environment of the single build-and-sign
+step, so they are not visible to any other step. That step deletes the keystore copy
+immediately after collecting the APKs — before the release is created — and an
+unconditional cleanup is a backstop for a build that fails earlier (including cancel).
 
 The release commit stages explicit paths (`settings.gradle.kts`, `build.gradle.kts`, and each
 detected module's `build.gradle.kts` and generated listing directory) rather than `git add .`, so
-the decoded keystore cannot be captured into a commit that the pushed tag is reachable from.
+the keystore cannot be captured into a commit that the pushed tag is reachable from.
 
-The job holds `contents: write`. `pr-compile-check.yml` and `cargo-deny.yml` are `contents: read`;
+`pr-compile-check.yml` and `cargo-deny.yml` are `contents: read`;
 `issue_labeler.yml` is `issues: write`.
 
 ### 6.3 Rust version check — control in place
 
-The "Install Rust Toolchain" step greps the repository-root `rust-toolchain.toml` for its channel
-and exits non-zero if the value is empty, so CI tracks the real pin instead of falling back to a
+The release build's "Install Rust Toolchain" step greps the repository-root `rust-toolchain.toml` for its channel
+and exits non-zero if the value is empty, so the build tracks the real pin instead of falling back to a
 hardcoded version.
 
 ### 6.4 Dependency monitoring — control in place, JVM half missing
@@ -355,35 +355,26 @@ today.
 
 Mitigation: add a JVM advisory scan (OWASP dependency-check or equivalent) to CI.
 
-### 6.5 Release APK upload uses a shell script with an ambient token — Low
-
-`release.sh:165-168` uploads every built APK and a generated `index.json` with
-`gh release create ... --draft`, using whatever credential the local `gh` CLI holds. This is the
-manual counterpart to the `android.yml` release job and runs on a developer machine with a personal
-token rather than a scoped `GITHUB_TOKEN`.
-
-Mitigation: prefer the workflow path for real releases; keep `release.sh` for dry runs.
-
-### 6.6 The PR check does not exercise the release toolchain — Medium
+### 6.5 The PR check does not exercise the release toolchain — Medium
 
 `pr-compile-check.yml` is the only workflow that compiles application code on a pull request, and it
-diverges from the release job in two ways that matter.
+diverges from the release build in two ways that matter.
 
-**It runs a different JDK.** `pr-compile-check.yml:20-24` sets up JDK 17; `android.yml:26-30` sets up
-JDK 21. For routine code changes the gap is harmless. For a toolchain change — an AGP major, a
+**It runs a different JDK.** `pr-compile-check.yml:20-24` sets up JDK 17; the release build
+uses JDK 21. For routine code changes the gap is harmless. For a toolchain change — an AGP major, a
 Kotlin realignment — the JDK is precisely the variable that bites, because toolchain resolution and
 Kotlin `jvmTarget` behaviour differ across the two. A green PR check on that class of diff does not
-establish that the release job still builds.
+establish that the release build still works.
 
 **It compiles and nothing else.** The PR check runs `./gradlew :compileDevKotlin` only, and the
-release job runs `assembleRelease` with `-x lint -x test`. So neither workflow ever runs `lint` or
+release build runs `assembleRelease` with `-x lint -x test`. So neither CI workflow ever runs `lint` or
 the test suite: the repo's own lint rules (including the build-failing ones) and every unit test are
 verified only by whoever remembers to run them locally.
 
 This bounds what CI can be relied on to catch, including for the unverified changes listed under
 Verification status.
 
-Mitigation: align the PR check's JDK with the release job's, and run `lint` and `test` somewhere in
+Mitigation: align the PR check's JDK with the release build's, and run `lint` and `test` somewhere in
 CI rather than excluding them from the one job that could.
 
 ---
@@ -471,8 +462,9 @@ is needed. The residual trust is in GitHub serving the correct object for that S
 ### 7.5 Launcher icon fetch — Low integrity risk, Medium availability risk
 
 `LauncherIconGen.kt` fetches Material Symbols sources from `raw.githubusercontent.com`, pinned to
-the full commit SHA `819d78680a849ceef4c78f863d8753e3160b7c89`, which is also the SHA used by the
-second, separate fetch of the same upstream in `android.yml:174` for Play/F-Droid listing icons.
+the full commit SHA `819d78680a849ceef4c78f863d8753e3160b7c89`. The release build performs a
+second, separate fetch of the same upstream for Play/F-Droid listing icons, pinned to the same
+SHA.
 Results are cached under `$GRADLE_USER_HOME/material-symbols-cache/<ref>/`, and a cache hit skips
 the download.
 
@@ -482,7 +474,7 @@ plus TLS.
 
 Availability is the sharper edge. The fetch is reached from 72 `launcherIcon` blocks across the app
 modules, and a failure throws `GradleException` — so on a cold cache without GitHub reachability the
-build fails outright rather than degrading. The `android.yml` copy is softer: it warns and continues
+build fails outright rather than degrading. The release builder copy is softer: it warns and continues
 without an icon.
 
 Mitigation: vendor the icon sources to remove the build-time network dependency entirely, or record
@@ -912,14 +904,13 @@ up above, this section only names the host.
 `dl.google.com`, `repo.maven.apache.org` and `plugins.gradle.org` (no verification metadata, §1.1);
 `build-artifacts.signal.org` (§2.1); `crates.io` (`--locked`, §4); `static.rust-lang.org`;
 `proxy.golang.org`, `sum.golang.org` and `github.com` for the unblockjam Go tools (hash-pinned);
-`cdn.azul.com` for the JDK; Ubuntu apt mirrors; `github.com` for Actions; and `api.github.com`,
-including the `gh release create` upload in `release.sh` (§6.5).
+`cdn.azul.com` for the JDK; Ubuntu apt mirrors; `github.com` for Actions; and `api.github.com`.
 
 **`raw.githubusercontent.com` — five consumers.**
 
 | Consumer | Pinning |
 |---|---|
-| Material Symbols (`LauncherIconGen.kt`, plus the second site at `android.yml:174`) | Full commit SHA (§7.5) |
+| Material Symbols (`LauncherIconGen.kt`, plus the second fetch in the release build) | Full commit SHA (§7.5) |
 | simdjson and zstd (`scripts/geocoder_gen.sh`) | Full commit SHAs (§7.4) |
 | brave/adblock-resources | **`master` — mutable, unpinned** |
 | gorhill/uBlock | **`master` — mutable, unpinned, and executed** (Highest-severity findings) |

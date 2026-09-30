@@ -44,8 +44,8 @@ tasks.register("fixStrings") {
     }
 }
 
-// Store listings are generated from metadata_data/<module-key>.md by release.sh and the
-// "Prepare F-Droid Metadata" step of .github/workflows/android.yml, both of which take line 1
+// Store listings are generated from metadata_data/<module-key>.md by the release build,
+// which takes line 1
 // as the short description and the whole file as the full description. Play and F-Droid cap a
 // summary at 80 characters, and nothing else in the build looks at these files, so the format
 // is enforced here. Required shape, exactly:
@@ -124,7 +124,7 @@ tasks.register("checkMetadata") {
 
         val metadataDir = File(projectRoot, "metadata_data")
 
-        // release.sh and android.yml find app modules by grepping for the bare string
+        // Module detection by grepping for the bare string
         // "common-conventions-app", which also matches library/map, where it appears only in a
         // comment. Matching the plugin application instead keeps this list to real apps.
         val appPlugin = Regex("""id\("common-conventions-app"\)""")

@@ -7,7 +7,7 @@ import org.gradle.api.tasks.bundling.AbstractArchiveTask
 //
 // Apply this INSTEAD OF `common-conventions-metadata` on an app whose screens have been
 // split into stateless composables. It registers the same `metadata` task name, so
-// `./gradlew :calculator:metadata` keeps working and `release.sh` needs no change — but it
+// `./gradlew :calculator:metadata` keeps working with the release build — but it
 // needs no emulator, no adb, and no `pm clear` of a real device.
 //
 //     ./gradlew :calculator:metadata
