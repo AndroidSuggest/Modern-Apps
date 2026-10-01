@@ -41,4 +41,6 @@
     <string name="level_orientation_portrait_upside_down">Tagurpidi püstloodis</string>
     <string name="level_orientation_landscape_left">Rõhtloodis, vasak serv all</string>
     <string name="level_orientation_landscape_right">Rõhtloodis, parem serv all</string>
+    <string name="level_clear_calibration">Eemalda kalibreerimine</string>
+    <string name="ar_unavailable_camera">Liitreaalsuses mõõtmiseks on vajalik õigus kasutada kaamerat.</string>
 </resources>
