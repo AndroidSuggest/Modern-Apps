@@ -28,4 +28,10 @@
     <string name="daily_challenge">Denní výzva</string>
     <string name="daily_streak"><xliff:g id="days" example="5">%1$d</xliff:g> denní řada</string>
     <string name="daily_come_back_tomorrow">Vyřešeno! Vraťte se zítra.</string>
+    <string name="wheel_spacing">Rozestupy v kole písmen</string>
+    <string name="wheel_spacing_default">Výchozí</string>
+    <string name="wheel_spacing_wide">Široké</string>
+    <string name="wheel_spacing_wider">Širší</string>
+    <string name="wheel_spacing_widest">Nejširší</string>
+    <string name="no_definition_available">Pro toto slovo není definice dostupná.</string>
 </resources>
