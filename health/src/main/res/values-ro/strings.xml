@@ -273,4 +273,17 @@
     <string name="social_drugs">De câte ori în ultimul an ai consumat un drog ilegal sau un medicament eliberat pe bază de rețetă din motive nemedicale?</string>
     <string name="social_housing">Care este situația locativă astăzi?</string>
     <string name="social_food_worried">În ultimele 12 luni, m-am îngrijorat dacă mi se va termina mâncarea înainte de a avea bani să cumpăr mai multă.</string>
+    <string name="remind_me">Amintește-mi să iau asta</string>
+    <string name="field_taken_on">Luat la</string>
+    <string name="social_food_ran_out">În ultimele 12 luni, mâncarea pe care am cumpărat-o pur și simplu nu ne-a ajuns și nu am avut bani să cumpărăm mai multă.</string>
+    <string name="social_transport">Lipsa transportului te-a împiedicat să mergi la programări medicale, la serviciu sau să-ți procuri lucrurile de care ai nevoie pentru viața de zi cu zi?</string>
+    <string name="not_answered">Nu este răspuns</string>
+    <string name="freq_once_or_twice">O dată sau de două ori</string>
+    <string name="housing_worried">Am un loc astăzi, dar îmi fac griji că nu-l pierd</string>
+    <string name="housing_none">Nu am un loc stabil unde să locuiesc</string>
+    <string name="hvs_often_true">Adesea adevărat</string>
+    <string name="hvs_sometimes_true">Uneori adevărat</string>
+    <string name="hvs_never_true">Niciodată adevărat</string>
+    <string name="transport_medical">Da, de la programări medicale sau de la primirea de medicamente</string>
+    <string name="transport_non_medical">Da, de la serviciu sau de alte lucruri de care am nevoie</string>
 </resources>
