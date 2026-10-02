@@ -22,7 +22,7 @@ import com.vayunmathur.library.util.MainNavigation
 import com.vayunmathur.library.util.rememberNavBackStack
 import kotlinx.serialization.Serializable
 import com.vayunmathur.openassistant.data.OpenAssistantRepository
-import com.vayunmathur.openassistant.ui.AssistantChatUi
+import com.vayunmathur.openassistant.ui.LiteRTChatUi
 import com.vayunmathur.openassistant.ui.SettingsPage
 import com.vayunmathur.openassistant.util.AssistantViewModel
 
@@ -94,7 +94,7 @@ fun Navigation(assistantViewModel: AssistantViewModel) {
         // The chat column is the list pane: its NavigationSuite drawer is permanent on
         // Expanded, and settings renders beside it as the detail pane.
         entry<Route.ConversationPage>(metadata = ListPage()) {
-            AssistantChatUi(backStack, it.id, assistantViewModel)
+            LiteRTChatUi(backStack, it.id, assistantViewModel)
         }
         entry<Route.SettingsPage>(metadata = ListDetailPage()) {
             SettingsPage(backStack, assistantViewModel)

@@ -15,6 +15,19 @@ android {
         applicationId = "com.vayunmathur.openassistant"
     }
 
+    androidResources {
+        // SigLIP2 .onnx encoders are downloaded to external files at runtime,
+        // but the SentencePiece tokenizer.model is downloaded too; keep .onnx
+        // uncompressed for consistency with the ONNX Runtime memory-mapped read.
+        noCompress += "onnx"
+    }
+
+    packaging {
+        jniLibs {
+            pickFirsts.add("**/libLiteRtTopKOpenClSampler.so")
+            pickFirsts.add("**/libc++_shared.so")
+        }
+    }
 }
 
 dependencies {
@@ -29,16 +42,14 @@ dependencies {
     // display images
     implementation(project(":library:image"))
 
-    // ai: this repo's own Vulkan runtime, which replaced com.google.ai.edge.litertlm and
-    // its 19.83 MB liblitertlm_jni.so. The weights are the same Gemma 4 E2B, converted to
-    // .maml by scripts/ml/maml_convert.py.
-    implementation(project(":library:ml"))
-    // ToolRegistry reflects over AssistantToolSet's @Tool methods. This used to arrive
-    // transitively through the litertlm AAR, so removing that dependency took it away.
-    implementation(libs.kotlin.reflect)
-    // Was pinned to 1.11.0 only because litertlm 0.14.0 needed close$default on SendChannel.
-    // Kept because other code in this module now uses it directly; drop it if that changes.
+    // ai
+    implementation(libs.litertlm.android)
+    // litertlm 0.14.0 needs kotlinx-coroutines 1.11.0 (close$default on the
+    // SendChannel interface); requesting it directly wins over the transitive 1.9.0.
     implementation(libs.kotlinx.coroutines.android)
+    // SigLIP2 image/text embedding (semantic photo search served to the photos
+    // app) runs on ONNX Runtime; litertlm stays for the chat LLM.
+    implementation(libs.onnxruntime.android)
 
     implementation(project(":library:downloadservice"))
 }

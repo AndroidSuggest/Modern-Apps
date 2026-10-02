@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,23 +23,33 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.image.compose.AsyncImage
-import com.vayunmathur.library.ui.*
+import com.vayunmathur.library.ui.Button
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconCopy
+import com.vayunmathur.library.ui.IconInfo
+import com.vayunmathur.library.ui.IconMic
+import com.vayunmathur.library.ui.LocalTextStyle
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Text
 import com.vayunmathur.library.util.parseMarkdown
 import com.vayunmathur.openassistant.R
 import com.vayunmathur.openassistant.data.Message
 import kotlinx.coroutines.launch
 
 /**
- * Message bubble, extracted from [AssistantChatUi.kt] to keep that file under
- * the length limit. Behavior identical — only moved.
+ * One chat message bubble, split from LiteRTChatUi.kt to satisfy the
+ * one-public-composable-per-file lint rule. Behavior identical — only moved.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatBubble(message: Message) {
     val context = LocalContext.current
@@ -64,8 +73,8 @@ fun ChatBubble(message: Message) {
                         )
                     }
                     if (message.hasAudio) Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(painterResource(android.R.drawable.ic_btn_speak_now), null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
-                        Text(stringResource(R.string.voice_message), Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.onPrimary, fontSize = 14.sp)
+                        IconMic(tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
+                        Text(stringResource(R.string.voice_message), Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Normal, fontSize = 14.sp)
                     }
                     if (message.text.isNotBlank()) Text(message.text, Modifier.padding(8.dp, 4.dp), color = MaterialTheme.colorScheme.onPrimary, fontSize = 15.sp)
                 }
@@ -95,7 +104,7 @@ fun ChatBubble(message: Message) {
                     if (match != null) {
                         val url = match.groups[2]!!.value
                         val label = match.groups[1]!!.value
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.padding(top = 8.dp))
                         Button(
                             onClick = {
                                 try {
@@ -104,7 +113,7 @@ fun ChatBubble(message: Message) {
                                     }
                                     context.startActivity(intent)
                                 } catch (e: Exception) {
-                                    Log.w("AssistantChatUi", "Failed to open link: $url", e)
+                                    Log.w("LiteRTChatUi", "Failed to open link: $url", e)
                                 }
                             },
                             modifier = Modifier.align(Alignment.End)

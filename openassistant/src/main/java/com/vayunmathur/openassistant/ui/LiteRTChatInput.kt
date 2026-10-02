@@ -20,18 +20,30 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.image.ImageRequest
 import com.vayunmathur.library.image.compose.AsyncImage
-import com.vayunmathur.library.ui.*
+import com.vayunmathur.library.ui.Card
+import com.vayunmathur.library.ui.CardDefaults
+import com.vayunmathur.library.ui.ExperimentalMaterial3Api
+import com.vayunmathur.library.ui.IconAdd
+import com.vayunmathur.library.ui.IconButton
+import com.vayunmathur.library.ui.IconClose
+import com.vayunmathur.library.ui.IconMic
+import com.vayunmathur.library.ui.IconSend
+import com.vayunmathur.library.ui.MaterialTheme
+import com.vayunmathur.library.ui.Surface
+import com.vayunmathur.library.ui.Text
+import com.vayunmathur.library.ui.TextField
+import com.vayunmathur.library.ui.TextFieldDefaults
 import com.vayunmathur.openassistant.R
 
 /**
- * Message composer row, extracted from [AssistantChatUi.kt] to keep that file
- * under the length limit. Behavior identical — only moved.
+ * Message composer row, split from LiteRTChatUi.kt to satisfy the
+ * one-public-composable-per-file lint rule. Behavior identical — only moved.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatInput(
     modifier: Modifier,
@@ -81,7 +93,7 @@ fun ChatInput(
         Surface(tonalElevation = 3.dp, shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp, 4.dp)) {
                 IconButton(onAddImage) { IconAdd() }
-                IconButton(onRecord) { Icon(painterResource(android.R.drawable.ic_btn_speak_now), "Voice") }
+                IconButton(onRecord) { IconMic() }
                 TextField(
                     value = inputText,
                     onValueChange = onTextChange,
