@@ -41,4 +41,19 @@
     <string name="button_cancel">Ləğv et</string>
     <string name="button_save">Yadda saxla</string>
     <string name="select_cities_title">Şəhərləri seçin</string>
+    <string name="search_city_hint">Şəhər və ya bölgə axtarın…</string>
+    <string name="time_am">Səhər</string>
+    <string name="time_pm">Axşam</string>
+    <string name="grant_notifications_permission">Bildirişlərə icazə verin</string>
+    <string name="analog_clock_widget_label">Analoq saat</string>
+    <string name="analog_clock_widget_description">\"Material You\" üslubunda analoq saat – saatı açmaq üçün toxunun</string>
+    <string name="alarm_settings">Siqnal parametrləri</string>
+    <string name="defaults_for_new_alarms">Yeni siqnallar üçün standart parametrlər</string>
+    <string name="gradual_off">Söndürülüb</string>
+    <string name="timer_name_optional">Taymerin adı (isteğe bağlı)</string>
+    <string name="alarm_label_hint">Siqnalın adı (isteğe bağlı)</string>
+    <string name="sound">Səs</string>
+    <string name="vibrate">Titrə</string>
+    <string name="snooze_length">Təxirəsalma müddəti</string>
+    <string name="gradually_increase_volume">Səsi tədricən artırın</string>
 </resources>
