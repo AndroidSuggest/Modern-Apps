@@ -117,4 +117,9 @@
     <string name="no_contacts_yet_message">Нажмите кнопку Добавить, чтобы создать свой первый контакт.</string>
     <string name="no_groups_yet">Групп пока нет</string>
     <string name="no_groups_yet_message">Нажмите кнопку Добавить, чтобы объединить контакты в группу.</string>
+    <string name="name_prefix">Префикс</string>
+    <string name="name_suffix">Суффикс</string>
+    <string name="name_affix_none">Нет</string>
+    <string name="sim_name_or_phone_required">Введите имя или номер телефона</string>
+    <string name="sim_slot_label">SIM %1$d</string>
 </resources>
