@@ -131,12 +131,8 @@ fun BrowserPage(
             BrowserChrome(
                 omniboxText = viewModel.omniboxText,
                 tabCount = viewModel.tabs.size,
-                canGoBack = canGoBack,
-                canGoForward = canGoForward,
                 progress = if (activeTab != null && !isNewTabActive) progress else 0f,
                 atBottom = viewModel.searchBarAtBottom,
-                onBack = { if (canGoBack) activeTab?.let { webViewPool[it.id]?.goBack() } },
-                onForward = { if (canGoForward) activeTab?.let { webViewPool[it.id]?.goForward() } },
                 onOmniboxClick = {
                     val full = activeTab?.url?.let { if (it.isBlank() || it == "about:blank") "" else it } ?: ""
                     viewModel.searchDraft = full
@@ -148,9 +144,6 @@ fun BrowserPage(
                     activeTab?.let { tab -> webViewPool[tab.id]?.let { viewModel.captureThumbnail(tab.id, it) } }
                     viewModel.showTabSwitcher = true
                 },
-                shieldHost = shieldHost,
-                blockedCount = activeTab?.let { viewModel.blockedCount(it.id) } ?: 0,
-                onShieldClick = { viewModel.showShieldsPanel = true },
                 onMenuClick = { showMenu = true },
                 menu = {
                     BrowserMenu(
@@ -160,6 +153,13 @@ fun BrowserPage(
                         backStack = backStack,
                         isNewTabActive = isNewTabActive,
                         isCurrentBookmarked = isCurrentBookmarked,
+                        canGoBack = canGoBack,
+                        canGoForward = canGoForward,
+                        onGoBack = { if (canGoBack) activeTab?.let { webViewPool[it.id]?.goBack() } },
+                        onGoForward = { if (canGoForward) activeTab?.let { webViewPool[it.id]?.goForward() } },
+                        shieldHost = shieldHost,
+                        blockedCount = activeTab?.let { viewModel.blockedCount(it.id) } ?: 0,
+                        onShieldClick = { viewModel.showShieldsPanel = true },
                         onShowInstallDialog = { showInstallDialog = true },
                         onReload = {
                             activeTab?.let {

@@ -257,45 +257,16 @@ fn gather_rows(
 
 /// Host combine over already-gathered rows (see `gather_rows`).
 ///
-/// Mirrors `gemma4_part4::combine` exactly (private there): int8
-/// `SHARED_PROJ` projection, grouped RMS norm with `SHARED_NORM` gamma,
-/// `(16 * embedded + normed) / sqrt(2)`. Needs the EMBED reader for the
-/// projection table + gamma — passed by the gate caller.
+/// A thin wrapper over the shared cached implementation
+/// (`gemma4::combine_cached`): int8 `SHARED_PROJ` projection, grouped RMS norm
+/// with `SHARED_NORM` gamma, `(16 * embedded + normed) / sqrt(2)`.
 fn gather_combine_host(
     reader: &modelrunner::weights::Reader<'_>,
     hidden: &[f32],
     embedded: &[f32],
 ) -> Result<Vec<f32>, String> {
     use modelrunner::nets::gemma4;
-    let proj = reader.int8_all(
-        gemma4::embed::SHARED_PROJ,
-        gemma4::embed::SHARED_PROJ + 1,
-        &[gemma4::LAYERS as u32 * gemma4::PER_LAYER, gemma4::D_MODEL, 1, 1],
-    )?;
-    let gamma = reader.fp16(gemma4::embed::SHARED_NORM, &[gemma4::PER_LAYER])?;
-    let rows = gemma4::LAYERS;
-    let wide = gemma4::PER_LAYER as usize;
-    const GATHER_SCALE: f32 = 16.0;
-    let inv_sqrt_2 = 1.0 / std::f32::consts::SQRT_2;
-    let mut out = Vec::with_capacity(rows * wide);
-    for r in 0..rows {
-        let row = &proj[r * wide * gemma4::D_MODEL as usize..(r + 1) * wide * gemma4::D_MODEL as usize];
-        let emb = &embedded[r * wide..(r + 1) * wide];
-        let mut group = vec![0f32; wide];
-        for (o, wrow) in group.iter_mut().zip(row.chunks_exact(gemma4::D_MODEL as usize)) {
-            *o = wrow.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum::<f32>();
-        }
-        let mean_sq = group.iter().map(|v| v * v).sum::<f32>() / wide as f32;
-        let norm = 1.0 / (mean_sq + gemma4::EPSILON).sqrt();
-        for (v, &g) in group.iter_mut().zip(gamma.iter()) {
-            *v = *v * norm * g;
-        }
-        for (v, &e) in group.iter_mut().zip(emb.iter()) {
-            *v = (*v + GATHER_SCALE * e) * inv_sqrt_2;
-        }
-        out.extend_from_slice(&group);
-    }
-    Ok(out)
+    gemma4::combine_cached(reader, hidden, embedded)
 }
 
 /// Logits for `hidden`: the GPU head when the EMBED file carries chunks.

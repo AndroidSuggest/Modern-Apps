@@ -41,10 +41,9 @@ impl Gemma4Handle {
             // Wrong shape: fall through to the host combine rather than failing.
         }
         // Host combine: the same projection + grouped-norm + scaled add that
-        // `gemma4_gather::build_plan` runs on-device. Inlined (not shared)
-        // because `gemma4_part4::combine` is private to that module AND reads
-        // through a `Reader`; this takes the already-gathered rows. The two
-        // must agree exactly, which the `--gather-parity` gate enforces.
+        // `gemma4_gather::build_plan` runs on-device, via the shared cached
+        // implementation (`gemma4::combine_cached`) over the already-gathered
+        // rows. The `--gather-parity` gate enforces exact agreement.
         Ok((hidden.clone(), gather_combine_host(&self.embed, &hidden, &embedded)?))
     }
 

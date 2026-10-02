@@ -20,6 +20,9 @@ import com.vayunmathur.library.ui.AlertDialog
 import com.vayunmathur.library.ui.DropdownMenu
 import com.vayunmathur.library.ui.DropdownMenuItem
 import com.vayunmathur.library.ui.ExternalIntents
+import com.vayunmathur.library.ui.IconArrowForward
+import com.vayunmathur.library.ui.IconBack
+import com.vayunmathur.library.ui.IconShield
 import com.vayunmathur.library.ui.MaterialTheme
 import com.vayunmathur.library.ui.OutlinedTextField
 import com.vayunmathur.library.ui.Surface
@@ -35,8 +38,8 @@ import com.vayunmathur.web.platform.PwaInfo
 import com.vayunmathur.web.platform.WebViewModel
 
 /**
- * Overflow menu for the browser chrome: reload, install/pin, bookmark, share,
- * new tabs, and the library/settings destinations.
+ * Overflow menu for the browser chrome: nav, shields, reload, install/pin,
+ * bookmark, share, new tabs, and the library/settings destinations.
  */
 @Composable
 internal fun BrowserMenu(
@@ -46,6 +49,13 @@ internal fun BrowserMenu(
     backStack: NavBackStack<Route>,
     isNewTabActive: Boolean,
     isCurrentBookmarked: Boolean,
+    canGoBack: Boolean,
+    canGoForward: Boolean,
+    onGoBack: () -> Unit,
+    onGoForward: () -> Unit,
+    shieldHost: String?,
+    blockedCount: Int,
+    onShieldClick: () -> Unit,
     onShowInstallDialog: () -> Unit,
     onReload: () -> Unit,
 ) {
@@ -53,6 +63,37 @@ internal fun BrowserMenu(
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val activeTab = viewModel.activeTab
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.go_back)) },
+            leadingIcon = { IconBack() },
+            onClick = {
+                onDismiss()
+                onGoBack()
+            },
+            enabled = canGoBack,
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.go_forward)) },
+            leadingIcon = { IconArrowForward() },
+            onClick = {
+                onDismiss()
+                onGoForward()
+            },
+            enabled = canGoForward,
+        )
+        if (shieldHost != null) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.shields)) },
+                leadingIcon = { IconShield() },
+                trailingIcon = {
+                    if (blockedCount > 0) Text(blockedCount.toString())
+                },
+                onClick = {
+                    onDismiss()
+                    onShieldClick()
+                },
+            )
+        }
         if (!isNewTabActive) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.reload)) },

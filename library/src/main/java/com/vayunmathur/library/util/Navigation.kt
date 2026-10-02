@@ -24,17 +24,17 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.captionBar
 import androidx.compose.foundation.layout.captionBarPadding
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.contentColorFor
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
@@ -109,6 +109,18 @@ class NavBackStack<T: NavKey>(initial: Array<out T>) {
 // LocalNavResultRegistry lives in NavigationResults.kt.
 
 val LocalSnackbarHostState = compositionLocalOf<SnackbarHostState?> { null }
+
+/**
+ * Whether the screen is hosted inside [MainNavigation], so inner scaffolds apply
+ * window insets exactly once.
+ *
+ * False (the default) means the screen is NOT hosted: previews, screenshot tests,
+ * and pages hosted directly by an Activity. Those keep current M3 behavior.
+ * True means hosted: the host owns the outer chrome, and the shared `Scaffold`
+ * wrapper in `:library:ui` unions IME into the insets M3 itself consumes — never
+ * padding outside a Scaffold.
+ */
+val LocalHostScaffoldInfo = staticCompositionLocalOf { false }
 
 class EntryProviderScope<T: NavKey>(val obj: T) {
     var result: NavEntry<T>? = null
@@ -430,26 +442,29 @@ fun <T: NavKey> MainNavigation(
         }
     }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(),
-        containerColor = resolvedContainerColor,
-        contentColor = resolvedContentColor,
-        // The scaffold disables automatic insets (contentWindowInsets = WindowInsets()), so the
-        // snackbar host must apply its own navigation-bar and IME padding — otherwise messages
-        // render behind the system navigation bar and are hidden (issue #630).
-        snackbarHost = {
-            SnackbarHost(
-                snackbarHostState,
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .imePadding(),
-            )
-        },
-        bottomBar = bottomBar
-    ) { paddingValues ->
+    // No outer Scaffold by design: it used to own the IME inset here while every
+    // screen's inner Scaffold consumed insets again, double-lifting bottom bars by
+    // a keyboard height (live probe: bottomBar laid out at H-2K). Instead the host
+    // is a plain Box that marks screens hosted via LocalHostScaffoldInfo, and the
+    // shared Scaffold wrapper in :library:ui unions IME into the insets M3 itself
+    // consumes — exactly once, never padded outside a Scaffold.
+    // The snackbar renderer lives there too (default host when the screen supplies
+    // none); this function keeps only the producer (state + AppMessages drain).
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(resolvedContainerColor)
+            // captionBarPadding: on desktop windowing (freeform, ChromeOS) the
+            // system caption bar overlays the top of the window, and nothing else
+            // in the inset chain accounts for it. Zero on phones.
+            .captionBarPadding()
+            .consumeWindowInsets(WindowInsets.captionBar),
+    ) {
         CompositionLocalProvider(
             LocalNavResultRegistry provides resultRegistry,
-            LocalSnackbarHostState provides snackbarHostState
+            LocalSnackbarHostState provides snackbarHostState,
+            LocalHostScaffoldInfo provides true,
+            LocalContentColor provides resolvedContentColor,
         ) {
             // Lets a component morph into its counterpart on the next screen instead of the two
             // screens merely swapping underneath it. See sharedContainer.
@@ -459,37 +474,25 @@ fun <T: NavKey> MainNavigation(
                     LocalNavMultiPane provides multiPane,
                     LocalNavMotion provides topMotion,
                 ) {
-                    NavDisplay(
-                        // consumeWindowInsets before imePadding: when a bottom bar is
-                        // present it has already shifted itself up, and that shows up
-                        // in paddingValues. Without consuming it the content would be
-                        // pushed up by the keyboard twice.
-                        //
-                        // captionBarPadding first: on desktop windowing (freeform,
-                        // ChromeOS) the system caption bar overlays the top of the
-                        // window, and nothing else in the inset chain accounts for
-                        // it — without this, top bars render underneath it. Zero on
-                        // phones, so phone layout is unchanged.
-                        modifier = Modifier
-                            .captionBarPadding()
-                            .padding(paddingValues)
-                            .consumeWindowInsets(paddingValues)
-                            .consumeWindowInsets(WindowInsets.captionBar)
-                            .imePadding(),
-                        sceneStrategies = listOf(DialogSceneStrategy(), sceneStrategy),
-                        // The destination decides: the motion is read off the entry the user is
-                        // arriving at when pushing, and off the one they are leaving when popping,
-                        // so a route animates the same way in both directions.
-                        transitionSpec = { transitions.push(targetState.navMotion()) },
-                        popTransitionSpec = { transitions.pop(initialState.navMotion()) },
-                        predictivePopTransitionSpec = { swipeEdge ->
-                            transitions.predictivePop(initialState.navMotion(), swipeEdge)
-                        },
-                        backStack = backStack.backStack, entryProvider = {
-                            EntryProviderScope(it).apply {
-                                entryProvider()
-                            }.result!!
-                        })
+                    Column(Modifier.fillMaxSize()) {
+                        NavDisplay(
+                            modifier = Modifier.weight(1f),
+                            sceneStrategies = listOf(DialogSceneStrategy(), sceneStrategy),
+                            // The destination decides: the motion is read off the entry the user is
+                            // arriving at when pushing, and off the one they are leaving when popping,
+                            // so a route animates the same way in both directions.
+                            transitionSpec = { transitions.push(targetState.navMotion()) },
+                            popTransitionSpec = { transitions.pop(initialState.navMotion()) },
+                            predictivePopTransitionSpec = { swipeEdge ->
+                                transitions.predictivePop(initialState.navMotion(), swipeEdge)
+                            },
+                            backStack = backStack.backStack, entryProvider = {
+                                EntryProviderScope(it).apply {
+                                    entryProvider()
+                                }.result!!
+                            })
+                        bottomBar()
+                    }
                 }
             }
         }

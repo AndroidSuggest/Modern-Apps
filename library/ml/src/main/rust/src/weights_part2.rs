@@ -4,6 +4,26 @@ impl<'a> Reader<'a> {
         Reader { table, data }
     }
 
+    /// File identity for host-side process-constant caches.
+    ///
+    /// The table's address plus the data section's length: every flow that
+    /// gathers opens its EMBED file once and holds it for the process, so a
+    /// cache keyed on this serves the same file's bytes every step. The
+    /// combine cache pairs it with the tensors' descriptors (see
+    /// [`Reader::describe`]), so a second file at a reused address with a
+    /// different layout still misses.
+    pub fn file_id(&self) -> (usize, u64) {
+        (self.table as *const _ as usize, self.data.data_len())
+    }
+
+    /// Tensor `index`'s descriptor, checked against `dims`, without reading bytes.
+    ///
+    /// The table is in memory, so this is a lookup, not I/O: cache keys are
+    /// built from it on every step while the bulk bytes are read only on a miss.
+    pub fn describe(&self, index: usize, dims: &[u32]) -> Result<Tensor, String> {
+        self.table.shaped(index, dims)
+    }
+
     /// Tensor `index` as `f32`, in the file's order, checked against `dims`.
     ///
     /// fp16 only: every tensor the host reads is fp16, and an int8 one would need its companion

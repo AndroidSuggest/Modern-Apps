@@ -303,9 +303,14 @@ fn time_decode(
     let stamps = modelrunner::knobs::is_set("timestamps");
     let mut op_report: Option<Vec<(String, f64, f64)>> = None;
     let mut steady: Vec<f64> = Vec::new();
-    // Host-side split: gather+rotary file reads vs device infer per step.
-    // Accumulated over steady-state passes only, reported once.
-    let mut host_ms = 0.0;
+    // Host-side split, accumulated over steady-state passes only, reported once:
+    // the gather's row reads / bulk projection reads / matmul (from `gather_timed`)
+    // plus this loop's own rotary reads, vs device infer per step. Phase 3a′
+    // step 1: this decides how steps 2–3 divide the ~240 ms host slice.
+    let mut rows_ms = 0.0;
+    let mut bulk_ms = 0.0;
+    let mut matmul_ms = 0.0;
+    let mut rotary_ms = 0.0;
     let mut infer_ms = 0.0;
     let mut host_steps = 0usize;
     for pass in 0..repeats {
@@ -316,10 +321,10 @@ fn time_decode(
                 Ok(p) => p,
                 Err(_) => return println!("a step past u32"),
             };
-            let host_tick = Instant::now();
-            let Ok((hidden_in, per_layer)) = gemma4::gather(&reader, token) else {
+            let Ok((hidden_in, per_layer, gtimes)) = gemma4::gather_timed(&reader, token) else {
                 return println!("gather failed at step {step}");
             };
+            let rotary_tick = Instant::now();
             let Ok(angles_local) =
                 rotary_row(&rotary, gemma4::ROTARY_LOCAL, gemma4::HEAD_DIM, position)
             else {
@@ -330,7 +335,7 @@ fn time_decode(
             else {
                 return println!("rotary global failed at step {step}");
             };
-            let host_done = host_tick.elapsed().as_secs_f64() * 1000.0;
+            let rotary_done = rotary_tick.elapsed().as_secs_f64() * 1000.0;
             let at = match net.at(gemma4::Mode::DecodeStep.at(TIER)) {
                 Ok(at) => at,
                 Err(why) => return println!("the net does not bind at step {step}: {why}"),
@@ -350,7 +355,10 @@ fn time_decode(
                 Err(why) => return println!("step {step} failed: {why}"),
             }
             if pass > 0 {
-                host_ms += host_done;
+                rows_ms += gtimes.rows_ms;
+                bulk_ms += gtimes.bulk_ms;
+                matmul_ms += gtimes.matmul_ms;
+                rotary_ms += rotary_done;
                 infer_ms += infer_tick.elapsed().as_secs_f64() * 1000.0;
                 host_steps += 1;
             }
@@ -378,10 +386,14 @@ fn time_decode(
         println!("steady-state: {mean:.1} ms/token = {:.2} tok/s", 1000.0 / mean.max(1e-9));
     }
     if host_steps > 0 {
+        let steps = host_steps as f64;
         println!(
-            "host split per step: gather+rotary {:.1} ms, infer {:.1} ms ({} steps)",
-            host_ms / host_steps as f64,
-            infer_ms / host_steps as f64,
+            "host split per step: rows {:.1} ms, int8_all {:.1} ms, matmul {:.1} ms, rotary {:.1} ms, infer {:.1} ms ({} steps)",
+            rows_ms / steps,
+            bulk_ms / steps,
+            matmul_ms / steps,
+            rotary_ms / steps,
+            infer_ms / steps,
             host_steps
         );
     }

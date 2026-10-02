@@ -65,7 +65,7 @@ fun AppScaffold(
     scrollBehavior: TopAppBarScrollBehavior,
     floatingActionButton: @Composable () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
-    snackbarHost: @Composable () -> Unit = {},
+    snackbarHost: (@Composable () -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) = AppScaffold(
     title = { Text(title) },
@@ -104,7 +104,7 @@ fun AppScaffold(
     scrollBehavior: TopAppBarScrollBehavior,
     floatingActionButton: @Composable () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
-    snackbarHost: @Composable () -> Unit = {},
+    snackbarHost: (@Composable () -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val resolvedNavigationIcon = resolveNavigationIcon(navigationIcon, onClose, onNavigateBack)
@@ -143,7 +143,7 @@ fun <T : NavKey> AppScaffold(
     scrollBehavior: TopAppBarScrollBehavior,
     floatingActionButton: @Composable () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
-    snackbarHost: @Composable () -> Unit = {},
+    snackbarHost: (@Composable () -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) = AppScaffold(
     title = title,

@@ -7,10 +7,17 @@ package com.vayunmathur.library.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AssistChipDefaults
@@ -29,7 +36,10 @@ import androidx.compose.material3.NavigationBarItem as Material3NavigationBarIte
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.SegmentedButton as Material3SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.contentColorFor
@@ -58,6 +68,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import com.vayunmathur.library.util.LocalHostScaffoldInfo
+import com.vayunmathur.library.util.LocalSnackbarHostState
 
 /**
  * Thin same-named `@Composable` wrappers around Material 3 components.
@@ -272,22 +284,61 @@ fun Surface(
 )
 
 // --- Scaffold ---
+//
+// Hosted-mode IME ownership: screens under MainNavigation must apply the keyboard
+// inset exactly once. MainNavigation no longer lifts content itself; instead it
+// publishes LocalHostScaffoldInfo, and this funnel — the single path every
+// AppScaffold screen goes through — unions IME into the insets M3 itself consumes,
+// so bars, FAB, snackbar and content padding are all positioned consistently by
+// M3, exactly once. Nothing is ever padded outside a Scaffold. When the local is
+// absent (previews, screenshot tests, directly-hosted pages) behavior is
+// byte-identical to before.
 @Composable
 fun Scaffold(
     modifier: Modifier = Modifier,
     topBar: @Composable () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
-    snackbarHost: @Composable () -> Unit = {},
+    snackbarHost: (@Composable () -> Unit)? = null,
     floatingActionButton: @Composable () -> Unit = {},
     floatingActionButtonPosition: FabPosition = FabPosition.End,
     containerColor: Color = MaterialTheme.colorScheme.background,
     contentColor: Color = contentColorFor(containerColor),
+    contentWindowInsets: WindowInsets = ScaffoldDefaults.contentWindowInsets,
     content: @Composable (PaddingValues) -> Unit,
-) = androidx.compose.material3.Scaffold(
-    modifier = modifier, topBar = topBar, bottomBar = bottomBar, snackbarHost = snackbarHost,
-    floatingActionButton = floatingActionButton, floatingActionButtonPosition = floatingActionButtonPosition,
-    containerColor = containerColor, contentColor = contentColor, content = content,
-)
+) {
+    val hosted = LocalHostScaffoldInfo.current
+    if (!hosted) {
+        androidx.compose.material3.Scaffold(
+            modifier = modifier, topBar = topBar, bottomBar = bottomBar,
+            snackbarHost = snackbarHost ?: {},
+            floatingActionButton = floatingActionButton, floatingActionButtonPosition = floatingActionButtonPosition,
+            containerColor = containerColor, contentColor = contentColor, contentWindowInsets = contentWindowInsets,
+            content = content,
+        )
+        return
+    }
+    // Hosted: render the global snackbar when the screen supplied no explicit host.
+    val globalSnackbarState: SnackbarHostState? = LocalSnackbarHostState.current
+    val resolvedSnackbarHost: @Composable () -> Unit = snackbarHost
+        ?: globalSnackbarState?.let { state ->
+            {
+                SnackbarHost(
+                    state,
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(WindowInsets.ime.asPaddingValues()),
+                )
+            }
+        } ?: {}
+    androidx.compose.material3.Scaffold(
+        modifier = modifier, topBar = topBar, bottomBar = bottomBar,
+        snackbarHost = resolvedSnackbarHost,
+        floatingActionButton = floatingActionButton, floatingActionButtonPosition = floatingActionButtonPosition,
+        containerColor = containerColor, contentColor = contentColor,
+        contentWindowInsets = contentWindowInsets.union(WindowInsets.ime),
+        content = content,
+    )
+}
 
 // --- Top app bars ---
 @Composable

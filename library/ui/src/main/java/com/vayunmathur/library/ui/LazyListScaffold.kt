@@ -55,7 +55,7 @@ fun LazyListScaffold(
     actions: (@Composable RowScope.() -> Unit)? = null,
     scrollBehavior: TopAppBarScrollBehavior,
     bottomBar: @Composable () -> Unit = {},
-    snackbarHost: @Composable () -> Unit = {},
+    snackbarHost: (@Composable () -> Unit)? = null,
     floatingActionButton: @Composable () -> Unit = {},
     floatingActionButtonPosition: FabPosition = FabPosition.End,
     state: LazyListState = rememberLazyListState(),

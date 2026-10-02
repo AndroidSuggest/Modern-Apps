@@ -2,6 +2,7 @@ package com.vayunmathur.web.ui
 
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -19,6 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
@@ -27,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import com.vayunmathur.library.ui.AppScaffold
 import com.vayunmathur.library.ui.DesktopMaxWidthContainer
 import com.vayunmathur.library.ui.ExperimentalMaterial3Api
-import com.vayunmathur.library.ui.IconBack
 import com.vayunmathur.library.ui.IconButton
 import com.vayunmathur.library.ui.IconClose
 import com.vayunmathur.library.ui.IconSearch
@@ -109,7 +112,7 @@ internal fun OmniboxEditor(
             )
         }
         val dismissOmnibox: @Composable () -> Unit = {
-            IconButton(onClick = onDismiss) { IconBack() }
+            IconButton(onClick = onDismiss) { IconClose() }
         }
         val suggestions: @Composable (androidx.compose.foundation.layout.PaddingValues) -> Unit = { paddingValues ->
             OmniboxSuggestions(
@@ -133,7 +136,11 @@ internal fun OmniboxEditor(
                         Row(
                             modifier = Modifier
                                 .navigationBarsPadding()
-                                .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+                                .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp)
+                                .onGloballyPositioned { coords ->
+                                    ImeDebugState.barBottomY =
+                                        (coords.positionInWindow().y + coords.size.height).toInt()
+                                },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             dismissOmnibox()
@@ -141,7 +148,14 @@ internal fun OmniboxEditor(
                         }
                     }
                 },
-            ) { paddingValues -> suggestions(paddingValues) }
+            ) { paddingValues ->
+                ImeDebugState.contentPadBottomPx = with(LocalDensity.current) {
+                    paddingValues.calculateBottomPadding().toPx().toInt()
+                }
+                // TEMP DEBUG readout at top of content: always visible. Remove before commit.
+                ImeDebugOverlay()
+                suggestions(paddingValues)
+            }
         } else {
             AppScaffold(
                 title = { omniboxField(Modifier.fillMaxWidth()) },

@@ -7,10 +7,11 @@
 // irrelevant — e.g. `CHUNK` here is read by `prefill` in part6.
 
 /// Host `combine`: projection + grouped-norm + scaled add over rows the
-/// caller already gathered. Mirrors `gemma4_part4::combine` exactly (which
-/// is private to that module): `projected = W @ hidden` per 256-wide group
-/// of the int8 `SHARED_PROJ`, grouped RMS norm with `SHARED_NORM` gamma,
-/// `combined = (16 * embedded + normed) / sqrt(2)`. The device combine plan
+/// caller already gathered.
+///
+/// A thin wrapper over `gemma4::combine_cached` — the single shared
+/// implementation, served from the process-constant combine cache (see
+/// `nets::gemma4_part4`). The device combine plan
 /// (`gemma4_gather::build_plan`) must agree bit-for-bit — the
 /// `--gather-parity` gate in `run_gemma4` enforces it.
 fn gather_combine_host(
@@ -18,37 +19,7 @@ fn gather_combine_host(
     hidden: &[f32],
     embedded: &[f32],
 ) -> Result<Vec<f32>, String> {
-    use gemma4::{EPSILON, LAYERS, PER_LAYER};
-    let reader = embed.reader();
-    let proj = reader.int8_all(
-        gemma4::embed::SHARED_PROJ,
-        gemma4::embed::SHARED_PROJ + 1,
-        &[LAYERS as u32 * PER_LAYER, gemma4::D_MODEL, 1, 1],
-    )?;
-    let gamma = reader.fp16(gemma4::embed::SHARED_NORM, &[PER_LAYER])?;
-    let rows = LAYERS;
-    let wide = PER_LAYER as usize;
-    const GATHER_SCALE: f32 = 16.0;
-    let inv_sqrt_2 = 1.0 / std::f32::consts::SQRT_2;
-    let mut out = Vec::with_capacity(rows * wide);
-    for r in 0..rows {
-        let row = &proj[r * wide * gemma4::D_MODEL as usize..(r + 1) * wide * gemma4::D_MODEL as usize];
-        let emb = &embedded[r * wide..(r + 1) * wide];
-        let mut group = vec![0f32; wide];
-        for (o, wrow) in group.iter_mut().zip(row.chunks_exact(gemma4::D_MODEL as usize)) {
-            *o = wrow.iter().zip(hidden.iter()).map(|(a, b)| a * b).sum::<f32>();
-        }
-        let mean_sq = group.iter().map(|v| v * v).sum::<f32>() / wide as f32;
-        let norm = 1.0 / (mean_sq + EPSILON).sqrt();
-        for (v, &g) in group.iter_mut().zip(gamma.iter()) {
-            *v = *v * norm * g;
-        }
-        for (v, &e) in group.iter_mut().zip(emb.iter()) {
-            *v = (*v + GATHER_SCALE * e) * inv_sqrt_2;
-        }
-        out.extend_from_slice(&group);
-    }
-    Ok(out)
+    crate::nets::gemma4::combine_cached(&embed.reader(), hidden, embedded)
 }
 
 fn gemma4_head_greedy_plan(offsets: &Offsets, _: ()) -> Result<Plan, String> {
