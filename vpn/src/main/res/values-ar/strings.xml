@@ -1,3 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    </resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="no_tunnels_yet">لا أنفاق بعد</string>
+    <string name="add_a_connection_by_opening_a_conf_file">أضف اتصالًا عن طريق فتح ملف .conf</string>
+    <string name="open_conf_file">فتح ملف .conf</string>
+    <string name="connected_via_gotatun_wireguard">● متصل عبر gotatun (WireGuard)</string>
+    <string name="export_as_conf">تصدير كـ .conf</string>
+    <string name="settings_about">الإعدادات / حول</string>
+    <string name="always_on_vpn">VPN دائم التشغيل</string>
+    <string name="open_system_vpn_settings">فتح إعدادات VPN النظام</string>
+    <string name="bypass_list">قائمة التجاوز</string>
+    <string name="bypass_list_title">التطبيقات التي تتجاوز الـ VPN</string>
+    <string name="bypass_lockdown_warning">إذا ”حظر الاتصالات بدون VPN“ مفعلاً على إعدادات VPN في Android، فلن تحصل هذه التطبيقات على اتصال بالإنترنت على الإطلاق بدلاً من استخدام اتصالك العادي. قم بإيقاف تشغيله لكي يعمل التجاوز.</string>
+    <string name="bypass_loading_apps">جارٍ تحميل التطبيقات…</string>
+    <string name="bypass_selected_count"><xliff:g id="count" example="3">%1$d</xliff:g> يتجاوز الـ VPN</string>
+    <string name="delete_all_logs">حذف كل السجلات؟</string>
+    <string name="this_will_permanently_remove_all_connect">سيؤدي هذا إلى إزالة جميع سجلات الاتصال نهائيًا ولا يمكن التراجع عن ذلك.</string>
+    <string name="address">العنوان: %1$s</string>
+    <string name="allowed">مسموح: %1$s</string>
+    <string name="need_activity_to_grant_vpn_permission">يلزم نشاط لمنح إذن الـ VPN</string>
+    <string name="tunnel">نفق — %1$s</string>
+    <string name="imported_from_wireguard_conf_using_gotat">تم الاستيراد من WireGuard .conf يستخدم gotatun (mullvad/gotatun) — Noise IK / X25519 + ChaCha20Poly1305. للتحديث، قم باستيراد ملف .conf جديد.</string>
+    <string name="name">الاسم: %1$s</string>
+    <string name="endpoint">نقطة النهاية: %1$s</string>
+    <string name="dns">نظام أسماء النطاقات (DNS): %1$s</string>
+    <string name="allowedips">عناوين IP المسموحة: %1$s</string>
+    <string name="privatekey">المفتاح الخاص: %1$s…</string>
+    <string name="publickey">المفتاح العام: %1$s</string>
+    <string name="peer_publickey">المفتاح العام للنظير: %1$s</string>
+    <string name="vpn_channel_name">نفق VPN</string>
+    <string name="vpn_wireguard_gotatun">VPN — WireGuard (gotatun)</string>
+</resources>
