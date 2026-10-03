@@ -1,5 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="display">العرض</string>
     <string name="settings">الإعدادات</string>
+    <string name="app_name">الفلك</string>
+    <string name="night_mode">الوضع الليلي (أحمر)</string>
+    <string name="calculating">جارٍ الحساب…</string>
+    <string name="search_1">البحث</string>
+    <string name="save_location">حفظ الموقع</string>
+    <string name="off">معطّل</string>
+    <string name="location">الموقع</string>
+    <string name="use_current_location">استخدام الموقع الحالي</string>
+    <string name="planets_sun_moon">الكواكب / الشمس / القمر</string>
+    <string name="fov">مجال الرؤية: <xliff:g id="degrees" example="60">%1$s</xliff:g>°</string>
+    <string name="planet_sun">الشمس</string>
+    <string name="planet_moon">القمر</string>
+    <string name="planet_mercury">عطارد</string>
+    <string name="planet_venus">الزهرة</string>
+    <string name="planet_mars">المريخ</string>
+    <string name="planet_jupiter">المشتري</string>
+    <string name="planet_saturn">زحل</string>
+    <string name="planet_uranus">أورانوس</string>
+    <string name="planet_neptune">نبتون</string>
+    <string name="search_result_planet">كوكب</string>
 </resources>
