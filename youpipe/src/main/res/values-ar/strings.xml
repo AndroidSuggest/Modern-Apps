@@ -1,6 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="clear_history">مسح السجل</string>
     <string name="language">اللغة</string>
     <string name="action_update">تحديث</string>
+    <string name="off">معطّل</string>
+    <string name="label_search">البحث</string>
+    <string name="subscribers_count"><xliff:g id="count" example="12K">%1$s</xliff:g> مشترك</string>
+    <string name="empty_recommendations">شاهد بعض مقاطع الفيديو للحصول على توصيات مخصصة</string>
+    <string name="video_info_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | <xliff:g id="views" example="1.2M">%2$s</xliff:g> مشاهدة | <xliff:g id="time" example="2 days ago">%3$s</xliff:g></string>
+    <string name="recommendation_reason">السبب: <xliff:g id="reason" example="watched similar">%1$s</xliff:g></string>
+    <string name="label_recommendations">التوصيات</string>
+    <string name="time_ago_just_now">فقط الآن</string>
+    <string name="time_ago_minutes">قبل <xliff:g id="minutes" example="5">%1$d</xliff:g> دقائق</string>
+    <string name="time_ago_hours">قبل <xliff:g id="hours" example="3">%1$d</xliff:g> ساعات</string>
+    <string name="time_ago_days">قبل <xliff:g id="days" example="2">%1$d</xliff:g> أيام</string>
+    <string name="time_ago_months">قبل <xliff:g id="months" example="6">%1$d</xliff:g> أشهر</string>
+    <string name="time_ago_years">قبل <xliff:g id="years" example="1">%1$d</xliff:g> سنوات</string>
+    <string name="count_k_format"><xliff:g id="number" example="12.3">%1$s</xliff:g>ألف</string>
+    <string name="count_m_format"><xliff:g id="number" example="1.2">%1$s</xliff:g>مليون</string>
+    <string name="count_b_format"><xliff:g id="number" example="3.4">%1$s</xliff:g>مليار</string>
+    <string name="video_load_error">خطأ في تحميل الفيديو - ربما YouTube حظر الوصول المجهول للمشاهدة من هذا الـ IP</string>
+    <string name="playback_error">توقف التشغيل بشكل غير متوقع. يُرجى المحاولة مرة أخرى.</string>
+    <string name="restore_unsupported_format">تنسيق ملف النسخ الاحتياطي هذا غير مدعوم.</string>
+    <string name="action_go_back">الرجوع للخلف</string>
+    <string name="label_comments">التعليقات</string>
+    <string name="label_related_videos">مقاطع الفيديو ذات الصلة</string>
+    <string name="label_description">الوصف</string>
+    <string name="download_options">خيارات التنزيل</string>
+    <string name="download">تنزيل</string>
+    <string name="resolution">الجودة</string>
+    <string name="chapter">الفصل</string>
+    <string name="video_stat_format"><xliff:g id="views" example="1M">%1$s</xliff:g> مشاهدة | <xliff:g id="time" example="3 days ago">%2$s</xliff:g></string>
+    <string name="video_stat_paid_format">مدفوع | <xliff:g id="time" example="3 days ago">%1$s</xliff:g></string>
+    <string name="video_info_paid_format"><xliff:g id="channel" example="Linus Tech Tips">%1$s</xliff:g> | مدفوع | <xliff:g id="time" example="2 days ago">%2$s</xliff:g></string>
+    <string name="action_subscribe">اشتراك</string>
+    <string name="action_unsubscribe">إلغاء الاشتراك</string>
+    <string name="channel_info"><xliff:g id="count" example="1.2M">%1$s</xliff:g> مشترك</string>
+    <string name="title_subscriptions">الاشتراكات</string>
+    <string name="label_groups">المجموعات:</string>
+    <string name="label_all_subscriptions">كل الاشتراكات</string>
+    <string name="label_channels">القنوات:</string>
+    <string name="loading_recent_subscriptions">جارٍ تحميل الاشتراكات الأخيرة</string>
+    <string name="title_create_subscription_category">إنشاء فئة اشتراك</string>
+    <string name="title_update_subscription_category">تحديث فئة الاشتراك</string>
+    <string name="label_category_name">اسم الفئة</string>
+    <string name="label_select_subscriptions">تحديد الاشتراكات:</string>
+    <string name="action_create">إنشاء</string>
+    <string name="label_general">العام</string>
+    <string name="label_default_page">الفتح إلى</string>
+    <string name="page_home">الشاشة الرئيسية</string>
+    <string name="page_downloads">التنزيلات</string>
+    <string name="page_saved">المحفوظ</string>
+    <string name="title_saved">المحفوظ</string>
+    <string name="title_downloads">التنزيلات</string>
+    <string name="playlist_watch_later">المشاهدة لاحقًا</string>
+    <string name="title_create_playlist">إنشاء قائمة تشغيل</string>
+    <string name="label_playlist_name">اسم قائمة التشغيل</string>
+    <string name="action_create_playlist">إنشاء</string>
+    <string name="add_to_playlist">إضافة إلى قائمة التشغيل</string>
+    <string name="new_playlist">قائمة تشغيل جديدة</string>
+    <string name="action_delete_playlist">حذف قائمة التشغيل</string>
+    <string name="playlist_empty">لا مقاطع فيديو في قائمة التشغيل هذه بعد</string>
+    <string name="adding_to_watch_later">جارٍ الإضافة إلى المشاهدة لاحقًا…</string>
+    <string name="playlist_video_count"><xliff:g id="count" example="12">%1$d</xliff:g> فيديو</string>
+    <string name="title_history">السجل</string>
+    <string name="selected_count">تم تحديد <xliff:g id="count" example="3">%1$s</xliff:g></string>
+    <string name="are_you_sure_you_want_to_clear_all_watch">هل أنت متأكد أنك تريد مسح سجل المشاهدة بالكامل؟</string>
+    <string name="selected_1">تم تحديد <xliff:g id="count" example="2">%1$s</xliff:g></string>
+    <string name="title_settings">الإعدادات</string>
+    <string name="label_dial_discovery">مألوف ↔ اكتشاف</string>
+    <string name="label_dial_fresh">دائم الخضرة ↔ طازج</string>
+    <string name="label_dial_diverse">مركز ↔ متنوع</string>
+    <string name="label_rec_sources">المصادر</string>
+    <string name="label_rec_content_filters">عوامل تصفية المحتوى</string>
+    <string name="label_source_related">متعلق بسجلك</string>
+    <string name="label_source_trending">رائج</string>
+    <string name="label_source_subscription">اشتراكاتك</string>
 </resources>
