@@ -106,4 +106,5 @@
     <string name="locks_the_crop_to_a_fixed_width_height_s">يقفل الاقتصاص على شكل ثابت للعرض:الارتفاع. يتيح لك \"حر\" الاقتصاص إلى أي حجم.</string>
     <string name="drag_the_round_handle_above_the_crop_box">اسحب المقبض الدائري فوق مربع القص لإمالة الصورة وتقويمها.</string>
     <string name="drag_the_four_corner_handles_to_scale_ro">اسحب المقابض الأربعة الموجودة في الزوايا لتغيير حجم الطبقة النشطة أو تدويرها أو إمالتها أو تشويهها. يؤدي تطبيقها إلى تثبيتها.</string>
+    <string name="action_cancel">إلغاء</string>
 </resources>
