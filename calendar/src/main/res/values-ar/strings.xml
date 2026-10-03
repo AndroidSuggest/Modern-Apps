@@ -6,4 +6,5 @@
     <string name="theme_light">فاتح</string>
     <string name="theme_dark">داكن</string>
     <string name="search">البحث</string>
+    <string name="label_description">الوصف</string>
 </resources>
