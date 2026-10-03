@@ -144,4 +144,22 @@
     <string name="install_failure_conflict">In conflitto con una versione già installata</string>
     <string name="install_failure_unknown">Il sistema lo ha rifiutato</string>
     <string name="version_update">%1$s → %2$s</string>
+    <string name="store_rule_fail_blocks_detail">Se un controllo non va a buon fine, l\'installazione viene interrotta. Se una fonte non pubblica nulla da verificare, l\'app viene installata ma contrassegnata come non verificata.</string>
+    <string name="store_rule_updates_stay_title">Gli aggiornamenti rimangono in questo store</string>
+    <string name="store_rule_updates_stay_detail">Nient\'altro sul tuo telefono può sostituire in modo silenzioso un\'app che hai installato qui.</string>
+    <string name="store_rule_fixed_sources_title">Le fonti sono state corrette</string>
+    <string name="store_rule_fixed_sources_detail">Le tre fonti riportate di seguito sono integrate e non è possibile aggiungerne altre. Non è possibile garantire nulla di quanto indicato sopra per un repository aggiunto dall\'utente.</string>
+    <string name="trust_page_title">Come vengono controllate le app</string>
+    <string name="trust_intro">Le tre fonti qui riportate ti proteggono in modi diversi, e nessuna di esse è semplicemente la più sicura. Ogni scheda indica cosa fa la fonte stessa, cosa verifica questa app durante il download e in quali aspetti quella fonte è più vulnerabile rispetto alle altre.</string>
+    <string name="trust_every_app">Vale per tutte le app presenti qui</string>
+    <string name="trust_every_app_detail">Queste impostazioni rimangono valide indipendentemente dalla provenienza dell’app. Ogni fonte aggiunge le proprie impostazioni sopra a quelle esistenti.</string>
+    <string name="trust_heading_source_does">Cosa fa la fonte</string>
+    <string name="trust_heading_we_check">Cosa controlla quest\'app</string>
+    <string name="trust_heading_weaker">Dove è più debole</string>
+    <string name="trust_bullet">• %1$s</string>
+    <string name="trust_own_key_title">Chiave di firma di questo store</string>
+    <string name="trust_own_key_detail">I download delle Modern Apps devono essere firmati con questa chiave. La chiave viene letta dal telefono al momento dell\'installazione, quindi si tratta sempre della chiave con cui quella copia dello store è stata effettivamente firmata.</string>
+    <string name="trust_own_key_unreadable">Impossibile leggere la chiave di firma di quest\'app.</string>
+    <string name="sources_all_disabled">Tutte le fonti sono disattivate, quindi non c\'è nulla da sfogliare, cercare o aggiornare.</string>
+    <string name="section_sandboxed_google_play">Google Play in modalità sandbox</string>
 </resources>
