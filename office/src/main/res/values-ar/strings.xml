@@ -52,7 +52,7 @@
     <string name="page_of">صفحة <xliff:g id="current_page" example="2">%1$s</xliff:g> من <xliff:g id="total_pages" example="5">%2$s</xliff:g></string>
     <string name="replace">استبدال…</string>
     <string name="add_bookmark">إضافة إشارة مرجعية</string>
-    <string name="dup">نسخ</string>
+    <string name="dup">تكرار</string>
     <string name="rows">الصفوف</string>
     <string name="url">URL</string>
     <string name="special_character">حرف خاص</string>
@@ -231,4 +231,5 @@
     <string name="document_theme_summary">يتحكم في كيفية ظهور المستندات. لا يغيّر الملف.</string>
     <string name="document_theme_unchanged">دون تغيير</string>
     <string name="document_theme_follow_system">اتبع سمة النظام</string>
+    <string name="computing">جارٍ الحوسبة…</string>
 </resources>
