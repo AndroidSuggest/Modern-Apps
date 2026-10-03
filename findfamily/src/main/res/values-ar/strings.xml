@@ -1,4 +1,174 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="unknown">غير معروف</string>
+    <string name="notification_channel_location_tracking_name">جارٍ تتبع الموقع</string>
+    <string name="notification_channel_location_tracking_desc">يُستخدم لتحديثات الموقع في الخلفية في FindFamily</string>
+    <string name="notification_channel_battery_name">تنبيهات البطارية</string>
+    <string name="notification_channel_battery_desc">تنبيهات عندما يكون أحد أفراد الأسرة لديه بطارية منخفضة</string>
+    <string name="notification_channel_entry_exit_name">الوافدات والمغادرات</string>
+    <string name="notification_channel_entry_exit_desc">الإشعارات عند دخول أفراد العائلة إلى نقاط الطريق أو مغادرتهم لها</string>
+    <string name="notification_channel_arrival_name"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> · يصل</string>
+    <string name="notification_tracking_title">FindFamily نشط</string>
+    <string name="notification_tracking_text">جارٍ مشاركة الموقع مع جهات الاتصال التي اخترتها</string>
+    <string name="notification_low_battery"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> لديه/لديها بطارية منخفضة</string>
+    <string name="notification_entered_waypoint"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> دخل إلى <xliff:g id="waypoint_name" example="Home">%2$s</xliff:g></string>
+    <string name="notification_exited_waypoint"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> خرج من <xliff:g id="waypoint_name" example="Home">%2$s</xliff:g></string>
+    <string name="permission_fine_location_granted">✅ تم منح إذن الموقع</string>
+    <string name="permission_grant_fine_location">١. منح إذن الموقع</string>
+    <string name="permission_background_granted">✅ تم منح إذن العمل في الخلفية</string>
+    <string name="permission_enable_all_the_time">٢. تمكين \"السماح طوال الوقت\"</string>
+    <string name="permission_background_explanation">لتمكين التتبع في الخلفية، يُرجى تحديد \"السماح طوال الوقت\" في الشاشة التالية.</string>
+    <string name="permission_approximate_only_explanation">FindFamily فقط يعمل مع الموقع الدقيق (المحدد). لقد منحت إذن الموقع التقريبي فقط — يُرجى الترقية إلى الموقع الدقيق للمتابعة.</string>
+    <string name="permission_reopen_upgrade_prompt">الترقية إلى الموقع الدقيق</string>
+    <string name="permission_upgrade_dialog_title">الموقع الدقيق مطلوب</string>
+    <string name="permission_upgrade_dialog_message">يحتاج FindFamily إلى موقع دقيق (تفصيلي) لمشاركة موقعك الدقيق. يُرجى السماح بتحديد الموقع الدقيق.</string>
+    <string name="permission_upgrade_dialog_confirm">السماح بالموقع الدقيق</string>
+    <string name="permission_upgrade_dialog_dismiss">ليس الآن</string>
+    <string name="fab_person">الشخص</string>
+    <string name="fab_location">الموقع</string>
+    <string name="fab_link">الرابط</string>
+    <string name="fab_tracker">المتتبع</string>
+    <string name="add_tracker_title">إضافة متتبع</string>
+    <string name="add_tracker_name_label">اسم المتتبع</string>
+    <string name="add_tracker_scan_hint">ضع المتتبع في وضع الاقتران، ثم اختره أدناه.</string>
+    <string name="add_tracker_scanning">جارٍ البحث عن متتبعات…</string>
+    <string name="add_tracker_binding">جارٍ الربط…</string>
+    <string name="add_tracker_failed">تعذّر الربط بهذا المتتبع. حاول مرة أخرى.</string>
+    <string name="section_location_sharing_requests">طلبات مشاركة الموقع</string>
+    <string name="section_temporary_links">الروابط المؤقتة</string>
+    <string name="section_saved_places">الأماكن المحفوظة</string>
+    <string name="request_from">طلب من <xliff:g id="sender_id" example="ABC123">%1$s</xliff:g></string>
+    <string name="expires">تنتهي الصلاحية في <xliff:g id="relative_time" example="in 5 minutes"> %1$s</xliff:g></string>
+    <string name="nobody_here">لا أحد هنا حاليًا</string>
+    <string name="user_is_here"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> موجود هنا حاليًا</string>
+    <string name="users_are_here"><xliff:g id="person_names" example="Alice, Bob">%1$s</xliff:g> موجودون هنا حاليًا</string>
+    <string name="last_updated_never">أبدًا</string>
+    <string name="since_just_now">منذ فقط الآن</string>
+    <string name="since_minutes_ago">منذ <xliff:g id="minutes" example="5">%1$d</xliff:g> دقائق</string>
+    <string name="since_time_date">منذ <xliff:g id="time" example="3:45 PM">%1$s</xliff:g> <xliff:g id="date" example="today">%2$s</xliff:g></string>
+    <string name="today">اليوم</string>
+    <string name="yesterday">الأمس</string>
+    <string name="user_card_status">حُدِّث <xliff:g id="last_updated" example="5 minutes ago">%1$s</xliff:g>\nفي <xliff:g id="location_name" example="Home">%2$s</xliff:g>\n<xliff:g id="since_text" example="Since today">%3$s</xliff:g></string>
+    <string name="user_card_shutdown">أُطفئ الهاتف <xliff:g id="shutdown_age" example="5 minutes ago">%1$s</xliff:g>\nآخر موقع <xliff:g id="last_updated" example="20 minutes ago">%2$s</xliff:g>\nفي <xliff:g id="location_name" example="Home">%3$s</xliff:g>\n<xliff:g id="since_text" example="Since today">%4$s</xliff:g></string>
+    <string name="user_card_battery_low">تقرير انخفاض البطارية <xliff:g id="report_age" example="5 minutes ago">%1$s</xliff:g>\nآخر موقع <xliff:g id="last_updated" example="20 minutes ago">%2$s</xliff:g>\nفي <xliff:g id="location_name" example="Home">%3$s</xliff:g>\n<xliff:g id="since_text" example="Since today">%4$s</xliff:g></string>
+    <string name="time_just_now">فقط الآن</string>
+    <string name="time_minutes_ago">قبل <xliff:g id="minutes" example="5">%1$d</xliff:g> دقائق</string>
+    <string name="time_hours_ago">قبل <xliff:g id="hours" example="2">%1$d</xliff:g> ساعات</string>
+    <string name="time_days_ago">قبل <xliff:g id="days" example="3">%1$d</xliff:g> أيام</string>
+    <string name="time_very_soon">قريبًا جدًا</string>
+    <string name="time_in_minutes">في <xliff:g id="minutes" example="5">%1$d</xliff:g> دقائق</string>
+    <string name="time_in_hours">في <xliff:g id="minutes" example="5">%1$d</xliff:g> ساعات</string>
+    <string name="time_in_days">في <xliff:g id="minutes" example="5">%1$d</xliff:g> أيام</string>
+    <string name="share_your_location">مشاركة موقعك مع هذا الشخص</string>
+    <string name="notification_channel_arrival_desc">الإشعارات عندما <xliff:g id="person_name" example="Alice">%1$s</xliff:g> يصل في مكان</string>
+    <string name="notification_channel_departure_name"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> · يغادر</string>
+    <string name="notification_channel_departure_desc">الإشعارات عندما <xliff:g id="person_name" example="Alice">%1$s</xliff:g> يغادر مكان</string>
+    <string name="notification_channel_noshow_name"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> · تنبيهات عدم الحضور</string>
+    <string name="notification_channel_noshow_desc">الإشعارات عندما <xliff:g id="person_name" example="Alice">%1$s</xliff:g> لم يصل إلى المكان المتوقع</string>
+    <string name="notification_settings_arrival">تنبيهات الوصول</string>
+    <string name="notification_settings_departure">تنبيهات المغادرة</string>
+    <string name="change_connected_contact">تغيير جهة الاتصال المتصلة</string>
+    <string name="disable_after">تعطيل بعد</string>
+    <string name="enable_after">تفعيل بعد</string>
+    <string name="auto_toggle_never">أبدًا</string>
+    <string name="arrival_at">الوصول في %1$s</string>
+    <string name="history_title">سجل: <xliff:g id="person_name" example="Alice">%1$s</xliff:g></string>
+    <string name="history_step_minus_5m">-٥د</string>
+    <string name="history_step_minus_1m">-١د</string>
+    <string name="history_step_minus_10s">-١٠ث</string>
+    <string name="history_step_plus_10s">+١٠ث</string>
+    <string name="history_step_plus_1m">+١د</string>
+    <string name="history_step_plus_5m">+٥د</string>
+    <string name="waypoint_name_blank_error">لا يمكن أن يكون الاسم فارغًا</string>
+    <string name="waypoint_range_error">يجب أن يكون النطاق رقمًا</string>
+    <string name="waypoint_range_suffix">أمتار</string>
+    <string name="add_link_title">‬المشاركة عبر الرابط</string>
+    <string name="add_link_label">تسمية الرابط (لتمييز الروابط)</string>
+    <string name="expiry_time_label">وقت انتهاء الصلاحية</string>
+    <string name="create_temporary_link">إنشاء رابط مؤقت</string>
+    <string name="link_pqc_unavailable">تعذّر إنشاء الرابط على هذا الجهاز.</string>
+    <string name="expiry_15_minutes">١٥ دقيقة</string>
+    <string name="expiry_30_minutes">٣٠ دقيقة</string>
+    <string name="expiry_1_hour">١ ساعة</string>
+    <string name="expiry_2_hours">٢ ساعتان</string>
+    <string name="expiry_4_hours">٤ ساعات</string>
+    <string name="expiry_6_hours">٦ ساعات</string>
+    <string name="expiry_12_hours">١٢ ساعة</string>
+    <string name="expiry_1_day">١ يوم</string>
+    <string name="expiry_2_days">٢ يومان</string>
+    <string name="expiry_1_week">١ أسبوع</string>
+    <string name="add_person_title">إضافة شخص</string>
+    <string name="your_findfamily_id">معرّف FindFamily الخاص بك</string>
+    <string name="contact_findfamily_id">معرّف FindFamily خاصة جهة الاتصال</string>
+    <string name="status_awaiting_request">طلب هذا الشخص موقعك</string>
+    <string name="status_cannot_share_self">لا يمكن مشاركة موقعك مع نفسك</string>
+    <string name="status_already_sharing">يتم بالفعل مشاركة الموقع مع هذا الشخص</string>
+    <string name="status_already_requested">تم طلب المشاركة مع هذا الشخص بالفعل</string>
+    <string name="contact_name_label">اسم جهة الاتصال</string>
+    <string name="accept_location_request">قبول طلب الموقع</string>
+    <string name="request_location">طلب الموقع</string>
+    <string name="share_invite_link">مشاركة رابط الدعوة</string>
+    <string name="share_invite_link_chooser">مشاركة دعوة FindFamily</string>
+    <string name="clipboard_label">النص</string>
+    <string name="me_label">أنا</string>
+    <string name="missing_features_title">الميزات المطلوبة معطلة</string>
+    <string name="missing_features_explanation">يتطلب FindFamily موقع الشبكة ومرمز جغرافي للعمل بشكل صحيح. يجب عليك تمكينهم للمتابعة.</string>
+    <string name="notification_channel_uwb_request_name">طلبات البحث القريب (UWB)</string>
+    <string name="notification_channel_uwb_request_desc">يستخدم شخص ما البحث القريب (UWB) لتحديد موقعك</string>
+    <string name="notification_uwb_request_title">شخص ما يبحث عنك</string>
+    <string name="notification_uwb_request_text"><xliff:g id="person_name" example="Alice">%1$s</xliff:g> يستخدم البحث القريب (UWB). اضغط للاطّلاع على المسافة والاتجاه.</string>
+    <string name="uwb_unknown_peer_name">شخص ما</string>
+    <string name="uwb_status_starting">جارٍ إعداد البحث القريب (UWB)…</string>
+    <string name="uwb_status_waiting">بانتظار الجهاز الآخر…</string>
+    <string name="uwb_status_peer_disconnected">فقدت الجهاز الآخر. تحرك أقرب.</string>
+    <string name="uwb_status_unsupported">البحث القريب (UWB) غير مدعوم على هذا الجهاز.</string>
+    <string name="uwb_status_failed">فشل البحث القريب (UWB).</string>
+    <string name="security_code">رمز الأمان</string>
+    <string name="compare_this_code_with_on_their_device_i">قارن هذا الرمز مع <xliff:g id="person_name" example="Bob">%1$s</xliff:g> على جهازه. إذا تطابقت الأرقام على كلا الهاتفين، فاتصالك متحقق منه من طرف-إلى-طرف — لا أحد يعترضه.</string>
+    <string name="computing">جارٍ الحوسبة…</string>
+    <string name="couldn_t_compute_yet_s_key_isn_t_availab">تعذّر الحساب حتى الآن — مفتاح <xliff:g id="person_name" example="Bob">%1$s</xliff:g> غير متاح. تأكد من كلا اتصالكما، ثم حاول مرة أخرى.</string>
+    <string name="dist">مسافة:</string>
+    <string name="az">سمت:</string>
+    <string name="el">ارتفاع:</string>
+    <string name="point_the_back_of_your_phone_toward_your">وجّه الجزء الخلفي من هاتفك نحو جهة اتصالك</string>
+    <string name="gps_fallback_warning_content_description">موقع الشبكة غير متاح</string>
+    <string name="map_menu_content_description">المزيد من الخيارات</string>
+    <string name="find_nearby_content_description">البحث القريب</string>
+    <string name="verify_security_code_content_description">التحقق من رمز الأمان</string>
+    <string name="delete_person_content_description">إزالة الشخص</string>
+    <string name="delete_place_content_description">حذف المكان المحفوظ</string>
+    <string name="gps_fallback_warning_title">استخدام GPS فقط</string>
+    <string name="gps_fallback_warning_body">لم يتم تشغيل موقع الشبكة لهذا الجهاز، لذلك يستخدم FindFamily الـ GPS فقط لمواصلة تتبع موقعك. GPS دقته أكبر لكنه قد يتسبب في استنزاف كبير للبطارية. لتقليل استهلاك البطارية، شغّل موقع الشبكة (Wi-Fi وشبكة الهاتف المحمول) في إعدادات جهازك.</string>
+    <string name="outdated_peer_title">التحديث مطلوب</string>
+    <string name="outdated_peer_body">يستخدم هذا الشخص إصدارًا أقدم من FindFamily لا يدعم التشفير الآمن كميًا. اطلب منه تحديث تطبيقه، ثم حاول الاتصال مرة أخرى.</string>
+    <string name="key_mismatch_title">تعذّر التحقق من هذا الشخص</string>
+    <string name="key_mismatch_body">لا يتطابق مفتاح التشفير الخاص بهذا الشخص مع المفتاح المدرج في رابط الدعوة الخاص به، لذلك لم تتم إضافته. تحقق من أنك فتحت الرابط بأكمله، واطلب منه إرسال رابط جديد.</string>
+    <string name="tile_label">FindFamily يتتبع</string>
+    <string name="tile_subtitle_on">مفعّل</string>
+    <string name="tile_subtitle_off">معطّل</string>
+    <string name="tile_subtitle_no_permission">اضغط للإعداد</string>
+    <string name="sharing_tile_label">FindFamily يشارك</string>
+    <string name="sharing_paused_note">تم إيقاف المشاركة مؤقتًا للجميع من مربع الإعدادات السريعة</string>
+    <string name="user_card_network_sighting">شوهد بواسطة هاتف عابر <xliff:g id="last_seen" example="2 hours ago">%1$s</xliff:g>\nفي مكان بالقرب من <xliff:g id="location_name" example="Home">%2$s</xliff:g> — تقريبًا</string>
+    <string name="poweroff_finding_limit">يستمر هذا لمدة 3 أيام تقريبًا بعد إيقاف الهاتف، ثم يتوقف. هذا حد لشريحة البلوتوث، ليس إعدادًا.</string>
+    <string name="poweroff_grant_tracking_warning">يستطيع أي شخص تختاره أيضًا البحث عن هذا الهاتف بنفسه، وقتما يشاء، طالما أنه يظل مدرجًا في هذه القائمة. تستخدم قراءة المكان الذي شوهد فيه الهاتف والبحث عنه المفتاح نفسه، لذلك لا توجد طريقة لمنح أحدهما دون الآخر. اختر فقط الأشخاص الذين ستكون سعيدًا بعثورهم على هذا الهاتف.</string>
+    <string name="poweroff_grant_revoke_warning">يؤدي حذف شخص ما من القائمة إلى منعه من رؤية أي مكان يذهب إليه هذا الهاتف من ذلك الحين فصاعدًا. لا يمكنها استعادة الأماكن التي جمعوها بالفعل، ولا يمكنها جعلهم ينسونها. أي شيء شوهد فيه هذا الهاتف مؤخرًا، ولكن لم يلتقطه أحد بعد، قد يضيع عليك أيضًا.</string>
+    <string name="poweroff_grant_no_peers">بمجرد أن تكون متصلاً بشخص ما، يمكنك اختياره هنا.</string>
+    <string name="permission_grant_bluetooth">السماح بالبلوتوث</string>
+    <string name="permission_bluetooth_granted">تم السماح بالبلوتوث</string>
+    <string name="permission_bluetooth_explanation">مطلوب للعثور على الأجهزة القريبة.</string>
+    <string name="noshow_title">انتبه إلى عدم وصول <xliff:g id="person_name" example="Alice">%1$s</xliff:g></string>
+    <string name="noshow_place_label">المكان المتوقع</string>
+    <string name="noshow_place_any">أي مكان</string>
+    <string name="noshow_pick_date">اختر التاريخ</string>
+    <string name="noshow_pick_time">اختر الوقت</string>
+    <string name="noshow_grace_label">انتظار إضافي</string>
+    <plurals name="noshow_grace_minutes">
+        <item quantity="zero"><xliff:g id="minutes" example="1">%1$d</xliff:g> دقيقة</item>
+        <item quantity="one"><xliff:g id="minutes" example="1">%1$d</xliff:g> دقيقة</item>
+        <item quantity="two"><xliff:g id="minutes" example="1">%1$d</xliff:g> دقيقتان</item>
+        <item quantity="few"><xliff:g id="minutes" example="1">%1$d</xliff:g> دقائق</item>
+        <item quantity="many"><xliff:g id="minutes" example="1">%1$d</xliff:g> دقيقة</item>
+        <item quantity="other"><xliff:g id="minutes" example="1">%1$d</xliff:g> دقيقة</item>
+    </plurals>
 </resources>
