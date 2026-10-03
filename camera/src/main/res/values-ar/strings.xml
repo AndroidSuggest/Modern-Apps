@@ -1,4 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="app_name">الكاميرا</string>
+    <string name="night">ليلي</string>
+    <string name="open_gallery">المعرض</string>
+    <string name="grant_camera_permission">منح إذن الكاميرا</string>
+    <string name="settings_location">الموقع</string>
+    <string name="settings_location_description">حفظ الموقع في بيانات تعريف الصورة</string>
+    <string name="settings_mirror_front">عكس السيلفي</string>
+    <string name="settings_mirror_front_description">عكس معاينة الكاميرا الأمامية والسيلفيات المحفوظة</string>
+    <string name="settings_video_codec">ترميز الفيديو</string>
+    <string name="settings_video_codec_label">ترميز الفيديو</string>
+    <string name="codec_avc_label">H.264 / AVC</string>
+    <string name="codec_avc_description">الأكثر توافقًا</string>
+    <string name="codec_hevc_label">H.265 / HEVC</string>
+    <string name="codec_hevc_description">كفاءة أكثر</string>
+    <string name="codec_av1_label">AV1</string>
+    <string name="codec_av1_description">الأكثر كفاءة</string>
+    <string name="settings_audio_source">مصدر إدخال الصوت</string>
+    <string name="settings_audio_source_label">مصدر إدخال الصوت</string>
+    <string name="audio_source_camcorder_label">كاميرا الفيديو</string>
+    <string name="audio_source_camcorder_description">الافتراضي، مُضَبَّط للفيديو</string>
+    <string name="audio_source_mic_label">ميكروفون</string>
+    <string name="audio_source_mic_description">الميكروفون الرئيسي</string>
+    <string name="audio_source_voice_communication_label">صوتي</string>
+    <string name="audio_source_voice_communication_description">إلغاء الضوضاء والصدى</string>
+    <string name="audio_source_unprocessed_label">غير معالج</string>
+    <string name="audio_source_unprocessed_description">خام، لا معالجة</string>
+    <string name="qr_result">رمز QR</string>
+    <string name="open_url">فتح عنوان الـ URL</string>
+    <string name="no_app_to_open_url">لا تطبيق يمكنه فتح هذا الرابط</string>
+    <string name="copy_text">نسخ</string>
+    <string name="qr_scanning_paused">مسح الـ QR متوقف</string>
+    <string name="blur">الضبابية</string>
+    <string name="not_available">غير متوفر</string>
+    <string name="burst_count"><xliff:g id="count" example="12">%1$d</xliff:g> من اللقطة المتتابعة</string>
+    <string name="ae_af_lock">تثبيت AE/AF</string>
+    <string name="processing_panorama_u2026">جارٍ معالجة البانورامة…</string>
+    <string name="auto">تلقائي</string>
+    <string name="night_2">ليلي %1$s%%</string>
+    <string name="brightness">السطوع</string>
+    <string name="shadows">الظلال</string>
+    <string name="warmth">الدفء</string>
+    <string name="lens_mono">مونو</string>
+    <string name="lens_front">أمامي</string>
+    <string name="lens_picker_description">عدسة الكاميرا</string>
+    <string name="settings_save_location">حفظ الموقع</string>
+    <string name="settings_save_location_choose">اختيار مجلد</string>
+    <string name="settings_save_location_reset">إعادة التعيين للافتراضي</string>
+    <string name="settings_save_location_error">تعذّر استخدام هذا المجلد</string>
 </resources>
