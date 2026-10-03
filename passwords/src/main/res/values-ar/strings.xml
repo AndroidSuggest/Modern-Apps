@@ -2,4 +2,5 @@
 <resources>
     <string name="hide">إخفاء</string>
     <string name="show">إظهار</string>
+    <string name="title_settings">الإعدادات</string>
 </resources>
