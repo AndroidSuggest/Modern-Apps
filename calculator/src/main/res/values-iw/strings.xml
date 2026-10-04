@@ -1,3 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    </resources>
+    <string name="app_name">מחשבון</string>
+    <string name="history">היסטוריה</string>
+    <string name="no_calculations_yet">עדיין אין חישובים.</string>
+    <string name="add_function">הוספת פונקציה</string>
+    <string name="feature_root">שורש</string>
+    <string name="feature_minimum">מינימום</string>
+    <string name="feature_maximum">מקסימום</string>
+    <string name="units">יחידות</string>
+    <string name="convert_to">המרה ליחידה</string>
+    <string name="converter_value">ערך</string>
+    <string name="converter_from">מהמידה</string>
+    <string name="converter_to">למידה</string>
+    <string name="converter_result">תוצאה</string>
+    <string name="key_date">תאריך</string>
+    <string name="key_time">שעה</string>
+    <string name="key_datetime">תאריך ושעה</string>
+    <string name="select_time">נא לבחור שעה</string>
+    <string name="ok">אישור</string>
+    <string name="currency_retry">ניסיון חוזר</string>
+    <string name="calculator_widget_label">מחשבון</string>
+    <string name="calculator_widget_transparent">רקע שקוף</string>
+    <string name="units_widget_label">המרת יחידות</string>
+</resources>
