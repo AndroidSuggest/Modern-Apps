@@ -12,7 +12,7 @@
     <string name="installed_apps">التطبيقات المثبتة</string>
     <string name="site_data">بيانات الموقع</string>
     <string name="app_name_2">اسم التطبيق</string>
-    <string name="recent">الأحدث</string>
+    <string name="recent">الأخيرة</string>
     <string name="private_prefix">خاص •</string>
     <string name="private_tab">علامة تبويب خاصة</string>
     <string name="no_downloads">لا تنزيلات</string>
