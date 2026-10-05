@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <string name="recent">الأحدث</string>
+    <string name="recent">الأخيرة</string>
     <string name="apply">تطبيق</string>
     <string name="reset">إعادة الضبط</string>
     <string name="rotate_90">تدوير ٩٠°</string>
@@ -21,7 +21,7 @@
     <string name="trash_is_empty">سلة المهملات فارغة</string>
     <string name="items_selected">تم تحديد <xliff:g id="count" example="5">%1$d</xliff:g></string>
     <string name="month_year_format"><xliff:g id="month" example="January">%1$s</xliff:g> <xliff:g id="year" example="2024">%2$d</xliff:g></string>
-    <string name="search_placeholder">البحث عن الصور…</string>
+    <string name="search_placeholder">البحث في الصور…</string>
     <string name="of_photos_processed">تمت معالجة <xliff:g id="percent" example="45"> %1$d</xliff:g> %% من الصور</string>
     <string name="photos_indexed_for_visual_search">تم فهرسة <xliff:g id="done" example="120"> %1$d</xliff:g>/<xliff:g id="total" example="500">%2$d من</xliff:g> الصور للبحث المرئي</string>
     <string name="photos_indexed_for_text_search">تم فهرسة <xliff:g id="done" example="120"> %1$d</xliff:g>/<xliff:g id="total" example="500">%2$d من</xliff:g> الصور للبحث النصي</string>
@@ -107,4 +107,86 @@
     <string name="drag_the_round_handle_above_the_crop_box">اسحب المقبض الدائري فوق مربع القص لإمالة الصورة وتقويمها.</string>
     <string name="drag_the_four_corner_handles_to_scale_ro">اسحب المقابض الأربعة الموجودة في الزوايا لتغيير حجم الطبقة النشطة أو تدويرها أو إمالتها أو تشويهها. يؤدي تطبيقها إلى تثبيتها.</string>
     <string name="action_cancel">إلغاء</string>
+    <string name="label_albums">الألبومات</string>
+    <string name="albums_empty">لا ألبومات بعد. الألبومات تظهر هنا بمجرد مزامنة صورك.</string>
+    <string name="albums_unknown">غير معروف</string>
+    <plurals name="album_photo_count">
+        <item quantity="zero">لا صور</item>
+        <item quantity="one"><xliff:g id="count" example="12">%1$d</xliff:g> صورة</item>
+        <item quantity="two"><xliff:g id="count" example="12">%1$d</xliff:g> صورتان</item>
+        <item quantity="few"><xliff:g id="count" example="12">%1$d</xliff:g> صور</item>
+        <item quantity="many"><xliff:g id="count" example="12">%1$d</xliff:g> صورة</item>
+        <item quantity="other"><xliff:g id="count" example="12">%1$d</xliff:g> صورة</item>
+    </plurals>
+    <string name="label_add_to_album">إضافة إلى ألبوم</string>
+    <string name="album_name_hint">اسم الألبوم</string>
+    <string name="album_create">إنشاء</string>
+    <string name="album_rename">إعادة التسمية</string>
+    <string name="album_delete">حذف الألبوم</string>
+    <string name="album_delete_confirm">إزالة الألبوم \"<xliff:g id="name" example="Beach">%1$s</xliff:g>\"؟ سيتم الاحتفاظ بالصور وإعادتها إلى مكتبتك.</string>
+    <string name="secure_folder_relock_description">عند التشغيل، المجلد الآمن يقفل كل مرة تغادره و يطلب لإلغاء القفل عند كل فتح.</string>
+    <string name="strength">القوة</string>
+    <string name="size">الحجم</string>
+    <string name="brush">الفرشاة</string>
+    <string name="gamma">جاما</string>
+    <string name="red_cyan">أحمر-سماوي</string>
+    <string name="green_mag">أخضر-ماجنتا</string>
+    <string name="blue_yellow">أزرق-أصفر</string>
+    <string name="reds">الأحمرات</string>
+    <string name="yellows">الأصفرات</string>
+    <string name="greens">الأخضرات</string>
+    <string name="cyans">السماويات</string>
+    <string name="blues">الأزرقات</string>
+    <string name="magentas">البنفسجيات</string>
+    <string name="amount">المجموع</string>
+    <string name="radius">نصف القطر</string>
+    <string name="length">الطول</string>
+    <string name="angle">الزاوية</string>
+    <string name="vibrance">الحيوية</string>
+    <string name="levels">المستويات</string>
+    <string name="level">المستوى</string>
+    <string name="density">الكثافة</string>
+    <string name="cyan">سماوي</string>
+    <string name="magenta">ماجنتا</string>
+    <string name="yellow">أصفر</string>
+    <string name="color_red">أحمر</string>
+    <string name="color_orange">برتقالي</string>
+    <string name="color_green">أخضر</string>
+    <string name="color_blue">أزرق</string>
+    <string name="color_purple">بنفسجي</string>
+    <string name="blend_normal">عادي</string>
+    <string name="blend_multiply">مضاعفة</string>
+    <string name="blend_screen">شاشة</string>
+    <string name="blend_overlay">غشاء</string>
+    <string name="blend_darken">تغميق</string>
+    <string name="blend_lighten">تفتيح</string>
+    <string name="blend_color_dodge">تفتيح اللون</string>
+    <string name="blend_color_burn">حرق اللون</string>
+    <string name="blend_hard_light">ضوء شديد</string>
+    <string name="blend_soft_light">ضوء ناعم</string>
+    <string name="blend_difference">الاختلاف</string>
+    <string name="blend_hue">درجة اللون</string>
+    <string name="blend_saturation">التشبع</string>
+    <string name="blend_luminosity">اللمعان</string>
+    <string name="vault_viewer_decrypt_failed">تعذّر فتح هذا العنصر</string>
+    <string name="vault_viewer_not_found">لم يعد هذا العنصر موجودًا في المجلد الآمن</string>
+    <string name="play_motion_photo">تشغيل الصورة المتحركة</string>
+    <string name="stop_motion_photo">إيقاف الحركة</string>
+    <string name="motion_badge">متحركة</string>
+    <string name="motion_photo_failed">تعذّر تشغيل الصورة المتحركة.</string>
+    <string name="secure_folder_relock_title">إعدادات المجلد الآمن</string>
+    <string name="secure_folder_relock_label">القفل عند المغادرة</string>
+    <string name="set_as_wallpaper">تعيين كخلفية</string>
+    <string name="wallpaper_home">الرئيسية</string>
+    <string name="wallpaper_lock">القفل</string>
+    <string name="wallpaper_both">كلاهما</string>
+    <string name="wallpaper_scrollable">قابل للتمرير</string>
+    <string name="wallpaper_scrollable_desc">تكون الخلفيات القابلة للتمرير أوسع وتتحرك عند التمرير بين الشاشات الرئيسية</string>
+    <string name="set_wallpaper">تعيين الخلفية</string>
+    <string name="setting_wallpaper">جارٍ تعيين الخلفية…</string>
+    <string name="wallpaper_set_success">تم تطبيق الخلفية!</string>
+    <string name="wallpaper_set_failed">فشل في تعيين الخلفية: <xliff:g id="error" example="IO error">%1$s</xliff:g></string>
+    <string name="wallpaper_load_failed">فشل في تحميل الصورة</string>
+    <string name="live_wallpaper_unavailable">الخلفيات المتحركة غير مدعومة على هذا الجهاز</string>
+    <string name="edit_with_label">التعديل بـ تطبيقي</string>
 </resources>
