@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="copy">نسخ</string>
+    <string name="enter_text">أدخل نصًا</string>
+    <string name="loading_translator">جارٍ تحميل المترجم…</string>
+    <string name="speak">تحدث</string>
+    <string name="translation">الترجمة</string>
+    <string name="translation_model_not_installed_showing">لم يتم تثبيت نموذج الترجمة — يتم عرض النص الذي تم التعرف عليه فقط</string>
+    <string name="grant_camera_access">امنح الوصول للكاميرا لترجمة ما تراه</string>
+    <string name="no_voice_installed">لم يتم تثبيت صوت %1$s</string>
+    <string name="install_voice">تثبيت</string>
+    <string name="select_source_language">اللغة المصدر</string>
+    <string name="select_target_language">اللغة الهدف</string>
+    <string name="search_languages">البحث عن اللغات</string>
+    <string name="recent_languages">اللغات الأخيرة</string>
+    <string name="all_languages">جميع اللغات</string>
+    <string name="no_languages_match">‌لا لغات مطابقة لـ ”%1$s“</string>
+    <string name="app_name">ترجم</string>
 </resources>
